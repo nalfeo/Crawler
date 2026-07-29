@@ -261,7 +261,28 @@ export function blockerFingerprint(blockers) {
   // Observed in production on PR #1809 (10:09 / 10:44 / 11:29 UTC cycle): the
   // persisted state's `attempt` stayed pinned at 1 forever because each retry
   // was misclassified as new progress solely due to a new run URL.
-  const fingerprintBlockers = normalized.map(({ line: _line, url: _url, ...rest }) => rest);
+  //
+  // NOTE: `ci-failure copilot` (kind='ci-failure', id='copilot') is also
+  // excluded from the fingerprint. GitHub creates a check named "copilot"
+  // whenever the CI recovery assigns @copilot to a PR (via the dynamic
+  // copilot-swe-agent workflow). When that session fails at session.create
+  // (e.g. a deprecated model), the check concludes `failure` and first
+  // appears as a NEW blocker on the next reconcile sweep. Including this
+  // self-generated blocker in the fingerprint causes `automationStallAction`
+  // to return 'progressed' on the FIRST cycle after a failed dispatch —
+  // resetting the attempt counter and granting exactly one extra dispatch
+  // cycle before the loop incident is filed (3 cycles instead of the
+  // intended 2). Excluding it from
+  // the fingerprint lets the stale-retry path count correctly: the attempt
+  // counter increments normally across cycles where the only new "change" is
+  // this self-generated failure (the underlying blockers that caused the
+  // dispatch are unchanged). The blocker is still persisted to state for
+  // display/evidence; it is only invisible to the fingerprint hash.
+  // Observed in production on PR #1939 / incident #2268 (model
+  // "claude-sonnet-4.5" deprecated 2026-05-06; incident filed 2026-07-29).
+  const fingerprintBlockers = normalized
+    .filter((b) => !(b.kind === 'ci-failure' && b.id === 'copilot'))
+    .map(({ line: _line, url: _url, ...rest }) => rest);
   return createHash('sha256')
     .update(JSON.stringify({ blockers: fingerprintBlockers }))
     .digest('hex');

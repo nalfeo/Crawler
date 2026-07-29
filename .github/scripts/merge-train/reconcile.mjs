@@ -795,9 +795,12 @@ for (const pr of queued) {
     // recursion-suppressed for push events and would leave the updated head
     // without check runs.
     //
-    // Use `break` (not `continue`) after the first BEHIND PR to preserve FIFO
-    // queue ordering: newer PRs must not leapfrog an older BEHIND PR.
+    // Use `break` after the first non-fork BEHIND PR to preserve FIFO queue
+    // ordering: newer PRs must not leapfrog an older BEHIND PR. Fork PRs that
+    // got dequeued (403) fall through naturally so later entries can still be
+    // admitted this cycle.
     if (livePr.mergeable_state === 'behind') {
+      let dequeuedFork = false;
       try {
         await request(
           updateBranchToken,
@@ -809,30 +812,36 @@ for (const pr of queued) {
         );
         process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
       } catch (err) {
-        // 422 covers "already up-to-date" and stale expected_head_sha; 403
-        // covers a token/branch permission mismatch (observed for `copilot/*`
-        // branches, which some tokens cannot push to). Both are per-PR
-        // conditions, not train-wide failures -- log and let the FIFO `break`
-        // below hold this PR's slot for the next reconcile instead of
-        // crashing the whole batch on an uncaught throw (incident 2026-07-29:
-        // a single BEHIND PR's persistent 403 deadlocked the entire train for
-        // 90+ minutes because every other status is fatal here). Anything
-        // else (5xx, unexpected 4xx) still throws so genuinely novel failures
-        // stay visible rather than being silently swallowed.
-        if (err.status !== 422 && err.status !== 403) throw err;
-        process.stderr.write(
-          `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
-        );
+        if (err.status === 403) {
+          // The token cannot update a fork's head branch. Dequeue the PR so
+          // it does not poison every subsequent reconcile cycle. A human must
+          // manually rebase the fork branch, then re-add the merge-train label.
+          process.stderr.write(
+            `update-branch pr=#${pr.number} fork/no-permission (403): dequeuing to unblock queue\n`,
+          );
+          await removeLabel(pr.number, QUEUE_LABEL);
+          dequeuedFork = true;
+        } else if (err.status !== 422) {
+          // 422 covers "already up-to-date" and stale expected_head_sha — log
+          // it so stale-head races are visible and not silently swallowed.
+          throw err;
+        } else {
+          process.stderr.write(
+            `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
+          );
+        }
       }
       // Stop admitting further PRs this pass so newer PRs cannot leapfrog.
       // The BEHIND PR will re-enter on the next reconcile once its branch is
-      // current and required CI passes.
-      break;
+      // current and required CI passes. Skip the break for dequeued forks: the
+      // blocking PR is gone from the queue so later entries can still be admitted.
+      if (!dequeuedFork) break;
+    } else {
+      // Fence the legacy auto-merge path before this PR can be sequentially
+      // squash-merged, so it cannot land out of order underneath the promotion.
+      await disableAutoMerge(pr);
+      admitted.push(pr);
     }
-    // Fence the legacy auto-merge path before this PR can be sequentially
-    // squash-merged, so it cannot land out of order underneath the promotion.
-    await disableAutoMerge(pr);
-    admitted.push(pr);
   } else {
     await removeLabel(pr.number, QUEUE_LABEL);
     await updateStatus(
