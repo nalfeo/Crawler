@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7501fac8405832c64f3c42f736a29d633d171e55",
+    "commitDate": "2026-07-29T10:12:06Z",
+    "commitSubject": "fix(sprites): correct cyclic PNG swap — slime-rat boss was rendering as panda (#2304)",
+    "capturedAt": "2026-07-29T11:18:42.245Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30443323652",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/7501fac8405832c64f3c42f736a29d633d171e55.json"
+  },
+  {
     "commit": "ab5d61b5d723f0665245f52cb12c4cd2cec9cb7b",
     "commitDate": "2026-07-29T10:02:13Z",
     "commitSubject": "fix(merge-train): non-fatal update-branch errors to prevent queue deadlock (#2306)",
