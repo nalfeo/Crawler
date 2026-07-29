@@ -32,6 +32,27 @@
 export type DoorOrientation = 'horizontal' | 'vertical';
 
 /**
+ * How tall a dungeon doorway renders, in FEET, measured on the art's opaque box.
+ *
+ * Doors are fitted HEIGHT-authoritatively, not width-authoritatively, and that is
+ * a deliberate reversal. Fitting the art's opaque box to the 4 ft tile WIDTH made
+ * rendered height a function of whatever aspect the generator happened to produce
+ * — measured at 4.90 ft for the closed leaf against a 5.75 ft player, i.e. a
+ * doorway shorter than the person walking through it. Three separate brief rounds
+ * asking the generator for a ~1:1.75 archway moved the delivered aspect by zero
+ * (it lands near 1:1.25 every time), so the aspect is a generator capability
+ * limit, not a prompt defect, and the renderer is the only lever that actually
+ * moves.
+ *
+ * 6.5 ft clears the 5.75 ft player with visible headroom. The cost, accepted
+ * knowingly: at ~1:1.25 art aspect the arch renders ~5.2 ft wide and so overhangs
+ * roughly 0.6 ft onto each neighbouring WALL tile. That is cosmetically fine —
+ * the overhang lands on masonry, never on walkable floor — and it does not touch
+ * collision, which is driven by the tile map, not by this sprite.
+ */
+export const DOOR_TARGET_HEIGHT_FT = 6.5;
+
+/**
  * Approved generated door texture keys, by open state × orientation. Each is
  * auto-loaded at boot under its bare manifest key when the art is approved; a key
  * with no approved art simply never appears in the renderer's available set and

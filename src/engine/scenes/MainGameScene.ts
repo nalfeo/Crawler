@@ -44,6 +44,7 @@ import {
   resolveDoorRenderMode,
   ALL_GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_SHEET_KEY,
+  DOOR_TARGET_HEIGHT_FT,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
 } from '../sprites/door-visuals.js';
@@ -2858,37 +2859,32 @@ export class MainGameScene extends Phaser.Scene {
     this.doorImages.length = 0;
 
     const tileSize = floorMap.config.tileSizeFt * PIXELS_PER_FOOT;
+    const doorTargetHeightPx = ftToPx(DOOR_TARGET_HEIGHT_FT);
     const hasSheet = this.textures.exists(DOOR_SHEET_KEY);
 
     // Derive each generated door texture's scale ONCE from its ACTUAL loaded
-    // width (mirrors terrain-renderer's resolveGeneratedScale). Doors are
-    // WIDTH-authoritative: `tileSize / srcWidth` makes the art exactly fill its
-    // doorway horizontally, and the height then FOLLOWS the art's aspect ratio.
-    // A square 256² texture therefore still renders as exactly one tile (the
-    // historical behaviour), while a taller 1:1.75 door renders ~7ft and
-    // overlaps the wall tile above it — which is how a real doorway reads next
-    // to a 5.75ft avatar, and how tall set-piece props already behave.
+    // opaque box (mirrors terrain-renderer's resolveGeneratedScale). Doors are
+    // HEIGHT-authoritative: `doorTargetHeightPx / box.height` pins every door to
+    // the same real-world height regardless of what aspect the generator handed
+    // us, and the WIDTH then follows the art's aspect and overhangs onto the
+    // neighbouring wall tiles.
     //
-    // The art contract this relies on: door textures must be FULL-BLEED
-    // horizontally (leaf + jambs touch both side edges) and bottom-aligned, so
-    // canvas width == doorway width and the canvas bottom == the floor line.
-    // Pinned deterministically by tests/unit/generated-door-art.test.ts.
-    // Doors fit on their OPAQUE pixels, not the raw canvas, and width is
-    // authoritative (a door must exactly fill its doorway; height then follows
-    // the art's own aspect and grows upward into the wall tile above).
+    // This reverses the original width-authoritative rule, which is worth stating
+    // plainly because the old rule's own comment argued the opposite. Under
+    // `tileSize / box.width` the door exactly filled its doorway horizontally and
+    // rendered "however tall the art happens to be" — measured at 4.90 ft against
+    // a 5.75 ft player, i.e. a doorway shorter than the person walking through it.
+    // The premise that failed was that the generator would deliver a ~1:1.75
+    // archway if asked; three rounds of asking moved the delivered aspect by zero.
+    // Height is the axis the player actually reads, so height is what gets pinned.
     //
-    // Canvas-relative fitting cannot express a 7 ft door in this pipeline. The
-    // image model draws into a SQUARE cell and `sizeVariant: tall` is banned
-    // (portrait cells slice into stacked-object columns), so the only way a
-    // door can ship taller than it is wide is to be drawn tall INSIDE a square
-    // canvas with transparent margins either side. Scaling such art by
-    // `tileSize / canvasWidth` would render the doorway narrower than its own
-    // opening and leave gaps at the jambs.
+    // The art contract this relies on: door textures must be bottom-aligned, so
+    // the opaque box's bottom edge is the floor line. Full-bleed horizontally is
+    // no longer required — width is now free. Pinned deterministically by
+    // tests/unit/generated-door-art.test.ts.
     //
     // Degrades safely: an entry with no/mismatched bounds falls back to the
-    // whole canvas, which is exactly the previous behaviour, and today's
-    // full-bleed 256² door has bounds equal to its canvas — so this is a no-op
-    // for the art that currently ships.
+    // whole canvas, which still yields a correctly-height-fitted door.
     const rawDoorRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
       | GeneratedSpriteRegistry
       | undefined;
@@ -2940,7 +2936,18 @@ export class MainGameScene extends Phaser.Scene {
         floorPlane: false,
       });
       generatedDoorFits.set(key, {
-        scale: tileSize / box.width,
+        // HEIGHT-authoritative, not width-authoritative. See DOOR_TARGET_HEIGHT_FT:
+        // fitting the opaque box to the tile WIDTH let the generator's aspect decide
+        // rendered height, which produced a 4.90 ft doorway for a 5.75 ft player.
+        //
+        // This is correct for the quarter-turned (vertical) branch too, and for the
+        // same reason the old width rule was. Rotation swaps the axes: for turned art
+        // the opaque box's HEIGHT becomes the on-screen HORIZONTAL extent, so dividing
+        // by box.height still pins the door's own long axis — the axis a player reads
+        // as "how tall is this doorway" — to the same DOOR_TARGET_HEIGHT_FT in both
+        // orientations. A vertical door therefore reaches the same distance into the
+        // room that a horizontal door reaches up the wall.
+        scale: doorTargetHeightPx / box.height,
         originX: fit.originX,
         originY: fit.originY,
         // Origins of the OPAQUE BOX centre, in canvas-normalised coords, used
