@@ -6,14 +6,14 @@
   "estimated_apples": 4,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "minor",
+      "notes": "Alt A/B/C/D enumerated; Plan A chosen. Revised scope: include lab UI, CLI, ai-sweep.yml, gen-configs, decision-mode-telemetry test. Compiler-driven pruning strategy adopted. Runtime fingerprint verification added."
     },
     "code_review": {
       "clean": false,

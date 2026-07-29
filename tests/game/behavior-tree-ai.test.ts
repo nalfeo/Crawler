@@ -448,7 +448,7 @@ describe('BehaviorTreeAI', () => {
     // Pinned to LEGACY pathing: this test exercises the retreat-latch/ignore-set
     // mechanism specifically, which is orthogonal to the pathingMode A/B axis —
     // pinning keeps its geometry stable across future default-pathing promotions.
-    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.LEGACY });
+    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
     const harness = ai as unknown as {
       retreating: boolean;
       retreatThreatEid: number | null;
@@ -2677,7 +2677,7 @@ describe('BehaviorTreeAI', () => {
     // Pinned to LEGACY pathing: this test exercises dodge-vs-engagement blending
     // specifically, which is orthogonal to the pathingMode A/B axis — pinning
     // keeps its geometry stable across future default-pathing promotions.
-    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
+    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
     const input = createInputState();
     ai.poll(input, world);
     const decision = ai.getDecision();

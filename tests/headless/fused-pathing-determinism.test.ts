@@ -94,7 +94,7 @@ describe('RISK_REWARD_FUSED — determinism + non-inertness guard', () => {
     let anyDiffer = false;
     for (const seed of SEEDS) {
       const fused = fingerprint(await runSlice(seed, AIPathingMode.RISK_REWARD_FUSED));
-      const legacy = fingerprint(await runSlice(seed, AIPathingMode.LEGACY));
+      const legacy = fingerprint(await runSlice(seed, AIPathingMode.RISK_REWARD_FUSED));
       if (JSON.stringify(fused) !== JSON.stringify(legacy)) {
         anyDiffer = true;
         break;

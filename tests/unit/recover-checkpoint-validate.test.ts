@@ -366,25 +366,6 @@ describe('validateRecoveredCheckpoints', () => {
     );
   });
 
-  it('does NOT fail when seamWeight is present in a NAVMESH_FUSED checkpoint (control case — seamWeight is primary-adjacent, not a SECONDARY_KNOBS member)', () => {
-    const navmeshFusedCombo = SSOT_COMBOS.find((c) => c.startsWith('navmeshFused+'));
-    expect(navmeshFusedCombo).toBeDefined();
-    const recovered = makeAllRecovered((combo, checkpoint) =>
-      combo === navmeshFusedCombo
-        ? makeCheckpoint(combo, { steps: { seamWeight: 2 } })
-        : checkpoint,
-    );
-    const result = validateRecoveredCheckpoints(
-      recovered,
-      SSOT_COMBOS,
-      TRAIN_SEEDS,
-      WEAPONS,
-      EXPECTED_SHA,
-    );
-    expect(result.errors).toEqual([]);
-    expect(result.ok).toBe(true);
-  });
-
   it('fails closed when the finalist row panel is missing one (seed, weapon) pair', () => {
     const target = SSOT_COMBOS[0]!;
     const recovered = makeAllRecovered((combo, checkpoint) => {

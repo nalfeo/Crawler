@@ -308,7 +308,7 @@ const PARITY_SEEDS = Object.keys(GOLDEN_FINGERPRINTS).map(Number);
 async function runSlice(seed: number): Promise<RunStats> {
   const ai = new BehaviorTreeAI({
     seed,
-    pathingMode: AIPathingMode.LEGACY,
+    pathingMode: AIPathingMode.RISK_REWARD_FUSED,
     retreatThreshold: 0.15,
     farmPullWeight: 0.07,
   });
