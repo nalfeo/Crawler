@@ -795,8 +795,10 @@ for (const pr of queued) {
     // recursion-suppressed for push events and would leave the updated head
     // without check runs.
     //
-    // Use `break` (not `continue`) after the first BEHIND PR to preserve FIFO
-    // queue ordering: newer PRs must not leapfrog an older BEHIND PR.
+    // Use `break` after the first non-fork BEHIND PR to preserve FIFO queue
+    // ordering: newer PRs must not leapfrog an older BEHIND PR. Fork PRs that
+    // got dequeued (403) fall through naturally so later entries can still be
+    // admitted this cycle.
     if (livePr.mergeable_state === 'behind') {
       let dequeuedFork = false;
       try {
@@ -829,18 +831,17 @@ for (const pr of queued) {
           );
         }
       }
-      // For fork PRs we dequeued above: continue so later queue entries can
-      // still be admitted this cycle (the blocking PR is gone from the queue).
-      if (dequeuedFork) continue;
       // Stop admitting further PRs this pass so newer PRs cannot leapfrog.
       // The BEHIND PR will re-enter on the next reconcile once its branch is
-      // current and required CI passes.
-      break;
+      // current and required CI passes. Skip the break for dequeued forks: the
+      // blocking PR is gone from the queue so later entries can still be admitted.
+      if (!dequeuedFork) break;
+    } else {
+      // Fence the legacy auto-merge path before this PR can be sequentially
+      // squash-merged, so it cannot land out of order underneath the promotion.
+      await disableAutoMerge(pr);
+      admitted.push(pr);
     }
-    // Fence the legacy auto-merge path before this PR can be sequentially
-    // squash-merged, so it cannot land out of order underneath the promotion.
-    await disableAutoMerge(pr);
-    admitted.push(pr);
   } else {
     await removeLabel(pr.number, QUEUE_LABEL);
     await updateStatus(
