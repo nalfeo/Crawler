@@ -33,6 +33,15 @@ describe('AI runner lab default config wiring', () => {
     expect(occurrences).toBe(3);
   });
 
+  it('uses DEFAULT_CONFIG.farmPullWeight in every BehaviorTreeAI constructor call', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
+    // Every occurrence must use shared config, never a literal.
+    expect(source).not.toContain('farmPullWeight: 0.07');
+    expect(source).not.toContain('farmPullWeight: 0.12');
+    const occurrences = source.split('farmPullWeight: DEFAULT_CONFIG.farmPullWeight').length - 1;
+    expect(occurrences).toBe(3);
+  });
+
   it('DEFAULT_CONFIG.pathingMode is riskRewardFused (production-promoted value)', () => {
     // Guards that the value the lab now defaults to is the production winner,
     // not the pre-promotion LEGACY arm. If this fails, the promotion constant
@@ -46,5 +55,9 @@ describe('AI runner lab default config wiring', () => {
 
   it('DEFAULT_CONFIG.retreatThreshold is the promoted value (0.1, not the pre-promotion 0.15)', () => {
     expect(DEFAULT_CONFIG.retreatThreshold).toBe(0.1);
+  });
+
+  it('DEFAULT_CONFIG.farmPullWeight is the promoted value (0.12, not the pre-promotion 0.07)', () => {
+    expect(DEFAULT_CONFIG.farmPullWeight).toBe(0.12);
   });
 });
