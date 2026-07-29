@@ -76,26 +76,29 @@ describe('entity-sprite-mappings generated art wiring', () => {
     );
   }
 
-  it.runIf(registry !== null)('keeps the player on the Rhea Vale art, not Kenney', () => {
-    // Regression pin for the #2296 revert: the player must resolve to generated
-    // Rhea Vale art. A miss here is exactly the bug that shipped the Kenney
-    // knight into the running game.
-    const player = MAPPINGS.renderKinds.player?.generated;
-    expect(player).toBeDefined();
-    expect(player?.pinnedTextureKey).toMatch(/^rhea-vale-v1/);
-    const entry = (registry?.entries() ?? []).find(
-      (candidate) => candidate.textureKey === player?.pinnedTextureKey,
-    );
-    expect(entry).toBeDefined();
-    // The pinned player art is a walk strip: it must carry an animation
-    // descriptor, else `preloadGeneratedSprites` loads the 192x64 sheet as a
-    // single flat image and the player renders as three squashed copies.
-    expect(entry?.animation).toEqual({
-      frameWidth: 64,
-      frameHeight: 64,
-      frameCount: 3,
-      frameRate: 8,
-      loop: true,
-    });
-  });
+  it.runIf(registry !== null)(
+    'keeps the player on the generated walk-cycle art, not Kenney',
+    () => {
+      // Regression pin for the #2296/#2302 wiring fix: the player must resolve to
+      // generated walk-cycle art. A miss here is exactly the bug that shipped the
+      // Kenney knight into the running game.
+      const player = MAPPINGS.renderKinds.player?.generated;
+      expect(player).toBeDefined();
+      expect(player?.pinnedTextureKey).toBe('player-walk-cycle');
+      const entry = (registry?.entries() ?? []).find(
+        (candidate) => candidate.textureKey === player?.pinnedTextureKey,
+      );
+      expect(entry).toBeDefined();
+      // The pinned player art is a walk strip: it must carry an animation
+      // descriptor, else `preloadGeneratedSprites` loads the 192x64 sheet as a
+      // single flat image and the player renders as three squashed copies.
+      expect(entry?.animation).toEqual({
+        frameWidth: 64,
+        frameHeight: 64,
+        frameCount: 4,
+        frameRate: 8,
+        loop: true,
+      });
+    },
+  );
 });
