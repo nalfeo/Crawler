@@ -282,8 +282,18 @@ function normalizeThreadComments(thread) {
     'app/copilot-swe-agent',
   ]);
   const hasResolutionMarker = (body) => {
-    const text = String(body ?? '');
-    return addressedInPrefixPattern.test(text) || notApplicablePattern.test(text);
+    // Strip quoted lines (lines starting with ">") before testing — a recovery
+    // reply may quote a prior task body that itself contains a stale marker SHA,
+    // and testing the raw body would incorrectly classify such a reply as
+    // marker-bearing.  Same normalization as reconcile.mjs:1926-1929.
+    const unquotedText = String(body ?? '')
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('>'))
+      .join('\n');
+    // Use extractAddressedMarkerSha rather than the raw pattern so that a bare
+    // "✅ Addressed in invalid-token" (no parseable SHA/URL) is not treated as
+    // a resolution marker.
+    return Boolean(extractAddressedMarkerSha(unquotedText) || hasNotApplicableMarker(unquotedText));
   };
   return (thread?.comments?.nodes ?? [])
     .filter((comment) => {
