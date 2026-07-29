@@ -150,6 +150,34 @@ test('latent backlog counts externally-blocked PRs once as latent demand', () =>
   assert.equal(countLatentBacklog({ pullRequests: unblocked, repository }), 1);
 });
 
+// Pins behavior (b): an externally-blocked PR that also carries ci-recovery-opt-out
+// still counts as latent demand. ci-recovery-opt-out only opts the PR out of CI
+// Recovery slot consumption; the PR still occupies a runner when its own CI
+// eventually runs, so it must be counted toward the sweep budget.
+test('latent backlog counts externally-blocked PR even when ci-recovery-opt-out is present', () => {
+  const repository = 'nalfeo/Crawler';
+  const base = {
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-21T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: repository } },
+  };
+  // Both labels together: externally blocked and opted out of recovery.
+  const bothLabels = [
+    {
+      ...base,
+      number: 30,
+      labels: [{ name: 'merge-train-blocked' }, { name: 'ci-recovery-opt-out' }],
+    },
+  ];
+  assert.equal(countLatentBacklog({ pullRequests: bothLabels, repository }), 1);
+
+  // Just ci-recovery-opt-out (not externally blocked): excluded from the latent count.
+  const optOutOnly = [{ ...base, number: 31, labels: [{ name: 'ci-recovery-opt-out' }] }];
+  assert.equal(countLatentBacklog({ pullRequests: optOutOnly, repository }), 0);
+});
+
 test('runner inspection excludes all broad sweeps and counts queued non-sweep runs', async () => {
   const responses = new Map([
     [
