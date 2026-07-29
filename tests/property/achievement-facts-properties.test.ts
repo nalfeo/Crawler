@@ -16,13 +16,18 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
     spentStatPoints: fc.nat({ max: 1_000 }),
     playerGold: fc.nat({ max: 10_000 }),
     unlockedAbilityCount: fc.nat({ max: 100 }),
+    familiesAtFriendlyCount: fc.nat({ max: 18 }),
+    familiesAtHateCount: fc.nat({ max: 18 }),
+    familyBossesDefeated: fc.nat({ max: 18 }),
+    familyBossEncounterCount: fc.nat({ max: 18 }),
+    familiesEngagedInCombatCount: fc.nat({ max: 18 }),
     questIds: fc.uniqueArray(fc.string({ minLength: 1, maxLength: 8 }), { maxLength: 8 }),
     completedQuestIds: fc.uniqueArray(fc.string({ minLength: 1, maxLength: 8 }), {
       maxLength: 8,
     }),
     reachedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
     clearedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
-    booleans: fc.array(fc.boolean(), { minLength: 6, maxLength: 6 }),
+    booleans: fc.array(fc.boolean(), { minLength: 9, maxLength: 9 }),
   })
   .map((value) => {
     const empty = createEmptyAchievementFactSnapshot();
@@ -37,6 +42,11 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
         spentStatPoints: value.spentStatPoints,
         playerGold: value.playerGold,
         unlockedAbilityCount: value.unlockedAbilityCount,
+        familiesAtFriendlyCount: value.familiesAtFriendlyCount,
+        familiesAtHateCount: value.familiesAtHateCount,
+        familyBossesDefeated: value.familyBossesDefeated,
+        familyBossEncounterCount: value.familyBossEncounterCount,
+        familiesEngagedInCombatCount: value.familiesEngagedInCombatCount,
       },
       booleanFacts: {
         staircaseBattleStarted: value.booleans[0]!,
@@ -45,6 +55,9 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
         equipmentUnlocked: value.booleans[3]!,
         staircaseDiscovered: value.booleans[4]!,
         runClearedFloor: value.booleans[5]!,
+        hasBetrayedAlly: value.booleans[6]!,
+        floor2SafeRoomVisited: value.booleans[7]!,
+        hasMetBroker: value.booleans[8]!,
       },
       questIds: value.questIds,
       completedQuestIds: value.completedQuestIds,

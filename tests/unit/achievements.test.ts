@@ -8,12 +8,16 @@ import {
   createAchievementCatalogRegistry,
   FLOOR1_ACHIEVEMENT_COUNT,
   FLOOR1_ACHIEVEMENTS,
+  FLOOR2_ACHIEVEMENT_COUNT,
+  FLOOR2_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENTS,
+  FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
   getCurrentRunGlobalAchievements,
   LOOT_BOX_TIERS,
   getAchievementCatalogForFloor,
   parseAchievementCatalog,
 } from '../../src/shared/achievements.js';
+import { EQUIPMENT_REWARD_TIERS } from '../../src/shared/generated-equipment-types.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -192,6 +196,96 @@ describe('floor1 achievements catalog', () => {
   it('rejects entries without unlockRules during catalog validation', () => {
     const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
     delete raw[0]!.unlockRules;
+
+    expect(() => parseAchievementCatalog(raw)).toThrow();
+  });
+});
+
+describe('floor2 achievements catalog', () => {
+  it('contains exactly 30 floor-scoped achievements and 6 run-global achievements', () => {
+    expect(FLOOR2_ACHIEVEMENT_COUNT).toBe(30);
+    expect(FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT).toBe(6);
+    expect(FLOOR2_ACHIEVEMENT_CATALOG.floorScoped).toHaveLength(30);
+    expect(FLOOR2_ACHIEVEMENT_CATALOG.currentRunGlobal).toHaveLength(6);
+    expect(FLOOR2_ACHIEVEMENTS).toHaveLength(36);
+  });
+
+  it('has unique achievement ids across the full Floor 2 catalog (floor-scoped + run-global)', () => {
+    const ids = FLOOR2_ACHIEVEMENTS.map((achievement) => achievement.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('has unique achievement ids across the whole registry (all floors combined)', () => {
+    const ids = ALL_ACHIEVEMENTS.map((achievement) => achievement.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('never awards Unique rarity — every reward is an equipment reward on tier1/tier2/tier3', () => {
+    for (const achievement of FLOOR2_ACHIEVEMENTS) {
+      expect(achievement.reward.type).toBe('equipment');
+      if (achievement.reward.type === 'equipment') {
+        expect(EQUIPMENT_REWARD_TIERS).toContain(achievement.reward.tier);
+        // GeneratedEquipmentRarity itself has no 'unique' member (type-level
+        // guarantee), but assert the tier is one of the three known reward
+        // tiers as a deterministic runtime regression check too.
+        expect(['tier1', 'tier2', 'tier3']).toContain(achievement.reward.tier);
+      }
+    }
+  });
+
+  it('gives every equipment reward a non-empty pool of valid weapon bases', () => {
+    for (const achievement of FLOOR2_ACHIEVEMENTS) {
+      if (achievement.reward.type === 'equipment') {
+        expect(achievement.reward.bases.length).toBeGreaterThan(0);
+        for (const base of achievement.reward.bases) {
+          expect(base).toMatch(/^weapon\./);
+        }
+      }
+    }
+  });
+
+  it('scopes all 6 run-global achievements as current_run', () => {
+    expect(
+      FLOOR2_ACHIEVEMENT_CATALOG.currentRunGlobal.every(
+        (achievement) => achievement.scope === 'current_run',
+      ),
+    ).toBe(true);
+  });
+
+  it('gates the 6 real run-global achievements by reached floors via getCurrentRunGlobalAchievements', () => {
+    // Reached only Floor 1: none of the (floor: 2) run-global achievements are visible yet.
+    expect(getCurrentRunGlobalAchievements([1], ACHIEVEMENT_CATALOG_REGISTRY)).toEqual([]);
+
+    // Reached Floor 1 and 2: all 6 become visible.
+    const reached = getCurrentRunGlobalAchievements([1, 2], ACHIEVEMENT_CATALOG_REGISTRY);
+    expect(reached).toHaveLength(6);
+    expect(new Set(reached.map((a) => a.id)).size).toBe(6);
+  });
+
+  it('does not duplicate unlock criteria text inside director flavor for the new content', () => {
+    for (const achievement of FLOOR2_ACHIEVEMENTS) {
+      expect(achievement.directorFlavor.toLowerCase()).not.toContain(
+        achievement.unlockCriteria.toLowerCase(),
+      );
+    }
+  });
+
+  it('defines a non-empty unlock rule set and a valid scope for every Floor 2 entry', () => {
+    for (const achievement of FLOOR2_ACHIEVEMENTS) {
+      expect(Array.isArray(achievement.unlockRules)).toBe(true);
+      expect(achievement.unlockRules.length).toBeGreaterThan(0);
+      expect(ACHIEVEMENT_SCOPES).toContain(achievement.scope);
+      expect(achievement.floor).toBe(2);
+    }
+  });
+
+  it('rejects a run-global achievement that references a Floor-2-local (non-allowlisted) fact', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR2_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    const runGlobalIndex = raw.findIndex((entry) => entry.scope === 'current_run');
+    expect(runGlobalIndex).toBeGreaterThanOrEqual(0);
+    raw[runGlobalIndex]!.unlockRules = [
+      { type: 'numberCompare', fact: 'familiesAtFriendlyCount', op: '>=', value: 1 },
+    ];
 
     expect(() => parseAchievementCatalog(raw)).toThrow();
   });

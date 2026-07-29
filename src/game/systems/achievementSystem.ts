@@ -13,6 +13,8 @@ import {
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
 import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
+import { bandFor, getRelation } from '../../core/faction-relations.js';
+import { isInSafeContext } from '../../core/safe-space.js';
 import {
   RewardBundleResolutionError,
   resolveEquipmentRewardBundle,
@@ -21,6 +23,15 @@ import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
 } from '../floor1-lootbox-reward-resolver.js';
+
+/**
+ * Goal-flag key set once the player completes the Broker's settlement
+ * introduction (`src/game/floor2Scenario.ts`, `FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID`).
+ * Referenced here by its raw string literal — not imported from
+ * `floor2Scenario.ts` — to avoid coupling the achievement fact pipeline to that
+ * module's exports.
+ */
+const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
 
 function highestSkillLevel(world: GameWorld): number {
   let maxLevel = 0;
@@ -52,6 +63,23 @@ function unlockedAbilityCount(world: GameWorld): number {
   if (playerEid === undefined) return 0;
   const state = world.abilityStatesByEntity.get(playerEid);
   return state?.passiveAbilityIds.length ?? 0;
+}
+
+/**
+ * Count of Floor 2 present families currently at the given relationship band.
+ * Reads live `world.factionRelations` state (via `getRelation`/`bandFor`), so
+ * it reflects the current tick's standing rather than a historical peak.
+ */
+function familiesAtBandCount(world: GameWorld, band: ReturnType<typeof bandFor>): number {
+  if (world.floor !== 2) return 0;
+  const presentFamilies = world.floorExtendedState?.familyState?.presentFamilies ?? [];
+  let count = 0;
+  for (const familyId of presentFamilies) {
+    if (bandFor(getRelation(world, familyId)) === band) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 function evaluateNumberCompare(
@@ -99,6 +127,15 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         world.goalFlags.get('floor2.objective.staircaseDiscovered') === true));
   const ratsKilled = floor1Objective?.ratsKilled ?? 0;
   const slimesKilled = floor1Objective?.slimesKilled ?? 0;
+  const familyState = world.floor === 2 ? world.floorExtendedState?.familyState : undefined;
+  const familyBossesDefeated = familyState?.decapitatedFamilies?.size ?? 0;
+  const familyBossEncounterCount = familyState?.bossEncounters?.size ?? 0;
+  const familiesEngagedInCombatCount = familyState?.trashKillsByFamily?.size ?? 0;
+  const familiesAtFriendlyCount = familiesAtBandCount(world, 'friendly');
+  const familiesAtHateCount = familiesAtBandCount(world, 'hate');
+  const hasBetrayedAlly = familyState?.betrayerFlag === true;
+  const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
+  const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
 
   return {
     numberFacts: {
@@ -116,6 +153,11 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       playerGold: world.playerGold,
       unlockedAbilityCount: unlockedAbilityCount(world),
       clearedFloorCount: floorCleared ? 1 : 0,
+      familiesAtFriendlyCount,
+      familiesAtHateCount,
+      familyBossesDefeated,
+      familyBossEncounterCount,
+      familiesEngagedInCombatCount,
     },
     booleanFacts: {
       ...empty.booleanFacts,
@@ -129,6 +171,9 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         floor1Objective?.staircaseDiscovered === true ||
         world.floorExtendedState?.familyState?.staircaseDiscovered === true,
       runClearedFloor: floorCleared,
+      hasBetrayedAlly,
+      floor2SafeRoomVisited,
+      hasMetBroker,
     },
     questIds,
     completedQuestIds,

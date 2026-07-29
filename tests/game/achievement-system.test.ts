@@ -335,6 +335,176 @@ describe('achievementSystem', () => {
     expect(world.achievements.unlockedIds.has('floor2-field-kit')).toBe(false);
     expect(world.generatedEquipmentRewardBundles.has('floor2-field-kit')).toBe(false);
   });
+
+  describe('new Floor 2 achievement facts', () => {
+    function bossEncounter(familyId: ReturnType<typeof asFamilyId>): {
+      familyId: ReturnType<typeof asFamilyId>;
+      roomId: number;
+      doorEids: number[];
+      activeGoalId: string;
+      started: boolean;
+      bossEid: number | null;
+      defeated: boolean;
+      displayName: string;
+    } {
+      return {
+        familyId,
+        roomId: 1,
+        doorEids: [],
+        activeGoalId: `floor2-boss-${familyId}`,
+        started: true,
+        bossEid: null,
+        defeated: false,
+        displayName: familyId,
+      };
+    }
+
+    it('counts family relationship bands and boss defeats/encounters from live faction + family state', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      world.factionRelations.set(mirekin, 90); // friendly
+      world.factionRelations.set(chitinous, 10); // hate
+      world.factionRelations.set(faceless, 60); // neutral
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          decapitatedFamilies: new Set([mirekin]),
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+          ]),
+        },
+      };
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      expect(facts.numberFacts.familiesAtFriendlyCount).toBe(1);
+      expect(facts.numberFacts.familiesAtHateCount).toBe(1);
+      expect(facts.numberFacts.familyBossesDefeated).toBe(1);
+      expect(facts.numberFacts.familyBossEncounterCount).toBe(2);
+    });
+
+    it('reports zero family-band/boss facts on Floor 1 (no family state at all)', () => {
+      const world = createTestWorld({ seed: 42 });
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      expect(facts.numberFacts.familiesAtFriendlyCount).toBe(0);
+      expect(facts.numberFacts.familiesAtHateCount).toBe(0);
+      expect(facts.numberFacts.familyBossesDefeated).toBe(0);
+      expect(facts.numberFacts.familyBossEncounterCount).toBe(0);
+      expect(facts.numberFacts.familiesEngagedInCombatCount).toBe(0);
+      expect(facts.booleanFacts.hasBetrayedAlly).toBe(false);
+      expect(facts.booleanFacts.hasMetBroker).toBe(false);
+    });
+
+    it('counts distinct families with player-attributed trash kills as familiesEngagedInCombatCount', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          trashKillsByFamily: new Map([
+            [mirekin, 3],
+            [chitinous, 0],
+          ]),
+        },
+      };
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      expect(facts.numberFacts.familiesEngagedInCombatCount).toBe(2);
+    });
+
+    it('surfaces the betrayer flag as hasBetrayedAlly', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [asFamilyId('mirekin')],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: true,
+        },
+      };
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      expect(facts.booleanFacts.hasBetrayedAlly).toBe(true);
+    });
+
+    it('reads hasMetBroker from the Broker intro-complete goal flag', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasMetBroker).toBe(false);
+
+      world.goalFlags.set('floor2-broker-intro-complete', true);
+
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasMetBroker).toBe(true);
+    });
+
+    it('reports floor2SafeRoomVisited only while on Floor 2 and in a safe context', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
+        false,
+      );
+
+      world.playerInSafeRoom = true;
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
+        true,
+      );
+
+      // Floor 1 never reports floor2SafeRoomVisited, even if the player is in a
+      // safe room, since the fact is Floor-2-specific by name and design.
+      world.floor = 1;
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
+        false,
+      );
+    });
+
+    it('unlocks the new Floor 2 family/boss/settlement achievements from real constructed state', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      world.floorId = 'floor2';
+      world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+      world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+      world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      world.factionRelations.set(mirekin, 90);
+      world.factionRelations.set(chitinous, 90);
+      world.factionRelations.set(faceless, 5);
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: true,
+          decapitatedFamilies: new Set([mirekin]),
+          bossEncounters: new Map([[mirekin, bossEncounter(mirekin)]]),
+        },
+      };
+      world.goalFlags.set('floor2-broker-intro-complete', true);
+      world.playerInSafeRoom = true;
+      world.questLog.set('floor2-find-settlement', completeQuestState('floor2-find-settlement'));
+
+      achievementSystem(world);
+
+      expect(world.achievements.unlockedIds.has('floor2-first-friend')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-inner-circle')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-court-favorite')).toBe(false);
+      expect(world.achievements.unlockedIds.has('floor2-made-an-enemy')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-double-agent')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-boss-sighted')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-den-breaker')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-settlement-found')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-meet-the-broker')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-safe-harbor')).toBe(true);
+    });
+  });
 });
 
 describe('claimAchievementReward', () => {
