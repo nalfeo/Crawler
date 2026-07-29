@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "pin-dependency-versions",
+  "task_title": "Pin dependency versions to prevent Microsoft proxy quarantine churn",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer (gpt-5.4) returned rejected with 3 blocking + 2 non-blocking concerns. Blocking: (1) security:exact-deps added as dedicated script wired into security:check instead of fragmenting into a separate-only CI step; (2) stated goal narrowed to direct-dep drift prevention — transitive versions remain lockfile-controlled; (3) validator rewritten to use strict exact-semver regex instead of prefix-check, recurse nested overrides, and cover optionalDependencies. Non-blocking: (4) npm install --package-lock-only run to sync lockfile metadata; (5) optionalDependencies coverage added to the check. All 5 concerns addressed. Plan divergence = minor: no re-architecture, several details tightened."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

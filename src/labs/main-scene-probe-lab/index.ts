@@ -191,6 +191,8 @@ interface MainSceneInternals {
     packGroundDecalCount: number;
     packLineworkTileCount: number;
     packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
     packLineworkRuns: readonly {
       layerId: string;
       tileCount: number;
@@ -410,6 +412,8 @@ export interface TerrainRenderSummary {
   readonly packLineworkTileCount: number;
   /** Props (switch stands, carts, valves) placed on eligible linework tiles. */
   readonly packLineworkPropCount: number;
+  readonly packLineworkBuriedCount: number;
+  readonly packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
   /**
    * One entry per maximal connected component of every linework layer. This is
    * what the placement gate is asserted against headlessly: "at least 6 runs of
@@ -1135,6 +1139,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         packGroundDecalCount: summary?.packGroundDecalCount ?? 0,
         packLineworkTileCount: summary?.packLineworkTileCount ?? 0,
         packLineworkPropCount: summary?.packLineworkPropCount ?? 0,
+        packLineworkBuriedCount: summary?.packLineworkBuriedCount ?? 0,
+        packLineworkBuriedSample: summary?.packLineworkBuriedSample ?? [],
         packLineworkRuns: (summary?.packLineworkRuns ?? []).map((run) => ({
           layerId: run.layerId,
           tileCount: run.tileCount,
