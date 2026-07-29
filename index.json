@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1290c601bff50a7499540e270ef80f8df74f90f3",
+    "commitDate": "2026-07-29T18:22:56Z",
+    "commitSubject": "fix(engine): wire real player walk art and lock player/NPC scale parity (#2322)",
+    "capturedAt": "2026-07-29T19:33:20.194Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30480414443",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/1290c601bff50a7499540e270ef80f8df74f90f3.json"
+  },
+  {
     "commit": "294babfc902a07dffb7dc109e8eeb3906b2eb635",
     "commitDate": "2026-07-29T18:07:00Z",
     "commitSubject": "feat(ci): detect silent merge reverts that survive to HEAD (#2282) (#2316)",
