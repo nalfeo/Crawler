@@ -1,0 +1,148 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): height-authoritative renderer, so the
+# canvas aspect IS the real-world proportion. 1 tile = 4 ft (PIXELS_PER_FOOT = 8
+# => 32 world px per tile). This fridge is ~2 ft wide x 3 ft tall => 0.67:1,
+# hence a 64x96 canvas. 96 < 2*64, so resizeSpriteStrategy() returns 'fit' and
+# the shipped canvas is exactly 64x96 — the DRAWN aspect must match ~0.67:1 or
+# the subject letterboxes and the feet lift off the bottom band.
+# ROUND 2 CHANGE (Asset Forge): round 1 failed `anchor-derivable` on every
+# variant — "no opaque pixel in bottom 8 rows (first opaque row y=78-82)". Cause:
+# the model drew a near-SQUARE fridge (~0.85:1) into a square 256x256 source
+# cell, and the 'fit' strategy then letterboxed that squarer subject inside the
+# 64x96 frame, padding empty rows above and below the feet. Padding under the
+# feet also makes the fridge render SHORTER than its declared heightFt, so this
+# is a real defect, not a sensor to widen.
+#
+# ROUND 2 (`sizeVariant: tall`) FAILED WORSE — REVERTED IN ROUND 3. The model
+# ignored the 1:2 portrait cell layout and drew its usual grid of square-ish
+# cells. The slicer then cut on the DECLARED tall grid, so each "variant" was a
+# vertical column containing THREE STACKED FRIDGES. Those slices passed all 7
+# sensors AND the VLM judge (4/4/4/5), because a 1:3 column of fridges happens
+# to fill a tall frame with feet in the bottom band. Green gates, garbage
+# sprite — rejected on eyeball, which is what the eyeball step exists for.
+#
+# ROUND 3 fix: back to the default square-cell sheet (which slices reliably) and
+# drive the proportion in PROSE with explicit SOURCE-PIXEL targets inside the
+# cell, which is the lever the model actually obeys. No sensor threshold, no
+# judge bar and no output size is changed.
+type: prop
+name: welcome-room-mini-fridge
+description: |
+  A small grubby MINI-FRIDGE, the communal one, plastered in passive-aggressive
+  sticky notes and PADLOCKED SHUT. Front-elevation 3/4 view, looking straight at
+  the door of the fridge — the same view as the already-approved
+  welcome-room-desk (which has "WELCOME" painted on its FRONT face). This is a
+  FACADE, not a top-down floorplan: vertical pixels are real vertical height.
+  Modern high-quality pixel art, silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — ROUND 1 FAILED ON THIS, READ IT TWICE.
+  The fridge is approximately 2 FEET WIDE x 2 FEET DEEP x 3 FEET TALL. Its
+  bounding box must be clearly TALLER THAN IT IS WIDE (width : height =
+  0.67 : 1) — a squat upright box, half again as tall as it is wide. Round 1 came
+  back nearly SQUARE (0.85 : 1), which is wrong, so make it distinctly TALLER AND
+  NARROWER than feels natural: pull the carcass in at the sides and lengthen it
+  vertically. Compose it inside the cell like this:
+  - THE FRIDGE'S BASE MUST REACH THE VERY BOTTOM of the cell and stand on the
+    bottom margin. Do NOT leave an empty band under it.
+  - The top of the fridge nearly touches the TOP margin.
+  - It fills roughly 85-90% of the cell height, with the standard small margin
+    left and right. It must NOT be a small object floating in a big empty cell.
+  - If it looks like a full-height kitchen fridge, it is TOO TALL AND NARROW. If
+    it looks like a cube or a crate, it is TOO SQUAT. It is a knee-to-waist-high
+    box.
+  - MEASURE IT. The fridge's FRONT FACE is 2 ft wide and 3 ft tall, but this is a
+    3/4 view, so the receding SIDE face adds drawn width: the full drawn bounding
+    box is roughly 0.95 : 1, very slightly taller than it is wide. Inside a
+    256x256 cell that is a bounding box about 229 px wide and 240 px tall. The
+    earlier 0.67 : 1 target in this brief was a flat-elevation figure and was
+    simply wrong for a 3/4 view — do not squeeze the carcass narrower than the
+    figure above.
+  - EXACTLY ONE FRIDGE PER CELL. Never stack two or three fridges in a column.
+  - NO DROP SHADOW, NO GROUND SHADOW and no floor line beneath the fridge. The
+    lowest OPAQUE pixels in the cell must be the fridge's own base, sitting flat
+    on the bottom edge of the cell.
+
+  WHAT IT IS — the "WHOSE MILK IS THIS" object. This is the single most
+  important reading cue:
+  - A boxy dented white-goods carcass with ONE door taking up almost the whole
+    front face, a stubby vertical handle on one side of the door, and a slim
+    dark rubber seal line running round the door edge.
+  - A HEAVY PADLOCK: a chunky hasp riveted across the door seam near the handle,
+    with a fat dull-metal padlock hanging closed through it. The padlock must be
+    unmistakable at 16px — it is the joke. Draw it big enough to read.
+  - STICKY NOTES: five to eight small square notes stuck at ragged angles all
+    over the door and one curling off the side, in two or three different
+    washed-out note colours. They are covered in illegible scratchy scribble
+    strokes ONLY — wavy squiggle lines that suggest angry handwriting. They must
+    NOT contain readable letters, words, numbers or digits of any kind. One note
+    is half torn off and hangs by a corner; one has been scribbled over hard.
+  - Grime that reads at 16px: a scuffed dent in one lower corner, greasy
+    finger-marks around the handle, a ring stain on the top surface where mugs
+    get parked, dust along the top edge.
+
+  IT IS NOT: a full-height fridge, a washing machine, a safe, a locker, a crate,
+  a chest, a microwave, an arcade cabinet, or a vending machine. It is one small
+  padlocked mini-fridge.
+
+  MOOD — three NPCs are stuck living in this reality-show reception room
+  together, season after season, bored out of their minds, forbidden by dungeon
+  rules from leaving, harming each other or complaining while the cameras roll.
+  So the aggression goes into the fridge instead. It sits in the half of the room
+  the camera rig does NOT cover. Petty, worn, long-used, never charming.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit beside
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-carpet, welcome-room-crate-stack and prop-wall-sconce-v1 without
+  clashing: cool grey worn stone, warm-brown walnut wood, desaturated
+  production-set greys and blacks, tarnished brass, deep maroon — muted and
+  dusty. The carcass is a yellowed dirty off-white/bone grey that has aged badly;
+  the door seal, hasp and padlock are dull grey-black metal with tarnished brass
+  on the padlock body; the sticky notes are the ONE sparing saturated accent and
+  even they are washed out — a dulled mustard, a faded pink-grey, a chalky
+  green-grey. BANNED: neon, pure white, pure black, saturated red, saturated
+  yellow, orange, bright teal, cyan, blue, green, magenta, purple, and showroom
+  gloss.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The left edge and top
+  face of the carcass, the left flank of the handle, and the left curve of the
+  padlock catch the highlight; shadow falls down and to the right. Every prop in
+  this wave shares that one light direction.
+
+  RENDERING: hard 1-pixel dark outline, 3-5 tone stops per material, restrained
+  dithering for grime and metal — no mushy gradients, no airbrush, no floating
+  unsupported elements. This prop is GROUNDED: it rests on the stone floor.
+
+  NO TEXT of any kind: no readable letters, words, numbers, digits, labels,
+  captions, brand marks, watermarks or signatures anywhere — the sticky-note
+  scribbles must stay abstract squiggles.
+
+  BACKGROUND: fully transparent. Draw ONLY the fridge and the notes stuck to it.
+  Do NOT paint a wall, a floor slab, a rectangular backing panel, a frame, a
+  border, a vignette, or any cast/contact/drop shadow on the ground. Every pixel
+  that is not the fridge itself must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the sprite palette so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 92
+  height: 96
+anchor:
+  x: 46
+  y: 90
+sensors:
+  anchor:
+    derive: true
+    bandRows: 8
+    centerToleranceX: 10
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - living-area
+  - appliance
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

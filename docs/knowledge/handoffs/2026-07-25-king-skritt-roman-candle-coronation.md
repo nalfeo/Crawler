@@ -19,6 +19,7 @@ Verdigris Glamour, Bamboo-Fed Berserk, and Undercity Mob Call.
 ### Core changes
 
 **`src/core/mob-abilities/types.ts`**
+
 - Added `MobAbilityRadialProjectilesGeometry` interface (`kind: 'radial-projectiles'`,
   `casterX`, `casterY`, `count`, `spokeLengthFt`, `offsetDeg`)
 - Added it to the `MobAbilityGeometry` union
@@ -26,6 +27,7 @@ Verdigris Glamour, Bamboo-Fed Berserk, and Undercity Mob Call.
   holding `count`, `spokeLengthFt`, `alternateOffsetDeg`
 
 **`src/core/mob-abilities/runtime.ts`**
+
 - Added `radial-projectiles` branch in `beginTelegraph`: gets caster position, derives
   `offsetDeg = inst.resolvedCasts % 2 === 0 ? 0 : alternateOffsetDeg`, locks committed
   geometry with `casterX/casterY` from world stores at telegraph-start frame
@@ -33,6 +35,7 @@ Verdigris Glamour, Bamboo-Fed Berserk, and Undercity Mob Call.
   so the ability resolves without needing a valid player target EID
 
 **`src/core/mob-abilities/roman-candle-coronation.ts`** (new)
+
 - `ROMAN_CANDLE_CORONATION_ABILITY_ID = 'king-skritt-roman-candle-coronation'`
 - `createRomanCandleCoronationDefinition()`: reads `projectile-count` and
   `alternate-offset` from telegraph metrics, validates cross-consistency with
@@ -43,9 +46,11 @@ Verdigris Glamour, Bamboo-Fed Berserk, and Undercity Mob Call.
   `CROWN_FLAME_DAMAGE = 20`, `SPOKE_LENGTH_FT = 28`
 
 **`src/core/mob-abilities/index.ts`**
+
 - Added `export * from './roman-candle-coronation.js'`
 
 **`src/engine/MobAbilityVfx.ts`**
+
 - Imported `ROMAN_CANDLE_CORONATION_ABILITY_ID` from core
 - Added color constants: `COLOR_MOLTEN_ORANGE`, `COLOR_EMBER_GOLD`, `COLOR_CHAR_SMOKE`
 - Added `drawRadialTelegraph()`: draws 12 hostile-red spokes with arrowheads, crown
@@ -58,6 +63,7 @@ Verdigris Glamour, Bamboo-Fed Berserk, and Undercity Mob Call.
 - Updated burst handler: added `radial-projectiles` check before existing dispatch
 
 **`src/labs/combat-arena-lab/arena-data.ts`**
+
 - Added `F2_KING_SKRITT` constant (kobold-boss archetype)
 - Added `spawnKingSkryttArena()` function following the same pattern as
   `spawnQueenMabArena`/`spawnSquickArena`/`spawnBigPandaWeiArena`
@@ -65,6 +71,7 @@ Verdigris Glamour, Bamboo-Fed Berserk, and Undercity Mob Call.
 - Imported `createRomanCandleCoronationDefinition` from core
 
 **`scripts/agent/data/boss-abilities.floor2.status.json`**
+
 - Updated `king-skritt-roman-candle-coronation` entry:
   - `runtimeState: 'not-started'` → `'in-progress'`
   - `telegraphVfxState: 'planned'` → `'in-progress'`
@@ -77,6 +84,7 @@ Verdigris Glamour, Bamboo-Fed Berserk, and Undercity Mob Call.
 
 **`tests/unit/mob-abilities/roman-candle-coronation.test.ts`** (new, 600 lines)
 Deterministic tests covering:
+
 - Typed definition contract (abilityId, bossArchetypeKey, timing, geometry fields)
 - 8s first eligibility, first resolution at 9,300ms (frame 558)
 - Two resolved casts at exact cadence (frames 558 and 1116) — hard success gate

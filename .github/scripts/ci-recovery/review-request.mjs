@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 
-export const REVIEW_REQUEST_MARKER = '<!-- crawler-review-request:v1';
-export const REVIEW_CONFLICT_MARKER = '<!-- crawler-review-conflict:v1';
+import { REVIEW_CONFLICT_MARKER, REVIEW_REQUEST_MARKER } from './markers.mjs';
+
+export { REVIEW_REQUEST_MARKER, REVIEW_CONFLICT_MARKER };
 export const REVIEWER_LOGIN = 'copilot-pull-request-reviewer';
 
 const SHA_PATTERN = '[0-9a-f]{40}';

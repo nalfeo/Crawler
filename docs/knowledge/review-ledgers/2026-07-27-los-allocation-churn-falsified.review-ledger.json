@@ -17,9 +17,7 @@
           "concerns_count": 4,
           "resolved_count": 4,
           "clean": true,
-          "models": [
-            "gemini-3.1-pro-preview"
-          ]
+          "models": ["gemini-3.1-pro-preview"]
         }
       ]
     }

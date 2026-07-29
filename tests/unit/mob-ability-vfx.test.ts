@@ -192,6 +192,78 @@ describe('MobAbilityVfx', () => {
     expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
   });
 
+  it('draws Don Paco projectile-fan telegraphs with five landing circles and path lines', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'don-paco-the-big-gob',
+      casterEid: 14,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'projectile-fan',
+        originX: 40,
+        originY: 10,
+        facingRad: Math.PI / 2,
+        coneAngleDeg: 70,
+        rangeFt: 30,
+        paths: [
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 22.79,
+            endY: 34.57,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 30.99,
+            endY: 38.61,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 40,
+            endY: 40,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 49.01,
+            endY: 38.61,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 57.21,
+            endY: 34.57,
+            impactRadiusFt: 3,
+          },
+        ],
+      },
+      dangerColor: 'hostile-red',
+      announcementText: "THE BIG GOB — Don Paco's painting the whole block!",
+    });
+    world.mobAbilities.byEntity.set(14, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(5);
+    expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
+  });
+
   it('draws the Tarnished indicator ring for debuffed entities', () => {
     const { scene, graphicsObjects } = createSceneStub();
     const world = createTestWorld();
@@ -412,5 +484,25 @@ describe('MobAbilityVfx', () => {
 
     expect(scene.add.rectangle).toHaveBeenCalled();
     expect(scene.add.ellipse).toHaveBeenCalled();
+  });
+
+  it('draws persistent slick rims for active Don Paco zones', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.activeZones.push({
+      abilityId: 'don-paco-the-big-gob',
+      casterEid: 5,
+      sourceId: 'mob-ability:don-paco-the-big-gob:5:slick',
+      circle: { kind: 'circle', x: 30, y: 35, radiusFt: 3 },
+      remainingMs: 4000,
+      slowMultiplier: 0.65,
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const slick = graphicsObjects[0];
+    expect(slick).toBeDefined();
+    expect(slick!.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(35), ftToPx(3));
   });
 });

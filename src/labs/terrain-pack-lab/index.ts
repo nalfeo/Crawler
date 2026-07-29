@@ -160,10 +160,13 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const atlasW = ATLAS_COLS * cell;
     const atlasH = ATLAS_ROWS * cell;
 
-    // ── Pool section (floor + corridor) ───────────────────────────────────
+    // ── Pool section (floor + corridor + role-keyed special-room floors) ──
     const poolEntries = [
       ...pack.floorPool.map((v) => ({ label: 'floor', v })),
       ...pack.corridorPool.map((v) => ({ label: 'corridor', v })),
+      ...Object.entries(pack.specialFloorPools ?? {}).flatMap(([key, pool]) =>
+        pool.map((v) => ({ label: key, v })),
+      ),
     ];
     const poolW = poolEntries.length * (cell + 4);
     const poolRowH = cell;
@@ -266,7 +269,10 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     ctx.fillStyle = '#a0c8ff';
     ctx.font = 'bold 13px monospace';
     ctx.fillText(
-      `Floor Pool (${pack.floorPool.length})  +  Corridor Pool (${pack.corridorPool.length})`,
+      `Floor Pool (${pack.floorPool.length})  +  Corridor Pool (${pack.corridorPool.length})` +
+        Object.entries(pack.specialFloorPools ?? {})
+          .map(([key, pool]) => `  +  ${key} (${pool.length})`)
+          .join(''),
       PADDING,
       y + 13,
     );

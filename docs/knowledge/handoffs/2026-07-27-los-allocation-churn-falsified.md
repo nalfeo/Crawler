@@ -23,7 +23,7 @@ majority of rounds won in any production-shaped panel** (best was 11/15). There 
 
 The likely reason is that V8's escape analysis already scalar-replaces the
 non-escaping `{x, y}` once these small methods inline — but that is an
-*explanation*, not something this work demonstrates. What is demonstrated is the
+_explanation_, not something this work demonstrates. What is demonstrated is the
 absence of a measurable production win. The barrier callbacks (below) could
 equally be masking a cheap allocation.
 
@@ -32,7 +32,7 @@ equally be masking a cheap allocation.
 diagnostic that identifies where the time in this function actually goes.
 
 **The real cost is the barrier overlay.** `isPassableAt` consults two barrier
-callbacks per probe, and merely *consulting* them is **30-56% of
+callbacks per probe, and merely _consulting_ them is **30-56% of
 `hasClearLineOfSight`'s cost on this panel** (1.438x-2.275x across 8 panels,
 **15/15 rounds won in every one**, worst round 1.085x). On the Floor-1 combat
 fixture the barrier registry is **empty** — 0 handles, 0 blocked tiles, 0 ring
@@ -46,18 +46,18 @@ Ratio > 1 means the candidate is faster.
 
 ### Candidate (allocation removal) — production-shaped, barriers attached
 
-| invocation | regime   | SCALAR-MAP                  | SCALAR-BOTH                 |
-| ---------- | -------- | --------------------------- | --------------------------- |
-| 1          | close    | 0.925x (worst 0.808, 6/15)  | 0.987x (worst 0.866, 6/15)  |
-| 1          | waypoint | 0.940x (worst 0.396, 4/15)  | 0.978x (worst 0.358, 4/15)  |
-| 2          | close    | 0.909x (worst 0.775, 1/15)  | 0.964x (worst 0.840, 4/15)  |
-| 2          | waypoint | 0.942x (worst 0.837, 5/15)  | 0.975x (worst 0.692, 7/15)  |
-| 3          | close    | 0.958x (worst 0.856, 3/15)  | 0.991x (worst 0.662, 5/15)  |
-| 3          | waypoint | 0.972x (worst 0.646, 7/15)  | 1.111x (worst 0.521, 10/15) |
-| 6          | close    | 0.922x (worst 0.659, 6/15)  | 0.897x (worst 0.540, 6/15)  |
-| 6          | waypoint | 1.035x (worst 0.338, 8/15)  | 1.082x (worst 0.870, 9/15)  |
-| 7          | close    | 0.986x (worst 0.728, 6/15)  | 1.014x (worst 0.931, 11/15) |
-| 7          | waypoint | 1.007x (worst 0.712, 8/15)  | 1.017x (worst 0.799, 10/15) |
+| invocation | regime   | SCALAR-MAP                 | SCALAR-BOTH                 |
+| ---------- | -------- | -------------------------- | --------------------------- |
+| 1          | close    | 0.925x (worst 0.808, 6/15) | 0.987x (worst 0.866, 6/15)  |
+| 1          | waypoint | 0.940x (worst 0.396, 4/15) | 0.978x (worst 0.358, 4/15)  |
+| 2          | close    | 0.909x (worst 0.775, 1/15) | 0.964x (worst 0.840, 4/15)  |
+| 2          | waypoint | 0.942x (worst 0.837, 5/15) | 0.975x (worst 0.692, 7/15)  |
+| 3          | close    | 0.958x (worst 0.856, 3/15) | 0.991x (worst 0.662, 5/15)  |
+| 3          | waypoint | 0.972x (worst 0.646, 7/15) | 1.111x (worst 0.521, 10/15) |
+| 6          | close    | 0.922x (worst 0.659, 6/15) | 0.897x (worst 0.540, 6/15)  |
+| 6          | waypoint | 1.035x (worst 0.338, 8/15) | 1.082x (worst 0.870, 9/15)  |
+| 7          | close    | 0.986x (worst 0.728, 6/15) | 1.014x (worst 0.931, 11/15) |
+| 7          | waypoint | 1.007x (worst 0.712, 8/15) | 1.017x (worst 0.799, 10/15) |
 
 (Invocations 4-5 were the `--no-barriers` upper-bound runs, below. 6-7 were re-run
 after the review fixes; the timed code paths are unchanged by those fixes, so 1-3
@@ -75,7 +75,7 @@ Two panels did post a median above 1.0 (waypoint, invocations 3 and 6-7). They
 did not reproduce as a consistent effect and never cleared the rounds-won bar, so
 the honest reading is "indistinguishable from noise", not "a small win".
 
-### Could the harness be biased *against* the candidate?
+### Could the harness be biased _against_ the candidate?
 
 Yes, in three ways, all of which a reviewer raised and none of which is large
 enough to invert the conclusion:
@@ -97,7 +97,7 @@ That run required `src/` edits and so is **not reproducible from the committed
 bench**; weight it accordingly.
 
 The correct summary is therefore **"no shipping-grade production win"**, not
-"clean mechanistic falsification". These confounds could hide a *small* win; they
+"clean mechanistic falsification". These confounds could hide a _small_ win; they
 could not manufacture the flat result observed across seven invocations.
 
 ### Upper bound (`--no-barriers`, NOT production shaped)
@@ -142,13 +142,13 @@ a closure call, `tileMap.index`, a `Set.has` miss, and a second closure that
 short-circuits on `ringShapes.size === 0`. It is **not** the cost of live
 barriers.
 
-An earlier draft of this handoff claimed the figure was a *lower* bound because
+An earlier draft of this handoff claimed the figure was a _lower_ bound because
 "barriers block segments and blocked segments exit the loop early". That
 reasoning is sound in general but **false for this fixture**, where no barrier
 exists to block anything. Corrected here; the bench now prints the registry sizes
 and sink counts so the reading cannot be guessed wrong again.
 
-That correction makes the target *more* attractive, not less: 30-56% of this
+That correction makes the target _more_ attractive, not less: 30-56% of this
 function is being spent asking an empty registry a question whose answer is
 always false.
 
@@ -164,7 +164,7 @@ Formula (matches `npm run perf:profile -- --ceiling <share>:<speedup>`):
   Making them 2x faster: `2.24 x 0.5` = **~1.1% end-to-end**.
 
 **Caveat on that 1.1%, stated plainly.** The 30% comes from this bench's
-*synthetic* segment mix (uniformly drawn close-approach and waypoint segments),
+_synthetic_ segment mix (uniformly drawn close-approach and waypoint segments),
 not from the production-weighted mix of real LOS calls the profiler saw. So 30%
 is a floor **for the measured panel**, not a proven floor for the profiler's
 7.47%. Pushing in the other direction, the estimate ignores every other
@@ -227,7 +227,7 @@ reordered probe.
    result counts; if the counts match, the variants sampled identically and the
    "early exit" argument does not apply. A reviewer caught this, not me.
 6. **Order the drift guard after timing too, not just the oracle.** Lesson #2
-   applies to *any* check that needs a recording subclass. My drift guard
+   applies to _any_ check that needs a recording subclass. My drift guard
    originally ran before the panels and fed a recording map straight into two
    of the three timed functions.
 
@@ -240,7 +240,7 @@ anything but false. Sketches, in rough order of leverage-to-risk:
 
 - `isBarrierPointBlocked` is consulted on **every** probe even when the floor has
   no analytic barriers at all. It already short-circuits on
-  `ringShapes.size === 0` *inside* the callback — but only after paying the
+  `ringShapes.size === 0` _inside_ the callback — but only after paying the
   closure call. Hoisting that emptiness test to the `FloorMap` level (a flag the
   registry keeps current) would skip the call outright.
 - Same for `isBarrierTile` when `blockedTiles` is empty — currently it still pays
@@ -265,7 +265,7 @@ the Amdahl caveat above.
   prints live barrier-registry sizes and both variants' result counts, so the
   reading cannot be guessed wrong). It also self-checks that **both** local
   copies of the shipped loop have not drifted from `hasClearLineOfSight` — on
-  result *and* ordered probe trace — and fails loudly if they have.
+  result _and_ ordered probe trace — and fails loudly if they have.
 - No `src/` changes.
 
 ## Review

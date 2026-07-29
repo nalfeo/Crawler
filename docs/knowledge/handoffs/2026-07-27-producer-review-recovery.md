@@ -21,7 +21,7 @@ current deterministic validator.
   `Systems Engineer` slice.
 - Tightened success-gate detection so bare feature text like `"all tests"`
   no longer marks the contract as `READY`, while explicit outcomes like `all
-  tests pass` still do.
+tests pass` still do.
 - Broadened balancing triage so real gameplay-parameter changes without numeric
   targets still escalate to `HUMAN_GATE`, without misclassifying cosmetic damage
   UI requests.

@@ -6,7 +6,8 @@ description: >-
   "why is delivery slow", "where is time going", "scan for process friction", "what
   should we fix to ship faster", or as the first step of any velocity investigation.
   Reports queue-vs-active time per stage, cycle time by change size, estimation accuracy,
-  and guard deny-rates — deterministic, no LLM judging, no new infrastructure.
+  guard deny-rates, and an open-PR aging panel that surfaces active stalls while they are
+  happening — deterministic, no LLM judging, no new infrastructure.
 ---
 
 # Bottleneck scan
@@ -17,6 +18,9 @@ rather than working?**
 Time spent waiting is the cheapest thing to remove — it costs nobody any thinking. So the
 scan separates every merged PR's lifetime into stages and labels each stage `QUEUE` or
 `ACTIVE`.
+
+It also surfaces **stalls while they are happening** via an open-PR aging panel, avoiding
+the survivorship bias of merged-PR-only analysis.
 
 ## How to run
 
@@ -56,6 +60,19 @@ allow/deny counts, skipping `quarantined: true` sessions. A guard with a high de
 either catching a real recurring mistake (good — automate the fix) or is mis-scoped (bad —
 it is a tax).
 
+**Open-PR aging panel** — measures the _currently open_ PRs, not just merged history:
+
+| Field             | Meaning                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `p50 / p90 / max` | Age distribution of all open PRs in hours                                               |
+| `countAbove4H`    | Number of open PRs older than 4 hours — the first-alert threshold                       |
+| `labelBreakdown`  | Count of PRs carrying each known blocking label (`ci-conflict-order-wait`, etc.)        |
+| `oldest`          | The 5 oldest open PRs with total age, idle time (from `updatedAt`), and blocking labels |
+
+When `maxAgeH ≥ 24`, the panel emits a `⚠ STALL ALARM` in both the rendered output and
+the findings list. A 64-hour stall with 18 PRs blocked by `ci-conflict-order-wait` will
+produce an unmissable alarm — this is the scenario that motivated the panel.
+
 ## Reading the report
 
 Findings are ranked by estimated recoverable time. For each one, ask the only question that
@@ -71,3 +88,6 @@ A finding is not a mandate. Take the top finding into `task-pack-builder` +
 - Mind the denominator. A stage that is slow on 3 PRs out of 60 is an anecdote.
 - Recent-PR bias is real: a policy that changed 20 PRs ago pollutes the window. Prefer
   comparing two explicit windows over trusting one aggregate.
+- The open-PR aging panel uses `updatedAt` as an inactivity / idle-time metric. This is
+  intentionally not "time in current state" — label assignment timestamps would require
+  timeline events.

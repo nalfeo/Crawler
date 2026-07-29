@@ -262,27 +262,50 @@ protection and disabling the ruleset, once the train is confirmed disabled) is
 the only manual action rollback still requires; freshness/promotion ownership
 resumes automatically.
 
-## Emergency repair lane (main-health deadlock)
+## Main is red (attribution pause, not a promotion block)
 
-`mainHealthAllowsPromotion()` (`merge-train/reconcile.mjs`) fails closed: it
-pauses **every** promotion whenever the latest non-fast-path full-CI run for
-the current `main` SHA is missing, pending, or red. This is intentional -- it
-stops the train from building on top of a broken `main` -- but it has one
-structural consequence worth naming explicitly: the incident workflow that
-diagnoses a red hourly `main` run asks Copilot to land the fix through an
-ordinary PR, and that PR is itself just another train candidate. While
-`main` stays red, the circuit breaker that is supposed to protect the train
-also blocks the one promotion that would fix it, and every subsequent hourly
-run keeps re-testing the same broken SHA. **The train cannot self-heal a red
-`main` from inside the train.**
+Main's own CI health is **not** a promotion gate (ADR 0077). The validated
+composite candidate -- `main` + the FIFO prefix, proven green by the full merge
+gate -- is the sole promotion gate. A green composite promotes even when `main`
+alone is red, which is precisely how a PR that **fixes** a red `main` lands
+through the train instead of deadlocking behind it.
 
-This is deliberate, not a bug: allowing the train to promote its way out of a
-red `main` autonomously would mean designing a bypass that decides, by itself,
-when it's safe to build on top of known-broken code -- exactly the kind of
-"promote arbitrary code while main is red" hole this guide's trust boundary
-exists to prevent. Recovering from this state is instead an explicit,
-documented, human-triggered fallback to the legacy path the train is meant to
-replace, using machinery this repository already has and already trusts:
+`mainAttributionVerdict()` (`merge-train/reconcile-lib.mjs`) is consulted only
+when the **maximal composite fails**, to decide whether that failure is
+attributable to a queued PR:
+
+| maximal composite | verdict             | behaviour                                                                                       |
+| ----------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
+| success           | not consulted       | promote                                                                                         |
+| failure           | `green` / `unknown` | bisect, isolate and eject the first failing addition                                            |
+| failure           | `red`               | eject nothing; still promote any already-proven green prefix, and skip further bisection rounds |
+
+The pause exists because a red composite has two possible causes -- the PR broke
+it, or `main` was already broken -- and the composite result alone cannot tell
+them apart. If `main` is red for an unrelated reason, every prefix including
+prefix 1 fails, bisection converges on green=0/red=1, and the train would eject
+innocent PRs one per round down the whole queue. Pausing preserves that
+anti-mass-ejection property without blocking promotion.
+
+`unknown` (no full-CI evidence yet, or still pending) deliberately does **not**
+pause: absence of evidence attributes nothing, and after every train promotion
+the only run on the new `main` is the excluded fast-path attestation, so
+"unknown" is the steady state. Failing closed there would suspend ejection of
+genuinely broken PRs until the next daily full-CI backstop.
+
+**Residual, accepted:** if `main` is positively red _and_ the maximal composite
+genuinely fails, the train stops isolating -- it ejects nothing and spends no
+further bisection rounds until `main` goes green, logging
+`paused merge train attribution; ...` in the reconcile log. A prefix already
+proven green still promotes, so a queued repair PR is not held back; the cost is
+that a genuinely-broken queued PR sits in the queue instead of being ejected. To
+clear it, drop the broken PR's `merge-train` label, or fall back to the
+disable-the-train lane below.
+
+## Emergency repair lane (train disabled)
+
+If the train itself is malfunctioning -- not merely paused on attribution -- the
+documented fallback is the legacy per-PR path:
 
 1. Disable the train:
 
@@ -309,14 +332,14 @@ replace, using machinery this repository already has and already trusts:
    PR once it exists), and CI recovery/auto-rebase resume owning freshness and
    readiness exactly as before this feature existed.
 4. If the repair PR is not already open, let `ci-recovery-incidents.yml` /
-   `incident.mjs` open it and assign Copilot as usual (this already happens
-   automatically off the red hourly run), or open it directly. Either way,
-   once step 1-2 land, the repair PR merges through the **ordinary** legacy
+   `incident.mjs` open it and assign Copilot as usual (this happens
+   automatically off any red `main` CI run, push-triggered or from the daily
+   backstop, whether or not the train is enabled), or open it directly. Either
+   way, once step 1-2 land, the repair PR merges through the **ordinary** legacy
    auto-merge path -- gated by its own required PR checks like every other PR
    before this feature existed. Nothing bypasses the repair PR's own CI.
 5. After the repair PR merges, confirm the next **push-triggered** full `CI`
-   run on the new `main` SHA is green. This is the same authoritative evidence
-   `mainHealthAllowsPromotion()` looks for; do not re-enable the train on the
+   run on the new `main` SHA is green; do not re-enable the train on the
    strength of the repair PR's own head-check evidence alone, since that
    predates the merge.
 6. Only once that push-triggered run is green: re-enable the ruleset and the
@@ -327,12 +350,10 @@ replace, using machinery this repository already has and already trusts:
    gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body true
    ```
 
-This lane does not weaken `mainHealthAllowsPromotion()` or add a code path that
-lets the train promote onto red evidence -- it takes the repair PR out of the
-train entirely and merges it through the same legacy, per-PR-gated path that
-already exists as the flag-off fallback for everything else. The train
-resumes only once real, current, push-triggered green evidence exists for the
-repaired `main`.
+This lane does not add a code path that lets the train promote unvalidated code
+-- it takes the repair PR out of the train entirely and merges it through the
+same legacy, per-PR-gated path that already exists as the flag-off fallback for
+everything else.
 
 ## Failure handling
 
@@ -364,8 +385,8 @@ status --app-id <APP_ID>` and verify `classic.requiredStatusChecksDisabled`
   that changes the transport cannot bootstrap through the deployed controller
   already blocked on the FIFO leader; use only the documented protected emergency
   lane.
-- **Main-health deadlock:** every hourly full-CI run for the current `main` SHA
-  is red (or missing/pending), so `mainHealthAllowsPromotion()` pauses all
-  promotion, including the repair PR's own. This is the one case where the
-  ordinary legacy merge path is the correct, documented recovery -- see
-  [Emergency repair lane](#emergency-repair-lane-main-health-deadlock) above.
+- **Attribution pause:** the maximal composite is red _and_ `main` itself is
+  positively red, so the failure cannot be attributed to any queued PR. The
+  train ejects nobody and spends no bisection round; it resumes automatically
+  once `main` has green full-CI evidence. See
+  [Main is red](#main-is-red-attribution-pause-not-a-promotion-block) above.

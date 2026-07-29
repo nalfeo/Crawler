@@ -12,6 +12,9 @@
  *   first review → last push ACTIVE  (rework in response to review)
  *   last push → merge        QUEUE   (CI + merge gate)
  *
+ * Also includes an **open-PR aging panel** to surface stalls while they are
+ * happening, not just reconstructible afterward from merged-PR history.
+ *
  * Everything comes from `gh` plus files already committed in this repo, so the
  * scan needs no database, no Docker, and no new infrastructure.
  *
@@ -23,6 +26,16 @@ import { dirname, join, resolve } from 'node:path';
 import { median } from './stats.js';
 
 const HOUR_MS = 3600_000;
+
+/** Labels that indicate a PR is blocked in a known way. */
+export const BLOCKING_LABELS = [
+  'ci-conflict-order-wait',
+  'merge-train-blocked',
+  'human-approval-required',
+  'merge-conflict',
+] as const;
+
+export type BlockingLabel = (typeof BLOCKING_LABELS)[number];
 
 interface PrRecord {
   number: number;
@@ -36,6 +49,16 @@ interface PrRecord {
   commits?: { committedDate?: string | null }[];
 }
 
+/** A single open PR as returned from GitHub GraphQL. */
+export interface OpenPrRecord {
+  number: number;
+  title: string;
+  createdAt: string;
+  /** Timestamp of the most recent event on the PR (GitHub `updatedAt`). */
+  updatedAt: string;
+  labels: string[];
+}
+
 export interface StageTiming {
   prNumber: number;
   title: string;
@@ -45,6 +68,29 @@ export interface StageTiming {
   mergeQueueH: number | null;
   reviewRounds: number;
   churn: number;
+}
+
+export interface OpenPrAgingEntry {
+  prNumber: number;
+  title: string;
+  /** Total age since creation, in hours. */
+  ageH: number;
+  /** Hours since any recorded PR activity (`updatedAt`). */
+  idleH: number;
+  labels: string[];
+}
+
+export interface OpenPrAgingPanel {
+  openPrs: number;
+  p50AgeH: number;
+  p90AgeH: number;
+  maxAgeH: number;
+  /** Count of open PRs older than 4 hours — the first-alert threshold. */
+  countAbove4H: number;
+  /** Per-blocking-label breakdown, ordered by count descending. */
+  labelBreakdown: { label: string; count: number }[];
+  /** The 5 oldest open PRs, ordered by total age descending. */
+  oldest: OpenPrAgingEntry[];
 }
 
 export interface BottleneckReport {
@@ -68,6 +114,8 @@ export interface BottleneckReport {
     medianAbsDelta: number;
   } | null;
   guardFriction: { guard: string; allow: number; deny: number }[];
+  /** Open-PR aging panel. null when the caller does not supply open-PR data. */
+  openPrAging: OpenPrAgingPanel | null;
   findings: string[];
 }
 
@@ -83,6 +131,72 @@ function hoursBetween(from: string, to: string): number {
 
 function maxIsoDate(a: string, b: string): string {
   return Date.parse(a) >= Date.parse(b) ? a : b;
+}
+
+/**
+ * Nearest-rank percentile (1-indexed) on a pre-sorted ascending array.
+ * p is in [0, 100]. Returns 0 for empty arrays.
+ */
+function sortedPercentile(sorted: readonly number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const rank = Math.ceil((p / 100) * sorted.length);
+  return sorted[Math.min(rank, sorted.length) - 1] ?? 0;
+}
+
+/**
+ * Compute the open-PR aging panel from a snapshot of open PRs.
+ *
+ * @param prs    Open PR records, as fetched from GitHub (or a test fixture).
+ * @param now    ISO timestamp to treat as "now" — injected for deterministic testing.
+ */
+export function computeOpenPrAging(prs: readonly OpenPrRecord[], now: string): OpenPrAgingPanel {
+  if (prs.length === 0) {
+    return {
+      openPrs: 0,
+      p50AgeH: 0,
+      p90AgeH: 0,
+      maxAgeH: 0,
+      countAbove4H: 0,
+      labelBreakdown: [],
+      oldest: [],
+    };
+  }
+
+  const nowMs = Date.parse(now);
+  const ageHours = prs.map((pr) => (nowMs - Date.parse(pr.createdAt)) / HOUR_MS);
+  const sorted = [...ageHours].sort((a, b) => a - b);
+
+  const labelCounts = new Map<string, number>();
+  for (const pr of prs) {
+    for (const label of pr.labels) {
+      if ((BLOCKING_LABELS as readonly string[]).includes(label)) {
+        labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+      }
+    }
+  }
+
+  const oldest = [...prs]
+    .map((pr) => ({
+      prNumber: pr.number,
+      title: pr.title,
+      ageH: (nowMs - Date.parse(pr.createdAt)) / HOUR_MS,
+      idleH: Math.max(0, (nowMs - Date.parse(pr.updatedAt)) / HOUR_MS),
+      labels: pr.labels.filter((l) => (BLOCKING_LABELS as readonly string[]).includes(l)),
+    }))
+    .sort((a, b) => b.ageH - a.ageH)
+    .slice(0, 5);
+
+  return {
+    openPrs: prs.length,
+    p50AgeH: sortedPercentile(sorted, 50),
+    p90AgeH: sortedPercentile(sorted, 90),
+    maxAgeH: sorted[sorted.length - 1] ?? 0,
+    countAbove4H: ageHours.filter((h) => h > 4).length,
+    labelBreakdown: [...labelCounts.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count),
+    oldest,
+  };
 }
 
 export function computeStageTimings(prs: readonly PrRecord[]): StageTiming[] {
@@ -215,6 +329,37 @@ export function readGuardFriction(root: string): BottleneckReport['guardFriction
 
 export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): string[] {
   const findings: string[] = [];
+
+  // Open-PR aging findings — surface stalls while they are happening.
+  const aging = report.openPrAging;
+  if (aging && aging.openPrs > 0) {
+    if (aging.maxAgeH >= 24) {
+      const head = aging.oldest[0];
+      const blockDesc = head
+        ? head.labels.length > 0
+          ? ` (blocked: ${head.labels.join(', ')})`
+          : ' (no blocking label — may be awaiting human review)'
+        : '';
+      findings.push(
+        `⚠ STALL ALARM: oldest open PR age is ${aging.maxAgeH.toFixed(1)}h` +
+          (head ? ` — PR #${head.prNumber} "${head.title}"${blockDesc}` : '') +
+          `. ${aging.countAbove4H} of ${aging.openPrs} open PRs are older than 4h.`,
+      );
+    } else if (aging.maxAgeH >= 8) {
+      findings.push(
+        `Oldest open PR is ${aging.maxAgeH.toFixed(1)}h old (p90=${aging.p90AgeH.toFixed(1)}h). ` +
+          `Watch for a growing queue.`,
+      );
+    }
+
+    const topBlocker = aging.labelBreakdown[0];
+    if (topBlocker && topBlocker.count >= 3) {
+      findings.push(
+        `${topBlocker.count} open PRs carry "${topBlocker.label}" — this label is head-of-line ` +
+          `blocking them. Investigate the label's owner to unblock.`,
+      );
+    }
+  }
 
   const ranked = [...report.stages].sort((a, b) => b.medianHours - a.medianHours);
   const worst = ranked[0];
@@ -425,7 +570,96 @@ export function fetchMergedPrs(root: string, limit: number): PrRecord[] {
   );
 }
 
-export function buildReport(root: string, prs: readonly PrRecord[]): BottleneckReport {
+/**
+ * Fetch all currently-open PRs with their labels and timestamps.
+ * Uses a simple paginated GraphQL query — no commits or reviews needed.
+ */
+export function fetchOpenPrs(root: string): OpenPrRecord[] {
+  const repository = fetchRepositorySlug(root);
+  const query = `
+    query($owner: String!, $repo: String!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequests(
+          states: OPEN
+          first: 100
+          after: $cursor
+          orderBy: { field: CREATED_AT, direction: DESC }
+        ) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            number
+            title
+            createdAt
+            updatedAt
+            labels(first: 100) {
+              nodes { name }
+            }
+          }
+        }
+      }
+    }`;
+
+  const collected: OpenPrRecord[] = [];
+  let cursor: string | null = null;
+
+  for (;;) {
+    const args = [
+      'api',
+      'graphql',
+      '-f',
+      `query=${query}`,
+      '-F',
+      `owner=${repository.owner}`,
+      '-F',
+      `repo=${repository.repo}`,
+    ];
+    if (cursor) {
+      args.push('-F', `cursor=${cursor}`);
+    }
+    const raw = execFileSync('gh', args, {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    const parsed = JSON.parse(raw) as {
+      data?: {
+        repository?: {
+          pullRequests?: {
+            pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+            nodes?: Array<{
+              number: number;
+              title: string;
+              createdAt: string;
+              updatedAt: string;
+              labels?: { nodes?: Array<{ name: string }> };
+            }>;
+          };
+        };
+      };
+    };
+    const connection = parsed.data?.repository?.pullRequests;
+    for (const pr of connection?.nodes ?? []) {
+      collected.push({
+        number: pr.number,
+        title: pr.title,
+        createdAt: pr.createdAt,
+        updatedAt: pr.updatedAt,
+        labels: (pr.labels?.nodes ?? []).map((l) => l.name),
+      });
+    }
+    if (!connection?.pageInfo?.hasNextPage || !connection.pageInfo.endCursor) break;
+    cursor = connection.pageInfo.endCursor;
+  }
+
+  return collected;
+}
+
+export function buildReport(
+  root: string,
+  prs: readonly PrRecord[],
+  openPrRecords?: readonly OpenPrRecord[],
+  now: string = new Date().toISOString(),
+): BottleneckReport {
   const timings = computeStageTimings(prs);
   const medianLeadTimeH = timings.length === 0 ? 0 : median(timings.map((t) => t.leadTimeH));
 
@@ -453,7 +687,7 @@ export function buildReport(root: string, prs: readonly PrRecord[]): BottleneckR
 
   const partial: Omit<BottleneckReport, 'findings'> = {
     schema: 'crawler-velocity-bottlenecks/v1',
-    generatedAt: new Date().toISOString(),
+    generatedAt: now,
     prsAnalyzed: timings.length,
     stages,
     medianLeadTimeH,
@@ -461,6 +695,7 @@ export function buildReport(root: string, prs: readonly PrRecord[]): BottleneckR
     slowest: [...timings].sort((a, b) => b.leadTimeH - a.leadTimeH).slice(0, 5),
     estimationAccuracy: readEstimationAccuracy(root),
     guardFriction: readGuardFriction(root),
+    openPrAging: openPrRecords ? computeOpenPrAging(openPrRecords, now) : null,
   };
   return { ...partial, findings: deriveFindings(partial) };
 }
@@ -497,6 +732,35 @@ function render(report: BottleneckReport): string {
     );
   }
 
+  const aging = report.openPrAging;
+  if (aging) {
+    const stallFlag = aging.maxAgeH >= 24 ? ' ← ⚠ STALL ALARM' : '';
+    lines.push(`\n─── Open PR aging ───`);
+    lines.push(
+      `${aging.openPrs} open PRs · p50=${aging.p50AgeH.toFixed(1)}h · ` +
+        `p90=${aging.p90AgeH.toFixed(1)}h · MAX=${aging.maxAgeH.toFixed(1)}h${stallFlag}`,
+    );
+    lines.push(`${aging.countAbove4H} PRs older than 4h`);
+
+    if (aging.labelBreakdown.length > 0) {
+      lines.push('Blocking labels:');
+      for (const entry of aging.labelBreakdown) {
+        lines.push(`  ${String(entry.count).padStart(3)}  ${entry.label}`);
+      }
+    }
+
+    if (aging.oldest.length > 0) {
+      lines.push('Oldest open PRs:');
+      for (const pr of aging.oldest) {
+        const labelStr = pr.labels.length > 0 ? `  [${pr.labels.join(', ')}]` : '';
+        const stateStr = `idle=${pr.idleH.toFixed(1)}h`;
+        lines.push(
+          `  #${String(pr.prNumber).padEnd(6)} ${pr.ageH.toFixed(1)}h (${stateStr})${labelStr}  ${pr.title}`,
+        );
+      }
+    }
+  }
+
   lines.push('\nFindings:');
   for (const finding of report.findings) lines.push(`  • ${finding}`);
   lines.push('');
@@ -511,8 +775,10 @@ function main(): void {
   };
   const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
   const limit = Number(flag('limit', '60'));
+  const now = new Date().toISOString();
 
-  const report = buildReport(root, fetchMergedPrs(root, limit));
+  const openPrs = fetchOpenPrs(root);
+  const report = buildReport(root, fetchMergedPrs(root, limit), openPrs, now);
   const out = resolve(root, flag('out', 'files/velocity-bottlenecks.json'));
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`, 'utf8');

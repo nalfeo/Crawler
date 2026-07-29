@@ -22,10 +22,9 @@ modules:
     params: {}
 
   enclosed-regions:
-    description: Clean enclosed background islands (character/enemy only).
+    description: Clean enclosed background islands (all types unless disabled, e.g. tiles/vfx).
     type: enclosed-region-cleanup
     enabled: true
-    enabledForTypes: [enemy, character]
     params: {}
 
   transparent-trim:

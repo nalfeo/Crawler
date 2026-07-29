@@ -2667,7 +2667,28 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
           return BTStatus.SUCCESS;
         }
-        // circle / spawn-circles / multi-circle
+        if (geometry.kind === 'projectile-fan') {
+          const dx = ctx.playerX - geometry.originX;
+          const dy = ctx.playerY - geometry.originY;
+          const distSq = dx * dx + dy * dy;
+          const rangeSq = geometry.rangeFt * geometry.rangeFt;
+          const targetAngle = Math.atan2(dy, dx);
+          const delta = Math.atan2(
+            Math.sin(targetAngle - geometry.facingRad),
+            Math.cos(targetAngle - geometry.facingRad),
+          );
+          const halfRad = (geometry.coneAngleDeg * Math.PI) / 360;
+          if (distSq <= rangeSq && Math.abs(delta) <= halfRad) {
+            const lateralSign =
+              Math.abs(delta) <= Number.EPSILON ? this.kiteOrbitSign : Math.sign(delta);
+            const lateralX = -Math.sin(geometry.facingRad) * lateralSign;
+            const lateralY = Math.cos(geometry.facingRad) * lateralSign;
+            this.dodgeVecX = lateralX * PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY = lateralY * PROJECTILE_DODGE_VECTOR_SCALE;
+            return BTStatus.SUCCESS;
+          }
+          continue;
+        }
         const cueCircles =
           geometry.kind === 'circle'
             ? [geometry]
@@ -2680,7 +2701,13 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
       for (const zone of ctx.world.mobAbilities.ownedZones) {
         const { geometry } = zone;
-        if (geometry.kind === 'lane' || geometry.kind === 'radial-projectiles') continue;
+        if (
+          geometry.kind === 'lane' ||
+          geometry.kind === 'radial-projectiles' ||
+          geometry.kind === 'projectile-fan'
+        ) {
+          continue;
+        }
         const zoneCircles =
           geometry.kind === 'circle'
             ? [geometry]
@@ -2690,6 +2717,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         for (const circle of zoneCircles) {
           if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
         }
+      }
+      for (const zone of ctx.world.mobAbilities.activeZones) {
+        if (maybeDodgeCircle(zone.circle)) return BTStatus.SUCCESS;
       }
 
       // Enemy-body dodging remains suspended during retreat and engagement:
@@ -3807,12 +3837,41 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.farmPullX = 0;
           this.farmPullY = 0;
         }
+        const preserveMobAbilityDodge =
+          world.mobAbilities.cues.some((cue) => cue.phase === 'telegraph') ||
+          world.mobAbilities.activeZones.some((zone) => {
+            const dx = playerX - zone.circle.x;
+            const dy = playerY - zone.circle.y;
+            return dx * dx + dy * dy <= zone.circle.radiusFt * zone.circle.radiusFt;
+          }) ||
+          world.mobAbilities.ownedZones.some((zone) => {
+            const zoneCircles =
+              zone.geometry.kind === 'circle'
+                ? [zone.geometry]
+                : zone.geometry.kind === 'multi-circle'
+                  ? zone.geometry.circles
+                  : [];
+            return zoneCircles.some((circle) => {
+              const dx = playerX - circle.x;
+              const dy = playerY - circle.y;
+              return dx * dx + dy * dy <= circle.radiusFt * circle.radiusFt;
+            });
+          });
         // The steering heading already encodes predictive spacing; blending the
         // legacy single-closest-threat dodge on top would double-count and
         // reintroduce the oscillation that widening it caused (commit f4f538d7),
         // so retire the additive travel dodge whenever steering drives the frame.
-        this.dodgeVecX = 0;
-        this.dodgeVecY = 0;
+        // Mob-ability danger cues are different: their committed geometry is not
+        // represented in travel steering, so preserve that dodge contribution.
+        // Slick-zone occupancy: if the player is currently inside an active zone,
+        // the zone-branch dodge vector must also be preserved so the AI exits
+        // rather than walking through the slick after travel steering takes over.
+        // Runtime-owned zones need the same protection so travel steering does
+        // not wipe the outward cloud/surface dodge it just computed earlier.
+        if (!preserveMobAbilityDodge) {
+          this.dodgeVecX = 0;
+          this.dodgeVecY = 0;
+        }
       }
     }
 

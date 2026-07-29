@@ -18,12 +18,15 @@ Investigated the PR #2010 CI recovery loop incident (issue #2054). The automated
 ## Root causes of the PR #2010 loop incident
 
 ### 1. One-digit SHA typo in the `✅ Addressed in` marker
+
 The recovery agent posted `✅ Addressed in e6380eb20825a047d75c65e62f11f3fe**20**afef77:` on thread `PRRT_kwDOSvo2Ms6Tv5hP`, but the actual PR head SHA was `e6380eb20825a047d75c65e62f11f3fe**19**afef77` (digits `20` vs `19` at position 32). The compare API returned 404, correctly placing the typo SHA in `definitivelyUnreachableMarkerShas`. The stale-marker hint path then required an LLM agent to re-post with the correct SHA.
 
 ### 2. LLM model unavailable (claude-sonnet-4.5)
+
 Both repair attempts failed with `Model "claude-sonnet-4.5" is not available`. Each failure incremented `stallAttempt`, and after 2 failed dispatches the loop-incident was filed (threshold: `stallAttempt >= 2`).
 
 ### 3. Merge conflict (side issue, not fixed here)
+
 PR #2010 also has `mergeable_state: "dirty"` which triggered the `RELEASE_STALE_AUTOMATION_CONFLICT` rule. The merge conflict and format failure (`src/engine/MobAbilityVfx.ts` failed Prettier) remain on PR #2010's branch and require the PR author to fix them.
 
 ---
@@ -52,11 +55,13 @@ for (const sha of [...definitivelyMissingMarkerShas]) {
 ```
 
 **Why this is safe:**
+
 - A real divergent or behind commit can no longer be reclassified as reachable just because its first 7 chars collide with the head.
 - A random 404-missing SHA can no longer auto-resolve unless it is a full-length near-match to the head (exactly one differing hex digit), which matches the reported transcription-error incident.
 - The reconciler still requires a trusted author (`TRUSTED_BOT_LOGINS` or `TRUSTED_ASSOCIATIONS`) for the marker to be in the stale-marker candidate set in the first place.
 
 **What this does NOT fix:**
+
 - PR #2010's merge conflict and format failures — those require the PR author to rebase and fix formatting.
 - Model unavailability (claude-sonnet-4.5) — separate infrastructure concern.
 

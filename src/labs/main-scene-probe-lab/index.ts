@@ -189,6 +189,16 @@ interface MainSceneInternals {
     packWallAccentedCount: number;
     packWallAccentCounts: Record<string, number>;
     packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+    packLineworkRuns: readonly {
+      layerId: string;
+      tileCount: number;
+      hubTileCount: number;
+    }[];
+    packLineworkHubs: readonly { tx: number; ty: number }[];
   };
   getDoorRenderSummary(): {
     closedPackCount: number;
@@ -196,9 +206,11 @@ interface MainSceneInternals {
     closedKenneyCount: number;
     closedColorCount: number;
     openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   };
 }
 
@@ -393,6 +405,30 @@ export interface TerrainRenderSummary {
    * this is the seam proving decals actually placed in the REAL booted scene.
    */
   readonly packGroundDecalCount: number;
+  /**
+   * Industrial-linework tiles stamped by the path pass (all layers summed).
+   * Unlike decals, these are chosen by TOPOLOGY: each tile's frame is its 2-edge
+   * Wang mask over the occupancy grid, so a non-zero count here proves that
+   * routed multi-tile runs — not scattered stamps — reached the real bake.
+   */
+  readonly packLineworkTileCount: number;
+  /** Props (switch stands, carts, valves) placed on eligible linework tiles. */
+  readonly packLineworkPropCount: number;
+  readonly packLineworkBuriedCount: number;
+  readonly packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+  /**
+   * One entry per maximal connected component of every linework layer. This is
+   * what the placement gate is asserted against headlessly: "at least 6 runs of
+   * at least 40 tiles, with at least 60% of total run length near a boss den or
+   * the resource heart" is a pure function of this array.
+   */
+  readonly packLineworkRuns: readonly {
+    readonly layerId: string;
+    readonly tileCount: number;
+    readonly hubTileCount: number;
+  }[];
+  /** Hub tiles (boss dens + resource heart) the concentration is measured against. */
+  readonly packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
 }
 
 /**
@@ -414,12 +450,16 @@ export interface DoorRenderSummary {
   readonly closedColorCount: number;
   /** Open doors rendered from a terrain-pack doorSet texture. */
   readonly openPackCount: number;
-  /** Open doors rendered from the Kenney open frame (non-destructive default). */
+  /** Open doors rendered from an approved GENERATED open-door texture. */
+  readonly openGeneratedCount: number;
+  /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the three CLOSED buckets — total closed doors actually rendered. */
+  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
+  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  readonly renderableOpenCount: number;
 }
 
 export interface BloodSurfaceProbeSummary {
@@ -1103,6 +1143,19 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         packWallAccentedCount: summary?.packWallAccentedCount ?? 0,
         packWallAccentCounts: summary?.packWallAccentCounts ?? {},
         packGroundDecalCount: summary?.packGroundDecalCount ?? 0,
+        packLineworkTileCount: summary?.packLineworkTileCount ?? 0,
+        packLineworkPropCount: summary?.packLineworkPropCount ?? 0,
+        packLineworkBuriedCount: summary?.packLineworkBuriedCount ?? 0,
+        packLineworkBuriedSample: summary?.packLineworkBuriedSample ?? [],
+        packLineworkRuns: (summary?.packLineworkRuns ?? []).map((run) => ({
+          layerId: run.layerId,
+          tileCount: run.tileCount,
+          hubTileCount: run.hubTileCount,
+        })),
+        packLineworkHubs: (summary?.packLineworkHubs ?? []).map((hub) => ({
+          tx: hub.tx,
+          ty: hub.ty,
+        })),
       };
     },
 
@@ -1114,9 +1167,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
         openPackCount: summary?.openPackCount ?? 0,
+        openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
+        renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };
     },
 
