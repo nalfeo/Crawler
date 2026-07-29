@@ -109,6 +109,29 @@ describe('generated-shards (Node shard I/O)', () => {
       const all = readAllShards(dir);
       expect(Object.keys(all).sort()).toEqual(['a', 'equipment/weapon/b']);
     });
+
+    // Regression gate for the mega-file failure mode that closed PR #1972: a
+    // writer that round-trips entries through a lossy schema silently strips
+    // per-asset fields (there, `opaqueBounds` on 462/464 entries). The shard
+    // writer/composer MUST be a byte-faithful passthrough, so assert a FULL
+    // deep-equality of a rich entry — including load-bearing `opaqueBounds` and
+    // an unmodelled `.passthrough()` field — survives write -> compose intact.
+    // Key-only assertions (used elsewhere in this file) would NOT catch this.
+    it('preserves every field (opaqueBounds + unknown passthrough) through write -> compose', () => {
+      const rich = entry({
+        type: 'prop',
+        opaqueBounds: { x: 3, y: 5, width: 12, height: 9, canvasWidth: 16, canvasHeight: 16 },
+        catalog: { description: 'hand copy', tags: ['prop', 'generated', 'hand-authored'] },
+        // An unmodelled field that only survives because the writer/composer do
+        // raw JSON passthrough rather than schema-parsing the entry.
+        futureField: { nested: [1, 2, 3] },
+      } as Partial<ManifestEntry>);
+
+      writeShard(dir, 'welcome-room-rug-var-0', rich);
+      const composed = composeManifestFromShards(dir);
+
+      expect(composed.entries['welcome-room-rug-var-0']).toEqual(rich);
+    });
   });
 
   describe('listShardRelPaths', () => {
