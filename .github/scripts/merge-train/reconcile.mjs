@@ -809,9 +809,17 @@ for (const pr of queued) {
         );
         process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
       } catch (err) {
-        // 422 covers "already up-to-date" and stale expected_head_sha — log
-        // it so stale-head races are visible and not silently swallowed.
-        if (err.status !== 422) throw err;
+        // All update-branch errors are non-fatal: log a warning and let the
+        // loop fall through to the break below so one PR's permission or
+        // network error cannot crash the whole reconcile job and deadlock
+        // every other queued PR.
+        //
+        //   422 = already up-to-date or stale expected_head_sha (transient,
+        //         expected on concurrent reconcile passes).
+        //   403 = token lacks push permission on the head branch (persistent;
+        //         the PR stays BEHIND until a human or the branch owner
+        //         updates it, or removes the merge-train label).
+        //   Other non-2xx errors are treated identically: skip this pass.
         process.stderr.write(
           `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
         );
