@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c971eb6c03924c6bd2fe5ea8d73a5f911cbb0e25",
+    "commitDate": "2026-07-29T19:28:01Z",
+    "commitSubject": "Remove dead AI A/B arms (LEGACY/NAVMESH pathing, SLACK_AWARE decision) (#2320)",
+    "capturedAt": "2026-07-29T20:34:27.089Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30485251224",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/c971eb6c03924c6bd2fe5ea8d73a5f911cbb0e25.json"
+  },
+  {
     "commit": "05f53db702f61a3b618ede1c5c01f7a3b7fd6fcd",
     "commitDate": "2026-07-29T19:05:32Z",
     "commitSubject": "fix(ai-runner-lab): sync default pathingMode/decisionMode/retreatThreshold to DEFAULT_CONFIG (#2318)",
