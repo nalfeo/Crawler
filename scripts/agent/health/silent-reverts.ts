@@ -108,8 +108,19 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
     // picking one arbitrarily (unsound) or refusing outright (unactionable for
     // a merge that already landed), evaluate against ALL of them and let
     // findSilentReverts require agreement across every candidate.
-    const bases = git(['merge-base', '--all', a, b], cwd).split('\n').filter(Boolean);
-    if (bases.length === 0) continue; // unrelated histories: nothing to discard
+    const basesStr = gitOrNull(['merge-base', '--all', a, b], cwd);
+    const bases = basesStr ? basesStr.split('\n').filter(Boolean) : [];
+    if (bases.length === 0) {
+      // Two-parent merge with no common ancestor (e.g. --allow-unrelated-histories).
+      // `-s ours` on such a merge silently discards EVERY file from the other side.
+      // Report rather than skip: skipping would be a silent hole in a guard whose
+      // whole purpose is catching silence.
+      unsupported.push({
+        sha,
+        reason: 'no merge base (unrelated histories, e.g. --allow-unrelated-histories)',
+      });
+      continue;
+    }
 
     const subject = git(['log', '-1', '--format=%s', sha], cwd);
     const ackedPaths = parseAckTrailers(git(['log', '-1', '--format=%B', sha], cwd));
@@ -134,6 +145,17 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
         gitOrNull(['merge-base', '--is-ancestor', side, baseRef], cwd) !== null ||
         gitOrNull(['merge-base', '--is-ancestor', baseRef, side], cwd) !== null;
 
+      // Path-level provenance: for non-mainline sides, find where side last
+      // merged from mainline. If that merge-base had `mainBlob` at a path, side
+      // incorporated it and the provenance check in gradeSeverity can upgrade a
+      // discard to error even when `side !== mainBlob` (side edited further on
+      // top). Not needed when sideIsMainline — ancestry grading already fires.
+      const sideMainBaseRev = !sideIsMainline
+        ? (gitOrNull(['merge-base', '--all', side, baseRef], cwd) ?? '')
+            .split('\n')
+            .filter(Boolean)[0]
+        : undefined;
+
       for (const base of bases) {
         // --no-renames keeps this a pure path-keyed comparison; a rename shows
         // up as delete+add, which the null-blob handling already models.
@@ -153,6 +175,10 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
           // discard threw away? Catches the older-main-tip shape that no
           // ancestry test can see (see gradeSeverity).
           mainBlob: blob(baseRef, path, cwd),
+          // Provenance: blob at side's merge-base with mainline. Used by
+          // gradeSeverity to detect when side built on top of mainBlob.
+          sideMainBase:
+            sideMainBaseRev !== undefined ? blob(sideMainBaseRev, path, cwd) : undefined,
         }));
 
         merges.push({
@@ -199,11 +225,14 @@ function main(): void {
   const { merges, unsupported } = collectMergeInputs(cwd, BASE_REF, HEAD_REF);
 
   for (const u of unsupported) {
-    report.error(`Merge ${u.sha.slice(0, 9)} cannot be soundly analysed: ${u.reason}.`, {
-      remediation:
-        'Re-do this merge as a sequence of ordinary two-parent merges (or rebase), ' +
+    const remediation = u.reason.startsWith('no merge base')
+      ? 'Avoid merging branches with completely unrelated histories. If this merge is ' +
+        'intentional, re-examine the result manually — the guard cannot inspect it.'
+      : 'Re-do this merge as a sequence of ordinary two-parent merges (or rebase), ' +
         'so each resolution can be compared against a single opposing parent. ' +
-        'The guard refuses to skip it, because skipping is the silent hole it exists to close.',
+        'The guard refuses to skip it, because skipping is the silent hole it exists to close.';
+    report.error(`Merge ${u.sha.slice(0, 9)} cannot be soundly analysed: ${u.reason}.`, {
+      remediation,
     });
   }
 
@@ -224,11 +253,16 @@ function main(): void {
     const message =
       `Merge ${f.mergeSha.slice(0, 9)} ("${f.mergeSubject}") silently discarded ` +
       `changes to ${f.path} from ${f.sideRef}${also}, and the discard is still present at HEAD.`;
+    // When multiple merges discarded the same path, list every SHA so the user
+    // knows which commit messages each need an acknowledgement trailer — not only
+    // the most recent one (which is what `mergeSha` tracks after deduplication).
+    const ackedShas = f.allMergeShas ?? [f.mergeSha];
+    const mergeTargets = ackedShas.map((sha) => `merge commit ${sha.slice(0, 9)}`).join(' and ');
     const remediation =
       `Re-apply that side's version of ${f.path} on top of your work, then verify ` +
       `\`git diff ${BASE_REF} -- ${f.path}\` shows only your intended change. ` +
       `If the discard IS intentional, add a \`${ACK_TRAILER}: ${f.path}\` trailer to ` +
-      `the merge commit message explaining why.`;
+      `the ${mergeTargets} explaining why.`;
     if (f.severity === 'error') report.error(message, { file: f.path, remediation });
     else report.warn(`${message} (branch-local work, not mainline)`, { file: f.path, remediation });
   }

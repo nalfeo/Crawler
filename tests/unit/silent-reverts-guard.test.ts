@@ -108,6 +108,32 @@ describe('parseAckTrailers', () => {
   it('ignores unrelated trailers', () => {
     expect(parseAckTrailers('Co-authored-by: x\nSigned-off-by: y').size).toBe(0);
   });
+
+  it('does not treat a body mention as a trailer — only the final trailer block counts', () => {
+    // A commit message that documents or quotes the ack format in prose must
+    // not suppress a real finding. The last paragraph here is "Co-authored-by: x"
+    // (a real trailer, not an ack), so the body line is never reached.
+    const msg = [
+      'feat: update merge strategy',
+      '',
+      `To acknowledge use ${ACK_TRAILER}: path/to/file in the merge message.`,
+      '',
+      'Co-authored-by: x',
+    ].join('\n');
+    expect(parseAckTrailers(msg).size).toBe(0);
+  });
+
+  it('does not treat a mixed body paragraph as a trailer block', () => {
+    // The last paragraph mixes prose and a trailer-looking line; since not all
+    // lines match the trailer regex, the whole paragraph is body text.
+    const msg = [
+      'feat: subject',
+      '',
+      'Some body prose.',
+      `${ACK_TRAILER}: a.json`,
+    ].join('\n');
+    expect(parseAckTrailers(msg).size).toBe(0);
+  });
 });
 
 describe('findSilentReverts', () => {
@@ -173,6 +199,9 @@ describe('dedupeByPath', () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.mergeSha).toBe('newest');
     expect(out[0]?.mergeCount).toBe(3);
+    // All SHAs must be listed so remediation can tell the user which commits
+    // need an acknowledgement trailer — not only the most recent one.
+    expect(out[0]?.allMergeShas).toEqual(['newest', 'older', 'oldest']);
   });
 
   it('promotes a mainline loss over a branch-local one for the same path', () => {
@@ -629,6 +658,102 @@ describe('silent-reverts CLI (real git)', () => {
       const { status, output } = runGuard(dir, 'refs/heads/does-not-exist');
       expect(output).toContain('could not be resolved');
       expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  /**
+   * Unrelated-histories shape: a merge whose parents share no common ancestor
+   * (e.g. `--allow-unrelated-histories`). `-s ours` on such a merge silently
+   * discards EVERY file from the other side. The guard must fail closed rather
+   * than skip, because skipping is the exact hole it exists to close.
+   */
+  it('fails closed on a merge with no merge base (unrelated histories)', () => {
+    const { dir, git, write } = makeRepo();
+    try {
+      write('file-a.txt', 'from a\n');
+      git('add', '.');
+      git('commit', '-qm', 'initial');
+      git('branch', '-f', 'mainline', 'HEAD');
+
+      // Create a second root commit with no shared ancestor.
+      git('checkout', '--orphan', 'orphan');
+      git('rm', '-qrf', '.');
+      write('file-b.txt', 'from b\n');
+      git('add', '.');
+      git('commit', '-qm', 'orphan initial');
+
+      git('checkout', '-q', 'main');
+      // `-s ours` discards everything from orphan; the guard must flag this.
+      git('merge', '--allow-unrelated-histories', '-s', 'ours', '--no-edit', '-q', 'orphan');
+
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toContain('no merge base');
+      expect(status).toBe(1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  /**
+   * Provenance shape: the colleague branch merges an OLDER main revision and
+   * then EDITS the file further. After main advances in an unrelated file, the
+   * colleague tip is neither an ancestor nor a descendant of the mainline tip,
+   * and the colleague's blob differs from mainBlob (so the direct-content check
+   * cannot fire). Only the provenance check can detect this: the colleague's
+   * merge-base with mainline held mainBlob, confirming the colleague built on
+   * top of it. Verified by design: without the `sideMainBase` check this shape
+   * graded `warn` and CI exited 0.
+   */
+  it('grades a discard blocking via provenance when colleague built on still-current mainline content', () => {
+    const { dir, git, write } = makeRepo();
+    try {
+      write('shared.ts', 'export const V = 1;\n');
+      write('unrelated.ts', 'a\n');
+      git('add', '.');
+      git('commit', '-qm', 'base');
+      const base = git('rev-parse', 'HEAD');
+
+      // M1: add a mainline fix to shared.ts.
+      write('shared.ts', 'export const V = 2; // M1 FIX\n');
+      git('commit', '-qam', 'main: M1 fix');
+      const m1 = git('rev-parse', 'HEAD');
+      // M2: advance mainline in an unrelated file, so M1's content is still current.
+      write('unrelated.ts', 'b\n');
+      git('commit', '-qam', 'main: M2 unrelated');
+      git('branch', '-f', 'mainline', git('rev-parse', 'HEAD'));
+
+      // Colleague merges M1 (NOT M2), then edits shared.ts further.
+      // After the edit: side !== mainBlob, so direct-content check cannot fire.
+      git('checkout', '-q', '-b', 'feature-x', base);
+      write('other.ts', 'x\n');
+      git('add', '.');
+      git('commit', '-qm', 'feature-x work');
+      git('merge', '--no-edit', '-q', m1);
+      write('shared.ts', 'export const V = 3; // M1 FIX + fx edit\n');
+      git('commit', '-qam', 'feature-x: edit on top of fix');
+
+      git('checkout', '-q', '-b', 'pr', base);
+      write('mine.ts', 'm\n');
+      git('add', '.');
+      git('commit', '-qm', 'pr work');
+      git('merge', '-s', 'ours', '--no-edit', '-q', 'feature-x');
+
+      // Neither ancestry direction holds — the provenance check is the only path.
+      expect(() => git('merge-base', '--is-ancestor', 'feature-x', 'mainline')).toThrow();
+      expect(() => git('merge-base', '--is-ancestor', 'mainline', 'feature-x')).toThrow();
+      // Confirm the direct-content check cannot fire: side !== mainBlob.
+      expect(git('show', 'feature-x:shared.ts')).not.toBe(git('show', 'mainline:shared.ts'));
+      // Main still holds the M1 fix the discard silently threw away.
+      expect(git('show', 'mainline:shared.ts')).toContain('M1 FIX');
+
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(status).toBe(1);
+      // The mainline-derived content loss is blocking.
+      expect(output).toMatch(/\[ERROR][^\n]*shared\.ts/);
+      // Genuinely branch-local content (other.ts) stays a non-blocking warning.
+      expect(output).toMatch(/\[WARN][^\n]*other\.ts/);
     } finally {
       cleanup(dir);
     }

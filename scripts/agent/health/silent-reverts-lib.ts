@@ -95,6 +95,16 @@ export interface FileTriple {
    * (older callers/tests); only `=== side` upgrades severity, never downgrades.
    */
   readonly mainBlob?: string | null;
+  /**
+   * Blob at the path in the merge-base of `(side, mainRef)`. When this equals
+   * `mainBlob`, the side had incorporated the current mainline content at this
+   * path and then built further on it (so `side !== mainBlob`). If the merge
+   * result also lacks `mainBlob`, the discard drops mainline-derived content
+   * even though `side !== mainBlob`. `undefined` when not computed (e.g. the
+   * side is already classified as mainline, where ancestry grading already
+   * handles it).
+   */
+  readonly sideMainBase?: string | null;
 }
 
 /** One merge commit on the PR branch, already reduced to candidate files. */
@@ -130,6 +140,13 @@ export interface SilentRevert {
   readonly severity: 'error' | 'warn';
   /** How many merges discarded this path; set by `dedupeByPath`. */
   readonly mergeCount?: number;
+  /**
+   * All merge SHAs (oldest-first within the deduped entry) that discarded this
+   * path, set by `dedupeByPath`. Only populated when `mergeCount > 1`, so
+   * remediation messages can tell the user which merge commits each need an
+   * acknowledgement trailer — not just the most recent one.
+   */
+  readonly allMergeShas?: readonly string[];
 }
 
 /**
@@ -151,12 +168,49 @@ export const ACK_TRAILER = 'Merge-Discard-Ack';
  * trailers are allowed; a single trailer may list comma-separated paths. Any
  * text after ` -- ` or ` — ` on the line is treated as the reason and ignored
  * for matching.
+ *
+ * Only lines in the Git trailer block are considered. The trailer block is the
+ * final paragraph of the commit message (lines after the last blank line)
+ * provided every non-empty line in that paragraph is a valid trailer
+ * (`Token: value`). If the entire message consists only of trailer-shaped lines
+ * and contains no blank line, the whole message is the trailer block. Any body
+ * text that happens to contain `Merge-Discard-Ack:` (e.g. documentation) is
+ * ignored because prose body paragraphs almost never consist entirely of
+ * trailer-shaped lines.
  */
+
+/** Matches a valid Git trailer token: starts with a letter, followed by
+ *  letters/digits/hyphens, then a colon. No spaces in the token. */
+const GIT_TRAILER_TOKEN_RE = /^[A-Za-z][A-Za-z0-9-]*:/;
+
 export function parseAckTrailers(commitMessage: string): Set<string> {
   const acked = new Set<string>();
-  for (const raw of commitMessage.split(/\r?\n/)) {
-    const line = raw.trim();
-    const prefix = `${ACK_TRAILER}:`;
+  const lines = commitMessage.split(/\r?\n/);
+
+  // Find the last blank line to identify the potential trailer block.
+  let lastBlankIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if ((lines[i] ?? '').trim() === '') {
+      lastBlankIdx = i;
+      break;
+    }
+  }
+
+  // Candidate trailer lines: after the last blank line (or the whole message
+  // when there is no blank line, which Git treats as a trailers-only message).
+  const candidateLines = lines
+    .slice(lastBlankIdx + 1)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  if (candidateLines.length === 0) return acked;
+
+  // Every line in the final paragraph must look like a trailer (Token: value).
+  // If any line is prose, this is a body paragraph, not a trailer block.
+  if (!candidateLines.every((l) => GIT_TRAILER_TOKEN_RE.test(l))) return acked;
+
+  const prefix = `${ACK_TRAILER}:`;
+  for (const line of candidateLines) {
     if (!line.toLowerCase().startsWith(prefix.toLowerCase())) continue;
     const payload = line.slice(prefix.length).split(/\s+--\s+|\s+—\s+/)[0] ?? '';
     for (const part of payload.split(',')) {
@@ -211,13 +265,34 @@ export function survivesToHead(f: FileTriple): boolean {
  *
  * Content can only UPGRADE warn -> error; it never downgrades an
  * ancestry-established mainline loss.
+ *
+ * PROVENANCE: a further gap exists when the colleague merged an older main tip
+ * and then EDITED the file. After the edit, `side !== mainBlob` so the direct
+ * content check misses it, yet side's blob was built on top of mainBlob. If the
+ * discard result also lacks mainBlob, the discard has lost the mainline content
+ * the colleague had incorporated. Detected via `sideMainBase`: if the
+ * merge-base of `(side, mainRef)` held `mainBlob` at this path, the colleague
+ * had incorporated it, and `result !== mainBlob` confirms it is no longer in
+ * the merge result.
  */
 export function gradeSeverity(merge: MergeInput, file: FileTriple): 'error' | 'warn' {
   if (merge.sideIsMainline) return 'error';
-  // If the discarded blob matches what main holds today, the discard loses content
-  // main still holds. This includes null === null (main deleted the file, and the
-  // branch's deletion of it was discarded, thus restoring a deleted file).
+  // Direct content match: the discarded blob IS main's current blob.
   if (file.mainBlob !== undefined && file.mainBlob === file.side) {
+    return 'error';
+  }
+  // Provenance match: side's merge-base with main held mainBlob, meaning side
+  // incorporated it and then built further on top (so side !== mainBlob). If
+  // the result also lacks mainBlob, the discard dropped mainline-derived content.
+  // Guard mainBlob !== null so null === null (both deleted) falls to the direct
+  // check above rather than silently upgrading an unrelated null match.
+  if (
+    file.mainBlob !== undefined &&
+    file.mainBlob !== null &&
+    file.sideMainBase !== undefined &&
+    file.sideMainBase === file.mainBlob &&
+    file.result !== file.mainBlob
+  ) {
     return 'error';
   }
   return 'warn';
@@ -279,22 +354,36 @@ export function findSilentReverts(merges: readonly MergeInput[]): SilentRevert[]
  *
  * Expects `findings` in newest-first order, which is what `git rev-list`
  * produces.
+ *
+ * Sets `allMergeShas` when more than one merge discarded the path so that
+ * remediation messages can list EVERY merge that needs an acknowledgement
+ * trailer — not only the most recent one.
  */
 export function dedupeByPath(findings: readonly SilentRevert[]): SilentRevert[] {
-  const byPath = new Map<string, SilentRevert & { mergeCount: number }>();
+  const byPath = new Map<
+    string,
+    { finding: SilentRevert; mergeCount: number; mergeShas: string[] }
+  >();
   for (const f of findings) {
     const seen = byPath.get(f.path);
     if (!seen) {
-      byPath.set(f.path, { ...f, mergeCount: 1 });
+      byPath.set(f.path, { finding: f, mergeCount: 1, mergeShas: [f.mergeSha] });
       continue;
     }
     seen.mergeCount += 1;
+    if (!seen.mergeShas.includes(f.mergeSha)) {
+      seen.mergeShas.push(f.mergeSha);
+    }
     // A mainline loss outranks a branch-local one for the same file.
-    if (seen.severity === 'warn' && f.severity === 'error') {
-      byPath.set(f.path, { ...f, mergeCount: seen.mergeCount });
+    if (seen.finding.severity === 'warn' && f.severity === 'error') {
+      seen.finding = f;
     }
   }
-  return [...byPath.values()];
+  return [...byPath.values()].map(({ finding, mergeCount, mergeShas }) => ({
+    ...finding,
+    mergeCount,
+    allMergeShas: mergeShas.length > 1 ? (mergeShas as readonly string[]) : undefined,
+  }));
 }
 
 /**
