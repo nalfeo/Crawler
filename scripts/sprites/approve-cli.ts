@@ -37,6 +37,7 @@ interface ParsedArgs {
    * single design-candidate variant. Mutually exclusive with `--variant`.
    */
   readonly sequence: boolean;
+  readonly allowHardBlocked: boolean;
 }
 
 function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
@@ -44,15 +45,17 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
     throw new Error(
       'Usage: npm run sprites:approve -- <runDir> --variant N\n' +
         '   or: npm run sprites:approve -- <runDir> --sequence\n' +
-        '  <runDir>      Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
-        '  --variant N   Variant index (0-based) to approve as a standalone sprite\n' +
-        '  --sequence    Approve every ordered frame of a frameSequence run as one\n' +
-        '                walk-cycle animation sheet (mutually exclusive with --variant)',
+        '  <runDir>              Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
+        '  --variant N           Variant index (0-based) to approve as a standalone sprite\n' +
+        '  --sequence            Approve every ordered frame of a frameSequence run as one\n' +
+        '                        walk-cycle animation sheet (mutually exclusive with --variant)\n' +
+        '  --allow-hard-blocked  Override the judge hard-block veto (use consciously)',
     );
   }
 
   let runDir: string | undefined;
   let variantIndex: number | undefined;
+  let allowHardBlocked = false;
   let sequence = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -76,6 +79,8 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
         throw new Error(`--variant must be a non-negative integer, got: ${value}`);
       }
       variantIndex = parsed;
+    } else if (arg === '--allow-hard-blocked') {
+      allowHardBlocked = true;
     } else if (!arg.startsWith('-')) {
       if (runDir !== undefined) {
         throw new Error(`Unexpected positional argument: ${arg} (already have ${runDir})`);
@@ -96,7 +101,7 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
     throw new Error('Missing required --variant N (or pass --sequence for a frame-sequence run)');
   }
 
-  return { runDir, variantIndex, sequence };
+  return { runDir, variantIndex, allowHardBlocked, sequence };
 }
 
 function exitCodeForError(kind: ApproveError['kind']): number {
@@ -110,6 +115,8 @@ function exitCodeForError(kind: ApproveError['kind']): number {
     case 'summary-invalid':
     case 'manifest-invalid':
       return 3;
+    case 'hard-blocked':
+      return 4;
     case 'frame-incoherent':
       // Distinct exit code: this is the hard coherence gate refusing to ship
       // drifted art, not a plain input/config error. Callers/CI should treat
@@ -195,6 +202,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
           catalogPath,
           publicAssetsDir,
           repoRoot,
+          allowHardBlocked: parsed.allowHardBlocked,
         });
         process.stdout.write(
           `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +

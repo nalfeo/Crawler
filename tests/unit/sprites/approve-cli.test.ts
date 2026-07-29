@@ -170,6 +170,53 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
   });
 });
 
+describe('approve-cli --allow-hard-blocked flag and exit-code-4 (hard-blocked)', () => {
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    delete process.env.CI;
+    mocks.runQueueCommit.mockClear();
+    mocks.loadApprovedEntry.mockClear();
+    mocks.approveVariant.mockClear();
+  });
+
+  afterEach(() => {
+    if (savedCI !== undefined) {
+      process.env.CI = savedCI;
+    } else {
+      delete process.env.CI;
+    }
+  });
+
+  it('returns exit code 4 when approveVariant throws a hard-blocked error', async () => {
+    mocks.approveVariant.mockImplementationOnce(() => {
+      throw new mocks.ApproveError('hard-blocked', 'variant 1 was hard-blocked by the judge');
+    });
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(4);
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+
+  it('forwards allowHardBlocked: true when --allow-hard-blocked is passed', async () => {
+    mocks.approveVariant.mockReturnValueOnce(mocks.FAKE_ENTRY as never);
+
+    const exitCode = await main(
+      ['/fake/runs/iron-sword/run-01', '--variant', '1', '--allow-hard-blocked'],
+      '/fake/repo',
+    );
+
+    expect(exitCode).toBe(0);
+
+    // Verify allowHardBlocked: true was forwarded to approveVariant.
+    const callArgs = (mocks.approveVariant.mock.calls[0] as unknown[]) ?? [];
+    const opts = callArgs[0] as { allowHardBlocked?: boolean };
+    expect(opts.allowHardBlocked).toBe(true);
+  });
+});
+
 describe('approve-cli --sequence already-approved idempotent retry (round-1 code review finding)', () => {
   let savedCI: string | undefined;
 
