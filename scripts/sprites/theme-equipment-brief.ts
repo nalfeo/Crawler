@@ -16,12 +16,23 @@ import type { ThemeEquipmentSetItem, ThemeEquipmentSetState } from './theme-equi
 
 /**
  * Default number of judged variants when a hand-edited brief omits
- * `judge.maxVariants`. Lowered 16 → 6 (2026-07-28): the judge only keeps the
- * best 3 variants anyway, so judging 16 spent ~2.6× the Azure vision calls for
- * no selection benefit. 6 keeps a comfortable margin above the keep-3 target
- * while cutting the dominant cost of the variant-approval rejudge.
+ * `judge.maxVariants`. This is the **initial generation** judge cap and is left
+ * at 16 deliberately: generation should still explore the full candidate set.
+ * The variant-approval *rejudge* uses the lower
+ * {@link THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS} instead — see
+ * `theme-equipment-runner.ts` `approveVariantArtifacts`.
  */
-export const THEME_EQUIPMENT_DEFAULT_JUDGE_MAX_VARIANTS = 6;
+export const THEME_EQUIPMENT_DEFAULT_JUDGE_MAX_VARIANTS = 16;
+
+/**
+ * Number of variants the variant-approval **rejudge** judges (scoped to that
+ * path only, so initial generation is unaffected). Lowered to 6 (2026-07-28):
+ * the judge only keeps the best 3 variants, so rejudging 16 spent ~2.6× the
+ * Azure vision calls for no selection benefit. 6 keeps a comfortable margin
+ * above the keep-3 target while cutting the dominant cost of the rejudge — the
+ * maintainer-facing wait. Never raises a brief that already asks for fewer.
+ */
+export const THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS = 6;
 
 /**
  * Number of variants the theme-equipment variant-approval rejudge judges in
