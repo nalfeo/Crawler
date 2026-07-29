@@ -1,0 +1,55 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "silent-revert-guard",
+  "task_title": "Silent merge-revert CI guard (#2282)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer found the detection predicate was fatally wrong: it detected reset-to-ancestor, not took-our-side, so it missed the -s ours incident it was written for. Confirmed with a synthetic git repro before accepting, then rewrote and mutation-proved the predicate. Also dropped the global path allowlist (it would have exempted manifest.json, a confirmed victim), kept the guard un-gated by DOCS_ONLY, and fixed the CI checkout to fetch-depth 0 plus the PR head sha rather than the synthetic merge commit.",
+      "model": "gpt-5.6-sol"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found mainline loss arriving via a non-mainline parent graded warn (exit 0). Repro-confirmed before fixing; fixed by ancestry clause (b); mutation-proven."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found colleague-merged-older-main-tip shape that NO ancestry test can see. Repro-confirmed; fixed by content grading (mainBlob === side); mutation-proven."
+        },
+        {
+          "round": 3,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found an over-defensive mainBlob !== null guard let a discarded mainline DELETION grade warn. Fix correct (isDiscarded already guarantees side !== base). Its supplied regression test was TAUTOLOGICAL - caught by mutation testing and rebuilt."
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Severity grading declared CLEAN by systematic null/ancestry case table; no fourth shape and no false-error path. One finding: round-1 regression test was tautological (colleague merged mains tip so the content rule fired independently). Confirmed by mutation, fixture rebuilt so ancestry clause (b) is the only path to error, re-mutation-proven. All three severity tests now individually mutation-proven."
+        }
+      ]
+    }
+  }
+}

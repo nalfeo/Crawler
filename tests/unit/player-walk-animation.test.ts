@@ -28,16 +28,16 @@ import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.
 import { createTestWorld } from '../helpers/world-factory.js';
 import { createSceneStub } from '../fixtures/phaser-bridge-harness.js';
 
-/** Matches the real `player-walk-placeholder-v1-var-0` manifest entry's shape. */
-const PLAYER_WALK_TEXTURE_KEY = 'player-walk-placeholder-v1-var-0';
+/** Matches the real `player-walk-cycle` manifest entry's shape. */
+const PLAYER_WALK_TEXTURE_KEY = 'player-walk-cycle';
 
 function buildTestRegistry() {
   return buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
       [PLAYER_WALK_TEXTURE_KEY]: {
-        briefId: 'player-walk-placeholder-v1',
-        spriteName: 'Player walk placeholder',
+        briefId: PLAYER_WALK_TEXTURE_KEY,
+        spriteName: PLAYER_WALK_TEXTURE_KEY,
         assetPath: `generated/${PLAYER_WALK_TEXTURE_KEY}.png`,
         approvedAt: '2026-01-01T00:00:00.000Z',
         sourceRun: 'test-fixture',
@@ -62,8 +62,8 @@ function buildTestRegistryWithLoop(loop: boolean) {
     version: 1,
     entries: {
       [PLAYER_WALK_TEXTURE_KEY]: {
-        briefId: 'player-walk-placeholder-v1',
-        spriteName: 'Player walk placeholder',
+        briefId: PLAYER_WALK_TEXTURE_KEY,
+        spriteName: PLAYER_WALK_TEXTURE_KEY,
         assetPath: `generated/${PLAYER_WALK_TEXTURE_KEY}.png`,
         approvedAt: '2026-01-01T00:00:00.000Z',
         sourceRun: 'test-fixture',

@@ -23,6 +23,7 @@ import {
   type AIPathingModeValue,
   type FusedHeadingDebug,
 } from '../../game/ai/index.js';
+import { DEFAULT_CONFIG } from '../../game/ai/bt-ai-tuning.js';
 import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
@@ -609,13 +610,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
-  // AI configuration state. All fields persist across lab reloads;
-  // pathingMode/decisionMode are passed into every BehaviorTreeAI the lab constructs.
-  // Normalize any stale persisted values that no longer correspond to live enum members.
-  const normalizePathingMode = (v: AIPathingModeValue | undefined): AIPathingModeValue =>
-    v === AIPathingMode.RISK_REWARD_FUSED ? v : AIPathingMode.RISK_REWARD_FUSED;
-  const normalizeDecisionMode = (v: AIDecisionModeValue | undefined): AIDecisionModeValue =>
-    v === AIDecisionMode.LEGACY ? v : AIDecisionMode.LEGACY;
+  // AI configuration state. The A/B mode selection (pathingMode/decisionMode)
+  // both default to production defaults (DEFAULT_CONFIG) so a fresh lab session
+  // matches the shipped game. All fields persist across lab
+  // reloads; pathingMode/decisionMode are passed into every BehaviorTreeAI the
+  // lab constructs.
   const aiConfig: {
     pathingMode: AIPathingModeValue;
     decisionMode: AIDecisionModeValue;
@@ -625,8 +624,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     weaponPersonas: boolean;
     merchantWeaponPurchase: boolean;
   } = {
-    pathingMode: normalizePathingMode(persisted?.pathingMode),
-    decisionMode: normalizeDecisionMode(persisted?.decisionMode),
+    pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
+    decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
@@ -637,7 +636,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let ai = new BehaviorTreeAI({
     seed: currentSeed,
     aggression: 1,
-    retreatThreshold: 0.15,
+    retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+    farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
     debug: true,
     pathingMode: aiConfig.pathingMode,
     decisionMode: aiConfig.decisionMode,
@@ -1213,7 +1213,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
-      retreatThreshold: 0.15,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
@@ -1336,7 +1337,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
-      retreatThreshold: 0.15,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
