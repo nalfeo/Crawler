@@ -85,6 +85,7 @@ import {
 } from '../shared/data/den-unlock-archetypes.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
+import { createInitialFloor2QuartermasterStock } from './quartermaster-stock.js';
 import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
@@ -1066,6 +1067,11 @@ export function initializeFloor2Scenario(
     ...(options?.playerCarryover
       ? { effectivePlayerLevel: options.playerCarryover.playerLevel.level }
       : {}),
+    // Carryover restore (below) requires an empty generatedEquipmentRegistry
+    // and runs after settlement init — generating Quartermaster stock here
+    // would populate the registry first and crash restorePlayerCarryover's
+    // 'registry-not-empty' guard. Defer stock generation until after restore.
+    ...(options?.playerCarryover ? { skipQuartermasterStock: true } : {}),
   });
 
   if (!options?.playerCarryover) {
@@ -1101,6 +1107,23 @@ export function initializeFloor2Scenario(
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
     initializePlayerWeaponSkills(world, playerEid);
+
+    // Quartermaster stock generation was deferred (skipQuartermasterStock,
+    // above) so restorePlayerCarryover's empty-registry precondition could be
+    // satisfied. Bootstrap it now that the carried-over registry state is in
+    // place; this mirrors restockFloor2Quartermaster's settlement-snapshot
+    // merge pattern in quartermaster-stock.ts.
+    const settlement = world.floorExtendedState?.settlement;
+    if (settlement) {
+      const quartermasterStock = createInitialFloor2QuartermasterStock(
+        world,
+        options.playerCarryover.playerLevel.level,
+      );
+      world.floorExtendedState = {
+        ...world.floorExtendedState,
+        settlement: { ...settlement, ...(quartermasterStock ? { quartermasterStock } : {}) },
+      };
+    }
   }
 
   if (floor2Config?.governor?.autoVictoryOnStart === true) {

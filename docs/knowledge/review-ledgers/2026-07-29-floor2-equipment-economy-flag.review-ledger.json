@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "floor2-equipment-economy-flag",
+  "task_title": "Wire Floor 2 equipment economy flag into real shipped path",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial-style rubber-duck review flagged: (1) headless-runner.ts unconditionally calls runSettlementMaintenancePlanner every tick, a real AI consumer of Quartermaster stock missed in the initial investigation (corrected via grep + code read); (2) needed evidence the AI purchasing path does not break Floor 2 balance/AI or interact badly with carryover; (3) wanted an interactive UI observation for boss chests. Resolved: (1) confirmed via source read that the planner is intentional, bounded (8-iteration cap), fail-safe (blacklist-and-continue), latch-gated, and a Floor 1 no-op; (2) added a new default-path headless test asserting the planner runs end-to-end against real economy-enabled stock without error across a full run, confirmed validateGeneratedCarryover does not require unclaimed registry instances to be claimed (no orphan-bloat risk), and confirmed no floor3 scenario exists yet so the carryover-boundary risk raised is currently moot (documented as a caveat in the handoff); (3) judged headless evidence plus already-merged BossChestUI wiring sufficient for this flag-only change since the interactive UI itself is untouched by this PR."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

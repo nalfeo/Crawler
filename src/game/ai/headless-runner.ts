@@ -133,9 +133,15 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
-   * Explicit Floor 2 equipment rollout configuration. Omitted preserves the
-   * world defaults (all disabled); dependency closure is validated by each
-   * enabled consumer before it mutates state.
+   * Explicit Floor 2 equipment rollout configuration, applied before scenario
+   * configuration. Omitted preserves the world defaults (all disabled); each
+   * enabled consumer validates its own dependency closure before mutating
+   * state. NOTE: on `floorId: 'floor2'`, `initializeFloor2Scenario` (the real
+   * shipped path) unconditionally re-enables all four flags
+   * (`floor2EquipmentRegistry`/`Catalog`/`Rewards`/`Economy`) as part of
+   * Floor 2's shipped content — matching production, where these are not
+   * player- or config-toggleable. An override here only has effect when
+   * disabling these flags (e.g. to isolate a scenario on a non-Floor-2 run).
    */
   floor2EquipmentFlags?: Partial<GameWorld['floor2EquipmentFlags']>;
   /**
