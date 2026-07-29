@@ -1870,10 +1870,12 @@ export class MainGameScene extends Phaser.Scene {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels({ keepQuartermaster: true });
       this.quartermasterUI?.toggle(this.world);
-    } else if (quartermasterOpen) {
-      this.quartermasterUI?.refresh(this.world);
-    } else if (!safeCtx && this.quartermasterUI?.isOpen()) {
-      this.quartermasterUI.toggle(this.world);
+    } else if (this.quartermasterUI?.isOpen()) {
+      if (safeCtx) {
+        this.quartermasterUI.refresh(this.world);
+      } else {
+        this.quartermasterUI.toggle(this.world);
+      }
     }
 
     this.processAchievementUnlocks();
