@@ -79,6 +79,49 @@ function opaqueMeanLuminance(pngPath: string): number {
   return count === 0 ? 0 : sum / count;
 }
 
+/**
+ * Strongest axis-aligned LINE artifact in a tile, as a z-score.
+ *
+ * Reduces the tile to a per-column mean-luminance profile and a per-row profile
+ * (opaque pixels only), then returns how many standard deviations the brightest
+ * single column/row sits above its own axis's mean. A tile with a straight
+ * bright line baked into it spikes one profile; an irregular surface does not.
+ *
+ * Scored PER AXIS and combined with `max`, never pooled into one distribution:
+ * column deltas and row deltas are differently-centred, so a pooled percentile
+ * is uninterpretable in either direction, and averaging the two seams hides a
+ * tile that is clean on one axis and broken on the other. (Established
+ * empirically with the Floor 2 terrain session on six tiles, where pooling was
+ * shown to be non-monotonic — it read both high and low against per-axis truth.)
+ */
+function maxLineZScore(pngPath: string): number {
+  const img = decodePng(readFileSync(pngPath));
+  const { width, height, data } = img;
+  const axisPeak = (outer: number, inner: number, index: (a: number, b: number) => number) => {
+    const means: number[] = [];
+    for (let a = 0; a < outer; a++) {
+      let sum = 0;
+      let count = 0;
+      for (let b = 0; b < inner; b++) {
+        const i = index(a, b);
+        if (data[i + 3]! < 128) continue;
+        sum += 0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!;
+        count++;
+      }
+      if (count > 0) means.push(sum / count);
+    }
+    if (means.length < 2) return 0;
+    const mean = means.reduce((a, b) => a + b, 0) / means.length;
+    const sd = Math.sqrt(means.reduce((a, b) => a + (b - mean) ** 2, 0) / means.length);
+    if (sd === 0) return 0;
+    return Math.max(...means.map((v) => (v - mean) / sd));
+  };
+  return Math.max(
+    axisPeak(width, height, (x, y) => (y * width + x) * 4),
+    axisPeak(height, width, (y, x) => (y * width + x) * 4),
+  );
+}
+
 /** Every image path the manifest references, relative to `public/`. */
 function allImagePaths(manifest: TerrainPackDef): string[] {
   return [
@@ -213,6 +256,36 @@ describe.each(FLOOR1_PACK_IDS)('committed terrain pack — %s', (packId) => {
       (p) => opaqueMeanLuminance(path.join(repoRoot(), 'public', p)) <= wallMean,
     );
     expect(tooDark).toEqual([]);
+  });
+
+  /**
+   * NO BAKED LATTICE: a seamless tile with a straight bright line in it chains
+   * that line across every tile boundary, so a single 64px artifact becomes an
+   * unbroken grid spanning a whole room.
+   *
+   * This is a real defect this guard caught, and the reason it is scored on
+   * STRUCTURE rather than amplitude. The welcome-room floor was generated from a
+   * prompt asking for "thin brass inlay lines ... repeating across the surface";
+   * the model complied, and the spawn room — the first thing a player ever sees —
+   * rendered as graph paper. Every existing guard passed it: its column standard
+   * deviation was 11.58, LOWER than the ordinary floor's 12.49, because a perfect
+   * lattice is a low-variance, high-regularity signal. Mean luminance, standard
+   * deviation, silhouette geometry and seam byte-identity are all blind to it by
+   * construction. Only asking whether the variance is STRUCTURED catches it.
+   *
+   * Threshold calibrated against 46 committed pool tiles across three
+   * independently generated packs (floor1-dungeon, floor1-cave, industrial-cave),
+   * whose worst case is 2.75. The gridded tile scored 4.11 (columns) / 4.04
+   * (rows), so 3.4 separates them with margin on both sides.
+   */
+  it('bakes no straight bright line into a tile (anti-lattice)', () => {
+    const MAX_LINE_Z = 3.4;
+    const offenders: string[] = [];
+    for (const imagePath of allImagePaths(manifest)) {
+      const z = maxLineZScore(path.join(repoRoot(), 'public', imagePath));
+      if (z > MAX_LINE_Z) offenders.push(`${imagePath} (z=${z.toFixed(2)})`);
+    }
+    expect(offenders).toEqual([]);
   });
 });
 
