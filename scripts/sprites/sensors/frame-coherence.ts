@@ -21,11 +21,20 @@
  *      a totally different subject scale) signals drift even when the
  *      palette happens to match.
  *
+ *   3. Baseline (floor-line) stability — the row of the lowest opaque pixel
+ *      in each frame (the character's feet), compared frame-to-frame as an
+ *      absolute pixel delta. `build-prompt.ts` explicitly instructs the
+ *      model to keep "the same floor line" across every frame; this signal
+ *      deterministically enforces that instruction instead of trusting the
+ *      prompt alone. A coherent walk cycle keeps the same standing height;
+ *      vertical bobbing/drift (or a frame drawn at the wrong scale) shows up
+ *      as a large delta even when palette and mass both happen to match.
+ *
  * This is intentionally coarse and NOT a subjective similarity judge — no
  * LLM/VLM is involved, ever (see repo policy: deterministic gates only).
  * It is tuned to catch GROSS drift (different color scheme / wildly
- * different silhouette), not the subtle pose-to-pose differences a real
- * walk cycle is expected and required to have.
+ * different silhouette / vertical bobbing), not the subtle pose-to-pose
+ * differences a real walk cycle is expected and required to have.
  */
 
 import { decodeSprite, gatherOpaquePixels, type RgbaImage } from './common.js';
@@ -50,6 +59,16 @@ export const DEFAULT_MAX_PALETTE_DISTANCE = 0.35;
  */
 export const DEFAULT_MAX_MASS_DELTA_RATIO = 0.4;
 
+/**
+ * Default max allowed absolute-pixel delta in "lowest opaque row" (the
+ * character's floor-contact height) between two consecutive frames. Chosen
+ * empirically against 64px-tall frames: a couple of pixels of anti-aliasing
+ * / stride variance is normal, but drift past this indicates the model
+ * ignored the "same floor line" prompt instruction (vertical bobbing) or
+ * drew a frame at a different scale entirely.
+ */
+export const DEFAULT_MAX_BASELINE_DELTA_PX = 6;
+
 /** Quantize each 8-bit channel down to this many bits before histogramming. */
 const PALETTE_BUCKET_BITS = 4;
 const CHANNEL_SHIFT = 8 - PALETTE_BUCKET_BITS;
@@ -57,6 +76,7 @@ const CHANNEL_SHIFT = 8 - PALETTE_BUCKET_BITS;
 export interface FrameCoherenceOptions {
   readonly maxPaletteDistance?: number;
   readonly maxMassDeltaRatio?: number;
+  readonly maxBaselineDeltaPx?: number;
 }
 
 export interface FrameCoherencePairResult {
@@ -64,6 +84,7 @@ export interface FrameCoherencePairResult {
   readonly frameB: number;
   readonly paletteDistance: number;
   readonly massDeltaRatio: number;
+  readonly baselineDeltaPx: number;
   readonly ok: boolean;
   readonly reasons: readonly string[];
 }
@@ -109,6 +130,22 @@ function histogramDistance(a: Float64Array, b: Float64Array): number {
 }
 
 /**
+ * Row index (0-based, top-down) of the lowest opaque pixel in the image —
+ * i.e. where the character's feet meet the floor. Returns -1 for a fully
+ * transparent image (trivially has no baseline to compare).
+ */
+function lowestOpaqueRow(image: RgbaImage): number {
+  for (let y = image.height - 1; y >= 0; y--) {
+    const rowStart = y * image.width * 4;
+    for (let x = 0; x < image.width; x++) {
+      const a = image.data[rowStart + x * 4 + 3] ?? 0;
+      if (a !== 0) return y;
+    }
+  }
+  return -1;
+}
+
+/**
  * Compare a sequence of already-decoded/post-processed frame PNG buffers
  * (in cycle order) for cross-frame coherence. Returns one pair result per
  * consecutive pair (frames.length - 1 pairs); `ok` is true iff every pair
@@ -122,6 +159,7 @@ export function checkFrameCoherence(
 ): FrameCoherenceResult {
   const maxPaletteDistance = options.maxPaletteDistance ?? DEFAULT_MAX_PALETTE_DISTANCE;
   const maxMassDeltaRatio = options.maxMassDeltaRatio ?? DEFAULT_MAX_MASS_DELTA_RATIO;
+  const maxBaselineDeltaPx = options.maxBaselineDeltaPx ?? DEFAULT_MAX_BASELINE_DELTA_PX;
 
   if (frames.length < 2) {
     return { ok: true, pairs: [] };
@@ -130,6 +168,7 @@ export function checkFrameCoherence(
   const images = frames.map((buf) => decodeSprite(buf));
   const histograms = images.map((img) => quantizedOpaqueHistogram(img).hist);
   const masses = images.map((img) => gatherOpaquePixels(img).length);
+  const baselines = images.map((img) => lowestOpaqueRow(img));
 
   const pairs: FrameCoherencePairResult[] = [];
   let allOk = true;
@@ -141,6 +180,14 @@ export function checkFrameCoherence(
     const maxMass = Math.max(massA, massB, 1);
     const minMass = Math.min(massA, massB);
     const massDeltaRatio = 1 - minMass / maxMass;
+    const baselineA = baselines[i]!;
+    const baselineB = baselines[j]!;
+    // A fully transparent frame has no baseline (-1); treat that as a
+    // separate, more severe drift signal rather than a bogus pixel delta.
+    const baselineDeltaPx =
+      baselineA === -1 || baselineB === -1
+        ? Number.POSITIVE_INFINITY
+        : Math.abs(baselineA - baselineB);
 
     const reasons: string[] = [];
     if (paletteDistance > maxPaletteDistance) {
@@ -153,9 +200,24 @@ export function checkFrameCoherence(
         `silhouette mass delta ratio ${massDeltaRatio.toFixed(3)} between frame ${i} and frame ${j} exceeds max ${maxMassDeltaRatio} (${massA} vs ${massB} opaque px)`,
       );
     }
+    if (baselineDeltaPx > maxBaselineDeltaPx) {
+      reasons.push(
+        `baseline (floor-line) delta ${
+          Number.isFinite(baselineDeltaPx) ? baselineDeltaPx : 'n/a (empty frame)'
+        }px between frame ${i} and frame ${j} exceeds max ${maxBaselineDeltaPx}px (row ${baselineA} vs ${baselineB})`,
+      );
+    }
     const ok = reasons.length === 0;
     if (!ok) allOk = false;
-    pairs.push({ frameA: i, frameB: j, paletteDistance, massDeltaRatio, ok, reasons });
+    pairs.push({
+      frameA: i,
+      frameB: j,
+      paletteDistance,
+      massDeltaRatio,
+      baselineDeltaPx,
+      ok,
+      reasons,
+    });
   }
 
   if (allOk) {

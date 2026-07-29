@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
 import {
   checkFrameCoherence,
+  DEFAULT_MAX_BASELINE_DELTA_PX,
   DEFAULT_MAX_MASS_DELTA_RATIO,
   DEFAULT_MAX_PALETTE_DISTANCE,
 } from '../../../scripts/sprites/sensors/frame-coherence.js';
@@ -26,8 +27,10 @@ function buildFrame(opts: {
   outfit: readonly [number, number, number];
   legOffset: number;
   extraOpaquePixels?: number;
+  verticalShift?: number;
 }): Buffer {
   const png = new PNG({ width: SIZE, height: SIZE });
+  const dy = opts.verticalShift ?? 0;
   const setPixel = (x: number, y: number, rgb: readonly [number, number, number]) => {
     if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) return;
     const idx = (y * SIZE + x) * 4;
@@ -37,15 +40,15 @@ function buildFrame(opts: {
     png.data[idx + 3] = 255;
   };
   // Head (body color).
-  for (let y = 4; y < 10; y++) {
+  for (let y = 4 + dy; y < 10 + dy; y++) {
     for (let x = 12; x < 20; x++) setPixel(x, y, opts.body);
   }
   // Torso (outfit color).
-  for (let y = 10; y < 20; y++) {
+  for (let y = 10 + dy; y < 20 + dy; y++) {
     for (let x = 10; x < 22; x++) setPixel(x, y, opts.outfit);
   }
   // Leg (body color), swings with legOffset.
-  for (let y = 20; y < 28; y++) {
+  for (let y = 20 + dy; y < 28 + dy; y++) {
     for (let x = 14 + opts.legOffset; x < 18 + opts.legOffset; x++) setPixel(x, y, opts.body);
   }
   // Optional extra blob to simulate a stray/incoherent addition (e.g. a
@@ -112,6 +115,24 @@ describe('checkFrameCoherence', () => {
 
     expect(result.ok).toBe(false);
     expect(result.pairs[0]!.massDeltaRatio).toBeGreaterThan(DEFAULT_MAX_MASS_DELTA_RATIO);
+  });
+
+  it('fails when a later frame bobs vertically off the shared floor line', () => {
+    const frames = [
+      buildFrame({ body: BODY, outfit: OUTFIT, legOffset: -2 }),
+      buildFrame({ body: BODY, outfit: OUTFIT, legOffset: 0 }),
+      // Same palette and mass, but the whole character floats upward —
+      // the "same floor line" prompt instruction was ignored.
+      buildFrame({ body: BODY, outfit: OUTFIT, legOffset: 2, verticalShift: -8 }),
+    ];
+
+    const result = checkFrameCoherence(frames);
+
+    expect(result.ok).toBe(false);
+    expect(result.pairs[0]!.ok).toBe(true);
+    expect(result.pairs[1]!.ok).toBe(false);
+    expect(result.pairs[1]!.baselineDeltaPx).toBeGreaterThan(DEFAULT_MAX_BASELINE_DELTA_PX);
+    expect(result.pairs[1]!.reasons.join(' ')).toMatch(/baseline/);
   });
 
   it('respects custom thresholds passed via options', () => {
