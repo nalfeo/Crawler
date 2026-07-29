@@ -282,6 +282,7 @@ cheaply: it burns a full trial matrix and produces a confidently wrong answer.
 
 ## Related
 
+- `docs/agent-os/personas/devops-engineer.md` — the persona whose doctrine you inherit (you are its specialist sibling)
 - `docs/agent-os/policies/velocity-lab-policy.md` — the rules the harness enforces
 - `.github/skills/bottleneck-scan/SKILL.md`
 - `.github/skills/task-pack-builder/SKILL.md`

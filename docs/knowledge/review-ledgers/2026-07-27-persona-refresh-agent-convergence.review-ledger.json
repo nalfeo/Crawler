@@ -1,0 +1,73 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "persona-refresh-agent-convergence",
+  "task_title": "Refresh agent personas, promote them to invocable agents, and converge the asset pipeline",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Three alternatives were enumerated and argued (agent-first single source with generated persona docs; persona-first single source with generated agent frontmatter; keep two selectable asset agents deduped via a shared template). The two-layer model was retained, but five changes landed: the guard now actually enforces canonical-agent cardinality and agent->persona backlinks (the README claim was previously unenforced), check-paths tracks fenced-block state, producer.ts no longer silently defaults unmapped systems to Game Designer, asset-forge requires explicit human confirmation before issue-wave mode, and the README records who owns load-time LLM content if it is ever built (the gap left by retiring AI Content Engineer).",
+      "adversarial": true,
+      "alternatives_considered": 3
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 6,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 7,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
