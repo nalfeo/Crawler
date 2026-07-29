@@ -21,10 +21,15 @@ import { createPlayerTrailVfx } from './PlayerTrailVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
-import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
+import {
+  GENERATED_SPRITE_REGISTRY_KEY,
+  registerGeneratedSpriteAnimations,
+  walkAnimationKey,
+} from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
   resolveOpaqueFit,
+  type GeneratedSpriteAnimation,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
   type OpaqueBounds,
@@ -92,13 +97,30 @@ const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const ENEMY_RIGHTWARD_FLIP_EPSILON = 0.001;
 const ENEMY_MOVEMENT_MOTION_EPSILON = 0.0001;
 const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
+/**
+ * Minimum speed (ft/s) before the player's walk animation plays. Below this,
+ * the player holds its idle (frame-0) pose instead of animating in place —
+ * mirrors the enemy movement-motion threshold's intent but is named
+ * separately since the player's walk cycle is a distinct, newer concern.
+ */
+const PLAYER_WALK_SPEED_EPSILON = 0.05;
+const PLAYER_WALK_SPEED_EPSILON_SQ = PLAYER_WALK_SPEED_EPSILON ** 2;
 const SPEED_STATUS_TINT = 0xaadfff;
 /** Fill tint mode value; kept numeric to preserve Node-safe type-only imports. */
 export const PHASER_TINT_MODE_FILL = 1;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
-  obj: Phaser.GameObjects.Image;
+  /**
+   * Almost every entity renders as a static `Phaser.GameObjects.Image`. The
+   * player is the sole exception once its resolved texture carries an
+   * `animation` descriptor (see `generatedAnimationByTexture` below) — in
+   * that case a `Phaser.GameObjects.Sprite` is created instead so
+   * `.anims.play()` is available. Both share every member this file uses
+   * (position/scale/flip/texture/etc.); only `.anims` is Sprite-only, so
+   * call sites that need it must guard first.
+   */
+  obj: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
   type: string;
   /** Base scale to restore in the default per-frame branch. */
   baseScale: number;
@@ -470,6 +492,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
   const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
   /**
+   * Animation descriptor per generated texture key, so the player render
+   * branch can decide whether to create a Sprite (animatable) instead of a
+   * plain Image, and which walk-cycle key to play. Rebuilt alongside
+   * `generatedFacingByTexture` whenever the registry identity changes.
+   */
+  const generatedAnimationByTexture = new Map<string, GeneratedSpriteAnimation>();
+  /**
    * Opaque pixel bounds per texture key, so the set-piece pass can anchor and
    * scale props by their VISIBLE art instead of the raw canvas. Rebuilt with
    * `generatedFacingByTexture` whenever the registry identity changes.
@@ -511,13 +540,18 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       if (generatedRegistry !== cachedGeneratedRegistry) {
         generatedFacingByTexture.clear();
         generatedBoundsByTexture.clear();
+        generatedAnimationByTexture.clear();
         if (generatedRegistry) {
           for (const entry of generatedRegistry.entries()) {
             generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
             if (entry.opaqueBounds !== undefined) {
               generatedBoundsByTexture.set(entry.textureKey, entry.opaqueBounds);
             }
+            if (entry.animation !== undefined) {
+              generatedAnimationByTexture.set(entry.textureKey, entry.animation);
+            }
           }
+          registerGeneratedSpriteAnimations(scene, generatedRegistry);
         }
         cachedGeneratedRegistry = generatedRegistry;
         // Expose the registry to the game layer so projectile-origin helpers can
@@ -549,6 +583,37 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       };
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
+
+      /**
+       * Play (or hold) the player's walk-cycle animation based on current
+       * speed. No-ops for any texture without a registered `animation`
+       * descriptor (e.g. today's Kenney static frame) and for plain
+       * `Image` game objects (no `.anims`), so this is safe to call
+       * unconditionally from the player render branch.
+       */
+      const playPlayerWalkAnimation = (
+        obj: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite,
+        eid: number,
+      ): void => {
+        const animatable = obj as Partial<Phaser.GameObjects.Sprite>;
+        const anims = animatable.anims;
+        if (!anims || typeof anims.play !== 'function') {
+          return;
+        }
+        if (!generatedAnimationByTexture.has(obj.texture.key)) {
+          return;
+        }
+        const vx = velocity.x[eid] ?? 0;
+        const vy = velocity.y[eid] ?? 0;
+        const isMoving = vx * vx + vy * vy > PLAYER_WALK_SPEED_EPSILON_SQ;
+        if (isMoving) {
+          // `true` (ignoreIfPlaying) avoids restarting the cycle from frame 0
+          // every render tick while the player keeps moving.
+          anims.play(walkAnimationKey(obj.texture.key), true);
+        } else if (typeof anims.stop === 'function') {
+          anims.stop();
+        }
+      };
 
       const ensureMobMotionState = (
         eid: number,
@@ -1044,10 +1109,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                   appearanceKey,
                   variantRoll: world.stores.sprite.variantRoll[eid],
                 });
+          const hasWalkAnimation = generatedAnimationByTexture.has(resolved.key);
           const img =
-            resolved.frame !== undefined
-              ? scene.add.image(x, y, resolved.key, resolved.frame)
-              : scene.add.image(x, y, resolved.key);
+            hasWalkAnimation && typeof scene.add.sprite === 'function'
+              ? resolved.frame !== undefined
+                ? scene.add.sprite(x, y, resolved.key, resolved.frame)
+                : scene.add.sprite(x, y, resolved.key)
+              : resolved.frame !== undefined
+                ? scene.add.image(x, y, resolved.key, resolved.frame)
+                : scene.add.image(x, y, resolved.key);
           if (resolved.scale !== 1) {
             img.setScale(resolved.scale);
           }
@@ -1424,7 +1494,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             } else {
               img.setScale(visual.baseScale);
-              if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
+              if (entityType === 'player') {
+                const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
+                const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
+                const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+                if (typeof img.setFlipX === 'function') {
+                  img.setFlipX(shouldMirror);
+                }
+                playPlayerWalkAnimation(img, eid);
+              } else if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
               }
             }
