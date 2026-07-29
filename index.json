@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bc91f34498fca5ef9e3fe01233324fe9cf6ae9ce",
+    "commitDate": "2026-07-29T03:44:51Z",
+    "commitSubject": "docs: enrich foundry-retirement ADRs with historical context from stuck PR #1886 (#2271)",
+    "capturedAt": "2026-07-29T04:44:17.949Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30420463208",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/bc91f34498fca5ef9e3fe01233324fe9cf6ae9ce.json"
+  },
+  {
     "commit": "243eb7aae6f2360e7bef7e48b1b63861bf3b8821",
     "commitDate": "2026-07-29T03:34:35Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (2 art paths) (#2291)",
