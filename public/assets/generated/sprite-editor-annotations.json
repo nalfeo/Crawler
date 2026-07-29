@@ -333,6 +333,61 @@
       "favorite": false,
       "disliked": true,
       "comment": ""
+    },
+    "sweaty-merchant-v2-var-10": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "sweaty-merchant-v2-var-5": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "sweaty-merchant-v2-var-7": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "sweaty-merchant-v2-var-9": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "welcome-goon-v2-var-10": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "welcome-goon-v2-var-3": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "welcome-goon-v2-var-4": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "welcome-goon-v2-var-5": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "welcome-goon-v2-var-6": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "welcome-goon-v2-var-7": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
+    },
+    "welcome-goon-v2-var-9": {
+      "favorite": false,
+      "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
+      "disliked": true
     }
   }
 }

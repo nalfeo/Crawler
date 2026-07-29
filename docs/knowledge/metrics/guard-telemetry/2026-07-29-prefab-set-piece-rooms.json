@@ -1,0 +1,39 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "prefab-set-piece-rooms",
+  "date": "2026-07-29",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 1773,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 1766,
+      "crash": 7
+    }
+  },
+  "tools": {
+    "ask_user": 14,
+    "chrome-devtools-new_page": 2,
+    "create": 111,
+    "edit": 284,
+    "extensions_reload": 7,
+    "filesystem-write_file": 4,
+    "glob": 4,
+    "grep": 144,
+    "list_agents": 1,
+    "list_powershell": 1,
+    "open_canvas": 7,
+    "playwright-browser_navigate": 2,
+    "powershell": 808,
+    "read_agent": 1,
+    "read_powershell": 24,
+    "send_session_message": 2,
+    "sql": 16,
+    "stop_powershell": 1,
+    "task": 1,
+    "view": 339
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

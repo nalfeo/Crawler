@@ -18,18 +18,14 @@
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "claude-opus-4.8"
-          ],
+          "models": ["claude-opus-4.8"],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": false
         },
         {
           "round": 2,
-          "models": [
-            "claude-opus-4.8"
-          ],
+          "models": ["claude-opus-4.8"],
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true

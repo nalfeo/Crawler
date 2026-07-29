@@ -145,6 +145,49 @@ kept **byte-for-byte identical**. A surface that declares neither `__visualRevie
 the equipment probe still runs, but with **no** deterministic geometry checks and a
 loud non-gating warning (findings are screenshot-only, not pixel-grounded).
 
+## Set-piece scenario (interior composition)
+
+Set pieces get a dedicated critique pass because their failure mode is aesthetic, not
+geometric. The deterministic half is **not** this skill — it is
+`npm run setpiece:score -- <id>` (eleven checks: density, stacking, perimeter, floor
+variety, anti-grid, real-world scale, focal point, wall anchoring, circulation, anchor
+sanity, shell integrity). Run it
+first; a room that fails the gate is not ready for subjective review.
+
+**Setup path:** `scripts/agent/review/setup/set-piece-welcome-room.js` (copy per room),
+or render directly via `src/shared/set-piece-render.ts` / the `set-piece-lab`.
+
+**Style anchor:** `docs/knowledge/game-design/set-piece-lookbook.md` — 50 studied
+interiors, five principles, and per-archetype references. Ground every finding in it.
+
+Critique these, in order:
+
+1. **Theme purity** — does every prop belong to this room's fiction? (Deliberately not
+   a deterministic check: the schema carries no per-prop theme tags.)
+2. **Narrative legibility** — can you tell what happens here without being told?
+   "Floorplans first, decoration second" — does it read as a programmed space or as
+   props scattered in a box?
+3. **Palette cohesion** — do all props share the room's palette subset, or do some read
+   as imported from another game?
+4. **Lighting cohesion** — one light direction, one shadow convention. A top-lit prop in
+   a left-lit room reads as pasted in.
+5. **Scale believability** — do neighbouring props agree on physical size? (A chair must
+   not out-measure a refrigerator.)
+6. **Focal hierarchy** — does the eye land on the intended focal object first?
+7. **Pixel-art craft** — silhouette readability at 16px, outline consistency, dithering
+   discipline, no over-detailed mush.
+8. **Crawler POV fit** — 3/4 top-down, 16px tiles, reality-show-dungeon tone.
+
+**Archetype caveat:** boss dens are the documented density exception (sparser, darker,
+higher contrast, one monumental focal object). Do not report a boss den as
+under-dressed if it is deliberately austere — judge it against the lookbook's boss-den
+references instead.
+
+Findings are advisory and never merge-blocking. A finding that recurs across rooms
+should be promoted into a deterministic check in
+`scripts/agent/set-piece/composition-score.ts` rather than relying on model
+consistency.
+
 ## Artifacts
 
 Written under:

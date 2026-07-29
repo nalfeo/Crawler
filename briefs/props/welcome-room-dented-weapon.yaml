@@ -1,0 +1,117 @@
+# ASPECT NOTE (Asset Forge, 2026-07-25): the set-piece renderer is now
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect). So the canvas aspect ratio IS
+# the object's real-world proportions. This weapon is ~1.2 ft wide x 4 ft tall,
+# so the canvas is declared 20x64 (0.31:1) and `sizeVariant: tall` reshapes the
+# sheet into tall narrow cells so the model composes into a genuinely tall cell
+# instead of a square one. resizeSpriteStrategy() returns 'height' for 20x64
+# (h >= 2w), which locks the output HEIGHT at 64 and lets the width follow the
+# DRAWN subject's aspect — i.e. the shipped canvas is aspect-true by
+# construction.
+type: prop
+name: welcome-room-dented-weapon
+sizeVariant: tall
+description: |
+  An obsolete, battered melee weapon — a heavy old iron-headed mace or a plain
+  broad-bladed sword — standing upright, leaning against a stone wall. Front
+  elevation 3/4 view, the same view as the already-approved welcome-room-desk.
+  Modern high-quality pixel art, silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — THIS IS THE THING MOST LIKELY TO GO WRONG.
+  The weapon is approximately 1.2 FEET WIDE x 4 FEET TALL. Its bounding box must
+  be a LONG NARROW VERTICAL SLIVER, more than THREE TIMES TALLER THAN IT IS WIDE
+  (width : height = 0.3 : 1). Think of a broom standing in a corner. It runs from
+  very near the top margin of the cell to very near the bottom margin, and it is
+  only a few pixels wide for most of its length. If it looks squat, chunky or
+  squarish, it is wrong. If it looks almost too thin, it is right.
+  It stands BOLT UPRIGHT, straight up and down, parallel with the left and right
+  edges of the cell. ROUND 1 FAILED ON THIS: it drew the weapon tilted about
+  thirty degrees, which spread it diagonally across the cell and made the
+  bounding box almost square instead of a sliver. Do NOT tilt it. At most it may
+  lean by two or three degrees — visually it should look vertical. Do NOT lay it
+  flat, do NOT draw it diagonally corner to corner, and do NOT draw it
+  horizontally. The tip of the blade or head is near the TOP margin of the cell
+  and the butt is on the BOTTOM margin, directly below it.
+
+  IT IS ONE OLD, DENTED, OUT-OF-DATE WEAPON.
+  - The head or blade is at the TOP, the grip and pommel at the BOTTOM where it
+    rests on the floor.
+  - It is visibly obsolete — a crude, heavy, old-fashioned design that nobody
+    would carry now. Overbuilt, plain, unfashionable.
+  - It is DENTED and dinged all over: the iron is pocked with impact marks, one
+    edge is chipped, the blade or head is nicked out of true.
+  - The metal is dull, pitted and rust-freckled, never polished, never gleaming.
+  - The grip is wrapped in old leather that has darkened, cracked and unwound at
+    one end, with a couple of loose tails hanging.
+  - It is CARED FOR but NEVER USED: no blood, no fresh scratches, and one small
+    patch has been wiped clean of dust recently — someone still touches it.
+
+  IT IS EMPHATICALLY NOT ANY OF THESE — these are automatic rejections:
+  - NOT a staff, wand, torch, broom, pole, spear or polearm with a long shaft.
+  - NOT a shiny hero weapon, magic weapon, glowing weapon or ornate artefact.
+  - NOT a weapon rack, an armoury, or two or more weapons.
+  - NOT a weapon held by a character — there is no character.
+  - NOT lying flat on the ground.
+  It is one single weapon, standing upright and leaning. One object. Nothing else.
+
+  MOOD — this is a grimy reality-TV dungeon set, threadbare and over-used. The
+  welcome room is the dungeon's shabby reception, staffed season after season by
+  three bored NPCs. This weapon belongs to the Welcome Goon, who was a crawler
+  himself many seasons ago; it is the weapon he came in with. It is sentimental —
+  kept, dusted, leaned in the corner where he can see it — and completely
+  obsolete. It should read as a retired man's souvenir, quietly sad, not as loot.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase,
+  welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope and
+  welcome-room-show-poster without clashing: dark walnut, deep maroon, tarnished
+  brass, muted and dusty, never bright and never saturated. The iron is a dull
+  greyed-brown steel with knocked-back rust freckles; the leather grip is dark
+  walnut; any fitting, rivet or pommel cap is tarnished brass. BANNED: neon, pure
+  white, pure black, bright silver, chrome, any glow or magical highlight,
+  saturated red, saturated yellow, orange, teal, cyan, blue, green, magenta,
+  purple, and any speckle of a hue that is not in the maroon / walnut / brass /
+  dull-iron family. A saturated, speckled or gleaming result is an automatic
+  rejection.
+
+  RENDERING: hard dark contour around the weapon in the house prop style, muted
+  interior shading, lit from above, soft one-pixel contact shadow at the foot
+  where it meets the floor. This prop is GROUNDED: its butt rests on the floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the weapon. Do NOT paint the stone
+  wall it leans on, do not paint the floor, a bracket, a backing panel, frame,
+  border or vignette — the room is already painted underneath this art in the
+  game. Every pixel that is not weapon must be fully transparent.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the weapon's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the weapon.
+size:
+  width: 20
+  height: 64
+anchor:
+  x: 10
+  y: 63
+sensors:
+  # A leaning weapon is a thin diagonal sliver, so it fills much less of its
+  # bounding box than the `prop` default [0.10, 0.65] band assumes — a 10-degree
+  # lean alone empties two corners. The cap is lowered to 0.55 because anything
+  # fuller than that has stopped being a sliver (background-removal failure or a
+  # solid blob); the floor is left at the default 0.10.
+  opaqueRatio:
+    min: 0.10
+    max: 0.55
+  # A leaning object's mass is not centred over the bottom-centre pixel.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - keepsake
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

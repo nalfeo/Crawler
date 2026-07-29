@@ -1,0 +1,114 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): height-authoritative renderer, so the
+# canvas aspect IS the real-world proportion. 1 tile = 4 ft (PIXELS_PER_FOOT = 8
+# => 32 world px per tile). This board is ~3 ft wide x 2.5 ft tall => 1.2:1,
+# hence a 96x80 canvas. Neither axis is >= 2x the other, so
+# resizeSpriteStrategy() returns 'fit' and the shipped canvas is exactly 96x80.
+#
+# WALL-MOUNTED: this board hangs on the wall and has no grounded base, so the
+# `prop` default bottom-centre grip anchor is the wrong anchor semantics here
+# (same reasoning as welcome-room-wall-shelf). Centre-of-mass is the correct —
+# and still fully enforced — anchor sensor for a wall-hung prop.
+type: prop
+name: welcome-room-chore-rota
+description: |
+  A WALL-MOUNTED CHORE ROTA BOARD: a hand-ruled grid scratched onto a battered
+  flat board, tracking whose turn it is, kept for far too many seasons. Front-
+  elevation 3/4 view, looking straight at the face of the board — the same view
+  as the already-approved welcome-room-desk (which has "WELCOME" painted on its
+  FRONT face). Draw it as a FLAT BOARD FACADE seen face-on. Modern high-quality
+  pixel art, silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  The board is approximately 3 FEET WIDE x 2.5 FEET TALL. Its bounding box must
+  be slightly WIDER THAN IT IS TALL (width : height = 1.2 : 1) — a modest
+  landscape rectangle, NOT a square, NOT a portrait notice board, NOT a long thin
+  banner. It fills roughly 85-90% of the cell on both axes with only the standard
+  small margin around it; it must NOT be a small object floating in a big empty
+  cell.
+
+  WHAT IT IS:
+  - ONE flat rectangular board — thin plank or scavenged panel — with a visible
+    slight thickness along its lower and right edges so it reads as a physical
+    object hanging off a wall rather than a painted rectangle. Corners knocked
+    and slightly rounded from years of handling; one corner split.
+  - A HAND-RULED GRID drawn on its face: three or four wobbly vertical column
+    rules and four or five wobbly horizontal row rules, none of them straight,
+    none of them evenly spaced, drifting off true and crowding at one end. Ruled
+    by eye with a blade or a charcoal stick, never with a straightedge.
+  - THE LEFT-HAND COLUMN carries three name entries — one per NPC — rendered ONLY
+    as short scratchy squiggle strokes that read as handwriting from a distance.
+    They must NOT form readable letters, words, digits or numbers of any kind.
+  - THE CELLS carry TALLY-STROKE MARKS: small clusters of upright strokes, some
+    cells crowded, most cells empty. Uneven, hand-cut, obsessive.
+  - ANGER IS VISIBLE: at least two entries are CROSSED OUT with a hard diagonal
+    slash that overshoots the cell, and one whole row has been scored through
+    with a heavy double stroke that gouges the board. One cluster of tallies is
+    scrubbed into a smear. This is a decade-old argument recorded in strokes.
+  - A nail or a bent hook at the top edge, with the board hanging very slightly
+    CROOKED off it. Nobody has straightened it in years.
+
+  IT IS NOT: a chalkboard with legible writing, a poster, a painting, a window, a
+  door, a shuttered panel, a chessboard, a checkerboard, a calendar with numbers,
+  a ledger, or a book. It is a scratched-up hand-ruled rota board.
+
+  MOOD — three NPCs are stuck living in this reality-show reception room
+  together, season after season, bored out of their minds, forbidden by dungeon
+  rules from leaving, harming each other or complaining while the cameras roll.
+  The rota is where the resentment is allowed to go. It hangs in the half of the
+  room the camera rig does NOT cover, so nobody has tidied it away. Petty, worn,
+  slightly unsettling, never charming or decorative.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit beside
+  welcome-room-desk, welcome-room-bookcase, welcome-room-show-poster,
+  welcome-room-wall-shelf and prop-wall-sconce-v1 without clashing: cool grey
+  worn stone, warm-brown walnut wood, desaturated production-set greys and
+  blacks, tarnished brass, deep maroon — muted and dusty. The board face is a
+  dulled warm grey-brown timber; the rules and tallies are a dark desaturated
+  charcoal-brown; the angry crossings-out are a single restrained faded maroon,
+  the only saturated accent in the sprite; the hook is tarnished brass. BANNED:
+  neon, pure white, pure black, saturated red, blood red, saturated yellow,
+  orange, teal, cyan, blue, green, magenta, purple, and chalk-white.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The top and left edges
+  of the board carry the highlight; the lower and right edge thickness carries
+  the shadow. Every prop in this wave shares that one light direction.
+
+  RENDERING: hard 1-pixel dark outline on the board silhouette, 3-5 tone stops
+  for the timber, restrained dithering for grain and grime — no mushy gradients,
+  no airbrush, no floating unsupported elements. This prop is WALL-MOUNTED: it
+  hangs on the stone wall and does NOT rest on the floor.
+
+  NO TEXT of any kind: no readable letters, words, numbers or digits anywhere —
+  the names and counts must stay abstract strokes and squiggles.
+
+  BACKGROUND: fully transparent. Draw ONLY the board and what is scratched on it.
+  Do NOT paint a slab of stone wall behind it, a rectangular stone panel, a
+  second backing plate, a frame, a border, a vignette, or any cast/contact/drop
+  shadow — the wall is already painted underneath this art in the game. Every
+  pixel outside the board's own silhouette must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the board's colours so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 96
+  height: 80
+anchor:
+  x: 48
+  y: 40
+sensors:
+  # Wall-mounted: no grounded base, so a bottom-centre grip anchor is meaningless.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - living-area
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

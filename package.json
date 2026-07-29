@@ -137,6 +137,10 @@
     "security:check": "npm run security:audit && npm run security:exact-deps && bash scripts/agent/security/scan-secrets.sh && tsx scripts/agent/security/check-codeowners.ts && tsx scripts/agent/security/check-deps.ts && bash scripts/agent/security/check-dynamic-patterns.sh && tsx scripts/agent/security/check-ai-prompts.ts",
     "health:check": "vitest run --project unit --coverage --reporter=dot && tsx scripts/agent/health/coverage-trend.ts && tsx scripts/agent/health/untested-systems.ts && tsx scripts/agent/health/extended-property.ts && tsx scripts/agent/health/governor-playthroughs.ts && tsx scripts/agent/health/balance-regression.ts && tsx scripts/agent/health/bench-regression.ts",
     "perf:profile": "tsx scripts/agent/perf/profile-headless.ts",
+    "setpiece:score": "tsx scripts/agent/set-piece/composition-score-cli.ts",
+    "setpiece:reachability-sweep": "tsx scripts/agent/set-piece/reachability-sweep.ts",
+    "check:tile-mattes": "tsx scripts/sprites/check-tile-seams.ts",
+    "sprites:derive-opaque-bounds": "tsx scripts/sprites/derive-opaque-bounds.ts",
     "security:exact-deps": "node scripts/agent/security/check-exact-deps.mjs"
   },
   "keywords": [
