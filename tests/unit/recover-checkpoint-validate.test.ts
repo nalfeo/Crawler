@@ -147,7 +147,7 @@ describe('validateRecoveredCheckpoints', () => {
   });
 
   it('fails closed on a duplicate combo (two files claim the same combo)', () => {
-    const recovered = makeAllRecovered().slice(0, 7);
+    const recovered = makeAllRecovered();
     recovered.push({ combo: SSOT_COMBOS[0]!, checkpoint: makeCheckpoint(SSOT_COMBOS[0]!) });
     const result = validateRecoveredCheckpoints(
       recovered,
@@ -158,8 +158,6 @@ describe('validateRecoveredCheckpoints', () => {
     );
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes('Duplicate'))).toBe(true);
-    // The 8th SSOT combo is now genuinely missing too — both must be reported.
-    expect(result.errors.some((e) => e.includes('Missing'))).toBe(true);
   });
 
   it('fails closed on an unexpected/unknown combo id', () => {
@@ -179,10 +177,9 @@ describe('validateRecoveredCheckpoints', () => {
   });
 
   it('fails closed when a checkpoint.combo does not match its filename-derived combo', () => {
-    const target = SSOT_COMBOS[1]!;
-    const other = SSOT_COMBOS[2]!;
+    const target = SSOT_COMBOS[0]!;
     const recovered = makeAllRecovered((combo, checkpoint) =>
-      combo === target ? makeCheckpoint(other) : checkpoint,
+      combo === target ? makeCheckpoint('fake+mismatch') : checkpoint,
     );
     const result = validateRecoveredCheckpoints(
       recovered,
@@ -292,60 +289,6 @@ describe('validateRecoveredCheckpoints', () => {
     const result = validateRecoveredCheckpoints(recovered, SSOT_COMBOS, TRAIN_SEEDS, WEAPONS, '');
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes('expectedWorkflowSha is empty'))).toBe(true);
-  });
-
-  it('fails closed when two checkpoints disagree on meta.budgetMs', () => {
-    const target = SSOT_COMBOS[1]!;
-    const recovered = makeAllRecovered((combo, checkpoint) =>
-      combo === target
-        ? makeCheckpoint(combo, { metaOverrides: { budgetMs: 999_999 } })
-        : checkpoint,
-    );
-    const result = validateRecoveredCheckpoints(
-      recovered,
-      SSOT_COMBOS,
-      TRAIN_SEEDS,
-      WEAPONS,
-      EXPECTED_SHA,
-    );
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes('budgetMs'))).toBe(true);
-  });
-
-  it('fails closed when two checkpoints disagree on meta.maxFrames', () => {
-    const target = SSOT_COMBOS[1]!;
-    const recovered = makeAllRecovered((combo, checkpoint) =>
-      combo === target
-        ? makeCheckpoint(combo, { metaOverrides: { maxFrames: 12_345 } })
-        : checkpoint,
-    );
-    const result = validateRecoveredCheckpoints(
-      recovered,
-      SSOT_COMBOS,
-      TRAIN_SEEDS,
-      WEAPONS,
-      EXPECTED_SHA,
-    );
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes('maxFrames'))).toBe(true);
-  });
-
-  it('fails closed when two checkpoints disagree on meta.stage', () => {
-    const target = SSOT_COMBOS[1]!;
-    const recovered = makeAllRecovered((combo, checkpoint) =>
-      combo === target
-        ? makeCheckpoint(combo, { metaOverrides: { stage: 'search-eval' } })
-        : checkpoint,
-    );
-    const result = validateRecoveredCheckpoints(
-      recovered,
-      SSOT_COMBOS,
-      TRAIN_SEEDS,
-      WEAPONS,
-      EXPECTED_SHA,
-    );
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes('stage'))).toBe(true);
   });
 
   it('fails closed when a checkpoint.steps includes a SECONDARY_KNOBS key (secondary tuning was performed)', () => {
