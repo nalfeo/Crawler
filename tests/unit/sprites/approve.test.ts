@@ -10,8 +10,10 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { ASSET_SURFACE_PATHS } from '../../../scripts/sprites/checkin.js';
 import {
   approveVariant,
   ApproveError,
@@ -1096,5 +1098,118 @@ describe('unapproveVariant', () => {
 
     // The outside file is untouched.
     expect(existsSync(outsideShard)).toBe(true);
+  });
+});
+
+/**
+ * The whole point of sharding the manifest: an `approve` of a new asset must
+ * produce a git diff of EXACTLY its own PNG + its own `entries/<key>.json`
+ * shard, touching no file shared with any other asset. That disjointness is
+ * what lets two parallel art PRs never conflict by construction — the measured
+ * success gate for this work. This runs a real `git` repo end-to-end (approve
+ * writer + `git add` over the real `ASSET_SURFACE_PATHS` the check-in stages)
+ * and asserts the staged file set, plus proves the two former mega-files
+ * (`src/shared/data/sprite-catalog.json`, the aggregate `manifest.json`) are
+ * never touched.
+ */
+describe('approve → check-in diff shape (success gate)', () => {
+  let gitRepo: string;
+  let publicAssetsDir: string;
+  let generatedDir: string;
+  let manifestPath: string;
+  let catalogPath: string;
+  let catalogBaselineBytes: string;
+
+  const git = (args: ReadonlyArray<string>): string =>
+    execFileSync('git', [...args], { cwd: gitRepo, encoding: 'utf8' });
+
+  beforeEach(() => {
+    gitRepo = mkdtempSync(path.join(tmpdir(), 'crawler-approve-git-'));
+    publicAssetsDir = path.join(gitRepo, 'public', 'assets');
+    generatedDir = path.join(publicAssetsDir, 'generated');
+    manifestPath = path.join(generatedDir, 'manifest.json');
+    catalogPath = path.join(gitRepo, 'src', 'shared', 'data', 'sprite-catalog.json');
+
+    git(['init', '-q']);
+    git(['config', 'user.email', 'test@example.com']);
+    git(['config', 'user.name', 'Test']);
+    git(['config', 'commit.gpgsign', 'false']);
+
+    // The aggregate manifest.json is a gitignored build artifact, never committed.
+    writeFileSync(path.join(gitRepo, '.gitignore'), 'public/assets/generated/manifest.json\n');
+
+    // Baseline: one pre-existing generated asset (PNG + shard) and a committed
+    // sprite-catalog.json that carries NO generated rows (they are derived now).
+    mkdirSync(path.join(generatedDir, 'entries'), { recursive: true });
+    writeFileSync(path.join(generatedDir, 'old-blade-var-0.png'), 'OLD-PNG');
+    writeShard(generatedDir, 'old-blade-var-0', {
+      briefId: 'old-blade',
+      spriteName: 'old-blade-var-0',
+      assetPath: 'generated/old-blade-var-0.png',
+      variantIndex: 0,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: 'generated/runs/old-blade/x',
+      contentHash: 'deadbeef',
+    } as unknown as GeneratedManifestEntry);
+    mkdirSync(path.dirname(catalogPath), { recursive: true });
+    catalogBaselineBytes = `${JSON.stringify({ version: 1, records: [] }, null, 2)}\n`;
+    writeFileSync(catalogPath, catalogBaselineBytes);
+    // Place a (gitignored) aggregate on disk to prove it stays unstaged even
+    // when physically present — exactly the dev/build situation.
+    writeFileSync(manifestPath, `${JSON.stringify({ version: 1, entries: {} }, null, 2)}\n`);
+
+    git(['add', '-A']);
+    git(['commit', '-qm', 'baseline']);
+  });
+
+  afterEach(() => {
+    rmSync(gitRepo, { recursive: true, force: true });
+  });
+
+  it('approving a new variant stages ONLY its own PNG + shard, never a shared file', () => {
+    const { runDir } = writeFakeRun(gitRepo, {
+      briefId: 'iron-sword',
+      derivedAnchorFor: [1],
+      judgeFor: [{ index: 1, minScore: 4 }],
+    });
+
+    approveVariant({
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot: gitRepo,
+      now: () => new Date('2026-06-08T15:30:00.000Z'),
+    });
+
+    // Stage exactly what the real check-in stages (the approved-art surface).
+    for (const surface of ASSET_SURFACE_PATHS) {
+      git(['add', '--', surface]);
+    }
+
+    const staged = git(['diff', '--cached', '--name-only'])
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .sort();
+
+    // The entire diff is the new PNG + its own per-asset shard. Nothing else.
+    expect(staged).toEqual(
+      [
+        'public/assets/generated/entries/iron-sword-var-1.json',
+        'public/assets/generated/iron-sword-var-1.png',
+      ].sort(),
+    );
+
+    // The two former mega-files are provably untouched by the approve:
+    // sprite-catalog.json is byte-identical, and the aggregate manifest.json
+    // stays unstaged (gitignored) despite existing on disk.
+    expect(staged).not.toContain('src/shared/data/sprite-catalog.json');
+    expect(staged).not.toContain('public/assets/generated/manifest.json');
+    expect(readFileSync(catalogPath, 'utf8')).toBe(catalogBaselineBytes);
+
+    // The pre-existing asset's shard was not rewritten — disjoint from the new one.
+    expect(staged).not.toContain('public/assets/generated/entries/old-blade-var-0.json');
   });
 });
