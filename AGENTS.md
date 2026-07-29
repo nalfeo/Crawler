@@ -130,6 +130,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Check size coverage       | `npm run check:size-coverage`             |
 | Check weight coverage     | `npm run check:weight-coverage`           |
 | Check asset sort order    | `npm run check:sort-assets`               |
+| Check manifest hard-block | `npm run check:manifest-hard-blocked`     |
 | Boss ability status       | `npm run boss-abilities:status`           |
 | Docs index                | `npm run docs:index`                      |
 | Visual review             | `npm run review:visual`                   |

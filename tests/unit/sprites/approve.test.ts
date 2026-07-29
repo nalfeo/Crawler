@@ -46,6 +46,10 @@ interface FakeRunOptions {
   readonly centerOfGravityFor?: ReadonlyArray<number>;
   /** Attach a judge scorecard with this minScore to the listed indices. */
   readonly judgeFor?: ReadonlyArray<{ index: number; minScore: number }>;
+  /** Attach a hard-blocked judge scorecard to the listed indices. */
+  readonly hardBlockedFor?: ReadonlyArray<number>;
+  /** Attach a passed=false (but not hard-blocked) judge scorecard to the listed indices. */
+  readonly judgeFailedFor?: ReadonlyArray<number>;
   readonly facingOverride?: {
     variantIndex: number;
     direction: 'left' | 'right';
@@ -62,6 +66,8 @@ function writeFakeRun(
   const indices = options.variantIndices ?? [0, 1, 2];
   const chosenIndex = options.chosenIndex ?? indices[0]!;
   const judgeByIndex = new Map((options.judgeFor ?? []).map((j) => [j.index, j.minScore]));
+  const hardBlockedSet = new Set(options.hardBlockedFor ?? []);
+  const judgeFailedSet = new Set(options.judgeFailedFor ?? []);
   const derivedSet = new Set(options.derivedAnchorFor ?? []);
   const centerOfGravitySet = new Set(options.centerOfGravityFor ?? []);
 
@@ -106,15 +112,35 @@ function writeFakeRun(
       hold: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
       centerOfGravity: centerOfGravitySet.has(index) ? { x: 7, y: 8 } : null,
     },
-    judgeScorecard:
-      judgeByIndex.has(index) === false
-        ? null
-        : {
-            passed: true,
-            minScore: judgeByIndex.get(index)!,
-            designLanguage: { score: 4, rationale: 'Crawler-specific' },
-            briefMatch: { score: 5, rationale: 'Matches the brief' },
-          },
+    judgeScorecard: hardBlockedSet.has(index)
+      ? {
+          passed: false,
+          minScore: 1,
+          hardBlockEvaluated: true,
+          hardBlocked: true,
+          hardBlockInstruction: 'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME',
+          hardBlockRationale: 'The sheet is fundamentally unusable at game scale.',
+          designLanguage: { score: 1, rationale: 'Rejected' },
+          briefMatch: { score: 1, rationale: 'Rejected' },
+        }
+      : judgeFailedSet.has(index)
+        ? {
+            passed: false,
+            minScore: 2,
+            hardBlockEvaluated: true,
+            hardBlocked: false,
+            hardBlockInstruction: null,
+            designLanguage: { score: 2, rationale: 'Below threshold' },
+            briefMatch: { score: 3, rationale: 'Marginal' },
+          }
+        : judgeByIndex.has(index) === false
+          ? null
+          : {
+              passed: true,
+              minScore: judgeByIndex.get(index)!,
+              designLanguage: { score: 4, rationale: 'Crawler-specific' },
+              briefMatch: { score: 5, rationale: 'Matches the brief' },
+            },
     judgeSkipReason: null,
   }));
 
@@ -851,6 +877,91 @@ describe('approveVariant', () => {
       expect(entry.briefId).toBe('angry-roomba-v2');
       expect(entry.spriteName).toBe('angry-roomba-v2-var-0');
       expect(entry.assetPath).toBe('generated/angry-roomba-v2-var-0.png');
+    });
+  });
+
+  describe('hard-block gate', () => {
+    it('throws hard-blocked when judgeScorecard.hardBlocked is true', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        variantIndices: [0, 1],
+        hardBlockedFor: [1],
+      });
+      expect(() =>
+        approveVariant({
+          runDir,
+          variantIndex: 1,
+          manifestPath,
+          catalogPath,
+          publicAssetsDir,
+          repoRoot,
+          now: fixedNow,
+        }),
+      ).toThrowError(ApproveError);
+      try {
+        approveVariant({
+          runDir,
+          variantIndex: 1,
+          manifestPath,
+          catalogPath,
+          publicAssetsDir,
+          repoRoot,
+          now: fixedNow,
+        });
+      } catch (err) {
+        expect((err as ApproveError).kind).toBe('hard-blocked');
+        expect((err as ApproveError).message).toContain('hard-blocked by the judge');
+        expect((err as ApproveError).message).toContain(
+          'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME',
+        );
+      }
+      // Shard must NOT have been created — the veto must mutate nothing.
+      expect(existsSync(shardPathForKey(generatedDirOf(manifestPath), 'iron-sword-var-1'))).toBe(
+        false,
+      );
+    });
+
+    it('hard-blocked variant can be approved when allowHardBlocked is set', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        variantIndices: [0, 1],
+        hardBlockedFor: [1],
+      });
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 1,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+        allowHardBlocked: true,
+      });
+      // The entry is written — operator consciously overruled the veto.
+      expect(entry.spriteName).toBe('iron-sword-var-1');
+      expect(existsSync(shardPathForKey(generatedDirOf(manifestPath), 'iron-sword-var-1'))).toBe(
+        true,
+      );
+      // hardBlocked must be cleared (false) so the CI invariant doesn't reject
+      // the manifest, and humanHardBlockOverride must be set as durable evidence.
+      expect(entry.judgeScorecard?.hardBlocked).toBe(false);
+      expect(entry.judgeScorecard?.humanHardBlockOverride).toBe(true);
+    });
+
+    it('non-hard-blocked variant is not affected by the hard-block gate', () => {
+      const { runDir } = writeFakeRun(repoRoot, {
+        variantIndices: [0, 1],
+        hardBlockedFor: [1],
+      });
+      // Variant 0 is fine and must approve normally.
+      const entry = approveVariant({
+        runDir,
+        variantIndex: 0,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+      expect(entry.spriteName).toBe('iron-sword-var-0');
     });
   });
 });

@@ -53,6 +53,29 @@ describe('merge-train D2 fix: auto-update clean-BEHIND admitted PRs', () => {
     expect(ghTokenIdx).toBeGreaterThan(patIdx);
   });
 
+  it('dequeues 403 errors and only re-throws unexpected errors (prevents queue deadlock)', () => {
+    const raw = readFileSync(RECONCILE_PATH, 'utf8');
+    // Extract the update-branch try/catch block.
+    // The template-literal URL uses backtick quotes: `/repos/.../update-branch`
+    const updateBranchTryStart = raw.indexOf('/update-branch`');
+    expect(updateBranchTryStart).toBeGreaterThan(-1);
+    const catchStart = raw.indexOf('catch (err)', updateBranchTryStart);
+    expect(catchStart).toBeGreaterThan(-1);
+    // The catch block ends at the closing brace before "// Stop admitting"
+    const catchEnd = raw.indexOf('// Stop admitting', catchStart);
+    expect(catchEnd).toBeGreaterThan(-1);
+    const catchBlock = raw.slice(catchStart, catchEnd);
+    // 403 must be dequeued (removeLabel) so it does not poison every reconcile cycle
+    expect(catchBlock).toContain('err.status === 403');
+    expect(catchBlock).toContain('removeLabel');
+    expect(catchBlock).toContain('dequeuedFork = true');
+    // 422 must be non-fatal (log to stderr, no throw)
+    expect(catchBlock).toContain('err.status !== 422');
+    expect(catchBlock).toContain('process.stderr.write');
+    // Non-422/non-403 errors must still throw so novel failures stay visible
+    expect(catchBlock).toContain('throw err');
+  });
+
   it('uses break to halt admission after a BEHIND PR to preserve queue ordering', () => {
     const raw = readFileSync(RECONCILE_PATH, 'utf8');
     // Extract the admission loop body and verify break appears after update-branch
