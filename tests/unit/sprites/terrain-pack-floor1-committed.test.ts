@@ -114,11 +114,7 @@ function opaqueMeanLuminance(pngPath: string): number {
  * the wall-atlas is not displayed as a tiled floor and cannot create that
  * artifact.
  */
-function computeMaxLineZScore(
-  width: number,
-  height: number,
-  data: Buffer | Uint8Array,
-): number {
+function computeMaxLineZScore(width: number, height: number, data: Buffer | Uint8Array): number {
   const axisPeak = (outer: number, inner: number, index: (a: number, b: number) => number) => {
     const means: number[] = [];
     for (let a = 0; a < outer; a++) {
