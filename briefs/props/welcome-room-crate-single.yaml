@@ -1,0 +1,17 @@
+type: prop
+name: welcome-room-crate-single
+description: |
+  A single squat wooden crate with a pried-open lid, one board split, packing straw spilling over the edge. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.
+
+  Rendered in the game at approximately 2.5 x 2.5 feet (1 tile = 16px = 2 feet). The art must read believably at that size — keep detail count low enough to survive at 16px and do not over-detail.
+
+  This prop must sit beside the already-approved welcome-room art without clashing: welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope, welcome-sign-left-v1 and prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass hardware, hard dark outline, muted and dusty, never bright or saturated.
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

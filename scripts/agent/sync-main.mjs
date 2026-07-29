@@ -246,7 +246,11 @@ export function trackAuthoringActivity({
     now - lastAttemptAt < SYNC_REMINDER_INTERVAL_MS;
 
   const syncResult = recentFailedAttempt
-    ? { status: state.lastResult, branchChanged: false, message: state.lastMessage ?? 'Sync pending.' }
+    ? {
+        status: state.lastResult,
+        branchChanged: false,
+        message: state.lastMessage ?? 'Sync pending.',
+      }
     : runSync({ cwd, reason: 'periodic-active', now });
 
   if (syncResult.status === 'success') {

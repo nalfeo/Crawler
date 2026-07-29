@@ -32,6 +32,13 @@ let tmpCounter = 0;
 
 export class LocalRunStore implements RunStore {
   readonly backend = 'local' as const;
+  /**
+   * `putConditional` checks the precondition with `stat` and then writes — two
+   * separate filesystem operations, so a concurrent writer can interleave.
+   * Adequate for single-process tests and local development; NOT safe as a
+   * cross-machine lock.
+   */
+  readonly conditionalWrites = 'best-effort' as const;
 
   /**
    * @param root Absolute path to the runs directory

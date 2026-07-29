@@ -1,0 +1,106 @@
+# ASPECT NOTE (Asset Forge, 2026-07-25): the set-piece renderer is now
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect), so the canvas aspect ratio IS
+# the object's real-world proportions. This is ~2.5 ft wide x 3 ft tall, hence a
+# 54x64 canvas (0.84:1). That is a moderate aspect, so resizeSpriteStrategy()
+# returns 'fit' and the shipped canvas is exactly 54x64.
+type: prop
+name: welcome-room-merchant-board
+description: |
+  A hand-lettered PRICE BOARD for the merchant's stall — a scuffed dark slate or
+  plank menu board leaning on the wall behind the counter, its prices crossed out
+  and rewritten several times over. Front-elevation 3/4 view, looking at the face
+  of the board, the same view as the already-approved welcome-room-desk (which
+  has "WELCOME" painted on its FRONT face). Modern high-quality pixel art,
+  silhouette readable at 16px.
+
+  REAL-WORLD SIZE: approximately 2.5 FEET WIDE x 3 FEET TALL — a PORTRAIT board,
+  slightly taller than it is wide. Not square, not landscape. It should fill
+  roughly 80-90% of its cell; do not draw a small object floating in a big empty
+  cell.
+
+  WHAT IT IS: an upright rectangular board with a simple dark walnut frame and a
+  darker writing surface, standing/leaning rather than hanging. On it, four or
+  five hand-chalked lines, each an item on the left and a price on the right. The
+  key detail: THE PRICES HAVE BEEN REVISED AGAIN AND AGAIN. Each line shows one
+  or two struck-through numbers with a fresh number squeezed in beside or above
+  them, so the right-hand column is a mess of crossings-out. Some strikes are old
+  and half wiped away, leaving ghost smears; the newest numbers are brighter and
+  written larger and more emphatically, crowding into the margin. One line has
+  been wiped completely and rewritten so many times the surface is scoured pale
+  there. Keep all lettering as abstract pixel dashes and ticks — it must read as
+  "hand-chalked menu with amended prices" at a glance, never as legible words.
+
+  MOOD — a grimy reality-TV dungeon set, threadbare and over-used. Three NPCs are
+  stuck living in this reception room for season after season and are bored out
+  of their minds; dungeon rules forbid them from leaving or complaining on
+  camera. The merchant's endless price fiddling is one of the few things he can
+  still control, and it has become obsessive and slightly petty. The board is
+  chipped at the corners, dusty along the top rail, and the frame is worn pale
+  where it has been picked up and put down a thousand times.
+
+  IT IS NOT: a chalkboard easel with legs, a picture, a painting, a poster, a
+  mirror, a window, a door, a book, a tombstone, a shield, or a road sign. It is
+  a flat lettered trade board.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase,
+  welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope,
+  welcome-room-show-poster, welcome-sign-left-v1 and prop-wall-sconce-v1 without
+  clashing: deep maroon, dark walnut, tarnished brass, muted and dusty, never
+  bright and never saturated. The frame is dark walnut with tarnished brass
+  corner tacks; the writing surface is a very dark desaturated brown-grey; the
+  chalk is a dulled, dirty off-white-grey knocked well back — never pure white,
+  never bright. BANNED: neon, pure white, pure black, saturated red, saturated
+  yellow, orange, teal, cyan, blue, green, magenta, purple, and any speckle of a
+  hue that is not in the maroon / walnut / brass / dusty-grey family. Overall
+  value sits as dark as the welcome-room desk and bookcase.
+
+  RENDERING: hard dark contour in the house prop style, muted interior shading,
+  lit from above (the wall sconces are overhead), soft one-pixel contact shadow
+  down and to the right.
+
+  BACKGROUND: fully transparent. Draw ONLY the board itself. Do NOT paint the
+  wall or the stall behind it, and do not paint a backing panel, an outer frame,
+  a border or a vignette beyond the board's own frame — the room is already
+  painted underneath this art in the game. Every pixel that is not board must be
+  fully transparent.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the board's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the board.
+size:
+  width: 54
+  height: 64
+anchor:
+  x: 27
+  y: 60
+sensors:
+  # A framed rectangular board is a deliberately near-rectangular flat object, so
+  # it fills far more of its bounding box than the `prop` default range
+  # [0.10, 0.65], which is tuned for irregular grounded props. Same reasoning and
+  # cap as the sibling welcome-room-call-sheet brief; a genuine
+  # background-removal failure lands at ~0.95-1.0 and is still caught.
+  opaqueRatio:
+    min: 0.40
+    max: 0.92
+  # The board's frame is deliberately asymmetric — one leg longer than the other,
+  # standing out of true — so its lowest opaque row is a single off-centre foot
+  # and the default bottom-centre grip test rejects correct art (round 1 failed
+  # only this sensor, with the judge passing every variant at 4/5/5/4). A leaning
+  # framed board's mass is what matters, not a bottom-centre grip, so the anchor
+  # is derived from the centre of mass instead. Every other sensor stays at its
+  # default.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - merchant
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

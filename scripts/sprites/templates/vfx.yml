@@ -1,1 +1,15 @@
+# VFX post-processing pipeline template
+#
+# VFX sprites (glows, bursts, auras) inherit the base pipeline but opt OUT of
+# enclosed-region cleanup: their interiors are frequently the same bright,
+# saturated colours used as generation backgrounds (cyan/yellow/orange glow
+# cores), so the enclosed-background pass would punch holes through legitimate
+# VFX cores. Re-enable this deliberately if VFX-specific fixtures justify it.
+
 extends: base.yml
+name: vfx-postprocess-pipeline
+description: Pipeline for vfx sprites - inherits base pipeline, without enclosed-region cleanup
+
+modules:
+  enclosed-regions:
+    enabled: false

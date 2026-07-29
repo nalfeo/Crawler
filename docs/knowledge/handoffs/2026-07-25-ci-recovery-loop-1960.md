@@ -45,6 +45,7 @@ value is ever read, making the `= null` initializer useless.
 ### Why the CI recovery automation could not make progress
 
 The blockers were exposed sequentially across advancing PR heads:
+
 1. At head `dc8876a`: CI job `89658302700` showed **Format check** failure;
    **Typecheck & Lint** was skipped entirely. Dispatched agent 1 fixed
    typecheck regressions (`cd8fd69b`) — the `no-useless-assignment` lint error
@@ -108,7 +109,7 @@ lost. The fix was pushed directly to the PR #1960 branch
 - Dispatched recovery agents should prefer fetching the specific CI job log
   URL provided in the task body to identify the exact failing command, rather
   than running local verification and fixing what they find there. Local `npm
-  run verify:fast` may surface different issues than the specific CI failure.
+run verify:fast` may surface different issues than the specific CI failure.
 - `no-useless-assignment` fires on the DECLARATION line (where the initial
   value is assigned), not on the overwrite line, making it slightly
   counterintuitive to locate without reading the full function.

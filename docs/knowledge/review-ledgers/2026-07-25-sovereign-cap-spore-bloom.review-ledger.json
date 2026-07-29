@@ -19,10 +19,7 @@
       "clean": true,
       "rounds": [
         {
-          "models": [
-            "copilot-pull-request-reviewer",
-            "claude-sonnet-5"
-          ],
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-5"],
           "concerns_count": 7,
           "resolved_count": 7,
           "clean": true
@@ -34,10 +31,7 @@
       "adjudicator_model": "claude-sonnet-5",
       "rounds": [
         {
-          "models": [
-            "copilot-pull-request-reviewer",
-            "claude-sonnet-5"
-          ],
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-5"],
           "concerns_count": 7,
           "valid_count": 7,
           "resolved_count": 7,

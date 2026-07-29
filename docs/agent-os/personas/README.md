@@ -77,6 +77,7 @@ link back to this section instead of restating it.
 | Enemy behavior, pathfinding, target selection, headless runner, AI sweeps           | **Game AI Engineer**  | `game-ai-engineer` | `src/game/ai/**`                                                 |
 | Floor content, quests, encounters, set pieces, lore, flavor text, Director voice    | **Content Designer**  | `content-designer` | `src/shared/data/quests.*.json`, lore bible, narrative templates |
 | Sprites, tilesets, VFX, palettes, sprite briefs & approval, art wiring              | **Graphics Designer** | `asset-forge`      | `briefs/**`, `data/palettes/**`, `src/engine/sprites/**`         |
+| Set-piece interiors: room layout, prop dressing, furniture scale/fit                | **Set Designer**      | `set-piece-designer` | `src/shared/data/set-pieces.json`, `scripts/agent/set-piece/**` |
 | HUD, menus, onboarding, controls, interaction polish, accessibility, audio feedback | **UX Designer**       | `ux-designer`      | `src/engine/Hud*.ts`, controls config, `src/engine/audio/**`     |
 | Tests, coverage, property/invariant tests, regression, mutation                     | **QA Engineer**       | `qa-engineer`      | `tests/**`                                                       |
 | CI, verify scripts, harness, tooling, deployment, gates, agent velocity             | **DevOps Engineer**   | `devops-engineer`  | `.github/workflows/**`, `scripts/agent/**`                       |
@@ -158,6 +159,7 @@ adopt:
 | Game AI Engineer  | `game-ai-engineer.md`  | [`game-ai-engineer`](../../../.github/agents/game-ai-engineer.agent.md) |
 | Content Designer  | `content-designer.md`  | [`content-designer`](../../../.github/agents/content-designer.agent.md) |
 | Graphics Designer | `graphics-designer.md` | [`asset-forge`](../../../.github/agents/asset-forge.agent.md)           |
+| Set Designer      | `set-designer.md`      | [`set-piece-designer`](../../../.github/agents/set-piece-designer.agent.md) |
 | UX Designer       | `ux-designer.md`       | [`ux-designer`](../../../.github/agents/ux-designer.agent.md)           |
 | QA Engineer       | `qa-engineer.md`       | [`qa-engineer`](../../../.github/agents/qa-engineer.agent.md)           |
 | DevOps Engineer   | `devops-engineer.md`   | [`devops-engineer`](../../../.github/agents/devops-engineer.agent.md)   |

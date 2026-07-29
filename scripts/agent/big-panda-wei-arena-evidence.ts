@@ -14,11 +14,17 @@ import {
   getEnemyPreset,
   getRoomPreset,
   spawnPresetAroundCenter,
+  spawnFromArchetype,
+  findWalkablePosition,
   ARENA_OBSERVER_PLAYER_HP,
 } from '../../src/labs/combat-arena-lab/arena-data.js';
+import { floor2EnemyPack } from '../../src/shared/enemy-packs.js';
 
 const DELTA = GAME.DELTA_MS;
 const TOTAL_FRAMES = 1660;
+
+// Big Panda Wei's floor-2 archetype, same as used by the arena preset internally
+const F2_BIG_PANDA_WEI = floor2EnemyPack.archetypes.find((a) => a.id === 'panda-boss')!;
 
 function makeWorld() {
   const world = createGameWorld({ seed: 42, floor: 1, entityCapacityMode: 'game' });
@@ -37,7 +43,7 @@ function makeWorld() {
 function run(label: string, arm: boolean) {
   const { world } = makeWorld();
   const rng = new SeededRandom(42);
-  let wei = -1;
+  let wei: number;
   if (arm) {
     const preset = getEnemyPreset('f2-big-panda-wei');
     const cx = world.floorMap!.widthFt / 2;
@@ -45,6 +51,16 @@ function run(label: string, arm: boolean) {
     const eids = spawnPresetAroundCenter(world, world.floorMap!, preset, cx, cy, rng, 14);
     wei = eids[0] ?? -1;
     if (wei < 0) throw new Error('Big Panda Wei preset failed to spawn');
+  } else {
+    // Spawn Wei through the base production path (same archetype, no mob-ability hooks).
+    // This confirms that normal-game Wei spawning does NOT accidentally register or
+    // enable the ability — mobAbilities.byEntity must remain empty.
+    const cx = world.floorMap!.widthFt / 2;
+    const cy = world.floorMap!.heightFt * 0.35;
+    const pos = findWalkablePosition(world.floorMap!, cx, cy, rng);
+    wei = spawnFromArchetype(world, pos.x, pos.y, F2_BIG_PANDA_WEI);
+    world.stores.enemyBehavior.aggroedPermanently[wei] = 1;
+    // Deliberately no setMobAbilitiesEnabled / registerMobAbility / activateMobAbilityEncounter.
   }
   const input = createInputState();
   const telegraphs: number[] = [];
@@ -105,7 +121,13 @@ function run(label: string, arm: boolean) {
       `modifiers @ frame ${snap.frame}: move=${snap.move.toFixed(2)} melee=${snap.melee.toFixed(2)} knockback=${snap.knockback.toFixed(2)}`,
     );
   }
-  return { telegraphs, resolutions, modifierSnapshots, casts: prevAnnouncements };
+  return {
+    telegraphs,
+    resolutions,
+    modifierSnapshots,
+    casts: prevAnnouncements,
+    byEntitySize: world.mobAbilities.byEntity.size,
+  };
 }
 
 const arena = run('ARENA (Big Panda Wei preset — runtime ENABLED)', true);
@@ -165,7 +187,7 @@ const secondExpiryOk = arena.modifierSnapshots.some(
     Math.abs(s.melee - 1) < 1e-6 &&
     Math.abs(s.knockback - 1) < 1e-6,
 );
-const normalOk = normal.casts === 0 && normal.resolutions.length === 0;
+const normalOk = normal.casts === 0 && normal.resolutions.length === 0 && normal.byEntitySize === 0;
 const modifiersOk = firstResolveOk && firstWindowMidOk && secondResolveOk;
 const expiryOk = baselineBeforeFirstOk && baselineBeforeSecondOk && firstExpiryOk && secondExpiryOk;
 
@@ -174,7 +196,7 @@ console.log(`arena two-cast cadence (600/690/1290/1380): ${cadenceOk ? 'PASS' : 
 console.log(
   `buff modifiers both windows + baseline      : ${modifiersOk && expiryOk ? 'PASS' : 'FAIL'}`,
 );
-console.log(`normal-game zero casts                      : ${normalOk ? 'PASS' : 'FAIL'}`);
+console.log(`normal-game zero registrations+casts       : ${normalOk ? 'PASS' : 'FAIL'}`);
 
 if (!cadenceOk || !modifiersOk || !expiryOk || !normalOk) {
   process.exitCode = 1;

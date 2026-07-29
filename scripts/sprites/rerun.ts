@@ -469,6 +469,16 @@ export interface RejudgeArgs {
   readonly variantIndexes?: ReadonlyArray<number>;
   readonly judgeBudget?: JudgeBudget | null;
   readonly judgeCache?: JudgeCache | null;
+  /**
+   * Cap judged variants (highest sensor score first); overrides
+   * `brief.judge.maxVariants`. Forwarded to `runJudgePass`.
+   */
+  readonly judgeMaxVariants?: number;
+  /**
+   * Judge this many variants in parallel (default 1 = sequential). Values > 1
+   * require no `judgeBudget`/`judgeCache`. Forwarded to `runJudgePass`.
+   */
+  readonly concurrency?: number;
   readonly env?: NodeJS.ProcessEnv;
   readonly now?: () => Date;
 }
@@ -520,6 +530,8 @@ export async function rejudgeRun(args: RejudgeArgs): Promise<RerunResult> {
     ...(indexSet ? { variantIndexes: indexSet } : {}),
     ...(args.judgeBudget ? { judgeBudget: args.judgeBudget } : {}),
     ...(args.judgeCache ? { judgeCache: args.judgeCache } : {}),
+    ...(args.judgeMaxVariants !== undefined ? { judgeMaxVariants: args.judgeMaxVariants } : {}),
+    ...(args.concurrency !== undefined ? { concurrency: args.concurrency } : {}),
     ...(args.env ? { env: args.env } : {}),
     ...(args.now ? { now: args.now } : {}),
   });

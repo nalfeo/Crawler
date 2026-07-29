@@ -1,0 +1,336 @@
+{
+  "id": "floor1-dungeon",
+  "name": "Floor 1 Dungeon",
+  "provenance": {
+    "kind": "authored",
+    "author": "Crawler agent (Azure gpt-image-1 materials + local blob47 composition)",
+    "derivationNote": "Materials generated with Azure OpenAI gpt-image-1 (images/generations), then made seamlessly tileable, posterized and luminance-normalized locally and composited onto the deterministic 20-quadrant blob47 wall silhouettes from scripts/sprites/terrain-packs/quadrant-kit.ts. Alpha is taken from the silhouette unchanged, so the authored 100% edge-compatibility invariant is preserved. Image generation is not byte-reproducible: the committed PNGs are the source of truth. Rebuild with scripts/sprites/terrain-packs/gen/cli.ts."
+  },
+  "wallAutotile": {
+    "imagePath": "assets/terrain-packs/floor1-dungeon/wall-atlas.png",
+    "textureKey": "terrain-pack-floor1-dungeon-walls",
+    "cellPx": 64,
+    "gridCols": 8,
+    "gridRows": 6,
+    "masks": [
+      {
+        "maskId": 0,
+        "frameIndex": 0
+      },
+      {
+        "maskId": 1,
+        "frameIndex": 1
+      },
+      {
+        "maskId": 2,
+        "frameIndex": 2
+      },
+      {
+        "maskId": 3,
+        "frameIndex": 3
+      },
+      {
+        "maskId": 4,
+        "frameIndex": 4
+      },
+      {
+        "maskId": 5,
+        "frameIndex": 5
+      },
+      {
+        "maskId": 6,
+        "frameIndex": 6
+      },
+      {
+        "maskId": 7,
+        "frameIndex": 7
+      },
+      {
+        "maskId": 8,
+        "frameIndex": 8
+      },
+      {
+        "maskId": 9,
+        "frameIndex": 9
+      },
+      {
+        "maskId": 10,
+        "frameIndex": 10
+      },
+      {
+        "maskId": 11,
+        "frameIndex": 11
+      },
+      {
+        "maskId": 12,
+        "frameIndex": 12
+      },
+      {
+        "maskId": 13,
+        "frameIndex": 13
+      },
+      {
+        "maskId": 14,
+        "frameIndex": 14
+      },
+      {
+        "maskId": 15,
+        "frameIndex": 15
+      },
+      {
+        "maskId": 19,
+        "frameIndex": 16
+      },
+      {
+        "maskId": 23,
+        "frameIndex": 17
+      },
+      {
+        "maskId": 27,
+        "frameIndex": 18
+      },
+      {
+        "maskId": 31,
+        "frameIndex": 19
+      },
+      {
+        "maskId": 38,
+        "frameIndex": 20
+      },
+      {
+        "maskId": 39,
+        "frameIndex": 21
+      },
+      {
+        "maskId": 46,
+        "frameIndex": 22
+      },
+      {
+        "maskId": 47,
+        "frameIndex": 23
+      },
+      {
+        "maskId": 55,
+        "frameIndex": 24
+      },
+      {
+        "maskId": 63,
+        "frameIndex": 25
+      },
+      {
+        "maskId": 76,
+        "frameIndex": 26
+      },
+      {
+        "maskId": 77,
+        "frameIndex": 27
+      },
+      {
+        "maskId": 78,
+        "frameIndex": 28
+      },
+      {
+        "maskId": 79,
+        "frameIndex": 29
+      },
+      {
+        "maskId": 95,
+        "frameIndex": 30
+      },
+      {
+        "maskId": 110,
+        "frameIndex": 31
+      },
+      {
+        "maskId": 111,
+        "frameIndex": 32
+      },
+      {
+        "maskId": 127,
+        "frameIndex": 33
+      },
+      {
+        "maskId": 137,
+        "frameIndex": 34
+      },
+      {
+        "maskId": 139,
+        "frameIndex": 35
+      },
+      {
+        "maskId": 141,
+        "frameIndex": 36
+      },
+      {
+        "maskId": 143,
+        "frameIndex": 37
+      },
+      {
+        "maskId": 155,
+        "frameIndex": 38
+      },
+      {
+        "maskId": 159,
+        "frameIndex": 39
+      },
+      {
+        "maskId": 175,
+        "frameIndex": 40
+      },
+      {
+        "maskId": 191,
+        "frameIndex": 41
+      },
+      {
+        "maskId": 205,
+        "frameIndex": 42
+      },
+      {
+        "maskId": 207,
+        "frameIndex": 43
+      },
+      {
+        "maskId": 223,
+        "frameIndex": 44
+      },
+      {
+        "maskId": 239,
+        "frameIndex": 45
+      },
+      {
+        "maskId": 255,
+        "frameIndex": 46
+      }
+    ]
+  },
+  "floorPool": [
+    {
+      "id": "floor-0",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/floor-0.png",
+      "textureKey": "terrain-pack-floor1-dungeon-floor-0"
+    },
+    {
+      "id": "floor-1",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/floor-1.png",
+      "textureKey": "terrain-pack-floor1-dungeon-floor-1"
+    },
+    {
+      "id": "floor-2",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/floor-2.png",
+      "textureKey": "terrain-pack-floor1-dungeon-floor-2"
+    },
+    {
+      "id": "floor-3",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/floor-3.png",
+      "textureKey": "terrain-pack-floor1-dungeon-floor-3"
+    }
+  ],
+  "corridorPool": [
+    {
+      "id": "corridor-0",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/corridor-0.png",
+      "textureKey": "terrain-pack-floor1-dungeon-corridor-0"
+    },
+    {
+      "id": "corridor-1",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/corridor-1.png",
+      "textureKey": "terrain-pack-floor1-dungeon-corridor-1"
+    },
+    {
+      "id": "corridor-2",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/corridor-2.png",
+      "textureKey": "terrain-pack-floor1-dungeon-corridor-2"
+    },
+    {
+      "id": "corridor-3",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/corridor-3.png",
+      "textureKey": "terrain-pack-floor1-dungeon-corridor-3"
+    }
+  ],
+  "doorSet": {
+    "openHorizontal": {
+      "imagePath": "assets/terrain-packs/floor1-dungeon/door-open-horizontal.png",
+      "textureKey": "terrain-pack-floor1-dungeon-door-open-horizontal"
+    },
+    "openVertical": {
+      "imagePath": "assets/terrain-packs/floor1-dungeon/door-open-vertical.png",
+      "textureKey": "terrain-pack-floor1-dungeon-door-open-vertical"
+    },
+    "closedHorizontal": {
+      "imagePath": "assets/terrain-packs/floor1-dungeon/door-closed-horizontal.png",
+      "textureKey": "terrain-pack-floor1-dungeon-door-closed-horizontal"
+    },
+    "closedVertical": {
+      "imagePath": "assets/terrain-packs/floor1-dungeon/door-closed-vertical.png",
+      "textureKey": "terrain-pack-floor1-dungeon-door-closed-vertical"
+    }
+  },
+  "specialFloorPools": {
+    "welcome": [
+      {
+        "id": "special-welcome-0",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-welcome-0.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-welcome-0"
+      },
+      {
+        "id": "special-welcome-1",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-welcome-1.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-welcome-1"
+      },
+      {
+        "id": "special-welcome-2",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-welcome-2.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-welcome-2"
+      },
+      {
+        "id": "special-welcome-3",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-welcome-3.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-welcome-3"
+      }
+    ],
+    "safe": [
+      {
+        "id": "special-safe-0",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-safe-0.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-safe-0"
+      },
+      {
+        "id": "special-safe-1",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-safe-1.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-safe-1"
+      },
+      {
+        "id": "special-safe-2",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-safe-2.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-safe-2"
+      },
+      {
+        "id": "special-safe-3",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-safe-3.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-safe-3"
+      }
+    ],
+    "bossStair": [
+      {
+        "id": "special-boss-stair-0",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-boss-stair-0.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-boss-stair-0"
+      },
+      {
+        "id": "special-boss-stair-1",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-boss-stair-1.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-boss-stair-1"
+      },
+      {
+        "id": "special-boss-stair-2",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-boss-stair-2.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-boss-stair-2"
+      },
+      {
+        "id": "special-boss-stair-3",
+        "imagePath": "assets/terrain-packs/floor1-dungeon/special-boss-stair-3.png",
+        "textureKey": "terrain-pack-floor1-dungeon-special-boss-stair-3"
+      }
+    ]
+  }
+}

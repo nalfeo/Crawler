@@ -40,6 +40,12 @@
       "systems": ["graphics"]
     },
     {
+      "name": "Set Designer",
+      "file": "set-designer.md",
+      "agent": "set-piece-designer.agent.md",
+      "systems": ["set-piece", "set-design"]
+    },
+    {
       "name": "UX Designer",
       "file": "ux-designer.md",
       "agent": "ux-designer.agent.md",
