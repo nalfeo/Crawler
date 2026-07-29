@@ -798,6 +798,7 @@ for (const pr of queued) {
     // Use `break` (not `continue`) after the first BEHIND PR to preserve FIFO
     // queue ordering: newer PRs must not leapfrog an older BEHIND PR.
     if (livePr.mergeable_state === 'behind') {
+      let dequeuedFork = false;
       try {
         await request(
           updateBranchToken,
@@ -809,13 +810,28 @@ for (const pr of queued) {
         );
         process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
       } catch (err) {
-        // 422 covers "already up-to-date" and stale expected_head_sha — log
-        // it so stale-head races are visible and not silently swallowed.
-        if (err.status !== 422) throw err;
-        process.stderr.write(
-          `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
-        );
+        if (err.status === 403) {
+          // The token cannot update a fork's head branch. Dequeue the PR so
+          // it does not poison every subsequent reconcile cycle. A human must
+          // manually rebase the fork branch, then re-add the merge-train label.
+          process.stderr.write(
+            `update-branch pr=#${pr.number} fork/no-permission (403): dequeuing to unblock queue\n`,
+          );
+          await removeLabel(pr.number, QUEUE_LABEL);
+          dequeuedFork = true;
+        } else if (err.status !== 422) {
+          // 422 covers "already up-to-date" and stale expected_head_sha — log
+          // it so stale-head races are visible and not silently swallowed.
+          throw err;
+        } else {
+          process.stderr.write(
+            `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
+          );
+        }
       }
+      // For fork PRs we dequeued above: continue so later queue entries can
+      // still be admitted this cycle (the blocking PR is gone from the queue).
+      if (dequeuedFork) continue;
       // Stop admitting further PRs this pass so newer PRs cannot leapfrog.
       // The BEHIND PR will re-enter on the next reconcile once its branch is
       // current and required CI passes.
