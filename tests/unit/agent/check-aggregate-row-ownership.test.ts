@@ -36,7 +36,10 @@ describe('canonicalize', () => {
   });
 
   it('handles arrays of objects (sorts keys within each element)', () => {
-    const result = canonicalize([{ z: 1, a: 2 }, { y: 3, b: 4 }]);
+    const result = canonicalize([
+      { z: 1, a: 2 },
+      { y: 3, b: 4 },
+    ]);
     expect(result).toBe('[{"a":2,"z":1},{"b":4,"y":3}]');
   });
 
@@ -189,7 +192,7 @@ describe('checkRowOwnership', () => {
     const pr = rowsFrom({ 'sprite-a': { x: 1 }, 'sprite-new': { x: 99 } });
     const result = checkRowOwnership(pr, mergeBase, main);
     expect(result.findings).toHaveLength(0);
-    expect(result.rowsChecked).toBe(1); // only sprite-a is in mergeBase
+    expect(result.rowsChecked).toBe(1); // only sprite-a is in main
   });
 
   it('passes when a row was deleted from main (both mergeBase and main had it)', () => {
@@ -308,12 +311,48 @@ describe('checkRowOwnership', () => {
 
   // --- rowsChecked counter ---
 
-  it('counts only rows present in both mergeBase and main', () => {
+  it('counts rows present in main (excludes rows deleted from main)', () => {
     const mergeBase = rowsFrom({ a: { v: 1 }, b: { v: 2 }, c: { v: 3 } });
     const main = rowsFrom({ a: { v: 1 }, b: { v: 2 } }); // c was deleted in main
     const pr = rowsFrom({ a: { v: 1 }, b: { v: 2 } });
     const result = checkRowOwnership(pr, mergeBase, main);
     expect(result.rowsChecked).toBe(2); // c not in main so not checked
+  });
+
+  // --- Three-way regression: row added to main after branch forked ---
+
+  it('detects a row added to main after branch fork that is absent from a stale PR rewrite', () => {
+    // Scenario: base={a}, main={a,b} (b added concurrently), PR stale rewrite={a}
+    const mergeBase = rowsFrom({ 'sprite-a': { x: 1 } });
+    const main = rowsFrom({ 'sprite-a': { x: 1 }, 'sprite-b': { x: 2 } }); // b added after fork
+    const pr = rowsFrom({ 'sprite-a': { x: 1 } }); // stale wholesale regeneration omits b
+    const result = checkRowOwnership(pr, mergeBase, main);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]!.kind).toBe('deleted-row');
+    expect(result.findings[0]!.rowKey).toBe('sprite-b');
+    expect(result.findings[0]!.detail).toMatch(/after this branch forked/i);
+    expect(result.rowsChecked).toBe(2); // both a and b are in main
+  });
+
+  it('passes when a row added to main after branch fork is also present in the PR', () => {
+    // PR also contains the concurrently added row — no violation
+    const mergeBase = rowsFrom({ 'sprite-a': { x: 1 } });
+    const main = rowsFrom({ 'sprite-a': { x: 1 }, 'sprite-b': { x: 2 } });
+    const pr = rowsFrom({ 'sprite-a': { x: 1 }, 'sprite-b': { x: 2 } }); // PR has it too
+    const result = checkRowOwnership(pr, mergeBase, main);
+    expect(result.findings).toHaveLength(0);
+    expect(result.rowsChecked).toBe(2);
+  });
+
+  it('rowsChecked is 0 when main has no rows (per-file canary baseline)', () => {
+    // If origin/main is empty or not fetched, rowsChecked is 0 even if mergeBase has rows.
+    // The CLI-level per-file canary fires on this to flag a configuration failure.
+    const mergeBase = rowsFrom({ 'sprite-a': { x: 1 } });
+    const main = rowsFrom({}); // main has no rows (e.g. wrong git ref)
+    const pr = rowsFrom({ 'sprite-a': { x: 1 } });
+    const result = checkRowOwnership(pr, mergeBase, main);
+    expect(result.rowsChecked).toBe(0);
+    expect(result.findings).toHaveLength(0);
   });
 });
 

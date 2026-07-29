@@ -21,13 +21,16 @@
  *
  * ## Algorithm
  *
- * For each row key K that exists in BOTH mergeBase and main:
+ * For each row key K that exists in main:
  *   - If K is absent in PR head → deleted-row error.
- *   - If serialize(PR[K]) == serialize(mergeBase[K]) AND mergeBase[K] ≠ main[K]
- *     → stale-row error (PR is carrying the old merge-base value while main
- *       has moved forward).
- *   - For each top-level field F of mergeBase[K]: if F is in main[K] but
- *     absent in PR[K] → deleted-field error.
+ *   - If K exists in mergeBase AND serialize(PR[K]) == serialize(mergeBase[K])
+ *     AND mergeBase[K] ≠ main[K] → stale-row error (PR is carrying the old
+ *     merge-base value while main has moved forward).
+ *   - If K exists in mergeBase AND for each top-level field F of mergeBase[K]:
+ *     if F is in main[K] but absent in PR[K] → deleted-field error.
+ *   - If K is absent in mergeBase (added to main after branch forked) and
+ *     absent in PR head → deleted-row error (stale wholesale regeneration
+ *     omitted a concurrently added row).
  *
  * ## Why Algorithm B (stale-only) not Algorithm A (every change must match main)
  *
@@ -64,7 +67,7 @@ export interface OwnershipFinding {
 /** Aggregated result of checkRowOwnership over one file. */
 export interface OwnershipCheckResult {
   readonly findings: readonly OwnershipFinding[];
-  /** Number of rows that were compared (exists in both mergeBase and main). */
+  /** Number of rows that were compared (exists in main). */
   readonly rowsChecked: number;
 }
 
@@ -164,14 +167,31 @@ export function checkRowOwnership(
   const findings: OwnershipFinding[] = [];
   let rowsChecked = 0;
 
-  for (const [key, mergeBaseValue] of mergeBaseRows) {
-    const mainValue = mainRows.get(key);
-
-    // Row was deleted in main — not the PR's problem; skip.
-    if (mainValue === undefined) continue;
+  for (const [key, mainValue] of mainRows) {
+    const mergeBaseValue = mergeBaseRows.get(key);
 
     rowsChecked++;
     const prValue = prRows.get(key);
+
+    // Main-only key: added to main after this branch forked.
+    // If the PR omits it, a stale wholesale regeneration silently dropped a
+    // concurrently added row.
+    if (mergeBaseValue === undefined) {
+      if (prValue === undefined) {
+        findings.push({
+          rowKey: key,
+          kind: 'deleted-row',
+          detail:
+            `Row '${key}' was added to origin/main after this branch forked but is absent ` +
+            `in this PR's version of the file. A stale wholesale regeneration of the file ` +
+            `omitted a concurrently added row. ` +
+            `Fix: rebase onto origin/main so the row appears in the regenerated output.`,
+        });
+      }
+      continue;
+    }
+
+    // Row exists in both mergeBase and main.
 
     // Rule 1: Row deleted by PR
     if (prValue === undefined) {

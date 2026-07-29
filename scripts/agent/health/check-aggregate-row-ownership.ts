@@ -89,28 +89,30 @@ function gitRequired(args: readonly string[], context: string): string {
 }
 
 // Compute the merge-base. With fetch-depth: 0, git should be able to find it.
-let mergeBaseSha: string;
-try {
-  mergeBaseSha = gitRequired(
-    ['merge-base', prHeadSha, 'origin/main'],
-    'ensure fetch-depth: 0 is set on the checkout step',
-  ).trim();
-} catch (e) {
-  report.error(
-    `Failed to compute git merge-base between ${prHeadSha} and origin/main: ${(e as Error).message}`,
-    { remediation: 'Add fetch-depth: 0 to the actions/checkout step for this job.' },
-  );
-  report.finish();
+// Using a helper function so TypeScript can prove `mergeBaseSha` is always
+// initialized (the catch branch terminates via report.finish(): never).
+function resolveMergeBase(): string {
+  try {
+    return gitRequired(
+      ['merge-base', prHeadSha, 'origin/main'],
+      'ensure fetch-depth: 0 is set on the checkout step',
+    ).trim();
+  } catch (e) {
+    report.error(
+      `Failed to compute git merge-base between ${prHeadSha} and origin/main: ${(e as Error).message}`,
+      { remediation: 'Add fetch-depth: 0 to the actions/checkout step for this job.' },
+    );
+    return report.finish();
+  }
 }
+
+const mergeBaseSha = resolveMergeBase();
 
 /** Get the content of a file at a specific git ref, or null if absent. */
 function fileAtRef(ref: string, repoRelPath: string): string | null {
   // Use -- to separate pathspec from ref to avoid ambiguity.
   return gitTry(['show', `${ref}:${repoRelPath}`]);
 }
-
-let totalRowsChecked = 0;
-let filesWithRowsChecked = 0; // how many files were actually parsed and compared
 
 for (const entry of REGISTRY) {
   const { path: relPath, extractRows } = entry;
@@ -137,7 +139,9 @@ for (const entry of REGISTRY) {
 
   // File is new (not in merge-base): nothing to compare against.
   if (mergeBaseContent === null) {
-    report.info(`${relPath}: file not present in merge-base (new file) — skipping staleness check.`);
+    report.info(
+      `${relPath}: file not present in merge-base (new file) — skipping staleness check.`,
+    );
     continue;
   }
 
@@ -161,17 +165,15 @@ for (const entry of REGISTRY) {
     mergeBaseRows = extractRows(mergeBaseContent);
     mainRows = extractRows(mainContent);
   } catch (e) {
-    report.error(
-      `${relPath}: failed to parse rows — ${(e as Error).message}`,
-      { file: relPath, remediation: 'Check that the file is valid JSON and has the expected structure.' },
-    );
+    report.error(`${relPath}: failed to parse rows — ${(e as Error).message}`, {
+      file: relPath,
+      remediation: 'Check that the file is valid JSON and has the expected structure.',
+    });
     continue;
   }
 
   // Run the ownership check.
   const result = checkRowOwnership(prRows, mergeBaseRows, mainRows);
-  totalRowsChecked += result.rowsChecked;
-  filesWithRowsChecked++;
 
   for (const finding of result.findings) {
     report.error(finding.detail, { file: relPath });
@@ -179,22 +181,22 @@ for (const entry of REGISTRY) {
 
   const status = result.findings.length === 0 ? 'clean' : `${result.findings.length} finding(s)`;
   report.info(`${relPath}: ${result.rowsChecked} rows checked — ${status}.`);
-}
 
-// Canary: if a file was parsed and compared but produced 0 rows, something is broken
-// (wrong file structure, wrong git paths). This fires only when the guard actually
-// ran on a changed file but found nothing — 0 rows is fine if no registered file
-// was touched by the PR (skipped-unchanged is the expected path for most PRs).
-if (filesWithRowsChecked > 0 && totalRowsChecked < MIN_EXPECTED_ROWS_IN_CI) {
-  report.error(
-    `Aggregate row ownership guard parsed ${filesWithRowsChecked} changed file(s) but checked 0 rows total. ` +
-      `This indicates a configuration failure — expected at least ${MIN_EXPECTED_ROWS_IN_CI} row. ` +
-      `Check that origin/main is fetched and the registered file paths are correct.`,
-    {
-      remediation:
-        'Ensure the CI step checkout uses fetch-depth: 0 and that git fetch origin main succeeds.',
-    },
-  );
+  // Canary: if this changed file was fully parsed but produced 0 rows, something
+  // is broken (wrong file structure, wrong git paths, or fetch failure). Checked
+  // per-file so a healthy file cannot mask a broken extractor for another file.
+  if (result.rowsChecked < MIN_EXPECTED_ROWS_IN_CI) {
+    report.error(
+      `${relPath}: parsed and compared but checked 0 rows. ` +
+        `This indicates a configuration failure — expected at least ${MIN_EXPECTED_ROWS_IN_CI} row. ` +
+        `Check that origin/main is fetched and the registered file paths are correct.`,
+      {
+        file: relPath,
+        remediation:
+          'Ensure the CI step checkout uses fetch-depth: 0 and that git fetch origin main succeeds.',
+      },
+    );
+  }
 }
 
 report.finish();
