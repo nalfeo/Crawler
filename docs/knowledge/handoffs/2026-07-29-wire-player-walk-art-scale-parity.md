@@ -92,17 +92,6 @@ the pre-existing `player-walk-animation.test.ts`.
 
 ## Follow-ups
 
-- **Slice C is now unblocked.** The player's drawn size went 25.6px → 46px
-  (+80%) versus what the blood-footprint geometry was tuned against.
-  `src/shared/blood-surfaces.ts` (`createBloodFootprintSurface` heel/toe radii,
-  `lateralOffsetFt` spread) and `TRAIL_PUFF_FOOT_OFFSET_PX` in
-  `src/engine/PlayerTrailVfx.ts` are all fixed in world feet / fixed pixels, so
-  they did not follow. Recommend locking footprint length and lateral spread as
-  **ratios of the player's rendered sprite width** in a deterministic test, the
-  same way this PR locked player/NPC parity, so it cannot drift again. Prefer
-  the pure-geometry knobs; `BLOODY_FOOTPRINT_EMIT_DISTANCE_FT` is
-  gameplay-adjacent (it drives sim-side emit cadence) and should be a last
-  resort.
 - The doc comment above `GENERATED_NPC_SPRITE_SCALE` in `PhaserBridge.ts` is
   stale — it claims generated NPCs land at "~26px on screen, matching the
   player's on-screen footprint", but for any NPC with a positive `heightFt`
