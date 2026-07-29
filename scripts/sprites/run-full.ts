@@ -33,7 +33,11 @@ import {
   writeEffectivePipelineSnapshot,
   writePostprocessProfile,
 } from './postprocess-overrides.js';
-import { frameSequenceDisabledModules, computeFrameSequenceUnionCropRect, type PostprocessOptions } from './postprocess.js';
+import {
+  frameSequenceDisabledModules,
+  computeFrameSequenceUnionCropRect,
+  type PostprocessOptions,
+} from './postprocess.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { pickChosen, rankCandidates, type RunSummary } from './run-artifacts.js';
 

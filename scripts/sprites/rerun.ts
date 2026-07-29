@@ -44,7 +44,11 @@ import {
   runJudgePass,
   type ProcessedVariant,
 } from './run-pipeline.js';
-import { frameSequenceDisabledModules, computeFrameSequenceUnionCropRect, type PostprocessOptions } from './postprocess.js';
+import {
+  frameSequenceDisabledModules,
+  computeFrameSequenceUnionCropRect,
+  type PostprocessOptions,
+} from './postprocess.js';
 import {
   EFFECTIVE_PIPELINE_JSON_KEY,
   EFFECTIVE_PIPELINE_YAML_KEY,

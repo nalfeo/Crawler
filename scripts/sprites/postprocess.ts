@@ -1047,11 +1047,7 @@ export function computeOpaqueRect(image: RgbaImage): OpaqueRect | null {
  * Used by the `transparent-trim` module when {@link PostprocessOptions.sharedCropRect}
  * is set, so all frames in a walk-cycle brief are cropped to the same bbox.
  */
-export function cropRectWithMargin(
-  image: RgbaImage,
-  rect: OpaqueRect,
-  margin: number,
-): RgbaImage {
+export function cropRectWithMargin(image: RgbaImage, rect: OpaqueRect, margin: number): RgbaImage {
   const m = Math.max(0, Math.trunc(margin));
   const contentW = Math.max(0, rect.right - rect.left + 1);
   const contentH = Math.max(0, rect.bottom - rect.top + 1);
