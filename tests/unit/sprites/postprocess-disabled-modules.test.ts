@@ -6,6 +6,7 @@ import {
   type PaletteColors,
 } from '../../../scripts/sprites/brief-schema.js';
 import {
+  frameSequenceDisabledModules,
   normalizeDisabledModules,
   postprocessWithTrace,
 } from '../../../scripts/sprites/postprocess.js';
@@ -48,6 +49,26 @@ function makeFixture(): Buffer {
   return PNG.sync.write(png);
 }
 
+function makeCharacterFrameSequenceBrief(): Brief {
+  return briefSchema.parse({
+    type: 'character',
+    name: 'frame-sequence-disabled-module-test',
+    size: { width: 64, height: 64 },
+    palette: { id: 'kenney-roguelike' },
+    anchor: { x: 32, y: 63 },
+    tags: ['character', 'test'],
+    prompt: 'test walk cycle',
+    references: [
+      { path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' },
+      { path: 'public/assets/kenney/roguelike-rpg-pack/spritesheet.png' },
+    ],
+    postprocessing: { paletteMode: 'none', trimAndFit: false, minDimension: 64 },
+    frameSequence: { enabled: true, frameCount: 4, frameRate: 8, loop: true },
+    generation: { sheet: { rows: 1, cols: 4, emptyCells: [] } },
+    sensors: { edge: { allowMainTouch: true }, anchor: { derive: true } },
+  });
+}
+
 describe('postprocess disabled modules', () => {
   it('canonicalizes requested modules in effective pipeline order', () => {
     expect(
@@ -74,5 +95,33 @@ describe('postprocess disabled modules', () => {
     expect(skipped).toMatchObject({ moduleId: 'resize', skipped: true });
     expect(PNG.sync.read(skipped!.png)).toMatchObject({ width: 24, height: 36 });
     expect(final).toMatchObject({ width: 24, height: 36 });
+  });
+
+  describe('frameSequenceDisabledModules', () => {
+    it('returns transparent-trim and trim-and-fit for a frameSequence-enabled brief', () => {
+      // Multi-model review finding (gemini-3.1-pro): per-frame independent
+      // transparent-trim + resize-nearest gives every frame in a walk cycle
+      // its OWN scale factor (whichever pose has the widest/tallest opaque
+      // bounding box), breaking uniform scale and the shared floor line
+      // across an ordered animation strip. Both crop-driven modules must be
+      // disabled so every frame keeps the exact same crop-to-canvas mapping.
+      expect(frameSequenceDisabledModules(makeCharacterFrameSequenceBrief())).toEqual([
+        'transparent-trim',
+        'trim-and-fit',
+      ]);
+    });
+
+    it('returns an empty array for a brief that does not opt into frameSequence', () => {
+      expect(frameSequenceDisabledModules(makeTileBrief())).toEqual([]);
+    });
+
+    it('actually disables the crop before resize when wired through postprocessWithTrace', () => {
+      const brief = makeCharacterFrameSequenceBrief();
+      const disabledModules = frameSequenceDisabledModules(brief);
+      const traced = postprocessWithTrace(makeFixture(), brief, PALETTE, { disabledModules });
+      const trimStep = traced.steps.find((step) => step.moduleId === 'transparent-trim');
+
+      expect(trimStep).toMatchObject({ moduleId: 'transparent-trim', skipped: true });
+    });
   });
 });

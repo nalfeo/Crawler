@@ -44,7 +44,7 @@ import {
   runJudgePass,
   type ProcessedVariant,
 } from './run-pipeline.js';
-import type { PostprocessOptions } from './postprocess.js';
+import { frameSequenceDisabledModules, type PostprocessOptions } from './postprocess.js';
 import {
   EFFECTIVE_PIPELINE_JSON_KEY,
   EFFECTIVE_PIPELINE_YAML_KEY,
@@ -243,12 +243,22 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   const optionsMode =
     args.optionsMode ??
     (args.options !== undefined ? 'replace' : persistedProfile ? 'persisted' : 'default');
+  // First-time-default PostProcess of a raw-only generate (ADR 0024's
+  // two-step split, no persisted profile yet, no explicit override): a
+  // frame-sequence brief must still default to disabling per-frame
+  // transparent-trim so every frame keeps the same crop-to-canvas mapping
+  // (see `frameSequenceDisabledModules`). `reset` and explicit
+  // `args.options`/persisted-profile modes are left untouched — those are
+  // deliberate operator choices.
+  const defaultFrameSequenceOptions: PostprocessOptions = {
+    disabledModules: frameSequenceDisabledModules(brief),
+  };
   const effectiveOptions =
     optionsMode === 'reset'
       ? {}
       : args.options !== undefined
         ? args.options
-        : (persistedProfile?.options ?? {});
+        : (persistedProfile?.options ?? defaultFrameSequenceOptions);
   const effectiveManualAnchor =
     optionsMode === 'reset'
       ? null

@@ -33,6 +33,7 @@ import {
   writeEffectivePipelineSnapshot,
   writePostprocessProfile,
 } from './postprocess-overrides.js';
+import { frameSequenceDisabledModules, type PostprocessOptions } from './postprocess.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { pickChosen, rankCandidates, type RunSummary } from './run-artifacts.js';
 
@@ -82,12 +83,27 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
   } = core;
 
   const nowIso = (options.now ?? (() => new Date()))().toISOString();
-  await writePostprocessProfile(store, `${identity.brief}/${identity.runId}`, {}, nowIso);
+  // Frame-sequence briefs must disable per-frame independent transparent-trim
+  // (and the downstream trim-and-fit) so every frame in the ordered walk
+  // cycle shares the exact same crop-to-canvas mapping — see
+  // `frameSequenceDisabledModules` for why. Persisting this into the profile
+  // + effective-pipeline snapshot (rather than only passing it ad hoc to
+  // `postprocessScoreAndStoreVariant`) keeps a re-run of this run
+  // byte-identical (ADR 0018's "one code path" discipline).
+  const postprocessOptions: PostprocessOptions = {
+    disabledModules: frameSequenceDisabledModules(brief),
+  };
+  await writePostprocessProfile(
+    store,
+    `${identity.brief}/${identity.runId}`,
+    postprocessOptions,
+    nowIso,
+  );
   await writeEffectivePipelineSnapshot({
     store,
     baseKey: `${identity.brief}/${identity.runId}`,
     brief,
-    options: {},
+    options: postprocessOptions,
     manualAnchor: null,
     manualWeaponAnchor: null,
     facing: null,
@@ -108,6 +124,7 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
       raw: sliced[i]!,
       brief,
       palette,
+      options: postprocessOptions,
       traceRefs: {
         overrideProfilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
         effectivePipelineSnapshotPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),

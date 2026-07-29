@@ -177,9 +177,15 @@ export function checkFrameCoherence(
     const paletteDistance = histogramDistance(histograms[i]!, histograms[j]!);
     const massA = masses[i]!;
     const massB = masses[j]!;
-    const maxMass = Math.max(massA, massB, 1);
-    const minMass = Math.min(massA, massB);
-    const massDeltaRatio = 1 - minMass / maxMass;
+    // Two fully-transparent frames are identical (0 vs 0), not maximally
+    // different — without this short-circuit `Math.max(0, 0, 1)` forces
+    // `maxMass=1` while `minMass=0`, producing a bogus 100% delta ratio for
+    // a pair that is actually identical (multi-model review finding,
+    // gemini-3.1-pro). The baseline check already independently fails a
+    // fully-transparent frame (see below), so this only fixes the reported
+    // math/reason, not the pass/fail outcome.
+    const massDeltaRatio =
+      massA === 0 && massB === 0 ? 0 : 1 - Math.min(massA, massB) / Math.max(massA, massB, 1);
     const baselineA = baselines[i]!;
     const baselineB = baselines[j]!;
     // A fully transparent frame has no baseline (-1); treat that as a

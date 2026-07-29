@@ -157,6 +157,22 @@ describe('checkFrameCoherence', () => {
     expect(strict.ok).toBe(false);
   });
 
+  it('reports zero mass delta ratio (not 100%) for two fully-transparent frames (multi-model review finding, gemini-3.1-pro)', () => {
+    const empty = new PNG({ width: SIZE, height: SIZE });
+    const frames = [PNG.sync.write(empty), PNG.sync.write(empty)];
+
+    const result = checkFrameCoherence(frames);
+
+    // Two empty frames are identical on mass (0 vs 0) — the math must not
+    // report a bogus 100% delta ratio just because `Math.max(0, 0, 1)`
+    // forces a nonzero denominator. The pair still fails overall because
+    // the baseline signal independently flags a frame with no opaque
+    // pixels as a severe drift (infinite floor-line delta).
+    expect(result.pairs[0]!.massDeltaRatio).toBe(0);
+    expect(result.ok).toBe(false);
+    expect(result.pairs[0]!.reasons.join(' ')).toMatch(/baseline/);
+  });
+
   it('trivially passes with fewer than 2 frames', () => {
     expect(checkFrameCoherence([]).ok).toBe(true);
     expect(checkFrameCoherence([buildFrame({ body: BODY, outfit: OUTFIT, legOffset: 0 })]).ok).toBe(

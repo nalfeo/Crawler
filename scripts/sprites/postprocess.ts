@@ -114,6 +114,31 @@ export function normalizeDisabledModules(value: unknown, brief: Brief): string[]
   return activeNames.filter((name) => requested.has(name));
 }
 
+/**
+ * Modules that MUST be disabled for `frameSequence`-enabled briefs so every
+ * frame keeps the exact same crop-to-canvas mapping (uniform scale and
+ * centering), rather than each frame's independent opaque bounding box
+ * driving its own crop + resize.
+ *
+ * `transparent-trim` crops each cell to its own opaque bounding box before
+ * `resize-nearest` fits it to `brief.size`. In a walk cycle the bounding box
+ * legitimately varies frame to frame (a striding pose is wider than a
+ * standing one), so independent per-frame trimming would make
+ * `resize-nearest` apply a DIFFERENT scale factor and centering offset to
+ * each frame — destroying the uniform scale and stable floor line an ordered
+ * animation strip depends on (multi-model review finding, gemini-3.1-pro).
+ * `trim-and-fit` has the same failure mode post-resize, so it is disabled
+ * alongside it. Returns `[]` for non-frame-sequence briefs (no behavior
+ * change) and filters to only modules actually active for this brief's type.
+ */
+export function frameSequenceDisabledModules(brief: Brief): string[] {
+  if (!brief.frameSequence.enabled) return [];
+  const activeNames = new Set(
+    getActiveModules(getPipelineForType(brief.type), brief.type).map(({ name }) => name),
+  );
+  return ['transparent-trim', 'trim-and-fit'].filter((name) => activeNames.has(name));
+}
+
 export function postprocessWithTrace(
   rawPng: Buffer,
   brief: Brief,
