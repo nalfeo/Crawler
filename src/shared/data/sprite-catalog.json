@@ -2023,6 +2023,19 @@
     "row": 0
   },
   {
+    "id": "generated:player-walk-cycle",
+    "kind": "sprite",
+    "label": "player-walk-cycle",
+    "description": "Generated sprite from brief: player-walk-cycle.",
+    "tags": ["character", "generated", "pipeline-approved"],
+    "spriteId": "player-walk-cycle",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/player-walk-cycle.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:prop-junk-pile-v1-var-0",
     "kind": "sprite",
     "label": "prop-junk-pile-v1-var-0",
