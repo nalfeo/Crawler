@@ -30,11 +30,6 @@ const CATALOG_PATH = path.join('src', 'shared', 'data', 'sprite-catalog.json');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-export interface ManifestShape {
-  version: number;
-  entries: Record<string, unknown>;
-}
-
 export interface CatalogEntry {
   id: string;
   kind: string;
@@ -94,25 +89,6 @@ export function validateCatalogEntries(catalog: CatalogEntry[], label = CATALOG_
   return [];
 }
 
-function checkManifest(): string[] {
-  const errors: string[] = [];
-  const absPath = path.resolve(repoRoot, MANIFEST_PATH);
-
-  let manifest: ManifestShape;
-  try {
-    manifest = JSON.parse(readFileSync(absPath, 'utf8')) as ManifestShape;
-  } catch {
-    return [`Cannot parse ${MANIFEST_PATH}`];
-  }
-
-  if (!manifest.entries || typeof manifest.entries !== 'object') {
-    return [`${MANIFEST_PATH}: missing "entries" object`];
-  }
-
-  errors.push(...validateManifestKeys(Object.keys(manifest.entries)));
-  return errors;
-}
-
 function checkCatalog(): string[] {
   const errors: string[] = [];
   const absPath = path.resolve(repoRoot, CATALOG_PATH);
@@ -137,7 +113,11 @@ const isMain =
   process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
 
 if (isMain) {
-  const allErrors = [...checkManifest(), ...checkCatalog()];
+  // The aggregate manifest.json is now a build artifact composed from per-asset
+  // shards (see scripts/sprites/build-manifest.ts) — it is gitignored and may be
+  // absent, and shard ordering is irrelevant to merges since each shard is its
+  // own file. Only the committed catalog still needs a canonical sorted order.
+  const allErrors = [...checkCatalog()];
 
   if (allErrors.length > 0) {
     console.error('\n❌ Asset sort check failed:\n');
@@ -147,6 +127,6 @@ if (isMain) {
     console.error('');
     process.exit(1);
   } else {
-    console.log('✅ manifest.json and sprite-catalog.json are correctly sorted.');
+    console.log('✅ sprite-catalog.json is correctly sorted.');
   }
 }

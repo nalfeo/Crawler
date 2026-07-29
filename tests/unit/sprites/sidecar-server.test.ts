@@ -1557,7 +1557,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(readFileSync(assetAbs).toString()).toBe('PNG-01');
     // Manifest shard was created on disk too.
     const manifest = composeManifestFromShards(path.dirname(manifestPath));
-    expect(manifest.entries[`${briefId}-var-1`].variantIndex).toBe(1);
+    expect(manifest.entries[`${briefId}-var-1`]?.variantIndex).toBe(1);
   });
 
   it('accepts and queues a variant in one operation', async () => {
