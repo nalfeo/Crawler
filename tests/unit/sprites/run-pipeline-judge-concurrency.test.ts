@@ -241,23 +241,37 @@ describe('runJudgePass — concurrency guards', () => {
 
 describe('runJudgePass — drain on error', () => {
   it('stops handing out work on the first error and rejects', async () => {
-    let started = 0;
+    // Two workers start together. The first call throws quickly; the second
+    // call runs much longer and records a side effect on settlement. After
+    // runJudgePass rejects, the side effect must already be present — this
+    // distinguishes the real drain (Promise.all waits for every in-flight
+    // worker to settle) from a Promise.race-style early-exit.
+    const completions: number[] = [];
+    let callOrder = 0;
     const provider: VisionProvider = {
       modelDeployment: 'mock-vision-deployment',
       async evaluate(): Promise<EvaluateResponse> {
-        started += 1;
-        await new Promise((r) => setTimeout(r, 2));
-        throw new Error('boom');
+        // callOrder++ is synchronous (no await before it), so call 0 is
+        // always the one that started first.
+        const myOrder = callOrder++;
+        if (myOrder === 0) {
+          await new Promise((r) => setTimeout(r, 5));
+          throw new Error('boom');
+        }
+        // Long-running in-flight call: completes well after the first error.
+        await new Promise((r) => setTimeout(r, 80));
+        completions.push(myOrder);
+        throw new Error('long-boom');
       },
     };
     const variants = [0, 1, 2, 3, 4, 5].map((i) => variant(i, 7 - i));
     await expect(
       runJudgePass({ ...baseArgs(variants, provider), judgeMaxVariants: 6, concurrency: 2 }),
     ).rejects.toThrow('boom');
-    // With concurrency 2 the two initial workers each start one call; after the
-    // first rejection the pool aborts, so no worker starts a third. Proves new
-    // work stops rather than every remaining call being dispatched.
-    expect(started).toBeLessThanOrEqual(2);
-    expect(started).toBeGreaterThanOrEqual(1);
+    // The in-flight long call settled (recorded its completion) before
+    // runJudgePass threw — this is the drain-before-throw guarantee.
+    expect(completions).toContain(1);
+    // No new work was dispatched after the abort (≤ 2 calls total).
+    expect(callOrder).toBeLessThanOrEqual(2);
   });
 });

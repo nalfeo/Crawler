@@ -23,9 +23,11 @@ The maintainer was blocked ~30 min per set on the theme-equipment **variant-appr
 calls for an 18-item set). Sped it up with two levers, **scoped ONLY to the theme-equipment
 rejudge path** so no other judge caller changes behavior:
 
-1. **Lower the judged-candidate cap 16 → 6** — `THEME_EQUIPMENT_DEFAULT_JUDGE_MAX_VARIANTS`
-   in `scripts/sprites/theme-equipment-brief.ts`. `enableJudge` defaults an omitted
-   `judge.maxVariants` to this constant.
+1. **New rejudge-only cap 6** — `THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS = 6` added to
+   `scripts/sprites/theme-equipment-brief.ts`. `approveVariantArtifacts` passes
+   `judgeMaxVariants: Math.min(THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS, brief.judge.maxVariants)`.
+   `THEME_EQUIPMENT_DEFAULT_JUDGE_MAX_VARIANTS` stays at **16** — initial generation still
+   explores the full candidate set; only the rejudge is capped.
 2. **Bounded parallelism (concurrency 4)** in the rejudge loop —
    `THEME_EQUIPMENT_JUDGE_CONCURRENCY = 4`, threaded through `rerun.ts` (`RejudgeArgs`) into
    `runJudgePass`. `theme-equipment-runner.ts` `approveVariantArtifacts` passes
@@ -69,7 +71,8 @@ Cap 6-of-16 means **62.5% of generated candidates are no longer sent to the visi
 the rejudge. Candidates are ranked by sensor score first, so the 6 judged are the top-6 by
 deterministic sensor score — the ones most likely to win anyway. This is the intended
 cost/latency trade; if judged-quality regresses in practice, raise
-`THEME_EQUIPMENT_DEFAULT_JUDGE_MAX_VARIANTS` (single constant).
+`THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS` (single constant, rejudge path only — does not affect
+initial generation).
 
 ## What's Next / Blockers
 
