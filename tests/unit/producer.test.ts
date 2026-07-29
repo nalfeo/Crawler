@@ -132,9 +132,9 @@ describe('decompose()', () => {
     expect(graphicsSlice).toBeDefined();
   });
 
-  it('maps audio systems to Sound Designer', () => {
+  it('maps audio systems to UX Designer', () => {
     const result = decompose('Add sound effects for loot drops');
-    const audioSlice = result.slices.find((s) => s.persona === 'Sound Designer');
+    const audioSlice = result.slices.find((s) => s.persona === 'UX Designer');
     expect(audioSlice).toBeDefined();
   });
 
@@ -144,10 +144,10 @@ describe('decompose()', () => {
     expect(gameSlice).toBeDefined();
   });
 
-  it('maps AI systems to Systems Engineer', () => {
+  it('maps AI systems to Game AI Engineer', () => {
     const result = decompose('Improve enemy pathfinding behavior');
-    const sysSlice = result.slices.find((s) => s.persona === 'Systems Engineer');
-    expect(sysSlice).toBeDefined();
+    const aiSlice = result.slices.find((s) => s.persona === 'Game AI Engineer');
+    expect(aiSlice).toBeDefined();
   });
 
   it('keeps runtime wiring paired with later-matched loot domains', () => {
