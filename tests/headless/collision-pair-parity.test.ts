@@ -252,6 +252,22 @@ interface CollisionFingerprint {
 //   seed  13:  6/198.60000228881836/10/0   →  3/183.00000154972076/5/0
 //   seed  42:  5/184.30000019073486/10/10  →  3/199.30000019073486/10/2
 //   seed 137:  3/224.3999987244606/5/0     →  3/152.7199993133545/5/0
+//
+// 2026-07-29 re-baseline — restored spawn-room harvestable guarantee
+//
+// The current Floor 1 harvestable logic no longer excludes the spawn room from
+// the candidate pool; instead it allows NORMAL + SPAWN rooms and then relocates
+// one existing harvestable into the spawn room only if none landed there
+// naturally. That deterministic path changes early detours/crowding relative to
+// the short-lived "normal rooms only" branch state, so the merged-head parity
+// slice returns to the earlier post-`applySolidProps` fingerprint family below.
+// Re-baseline pinned only after the two-invocation determinism check stayed
+// green on the current branch head.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  4/109.17999935150146/10/2   →  5/140.30000066757202/5/2
+//   seed  13:  4/222.70000231266022/15/0   →  3/183.00000154972076/5/0
+//   seed  42:  2/194.59999990463257/10/4   →  3/199.30000019073486/10/2
+//   seed 137:  4/188.7999992966652/5/0     →  3/152.7199993133545/5/0
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
