@@ -488,9 +488,7 @@ export async function getBlockingDependents({ paginate, token, owner, repo, issu
 
 /** Filters a dependency list down to the entries that are still open. */
 export function openBlockingIssues(dependencies) {
-  return (dependencies || []).filter(
-    (dep) => String(dep?.state || '').toLowerCase() === 'open',
-  );
+  return (dependencies || []).filter((dep) => String(dep?.state || '').toLowerCase() === 'open');
 }
 
 /**
@@ -616,10 +614,18 @@ export async function intakeUnblockedDependents({
       // assignment mutation is a benign race, not an infra failure — report it
       // as a skip so the sweep doesn't flag the workflow run red for it.
       if (err instanceof IssueNoLongerOpenError) {
-        results.push({ number: dependent.number, assigned: false, reason: 'dependent closed during processing' });
+        results.push({
+          number: dependent.number,
+          assigned: false,
+          reason: 'dependent closed during processing',
+        });
         continue;
       }
-      results.push({ number: dependent.number, assigned: false, error: String(err?.message || err) });
+      results.push({
+        number: dependent.number,
+        assigned: false,
+        error: String(err?.message || err),
+      });
     }
   }
   return results;

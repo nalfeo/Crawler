@@ -19,6 +19,60 @@ The generator MUST follow every constraint below. Each is also enforced by a det
 7. **No multiple subjects per cell.** If the brief asks for a sword, the cell shows one sword — not "a sword on a shield" or "a sword next to a coin".
 8. **No anti-aliasing.** Edges are hard. Color transitions are 1-pixel boundaries between palette entries.
 
+## Bind every material to its ramp when `paletteMode: strict`
+
+**Strict quantization does not tell the model which palette entry means which
+material.** It only guarantees the shipped pixels are palette entries. If a palette
+contains a small saturated warm accent (a badge, a gold ring, a lamp), the model will
+reach for it whenever it wants "warm" or "bright" — and skin is the usual casualty.
+
+This is not hypothetical: it fired on **both** Welcome Room NPCs, and the VLM judge
+scored the broken art **5/5/5/5 both times**. The judge does not detect skin-hue
+substitution, so no automated layer catches it — only the eyeball gate does.
+
+| brief                | intended for the accent                   | what the model painted with it | measured                    |
+| -------------------- | ----------------------------------------- | ------------------------------ | --------------------------- |
+| `welcome-goon-v3`    | amber laminate badge `rgb(236,146,26)`    | the face                       | skin was hot orange         |
+| `sweaty-merchant-v3` | gold ring + pouch clasp `rgb(198,150,44)` | the whole head                 | head 91% gold, 9% skin ramp |
+
+Note the structural tell in the goon palette: the two **brightest** entries were both
+amber accents, while the skin ramp topped out well below them. Asked for a bright warm
+face, the nearest palette entry was the badge colour. A palette whose brightest entry
+is an accent rather than skin is primed for this failure.
+
+**The fix is prose, not a looser sensor.** Give every material an explicit ramp by RGB,
+say what the accent is _and is not_ for, and add the failure as a hard negative:
+
+```text
+COLOUR ASSIGNMENT IS EXPLICIT. Quantization is strict, so every colour below is a
+palette entry and each one belongs to ONE material. Do not borrow across materials:
+
+- SKIN (face, neck, bare forearms, hands) uses the WARM TAN ramp ONLY:
+  rgb(88,56,38) shadow, rgb(134,92,62) mid, rgb(180,136,98) light,
+  rgb(220,180,140) highlight. It is NOT orange, NOT amber, NOT gold.
+- AMBER rgb(236,146,26) is the LAMINATE BADGE ACCENT and NOTHING ELSE. It must
+  NEVER appear on skin, hair or cloth. It is the brightest entry in the palette
+  purely because a small badge needs to pop — brightness here does NOT mean
+  "use this for the face".
+- rgb(16,14,18) is the OUTLINE colour: a one-pixel contour, never a fill.
+
+HARD NEGATIVES:
+- Do NOT paint the face, neck, arms or hands orange, amber, gold or yellow.
+  This is the single most common failure on this brief.
+```
+
+Verifying it is cheap and deterministic — count palette-exact pixels in the head region
+rather than trusting the judge:
+
+```text
+head: gold=419 skinramp= 39   <- rejected
+head: gold= 15 skinramp=350   <- correct
+```
+
+Also bind the near-black entry to **outline only**. The goon's lower body came back as a
+749-pixel solid mass of `rgb(16,14,18)` because "dark legs" plus an available near-black
+reads as permission to fill with it.
+
 ## Visual conventions
 
 These are softer guidelines — the model should follow them, but downstream sensors don't enforce them. Reference images do most of the work here:
@@ -53,14 +107,14 @@ The preamble below is the authoritative structure that `scripts/sprites/build-pr
 > Every output must follow these rules:
 >
 > 1. Hard 1-pixel outlines on silhouettes. No anti-aliasing. No partial transparency. Edges are crisp 1-pixel transitions between solid colors.
-> 2. Use 3–5 distinct color stops per material — base mid-tone, shadow, deep shadow, optional highlight, optional accent. Keep readable contrast between stops (avoid clusters of near-identical mid-tones), but do not flatten materials to only 2 tones. Pixel dithering is allowed for fabric/stone/metal texture where it adds detail; avoid heavy checkerboard noise. No airbrush blending.
-> 3. **Grungy detail with readability first:** worn edges on weapons and armor, stitching lines on fabric, scuffs on boots, cracks in stone. Characters must keep clear facial structure and clear hair silhouette/volume (hairline + shape must remain readable, not merged into skin/background). Colors are bold and varied — not drab, not monochrome earthy. Include pops of saturated hue even in an otherwise earthy palette.
-> 4. **Scale granularity:** the full sheet is 1024×1024 with each cell rendered at 256×256 source pixels. The post-processor nearest-neighbor resamples to 64×64. This means **4 source pixels = 1 output pixel**. Draw using 4-pixel strokes for 1-pixel outlines, 8-pixel strokes for 2-pixel features. A character face needs individually readable eyes, nose, and mouth each rendered across 4–8 source pixels. Chunky 32-pixel blocks produce sprites that look like 16×16 scaled up — avoid this.
+> 2. Use 3–5 distinct color stops per material — base mid-tone, shadow, deep shadow, optional highlight, optional accent. Keep readable contrast between stops (avoid clusters of near-identical mid-tones), but do not flatten materials to only 2 tones. Pixel dithering is allowed for fabric/stone/metal texture where it adds detail; avoid heavy checkerboard noise. No airbrush blending. **This rule governs WORLD art — props, weapons, equipment, items and tiles. Character and enemy figures are deliberately flatter and are governed by the Character/Mob rules block later in this prompt, which overrides this clause.**
+> 3. **Grungy detail with readability first:** worn edges on weapons and armor, stitching lines on fabric, scuffs on boots, cracks in stone. Colors are bold and varied — not drab, not monochrome earthy. Include pops of saturated hue even in an otherwise earthy palette. **Grunge and texture apply to WORLD art only; figures use flat cel shading and carry wear as a few deliberate shapes, never as texture.**
+> 4. **Scale granularity:** the full sheet is 1024×1024 with each cell rendered at 256×256 source pixels. The post-processor nearest-neighbor resamples to 64×64. This means **4 source pixels = 1 output pixel**. Draw using 4-pixel strokes for 1-pixel outlines, 8-pixel strokes for 2-pixel features. Every feature you intend to be visible must span at least 4–8 source pixels. Do not draw at an effective 16×16 resolution and scale it up.
 > 5. **Single subject per cell**, fully inside its cell. Subject must not be clipped at any edge.
 > 6. **Transparent or flat high-contrast background** that is clearly distinct from the sprite palette (prefer bright magenta `#ff00ff`, electric cyan `#00ffff`, neon lime `#39ff14`, or vivid yellow `#fff200`). Do not use black backgrounds. No decorative backgrounds, no shadows under the subject, no scene props.
 > 7. **No text, numbers, digits, labels, captions, watermarks, signatures, or UI chrome** unless the brief explicitly identifies a sign or text-bearing object and makes lettering essential. Never invent incidental text.
 > 8. Silhouette-first composition: the shape must read clearly even with all interior detail removed.
-> 9. Reference images attached to this request are approved Crawler sprites. Match their outline weight, palette depth, shading stops, dithering, scale, and production finish, but do not let references override the Crawler design language, requested subject, or floor context.
+> 9. Reference images attached to this request are approved Crawler sprites. Match their outline weight, palette depth, scale, and production finish, but do not let references override the Crawler design language, requested subject, or floor context. **For character and enemy subjects, copy technique only — outline weight, palette discipline, crispness — and NOT figure proportions or rendering density; some references are older, more realistically-proportioned art the project is deliberately moving away from.**
 >
 > --- END STYLE PREAMBLE ---
 

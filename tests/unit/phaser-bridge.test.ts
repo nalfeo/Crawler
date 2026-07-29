@@ -498,12 +498,16 @@ describe('createPhaserBridge', () => {
     expect(propImages[0]?.rotation).toBeCloseTo(0);
   });
 
-  it('contain-fits real art to a uniform scale so no set-piece sprite is ever stretched', () => {
+  it('scales upright set-piece art by heightFt alone so a declared height is never flattened', () => {
     // Native art is 100×50 (aspect 2.0). The authored feet box is 10×10 ft →
-    // 80×80 px (aspect 1.0) — a DIFFERENT aspect. A naive setDisplaySize(80,80)
-    // would stretch the art to 1:1; contain-fit must instead pick ONE uniform
-    // scale = min(80/100, 80/50) = 0.8 so the art keeps its 2:1 aspect (letterboxed
-    // inside the box), never distorted. "No tile in this game is designed to stretch."
+    // 80×80 px. `heightFt` is AUTHORITATIVE for upright props: the scale is
+    // 80/50 = 1.6 so the art's apparent height is exactly the declared 10 ft,
+    // and its width follows the art's own 2:1 aspect. It is a single uniform
+    // scale, so the sprite is still never stretched.
+    //
+    // Regression guard: the old contain-fit took min(80/100, 80/50) = 0.8, which
+    // silently threw away HALF the declared height. A torch authored at 1.5×3 ft
+    // rendered at 1.5 ft. That is what made every authored room read as squashed.
     let displaySizeCalls = 0;
     const propImages: (MockImage & { width: number; height: number })[] = [];
     const scene = {
@@ -550,10 +554,69 @@ describe('createPhaserBridge', () => {
 
     const img = propImages[0];
     expect(img).toBeDefined();
-    // Contain-fit engaged (native size known) → NO setDisplaySize distortion.
+    // Native size known → NO setDisplaySize distortion.
     expect(displaySizeCalls).toBe(0);
+    // Height-authoritative: 80px box / 50px native = 1.6, so the rendered height
+    // is the full declared 10 ft rather than the 0.8 (5 ft) contain-fit gave.
+    expect(img?.scaleY).toBe(1.6);
     // Uniform scale: scaleX === scaleY (the anti-stretch invariant).
-    expect(img?.scaleX).toBe(0.8);
+    expect(img?.scaleX).toBe(img?.scaleY);
+
+    bridge.destroy();
+  });
+
+  it('contain-fits FLOOR decals so both ground extents are honoured', () => {
+    // A rug/stain/tape lies IN the floor plane, so widthFt and heightFt are both
+    // real ground extents and must both be respected. Same 100×50 art in the same
+    // 10×10 ft box, but marked `floorPlane` → contain-fit min(0.8, 1.6) = 0.8,
+    // keeping the decal inside its declared ground footprint.
+    let displaySizeCalls = 0;
+    const propImages: (MockImage & { width: number; height: number })[] = [];
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const img = new MockImage(x, y, textureKey, frame) as MockImage & {
+            width: number;
+            height: number;
+          };
+          img.width = 100;
+          img.height = 50;
+          (
+            img as unknown as { setDisplaySize: (w: number, h: number) => MockImage }
+          ).setDisplaySize = function setDisplaySize(): MockImage {
+            displaySizeCalls += 1;
+            return img;
+          };
+          propImages.push(img);
+          return img as unknown as Phaser.GameObjects.Image;
+        }),
+        rectangle: vi.fn((x = 0, y = 0, width = 0, height = 0) => {
+          const rect = new PropRect(x, y, width, height);
+          return rect as unknown as Phaser.GameObjects.Rectangle;
+        }),
+      },
+      textures: {
+        exists: (key: string) => key === 'kenney-tiny-town',
+      },
+    } as unknown as Phaser.Scene;
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+
+    addSetPieceProp(world, 3, 2, {
+      sprite: { source: 'sheet', sheetKey: 'kenney-tiny-town', col: 2, row: 5 },
+      depth: setPieceZToDepth(30),
+      widthFt: 10,
+      heightFt: 10,
+      floorPlane: true,
+      label: 'floor-decal-probe',
+    });
+
+    bridge.sync(world);
+
+    const img = propImages[0];
+    expect(img).toBeDefined();
+    expect(displaySizeCalls).toBe(0);
     expect(img?.scaleY).toBe(0.8);
     expect(img?.scaleX).toBe(img?.scaleY);
 
@@ -678,7 +741,13 @@ describe('createPhaserBridge', () => {
   });
 
   it('prefers Kenney sprite + frame when the sheet texture exists', () => {
-    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    // Exclude the generated player art so this exercises the Kenney FALLBACK.
+    // The `player` render kind now also pins generated art (Rhea Vale), which
+    // otherwise wins and hides this branch.
+    const { scene, images } = createSceneStub({
+      kenneyLoaded: true,
+      textureExists: (key) => !key.startsWith('rhea-vale'),
+    });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
     const eid = addEntity(world.ecs);
@@ -693,6 +762,24 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toBe('kenney-tiny-dungeon');
     expect(images[0]?.frame).toBe(96); // player → Tiny Dungeon knight (frame 96)
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
+  });
+
+  it('prefers the pinned generated player art over the Kenney sheet', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('rhea-vale-v1-var-0');
+    // 64px art at 0.72 => 46px drawn box == 5.75 ft, matching the NPC scale.
+    expect(images[0]?.scaleX).toBeCloseTo(0.72, 5);
   });
 
   it('fades the skull marker out quickly while the corpse desaturates and fades', () => {

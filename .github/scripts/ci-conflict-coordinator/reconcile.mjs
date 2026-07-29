@@ -741,9 +741,7 @@ for (const number of managedNumbers) {
       await request(token, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
         method: 'DELETE',
       });
-      process.stdout.write(
-        `deleted coordinator comment pr=#${number} comment_id=${commentId}\n`,
-      );
+      process.stdout.write(`deleted coordinator comment pr=#${number} comment_id=${commentId}\n`);
     } catch (error) {
       // Non-fatal: a 404 means it was already deleted; log and continue.
       process.stdout.write(

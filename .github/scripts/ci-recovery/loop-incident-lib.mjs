@@ -18,10 +18,7 @@
  */
 import { createHash } from 'node:crypto';
 
-import {
-  LOOP_INCIDENT_FINGERPRINT_PREFIX,
-  LOOP_INCIDENT_MARKER,
-} from './markers.mjs';
+import { LOOP_INCIDENT_FINGERPRINT_PREFIX, LOOP_INCIDENT_MARKER } from './markers.mjs';
 
 export { LOOP_INCIDENT_MARKER, LOOP_INCIDENT_FINGERPRINT_PREFIX };
 export const LOOP_INCIDENT_LABEL = 'ci-loop-incident';

@@ -1,0 +1,231 @@
+# REGENERATION of the welcome-room reception goon (Asset Forge, 2026-07-26).
+#
+# WHY THIS BRIEF EXISTS: `npc-welcome-goon-var-0` is a generic nightclub bouncer
+# — dark suit, sunglasses, arms crossed. Four documented failures it must fix:
+#
+#  1. NO PRODUCTION IDENTITY. Nothing says "works for a televised dungeon
+#     reality show". He stands at the reception desk of a produced TV set; the
+#     visual judge's #1 outstanding finding on this room is that the
+#     production-set fiction is barely visible. Lanyard + laminated credential,
+#     headset, clipboard are therefore the FIRST-CLASS subject of this brief,
+#     not garnish.
+#  2. WRONG ATTITUDE. His dialogue is a bored, jaded lifer working a check-in
+#     desk. He must read slouched and weary, not alert and imposing.
+#  3. FAR TOO DARK. Nearly all dark navy/black; he sinks into a dark floor. The
+#     judge has already flagged exactly this failure mode on the broker. A
+#     LIGHTER MID-VALUE GARMENT MASS is a pass/fail requirement here.
+#  4. Sunglasses + crossed arms + dark suit is the AI-slop bouncer cliche and is
+#     an explicit hard negative below.
+#
+# GEOMETRY / PIPELINE DECISIONS (each paid for in an earlier wave):
+#
+#  * DEFAULT size variant. `sizeVariant: tall` is documented as actively harmful
+#    on this pipeline even for tall subjects — the model keeps drawing square
+#    cells and the slicer then cuts stacked columns. An upright character in a
+#    square 256x256 source cell is correct; the drawn box lands where it lands
+#    and is MEASURED off the shipped PNG, never restated from this brief.
+#
+#  * ONE AXIS ONLY is stated in source pixels (the height). Stating both axes
+#    reliably yields the stated one and a wrong other, and figure proportion is
+#    this sprite's whole problem.
+#
+#  * `sensors.anchor.mode: grip`. A standing character has a genuine single
+#    ground-contact footprint, so the grip/base-derived anchor is the correct
+#    contract (NOT center-of-mass — that is for two-contact or floating objects
+#    like the stanchion pair and the cable coil). Every threshold stays at its
+#    default, including `interiorHoles: 0`.
+#
+#  * `paletteMode: strict` against a purpose-built 16-step ramp. Prose does not
+#    control colour on this model — quantization does. The ramp is built so the
+#    figure CANNOT come back as a dark blob: it carries a four-step light
+#    taupe/bone garment ramp plus a saturated amber laminate accent, and the
+#    lock also ACTIVATES the palette-membership sensor, tightening the gate.
+# ROUND 2 (2026-07-27): round 1 produced 12 variants, ALL failing the
+# `anchor-derivable` sensor with "grip midpoint x=22 is outside +/-3 of center
+# 32". Diagnosis: the clipboard was drawn jutting out to one side, so after the
+# transparent trim the bounding box recentred on body+clipboard and his boots
+# landed ~10px left of frame centre. That is a COMPOSITION bug in the brief, not
+# a sensor to loosen — fixed by pinning the clipboard flat against his thigh and
+# requiring the silhouette to be balanced about the point between his boots.
+type: character
+name: welcome-goon-v2
+description: |
+  A TALL, RANGY MALE PRODUCTION-STAFF GREETER working the check-in desk of a
+  televised dungeon reality show. He is a former bouncer who got stuck doing
+  reception paperwork and has been down here far too long.
+
+  PROPORTIONS ARE THE FIRST PRIORITY. He is an ADULT HUMAN roughly SEVEN HEADS
+  TALL — a full-grown 6-foot-6 man, drawn realistically tall and lanky-shouldered
+  in the torso and legs. His head is SMALL relative to his body: measure it, the
+  head must be about one seventh of his total height, no more. Do NOT draw chibi,
+  super-deformed, two-head-tall, three-head-tall, four-head-tall, dwarf or
+  big-head cartoon proportions. Legs and torso carry most of the height. He is
+  TALL first and everything else second — he is a LEAN, LONG-LIMBED heavyweight,
+  NOT a squat, thick, barrel-shaped or dwarfish one.
+
+  BUILD HIM FROM THE FLOOR UP, IN THIS ORDER, AND KEEP THESE SHARES. Measured
+  against the 256-source-pixel height of his cell:
+   - The BOTTOM HALF of his total height is LEGS — at least 100 of those 256
+     source pixels, hip to knee to ankle, ending in boots planted on the floor.
+     Both knees must read. If the legs are shorter than the torso, he has FAILED.
+   - The MIDDLE THIRD is torso, arms and clipboard.
+   - His HEAD, chin to crown, is at most 34 of those 256 source pixels — one
+     seventh of him. A head bigger than that is an automatic failure.
+   - He is clearly TALLER THAN HE IS WIDE: his total drawn width must be well
+     under two thirds of his drawn height. A wide, blocky figure has FAILED.
+
+  PRODUCTION IDENTITY IS THE SECOND PRIORITY, and it must be visible at game
+  scale. Draw ALL THREE of these, large and unambiguous:
+   - A LANYARD around his neck: a strap running down his chest ending in a
+     LAMINATED SHOW CREDENTIAL — a bright rectangular badge hanging at mid-chest,
+     drawn big enough to read as a badge when the sprite is only 40 pixels tall.
+     The badge is the single brightest saturated thing in the whole sprite.
+   - A HEADSET: a thin band over his head with an earpiece cup on one ear and a
+     slim boom microphone arm curving toward his mouth.
+   - A CLIPBOARD held in BOTH HANDS, flat against the front of his belly and
+     DEAD CENTRE of his body, tilted up slightly as if he is half-reading the
+     check-in list. Both forearms come in toward the middle so the clipboard sits
+     exactly on his centre line. It must NOT be held out to one side, must NOT
+     be held at arm's length, and must NOT stick out past either hip. Both
+     elbows stay tucked in and TOUCHING his ribs, with no gap of background
+     enclosed between his arms and his torso.
+
+
+  ATTITUDE IS THE THIRD PRIORITY. He is BORED AND WEARY. Shoulders slumped and
+  rolled forward, head tipped slightly down or to one side, weight dumped onto
+  one hip, eyelids heavy, mouth flat or mid-sigh. He is going through the
+  motions of a job he stopped caring about several seasons ago. He is NOT alert,
+  NOT squared-up, NOT imposing, NOT posing.
+
+  VALUE STRUCTURE IS A PASS/FAIL CRITERION, AND IT IS THE THING THIS BRIEF KEEPS
+  FAILING. The sprite is placed on a DARK dungeon floor and must separate from it
+  at true game scale, where he is only about 60 pixels tall. Every previous round
+  came back as a dark blob on a dark floor. Therefore:
+
+  HE WEARS NO JACKET, NO COAT, NO BLAZER, NO SUIT, NO VEST AND NO OVERGARMENT OF
+  ANY KIND. His entire torso — shoulders, chest, belly, arms — is ONE unbroken
+  LIGHT BONE / TAUPE branded production polo shirt with the sleeves rolled to the
+  elbow. That light shirt is the single largest area of the sprite and it is
+  clearly LIGHTER than everything around it. His bare forearms are light too.
+
+  The only DARK masses are his trousers, his boots, his hair and the one-pixel
+  outline — and together they must occupy LESS area than the light shirt. Read
+  the sprite top to bottom: light head, LIGHT torso and arms, dark legs. Three
+  clearly distinct value masses, never one flat blob of a single hue.
+
+  HARD NEGATIVES — these are the exact failures this brief replaces:
+  - Do NOT draw sunglasses, shades, or dark eyewear of any kind. His eyes are
+    visible and tired.
+  - Do NOT draw crossed or folded arms. Both arms hang loose and low.
+  - Do NOT draw a closed, buttoned dark suit, a tuxedo, or an all-black outfit.
+  - Do NOT draw a velvet rope, a doorway, a desk, furniture, or any second
+    object other than the clipboard he is holding.
+  - Do NOT draw a squat, wide, big-headed, chibi or dwarf-proportioned figure.
+    Round 10 of this brief failed on exactly that: the figures came back four and
+    a half heads tall with a drawn box 38 wide by 58 high (aspect 0.66), and the
+    visual judge hard-blocked the sheet as "too squat and wide". Lengthen the
+    LEGS to fix it — do not shrink the head by shrinking him overall.
+  - Do NOT draw a drop shadow, cast shadow or dark ellipse on the ground under
+    him. The background is empty.
+  - Do NOT draw a jacket, coat, blazer, suit jacket, vest, waistcoat, hoodie or
+    any dark overgarment on top of the light shirt. Round 4 of this brief failed
+    on exactly that: the dark jacket swallowed the light shirt and the whole
+    sprite sank into the dark floor at game scale. Shirt only.
+  - Do NOT let the dark trousers, boots and hair together cover more of the
+    sprite than the light shirt does.
+  - Do NOT leave any fully enclosed pocket of background inside the figure. This
+    is a hard, measured requirement: ZERO enclosed transparent pixels. Both
+    forearms are pressed FLAT AGAINST HIS TORSO along their whole length, with no
+    triangle of background between arm and ribs and no gap between arm and
+    clipboard. The clipboard's back edge touches his belly. His legs touch each
+    other from crotch to boot. The lanyard strap lies flat on his chest and does
+    not form an open loop with background showing through it — draw it as two
+    solid strips resting on the shirt, never as a ring. The headset band sits on
+    his hair with no gap under it.
+
+  He is one of THREE NPCs in this room and must read as the same cast as the
+  already-approved `spell-broker-v2-var-3`: the same head-to-body ratio, the same
+  rendering density, the same one-pixel hard dark outline, the same tall
+  instantly-readable silhouette, and the same discipline of ONE saturated focal
+  accent (the broker's is a glowing green orb; this character's is his amber
+  laminated credential — nothing else in the sprite is that saturated).
+
+  SIZE ON THE SHEET: the standing figure should span roughly 200 of the 256
+  vertical source pixels of its cell, centred, with his feet on a common
+  invisible floor line near the bottom of the cell. Let the width come out at
+  whatever the drawn figure honestly needs — do not stretch or squash him
+  horizontally to fill the cell — but keep the whole figure fully inside its own
+  cell with clear breathing room on every side.
+
+  THE SHEET IS A 4 x 4 GRID OF SIXTEEN SEPARATE CELLS, and EVERY CELL MUST BE
+  ISLANDED. Each figure sits wholly inside its own cell with a WIDE EMPTY MARGIN
+  of flat background all the way around it — at least 25 source pixels on every
+  side, ABOVE AND BELOW as well as left and right. No figure may touch, overlap
+  or come near the edge of its cell. No two neighbouring figures may run into one
+  another, and in particular the boots of one row must never touch the head of
+  the row below: there is always a clear unbroken horizontal band of empty
+  background between every pair of rows, and a clear unbroken vertical band
+  between every pair of columns. A figure that merges with its neighbour makes
+  the whole sheet unusable.
+
+  THE SILHOUETTE MUST BE BALANCED ABOUT HIS FEET. Draw a vertical line up from
+  the point midway between his two boots: the drawn figure must extend the SAME
+  distance to the left of that line as it does to the right. Nothing — not an
+  elbow, not a shirt hem, not the clipboard, not a hand — may stick out
+  noticeably further on one side than the other. His boots sit under the middle
+  of his own mass, not off to one side of it. His weary slump is in the
+  SHOULDERS, NECK AND HEAD, not in a hip thrown out sideways.
+
+  HIS FEET ARE TOGETHER. Both boots stand side by side and TOUCHING, heel to
+  heel and toe to toe, so that where they meet the floor they form ONE single
+  unbroken horizontal shape with no gap of background between them. Do not draw
+  a wide planted stance, do not draw the legs apart, do not draw one foot
+  forward. That single joined boot shape sits directly under the centre of his
+  body. This is a hard requirement: a gap between his boots makes the sprite
+  unusable.
+
+  Standing upright in an idle stance, same 3/4 view as the rest of the game's
+  props: the camera looks slightly down and he is turned a few degrees off
+  straight-on, both eyes visible, shoulders nearly square to the viewer.
+
+  MATERIAL AND PALETTE: light bone/taupe production polo (the dominant mass),
+  dark navy trousers, dark grey headset and boots, warm skin, a deep crimson
+  lanyard strap, and one saturated amber laminate badge. Worn by decades of
+  syndication — scuffed, dusty, the polo gone grubby at the collar. Hard
+  one-pixel dark outline, 3-5 tonal stops per material, dithered wear on the
+  trousers and boots. Lit from the
+  top wall; soft one-pixel contact shadow down and to the right under his feet
+  only. Never candy-bright, never glossy, no glow.
+
+  Rendered in the game at roughly 6.6 feet tall (1 tile = 4 feet). The art must
+  read believably at that size — keep detail count low enough that the badge, the
+  headset and the slumped posture all still survive when the figure is only about
+  40 pixels tall on screen, and do not over-detail.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the figure's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, do not use a different background colour per cell, and do not
+  draw any panel, border or frame behind the subject.
+palette:
+  id: welcome-room-goon
+postprocessing:
+  paletteMode: strict
+sensors:
+  anchor:
+    # A standing biped is not a handheld weapon. `grip` scans the bottom row
+    # for opaque runs and locks onto ONE of them, so two boots resolve to a
+    # single foot and a perfectly centred figure reads as off-centre by half
+    # a stance width. `center-of-mass` is the contract this sensor's own
+    # docstring specifies for "mobs and most non-held sprites".
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - production-staff
+  - npc
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 12
+minVariations: 0

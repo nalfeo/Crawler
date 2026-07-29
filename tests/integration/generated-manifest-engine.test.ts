@@ -325,17 +325,42 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
       fetcher,
     });
 
-    // The exact approved variant keys the welcome-room base layers pin (the
-    // velvet rope shipped as var-2, the rest as var-0). Kept in lockstep with
-    // `set-pieces.json` (cross-checked below) so a rename on EITHER side — the
-    // wiring or the shipped manifest — fails loudly here instead of silently
-    // degrading to a labeled placeholder box in-engine.
+    // The exact approved variant keys the welcome-room layers pin. Variant
+    // indices are whatever the sprite run's judged winner happened to be, so
+    // they are deliberately heterogeneous (var-0 through var-12) — do NOT
+    // "normalise" them. Kept in lockstep with `set-pieces.json` (cross-checked
+    // below) so a rename on EITHER side — the wiring or the shipped manifest —
+    // fails loudly here instead of silently degrading to a labeled placeholder
+    // box in-engine.
     const expectedKeys = [
-      'welcome-room-rug-var-0',
-      'welcome-room-desk-var-0',
-      'welcome-room-shop-table-var-0',
       'welcome-room-bookcase-var-0',
+      'welcome-room-bunk-bed-var-6',
+      'welcome-room-call-sheet-var-3',
+      'welcome-room-camera-rig-var-4',
+      'welcome-room-carpet-var-4',
+      'welcome-room-chair-turned-var-0',
+      'welcome-room-chore-rota-var-2',
+      'welcome-room-desk-var-0',
+      'welcome-room-door-var-2',
+      'welcome-room-exit-sign-wall-var-2',
+      'welcome-room-floor-runner-var-10',
+      'welcome-room-floor-seam-var-9',
+      'welcome-room-history-board-var-3',
+      'welcome-room-kitchenette-var-0',
+      'welcome-room-laundry-line-var-0',
+      'welcome-room-lounge-stool-var-1',
+      'welcome-room-merchant-board-var-6',
+      'welcome-room-mini-fridge-var-2',
+      'welcome-room-potted-plant-var-0',
+      'welcome-room-rug-var-0',
+      'welcome-room-shop-table-var-0',
+      'welcome-room-show-poster-var-0',
+      'welcome-room-side-table-var-12',
+      'welcome-room-stanchion-pair-var-4',
+      'welcome-room-trash-bin-var-0',
       'welcome-room-velvet-rope-var-2',
+      'welcome-room-wall-banner-var-6',
+      'welcome-room-wall-shelf-var-0',
     ];
 
     // 1) The shipped manifest carries each key as its own texture, resolving to
@@ -382,13 +407,14 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     });
 
     // The exact pinned generated keys each welcome-room NPC resolves to. The
-    // Spell Broker shipped as var-1 while the Goon/Merchant are var-0 — pinned
-    // per def id (not a variant roll) so this stays deterministic. Cross-checked
-    // against GENERATED_KEY_BY_NPC_DEF below so a rename on EITHER side — the
-    // wiring map or the shipped manifest — fails loudly here.
+    // approved variants differ per NPC (Goon var-1, Merchant var-3, Broker
+    // var-1) — pinned per def id (not a variant roll) so this stays
+    // deterministic. Cross-checked against GENERATED_KEY_BY_NPC_DEF below so a
+    // rename on EITHER side — the wiring map or the shipped manifest — fails
+    // loudly here.
     const expectedByDef: Record<string, string> = {
-      'tutorial-goon': 'npc-welcome-goon-var-0',
-      shopkeeper: 'npc-sweaty-merchant-var-0',
+      'tutorial-goon': 'welcome-goon-v3-var-1',
+      shopkeeper: 'sweaty-merchant-v3-var-3',
       'spell-quest-giver': 'npc-spell-broker-var-1',
     };
 

@@ -1,0 +1,56 @@
+name: Set-Piece Reachability Sweep
+
+# Hard gate (rule #12 / #15): proves 100% of generated Floor 1 set-piece rooms
+# (the prefab welcome-room) are reachable from spawn with every door + in-room
+# NPC anchor pathable. A single sealed room fails the sweep. Broad sweeps (>10
+# seeds) run here on CI, never on local/session compute.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed_count:
+        description: 'Number of sequential Floor 1 seeds to run (1..1000)'
+        type: string
+        default: '200'
+
+permissions:
+  contents: read
+
+jobs:
+  reachability-sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Resolve seed count
+        id: seeds
+        env:
+          SEED_COUNT: ${{ inputs.seed_count }}
+        run: |
+          set -euo pipefail
+          # PR runs use a fixed 200-seed panel; workflow_dispatch honors its input.
+          count="${SEED_COUNT:-200}"
+          if ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -lt 1 ] || [ "$count" -gt 1000 ]; then
+            echo "::error::seed_count must be an integer in [1,1000]"
+            exit 1
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Run set-piece reachability sweep
+        env:
+          SEED_COUNT: ${{ steps.seeds.outputs.count }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/set-piece/reachability-sweep.ts \
+            --count "$SEED_COUNT" \
+            --out set-piece-reachability.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: set-piece-reachability
+          path: set-piece-reachability.json
+          if-no-files-found: warn
+          retention-days: 30

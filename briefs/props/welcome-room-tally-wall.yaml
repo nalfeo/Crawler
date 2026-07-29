@@ -1,0 +1,141 @@
+# ASPECT NOTE (Asset Forge, 2026-07-25): the set-piece renderer is now
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect), so the canvas aspect ratio IS
+# the object's real-world proportions. This is ~3 ft wide x 2 ft tall, hence a
+# 96x64 canvas (1.5:1). 96x64 is a moderate aspect (below the 2:1 threshold), so
+# resizeSpriteStrategy() returns 'fit' and the shipped canvas is exactly 96x64.
+type: prop
+name: welcome-room-tally-wall
+description: |
+  TALLY MARKS gouged into a rough stone dungeon wall, counting the seasons
+  served. Front-elevation 3/4 view, looking straight at the face of the wall —
+  the same view as the already-approved welcome-room-desk (which has "WELCOME"
+  painted on its FRONT face). Modern high-quality pixel art, readable at 16px.
+
+  REQUIREMENT A — DO NOT DRAW A PLAQUE. DRAW ONLY THE SCRATCHES.
+  Read this before anything else. Round 1 of this brief returned sixteen solid
+  dark-brown wooden PLAQUES with tally marks burnt onto them, each with a hard
+  dark outline all the way round. That is the exact opposite of what is wanted
+  and every variant was rejected.
+  There is NO panel here. NO slab. NO plaque. NO board. NO tablet. NO backing
+  stone. NO frame. NO outline. NO rectangle of any kind.
+  The ONLY opaque pixels in this image are the tally strokes themselves and the
+  one-or-two-pixel chipped lip immediately hugging each stroke. Everything else —
+  the space between the strokes, between the groups, between the rows, and the
+  whole margin around them — is FULLY TRANSPARENT, alpha zero. Roughly nine tenths
+  of this canvas is empty transparency, and that is correct.
+  Imagine cutting the marks out of the wall and deleting the wall. If your result
+  contains any filled shape, any rectangle, or any continuous dark line that goes
+  round the outside of the marks, it is wrong and it will be rejected.
+
+
+  half again as wide as it is tall. The marks should spread across roughly
+  80-90% of the cell; do not draw a small cluster floating in a big empty cell.
+
+  WHAT IT IS: MANY GROUPS OF FIVE, SMALL AND CROWDED. Four upright scratches with
+  a fifth struck diagonally across them, repeated over and over. The canvas must
+  contain AT LEAST SIX complete groups of five, arranged in THREE ragged rows of
+  two or three groups each, and the rows must not line up with each other.
+  SCALE MATTERS AND ROUND 2 GOT IT WRONG: round 2 drew ONE enormous group of five
+  filling the whole canvas. Each individual stroke is only about a QUARTER of the
+  canvas height, and each group of five is only about a QUARTER of the canvas
+  width — small, cramped, repeated many times. If you can count only one group,
+  or only two, it is wrong. Count them before you finish: six or more.
+  This is the single most important reading cue: it must be instantly
+  recognisable as a prisoner's tally count, not as random scratches, not as
+  decoration, not as writing.
+
+  IT MUST READ AS OBSESSIVE AND HAND-CUT:
+  - The strokes are gouged INTO the stone with a blade — chiselled, uneven,
+    varying in depth and length, wobbling slightly off vertical. Not ruled, not
+    parallel, not evenly spaced, not neat.
+  - Some groups are OLD: shallow, worn smooth, dulled, half filled with grime,
+    barely visible.
+  - Some groups are FRESH: deeper, sharper, with a bright pale bite where new
+    stone has been exposed and a little dust or spoil at the bottom of the cut.
+  - The rows drift and crowd. Later groups are squeezed in wherever there was
+    room, some overlapping older ones, a couple started and abandoned. One row
+    runs slightly downhill.
+  - This is somebody counting time they cannot escape, over and over, for years.
+    It should feel a bit unsettling, never charming or decorative.
+
+  DEPTH: each stroke is a CUT, so draw it as a dark recessed groove with a
+  one-pixel lighter highlight along one side where the light catches the lip of
+  the cut. That highlight is what makes it read as carved rather than painted on.
+
+  IT IS NOT: writing, letters, runes, glyphs, numerals, a signature, graffiti in
+  paint or chalk, a ladder, a fence, a gate, a grille, a window, bars, a crack, a
+  cobweb, or a stack of sticks. It is a tally.
+
+  MOOD — a grimy reality-TV dungeon set, threadbare and over-used. Three NPCs are
+  stuck living in this reception room together, bored out of their minds,
+  forbidden by dungeon rules from leaving or complaining while the cameras roll.
+  This wall is where one of them has been counting the seasons. It sits in the
+  part of the room the camera rig does NOT cover — the half where they actually
+  live — so nobody has tidied it away.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase,
+  welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope,
+  welcome-room-show-poster, welcome-sign-left-v1 and prop-wall-sconce-v1 without
+  clashing: deep maroon, dark walnut, tarnished brass, muted and dusty, never
+  bright and never saturated. The marks are cut into grey-brown dungeon stone, so
+  work in a narrow muted range: dulled warm grey-brown for the stone lip and
+  spoil, a darker desaturated brown-grey for the groove itself, and a restrained
+  pale grey-tan for the freshest exposed bite. BANNED: neon, pure white, pure
+  black, saturated red, blood red, saturated yellow, orange, teal, cyan, blue,
+  green, magenta, purple, and any speckle of a hue outside the muted stone /
+  walnut family. Keep the overall value as dark and dusty as the welcome-room
+  desk and bookcase.
+
+  RENDERING: house prop style, muted interior shading, lit from above (the wall
+  sconces are overhead). This prop is WALL-MOUNTED: the marks are on the wall and
+  do not rest on the floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the tally marks themselves plus the
+  small amount of chipped stone lip and spoil immediately around each cut. Do NOT
+  paint a slab of stone wall behind them, do not paint a rectangular stone panel,
+  a plaque, a backing plate, a frame, a border or a vignette — the wall is
+  already painted underneath this art in the game. Every pixel that is not a mark
+  or its immediate chipped lip must be fully transparent. If your result contains
+  a filled rectangle of stone, it is wrong.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the marks'
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the marks.
+size:
+  width: 96
+  height: 64
+anchor:
+  x: 48
+  y: 56
+sensors:
+  # Thin scratches on transparency cover very little of their bounding box, far
+  # below the `prop` default floor of 0.10 which assumes a solid grounded object.
+  # The floor is dropped to 0.04 (still comfortably above an empty cell) and the
+  # CAP IS TIGHTENED HARD from 0.65 to 0.30: the dominant failure mode for a
+  # wall-scratch brief is the model painting a filled slab of stone behind the
+  # marks, and a 0.30 cap rejects that mechanically rather than by prose.
+  opaqueRatio:
+    min: 0.04
+    max: 0.30
+  # Wall-mounted: no grounded base, so bottom-center grip is meaningless.
+  anchor:
+    mode: center-of-mass
+  # Tally marks are by construction many separate disconnected strokes with
+  # transparent stone showing between them, so the interior-hole default of 0
+  # would reject exactly the art this brief asks for. Wholesale background
+  # bleed-through is still caught by the tightened opaqueRatio cap above.
+  interiorHoles:
+    maxPixels: 512
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

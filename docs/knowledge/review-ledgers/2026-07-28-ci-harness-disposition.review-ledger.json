@@ -20,9 +20,7 @@
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "claude-sonnet-4.6"
-          ],
+          "models": ["claude-sonnet-4.6"],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": true
@@ -35,11 +33,7 @@
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "gpt-5.3-codex",
-            "claude-sonnet-4.6",
-            "gpt-5.4"
-          ],
+          "models": ["gpt-5.3-codex", "claude-sonnet-4.6", "gpt-5.4"],
           "concerns_count": 3,
           "valid_count": 2,
           "resolved_count": 2,

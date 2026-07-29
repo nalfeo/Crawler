@@ -1285,7 +1285,10 @@ test('ABANDON_CANDIDATE_LABEL is the expected label string', () => {
 });
 
 test('QUARANTINE_COMMENT_MARKER is the expected marker string', () => {
-  assert.ok(String(QUARANTINE_COMMENT_MARKER).startsWith('<!-- '), 'must be an HTML comment marker');
+  assert.ok(
+    String(QUARANTINE_COMMENT_MARKER).startsWith('<!-- '),
+    'must be an HTML comment marker',
+  );
   assert.ok(QUARANTINE_COMMENT_MARKER.includes('quarantine'), 'must include "quarantine"');
 });
 

@@ -1,0 +1,141 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): the set-piece renderer is
+# HEIGHT-AUTHORITATIVE, so the canvas aspect ratio IS the object's real-world
+# proportions. 1 tile = 4 ft (PIXELS_PER_FOOT = 8 => 32 world px per tile).
+# The counter is ~5 ft wide x 3 ft tall, and the wall shelf above it carries the
+# whole unit to ~5.5 ft overall height => 5 x 5.5 ft = 0.91:1, hence an 80x88
+# canvas. Neither axis is >= 2x the other, so resizeSpriteStrategy() returns
+# 'fit' and the shipped canvas is exactly 80x88 — so the DRAWN aspect must match
+# ~0.91:1 or the subject letterboxes.
+type: prop
+name: welcome-room-kitchenette
+description: |
+  A cramped BREAK-ROOM KITCHENETTE: one grimy institutional counter unit with a
+  hotplate, a kettle and a stack of mismatched mugs, and a single plank shelf
+  bolted to the wall above it. Front-elevation 3/4 view, looking straight at the
+  face of the counter — the same view as the already-approved welcome-room-desk
+  (which has "WELCOME" painted on its FRONT face). This is a FACADE, not a
+  top-down floorplan: vertical pixels are real vertical height. Modern
+  high-quality pixel art, silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  The counter is approximately 5 FEET WIDE x 2 FEET DEEP x 3 FEET TALL, and the
+  shelf above it takes the whole assembly to about 5.5 FEET TALL. The bounding
+  box is therefore very slightly TALLER THAN IT IS WIDE (width : height =
+  0.91 : 1) — near square, leaning tall. Compose it inside the cell like this:
+  - The counter spans nearly the FULL WIDTH of the cell.
+  - THE COUNTER'S BASE MUST REACH THE VERY BOTTOM of the cell and stand on the
+    bottom margin. Do NOT leave an empty band underneath it.
+  - The shelf sits in the TOP THIRD of the cell, above and clear of the
+    countertop, with an obvious band of empty background between the underside of
+    the shelf and the things standing on the counter.
+  - It fills roughly 85-90% of the cell on both axes.
+
+  NEGATIVE SPACE IS MANDATORY — ROUND 1 FAILED ON EXACTLY THIS.
+  Round 1 drew the counter and the shelf fused into ONE solid filled rectangle
+  with a solid back panel behind the mugs, so the sprite covered 66% of its
+  bounding box and was rejected by the opaque-ratio sensor (cap 0.65). The fix is
+  in the DRAWING, not the sensor. Break the silhouette up:
+  - THERE IS NO BACK PANEL. Nothing joins the shelf to the counter. Do not draw a
+    hutch, a dresser back, a splashback, or any filled slab behind the kettle and
+    mugs. Between the underside of the shelf and the top of the counter there is
+    a wide band of PURE TRANSPARENT BACKGROUND spanning the full width, and the
+    only thing crossing it is the kettle/mug silhouettes standing on the counter.
+  - THE SHELF IS A NARROW PLANK, clearly SHORTER than the counter is wide —
+    roughly two thirds of the counter's width — floating on two small brackets
+    with transparent background visible at both ends beyond the plank.
+  - THE CABINET BASE IS RAISED on a recessed kick: cut a shallow notch of
+    transparent background under the front of the cabinet so it stands on two
+    short feet rather than sitting as a solid block on the floor line.
+  - The kettle spout, the handle loop and the mug handles must all be drawn as
+    OPEN shapes with background visible through them.
+  Roughly 40-45% of this canvas should be transparent when you are done.
+
+  WHAT IS ON IT — a break-room bodge, NOT a domestic kitchen:
+  - A COUNTER: a slab worktop on a boxy cabinet base with two scuffed cupboard
+    doors, one of which does not sit flush and hangs very slightly open. A dented
+    kick-plate at the bottom.
+  - A HOTPLATE: a small squat two-ring electric hotplate on the worktop, its
+    rings burnt dark, a bent cable trailing off the back.
+  - A KETTLE: a battered metal stovetop-style kettle with a limescale-crusted
+    spout, standing next to the hotplate.
+  - A SMALL STACK OF MISMATCHED MUGS: three or four mugs of DIFFERENT heights,
+    widths and colours, stacked and leaning slightly, plus one lone mug set apart
+    from the others. They are obviously not a set.
+  - THE SHELF above holds a couple of tins/jars and one more stray mug, with dust
+    on the top edge.
+  - Grime that reads at 16px: a dark scorch halo around the hotplate, a run of
+    old drips down one cupboard door, ring-stains on the worktop.
+
+  IT IS NOT: a fitted domestic kitchen, an oven, a range, a fireplace, a bar, a
+  laboratory bench, a market stall, a shop counter, or a chest of drawers. It is
+  one grubby institutional break-room counter.
+
+  MOOD — three NPCs are stuck living in this reality-show reception room
+  together, season after season, bored out of their minds, forbidden by dungeon
+  rules from leaving, harming each other or complaining while the cameras roll.
+  This is where they make tea for a decade. It sits in the half of the room the
+  camera rig does NOT cover. Long-used, institutional, grudgingly domestic, and
+  never charming.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit beside
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-carpet, welcome-room-crate-stack and prop-wall-sconce-v1 without
+  clashing: cool grey worn stone, warm-brown walnut wood, desaturated
+  production-set greys and blacks, tarnished brass, deep maroon — muted and
+  dusty. The cabinet is a desaturated institutional grey-green; the worktop is a
+  scuffed warm walnut brown; the hotplate and kettle are dull grey metal with
+  soot; ONE mug carries a single sparing dulled-teal or faded-maroon accent.
+  BANNED: neon, pure white, pure black, saturated red, saturated yellow, orange,
+  bright teal, cyan, blue, green, magenta, purple, pastels, and stainless-steel
+  showroom shine.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The left edge of the
+  cabinet, the left lip of the worktop, and the left flank of the kettle and mugs
+  catch the highlight; shadows fall to the lower right. Every prop in this wave
+  shares that one light direction.
+
+  RENDERING: hard 1-pixel dark outline, 3-5 tone stops per material, restrained
+  dithering for grime and metal — no mushy gradients, no airbrush, no floating
+  unsupported elements. This prop is GROUNDED: the cabinet rests on the stone
+  floor. The shelf above is part of the same sprite and reads as bolted to the
+  wall behind.
+
+  NO TEXT of any kind: no labels on the tins, no lettering on the mugs, no
+  numbers, no signage, no watermarks.
+
+  BACKGROUND: fully transparent. Draw ONLY the counter, its contents and the
+  shelf above. Do NOT paint a wall behind it, a floor slab, a rectangular backing
+  panel, a frame, a border, a vignette, or any cast/contact/drop shadow on the
+  ground. Every pixel that is not the unit itself must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the sprite palette so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 80
+  height: 88
+anchor:
+  x: 40
+  y: 82
+sensors:
+  anchor:
+    derive: true
+    bandRows: 8
+    centerToleranceX: 12
+  # The kettle/mugs/shelf leave real background gaps between the shelf and the
+  # counter contents; the `prop` default of 0 interior holes would reject the
+  # exact silhouette this brief asks for. Bounded well below a bleed-through.
+  interiorHoles:
+    maxPixels: 256
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - living-area
+  - furniture
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

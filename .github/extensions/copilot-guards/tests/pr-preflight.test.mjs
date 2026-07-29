@@ -149,10 +149,7 @@ test('checkIndexMdNotModified denies when INDEX.md is in the diff', () => {
 });
 
 test('checkIndexMdNotModified denies when INDEX.md appears alongside other files', () => {
-  const result = checkIndexMdNotModified([
-    'src/core/foo.ts',
-    'docs/knowledge/handoffs/INDEX.md',
-  ]);
+  const result = checkIndexMdNotModified(['src/core/foo.ts', 'docs/knowledge/handoffs/INDEX.md']);
   assert.ok(result, 'expected deny when INDEX.md is present with other changes');
 });
 
@@ -181,8 +178,6 @@ test('checkIndexMdNotModified supports explicit merge-base restoration source', 
   assert.ok(result, 'expected deny when INDEX.md is present');
   assert.match(result, /git restore --source=abc123def/);
 });
-
-
 
 test('preflight preserves sync warning alongside an unrelated deny', () => {
   const result = evaluatePreflightChecks({

@@ -32,17 +32,17 @@ Two disposition transitions:
 
 ## Files changed
 
-| File | Change |
-|------|--------|
-| `.github/scripts/ci-recovery/duplicate-detect.mjs` | NEW — 2 proof rules + quarantine evidence helper |
-| `.github/scripts/ci-recovery/duplicate-detect.test.mjs` | NEW — 26 tests including #1630/#1575/#1568 golden |
-| `.github/scripts/ci-recovery/state.mjs` | QUARANTINED removed from TERMINAL_PHASES; added ABANDON_CANDIDATE_LABEL, QUARANTINE_COMMENT_MARKER, parseDispositionCommand |
-| `.github/scripts/ci-recovery/state.test.mjs` | +11 tests for parseDispositionCommand |
-| `.github/scripts/ci-recovery/pr-lifecycle.mjs` | Added makeQuarantineComment, makeDuplicateCloseComment |
-| `.github/scripts/ci-recovery/pr-lifecycle.test.mjs` | +7 tests for QUARANTINED revivable + helpers |
-| `.github/workflows/ci-pr-disposition.yml` | Complete rewrite: 3-step workflow with blocking-concern fixes |
-| `.github/workflows/ci-liveness-sweep.yml` | Removed optional 404 guard (workflow is permanent) |
-| `docs/knowledge/review-ledgers/2026-07-28-ci-harness-disposition.review-ledger.json` | 4🍎 ledger |
+| File                                                                                 | Change                                                                                                                      |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `.github/scripts/ci-recovery/duplicate-detect.mjs`                                   | NEW — 2 proof rules + quarantine evidence helper                                                                            |
+| `.github/scripts/ci-recovery/duplicate-detect.test.mjs`                              | NEW — 26 tests including #1630/#1575/#1568 golden                                                                           |
+| `.github/scripts/ci-recovery/state.mjs`                                              | QUARANTINED removed from TERMINAL_PHASES; added ABANDON_CANDIDATE_LABEL, QUARANTINE_COMMENT_MARKER, parseDispositionCommand |
+| `.github/scripts/ci-recovery/state.test.mjs`                                         | +11 tests for parseDispositionCommand                                                                                       |
+| `.github/scripts/ci-recovery/pr-lifecycle.mjs`                                       | Added makeQuarantineComment, makeDuplicateCloseComment                                                                      |
+| `.github/scripts/ci-recovery/pr-lifecycle.test.mjs`                                  | +7 tests for QUARANTINED revivable + helpers                                                                                |
+| `.github/workflows/ci-pr-disposition.yml`                                            | Complete rewrite: 3-step workflow with blocking-concern fixes                                                               |
+| `.github/workflows/ci-liveness-sweep.yml`                                            | Removed optional 404 guard (workflow is permanent)                                                                          |
+| `docs/knowledge/review-ledgers/2026-07-28-ci-harness-disposition.review-ledger.json` | 4🍎 ledger                                                                                                                  |
 
 ## Key decisions
 

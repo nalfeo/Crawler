@@ -479,6 +479,57 @@ jobs:
       - name: Headless Floor 1 completion
         run: npx vitest run --project headless --reporter=verbose
 
+  # Job 5b: Set-piece reachability hard gate (scoped)
+  # Runs the 200-seed Floor 1 welcome-room prefab reachability sweep whenever the
+  # carve/gate surface changes on a PR. Wired into merge-gate through this same
+  # workflow so failures block the required `ci` status.
+  set-piece-reachability:
+    name: Set-piece reachability
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Scope set-piece reachability sweep
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed_files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+          if printf '%s\n' "$changed_files" | grep -Eq '^(src/core/map/|src/game/floorScenario\.ts$|src/game/set-piece-reachability\.ts$|src/shared/set-piece-types\.ts$|src/shared/data/set-pieces\.json$|scripts/agent/set-piece/reachability-sweep\.ts$|\.github/workflows/(set-piece-reachability|ci)\.yml$)'; then
+            echo "run_sweep=true" >> "$GITHUB_OUTPUT"
+            echo "Set-piece reachability sweep enabled for this diff."
+          else
+            echo "run_sweep=false" >> "$GITHUB_OUTPUT"
+            echo "Set-piece reachability sweep skipped (no matching files changed)."
+          fi
+
+      - name: Run set-piece reachability sweep
+        if: steps.scope.outputs.run_sweep == 'true'
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/set-piece/reachability-sweep.ts \
+            --count 200 \
+            --out set-piece-reachability.json
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.scope.outputs.run_sweep == 'true'
+        with:
+          name: set-piece-reachability
+          path: set-piece-reachability.json
+          if-no-files-found: warn
+          retention-days: 30
+
   # Job 6: Build (moved to advisory, not blocking)
   build:
     name: Build
@@ -508,6 +559,7 @@ jobs:
         test-integration,
         test-sprites,
         test-headless,
+        set-piece-reachability,
         test-e2e-game,
         test-e2e-assets,
         test-e2e-devtools,
@@ -592,6 +644,9 @@ jobs:
             echo "❌ Headless Floor 1 completion: $headless_result (sim_touched=${sim_touched:-MISSING})"
             exit 1
           fi
+          # Set-piece reachability sweep: scoped to carve/gate files. A skipped job
+          # is an intentional scope skip (or non-PR event) and counts as pass.
+          check "Set-piece reachability"      "${{ needs.set-piece-reachability.result }}" "true"
           # E2E visual jobs: each runs only when its surface was touched (allow_skipped=true).
           # visual_touched=false (CI/tooling-only) skips all three → no Playwright runner launched.
           # art_only=true → only e2e-assets runs (targeted asset smoke, not the full game suite).

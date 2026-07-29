@@ -63,7 +63,11 @@ test('Rule 2: fires when merged sibling closes same issue (issue still open)', (
 });
 
 test('Rule 2: does NOT fire when PR closes no issues', () => {
-  const result = proveSiblingMerged(42, [], [{ number: 77, merged: true, closingIssueNumbers: [100] }]);
+  const result = proveSiblingMerged(
+    42,
+    [],
+    [{ number: 77, merged: true, closingIssueNumbers: [100] }],
+  );
   assert.equal(result.proved, false);
 });
 
@@ -77,7 +81,11 @@ test('Rule 2: does NOT fire when no sibling merged', () => {
 });
 
 test('Rule 2: does NOT fire when sibling has no overlapping issues', () => {
-  const result = proveSiblingMerged(42, [100], [{ number: 77, merged: true, closingIssueNumbers: [200] }]);
+  const result = proveSiblingMerged(
+    42,
+    [100],
+    [{ number: 77, merged: true, closingIssueNumbers: [200] }],
+  );
   assert.equal(result.proved, false);
 });
 

@@ -1,0 +1,142 @@
+# TYPE NOTE (Asset Forge, 2026-07-25): this was `type: tile`, and that — not the
+# wording of the description — is why two rounds shipped opaque squares. The
+# `tile` type injects hard-coded prompt blocks in scripts/sprites/build-prompt.ts
+# ("fill it edge-to-edge", "seamless tiling continuity", "no transparent padding
+# and no subject margin") that structurally contradict everything below, and it
+# also disables the opaque-ratio and edge-clearance sensors that would have
+# caught the failure. This asset is a decal placed alone on an already-painted
+# floor, so `prop` is the correct type: it prompts for a transparent background
+# with a 10% margin and enforces opaque-ratio + opaque-bbox-fits.
+type: prop
+name: welcome-room-floor-seam
+description: |
+  An isolated seam where two lengths of carpet were butted together and never quite closed — a thin, uneven join with the nap parting and grit collected in the gap. 3/4 top-down pixel art in a warm desaturated dungeon palette, readable at 16px.
+
+  Rendered in the game at approximately 2 x 2 feet (1 tile = 16px = 2 feet). Keep detail count low enough to survive at 16px and do not over-detail.
+
+  READ THIS FIRST — THE PREMISE OF THE PREVIOUS ROUND WAS WRONG.
+  This was briefed as a seamless, edge-to-edge, fully-opaque repeating carpet
+  tile. That was a mistake, and it is why it was rejected on the render. This art
+  is NOT tiled. Exactly nine decals are scattered across the whole room, each
+  sitting ALONE on its own tile with untouched, continuous, already-painted carpet
+  floor on all four sides. An opaque square — no matter how perfectly it tiles
+  against itself, and no matter how closely its base colour is matched — will
+  always read as a hard-edged square patch dropped on the floor, like a loose
+  sheet of paper. That is precisely the artefact this asset must eliminate.
+
+  THEREFORE, THE SINGLE MOST IMPORTANT REQUIREMENT:
+  THE BACKGROUND MUST BE FULLY TRANSPARENT (alpha 0).
+  - Do NOT paint a carpet base. Do NOT fill the canvas. Do NOT paint a backing
+    colour "close to" the floor. The floor is already painted underneath this art.
+  - Paint ONLY the seam line itself. Every pixel that is not part of the seam must
+    be fully transparent.
+  - No border, no frame, no outline, no vignette, no panel edge, no backing plate.
+  - NOTHING may touch the canvas edge, and this asset is at the highest risk of
+    getting that wrong: a seam that runs off the edge of the canvas will align
+    with the tile grid and read as a visible tile boundary, which is the exact
+    failure being fixed. The seam must START and STOP inside the tile, fading out
+    at both ends well short of the canvas edge.
+
+  THE MARK ITSELF:
+  A single thin, slightly wavering join running at a shallow DIAGONAL — never
+  axis-aligned, never parallel to the canvas edge, never straight enough to look
+  ruled. The nap parts fractionally either side, with a marginally darker line of
+  collected grit in the gap and a hair of lighter lifted fibre along one lip. Both
+  ends must feather out and dissolve into nothing rather than terminating at a
+  clean point. Keep it modest — it must not bisect the tile.
+
+  COLOUR: the floor underneath is a pale, light, sandy warm orange, approximately
+  #eaa56c. The seam should be barely a shade or two darker and greyer than that.
+  This is the subtlest asset of the four — VERY LOW CONTRAST. Absolutely no black
+  line, no hard dark outline, no bright highlight. If in doubt, make it subtler.
+
+  It must sit beside the already-approved welcome-room art without clashing:
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-rug, welcome-room-velvet-rope, welcome-sign-left-v1 and
+  prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass, muted
+  and dusty, never bright or saturated.
+  COLOUR LOCK — ROUND 3 REJECTED ON COLOUR, SO THIS IS NOW MEASURED, NOT DESCRIBED.
+  The floor beneath is #eaa56c, whose luma is 175. The previous round produced a
+  mark with mean luma near 100 and pixels as dark as luma 0 — roughly half the
+  brightness of the floor. That is why it read as a hole punched in the carpet
+  rather than as wear. Every pixel you draw must be sampled from a floor-adjacent
+  ramp, NOT from a generic dungeon brown ramp.
+
+  Draw using only these five tones (and blends between adjacent ones):
+    #f2b681  — lifted / bleached nap, the lightest tone
+    #eaa56c  — the untouched floor colour itself
+    #dc9a67  — very slightly shaded
+    #cb8f63  — the darkest ordinary tone
+    #b8825c  — reserved for the single deepest accent, used sparingly
+  #b8825c is the DARKEST PIXEL PERMITTED ANYWHERE. Nothing darker. No pixel may
+  have a luma below about 130.
+
+  ABSOLUTELY NO OUTLINE. The house prop style calls for a hard dark contour; that
+  rule is SUSPENDED for this asset and must not be applied. Do not draw a dark
+  keyline, a black or brown contour, a rim, or any darkened boundary around the
+  mark. The mark has no outline at all — it is defined purely by a slight tonal
+  shift against the floor. A dark contour is the single fastest way to make this
+  read as a sticker, and is an automatic rejection.
+
+  Banned outright: black, near-black, dark brown, chocolate, coffee, walnut,
+  maroon, brick, rust, gold, yellow, cream, white, grey, teal, blue, green.
+  The correct result looks ALMOST INVISIBLE against the floor — a viewer should
+  have to look twice to notice it. If it is clearly legible as a distinct object,
+  it is too strong. Err far on the side of too subtle.
+
+  HOW TO FEATHER IN PIXEL ART (the pipeline forces alpha to be binary — every
+  pixel ends up either fully transparent or fully opaque, never half). So do NOT
+  rely on a soft gradient alpha ramp; it will be thresholded away. Instead
+  feather the boundary the way pixel artists do: DITHER AND STIPPLE it. Break the
+  outer edge of the mark into scattered, irregular, single-pixel speckle that
+  thins out with distance, so the mark dissolves into loose grains rather than
+  ending on a defined contour. There must be no continuous closed outline
+  anywhere. Interior speckle and pinholes are wanted, not faults.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the mark's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the mark.
+palette:
+  # Purpose-built 7-step carpet ramp (data/palettes/welcome-room-carpet.json,
+  # luma 142-206, centred on the floor colour #eaa56c). Combined with
+  # postprocessing.paletteMode: strict this QUANTIZES every opaque pixel to the
+  # ramp, which is the only lever that actually works here: three rounds of
+  # increasingly explicit hex instructions in the prompt were ignored outright by
+  # the image model (measured mean luma stayed at 80-110 against a floor of 175).
+  # Nearest-colour snapping is monotone in luma, so the mark keeps its internal
+  # tonal structure and simply has its contrast compressed into the carpet band.
+  # This TIGHTENS the gates: it also activates the palette-membership sensor,
+  # which is a no-op unless paletteMode is strict.
+  id: welcome-room-carpet
+postprocessing:
+  paletteMode: strict
+tags:
+  - welcome-room
+  - floor
+  - decal
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+sensors:
+  # A decal has no grounded base, so bottom-center grip is meaningless here.
+  anchor:
+    mode: center-of-mass
+  # TIGHTENED, not relaxed. The prop default is [0.10, 0.65]. A wear decal that
+  # covers more than half its tile is on its way back to being an opaque patch,
+  # so cap coverage well below the default and keep a floor so an empty tile
+  # cannot pass either.
+  opaqueRatio:
+    min: 0.05
+    max: 0.45
+  # Deliberate subject-level override with a justification. Alpha is binary in
+  # this pipeline, so the required feathering can only be expressed as dithered
+  # stipple, which by construction leaves many interior transparent pixels. The
+  # default of 0 would reject exactly the art this brief is asking for. The
+  # sensor's real job — catching wholesale background bleed-through — is still
+  # covered by the opaqueRatio cap above and by the edge-clearance check.
+  interiorHoles:
+    maxPixels: 512
+minVariations: 0

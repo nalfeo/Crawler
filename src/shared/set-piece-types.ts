@@ -78,6 +78,35 @@ export const PROP_KIND_Z: Readonly<Record<SetPiecePropKind, number>> = Object.fr
   actor: 50,
 });
 
+/**
+ * Prop kinds whose visual is owned by the CARVED TERRAIN LAYER, not by the prop.
+ *
+ * Under the prefab-room model a `kind:'wall'` / `kind:'door'` prop exists in the
+ * def to define the shell — it is the composition gate's wall ring and map-gen's
+ * door-tile source of truth — but it must NEVER be rendered as a sprite. The
+ * generator has already written STONE_WALL / DOOR tiles at those coordinates, so
+ * drawing the prop on top double-renders and z-fights the baked tile with
+ * (typically stock placeholder) art.
+ *
+ * Every renderer that stamps a set piece MUST filter on this predicate. It is
+ * shared rather than duplicated because the Set Piece Lab drifted from the real
+ * game on exactly this rule and spent a full session presenting a blue-grey
+ * Kenney wall ring that the game does not draw — laundering a wrong image as
+ * visual evidence.
+ */
+export const STRUCTURAL_PROP_KINDS: readonly SetPiecePropKind[] = Object.freeze([
+  'wall',
+  'door',
+] as const);
+
+/**
+ * True when a prop's visual comes from carved terrain and the prop must not be
+ * rendered. See {@link STRUCTURAL_PROP_KINDS}.
+ */
+export function isStructuralSetPieceProp(prop: { readonly kind: SetPiecePropKind }): boolean {
+  return STRUCTURAL_PROP_KINDS.includes(prop.kind);
+}
+
 export type SpriteSourceKind = 'catalog' | 'sheet' | 'custom';
 
 /** Reuse an existing sprite-catalog entry. */
@@ -137,11 +166,36 @@ export interface SpriteLayer {
   /**
    * Explicit render box in FEET for this layer, overriding the tile-derived
    * size. The sprite is contain-fit inside this box (aspect preserved, never
-   * stretched), so authoring a realistic footprint (a 1.5 ft sconce, a 5 ft
-   * desk) no longer distorts the art. Both must be supplied together.
+   * stretched). Both must be supplied together.
+   *
+   * IMPORTANT — what these two numbers mean. Crawler's prop art is drawn as a
+   * **front elevation** (the welcome desk has "WELCOME" painted on its front
+   * face), so the sprite's vertical pixels are the object's *real vertical
+   * height*, NOT its depth across the floor:
+   *
+   * - `widthFt`  = true horizontal width, as you'd measure it in the world.
+   * - `heightFt` = **apparent vertical height** — how tall the object stands
+   *   (a door is 3x7 ft, an adult ~2x6 ft, a 3-crate stack ~3x5.5 ft).
+   *
+   * The object's FLOOR FOOTPRINT is a separate concept and lives on the prop
+   * as `width`/`height` in TILES. Do NOT author `heightFt` as a floor depth:
+   * that is what collapsed every tall object in the shipped pack (bookcases at
+   * 4 ft, crate stacks at 3.5 ft) and made rooms read as small and sparse.
+   *
+   * `widthFt * heightFt` is therefore a FACADE area, never a floor area.
    */
   readonly widthFt?: number;
   readonly heightFt?: number;
+  /**
+   * Anchor the sprite by its BASE (bottom-centre) instead of its centre, so the
+   * object stands on its floor position and grows upward as `heightFt`
+   * increases. Required for anything tall enough that centre-anchoring would
+   * sink half of it through the floor (bookcases, crate stacks, torches, doors).
+   *
+   * Opt-in: omitted/false preserves the historical centre-anchored behaviour so
+   * existing rooms do not shift.
+   */
+  readonly anchorBase?: boolean;
   /** Uniform scale multiplier (1 = native), applied on top of the render box. */
   readonly scale?: number;
   /** Mirror the sprite horizontally / vertically (e.g. mirror a paired sconce). */
@@ -168,6 +222,12 @@ export interface SetPiecePropDef {
   readonly z: number;
   /** Optional scene-layer id used by editors for visibility/locking workflows. */
   readonly sceneLayer?: string;
+  /**
+   * True when the prop physically blocks movement. Its footprint tiles are
+   * written impassable-but-transparent at carve time, so the player and AI walk
+   * around it while still seeing (and being able to talk) over it.
+   */
+  readonly solid?: boolean;
   /** Ordered visual layers (base first, stacked extras after). */
   readonly layers: readonly SpriteLayer[];
 }
@@ -234,6 +294,36 @@ export interface SetPiecePlacement {
   readonly horizontalAlign?: SetPieceHorizontalAlign;
 }
 
+/** A perimeter edge of a set-piece footprint. */
+export type SetPieceDoorEdge = 'top' | 'bottom' | 'left' | 'right';
+
+/**
+ * How map generation resolves a door slot when carving the prefab room.
+ * - `fixed`   — the corridor is pinned to the door prop's authored ring tile
+ *               (a shop's street entrance, a boss den's single approach).
+ * - `dynamic` — map-gen may relocate the door to whichever tile along the
+ *               eligible `edges` connects most straightforwardly to the floor.
+ */
+export type SetPieceDoorSlotMode = 'fixed' | 'dynamic';
+
+/**
+ * Map-generation resolution metadata for a door in a prefab set-piece room.
+ *
+ * Door **props** (`kind: 'door'`) remain the single source of truth for where a
+ * door renders and for the {@link https shell-integrity} composition gate. A
+ * `SetPieceDoorSlot` only layers on the map-gen *resolution* behaviour, keyed to
+ * a door prop by {@link propId}. When a def declares no slots, every ring door
+ * prop is treated as an implicit `fixed` slot (see {@link resolveSetPieceDoorSlots}).
+ */
+export interface SetPieceDoorSlot {
+  /** References a `kind: 'door'` prop (by id) that lies on the footprint ring. */
+  readonly propId: string;
+  /** `fixed` pins the corridor to the door tile; `dynamic` relocates along `edges`. */
+  readonly mode: SetPieceDoorSlotMode;
+  /** For `dynamic`: the eligible perimeter edges map-gen may relocate the door onto. */
+  readonly edges?: readonly SetPieceDoorEdge[];
+}
+
 export interface SetPieceDef {
   readonly id: string;
   readonly name: string;
@@ -251,6 +341,11 @@ export interface SetPieceDef {
   /** How the block anchors within an oversized room. Defaults to centre/centre. */
   readonly placement?: SetPiecePlacement;
   readonly props: readonly SetPiecePropDef[];
+  /**
+   * Optional map-gen door-slot resolution metadata (see {@link SetPieceDoorSlot}).
+   * When omitted, every ring door prop is treated as an implicit `fixed` slot.
+   */
+  readonly doorSlots?: readonly SetPieceDoorSlot[];
   /** NPCs placed by this set piece (empty when none authored). */
   readonly npcs: readonly SetPieceNpcDef[];
   /** Optional editor scene layers (editor visibility/locking grouping only). */
@@ -320,6 +415,7 @@ const spriteLayerSchema = z
     offsetYFt: z.number().optional(),
     widthFt: z.number().finite().positive().optional(),
     heightFt: z.number().finite().positive().optional(),
+    anchorBase: z.boolean().optional(),
     scale: z.number().finite().positive().optional(),
     flipX: z.boolean().optional(),
     flipY: z.boolean().optional(),
@@ -351,6 +447,18 @@ const propSourceSchema = z
     height: z.number().finite().positive().optional(),
     z: z.number().int().optional(),
     sceneLayer: z.string().trim().min(1).optional(),
+    /**
+     * Opt-in physical collision. When true the prop's footprint tiles are
+     * written as impassable at carve time, so the player and the AI walk
+     * around it instead of through it. Off by default: props are decor unless
+     * they are bulk furniture the player should not clip through.
+     *
+     * Solidity is applied with a revert-on-disconnect guard
+     * (`applySolidProps`), so marking a prop solid can never strand a room —
+     * a prop whose blocking would cut the interior off from its door is left
+     * render-only instead.
+     */
+    solid: z.boolean().optional(),
     layers: z.array(spriteLayerSchema).min(1),
   })
   .strict();
@@ -391,6 +499,16 @@ const placementSchema = z
   })
   .strict();
 
+const doorEdges = ['top', 'bottom', 'left', 'right'] as const;
+
+const doorSlotSchema = z
+  .object({
+    propId: z.string().trim().min(1),
+    mode: z.enum(['fixed', 'dynamic']),
+    edges: z.array(z.enum(doorEdges)).min(1).optional(),
+  })
+  .strict();
+
 const setPieceSourceSchema = z
   .object({
     id: z.string().trim().min(1),
@@ -405,6 +523,7 @@ const setPieceSourceSchema = z
     tags: z.array(z.string().trim().min(1)).default([]),
     placement: placementSchema.optional(),
     props: z.array(propSourceSchema).min(1),
+    doorSlots: z.array(doorSlotSchema).optional(),
     npcs: z.array(npcSourceSchema).default([]),
     sceneLayers: z.array(setPieceSceneLayerSchema).optional(),
   })
@@ -461,6 +580,61 @@ const setPieceSourceSchema = z
           code: z.ZodIssueCode.custom,
           message: `Prop "${prop.id}" references unknown sceneLayer "${prop.sceneLayer}".`,
         });
+      }
+    }
+    if (value.doorSlots !== undefined) {
+      // Door slots resolve against the nominal footprint ring (value.width ×
+      // value.height), matching the shell-integrity composition gate. A slot
+      // references a `door` prop by id; that prop must lie on the ring.
+      const ringW = value.width;
+      const ringH = value.height;
+      const doorPropsById = new Map<string, (typeof value.props)[number]>();
+      for (const prop of value.props) {
+        if (prop.kind === 'door') doorPropsById.set(prop.id, prop);
+      }
+      const isSingleTileRingOrigin = (prop: (typeof value.props)[number]): boolean => {
+        const w = Math.floor(prop.width ?? 1);
+        const h = Math.floor(prop.height ?? 1);
+        if (w !== 1 || h !== 1) return false;
+        const x0 = Math.floor(prop.x);
+        const y0 = Math.floor(prop.y);
+        return x0 <= 0 || y0 <= 0 || x0 >= ringW - 1 || y0 >= ringH - 1;
+      };
+      const seenSlotProps = new Set<string>();
+      for (const slot of value.doorSlots) {
+        if (seenSlotProps.has(slot.propId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate door slot for prop "${slot.propId}" — one slot per door prop.`,
+          });
+        }
+        seenSlotProps.add(slot.propId);
+        const prop = doorPropsById.get(slot.propId);
+        if (prop === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Door slot references unknown door prop "${slot.propId}" (must be a kind:'door' prop).`,
+          });
+          continue;
+        }
+        if (!isSingleTileRingOrigin(prop)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Door slot prop "${slot.propId}" must be a 1×1 door with origin on the ${ringW}×${ringH} footprint ring.`,
+          });
+        }
+        if (slot.mode === 'dynamic' && (slot.edges === undefined || slot.edges.length === 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Dynamic door slot "${slot.propId}" must declare at least one eligible edge.`,
+          });
+        }
+        if (slot.mode === 'fixed' && slot.edges !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Fixed door slot "${slot.propId}" must not declare edges (edges are for dynamic slots).`,
+          });
+        }
       }
     }
     const seenNpcIds = new Set<string>();
@@ -535,6 +709,7 @@ function compileProp(source: SetPieceSource['props'][number]): SetPiecePropDef {
     height: source.height ?? 1,
     z: source.z ?? PROP_KIND_Z[source.kind],
     sceneLayer: source.sceneLayer,
+    solid: source.solid ?? false,
     layers: source.layers,
   };
 }
@@ -571,6 +746,7 @@ function compileSetPiece(source: SetPieceSource): SetPieceDef {
     tags: source.tags,
     ...(source.placement !== undefined ? { placement: source.placement } : {}),
     props: source.props.map(compileProp),
+    ...(source.doorSlots !== undefined ? { doorSlots: source.doorSlots } : {}),
     npcs: source.npcs.map(compileNpc),
     ...(source.sceneLayers !== undefined ? { sceneLayers: source.sceneLayers } : {}),
   };
@@ -641,6 +817,59 @@ export function findSetPieceNpcByAnchor(
   role: SetPieceNpcAnchorRole,
 ): SetPieceNpcDef | undefined {
   return def.npcs.find((npc) => npc.anchorRole === role);
+}
+
+/** A door slot resolved to concrete set-piece tiles for map generation. */
+export interface SetPieceResolvedDoorSlot {
+  /** The door prop this slot renders as. */
+  readonly propId: string;
+  readonly mode: SetPieceDoorSlotMode;
+  /** For `dynamic`: eligible perimeter edges map-gen may relocate the door onto. */
+  readonly edges?: readonly SetPieceDoorEdge[];
+  /** Door tile(s) in set-piece coords (top-left). Doors are usually 1×1. */
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Resolve the door slots map generation should carve for a prefab set-piece room.
+ *
+ * Door **props** on the footprint ring are the source of truth for door position
+ * and rendering. A matching {@link SetPieceDoorSlot} (by `propId`) upgrades a
+ * door to `dynamic` (relocatable along its eligible edges); a door prop with no
+ * matching slot is an implicit `fixed` door pinned to its authored tile. Result
+ * order follows authored prop order, so the output is fully deterministic.
+ */
+export function resolveSetPieceDoorSlots(def: SetPieceDef): SetPieceResolvedDoorSlot[] {
+  const ringW = def.width;
+  const ringH = def.height;
+  const slotByProp = new Map<string, SetPieceDoorSlot>();
+  for (const slot of def.doorSlots ?? []) slotByProp.set(slot.propId, slot);
+
+  const resolved: SetPieceResolvedDoorSlot[] = [];
+  for (const prop of def.props) {
+    if (prop.kind !== 'door') continue;
+    const x0 = Math.floor(prop.x);
+    const y0 = Math.floor(prop.y);
+    const w = Math.max(1, Math.floor(prop.width));
+    const h = Math.max(1, Math.floor(prop.height));
+    const onRing = x0 <= 0 || y0 <= 0 || x0 >= ringW - 1 || y0 >= ringH - 1;
+    if (w !== 1 || h !== 1 || !onRing) continue;
+    const slot = slotByProp.get(prop.id);
+    const mode: SetPieceDoorSlotMode = slot?.mode ?? 'fixed';
+    resolved.push({
+      propId: prop.id,
+      mode,
+      ...(mode === 'dynamic' && slot?.edges !== undefined ? { edges: slot.edges } : {}),
+      x: x0,
+      y: y0,
+      width: w,
+      height: h,
+    });
+  }
+  return resolved;
 }
 
 /** A single resolved draw instruction, flattened across props and their layers. */

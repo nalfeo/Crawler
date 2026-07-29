@@ -6,11 +6,13 @@
 
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { joinSession, createCanvas, CanvasError } from '@github/copilot-sdk/extension';
 import { validateSetPieceCandidate } from './lib/editor-validators.mjs';
+import { buildArtRequestIssue } from './lib/art-request.mjs';
 
 const __extDir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__extDir, '..', '..', '..');
@@ -47,6 +49,12 @@ function getSetPiecesPath() {
 }
 function getGeneratedManifestPath() {
   return join(REPO_ROOT, 'public', 'assets', 'generated', 'manifest.json');
+}
+function getSubstratePath() {
+  return join(REPO_ROOT, 'src', 'shared', 'data', 'set-piece-substrate.json');
+}
+function getNpcSpriteMapPath() {
+  return join(REPO_ROOT, 'src', 'shared', 'data', 'npc-sprite-map.json');
 }
 function readGeneratedSpriteIds() {
   try {
@@ -125,6 +133,31 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
       res.end(JSON.stringify(readPack()));
     } catch (e) {
       res.writeHead(500);
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+    }
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/npc-sprites') {
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(readFileSync(getNpcSpriteMapPath(), 'utf-8'));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+    }
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/substrate') {
+    // The carved terrain a set piece sits on (room floor + wall ring). It is NOT
+    // in the set-piece def - map generation writes those tiles - so the editor
+    // has to be told, or it previews props against a background the game never
+    // draws. Served from the same JSON the lab fidelity test pins against
+    // `tile-visuals.ts`, so this cannot drift into a private fourth copy.
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(readFileSync(getSubstratePath(), 'utf-8'));
+    } catch (e) {
+      res.statusCode = 500;
       res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
     }
     return;
@@ -232,6 +265,81 @@ function handleRequest(instanceId, allowedOrigin, req, res) {
         res.writeHead(400);
         res.end(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }));
       }
+    });
+    return;
+  }
+  if (req.method === 'POST' && url.pathname === '/art-request') {
+    // Same token + origin gate as /apply: this shells out to `gh` and creates a
+    // real GitHub issue, so it must not be reachable from another origin.
+    if (!applyToken || req.headers['x-set-piece-editor-token'] !== applyToken) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ ok: false, error: 'Missing or invalid apply token' }));
+      return;
+    }
+    const artOrigin = req.headers.origin;
+    if (typeof artOrigin !== 'string' || artOrigin !== expectedOrigin) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ ok: false, error: 'Forbidden origin' }));
+      return;
+    }
+    let artBody = '';
+    let artBytes = 0;
+    req.on('data', (chunk) => {
+      artBytes += chunk.length;
+      if (artBytes > 64 * 1024) {
+        res.writeHead(413);
+        res.end(JSON.stringify({ ok: false, error: 'Payload too large' }));
+        req.destroy();
+        return;
+      }
+      artBody += chunk;
+    });
+    req.on('end', () => {
+      let built;
+      try {
+        built = buildArtRequestIssue(JSON.parse(artBody));
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+        return;
+      }
+      if (!built.ok) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'Validation failed', issues: built.errors }));
+        return;
+      }
+      // execFile (not exec) so the brief text is passed as an argv element and
+      // is never parsed by a shell — briefs are free-form prose from a text box.
+      execFile(
+        'gh',
+        [
+          'issue',
+          'create',
+          '--title',
+          built.title,
+          '--body',
+          built.body,
+          '--label',
+          built.labels.join(','),
+        ],
+        { cwd: REPO_ROOT, windowsHide: true, timeout: 60_000 },
+        (err, stdout, stderr) => {
+          res.setHeader('Content-Type', 'application/json');
+          if (err) {
+            res.writeHead(502);
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: 'gh issue create failed',
+                issues: [String(stderr || err.message).trim()],
+              }),
+            );
+            return;
+          }
+          const issueUrl = String(stdout).trim().split(/\s+/).pop() || '';
+          res.end(JSON.stringify({ ok: true, url: issueUrl, name: built.payload.name }));
+        },
+      );
     });
     return;
   }
@@ -469,11 +577,11 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
   <select class="ssel" id="snapsel">
     <option value="tile">1 tile</option>
     <option value="half">&#189; tile</option>
-    <option value="quarter">&#188; tile</option>
+    <option value="quarter" selected>&#188; tile</option>
     <option value="free">Free</option>
   </select>
   <label style="font-size:11px;color:var(--text-color-muted,#8b949e);display:inline-flex;align-items:center;gap:4px">
-    <input id="keepaspect" type="checkbox"> Keep aspect
+    <input id="keepaspect" type="checkbox" checked> Keep aspect
   </label>
   <button class="btn" id="btnfit" title="Zoom to fit">&#8599;Fit</button>
   <button class="btn" id="btnzm" style="padding:3px 7px">&#8722;</button>
@@ -488,6 +596,8 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
   <button class="btn" id="btnaddwall" title="Add wall tile to Walls layer">&#9644; Wall</button>
   <button class="btn" id="btnadddoor" title="Add door tile to Doors layer">&#9645; Door</button>
   <button class="btn" id="btnovr" title="Toggle sprite overlay (box + label)">&#9711; Overlay</button>
+  <button class="btn" id="btnartnew" title="Request brand-new art through the asset pipeline">&#127912; Request art</button>
+  <button class="btn" id="btnartvar" disabled title="Request a variant of the selected prop's sprite">&#8634; Request variant</button>
   <button class="btn btn-r" id="btndel" disabled>&#10005;</button>
   <button class="btn btn-g" id="btnapply">&#10003; Apply</button>
 </div>
@@ -527,6 +637,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
           <div class="fr"><label>w</label><input id="pw" type="number" min="0.25" step="0.25"></div>
           <div class="fr"><label>h</label><input id="ph" type="number" min="0.25" step="0.25"></div>
         </div>
+        <div id="prendersz" style="display:none;font-size:10px;opacity:.65;padding:2px 0 0 2px"></div>
         <div class="fr"><label>size</label>
           <select id="pwhu">
             <option value="tiles">tiles</option>
@@ -643,6 +754,57 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden;
     <div class="galsc" id="galsc"></div>
   </div>
 </div>
+<div class="gal" id="artdlg">
+  <div class="galp" style="max-width:560px">
+    <div class="galh">
+      <span id="arttitle" style="font-weight:700;font-size:13px">Request art</span>
+      <span style="flex:1"></span>
+      <button class="btn" id="artclose">&#10005;</button>
+    </div>
+    <div class="galsc" style="padding:12px;display:block">
+      <div id="artbasedon" style="display:none;font-size:11px;margin-bottom:10px;padding:7px 9px;border-radius:5px;background:#1f2937;color:var(--text-color-muted,#8b949e)"></div>
+      <label style="display:block;font-size:11px;margin-bottom:3px">Name <span style="color:var(--text-color-muted,#8b949e)">(lowercase kebab-case)</span></label>
+      <input id="artname" type="text" placeholder="bearskin-rug" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:5px 7px;font-size:12px">
+      <label style="display:block;font-size:11px;margin-bottom:3px" id="artbrieflbl">Brief</label>
+      <textarea id="artbrief" rows="5" placeholder="A shaggy bearskin rug, head at the west end, splayed on flagstones. Reads clearly from above at gameplay scale." style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:5px 7px;font-size:12px;font-family:inherit"></textarea>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1">
+          <label style="display:block;font-size:11px;margin-bottom:3px">Type</label>
+          <select id="arttype" class="ssel" style="width:100%">
+            <option value="">auto-detect</option>
+            <option value="prop">prop</option>
+            <option value="tile">tile</option>
+            <option value="item">item</option>
+            <option value="character">character</option>
+            <option value="enemy">enemy</option>
+            <option value="weapon">weapon</option>
+            <option value="equipment">equipment</option>
+            <option value="vfx">vfx</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label style="display:block;font-size:11px;margin-bottom:3px">Size</label>
+          <select id="artsize" class="ssel" style="width:100%">
+            <option value="">auto</option>
+            <option value="default">default</option>
+            <option value="wide">wide</option>
+            <option value="tall">tall</option>
+            <option value="large">large</option>
+          </select>
+        </div>
+        <div style="width:70px">
+          <label style="display:block;font-size:11px;margin-bottom:3px">Floor</label>
+          <input id="artfloor" type="number" min="1" max="20" step="1" placeholder="1" style="width:100%;box-sizing:border-box;padding:5px 7px;font-size:12px">
+        </div>
+      </div>
+      <div id="arterr" style="display:none;font-size:11px;color:#ff7b72;margin-bottom:10px;white-space:pre-line"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" id="artcancel">Cancel</button>
+        <button class="btn btn-g" id="artsubmit">Open issue</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 var SHEETS_META={
   'kenney-tiny-dungeon':{margin:0,spacing:1,cols:12},
@@ -685,11 +847,12 @@ var CATALOG = {
   'effect.dead': { k: 'custom-pixel-sprites', c: 18, r: 0 },
 };
 // Mirrors src/engine/phaser-bridge/sprite-kind.ts GENERATED_KEY_BY_NPC_DEF.
-var GENERATED_NPC_SPRITE_BY_DEF = {
-  'tutorial-goon':'npc-welcome-goon-var-0',
-  'shopkeeper':'npc-sweaty-merchant-var-0',
-  'spell-quest-giver':'npc-spell-broker-var-1'
-};
+// Populated from /npc-sprites, which serves src/shared/data/npc-sprite-map.json -
+// the SAME file the game imports. This used to be a hardcoded literal here and it
+// went stale: the Goon and Merchant were regenerated to -v3- and the game was
+// repointed, but this copy still named the old npc-*-var-0 art, so the editor
+// showed sprites that had already been replaced.
+var GENERATED_NPC_SPRITE_BY_DEF = {};
 var KNOWN_NPC_TYPE_IDS = [
   'tutorial-goon',
   'shopkeeper',
@@ -814,7 +977,11 @@ function clampGroupDeltaPx(items,dx,dy,widthTiles,heightTiles){
 }
 var FEET_PER_TILE=4;
 var APPLY_TOKEN=__SET_PIECE_EDITOR_APPLY_TOKEN__;
-var S={pack:null,selId:null,selPropIdx:-1,selNpcIdx:-1,selPropIds:{},selNpcIds:{},tileSize:48,dirty:false,snapMode:'tile',activeLayerId:null,propSizeUnit:'tiles',showOverlay:true,keepAspect:false};
+// snapMode defaults to 'quarter' (1 ft on a 4 ft tile). Whole-tile snap is too
+// coarse for dressing — it forces furniture onto a lattice, which is exactly the
+// scattered-props-in-a-box look the set-piece work exists to kill. MUST match
+// the "selected" option on #snapsel; editor-gestures.test.mjs asserts they agree.
+var S={pack:null,selId:null,selPropIdx:-1,selNpcIdx:-1,selPropIds:{},selNpcIds:{},tileSize:48,dirty:false,snapMode:'quarter',activeLayerId:null,propSizeUnit:'tiles',showOverlay:true,keepAspect:true};
 var GENERATED_LIBRARY=[];
 var CLIPBOARD={props:[],npcs:[]};
 var sp=null;
@@ -1149,6 +1316,19 @@ function clampResizeRectToBounds(ox,oy,ow,oh,nx,ny,nw,nh,h,maxW,maxH){
 async function loadData(){
   var params=new URLSearchParams(location.search),initId=params.get('setPieceId')||'';
   try{
+    var nres=await fetch('/npc-sprites');
+    var nmap=await nres.json();
+    GENERATED_NPC_SPRITE_BY_DEF=(nmap&&nmap.byNpcDefId)||{};
+  }catch(_){
+    GENERATED_NPC_SPRITE_BY_DEF={};
+  }
+  try{
+    var sres=await fetch('/substrate');
+    SUBSTRATE=await sres.json();
+  }catch(_){
+    SUBSTRATE=null;
+  }
+  try{
     var gres=await fetch('/generated-index');
     GENERATED_LIBRARY=await gres.json();
   }catch(_){
@@ -1271,22 +1451,57 @@ document.getElementById('btnaddlayer').addEventListener('click',function(){
 });
 var canvas=document.getElementById('gc');
 var ctx=canvas.getContext('2d');
+// --- carved-terrain substrate -------------------------------------------------
+// The room floor + wall ring are written by MAP GENERATION, not by the set-piece
+// def, so the editor has no way to know them from set-pieces.json alone. Before
+// this existed the editor filled the canvas with a black void (#090d12) and let
+// the def's kind:'wall' props draw as blue-grey Kenney placeholders - so every
+// prop in this editor was authored and judged against a background the player
+// never sees. The lab had the same class of bug with a different wrong answer.
+// Ids come from /substrate, which is pinned to the engine's terrain->art map by
+// tests/unit/set-piece-lab-fidelity.test.ts.
+var SUBSTRATE=null;
+function substrateFor(id){
+  if(!SUBSTRATE)return null;
+  var o=(SUBSTRATE.bySetPiece||{})[id]||{},d=SUBSTRATE.default||{};
+  return{floor:o.floorSpriteId||d.floorSpriteId,wall:o.wallSpriteId||d.wallSpriteId};
+}
+function drawTileImg(img,x,y,ts){
+  ctx.drawImage(img,0,0,img.naturalWidth||16,img.naturalHeight||16,x*ts,y*ts,ts,ts);
+}
+function drawSubstrate(w,h,ts){
+  // Fallback base: only visible until the tile PNGs load, or if they fail.
+  ctx.fillStyle='#090d12';ctx.fillRect(0,0,w*ts,h*ts);
+  var sub=substrateFor(sp&&sp.id);
+  if(!sub)return;
+  var floorImg=sub.floor?loadGenSprite(sub.floor):null;
+  var wallImg=sub.wall?loadGenSprite(sub.wall):null;
+  ctx.imageSmoothingEnabled=false;
+  if(floorImg)for(var x=0;x<w;x++)for(var y=0;y<h;y++)drawTileImg(floorImg,x,y,ts);
+  if(wallImg)for(var wx=0;wx<w;wx++)for(var wy=0;wy<h;wy++){
+    if(wx!==0&&wy!==0&&wx!==w-1&&wy!==h-1)continue;
+    drawTileImg(wallImg,wx,wy,ts);
+  }
+}
 function render(){
   if(!sp)return;
   var ts=S.tileSize,w=sp.width,h=sp.height;
   canvas.width=w*ts;canvas.height=h*ts;
-  ctx.fillStyle='#090d12';ctx.fillRect(0,0,w*ts,h*ts);
-  if(S.snapMode==='half'||S.snapMode==='quarter'){
+  drawSubstrate(w,h,ts);
+  var chrome=S.showOverlay;
+  if(chrome&&(S.snapMode==='half'||S.snapMode==='quarter')){
     ctx.strokeStyle='#141c26';ctx.lineWidth=1;
     var sub=S.snapMode==='quarter'?4:2;
     for(var hx=1;hx<w*sub;hx++){if(hx%sub===0)continue;ctx.beginPath();ctx.moveTo(hx*ts/sub,0);ctx.lineTo(hx*ts/sub,h*ts);ctx.stroke();}
     for(var hy=1;hy<h*sub;hy++){if(hy%sub===0)continue;ctx.beginPath();ctx.moveTo(0,hy*ts/sub);ctx.lineTo(w*ts,hy*ts/sub);ctx.stroke();}
   }
   ctx.strokeStyle='#1e2530';ctx.lineWidth=1;
+  if(chrome){
   for(var gx=0;gx<=w;gx++){ctx.beginPath();ctx.moveTo(gx*ts,0);ctx.lineTo(gx*ts,h*ts);ctx.stroke();}
   for(var gy=0;gy<=h;gy++){ctx.beginPath();ctx.moveTo(0,gy*ts);ctx.lineTo(w*ts,gy*ts);ctx.stroke();}
   ctx.fillStyle='#ffffff0d';ctx.font='7px monospace';ctx.textAlign='left';ctx.textBaseline='top';
   for(var cx2=0;cx2<w;cx2++)for(var cy2=0;cy2<h;cy2++)ctx.fillText(cx2+','+cy2,cx2*ts+2,cy2*ts+2);
+  }
   var drawables=[];
   sp.props.forEach(function(p,i){
     var lid=propLayer(p);
@@ -1343,6 +1558,12 @@ function drawProp(prop,sel,ad){
   var C=KINDS[prop.kind]||KINDS.fixture;
   var layers=Array.isArray(prop.layers)?prop.layers:[];
   var sprited=false;
+  // wall/door props are structural: the game does NOT draw them (their art is
+  // the carved terrain, already painted by drawSubstrate) and drawing them again
+  // here stacks a Kenney placeholder over the real wall tile. They stay
+  // selectable - only their sprite is suppressed, never their box.
+  var structural=prop.kind==='wall'||prop.kind==='door';
+  if(structural)layers=[];
   layers.forEach(function(layer,layerIndex){
     if(!layer||!layer.sprite)return;
     var nativeTiles=layerIndex===0?{w:pw,h:ph}:getNativeSpriteTileDimensions(layer.sprite);
@@ -1366,7 +1587,23 @@ function drawProp(prop,sel,ad){
     if(res){
       var nativeW=Math.max(1,nnum(res.w,16));
       var nativeH=Math.max(1,nnum(res.h,16));
-      var fit=Math.min(targetW/nativeW,targetH/nativeH);
+      // Match the GAME's scale rule exactly (PhaserBridge.ts:1832-1838):
+      //   upright (kind !== 'floor') -> scale = heightFt / nativeH; widthFt is
+      //     IGNORED, the width follows the art's own aspect.
+      //   floor decal (kind === 'floor', set by stampSetPiece.ts:313) -> both
+      //     declared feet are real ground extents, so contain-fit them.
+      // The editor used to contain-fit EVERYTHING, i.e. apply the floor-decal
+      // rule to upright props. Whenever a declared widthFt was narrower than the
+      // art's aspect, Math.min picked the width and the editor drew the prop
+      // SHORTER than the game does - the welcome desk lost 34% of its width and
+      // the banner drew at half size. An instrument that cannot show you the
+      // defect is worse than no instrument.
+      var fit;
+      if(prop.kind==='floor'){
+        fit=Math.min(targetW/nativeW,targetH/nativeH);
+      }else{
+        fit=targetH/nativeH;
+      }
       if(!Number.isFinite(fit)||fit<=0)fit=1;
       var drawW=nativeW*fit;
       var drawH=nativeH*fit;
@@ -1374,6 +1611,12 @@ function drawProp(prop,sel,ad){
       ctx.translate(cx,cy);
       if(rot!==0)ctx.rotate(rot);
       if(fx!==1||fy!==1)ctx.scale(fx,fy);
+      // Anchor: the game sets origin (0.5, 1) for anchorBase layers so a tall
+      // object STANDS on its floor position and grows upward (PhaserBridge.ts
+      // :1816). The editor always centre-anchored, so all 14 anchorBase props in
+      // the welcome room were drawn half a body too low here relative to the
+      // game. drawY is the offset of the sprite's top edge from the anchor point.
+      var drawY=layer.anchorBase===true?-drawH:-drawH/2;
       var tinted=false;
       if(typeof layer.tintHex==='string'&&/^#[0-9a-fA-F]{6}$/.test(layer.tintHex)){
         var tintW=Math.max(1,Math.ceil(drawW));
@@ -1391,12 +1634,12 @@ function drawProp(prop,sel,ad){
           tintCtx.globalCompositeOperation='destination-atop';
           tintCtx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,0,0,tintW,tintH);
           tintCtx.globalCompositeOperation='source-over';
-          ctx.drawImage(tintCanvas,-drawW/2,-drawH/2,drawW,drawH);
+          ctx.drawImage(tintCanvas,-drawW/2,drawY,drawW,drawH);
           tinted=true;
         }
       }
       if(!tinted){
-        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,-drawH/2,drawW,drawH);
+        ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-drawW/2,drawY,drawW,drawH);
       }
       ctx.restore();
       sprited=true;
@@ -1418,8 +1661,10 @@ function drawProp(prop,sel,ad){
       sprited=true;
     }
   });
-  if(!sprited){ctx.fillStyle=C.bg;ctx.fillRect(px+1,py+1,pw2-2,ph2-2);}
-  var showBox=S.showOverlay||!sprited||sel;
+  if(!sprited&&!structural){ctx.fillStyle=C.bg;ctx.fillRect(px+1,py+1,pw2-2,ph2-2);}
+  // Structural props deliberately have no sprite here, so !sprited must not
+  // force their box on - otherwise game-view is still boxed walls.
+  var showBox=structural?(S.showOverlay||sel):(S.showOverlay||!sprited||sel);
   if(locked){ctx.fillStyle='rgba(0,0,0,0.38)';ctx.fillRect(px,py,pw2,ph2);}
   ctx.strokeStyle=sel?'#fff':C.bd;ctx.lineWidth=sel?2.5:1.5;
   if(showBox)ctx.strokeRect(px+1.5,py+1.5,pw2-3,ph2-3);
@@ -1459,7 +1704,9 @@ function drawNpcEntity(npc,sel,nd){
     ctx.drawImage(res.img,res.sx,res.sy,res.w||16,res.h||16,-dw/2,-dh/2,dw,dh);
     ctx.restore();
   }
-  var showNBox=S.showOverlay||!res||sel;
+  // NPC boxes are chrome: game-view must hide them even when the sprite is
+  // missing, or "what ships" is still an editor screenshot.
+  var showNBox=S.showOverlay||sel;
   ctx.strokeStyle=sel?'#fff':NPC_BD;ctx.lineWidth=sel?2.5:1.5;
   if(showNBox)ctx.strokeRect(px+1.5,py+1.5,sw-3,sh-3);
   if(showNBox){
@@ -1774,12 +2021,17 @@ canvas.addEventListener('mouseup',function(){
       });
     }else{
       p.x=Math.max(0,nnum(snapV(drag.dispX/ts),0));p.y=Math.max(0,nnum(snapV(drag.dispY/ts),0));
+      var prevDW=Math.max(0.0001,nnum(p.width,1)),prevDH=Math.max(0.0001,nnum(p.height,1));
       p.width=snapSz(drag.dispW/ts);p.height=snapSz(drag.dispH/ts);
       p.width=Math.min(p.width,sp.width-p.x);p.height=Math.min(p.height,sp.height-p.y);
       var baseLayer=p.layers&&p.layers[0];
       if(baseLayer&&baseLayer.widthFt!==undefined&&baseLayer.heightFt!==undefined){
-        baseLayer.widthFt=p.width*FEET_PER_TILE;
-        baseLayer.heightFt=p.height*FEET_PER_TILE;
+        // Scale the render size with the footprint instead of forcing them
+        // equal - see the note in syncPropInputs. Forcing flattened every
+        // deliberate overhang (the door's 5.75x8ft leaf on a 1x1 footprint)
+        // the first time anyone dragged a resize handle.
+        if(p.width!==prevDW)baseLayer.widthFt=baseLayer.widthFt*(p.width/prevDW);
+        if(p.height!==prevDH)baseLayer.heightFt=baseLayer.heightFt*(p.height/prevDH);
       }
     }
     refreshPropInputs();markDirty();
@@ -1955,6 +2207,7 @@ function updatePropPanel(){
     me=document.getElementById('multiproped'),mne=document.getElementById('multinpcped');
   var spSel=getSelectedPropIndices(),snSel=getSelectedNpcIndices();
   document.getElementById('btndel').disabled=S.selPropIdx<0&&S.selNpcIdx<0&&!getSelectedPropIndices().length&&!getSelectedNpcIndices().length;
+  syncArtVariantBtn();
   if(snSel.length>1){
     ns.style.display='none';ed.style.display='none';me.style.display='none';ne.style.display='none';mne.style.display='';
     updateMultiNpcPanel();
@@ -2011,7 +2264,21 @@ function refreshPropInputs(){
   document.getElementById('ph').value=h;
   document.getElementById('pz').value=p.z!==undefined?p.z:'';
   document.getElementById('player').value=propLayer(p);
+  // w/h edit the FOOTPRINT. The art is drawn at layer widthFt/heightFt, which
+  // is legitimately different (deliberate overhang). Surface that instead of
+  // letting the panel imply the footprint is the render size - 20 of 58
+  // welcome-room props differ, and a panel that hides it is an instrument that
+  // cannot show you the defect.
+  var rs=document.getElementById('prendersz');
+  var bl=p.layers&&p.layers[0];
+  if(bl&&bl.widthFt!==undefined&&bl.heightFt!==undefined&&
+     (Math.abs(bl.widthFt-(p.width||1)*FEET_PER_TILE)>0.01||
+      Math.abs(bl.heightFt-(p.height||1)*FEET_PER_TILE)>0.01)){
+    rs.textContent='art drawn '+rnd2(bl.widthFt)+' x '+rnd2(bl.heightFt)+' ft (overhangs footprint)';
+    rs.style.display='block';
+  }else{rs.style.display='none';}
 }
+function rnd2(v){return Math.round(v*100)/100;}
 function refreshSprites(){
   var p=sp&&sp.props[S.selPropIdx];if(!p)return;
   var list=document.getElementById('spriteslist');list.innerHTML='';
@@ -2099,7 +2366,7 @@ document.getElementById('player').addEventListener('change',function(){
   var p=sp&&sp.props[S.selPropIdx];if(!p)return;
   p.sceneLayer=document.getElementById('player').value;render();markDirty();
 });
-function syncPropInputs(){
+function syncPropInputs(ev){
   var p=sp&&sp.props[S.selPropIdx];if(!p)return;
   var oldId=p.id;
   p.id=document.getElementById('pid').value||p.id;
@@ -2107,12 +2374,19 @@ function syncPropInputs(){
   p.kind=document.getElementById('pkind').value;
   p.x=parseFloat(document.getElementById('px').value)||0;
   p.y=parseFloat(document.getElementById('py').value)||0;
+  var prevW=Math.max(0.0001,nnum(p.width,1)),prevH=Math.max(0.0001,nnum(p.height,1));
   var wv=parseFloat(document.getElementById('pw').value)||1;
   var hv=parseFloat(document.getElementById('ph').value)||1;
   if(S.propSizeUnit==='feet'){wv=wv/FEET_PER_TILE;hv=hv/FEET_PER_TILE;}
   if(S.keepAspect){
-    var ar=Math.max(0.0001,nnum((p.width||1)/(p.height||1),1));
-    var aid=(document.activeElement&&document.activeElement.id)||'';
+    // Which field the user edited must come from the EVENT TARGET, not
+    // document.activeElement. These inputs fire 'change', which for typed text
+    // fires on BLUR - by then activeElement is whatever was clicked next, so
+    // neither branch matched and keep-aspect silently did nothing. Stepper
+    // arrows fire 'change' while still focused, which is why it appeared to
+    // work only with up/down.
+    var ar=Math.max(0.0001,prevW/prevH);
+    var aid=(ev&&ev.target&&ev.target.id)||'';
     if(aid==='pw')hv=wv/ar;
     else if(aid==='ph')wv=hv*ar;
   }
@@ -2120,14 +2394,21 @@ function syncPropInputs(){
   p.height=hv;
   var baseLayer=p.layers&&p.layers[0];
   if(baseLayer&&baseLayer.widthFt!==undefined&&baseLayer.heightFt!==undefined){
-    baseLayer.widthFt=p.width*FEET_PER_TILE;
-    baseLayer.heightFt=p.height*FEET_PER_TILE;
+    // The size box edits the FOOTPRINT; layer feet are the independently
+    // authored RENDER size and are legitimately different (the door is a 1x1
+    // footprint drawn 5.75x8ft, deliberate overhang for the 3/4-view leaf).
+    // This used to force feet = footprint*4 on EVERY field change, so merely
+    // renaming or nudging a prop silently rewrote its art scale - 20 of 58
+    // welcome-room props carry such a mismatch. Scale proportionally instead,
+    // and leave it untouched when the footprint did not change.
+    if(wv!==prevW)baseLayer.widthFt=baseLayer.widthFt*(wv/prevW);
+    if(hv!==prevH)baseLayer.heightFt=baseLayer.heightFt*(hv/prevH);
   }
   var zv=document.getElementById('pz').value.trim();
   if(zv===''){delete p.z;}else{p.z=parseInt(zv);}
   render();markDirty();
 }
-function syncNpcInputs(){
+function syncNpcInputs(ev){
   var n=sp&&sp.npcs&&sp.npcs[S.selNpcIdx];if(!n)return;
   var oldId=n.id;
   var nidv=document.getElementById('nid').value.trim();if(nidv)n.id=nidv;
@@ -2136,8 +2417,9 @@ function syncNpcInputs(){
   var nwv=Math.max(0.25,nnum(parseFloat(document.getElementById('nwf').value),2.5));
   var nhv=Math.max(0.25,nnum(parseFloat(document.getElementById('nhf').value),3.5));
   if(S.keepAspect){
+    // Event target, not activeElement - see the note in syncPropInputs.
     var nar=Math.max(0.0001,nnum(n.widthFt,2.5)/Math.max(0.0001,nnum(n.heightFt,3.5)));
-    var naid=(document.activeElement&&document.activeElement.id)||'';
+    var naid=(ev&&ev.target&&ev.target.id)||'';
     if(naid==='nwf')nhv=nwv/nar;
     else if(naid==='nhf')nwv=nhv*nar;
   }
@@ -2222,6 +2504,11 @@ document.getElementById('btnapply').addEventListener('click',async function(){
     if((p.height||1)!==1)out.height=p.height||1;
     if(p.z!==undefined)out.z=p.z;
     if(p.sceneLayer)out.sceneLayer=p.sceneLayer;
+    // Rebuilt field-by-field, so ANY prop field not listed here is silently
+    // dropped on save. "solid" was lost this way — a save from the editor
+    // would have quietly stripped collision off every solid prop, which is
+    // worse than a validation error because nothing reports it.
+    if(p.solid===true)out.solid=true;
     return out;
   });
   var btn=document.getElementById('btnapply');btn.disabled=true;btn.textContent='Applying\u2026';
@@ -2380,6 +2667,10 @@ document.getElementById('btnreset').addEventListener('click',function(){
   showToast('Reset to saved state');
 });
 document.addEventListener('keydown',function(e){
+  // The art dialog contains text inputs, so it must swallow keys BEFORE the
+  // canvas shortcuts below — otherwise typing "bearskin-rug" would delete the
+  // selected prop on the first Backspace.
+  if(document.getElementById('artdlg').style.display==='flex'){if(e.key==='Escape')closeArtDlg();return;}
   if(document.getElementById('gal').style.display==='flex'){if(e.key==='Escape')closeGallery();return;}
   if(isTextEditingTarget())return;
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='c'){e.preventDefault();copySelection();return;}
@@ -2721,6 +3012,96 @@ document.getElementById('galsrch').addEventListener('input',function(){
 });
 document.getElementById('galbtnclose').addEventListener('click',closeGallery);
 document.getElementById('gal').addEventListener('click',function(e){if(e.target===this)closeGallery();});
+// --- Art requests -----------------------------------------------------------
+// Filing a request from the editor, where the hole in the room is visible, so
+// "I need a bearskin rug" does not decay into no rug. Two entry points share
+// one dialog; a non-empty artBasedOn means "variant of existing art".
+var artBasedOn='';
+// Prefill suggestion ONLY. The server-side lib/art-request.mjs owns the real
+// name rules; this is a convenience so the user is not retyping suffixes.
+function suggestNameFrom(spriteId,change){
+  var base=String(spriteId||'').replace(/^generated:/,'').replace(/-var-\d+$/,'').replace(/-v\d+$/,'');
+  var slug=String(change||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').split('-').slice(0,3).join('-');
+  return slug?base+'-'+slug:base;
+}
+/** Sprite id of the selected prop's first layer, or '' when none applies. */
+function selectedSpriteId(){
+  if(!sp||S.selPropIdx<0)return '';
+  var p=sp.props[S.selPropIdx];
+  var s=p&&p.layers&&p.layers[0]&&p.layers[0].sprite;
+  if(!s)return '';
+  if(s.source==='catalog')return String(s.spriteId||'').replace(/^generated:/,'');
+  return '';
+}
+function syncArtVariantBtn(){
+  var b=document.getElementById('btnartvar');
+  if(!b)return;
+  var id=selectedSpriteId();
+  b.disabled=id==='';
+  b.title=id?('Request a variant of '+id):'Select a prop using catalog art first';
+}
+function openArtDlg(basedOn){
+  artBasedOn=basedOn||'';
+  var ref=document.getElementById('artbasedon');
+  document.getElementById('arttitle').textContent=artBasedOn?'Request a variant':'Request art';
+  document.getElementById('artbrieflbl').textContent=artBasedOn?'What should change?':'Brief';
+  if(artBasedOn){
+    ref.style.display='block';
+    ref.textContent='Based on '+artBasedOn+' — its palette, outline weight and scale are kept; describe only the change.';
+    document.getElementById('artbrief').placeholder='Same stove, but facing east instead of south.';
+    document.getElementById('artname').value=suggestNameFrom(artBasedOn,'');
+  }else{
+    ref.style.display='none';
+    document.getElementById('artbrief').placeholder='A shaggy bearskin rug, head at the west end, splayed on flagstones. Reads clearly from above at gameplay scale.';
+    document.getElementById('artname').value='';
+  }
+  document.getElementById('artbrief').value='';
+  document.getElementById('arterr').style.display='none';
+  document.getElementById('artdlg').style.display='flex';
+  document.getElementById(artBasedOn?'artbrief':'artname').focus();
+}
+function closeArtDlg(){document.getElementById('artdlg').style.display='none';}
+document.getElementById('btnartnew').addEventListener('click',function(){openArtDlg('');});
+document.getElementById('btnartvar').addEventListener('click',function(){
+  var id=selectedSpriteId();
+  if(!id){showToast('\u2717 Select a prop that uses catalog art first',true);return;}
+  openArtDlg(id);
+});
+document.getElementById('artclose').addEventListener('click',closeArtDlg);
+document.getElementById('artcancel').addEventListener('click',closeArtDlg);
+document.getElementById('artdlg').addEventListener('click',function(e){if(e.target===this)closeArtDlg();});
+// Suggest a name from the change text while the user types, but never clobber
+// a name they have edited themselves.
+document.getElementById('artbrief').addEventListener('input',function(){
+  if(!artBasedOn)return;
+  var n=document.getElementById('artname');
+  if(n.dataset.touched==='1')return;
+  n.value=suggestNameFrom(artBasedOn,this.value);
+});
+document.getElementById('artname').addEventListener('input',function(){this.dataset.touched='1';});
+document.getElementById('artsubmit').addEventListener('click',async function(){
+  var btn=this,err=document.getElementById('arterr');
+  err.style.display='none';
+  btn.disabled=true;btn.textContent='Opening\u2026';
+  try{
+    var res=await fetch('/art-request',{method:'POST',headers:{'Content-Type':'application/json','X-Set-Piece-Editor-Token':APPLY_TOKEN},
+      body:JSON.stringify({
+        name:document.getElementById('artname').value,
+        brief:document.getElementById('artbrief').value,
+        type:document.getElementById('arttype').value,
+        sizeVariant:document.getElementById('artsize').value,
+        floor:document.getElementById('artfloor').value,
+        basedOn:artBasedOn
+      })});
+    var r=await res.json();
+    if(r.ok){closeArtDlg();showToast('\u2713 Requested '+r.name+' \u2014 '+r.url);}
+    else{
+      err.textContent=(Array.isArray(r.issues)&&r.issues.length?r.issues.join('\n'):r.error||'Request failed');
+      err.style.display='block';
+    }
+  }catch(e){err.textContent=e.message;err.style.display='block';}
+  finally{btn.disabled=false;btn.textContent='Open issue';}
+});
 document.getElementById('galtab-cat').addEventListener('click',function(){
   if(galMode==='npc')return;
   galTab='catalog';

@@ -647,7 +647,8 @@ test('closeLoopIncident closes an open incident and returns action=closed', asyn
   assert.equal(result.issueNumber, 501);
 
   const patchCall = mutatingCalls.find(
-    (call) => call.method === 'PATCH' && call.url === '/repos/' + OWNER + '/' + REPO + '/issues/501',
+    (call) =>
+      call.method === 'PATCH' && call.url === '/repos/' + OWNER + '/' + REPO + '/issues/501',
   );
   assert.ok(patchCall, 'must have patched the incident issue');
   assert.equal(patchCall.body.state, 'closed');
@@ -670,7 +671,11 @@ test('closeLoopIncident returns action=not-found when no open incident exists', 
   });
 
   assert.equal(result.action, 'not-found');
-  assert.equal(mutatingCalls.length, 0, 'must not issue any mutating calls when no incident exists');
+  assert.equal(
+    mutatingCalls.length,
+    0,
+    'must not issue any mutating calls when no incident exists',
+  );
 });
 
 test('closeLoopIncident ignores PRs that have the same title', async (t) => {

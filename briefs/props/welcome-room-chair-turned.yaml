@@ -1,0 +1,121 @@
+# ASPECT NOTE (Asset Forge, 2026-07-25): the set-piece renderer is now
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect). So the canvas aspect ratio IS
+# the object's real-world proportions. This chair is ~2 ft wide x 3.2 ft tall.
+#
+# Round 1 declared 40x64 (0.63:1), which resizeSpriteStrategy() maps to 'fit' —
+# the subject is letterboxed into an exact 40x64 frame. The model drew a chair
+# nearer 0.75:1, so every variant shipped with a dead band under the feet and
+# failed `anchor-derivable` ("no opaque pixel in bottom 8 rows"). Letterboxing is
+# also the WRONG failure for a height-authoritative renderer: padding under the
+# feet makes the chair render SHORTER than its declared heightFt.
+#
+# Declaring 30x64 instead puts h >= 2w, so the strategy becomes 'height': the
+# output height is locked at 64 and the width follows the DRAWN subject's aspect.
+# The chair therefore fills the full height and the shipped canvas is aspect-true
+# by construction, whatever aspect the model actually draws.
+type: prop
+name: welcome-room-chair-turned
+description: |
+  A plain wooden chair, deliberately turned around so it FACES AWAY from the
+  viewer. Front-elevation 3/4 view — the same view as the already-approved
+  welcome-room-desk (which has "WELCOME" painted on its FRONT face). Modern
+  high-quality pixel art, silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — ROUND 1 FAILED ON THIS, READ IT TWICE.
+  The chair is approximately 2 FEET WIDE x 3.2 FEET TALL. Its bounding box must
+  be clearly TALLER THAN IT IS WIDE (width : height = 0.63 : 1) — a narrow,
+  upright, slightly lanky, almost spindly chair. Round 1 came back closer to
+  0.85 : 1, i.e. too squat and too wide, so make it distinctly TALLER and
+  NARROWER than feels natural: lengthen the back posts and the legs, and pull the
+  seat in narrower. Do not draw a squat armchair, a stool or a wide bench.
+  Compose it inside the cell like this: the tops of the back posts nearly touch
+  the TOP margin of the cell and THE FEET MUST REACH THE VERY BOTTOM of the cell,
+  standing on the bottom margin — do not leave an empty band under the chair. It
+  fills roughly 80-90% of the cell's height. It must NOT be a small object
+  floating in the middle of a big empty cell.
+
+  IT IS A CHAIR SEEN FROM BEHIND. This is the single most important requirement.
+  - You are looking at the BACK of the chair: the back rest is between you and
+    the seat. You can see the back posts and the horizontal back slats, and you
+    can see the underside/rear lip of the seat below them, plus all four legs.
+  - The chair is angled just slightly off square so it reads as three-dimensional
+    (a shallow 3/4 turn), but it is unmistakably turned away, not towards you.
+  - It is a simple, cheap, joiner-made wooden chair: two straight back posts, two
+    or three horizontal back slats, a flat plank seat, four straight tapered
+    legs, one stretcher between the front legs.
+  - It has been used to death: one back slat is cracked or missing, the joints
+    are loose so the frame leans a few degrees out of true, one leg is scuffed
+    pale where a boot has rested on it for years, and the seat edge is worn
+    smooth and darkened.
+
+  IT IS EMPHATICALLY NOT ANY OF THESE — these are automatic rejections:
+  - NOT a throne, armchair, sofa, bench, stool or bar stool.
+  - NOT a ladder, easel, coat stand, shelf unit or wooden frame.
+  - NOT a table or desk.
+  - NOT a chair seen from the front with the seat facing you.
+  - NOT two chairs, and not a chair with anything sitting on it.
+  It is one single wooden chair, turned away. One object. Nothing else.
+
+  MOOD — this is a grimy reality-TV dungeon set, threadbare and over-used. The
+  welcome room is the dungeon's shabby reception, re-dressed for the cameras
+  season after season by three bored NPCs who have been stuck in it together for
+  years. Off camera they are sick of each other. This chair has been turned to
+  face the wall ON PURPOSE — it is a small, petty, passive-aggressive act: "I am
+  not looking at you, and I am not looking at the camera either." It should feel
+  sulky and deliberate, not merely knocked over. Tired, dusty, worn.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase,
+  welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope and
+  welcome-room-show-poster without clashing: dark walnut and worn oak, deep
+  maroon, tarnished brass, muted and dusty, never bright and never saturated. The
+  timber is a greyed-out dark walnut brown with paler worn patches where the
+  finish has rubbed off; any metal (a repair bracket, a nail head) is knocked-back
+  tarnished brass. BANNED: neon, pure white, pure black, saturated red, saturated
+  yellow, orange, teal, cyan, blue, green, magenta, purple, and any speckle of a
+  hue that is not in the maroon / walnut / brass family. A saturated or speckled
+  result is an automatic rejection.
+
+  RENDERING: hard dark contour around the chair in the house prop style, muted
+  interior shading, lit from above, soft one-pixel contact shadow under the feet.
+  This prop is GROUNDED: it stands on the floor on all four feet.
+
+  BACKGROUND: fully transparent. Draw ONLY the chair. Do NOT paint the floor, a
+  wall, a backing panel, frame, border or vignette — the room is already painted
+  underneath this art in the game. Every pixel that is not chair must be fully
+  transparent, including the gaps between the back slats and between the legs.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the chair's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the chair.
+size:
+  width: 30
+  height: 64
+anchor:
+  x: 15
+  y: 63
+sensors:
+  # A chair is a skeletal object — mostly gaps between legs and back slats — so
+  # it sits at the low end of the `prop` default [0.10, 0.65] band. The floor is
+  # raised to 0.18 so a spindly fragment is rejected, and the cap lowered to 0.55
+  # because a chair that fills more than half its bounding box has lost its gaps
+  # (background-removal failure or a solid blob).
+  opaqueRatio:
+    min: 0.18
+    max: 0.55
+  # The gaps between the back slats and between the legs are through-holes by
+  # design and must not be scored as background bleed-through.
+  interiorHoles:
+    maxPixels: 512
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - furniture
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

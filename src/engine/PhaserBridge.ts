@@ -24,8 +24,10 @@ import { MeleeSpriteId } from '../shared/constants.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
+  resolveOpaqueFit,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
+  type OpaqueBounds,
 } from '../shared/generated-assets.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
@@ -467,6 +469,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const missingTypeWarnings = new Set<string>();
   let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
   const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
+  /**
+   * Opaque pixel bounds per texture key, so the set-piece pass can anchor and
+   * scale props by their VISIBLE art instead of the raw canvas. Rebuilt with
+   * `generatedFacingByTexture` whenever the registry identity changes.
+   */
+  const generatedBoundsByTexture = new Map<string, OpaqueBounds>();
   const mobMotionStates = new Map<number, MobMotionRenderState>();
   const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
@@ -502,9 +510,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const generatedRegistry = getGeneratedSpriteRegistry(scene);
       if (generatedRegistry !== cachedGeneratedRegistry) {
         generatedFacingByTexture.clear();
+        generatedBoundsByTexture.clear();
         if (generatedRegistry) {
           for (const entry of generatedRegistry.entries()) {
             generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
+            if (entry.opaqueBounds !== undefined) {
+              generatedBoundsByTexture.set(entry.textureKey, entry.opaqueBounds);
+            }
           }
         }
         cachedGeneratedRegistry = generatedRegistry;
@@ -1423,14 +1435,23 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           const npcInstance = world.npcs.get(eid);
           const npcWidthFt = world.stores.sprite.width[eid] ?? 0;
           const npcHeightFt = world.stores.sprite.height[eid] ?? 0;
-          if (
-            Number.isFinite(npcWidthFt) &&
-            npcWidthFt > 0 &&
-            Number.isFinite(npcHeightFt) &&
-            npcHeightFt > 0 &&
-            typeof img.setDisplaySize === 'function'
-          ) {
-            img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+          if (Number.isFinite(npcHeightFt) && npcHeightFt > 0) {
+            // Height-authoritative, aspect-preserving — same rule as set-piece
+            // props. `setDisplaySize` used to STRETCH the character into the
+            // declared box, so a 5.71x5 ft anchor on a square portrait sprite
+            // squashed the NPC 14% wide AND capped its apparent height below the
+            // authored feet. `heightFt` is the human yardstick every prop is
+            // scaled against, so it must survive verbatim.
+            const nativeH = img.height;
+            if (nativeH > 0 && typeof img.setScale === 'function') {
+              img.setScale(ftToPx(npcHeightFt) / nativeH);
+            } else if (
+              Number.isFinite(npcWidthFt) &&
+              npcWidthFt > 0 &&
+              typeof img.setDisplaySize === 'function'
+            ) {
+              img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+            }
           }
           if (typeof img.setDepth === 'function') {
             if (Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined) {
@@ -1798,16 +1819,53 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
           }
           img.setPosition(propX, propY);
-          // Contain-fit: a uniform scale that fits the native sprite INSIDE the
-          // feet box while preserving its aspect ratio. No tile in this game is
-          // designed to stretch, so we never call setDisplaySize on real art
-          // (which would distort a 1.26:1 desk into its 3:1 footprint box).
-          // Fall back to setDisplaySize only for a degenerate zero-size frame.
+          // Anchor + scale are both resolved against the sprite's OPAQUE pixel
+          // bounds, not its raw canvas. The pipeline ships a standardized ~5%
+          // per-side transparent safety margin, so measuring against the canvas
+          // (a) pins `anchorBase` props by the canvas bottom rather than the
+          // object's feet — they floated up to 0.42 ft above their floor line —
+          // and (b) makes `heightFt` scale padding-plus-art, rendering every
+          // prop ~10% shorter than its declared feet.
+          //
+          // `heightFt` stays AUTHORITATIVE for upright props: the sprite is
+          // scaled so its apparent vertical height matches the declared feet and
+          // its width follows the art's own aspect. We do NOT contain-fit
+          // upright props, because `Math.min` silently discards whichever
+          // declared dimension is the looser fit: a torch authored at 1.5x3 ft
+          // against a square 64x64 canvas rendered at 1.5 ft, throwing away HALF
+          // its height. 13 of the welcome room's 31 props were losing 5-50% of
+          // their authored height that way, which is what made every room read
+          // as squashed.
+          //
+          // Floor decals (rugs, stains, tape) are the exception: they lie IN the
+          // floor plane, so both declared feet are real ground extents and must
+          // both be honoured. Those keep the aspect-preserving contain-fit.
+          //
+          // `resolveOpaqueFit` degrades to whole-canvas behaviour when the
+          // manifest has no bounds (legacy entries) or they disagree with the
+          // loaded texture, so stale data reverts to the old look, not garbage.
           const nativeW = img.width;
           const nativeH = img.height;
           if (nativeW > 0 && nativeH > 0) {
-            img.setScale(Math.min(spWidthPx / nativeW, spHeightPx / nativeH));
+            const fit = resolveOpaqueFit({
+              bounds: generatedBoundsByTexture.get(textureKey),
+              canvasWidth: nativeW,
+              canvasHeight: nativeH,
+              targetWidthPx: spWidthPx,
+              targetHeightPx: spHeightPx,
+              anchorBase: sp.anchorBase === true,
+              floorPlane: sp.floorPlane === true,
+            });
+            // Set every frame: a visual is reused by list index, so a prop may
+            // change its anchor or art on a room reset.
+            if (typeof img.setOrigin === 'function') {
+              img.setOrigin(fit.originX, fit.originY);
+            }
+            img.setScale(fit.scale);
           } else {
+            if (typeof img.setOrigin === 'function') {
+              img.setOrigin(0.5, sp.anchorBase === true ? 1 : 0.5);
+            }
             img.setDisplaySize(spWidthPx, spHeightPx);
           }
           // Mirror the sprite when the layer requests it (e.g. a right-side wall

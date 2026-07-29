@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,17 @@ const ONE_BY_ONE_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR42mP4DwQMIAAkG4DkfwBLSQd6Nhz6dgAAAABJRU5ErkJggg==',
   'base64',
 );
+
+test('the extension source is valid JavaScript', () => {
+  // Every other test in this file READS extension.mjs as text and never
+  // imports it, so a syntax error is invisible to all of them. Three comments
+  // added inside HTML_TEMPLATE once contained backticks, which terminate the
+  // template literal and break the module outright — caught only by prettier,
+  // by luck. A stray backtick in that ~2600-line template is a standing
+  // hazard; this makes it fail deterministically instead.
+  const r = spawnSync(process.execPath, ['--check', EXTENSION_PATH], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `extension.mjs does not parse:\n${r.stderr}`);
+});
 
 function renderHtml(applyToken) {
   const startMarker = 'function renderHtml(applyToken) {';
@@ -304,6 +316,10 @@ test('dragging and applying use the production editor state machine', async (t) 
     npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
   });
   await withEditor(t, pack, async ({ page, applyBodies }) => {
+    // Pin the snap mode this case exercises. It previously relied on the
+    // default being 'tile'; that dependency was invisible, so changing the
+    // default broke a test whose subject is the drag/apply state machine.
+    await page.selectOption('#snapsel', 'tile');
     const start = await canvasPoint(page, 1.5, 1.5);
     const dragged = await canvasPoint(page, 2.6, 2.6);
     await page.mouse.move(start.x, start.y);
@@ -356,6 +372,8 @@ test('undo and redo restore and reapply NPC drag state before apply payload', as
     npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
   });
   await withEditor(t, pack, async ({ page, applyBodies }) => {
+    // See the note above: pin the snap mode instead of inheriting the default.
+    await page.selectOption('#snapsel', 'tile');
     const start = await canvasPoint(page, 1.5, 1.5);
     const dragged = await canvasPoint(page, 2.6, 2.6);
     await page.mouse.move(start.x, start.y);
@@ -398,6 +416,45 @@ test('snap size rounds per mode in production globals', async (t) => {
       return { tile, half, quarter, free };
     });
     assert.deepEqual(snap, { tile: 1, half: 1.5, quarter: 1.25, free: 1.26 });
+  });
+});
+
+test('snap defaults to quarter-tile, and the dropdown agrees with the JS default', async (t) => {
+  // Two independent declarations of the same default (the `S.snapMode`
+  // initializer and the `selected` <option>). If they disagree the UI lies
+  // about the active snap until the user touches the dropdown — the same
+  // duplicated-definition drift that broke the editor's field allow-lists.
+  await withEditor(t, createPack(), async ({ page }) => {
+    const state = await page.evaluate(() => ({
+      jsDefault: S.snapMode,
+      selectValue: document.getElementById('snapsel').value,
+    }));
+    assert.equal(state.jsDefault, 'quarter', 'quarter-tile (1 ft) is the authoring default');
+    assert.equal(
+      state.selectValue,
+      state.jsDefault,
+      'the snap dropdown must show the snap mode actually in effect',
+    );
+  });
+});
+
+test('a fresh editor drags an NPC on the quarter-tile grid without touching the dropdown', async (t) => {
+  // The default is only real if a drag out of the box lands on it. The two
+  // drag tests above pin `tile` explicitly, so without this case nothing would
+  // exercise the shipped default end-to-end.
+  const pack = createPack({
+    npcs: [{ id: 'npc-a', npcTypeId: 'tutorial-goon', x: 1, y: 1, widthFt: 4, heightFt: 4 }],
+  });
+  await withEditor(t, pack, async ({ page }) => {
+    const start = await canvasPoint(page, 1.5, 1.5);
+    // +1.1 tiles => centre 2.6 => quarter-snapped centre 2.5 => top-left 2.
+    const dragged = await canvasPoint(page, 2.6, 2.6);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(dragged.x, dragged.y);
+    await page.mouse.up();
+    await page.waitForFunction(() => sp.npcs[0].x === 2);
+    assert.equal(await page.locator('#snapsel').inputValue(), 'quarter');
   });
 });
 

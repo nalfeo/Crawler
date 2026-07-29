@@ -1,0 +1,194 @@
+# SWEATY MERCHANT — v3 (STYLE CORRECTION).
+#
+# WHY v3 EXISTS: v1 and v2 were both briefed in the WRONG ART DIRECTION.
+# `docs/knowledge/game-design/art-style-guide.md` had no proportion or rendering
+# guidance, so successive waves invented one and drifted toward gritty semi-realism.
+# v2 demanded "SEVEN HEADS TALL" and listed "do NOT draw chibi / big-head cartoon
+# proportions" as a hard negative, and treated a 3.5-heads result as a defect.
+# That is backwards — 3.5 heads was RIGHT.
+#
+# Crawler is CARTOONISH, NOT REALISTIC. Authoritative references: EarthBound, Chrono
+# Trigger, Undertale, Zelda (A Link to the Past / Link's Awakening). Bobblehead
+# proportions are CORRECT. See the style guide's "Character Proportions" and
+# "Rendering" sections, which this brief inherits and must not contradict.
+#
+# CARRIED FORWARD (each paid for in an earlier wave, do not re-litigate):
+#  * DEFAULT size variant; `sizeVariant: tall` is actively harmful on this pipeline.
+#  * ONE AXIS ONLY stated in source pixels.
+#  * `sensors.anchor.mode: center-of-mass` — `grip` locks onto ONE bottom-row opaque
+#    run, so two feet fail even when perfectly centred. This also retires v2's
+#    "feet must fuse into one shape" clause, which only existed to dodge that bug.
+#  * `paletteMode: strict` — prose does not control colour, quantization does.
+#  * A NARROW tray held at chest height. A wide tray forces the model to shrink the
+#    figure to fit, and an outstretched arm broke the slicer by merging cells.
+#  * VALUE STRUCTURE stays pass/fail — this is about READABILITY at game scale and
+#    survives the style correction intact. v2 shipped slightly too dark against the
+#    room floor, so the light masses are pushed harder here.
+type: character
+name: sweaty-merchant-v3
+description: |
+  A damp, ingratiating CARTOON PEDDLER working the shop table of a televised dungeon
+  reality show. He has been down here far too long and is a little too pleased to
+  see you.
+
+  ART STYLE IS THE FIRST PRIORITY. Draw him in the style of EARTHBOUND, CHRONO
+  TRIGGER, UNDERTALE and ZELDA: A LINK TO THE PAST. Charming, cartoonish, chunky
+  pixel art. This is NOT gritty, NOT painterly, NOT semi-realistic, NOT dark fantasy,
+  NOT Darkest Dungeon, NOT Diablo. His creepiness comes from EXPRESSION and POSE, not
+  from grimy rendering.
+
+  PROPORTIONS ARE BOBBLEHEAD AND THAT IS CORRECT:
+   - He is about THREE AND A HALF HEADS TALL in total.
+   - His HEAD IS BIG — roughly ONE THIRD of his whole height, a large rounded skull
+     on a small pear-shaped body. A big head is a REQUIREMENT, not a defect.
+   - Body and limbs are SHORT, CHUNKY and SIMPLIFIED. Stubby arms and legs, simple
+     block feet, mitten-shaped hands with no individual fingers.
+   - His FACE is simple and readable, and it carries the entire performance: two
+     large dark dot/bean eyes set slightly too wide and opened slightly too far, a
+     small simple mouth curled into an eager closed-lip smile, a couple of big
+     deliberate sweat droplets at his temple. Little or no nose. Do NOT render a
+     detailed realistic face, wrinkles, pores, stubble texture or teeth.
+
+  RENDERING IS FLAT AND CLEAN:
+   - FLAT COLOUR FILLS with hard-edged cel shading. TWO OR THREE tonal stops per
+     material, maximum. No gradients, no soft blending.
+   - MINIMAL DITHERING. Do NOT use dithered noise, grain, speckle or grime texture.
+     His apron is stained — draw the stains as TWO OR THREE deliberate simple
+     blobs, not as scattered noise. Sweat is a few discrete shiny droplet shapes and
+     one highlight on his forehead, NOT a wet gradient sheen.
+   - A clean, consistent dark outline around the figure.
+
+  MERCHANT IDENTITY IS THE SECOND PRIORITY and must read at game scale. Draw all
+  three, big and simple:
+   - A SMALL, NARROW, SHALLOW WOODEN WARES TRAY on a neck strap, held in front of
+     his CHEST, just under his chin. THE TRAY IS NARROW — no wider than his own
+     shoulders. It must never hang at hip height and must never cover his legs. It
+     is tipped toward the viewer so you see across its top. On it stand just THREE
+     small stoppered GLASS BOTTLES of glowing teal liquid — the single brightest,
+     most saturated thing in the sprite, and his one focal accent.
+   - A WORK APRON in mid-value olive tied at his waist, with a visible pocket and
+     two or three simple stain shapes.
+   - A BULGING COIN POUCH on his belt and one fat gaudy GOLD RING on a mitten hand
+     gripping the tray rim.
+
+  ATTITUDE: SWEATY, OVER-FAMILIAR AND FAINTLY REPELLENT.
+   - HE STANDS UPRIGHT. His body is a straight vertical from feet to shoulders. The
+     only thing that leans is his BIG HEAD AND NECK, craned forward and slightly
+     down toward the viewer — an over-familiar head-tilt, not a bent back. Do NOT
+     hunch, stoop, crouch or round the spine. A cartoon man craning his oversized
+     head at you is what makes him unsettling.
+   - HE HOLDS THE TRAY IN BOTH HANDS, symmetrically, one at each end, elbows tucked
+     against his ribs. NEITHER hand reaches out. NO outstretched arm, NO extended
+     palm, NO pointing. His arms form a closed symmetric cradle so his silhouette is
+     as wide on his left as on his right.
+
+  VALUE STRUCTURE IS PASS/FAIL. He stands on a mid-grey floor and must separate from
+  it at true game scale, where he is only about 40 pixels tall. The previous version
+  shipped too dark and muddied against the floor. Therefore:
+
+  HIS LARGEST AREA IS LIGHT. His shirt — sleeves, shoulders and the chest visible
+  above and beside the apron — is a LIGHT CREAM / BONE colour, clearly lighter than
+  the floor. His head and bare forearms are light clammy skin. The apron is MID-value
+  olive and must NOT be the dominant mass; it covers his belly and hips only, not his
+  chest and not his shoulders. Read him top to bottom: LIGHT head, LIGHT shoulders
+  and arms, mid apron, dark trousers and shoes. The dark masses together must cover
+  LESS area than the light ones.
+
+  COLOUR ASSIGNMENT IS EXPLICIT. Quantization is strict, so every colour below is a
+  palette entry and each one belongs to ONE material. Do not borrow across materials:
+
+  - SKIN (face, neck, bald scalp, bare forearms, hands) uses the PALE CLAMMY ramp
+    ONLY: rgb(94,82,64) shadow, rgb(148,128,100) mid, rgb(196,178,148) light,
+    rgb(238,232,216) sweat highlight. His skin is PALE, GREYISH AND WASHED-OUT — the
+    colour of someone who has not seen daylight in a month. It is NOT gold, NOT
+    mustard, NOT yellow, NOT amber, NOT tan, NOT sunlit.
+  - GOLD rgb(198,150,44) is the METAL ACCENT for his ring and pouch clasp and NOTHING
+    ELSE. It is a handful of pixels. It must NEVER appear on skin, scalp, face, arms
+    or cloth. Do not use it to warm up the skin.
+  - SHIRT uses the cream/bone end of the neutral ramp; APRON uses the olive ramp
+    rgb(70,74,44) / rgb(104,110,62) / rgb(140,148,86); TROUSERS AND SHOES use the
+    brown ramp rgb(46,40,36) / rgb(76,64,50) / rgb(110,94,70).
+  - TEAL rgb(18,84,96) / rgb(30,142,152) / rgb(92,208,206) belongs to the BOTTLES
+    alone and is the only saturated thing on the sprite.
+  - rgb(18,16,16) is the OUTLINE colour: a one-pixel contour, never a fill.
+
+  HARD NEGATIVES:
+  - Do NOT paint the face, scalp, neck, arms or hands gold, mustard, yellow or amber.
+    His skin is the PALE CLAMMY ramp. This is the single most common failure on this
+    brief — a gold-faced merchant is an automatic reject.
+  - Do NOT draw realistic, tall, long-limbed, seven-heads-tall or adult-proportioned
+    anatomy. Do NOT make the head small. A small head is a FAILURE in this brief.
+  - Do NOT draw gritty, grimy, painterly, photorealistic or dark-fantasy rendering.
+  - Do NOT use heavy dithering, noise or grain anywhere.
+  - Do NOT let the apron become a long robe or skirt that swallows his legs.
+  - Do NOT draw a wide market table, market stall, counter, furniture or any second
+    object other than the tray he wears.
+  - Do NOT draw an outstretched or reaching arm.
+  - Do NOT draw a drop shadow, cast shadow or dark ellipse under him.
+  - Do NOT draw him as an ogre, troll, goblin or monster. He is a cartoon MAN.
+  - Do NOT confuse him with the hooded spell-broker: he is bare-headed, brightly
+    lit, and wears no robe, cloak or hood.
+  - Do NOT leave any fully enclosed pocket of background inside the figure. ZERO
+    enclosed transparent pixels. Forearms rest against the torso, the tray's near
+    edge touches his belly, and the neck strap lies flat as two solid strips and
+    never forms an open ring.
+
+  He is one of THREE NPCs in this room and must read as the same cast — the same
+  bobblehead proportions, the same flat cel rendering, the same outline weight, and
+  the same discipline of ONE saturated focal accent (his is the teal glassware).
+
+  SIZE ON THE SHEET: the standing figure spans roughly 200 of the 256 vertical source
+  pixels of its cell, centred, feet on a common invisible floor line near the bottom.
+  Let width come out at whatever the figure honestly needs — he will be relatively
+  WIDE for his height and that is correct — but keep him fully inside his own cell.
+
+  THE SHEET IS A 4 x 4 GRID OF SIXTEEN SEPARATE CELLS, and EVERY CELL MUST BE
+  ISLANDED. Each figure sits wholly inside its own cell with a WIDE EMPTY MARGIN of
+  flat background all the way around it — at least 25 source pixels on every side,
+  ABOVE AND BELOW as well as left and right. No figure may touch or approach its cell
+  edge. There is always a clear unbroken horizontal band of empty background between
+  every pair of ROWS and a clear unbroken vertical band between every pair of
+  COLUMNS. A figure that merges with its neighbour makes the whole sheet unusable.
+
+  THE SILHOUETTE MUST BE BALANCED. Draw a vertical line up from the midpoint between
+  his feet: the figure extends the SAME distance left and right of it. Nothing — not
+  an elbow, not the tray, not a hand — sticks out noticeably further on one side.
+
+  Standing upright in an idle stance, 3/4 view: camera looks slightly down, he is
+  turned a few degrees off straight-on, both eyes visible, shoulders nearly square.
+
+  MATERIAL AND PALETTE: light cream shirt (largest mass), mid olive apron, dark brown
+  trousers and shoes, PALE GREYISH CLAMMY skin from the pale skin ramp with a
+  near-white sweat highlight (never gold, mustard or yellow), a small warm gold ring
+  and pouch clasp — the gold belongs to that metal alone — and saturated glowing teal
+  bottles. Flat fills, 2-3 tonal stops per material, clean dark outline. Never
+  candy-glossy, never a wet gradient sheen.
+
+  Rendered in the game at roughly 6.6 feet tall (1 tile = 4 feet). Keep detail count
+  low enough that the teal bottles, the apron and the craned head all survive when he
+  is only about 40 pixels tall on screen.
+
+  SHEET BACKGROUND: every cell sits on ONE single flat uniform background colour,
+  identical in all cells, clearly distinct from the figure's colours so it keys out
+  cleanly. Do not alternate or checkerboard cell backgrounds and do not draw any
+  panel, border or frame behind the subject.
+palette:
+  id: welcome-room-merchant
+postprocessing:
+  paletteMode: strict
+sensors:
+  anchor:
+    # See header: `grip` locks onto ONE bottom-row opaque run, so a two-footed
+    # figure fails even when perfectly centred. center-of-mass is the documented
+    # contract for non-held sprites.
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - merchant
+  - npc
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 12
+minVariations: 0

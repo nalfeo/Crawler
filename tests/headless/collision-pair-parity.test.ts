@@ -228,37 +228,61 @@ interface CollisionFingerprint {
 // back-to-back invocations, so we re-baseline to the new deterministic value and
 // track any gameplay significance separately from this test.
 //   seed  42:  8/267.30000019073486/10/6   →  6/246.44999980926514/10/8
+//
+// 2026-07-25 re-baseline — authoritative welcome-room prefab shell/door carve
+// (issue #2000): the room now writes real walls + door tiles during mapgen, so
+// early movement/combat interactions in this 1500-frame slice shift. Values
+// below are pinned from deterministic CI runs.
+//   seed   7:  3/145.74999713897705/10/0   →  4/143.47999715805054/10/2
+//   seed  13:  7/194.30000114440918/15/1   →  6/198.60000228881836/10/0
+//   seed  42:  6/246.44999980926514/10/8   →  5/184.30000019073486/10/10
+//   seed 137:  8/298.67000061273575/10/0   →  3/224.3999987244606/5/0
+//
+// 2026-07-29 re-baseline — applySolidProps: welcome-room bulk furniture now
+// writes real WINDOW (impassable/transparent) collision tiles. Previously the
+// feature was fully inert on a real floor (tagRoomAsSafe's restoreRoomInterior
+// repainted interior tiles back to plain floor, wiping the collision tiles
+// before the first frame). The fix was to call applySolidProps AFTER
+// tagRoomAsSafe, so solid-prop tiles survive into the live floor. This changes
+// the per-frame collision-pair set, cascades through applyDamage's RNG draws,
+// and drifts all four seeds. Determinism test (two back-to-back invocations per
+// seed) passed with the new values, confirming stability.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  4/143.47999715805054/10/2   →  5/140.30000066757202/5/2
+//   seed  13:  6/198.60000228881836/10/0   →  3/183.00000154972076/5/0
+//   seed  42:  5/184.30000019073486/10/10  →  3/199.30000019073486/10/2
+//   seed 137:  3/224.3999987244606/5/0     →  3/152.7199993133545/5/0
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 246.44999980926514,
+    kills: 3,
+    damageDealt: 199.30000019073486,
     damageTaken: 10,
-    finalScore: 8,
+    finalScore: 2,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 145.74999713897705,
-    damageTaken: 10,
-    finalScore: 0,
+    kills: 5,
+    damageDealt: 140.30000066757202,
+    damageTaken: 5,
+    finalScore: 2,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 194.30000114440918,
-    damageTaken: 15,
-    finalScore: 1,
+    kills: 3,
+    damageDealt: 183.00000154972076,
+    damageTaken: 5,
+    finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 8,
-    damageDealt: 298.67000061273575,
-    damageTaken: 10,
+    kills: 3,
+    damageDealt: 152.7199993133545,
+    damageTaken: 5,
     finalScore: 0,
   },
 };

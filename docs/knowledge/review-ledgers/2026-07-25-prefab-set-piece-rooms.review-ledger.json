@@ -1,0 +1,73 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "prefab-set-piece-rooms",
+  "task_title": "Prefab set-piece rooms: real walls + doors in mapgen",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial separate-model plan review. Two alternatives red-teamed against the chosen post-generation carve seam: (A) drive prefab sizing INSIDE rot-js DungeonGenerator (rejected: couples mapgen to set-piece data, breaks the pure-tile-write seam, and cannot honor the entity-free determinism invariant cleanly); (B) keep render-only stamp and add a separate impassable-collision overlay layer (rejected: two sources of truth for walls, does not put doors in RoomData.doors so downstream safe-room/boss-door gating stays blind, and reachability cannot be asserted on the real tile grid). Chosen COINCIDE-with-room-perimeter carve survived. 7 concerns raised, all resolved. Grounded design decision recorded as intended (not a defect): concern #4 argued the carve should emit EXACTLY the def's declared door count; rejected because sealRoomPerimeter must convert load-bearing ring breaches (corridors joining the room) into ADDITIONAL doors to avoid stranding regions, so def slots are a MINIMUM (>= in the gate), not an exact count. plan_divergence=minor: the only fork from the authored plan was the honest 2-tier (carve -> render-only) fallback vs the brief's 3-tier framing (no alternate-room tier was built).",
+      "concerns": [
+        "1. Prefab-driven sizing hook location (post-gen stamp seam vs inside rot-js) - resolved: post-gen carve seam.",
+        "2. Double-wall handling (coincide vs nest) - resolved: COINCIDE, prefab ring IS the room perimeter wall.",
+        "3. Dynamic door resolution must be deterministic (SeededRandom only, never Math.random) - resolved: deterministic nearest-passable edge scan, fixed tie order.",
+        "4. Door count exact vs minimum - resolved as intended design: >= declared slots; connectivity doors added by sealRoomPerimeter are load-bearing, not defects.",
+        "5. Existing-door reconciliation must not orphan corridors - resolved: wall perimeter -> punch declared slots -> reconnect old corridor stubs to nearest slot -> rewrite RoomData.doors.",
+        "6. Rollback safety: Floor 1 must stay winnable; no-fit must degrade LOUDLY - resolved: carved:false hard-fails the gate and reports degraded count.",
+        "7. Grown-carve must not swallow a neighbour room/corridor - resolved: step-3 overlap rejection + sealRoomPerimeter load-bearing->door + topological no-strand gate check #4."
+      ]
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "cr-codex-1 (gpt-5.3-codex, xhigh) found a real gap adjudicated VALID: the welcome-hub reachability gate flood-filled WITHOUT accounting for locked boss-stair/slime-rat doors, so a hub that is only reachable THROUGH a locked door would falsely pass. Fixed in 1d920309e by making gate checks #1-#3 lock-aware via getNavigationBlockedDoors(world). Not clean at end of round 1 (concern found)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "cr-sonnet-1 (claude-sonnet-4.6) re-review after the lock-aware fix: clean across 9 categories (backstop stale-mask invariant, lock-bypass rule #12, avoidance-guard logic, lab clone isolation, layer rules, determinism/no-ECS-alloc, locked-door flood semantics, sealRoomPerimeter load-bearing invariant, backstop test coverage). Independently proved the connector avoid-guard cannot traverse avoided tiles. No issues."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Multi-model pass over the full new set-piece-rooms code. cr-gpt-round2 (gpt-5.4, xhigh) found a HIGH-severity false-pass adjudicated VALID: the reachability gate derived `carved` from a PROXY (room.bounds == def footprint) rather than ground truth. Floor 1's room-size config (roomWidthRange [10,22], roomHeightRange [9,20]) permits the generator to emit a coincidentally-10x9 welcome room; on a no-fit carveWelcomeRoomPrefab returns {fitted:false} WITHOUT mutating bounds, then tagRoomAsSafe/sealSpecialRooms harden the unchanged perimeter — so bounds-match + sealed perimeter + a door could make checks #0/#0b BOTH pass on a render-only degraded floor, falsely reporting an authoritative carve. That is precisely the false-green the parent plan-review flagged (the gate is strongest when the feature failed least). cr-sonnet-1 (claude-sonnet-4.6) and cr-codex-1 (gpt-5.3-codex) reviewed the same code clean on other axes. Adjudicator gpt-5.4: VALID, fix = persist welcomeCarve.fitted into scenario.welcomeRoomCarved and gate on that ground truth; keep bounds==footprint as a defense-in-depth assertion (#0a). Resolved in the working tree (floor-types.ts + floorScenario.ts:1617 + set-piece-reachability.ts). Not clean at end of round 1 (concern found)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Two distinct-model confirming reviews of the 3-file fix. round2-confirm (claude-sonnet-4.6): verified `fitted:true` is genuine ground truth — carveSetPieceRoom has exactly two `fitted:false` early returns (both before any mutation) and a single `fitted:true` return after restoreRoomInterior + door setFlags + sealRoomPerimeter; welcomeCarve.fitted is always a boolean so welcomeRoomCarved is never absent on the scenario literal; `undefined === true` fails CLOSED (gate failure, not false-pass); checks #0 and #0a are logically exclusive independent ifs (no double-report/mask); no determinism coupling; headless panel assertion still valid. round2-confirm-codex (gpt-5.3-codex): 'No significant issues found in the reviewed changes.' Both clean → stage clean."
+        }
+      ]
+    }
+  }
+}

@@ -80,4 +80,4 @@ On the next CI-recovery sweep for PR #2006:
    `<!-- crawler-ci-recovery-plan:v1 -->` idempotency marker.
 4. On the following sweep, `hasCopilotPlanComment` will return `true` for Issue #1934.
 5. The repair agent can then post `✅ Not applicable: retroactive plan posted on Issue
-   #1934 by CI recovery pipeline` on the review thread to close the blocker.
+#1934 by CI recovery pipeline` on the review thread to close the blocker.

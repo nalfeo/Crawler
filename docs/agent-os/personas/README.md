@@ -33,6 +33,7 @@ you. Read it _before_ you start, then read the persona doc you select.
 | Game mechanics: combat, economy, progression pacing, tuning, balance labs | **Game Designer**       | `src/game/**`, `src/labs/**`, `src/shared/data/tuning.json`        |
 | Floor content: themes, gimmicks, set pieces, quests, encounters, bosses   | **Content Designer**    | `src/shared/data/quests.*.json`, floor scenarios, objective tuning |
 | Sprites, tilesets, VFX, palettes, sprite briefs & approval                | **Graphics Designer**   | `briefs/**`, `data/palettes/**`, `src/engine/sprites/**`           |
+| Set-piece interiors: room layout, prop dressing, furniture scale/fit      | **Set Designer**        | `src/shared/data/set-pieces.json`, `scripts/agent/set-piece/**`    |
 | HUD, menus, onboarding, controls, interaction polish, accessibility       | **UX Designer**         | `src/engine/**` (HUD/menus), controls config                       |
 | Tests, coverage, property/invariant tests, regression, mutation           | **QA Engineer**         | `tests/**`                                                         |
 | CI, verify scripts, harness, tooling, deployment, gates                   | **DevOps Engineer**     | `.github/workflows/**`, `scripts/agent/**`                         |

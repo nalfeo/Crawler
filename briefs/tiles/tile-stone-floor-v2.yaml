@@ -1,0 +1,86 @@
+type: tile
+name: tile-stone-floor-v2
+description: |
+  A seamlessly tileable 256×256 dungeon stone floor tile viewed from directly
+  above (top-down floor plane). This is the ground surface of every standard
+  stone-room interior in the game — it tiles edge-to-edge to fill the full room
+  and must look natural at any 2×2, 3×3, or larger arrangement without showing
+  visible seams or a repeat.
+
+  CONTEXT AND CONTRAST REQUIREMENT (read first):
+  This floor must be clearly distinguishable from the stone wall tile, which is
+  a warm mid-brown brick. The floor should be a COOLER, more NEUTRAL, more
+  DESATURATED stone — blue-grey, cool slate, or pale ash-grey flagstone. Think
+  Roman opus incertum or medieval limestone: cool grey with subtle blue or
+  lavender undertone. The distinction between "warm brown wall" and "cool grey
+  floor" must be readable at a glance so players get instant figure/ground
+  separation. Do NOT use warm tans, sandy ochres, or brownish tones.
+
+  SURFACE AND TILE DESIGN:
+  Worn dungeon flagstone — large irregular-but-roughly-rectangular cut stone
+  blocks separated by thin mortar lines. The joints form an irregular but
+  roughly grid-like pattern (like real ashlar masonry), not a perfect grid.
+  Each block has internal tonal variation: a base stone colour, a slightly
+  lighter face, and darker edges/shadows near the mortar joints. Subtle
+  pitting, scuffs, and wear-polish on individual stones. No water damage, no
+  heavy cracks.
+
+  SEAMLESS TILING — THE SINGLE MOST IMPORTANT TECHNICAL CONSTRAINT:
+  The tile MUST NOT have any feature that reads as a strong asymmetric blob,
+  stain, or crack pattern that would make an obvious repeat when tiled. The
+  rule: if you could see the grid by staring at a tiled floor, the tile fails.
+  Design the flagstone joint layout so that no stone block is so large or so
+  uniquely shaped that it dominates. The mortar-line pattern must NOT have a
+  strong diagonal stroke, single large blob, or any feature with no counterpart
+  near the four edges — those read instantly as a repeat. Distribute the joint
+  lines evenly so the visual weight is uniform when a 3×3 grid is composited.
+  The four edges of the tile must be treated so they blend into adjacent copies:
+  a stone block that starts at the right edge of the tile should continue
+  naturally from the left edge of the adjacent copy. Use the full 256-pixel
+  width; do not leave any dead zone along any edge.
+
+  PALETTE AND MATERIAL:
+  Cool grey stone. Base mid-tone approximately rgb(120–140, 125–145, 130–155)
+  — a cooler blue-grey. Shadow in mortar joints: approximately rgb(70, 75, 85).
+  Highlight on worn faces: approximately rgb(160–180, 165–185, 170–190).
+  Optional subtle cool-purple or blue-grey accent for deepest shadow. Do NOT
+  use warm browns, sandy tans, orange-adjacent tones, or desaturated yellows.
+  3–5 colour stops total. Pixel dithering is allowed and encouraged to suggest
+  stone texture and worn surface variation.
+
+  NO BORDER ARTIFACT:
+  The tile must be fully opaque edge-to-edge (alpha 255 on every pixel). There
+  must be NO magenta, pink, hot-pink, or off-palette fringe along any edge. The
+  post-processor will NOT remove a border baked into the PNG — do not bake one in.
+  The tile is a solid opaque surface; there is no transparent padding.
+
+  WHAT TO AVOID:
+  - Warm sandy tans, ochres, or brownish earthy tones (will read as wall)
+  - A single dominant large stone block in the centre (will repeat visibly)
+  - Any strong diagonal crack running full-width (will tile as a grid line)
+  - Strong asymmetric discolouration blob (will read as a dirty repeat pattern)
+  - Any magenta, hot-pink, or off-palette border ring
+  - Gradients or airbrushed textures (use dithered pixel art transitions)
+
+  STYLE: modern high-quality dungeon pixel art, warm enough to feel inhabited,
+  cool enough to read clearly as ground underneath warm-toned props and enemies.
+
+variations:
+  - flagstones with larger irregular blocks and wide mortar joints, very even
+    colour distribution with subtle dithering suggesting worn polish
+  - flagstones with a smaller, more uniform cut-stone pattern and slightly more
+    visible pitting / age texture on each block face
+  - flagstones with a mix of stone sizes, darker mortar, and faint evidence of
+    old cleaning — lighter worn paths where boots have walked
+
+minVariations: 3
+
+sensors:
+  opaqueRatio:
+    disabled: true
+  edge:
+    allowMainTouch: true
+
+judge:
+  enabled: true
+  maxVariants: 16

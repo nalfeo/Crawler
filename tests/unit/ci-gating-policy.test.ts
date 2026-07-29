@@ -168,4 +168,11 @@ describe('ci.yml headless and coverage gating policy', () => {
     const needsArray = Array.isArray(needs) ? needs : [needs];
     expect(needsArray).toContain('changes');
   });
+
+  it('merge-gate includes set-piece reachability in its needs array', () => {
+    const doc = loadCiWorkflow();
+    const needs = getJob(doc, 'merge-gate').needs;
+    const needsArray = Array.isArray(needs) ? needs : [needs];
+    expect(needsArray).toContain('set-piece-reachability');
+  });
 });

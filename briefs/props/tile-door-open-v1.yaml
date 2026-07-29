@@ -1,0 +1,189 @@
+# ORIENTATION + ASPECT NOTE (Set Piece Designer, 2026-07-28)
+#
+# ROUND 5 -- THE OPEN AND CLOSED DOORS MUST READ AS TWO FRAMES OF ONE ANIMATED
+# OBJECT. That is a maintainer requirement and it is the top constraint on this
+# brief, above everything else below.
+#
+# Rounds 1-4 produced an open door that passed every gate and was still wrong,
+# because this brief and tile-door-v1 were sampled INDEPENDENTLY with nothing
+# tying their design, palette or silhouette together. Measured on the two
+# approved PNGs:
+#
+#            opaque box    renders     warm delta (R-B)   saturation
+#   closed     77 x 114     5.92 ft         56.8            0.91
+#   open      102 x 114     4.47 ft          7.2            0.47
+#
+# So opening a door SHRANK the doorway 24% on screen and swapped warm walnut for
+# neutral grey. Two different doors, not two frames.
+#
+# The height is pipeline-pinned (both landed at exactly 114 with a 7 px inset), so
+# the rendered height is decided ENTIRELY by the opaque WIDTH. The open door was
+# wider only because THIS BRIEF asked for stone jambs and an arch that the closed
+# brief does not have. That is a content difference I introduced, and content is
+# the one thing prose reliably controls.
+#
+# TARGET: opaque width / height ~= 0.675, matching the approved closed door.
+# Round 4 delivered 0.895 with the arch. Select the winning variant by MEASURING
+# this, not by the auto-chooser -- it is blind to geometry and picked the worst
+# aspect in the round-3 batch.
+#
+# THE ARCH IS REQUIRED, NOT BANNED. This is the THIRD position on the arch, and
+# all three are recorded rather than overwritten, because the reasoning differs
+# each time and a future round will otherwise re-litigate it:
+#   - Rounds 2-3 banned it: a baked frame becomes the width-fitted rectangle.
+#     Retracted -- true for a closed door, irrelevant for an open one.
+#   - Round 5 banned it again: the closed door had no stone, so stone here made
+#     the two states different objects. Correct premise, wrong fix.
+#   - Round 6 REQUIRES it. The generator refused the ban five consecutive times
+#     and it was right to: an open doorway with no frame is a black blob with a
+#     plank beside it, and the VLM judge independently scored the frameless
+#     attempts down for "the leaf is not distinguishable from the dark opening".
+#     So the CLOSED door adopted this arch instead. Consistency now runs the
+#     right way round.
+#
+# A CORRECTION WORTH KEEPING: after round 5 I measured the opaque box narrowing
+# from 102 to ~81 px and concluded the masonry ban had worked. It had not -- the
+# box narrowed because the LEAF got wider and the arch got slimmer. Width cannot
+# see masonry, and citing it as evidence about masonry was quoting a real
+# measurement about the wrong property. Only decoding the image caught it.
+#
+# THE OPENING MUST BE OPAQUE, NOT TRANSPARENT. This is the defining constraint of
+# the open-door art and the easiest one to get wrong. The dark gap is the room
+# BEYOND the door -- it is painted opaque near-black. If it is left transparent,
+# the floor tile underneath shows straight through the doorway and the door reads
+# as a hole in the world rather than a passage. `interior-transparency-holes`
+# will also fail it.
+#
+# WHY THIS EXISTS: there is no open-door art at all today. Every open door in the
+# dungeon falls back to an upscaled 16px Kenney frame
+# (`resolveDoorRenderMode` -> Kenney open frame), which is the mushiest art on
+# screen and does not match the closed door beside it.
+type: prop
+name: tile-door-open-v1
+description: |
+  THE SAME DOOR as the closed dungeon door in this game, drawn OPEN. Front
+  elevation, looking STRAIGHT THROUGH the opening dead-on -- the plane of the
+  doorway is exactly parallel to the screen, with NO tilt, NO rotation, NO oblique
+  angle and NO perspective. Modern high-quality pixel art, silhouette readable at
+  16px.
+
+  IT IS THE SAME OBJECT, SECOND FRAME. Picture the closed door: a tall
+  round-headed leaf of WARM WALNUT timber with three top-to-bottom plank seams,
+  two broad dark iron straps riveted with fat studs, and a heavy iron ring handle.
+  Now that exact door has swung inward. Same timber, same colour, same straps,
+  same rivets, same ring, same arched head, same width, same height. A viewer
+  flicking between the two pictures must see ONE door opening -- not a second,
+  different door.
+
+  THE ARCHWAY IS SHARED WITH THE CLOSED FRAME AND MUST NOT MOVE: slim cool-grey
+  blocky stone -- narrow jambs up the left and right sides and a shallow
+  round-headed arch over the top, no more than about ONE EIGHTH of the total width
+  on each side. Keep it SLIM so the opening and the leaf still dominate. No
+  threshold stone across the bottom. The stone must be the same colour, the same
+  thickness and the same shape as it is in the closed frame -- when the door
+  opens, the stonework must not appear to move.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The whole drawn
+  subject -- stone arch plus dark opening plus swung leaf -- must be approximately
+  184 PIXELS WIDE and 256 PIXELS TALL: the FULL HEIGHT of the cell, top margin to
+  bottom margin, and just under THREE QUARTERS of its width.
+  - The left ~14% and the right ~14% of the cell are completely EMPTY transparent
+    background.
+  - The top of the opening is gently ARCHED, matching the closed door's arch.
+  - EXACTLY ONE DOORWAY PER CELL.
+
+  REAL-WORLD SIZE. The archway is 4 FEET WIDE x 5.7 FEET TALL overall. A person is
+  5.75 ft tall.
+
+  THE SWUNG LEAF: the door has swung INWARD and stands against the INSIDE of the
+  LEFT side of the opening, seen at a steep angle. Make it about ONE THIRD the
+  width of the opening and run it the full height -- wide enough that its identity
+  survives: the warm walnut still reads as WARM, and at least one iron strap, its
+  rivets and a hint of the plank seams are visible on it. Shade it perhaps one or
+  two tone stops down because it stands inside the room, NOT so dark that it turns
+  grey and stops looking like the same timber. If the leaf reads as a dark sliver
+  you cannot identify, it is wrong.
+
+  IT IS NOT: a closed door, a portcullis, a gate, an archway standing empty with
+  no door in it at all, a window, a mine shaft, or a cave mouth. It is one open
+  timber door swung aside inside a slim stone archway.
+
+  MOOD -- a grimy reality-TV dungeon. The way out is open and it is not
+  reassuring: the dark beyond is flat and unlit.
+
+  COLOUR -- the opening is a very dark desaturated blue-black, near-black but not
+  pure black, with a faint lift near the floor. THE LEAF IS THE SAME WARM WALNUT
+  AS THE CLOSED DOOR: a rich, clearly warm red-brown that reads as timber, not as
+  grey. This is the single most-checked thing in this brief -- the previous round
+  came back nearly neutral grey and was rejected for it. The iron straps, rivets
+  and ring are dull dark grey-black metal with tarnished rust-brown streaks. Keep
+  a clear dark outline. BANNED: neon, pure white, pure black, saturated red,
+  saturated yellow, orange, teal, cyan, blue, green, magenta, purple, gold leaf,
+  gemstones, glowing runes, magical glow, torchlight glare, visible fire, and any
+  ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently -- the same direction
+  as the closed door, because it is the same door in the same wall. The swung leaf
+  still catches that light on its upper-left: keep enough of it lit that the warm
+  walnut is unmistakable.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering -- no mushy gradients, no airbrush, no floating
+  unsupported elements.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils, labels,
+  captions, watermarks or signatures anywhere.
+
+  BACKGROUND: fully transparent OUTSIDE the archway silhouette only. Draw ONLY
+  the slim stone archway, the dark opening and the swung leaf. Do NOT paint a
+  masonry wall beyond the arch, a floor slab, a rectangular backing panel, a
+  border, a vignette, or any cast/contact/drop shadow.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the artwork so it can be
+  keyed out cleanly. No per-cell background variation, no borders, no dividers.
+size:
+  width: 64
+  height: 128
+anchor:
+  x: 32
+  y: 126
+sensors:
+  # An open doorway filled with opaque shadow is an even more solidly rectangular
+  # subject than the closed leaf, so the `prop` default [0.10, 0.65] is far too
+  # tight. Cap derived from the ARCHED head, which removes roughly 4-8% of the
+  # bounding box at the upper corners; a background-removal failure lands at
+  # ~0.99-1.0 and is still caught. Bounds set BEFORE generating.
+  opaqueRatio:
+    min: 0.55
+    max: 0.96
+  # Grounded: the bottom of the opening is the doorway floor line.
+  #
+  # mode: center-of-mass, NOT the `grip` default. Measured on round 3: every one
+  # of 16 variants failed `anchor-derivable` with "grip midpoint x=16 is outside
+  # +/-10 of center 52". An open doorway is a TWO-MASS subject -- the swung leaf
+  # on one side, the jamb on the other, with the dark opening between them. The
+  # bottom-most opaque row therefore splits into two contiguous runs, and `grip`
+  # picks exactly ONE of them, so a perfectly centred archway resolves to the
+  # left-hand jamb at x=16 and reads as off-centre by half the opening width.
+  # centerOfGravity on the same art computed x=52 -- dead centre, offset 0.
+  #
+  # This is the identical failure already measured and fixed for standing
+  # characters this session (two boots -> one foot): same sensor, same cause, one
+  # layer out. Not a loosened gate -- `grip` is the wrong contract for any
+  # subject whose footprint is two separated masses.
+  anchor:
+    derive: true
+    mode: center-of-mass
+    bandRows: 8
+    centerToleranceX: 10
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
