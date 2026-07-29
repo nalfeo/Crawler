@@ -7,11 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GENERATED_MANIFEST_VERSION } from '../../../src/shared/generated-assets.js';
 import type { ManifestEntry } from '../../../src/shared/generated-assets.js';
 import {
+  assertSafeManifestKey,
   composeManifest,
   composeManifestFromShards,
   deleteShard,
   keyFromShardRelPath,
   listShardRelPaths,
+  loadGeneratedManifest,
   readAllShards,
   readShard,
   serializeManifest,
@@ -54,6 +56,36 @@ describe('generated-shards (Node shard I/O)', () => {
     it('round-trips a flat key', () => {
       const rel = path.relative(shardsDir(dir), shardPathForKey(dir, 'goblin-var-0'));
       expect(keyFromShardRelPath(rel)).toBe('goblin-var-0');
+    });
+
+    it('normalizes a Windows-separated rel path back to a POSIX key', () => {
+      expect(keyFromShardRelPath('equipment\\weapon\\bone-saw.json')).toBe(
+        'equipment/weapon/bone-saw',
+      );
+    });
+  });
+
+  describe('assertSafeManifestKey (trust boundary)', () => {
+    it('accepts normal flat and slashed keys', () => {
+      expect(() => assertSafeManifestKey('goblin-var-0')).not.toThrow();
+      expect(() => assertSafeManifestKey('equipment/weapon/bone-saw')).not.toThrow();
+    });
+
+    it('rejects a traversal key that would escape the entries/ tree', () => {
+      expect(() => assertSafeManifestKey('../../src/shared/data/sprite-catalog.json')).toThrow();
+      expect(() => assertSafeManifestKey('a/../../b')).toThrow();
+      expect(() => assertSafeManifestKey('.')).toThrow();
+    });
+
+    it('rejects absolute, backslash, and empty keys', () => {
+      expect(() => assertSafeManifestKey('')).toThrow();
+      expect(() => assertSafeManifestKey('/etc/passwd')).toThrow();
+      expect(() => assertSafeManifestKey('C:/Windows/system32')).toThrow();
+      expect(() => assertSafeManifestKey('equipment\\weapon\\x')).toThrow();
+    });
+
+    it('is enforced by shardPathForKey so every reader/writer is guarded', () => {
+      expect(() => shardPathForKey(dir, '../../escape')).toThrow();
     });
   });
 
@@ -139,6 +171,41 @@ describe('generated-shards (Node shard I/O)', () => {
       const composed = composeManifestFromShards(dir);
       expect(composed.entries).toEqual({});
       expect(composed.version).toBe(GENERATED_MANIFEST_VERSION);
+    });
+  });
+
+  describe('loadGeneratedManifest (fresh-checkout tolerance)', () => {
+    it('composes from shards when the entries/ dir exists (aggregate absent)', () => {
+      writeShard(dir, 'zed', entry({ type: 'weapon' }));
+      writeShard(dir, 'abc', entry({ type: 'item' }));
+      const manifest = loadGeneratedManifest(dir);
+      expect(Object.keys(manifest.entries)).toEqual(['abc', 'zed']);
+    });
+
+    it('prefers shards over a STALE aggregate file on disk', () => {
+      writeShard(dir, 'fresh', entry({ type: 'item' }));
+      // A stale aggregate that disagrees with the shards must be ignored.
+      writeFileSync(
+        path.join(dir, 'manifest.json'),
+        serializeManifest(composeManifest({ stale: entry({ type: 'weapon' }) })),
+      );
+      const manifest = loadGeneratedManifest(dir);
+      expect(Object.keys(manifest.entries)).toEqual(['fresh']);
+    });
+
+    it('falls back to a committed aggregate in a legacy tree with no shards', () => {
+      writeFileSync(
+        path.join(dir, 'manifest.json'),
+        serializeManifest(composeManifest({ legacy: entry({ type: 'item' }) })),
+      );
+      const manifest = loadGeneratedManifest(dir);
+      expect(Object.keys(manifest.entries)).toEqual(['legacy']);
+    });
+
+    it('returns an empty manifest when neither shards nor an aggregate exist', () => {
+      const manifest = loadGeneratedManifest(dir);
+      expect(manifest.entries).toEqual({});
+      expect(manifest.version).toBe(GENERATED_MANIFEST_VERSION);
     });
   });
 

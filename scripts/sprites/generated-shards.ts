@@ -35,8 +35,33 @@ export function shardsDir(generatedDir: string): string {
   return path.join(generatedDir, SHARDS_SUBDIR);
 }
 
+/**
+ * Validate a manifest key is safe to map onto the filesystem. Keys become
+ * paths under `entries/`, so a key with `..`, an absolute segment, a backslash,
+ * or an empty segment could escape the shards dir or collide cross-platform.
+ * Every shard reader/writer routes through `shardPathForKey`, so validating
+ * here is the single trust boundary.
+ */
+export function assertSafeManifestKey(manifestKey: string): void {
+  if (manifestKey.length === 0) {
+    throw new Error('manifest key must not be empty');
+  }
+  if (manifestKey.includes('\\')) {
+    throw new Error(`manifest key must use POSIX '/' separators, not '\\': "${manifestKey}"`);
+  }
+  if (path.posix.isAbsolute(manifestKey) || /^[A-Za-z]:/.test(manifestKey)) {
+    throw new Error(`manifest key must be relative: "${manifestKey}"`);
+  }
+  for (const segment of manifestKey.split('/')) {
+    if (segment === '' || segment === '.' || segment === '..') {
+      throw new Error(`manifest key has an unsafe path segment: "${manifestKey}"`);
+    }
+  }
+}
+
 /** Absolute path to the shard file for a manifest key. */
 export function shardPathForKey(generatedDir: string, manifestKey: string): string {
+  assertSafeManifestKey(manifestKey);
   const segments = manifestKey.split('/');
   return `${path.join(shardsDir(generatedDir), ...segments)}.json`;
 }
@@ -46,7 +71,7 @@ export function shardPathForKey(generatedDir: string, manifestKey: string): stri
  * `equipment/weapon/bone-saw.json` -> `equipment/weapon/bone-saw`.
  */
 export function keyFromShardRelPath(relPath: string): string {
-  const posix = relPath.split(path.sep).join('/');
+  const posix = relPath.replace(/\\/g, '/');
   return posix.replace(/\.json$/i, '');
 }
 
@@ -113,7 +138,7 @@ export function deleteShard(generatedDir: string, manifestKey: string): boolean 
   // Prune empty ancestor directories, stopping at the shards root.
   const root = shardsDir(generatedDir);
   let dir = path.dirname(file);
-  while (dir !== root && dir.startsWith(root)) {
+  while (dir !== root && dir.startsWith(root + path.sep)) {
     if (readdirSync(dir).length > 0) break;
     rmSync(dir, { recursive: true });
     dir = path.dirname(dir);
@@ -134,6 +159,29 @@ export function composeManifest(entries: Record<string, ManifestEntry>): Generat
 /** Compose the aggregate manifest object directly from on-disk shards. */
 export function composeManifestFromShards(generatedDir: string): GeneratedManifest {
   return composeManifest(readAllShards(generatedDir));
+}
+
+/**
+ * Load the aggregate manifest for a standalone Node consumer, tolerant of a
+ * fresh checkout where the aggregate `manifest.json` is absent (it is a
+ * gitignored build artifact). The shards are the source of truth, so this
+ * ALWAYS composes from them when the shards dir exists — avoiding both the
+ * "aggregate missing" and the "stale aggregate on disk" failure modes. It falls
+ * back to reading a committed `manifest.json` only in a legacy tree with no
+ * shards, and returns an empty manifest when neither exists.
+ *
+ * `generatedDir` is the directory that contains `entries/` and (optionally)
+ * `manifest.json` — i.e. `public/assets/generated`.
+ */
+export function loadGeneratedManifest(generatedDir: string): GeneratedManifest {
+  if (existsSync(shardsDir(generatedDir))) {
+    return composeManifestFromShards(generatedDir);
+  }
+  const aggregate = path.join(generatedDir, 'manifest.json');
+  if (existsSync(aggregate)) {
+    return JSON.parse(readFileSync(aggregate, 'utf8')) as GeneratedManifest;
+  }
+  return { version: GENERATED_MANIFEST_VERSION, entries: {} } as GeneratedManifest;
 }
 
 /** Serialize an aggregate manifest to the canonical on-disk string. */

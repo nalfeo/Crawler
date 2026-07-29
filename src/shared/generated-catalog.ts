@@ -44,14 +44,16 @@ const BASE_GENERATED_TAGS = ['generated', 'pipeline-approved'] as const;
 /**
  * True when `entry` is a placeholder stand-in rather than real generated art.
  *
- * This is the ONE canonical placeholder predicate. It prefers explicit
- * `placeholder` metadata (set on modern shards) and falls back to the asset
- * path — the path check is deliberately used instead of `spriteName` because
- * two placeholder entries (`crescent-glaive`, `meteor-hammer`) carry a normal
- * key/`spriteName` yet a `-placeholder.png` asset path.
+ * This is the ONE canonical placeholder predicate. Explicit `placeholder`
+ * metadata (set on modern shards) is AUTHORITATIVE — `placeholder: false`
+ * forces "not a placeholder" even when the asset path looks placeholder-like.
+ * Only when the flag is absent does it fall back to the asset path — the path
+ * check is deliberately used instead of `spriteName` because two placeholder
+ * entries (`crescent-glaive`, `meteor-hammer`) carry a normal key/`spriteName`
+ * yet a `-placeholder.png` asset path.
  */
 export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
-  if (entry.placeholder === true) return true;
+  if (typeof entry.placeholder === 'boolean') return entry.placeholder;
   return typeof entry.assetPath === 'string' && entry.assetPath.includes('-placeholder');
 }
 

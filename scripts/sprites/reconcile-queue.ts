@@ -253,11 +253,26 @@ async function mustGh(exec: Exec, cwd: string, args: readonly string[]): Promise
 }
 
 /**
+ * The guard's TOLERANCE surface — the set of paths a promotion diff may touch
+ * without being rejected. It is deliberately BROADER than `ASSET_SURFACE_PATHS`
+ * (what check-in actually WRITES, now only the sharded generated dir): the
+ * committed `sprite-catalog.json` no longer receives generated rows, but a diff
+ * that touches it (e.g. a hand-authored/sheet row, or migration cleanup) is
+ * still art-surface and safe to auto-merge. Keeping the guard tolerant of the
+ * catalog matches `detect-art-only.sh`'s classifier so a promote→main diff the
+ * guard accepts is precisely one CI classifies `art_only=true`.
+ */
+const ART_SURFACE_ALLOWLIST = [
+  ...ASSET_SURFACE_PATHS,
+  'src/shared/data/sprite-catalog.json',
+] as const;
+
+/**
  * Is `p` inside the art-surface allowlist? A path is trusted iff it is exactly
  * `src/shared/data/sprite-catalog.json` OR lives under `public/assets/generated/`.
- * Matches `detect-art-only.sh` (and PR1's `ASSET_SURFACE_PATHS`) EXACTLY so the
- * guard and the CI art-only classifier agree by construction — a promote→main
- * diff the guard accepts is precisely one `ci.yml` classifies `art_only=true`.
+ * Matches `detect-art-only.sh` EXACTLY so the guard and the CI art-only
+ * classifier agree by construction — a promote→main diff the guard accepts is
+ * precisely one `ci.yml` classifies `art_only=true`.
  *
  * Path handling is strict: reject absolute paths, backslashes, and any `.`/`..`
  * segment so a crafted entry can never escape the allowlist via traversal.
@@ -267,7 +282,7 @@ export function isArtSurfacePath(p: string): boolean {
   if (p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.includes('\\')) return false;
   const segments = p.split('/');
   if (segments.some((s) => s === '' || s === '.' || s === '..')) return false;
-  for (const surface of ASSET_SURFACE_PATHS) {
+  for (const surface of ART_SURFACE_ALLOWLIST) {
     // A surface entry is a single file (e.g. the catalog JSON) or a directory
     // (e.g. `public/assets/generated`). File entries match EXACTLY; directory
     // entries match DESCENDANTS ONLY. Never accept a bare directory path as
@@ -304,7 +319,7 @@ export function assertArtSurfaceOnly(
     throw new ReconcileError(
       'untrusted-diff',
       `Refusing to arm auto-merge: the promotion diff touches ${offenders.length} path(s) ` +
-        `outside the art-surface allowlist (${ASSET_SURFACE_PATHS.join(', ')}): ` +
+        `outside the art-surface allowlist (${ART_SURFACE_ALLOWLIST.join(', ')}): ` +
         `${offenders.join(', ')}. This should be impossible by construction; refusing ` +
         `to land a non-art change on ${baseBranch} and escalating.`,
     );
@@ -518,24 +533,27 @@ export async function computeClosingIssueNumbers(
       .filter((l) => l !== ''),
   );
 
-  const manifestResult = await exec(
-    'git',
-    ['show', `${promotedRef}:public/assets/generated/manifest.json`],
-    { cwd: repoRoot },
+  // The aggregate manifest.json is no longer committed (it is a gitignored
+  // build artifact), so compose the assetPath -> contentHash map directly from
+  // the per-asset shards present in the promoted tree. `promotedPaths` already
+  // lists every file under the generated surface at `promotedRef`.
+  const shardPaths = [...promotedPaths].filter(
+    (p) => p.startsWith('public/assets/generated/entries/') && p.endsWith('.json'),
   );
-  if (manifestResult.code !== 0) return { issueNumbers: [], complete: false };
-  let parsedManifest: { entries?: Record<string, unknown> };
-  try {
-    parsedManifest = JSON.parse(manifestResult.stdout) as { entries?: Record<string, unknown> };
-  } catch {
-    return { issueNumbers: [], complete: false };
-  }
-  const manifestEntries = parsedManifest.entries ?? {};
   const manifestHashes = new Map<string, string>();
-  for (const entry of Object.values(manifestEntries)) {
-    if (typeof entry !== 'object' || entry === null) continue;
-    const assetPath = (entry as { assetPath?: unknown }).assetPath;
-    const contentHash = (entry as { contentHash?: unknown }).contentHash;
+  for (const shardPath of shardPaths) {
+    const shardResult = await exec('git', ['show', `${promotedRef}:${shardPath}`], {
+      cwd: repoRoot,
+    });
+    if (shardResult.code !== 0) continue;
+    let entry: { assetPath?: unknown; contentHash?: unknown };
+    try {
+      entry = JSON.parse(shardResult.stdout) as { assetPath?: unknown; contentHash?: unknown };
+    } catch {
+      continue;
+    }
+    const assetPath = entry.assetPath;
+    const contentHash = entry.contentHash;
     if (typeof assetPath !== 'string' || typeof contentHash !== 'string') continue;
     manifestHashes.set(assetPath, contentHash);
   }

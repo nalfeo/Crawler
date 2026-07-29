@@ -842,10 +842,22 @@ export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntr
 
   const generatedDir = path.dirname(options.manifestPath);
   const shardsRoot = path.join(generatedDir, 'entries');
-  const shardPath = shardPathForKey(generatedDir, options.variantId);
+  // `shardPathForKey` routes through `assertSafeManifestKey`, which throws for an
+  // unsafe key (empty, `..`/`.` segment, absolute, or backslash) BEFORE any fs
+  // access. Convert that into the unapprove contract: an unsafe key is simply
+  // "not approved", never a leaked low-level error and never an fs touch.
+  let shardPath: string;
+  try {
+    shardPath = shardPathForKey(generatedDir, options.variantId);
+  } catch {
+    throw new UnapproveError(
+      'not-found',
+      `Variant "${options.variantId}" is not approved (unsafe manifest key).`,
+    );
+  }
 
-  // Safety guard: a variantId like `../../../outside` must never let the shard
-  // read/unlink escape the entries/ tree. Treat an escaping key as not approved.
+  // Defense-in-depth: even for a key that passed `assertSafeManifestKey`, refuse
+  // any shard path that resolves outside the entries/ tree.
   if (!path.resolve(shardPath).startsWith(path.resolve(shardsRoot) + path.sep)) {
     throw new UnapproveError(
       'not-found',

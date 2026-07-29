@@ -49,12 +49,16 @@ describe('generated-catalog composer', () => {
       expect(isPlaceholderManifestEntry(entry())).toBe(false);
     });
 
-    it('explicit false metadata still yields path fallback', () => {
+    it('explicit false metadata is authoritative and overrides the path heuristic', () => {
+      // Explicit placeholder metadata is the deliberate per-asset declaration;
+      // the `-placeholder.png` path is only a fallback used when the flag is
+      // absent. So an entry marked placeholder:false is NOT a placeholder even
+      // if its path looks like one.
       expect(
         isPlaceholderManifestEntry(
           entry({ placeholder: false, assetPath: 'generated/x-placeholder.png' }),
         ),
-      ).toBe(true);
+      ).toBe(false);
     });
   });
 

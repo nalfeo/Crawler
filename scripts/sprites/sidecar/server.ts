@@ -131,7 +131,7 @@ import {
   toRepoRelativePath,
 } from '../brief-durability.js';
 import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
-import { writeCatalogJson } from '../catalog-io.js';
+import { formatJsonFilesSync, writeCatalogJson } from '../catalog-io.js';
 import {
   composeFullCatalog,
   GENERATED_ID_PREFIX,
@@ -2948,6 +2948,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           variantIndex: number | null;
         }> = [];
         const unresolvedGeneratedIds: string[] = [];
+        const writtenShardPaths: string[] = [];
         for (const id of generatedChangedIds) {
           const key = id.slice(GENERATED_ID_PREFIX.length);
           const entry = readShard(generatedDir, key);
@@ -2961,7 +2962,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             ...entry,
             catalog: { description: row.description, tags: [...row.tags] },
           };
-          writeShard(generatedDir, key, nextEntry);
+          writtenShardPaths.push(writeShard(generatedDir, key, nextEntry));
           const assetAbs = path.join(publicAssetsDir, entry.assetPath);
           if (!existsSync(assetAbs)) {
             unresolvedGeneratedIds.push(id); // (b) PNG missing — can't stage
@@ -2973,6 +2974,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             briefId: entry.briefId ?? null,
             variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
           });
+        }
+        // Keep the shard on-disk format Prettier-identical to the committed
+        // style so a metadata edit is a value-only diff (no `tags` reflow).
+        if (writtenShardPaths.length > 0) {
+          formatJsonFilesSync(writtenShardPaths);
         }
 
         // A changed generated edit that could not be resolved to a stageable

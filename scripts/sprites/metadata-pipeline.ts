@@ -15,7 +15,7 @@ import {
   isGeneratedCatalogId,
 } from '../../src/shared/generated-catalog.js';
 import { composeManifestFromShards, readShard, writeShard } from './generated-shards.js';
-import { writeCatalogJson } from './catalog-io.js';
+import { formatJsonFilesSync, writeCatalogJson } from './catalog-io.js';
 
 export const DEFAULT_CATALOG_PATH = 'src/shared/data/sprite-catalog.json';
 export const DEFAULT_GENERATED_DIR = 'public/assets/generated';
@@ -616,16 +616,24 @@ async function main(): Promise<void> {
   // each changed shard — the single per-asset source of truth. A shard that
   // vanished (concurrently unapproved) is skipped.
   const updatedById = new Map(result.updated.map((row) => [row.id, row]));
+  const writtenShardPaths: string[] = [];
   for (const id of generatedChangedIds) {
     const key = id.slice(GENERATED_ID_PREFIX.length);
     const entry = readShard(generatedDir, key);
     if (!entry) continue;
     const row = updatedById.get(id);
     if (!row) continue;
-    writeShard(generatedDir, key, {
-      ...entry,
-      catalog: { description: row.description, tags: [...row.tags] },
-    });
+    writtenShardPaths.push(
+      writeShard(generatedDir, key, {
+        ...entry,
+        catalog: { description: row.description, tags: [...row.tags] },
+      }),
+    );
+  }
+  // Match the Prettier formatting the committed shards are stored in, so a
+  // metadata edit produces a value-only diff and not spurious `tags` reflow.
+  if (writtenShardPaths.length > 0) {
+    formatJsonFilesSync(writtenShardPaths);
   }
 }
 
