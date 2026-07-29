@@ -365,7 +365,11 @@ test('applyRawLabelDecision: removes label when desired=false and present', asyn
 
 test('formatRawLabelOutcome: no-op and acted variants', () => {
   assert.equal(
-    formatRawLabelOutcome(42, { noOp: true, label: 'ci-conflict-order-wait', reason: 'already-present' }),
+    formatRawLabelOutcome(42, {
+      noOp: true,
+      label: 'ci-conflict-order-wait',
+      reason: 'already-present',
+    }),
     'coordinator no-op: pr=#42 label=ci-conflict-order-wait reason=already-present',
   );
   assert.equal(
@@ -391,9 +395,7 @@ test('D11 integration: isAdmissible rejects quarantined phase parsed from lifecy
   assert.equal(parsed?.phase, PHASE.QUARANTINED);
 
   // Now feed the parsed phase into isAdmissible — even a fully green PR must fail.
-  const admission = isAdmissible(
-    greenPrFacts({ prNumber: 9000, lifecyclePhase: parsed.phase }),
-  );
+  const admission = isAdmissible(greenPrFacts({ prNumber: 9000, lifecyclePhase: parsed.phase }));
   assert.deepEqual(admission, {
     eligible: false,
     reasons: ['lifecycle-phase:quarantined'],
@@ -424,7 +426,10 @@ test('applyLifecycleDecision: force-push in same phase updates lifecycle comment
   assert.equal(outcome.acted, true);
   assert.equal(outcome.noOp, false);
   assert.equal(comments.length, 1, 'lifecycle comment must be written on force-push');
-  assert.ok(String(comments[0]).includes('new-head-after-force-push'), 'comment must contain new headSha');
+  assert.ok(
+    String(comments[0]).includes('new-head-after-force-push'),
+    'comment must contain new headSha',
+  );
 });
 
 test('applyLifecycleDecision: same phase + same headSha is still a no-op', async () => {
@@ -538,4 +543,3 @@ test('makeDuplicateCloseComment for empty-diff has no superseder reference', () 
   assert.ok(body.includes('main'), 'must mention main branch');
   assert.ok(!body.includes('Superseded by'), 'no superseder for empty-diff');
 });
-

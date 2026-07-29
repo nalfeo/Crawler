@@ -206,9 +206,11 @@ interface MainSceneInternals {
     closedKenneyCount: number;
     closedColorCount: number;
     openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   };
 }
 
@@ -448,12 +450,16 @@ export interface DoorRenderSummary {
   readonly closedColorCount: number;
   /** Open doors rendered from a terrain-pack doorSet texture. */
   readonly openPackCount: number;
-  /** Open doors rendered from the Kenney open frame (non-destructive default). */
+  /** Open doors rendered from an approved GENERATED open-door texture. */
+  readonly openGeneratedCount: number;
+  /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the three CLOSED buckets — total closed doors actually rendered. */
+  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
+  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  readonly renderableOpenCount: number;
 }
 
 export interface BloodSurfaceProbeSummary {
@@ -1161,9 +1167,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
         openPackCount: summary?.openPackCount ?? 0,
+        openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
+        renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };
     },
 

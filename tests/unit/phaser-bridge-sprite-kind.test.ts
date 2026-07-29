@@ -448,8 +448,8 @@ describe('generatedBriefIdForEnemy', () => {
 describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => {
   it('pins each welcome-room NPC to its distinct generated texture key', () => {
     // Three DISTINCT keys — the whole point of the feature (no shared villager).
-    expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('npc-welcome-goon-var-0');
-    expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('npc-sweaty-merchant-var-0');
+    expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('welcome-goon-v3-var-1');
+    expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('sweaty-merchant-v3-var-3');
     expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
     const keys = [
       pickGeneratedNpcTextureKey('tutorial-goon'),
@@ -459,9 +459,18 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
     expect(new Set(keys).size).toBe(3);
   });
 
-  it('pins the Spell Broker to var-1, NOT var-0 (a variant-index roll would mis-pick)', () => {
-    // Hard requirement: the broker shipped as var-1 while goon/merchant are
-    // var-0, so keys are pinned per def id rather than computed from a roll.
+  it('pins per def id because approved variant indices differ (a roll would mis-pick)', () => {
+    // Hard requirement: the approved variants are NOT a shared index — Goon
+    // var-1, Merchant var-3, Broker var-1 — so keys are pinned per def id
+    // rather than computed from a variant roll. Assert the indices genuinely
+    // differ, which is the actual reason a roll cannot work; pinning only the
+    // broker would still pass if every NPC drifted to a single shared index.
+    const variantIndexOf = (key: string | null) => Number(key?.match(/-var-(\d+)$/)?.[1] ?? NaN);
+    const indices = (['tutorial-goon', 'shopkeeper', 'spell-quest-giver'] as const).map((id) =>
+      variantIndexOf(pickGeneratedNpcTextureKey(id)),
+    );
+    expect(indices.every((n) => Number.isInteger(n))).toBe(true);
+    expect(new Set(indices).size).toBeGreaterThan(1);
     expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
     expect(pickGeneratedNpcTextureKey('spell-quest-giver')).not.toBe('npc-spell-broker-var-0');
   });

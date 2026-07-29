@@ -1,0 +1,142 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): the set-piece renderer is
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect), so the canvas aspect ratio IS
+# the object's real-world proportions.
+#
+# SIZING (1 tile = 4 ft, PIXELS_PER_FOOT = 8, i.e. 32 world px per tile — the
+# older "2 ft per tile" assumption was WRONG and produced 2x-oversized props).
+# This bunk is ~6.5 ft long x 5.5 ft tall => 1.18:1, hence a 96x80 canvas (1.2:1).
+# 96 < 2*80 and 80 < 2*96, so resizeSpriteStrategy() returns 'fit' and the shipped
+# canvas is exactly 96x80. That means the DRAWN aspect must match 1.2:1 closely or
+# the subject gets letterboxed — and a dead band under the legs would both fail
+# `anchor-derivable` and render the bunk shorter than its declared heightFt. The
+# prompt therefore hammers "feet reach the very bottom of the cell".
+type: prop
+name: welcome-room-bunk-bed
+description: |
+  A two-tier BUNK BED, scavenged from the reality-show's own production stock —
+  welded angle-iron frame with mismatched salvaged-wood slats. Front-elevation
+  3/4 view, looking straight at the long side of the bunk — the same view as the
+  already-approved welcome-room-desk (which has "WELCOME" painted on its FRONT
+  face). This is a FACADE, not a top-down floorplan: vertical pixels in this
+  sprite are real vertical height in the world. Modern high-quality pixel art,
+  silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE.
+  The bunk is approximately 6.5 FEET LONG x 5.5 FEET TALL, so its bounding box is
+  slightly WIDER THAN IT IS TALL (width : height = 1.2 : 1). Not square, not
+  tall. Compose it inside the cell like this:
+  - The bunk spans nearly the FULL WIDTH of the cell, leaving only the small
+    standard margin left and right.
+  - THE FOUR LEGS MUST REACH THE VERY BOTTOM of the cell and stand on the bottom
+    margin. Do NOT leave an empty band under the legs.
+  - The top rail of the upper bunk nearly touches the TOP margin.
+  - It fills roughly 85-90% of the cell on BOTH axes. It must NOT be a small
+    object floating in a big empty cell.
+
+  BOTH TIERS MUST BE LEGIBLE. This is the single most important reading cue.
+  - Two clearly separated horizontal sleeping decks, one above the other, with an
+    obvious air gap between them. Read the gap as gap: it is background showing
+    through between the underside of the top mattress and the top of the lower
+    mattress, framed by the corner posts.
+  - Four corner posts run the full height and are visible on both tiers.
+  - A ladder or a few welded rungs climb one end — put it on ONE end only, never
+    both, and never centred.
+  - A guard rail runs along part of the top bunk's front edge, dented and
+    slightly bowed.
+
+  IT MUST READ AS CONTESTED, NOT COSY. THREE people live in this room and there
+  are only TWO bunks, so one of them sleeps somewhere worse and everybody knows
+  it. Make the two tiers visibly UNEQUAL and visibly OWNED BY DIFFERENT PEOPLE:
+  - ONE TIER IS MILITARILY NEAT: blanket pulled tight and squared off, hospital
+    corners, one flat pillow centred, edges crisp and parallel. Almost aggressive
+    in its tidiness.
+  - THE OTHER TIER IS A NEST: bedding heaped and churned into a hollow, a
+    twisted sheet spilling over the edge and hanging down, two or three
+    mismatched pillows and cushions of different sizes shoved against the end, a
+    blanket half-dragged onto the floor.
+  - The two beddings are DIFFERENT COLOURS and DIFFERENT PATTERNS — mismatched,
+    obviously not a set, obviously scavenged from wardrobe and props over
+    different seasons.
+  - Personal encrustation: something small tucked in the frame or hanging off the
+    rail on the nest tier. No text, no lettering, no numbers.
+
+  IT IS NOT: a hospital bed, a single cot, a bookshelf, a scaffold, a cage, a
+  bunk seen end-on, a set of shelves, or a stack of crates. It is a bunk bed seen
+  from the side.
+
+  MOOD — a grimy reality-TV dungeon set that has been slept in for years. Three
+  NPCs are stuck living in this reception room together, season after season,
+  bored out of their minds, forbidden by dungeon rules from leaving, harming each
+  other, or complaining while the cameras roll. This bunk sits in the half of the
+  room the camera rig does NOT cover — the half where they actually live. Long-
+  term domestic occupation crammed into a production set: worn, personalised, a
+  bit passive-aggressive.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase,
+  welcome-room-shop-table, welcome-room-rug, welcome-room-carpet,
+  welcome-room-crate-stack, welcome-room-velvet-rope and prop-wall-sconce-v1
+  without clashing: cool grey worn stone, warm-brown walnut wood, desaturated
+  production-set greys and blacks, tarnished brass, deep maroon — muted and
+  dusty, never bright and never saturated. The frame is a dull desaturated
+  grey-black metal with rust bloom at the welds; the slats are warm walnut brown;
+  the neat blanket is a muted grey-blue; the nest bedding is a faded dusty maroon
+  with a dulled mustard cushion as the ONE sparing saturated accent. BANNED:
+  neon, pure white, pure black, saturated red, saturated yellow, orange, teal,
+  cyan, blue, green, magenta, purple, and any pastel.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. Left-facing and
+  upward-facing surfaces catch the highlight; the right side of every post, rail
+  and mattress roll carries the shadow. Every prop in this wave shares that one
+  light direction, so do not flip it and do not light from the front.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering for fabric weave and rust — no mushy gradients,
+  no airbrush, no floating unsupported elements. Deliberate shapes only. This
+  prop is GROUNDED: it rests on the stone floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the bunk bed. Do NOT paint a floor
+  slab, a wall, a rectangular backing panel, a frame, a border, a vignette or any
+  cast/contact/drop shadow on the ground — the floor and wall are already painted
+  underneath this art in the game. Every pixel that is not the bunk itself must be
+  fully transparent.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the bunk's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds and do not draw any panel, border or frame behind the bunk.
+size:
+  width: 96
+  height: 80
+anchor:
+  x: 48
+  y: 74
+sensors:
+  # ROUND 1 FAILURE (all 12 variants, `anchor-derivable`): "grip midpoint x=24/63/67
+  # is outside ±12 of center 48". This is an anchor-SEMANTICS mismatch, not an art
+  # defect and not a threshold that should be widened. The grip derivation looks for
+  # a contiguous grounded footprint in the bottom band and takes its midpoint; a
+  # four-poster bunk's bottom band contains TWO separate leg clusters at the extreme
+  # ends with nothing between them, so the derivation latches onto one leg pair and
+  # its midpoint lands under that leg — by construction, for every variant. Widening
+  # centerToleranceX far enough to swallow x=24 on a 96px canvas would mean a
+  # tolerance of half the sprite, i.e. no check at all.
+  #
+  # Centre-of-mass is the correct anchor semantics for a prop whose only floor
+  # contacts are at its extremes (same reasoning already applied to
+  # welcome-room-wall-shelf), and it is still a real, fully-enforced anchor sensor —
+  # nothing is relaxed.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - living-area
+  - furniture
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
