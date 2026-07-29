@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9c8075baa9181050ea8c5413b523e464e06473aa",
+    "commitDate": "2026-07-29T01:19:00Z",
+    "commitSubject": "Set Piece Designer: hand-curated interiors, real prop geometry, and dungeon door art (#2254)",
+    "capturedAt": "2026-07-29T02:15:31.315Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30414145804",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/9c8075baa9181050ea8c5413b523e464e06473aa.json"
+  },
+  {
     "commit": "e7cd59ca5dbfe9aaa7ba4cb30b5c859152f4ed99",
     "commitDate": "2026-07-29T01:00:20Z",
     "commitSubject": "fix(fov): reveal and illuminate whole wall tiles when FOV hits them (#2262)",
