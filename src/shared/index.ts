@@ -31,24 +31,7 @@ export type { TileDef, Collider, Passability } from './tileDefs.js';
 export { DECORATION_DEFS, getDecorationDef, getDecorationsByBiome } from './decorationDefs.js';
 export type { DecorationDef, DepthLayer } from './decorationDefs.js';
 export type { BiomeTag } from './biome-tags.js';
-import {
-  SLOT_REGISTRY,
-  VALID_SLOT_IDS,
-  isValidSlotId,
-  getSlotLabel,
-  MIRROR_SLOT_PAIRS,
-  MIRROR_SLOT_IDS,
-  getMirrorSlot,
-} from './equipment-slots.js';
-export {
-  SLOT_REGISTRY,
-  VALID_SLOT_IDS,
-  isValidSlotId,
-  getSlotLabel,
-  MIRROR_SLOT_PAIRS,
-  MIRROR_SLOT_IDS,
-  getMirrorSlot,
-};
+export { SLOT_REGISTRY, VALID_SLOT_IDS, isValidSlotId, getSlotLabel } from './equipment-slots.js';
 export type { SlotDefinition, EquipmentSlotId } from './equipment-slots.js';
 export {
   PRIMARY_STATS,
