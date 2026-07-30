@@ -30,12 +30,14 @@ import {
  * Referenced here by its raw string literal rather than imported from
  * `floor2Scenario.ts`: that module already imports
  * `evaluateAchievementUnlocksForPhase` from this file, so importing the
- * constant back would create a circular module dependency, not just add
- * coupling. Keep this string in sync with the source-of-truth constant by hand
- * (covered by the fact-computation regression test in
- * `tests/game/achievement-system.test.ts`).
+ * constant back would create a real circular module dependency, not just add
+ * coupling. Exported (test-only use) so a dedicated regression test
+ * (`'stays in sync with floor2Scenario's broker-intro-complete goal flag key'`
+ * in `tests/game/achievement-system.test.ts`) can import both constants and
+ * assert string equality directly — that test, not the general fact-computation
+ * tests, is what actually guards against the two literals drifting apart.
  */
-const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
+export const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
 
 function highestSkillLevel(world: GameWorld): number {
   let maxLevel = 0;

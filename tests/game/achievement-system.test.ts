@@ -649,6 +649,22 @@ describe('achievementSystem', () => {
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasMetBroker).toBe(true);
     });
 
+    it("stays in sync with floor2Scenario's broker-intro-complete goal flag key", async () => {
+      // achievementSystem.ts intentionally duplicates this goal-flag string
+      // literal rather than importing it from floor2Scenario.ts (which would
+      // create a circular module dependency, since floor2Scenario.ts already
+      // imports evaluateAchievementUnlocksForPhase from achievementSystem.ts).
+      // This test is the actual drift guard: it imports both source-of-truth
+      // constants and asserts they are identical, so a rename on either side
+      // fails loudly here instead of silently breaking "Meet the Broker" in
+      // production.
+      const { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID: fromScenario } =
+        await import('../../src/game/floor2Scenario.js');
+      const { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID: fromAchievementSystem } =
+        await import('../../src/game/systems/achievementSystem.js');
+      expect(fromAchievementSystem).toBe(fromScenario);
+    });
+
     it('reports floor2SafeRoomVisited only while on Floor 2 and in a safe context', () => {
       const world = createTestWorld({ seed: 42, floor: 2 });
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
