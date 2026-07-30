@@ -124,95 +124,92 @@ describe('Floor 1 to Floor 2 production transition', () => {
     expect(floor2.featureUnlocks.spells).toBe(true);
   });
 
-  it(
-    'carries exact generated registry references and frozen runtime state through the real transition callbacks',
-    () => {
-      const runKey = generatedEquipmentRunKeyFromSeed(42);
-      const floor1Options = createFloorMainSceneOptions('floor1');
-      const floor1 = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
-      const floor1Player = spawnPlayer(floor1, 0, 0);
-      floor1Options.configureWorld?.(floor1, floor1Player);
-      floor1Options.selectLoadoutOption?.(floor1, 0);
-      const equipped = createGeneratedEquipmentInstance(
+  it('carries exact generated registry references and frozen runtime state through the real transition callbacks', () => {
+    const runKey = generatedEquipmentRunKeyFromSeed(42);
+    const floor1Options = createFloorMainSceneOptions('floor1');
+    const floor1 = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const floor1Player = spawnPlayer(floor1, 0, 0);
+    floor1Options.configureWorld?.(floor1, floor1Player);
+    floor1Options.selectLoadoutOption?.(floor1, 0);
+    const equipped = createGeneratedEquipmentInstance(
+      floor1,
+      generatedEquipmentInput({
+        baseId: 'weapon.floor-transition',
+        slots: ['mainHand'],
+        grants: true,
+        weapon: true,
+      }),
+    );
+    const bundledCommon = createGeneratedEquipmentInstance(
+      floor1,
+      generatedEquipmentInput({
+        baseId: 'armor.floor-transition-reward',
+        slots: ['feet'],
+        rarity: 'common',
+      }),
+    );
+    expect(addGeneratedEquipmentToBag(floor1, floor1Player, equipped.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(
         floor1,
-        generatedEquipmentInput({
-          baseId: 'weapon.floor-transition',
-          slots: ['mainHand'],
-          grants: true,
-          weapon: true,
-        }),
-      );
-      const bundledCommon = createGeneratedEquipmentInstance(
-        floor1,
-        generatedEquipmentInput({
-          baseId: 'armor.floor-transition-reward',
-          slots: ['feet'],
-          rarity: 'common',
-        }),
-      );
-      expect(addGeneratedEquipmentToBag(floor1, floor1Player, equipped.instanceId).ok).toBe(true);
-      expect(
-        equipFromBag(
-          floor1,
-          floor1Player,
-          { kind: 'generated-instance', instanceKey: equipped.instanceId },
-          { force: true },
-        ).ok,
-      ).toBe(true);
-      // A persisted reward bundle is only valid for a real, unlocked-but-unclaimed
-      // tier1 equipment achievement and must hold exactly one instance whose
-      // rarity is a member of that tier's allowed pool (fail-closed carryover
-      // contract — tier1 is common-only).
-      floor1.achievements.unlockedIds.add('floor2-field-kit');
-      floor1.generatedEquipmentRewardBundles.set('floor2-field-kit', {
-        schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-        achievementId: 'floor2-field-kit',
-        tier: 'tier1',
-        instanceKeys: [bundledCommon.instanceId],
-      });
-      const floor1Registry = snapshotGeneratedEquipmentRegistry(floor1);
-      const objective = floor1.floorScenario!.objective;
-      objective.staircaseSpawned = true;
-      objective.staircaseUnlocked = true;
-      objective.staircaseDiscovered = false;
-      expect(floor1Options.onStairDescend?.(floor1, floor1Player)).toBe(true);
+        floor1Player,
+        { kind: 'generated-instance', instanceKey: equipped.instanceId },
+        { force: true },
+      ).ok,
+    ).toBe(true);
+    // A persisted reward bundle is only valid for a real, unlocked-but-unclaimed
+    // tier1 equipment achievement and must hold exactly one instance whose
+    // rarity is a member of that tier's allowed pool (fail-closed carryover
+    // contract — tier1 is common-only).
+    floor1.achievements.unlockedIds.add('floor2-field-kit');
+    floor1.generatedEquipmentRewardBundles.set('floor2-field-kit', {
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId: 'floor2-field-kit',
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
+    });
+    const floor1Registry = snapshotGeneratedEquipmentRegistry(floor1);
+    const objective = floor1.floorScenario!.objective;
+    objective.staircaseSpawned = true;
+    objective.staircaseUnlocked = true;
+    objective.staircaseDiscovered = false;
+    expect(floor1Options.onStairDescend?.(floor1, floor1Player)).toBe(true);
 
-      const floor2Options = floor1Options.onFloor1Cleared?.(floor1, floor1Player);
-      expect(floor2Options?.generatedEquipmentRunKey).toBe(runKey);
-      const floor2 = createTestWorld({
-        seed: floor2Options?.worldSeed,
-        floor: 2,
-        generatedEquipmentRunKey: floor2Options?.generatedEquipmentRunKey,
-      });
-      const floor2Player = spawnPlayer(floor2, 0, 0);
-      floor2Options?.configureWorld?.(floor2, floor2Player);
+    const floor2Options = floor1Options.onFloor1Cleared?.(floor1, floor1Player);
+    expect(floor2Options?.generatedEquipmentRunKey).toBe(runKey);
+    const floor2 = createTestWorld({
+      seed: floor2Options?.worldSeed,
+      floor: 2,
+      generatedEquipmentRunKey: floor2Options?.generatedEquipmentRunKey,
+    });
+    const floor2Player = spawnPlayer(floor2, 0, 0);
+    floor2Options?.configureWorld?.(floor2, floor2Player);
 
-      const floor2Registry = snapshotGeneratedEquipmentRegistry(floor2);
-      expect(floor2Registry.runKey).toBe(floor1Registry.runKey);
-      expect(floor2Registry.generationPolicy).toEqual(floor1Registry.generationPolicy);
-      expect(floor2Registry.generationPolicyFingerprint).toBe(
-        floor1Registry.generationPolicyFingerprint,
-      );
-      const floor2InstancesById = new Map(
-        floor2Registry.instances.map((instance) => [instance.instanceId, instance]),
-      );
-      for (const instance of floor1Registry.instances) {
-        expect(floor2InstancesById.get(instance.instanceId)).toEqual(instance);
-      }
-      expect(floor2Registry.nextOrdinal).toBeGreaterThanOrEqual(floor1Registry.nextOrdinal);
-      expect(getEquipmentState(floor2, floor2Player)?.equipped.mainHand).toBe(equipped.instanceId);
-      expect(getActiveWeaponSnapshot(floor2)).toEqual(equipped.frozen.activeWeaponSnapshot);
-      expect(floor2.abilityStatesByEntity.get(floor2Player)?.equippedActiveAbilityIds).toContain(
-        'magic-missile',
-      );
-      expect(floor2.generatedEquipmentRewardBundles.get('floor2-field-kit')).toEqual({
-        schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
-        achievementId: 'floor2-field-kit',
-        tier: 'tier1',
-        instanceKeys: [bundledCommon.instanceId],
-      });
-      expect(floor2.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('active');
-      expect(floor2.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(false);
-    },
-  );
+    const floor2Registry = snapshotGeneratedEquipmentRegistry(floor2);
+    expect(floor2Registry.runKey).toBe(floor1Registry.runKey);
+    expect(floor2Registry.generationPolicy).toEqual(floor1Registry.generationPolicy);
+    expect(floor2Registry.generationPolicyFingerprint).toBe(
+      floor1Registry.generationPolicyFingerprint,
+    );
+    const floor2InstancesById = new Map(
+      floor2Registry.instances.map((instance) => [instance.instanceId, instance]),
+    );
+    for (const instance of floor1Registry.instances) {
+      expect(floor2InstancesById.get(instance.instanceId)).toEqual(instance);
+    }
+    expect(floor2Registry.nextOrdinal).toBeGreaterThanOrEqual(floor1Registry.nextOrdinal);
+    expect(getEquipmentState(floor2, floor2Player)?.equipped.mainHand).toBe(equipped.instanceId);
+    expect(getActiveWeaponSnapshot(floor2)).toEqual(equipped.frozen.activeWeaponSnapshot);
+    expect(floor2.abilityStatesByEntity.get(floor2Player)?.equippedActiveAbilityIds).toContain(
+      'magic-missile',
+    );
+    expect(floor2.generatedEquipmentRewardBundles.get('floor2-field-kit')).toEqual({
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId: 'floor2-field-kit',
+      tier: 'tier1',
+      instanceKeys: [bundledCommon.instanceId],
+    });
+    expect(floor2.questLog.get(FLOOR2_FIND_SETTLEMENT_QUEST_ID)?.status).toBe('active');
+    expect(floor2.goalFlags.get(FLOOR2_SETTLEMENT_FOUND_GOAL_ID)).toBe(false);
+  });
 });
