@@ -6,18 +6,26 @@
   "estimated_apples": 4,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "convergent",
+      "notes": "Adversarial plan review (gpt-5.4, high effort) enumerated 3 alternatives: (1) reuse enemy appearanceKey variant-roll registry, (2) separate render kind per gender, (3) dedicated player-appearance registry or fully generic appearance-source system. Confirmed alts 1-2 already soundly rejected in the ADR. Judged alt 3 (the genuinely different architecture) NOT warranted to ship this feature -> convergent (design unchanged). Verdict: approved_with_changes with 5 non-blocking concerns, all resolved: (1) warnGeneratedTextureUnresolved logged the top-level default descriptor instead of the effective/resolved variant descriptor on a broken variant -- fixed in PhaserBridge.ts (commit 6e9bbd455), now logs both effective and top-level keys; (2) variantsByAppearanceKey is schema-generic but not behavior-generic (only player/gender wired) -- documented as an intentional scope choice in ADR addendum; (3) resolution precedence (enemy registry > per-appearanceKey variant > top-level default) was undocumented at the decision site -- added inline code comment plus ADR addendum; (4) pinnedTextureKey is not fail-closed on a miss -- accepted as pre-existing behavior unchanged by this feature, now observable via the concern-1 warning-log fix; (5) player generated block has a duplicate/dual source of truth for the female default -- accepted as documented drift risk, covered by entity-sprite-mapping-art-wiring.test.ts. Cross-sheet proportion consistency (soft, ungated) risk reconfirmed and left as documented in ADR Risks section per reviewer guidance not to add a blocking sensor for this feature."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,
