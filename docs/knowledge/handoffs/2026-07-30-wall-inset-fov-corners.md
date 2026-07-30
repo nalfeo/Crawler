@@ -1,152 +1,123 @@
-# 2026-07-30 — Wall inset against non-walkable neighbours + FOV corner reveal
+# 2026-07-30 — Wall inset against rock + revealing and lighting room corners
 
 ## Summary
 
-Fixed two Floor 1 terrain rendering defects (2🍎, stacked on `nalfeo-effective-disco`
-/ PR #2332, since squash-merged to `main` as `a33161c5b`):
+Fixed three Floor 1 terrain/lighting defects (3🍎). Two further reported
+symptoms — per-side apron blending and door sizing/art — are out of scope and
+tracked as follow-up PRs.
 
-1. **Wall inset bled floor into rock/edges.** Authored terrain-pack walls
-   inset away from any cardinal neighbour whose terrain didn't literally
+1. **Wall inset bled floor into rock and map edges.** Authored terrain-pack
+   walls inset away from any cardinal neighbour whose terrain didn't literally
    equal a wall type, including `TerrainType.VOID` (solid rock) and
-   out-of-bounds (map-edge) neighbours. This stamped the pack's floor pool
-   in the inset sliver, which visually leaked room floor into the void /
-   past the map edge.
-2. **Room interior corners never received FOV.** `fovSystem.ts`'s
-   `onVisible` applied `hasBlockedCornerSeam` (meant to stop a ray
-   squeezing _through_ a diagonal gap between two walls) to the tile the
-   ray _terminates on_ as well. An interior room corner block is diagonal
-   from the player with both orthogonal wall runs opaque, so it always
-   failed this check and stayed permanently black even though the walls
-   beside it lit up normally.
+   out-of-bounds neighbours. This stamped the pack's floor pool in the inset
+   sliver, leaking lit room floor into what should read as solid rock.
+2. **Room interior corners were never revealed.** The corner-seam rule — which
+   exists to stop a ray squeezing _through_ a diagonal gap between two walls —
+   was also applied to the tile a ray _terminates on_. A room's interior corner
+   is diagonal from the player with both orthogonal wall runs opaque, so it
+   always failed the check and stayed black while the walls beside it lit up.
+3. **Revealed corners were still not lit.** Fixing FOV alone was not enough:
+   `src/engine/lighting/light-field.ts` gates source illumination on
+   `map.hasLineOfSight(...)`, which reaches `TileMap.lineOfSight` through the
+   `FloorMap` wrapper and had the same misapplied seam rule. The corner passed
+   the visibility gate and was then rejected for illumination, falling back to
+   `ambient`.
 
 See `docs/knowledge/adr/0079-wall-inset-non-walkable-neighbours-and-fov-corner-terminal-exemption.md`
-for the full design rationale (required because this diff touches both
-`src/core` and `src/engine`).
+for the design rationale and the rejected alternatives.
+
+## The fix
+
+Defects 2 and 3 collapse into **one shared rule**. `hasBlockedCornerSeam` and
+`lineOfSight` (`src/core/map/TileMap.ts`) both hoist
+`const targetOpaque = !this.isTransparent(x1, y1)` and, after each step, break
+on `reachedTarget && targetOpaque` **before** the seam check. Only the seam
+formed by the final step into an opaque target is exempted; every earlier seam
+still applies. `fovSystem.ts` runs the seam check for every tile again.
+
+The exemption keys off the **target**, never the origin — exempting an opaque
+origin would let a wall-mounted light source leak through diagonal gaps.
 
 ## Files touched
 
-- `src/shared/terrain-pack-mask.ts` — `computeRawMask8` gained an
-  `outOfBoundsMatches` parameter (default `false`, unchanged behavior for
-  existing same-terrain-pool callers); pack wall-mask callers pass `true`
-  so an edge wall full-bleeds instead of insetting into nothing.
+- `src/core/map/TileMap.ts` — terminal-step exemption in both
+  `hasBlockedCornerSeam` and `lineOfSight`; corrected the stale "LOS is
+  symmetric" doc claim (it is asymmetric when exactly one endpoint is opaque).
+- `src/core/systems/fovSystem.ts` — seam check runs for every tile, then the
+  opaque whole-tile fill.
+- `src/shared/terrain-pack-mask.ts` — `computeRawMask8` gained
+  `outOfBoundsMatches` (default `false`, existing callers unchanged); wall-mask
+  callers pass `true` so an edge wall full-bleeds.
 - `src/engine/terrain-renderer.ts` — `PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES`
-  extended with `VOID`, `WOOD_WALL`, `TREE` (deliberately excludes `WATER`/
-  `LAVA` — non-walkable but not rock, a wall should still inset against
-  visible liquid). Passes `outOfBoundsMatches: true` at its wall-mask call
-  site.
-- `src/labs/terrain-pack-lab/index.ts` — mirrors the renderer's
-  `outOfBoundsMatches: true` argument so the lab and the real game never
-  drift on this predicate.
-- `src/core/systems/fovSystem.ts` — `onVisible` reordered so an opaque
-  terminal tile is revealed unconditionally (whole-tile reveal, matching
-  existing opaque behavior) before the corner-seam check runs at all.
-  Transparent (floor) tiles are unaffected and keep the existing seam
-  rule, preserving the documented FOV/`lineOfSight` agreement invariant.
-  `hasBlockedCornerSeam` and `lineOfSight` themselves are **unchanged**.
-- `src/labs/ai-runner-lab/scenario-presets.ts` — extended
-  `TERRAIN_JUNCTION_SLICE` with a VOID-bordered wall run (`voidWall`
-  x=2, y=8-11) and a VOID pocket (`voidPocket` x=1, y=8-11) for Fix 1
-  coverage; the existing enclosed room in the slice already exercises
-  Fix 2 (all four interior corners visible from `playerTile: {x:11,y:10}`).
-- `tests/unit/terrain-pack-renderer.test.ts` — 2 new hard-gate tests: a
-  VOID neighbour sets the wall-mask cardinal bit; an out-of-bounds
-  neighbour sets the wall-mask cardinal bit. 3 pre-existing tests fixed
-  for the new default-`false` OOB semantics.
-- `tests/unit/terrain-pack-floor1-biomes.test.ts` — 1 pre-existing test
-  fixed for the same OOB semantics change.
-- `tests/ecs/fov-system.test.ts` — new hard-gate test: standing inside a
-  rectangular room, all four interior corner blocks are marked visible,
-  and no tile beyond a wall is revealed. Fixed one pre-existing
-  `isVisibleSubtile(0,0)` expectation affected by the reorder.
-- `tests/ecs/fov-system-equivalence.test.ts` — reordered the embedded
-  reference FOV algorithm to match the production reorder so the
-  equivalence check stays meaningful.
-- `tests/unit/ai-runner-scenario-presets-wiring.test.ts` — 2 new tests
-  asserting the VOID-adjacent wall geometry and corner-door-exclusion
-  exist in the authored `TERRAIN_JUNCTION_SLICE`.
-- `docs/knowledge/review-ledgers/2026-07-30-wall-inset-fov-corners.review-ledger.json`
-  — 2-apple ledger (no review stages required at this tier), validated.
-- `docs/knowledge/adr/0079-wall-inset-non-walkable-neighbours-and-fov-corner-terminal-exemption.md`
-  — new ADR (required: diff spans `src/core` + `src/engine`).
+  extended with `VOID` and `WOOD_WALL`. `WATER`/`LAVA` excluded (visible-through,
+  so insetting toward them is correct); `TREE` excluded (a trunk neither fills
+  its cell nor reads as a wall face, and nothing writes it).
+- `src/labs/terrain-pack-lab/index.ts` — mirrors the renderer's argument so lab
+  and game never drift on this predicate.
+- `src/labs/ai-runner-lab/scenario-presets.ts` — `TERRAIN_JUNCTION_SLICE` gained
+  a VOID-bordered wall run and a VOID pocket.
+- Tests: `tests/ecs/tilemap.test.ts` (3 LOS gates), `tests/ecs/fov-system.test.ts`
+  (leak gate + four-corner gate), `tests/ecs/fov-system-equivalence.test.ts`
+  (reference realigned seam-first), `tests/unit/terrain-pack-renderer.test.ts`,
+  `tests/unit/terrain-pack-floor1-biomes.test.ts`,
+  `tests/unit/ai-runner-scenario-presets-wiring.test.ts`.
 
-No atlas regeneration was performed or needed — both fixes are purely
-neighbour-predicate/ordering changes using the existing blob47 atlas
-frames.
+No atlas regeneration needed — this only changes which existing blob47 frame is
+selected, and every pack is schema-validated to carry all 47 canonical masks.
 
-## Verification run
+## Verification
 
-- `npm run verify:fast` — passed (run twice: once mid-session, once again
-  after the final `sync:main` rebase onto current `origin/main`).
-- `npm run review:ledger -- validate` — `✅ valid 2-apple ledger (stages: )`.
-- `npm run terrain-packs:validate` — **not run**; not required, since no
-  files under `scripts/sprites/terrain-packs/` were touched by this
-  change (only the shared mask helper and the renderer/lab call sites
-  that consume it).
-- **Manual visual verification in the running lab** (rule #10,
-  observe-before-done — mandatory per the task spec):
-  - Launched `npm run lab` detached; served on port 17281 in this
-    environment (not 15281 as assumed in the original task spec).
-  - Navigated to
-    `http://localhost:17281/lab.html?lab=ai-runner&scenario=terrain-wall-junctions`.
-  - Confirmed `window.__aiRunnerDebug().scenarioPreset === 'terrain-wall-junctions'`.
-  - Removed fog via
-    `window.__floor1Debug.lighting.setConfig({ ambient: 1, discoveredLight: 1 })`.
-  - **Fix 2 (corners):** screenshotted the central enclosed chamber — all
-    four visible interior corners are cleanly lit, no black gaps, matching
-    the wall runs beside them.
-  - **Fix 1 (void wall):** used `window.__floor1Debug.getWorld()` /
-    `getPlayerEid()` to teleport the player's ECS position directly next to
-    the `voidWall` column (tile x=2, y=8-11) and single-stepped the sim via
-    the lab's "Step" control, then screenshotted and cropped/zoomed the
-    result: the wall column renders as a full stone-brick strip flush
-    against solid black VOID on its outer edge, with **zero** floor-pool
-    sliver leaking into the void — before this fix, the same geometry
-    would have shown a lighter floor-textured strip inset from the void
-    boundary.
+- `npm run verify:fast` — passed.
+- `npm run test:headless` — **176/176**, including Floor-1 win-rate,
+  determinism and park-watchdog. FOV feeds AI perception, so this was the real
+  regression risk.
+- **Anti-tautology check**: neutralising `targetOpaque` fails 3 tests (including
+  the pre-existing four-corner gate); restoring the old opaque bypass fails the
+  leak gate. The gates genuinely detect the bugs.
+- Review ledger validated at 3🍎 with `plan_review` + `code_review`.
 
-## Unresolved issues / anomalies encountered this session
+### Observe before done — real running scene, quantified
 
-- **An unauthorized commit appeared on this branch mid-session**
-  (`c894227fc`, "docs(review): restore 3-apple review tier for wall
-  inset/FOV change", authored under the shared Copilot bot co-author
-  identity) that silently overwrote the correct 2-apple review ledger back
-  to 3-apple with two required review stages, contradicting the
-  maintainer's explicit verbatim instruction ("This is a 2🍎 change") and
-  the repo's own complexity policy (which only permits **downward**
-  re-scoring, never automatic upward escalation). It was reverted
-  (`git revert --no-edit c894227fc`) and the ledger re-validated at 2🍎.
-- **A second, separate anomaly**: later in the session, `git status`
-  showed a **staged (but uncommitted) diff** that would have reverted the
-  actual Fix 1 and Fix 2 source changes (`src/shared/terrain-pack-mask.ts`,
-  `src/engine/terrain-renderer.ts`, `src/core/systems/fovSystem.ts` back to
-  their pre-fix state) — 127 deletions removing the `outOfBoundsMatches`
-  parameter, the `PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES` extension, and the
-  `fovSystem.ts` reorder/doc-comments. This was caught before commit via
-  `git diff --cached` inspection and discarded with
-  `git restore --staged --worktree <files>`; verified the working tree
-  returned to exactly the committed state and re-ran `verify:fast` to
-  confirm.
-- Both anomalies affected only local worktree/branch state (ledger content,
-  staged-but-uncommitted source reverts) and were caught and corrected
-  before this PR was opened. **The maintainer should be aware some
-  concurrent process in this environment is generating unsolicited
-  commits/staged changes that attempt to weaken or revert this session's
-  work** — origin unclear (possibly a stray guard, another concurrent
-  agent/session sharing the worktree, or an environment restart artifact).
-  Recommend treating any unexpected staged/committed diff on an
-  in-progress branch as suspect and diffing it against the session's own
-  intended changes before trusting `git status`/`git log` at face value.
+In `/lab.html?lab=ai-runner&scenario=terrain-wall-junctions`, every interior room
+corner was enumerated from the live `TileMap` and evaluated against both the
+pre-fix and post-fix `lineOfSight`:
+
+|        | corners | dark (ambient only) |
+| ------ | ------- | ------------------- |
+| before | 10      | **10**              |
+| after  | 10      | **0**               |
+
+All 10 went from ambient-only to source-lit — the exact reported symptom.
+
+## Lessons worth keeping
+
+- **Resolve consumers through wrapper names, not just the symbol.**
+  `light-field.ts` calls `map.hasLineOfSight(...)`, so grepping it for
+  `lineOfSight` returns **nothing**. This caused a code review to return a false
+  "clean" verdict (concluding no consumer treats an opaque tile as an LOS
+  endpoint) and nearly caused the same mistake during adjudication. The wrapper
+  is `FloorMap.hasLineOfSight` → `TileMap.lineOfSight`.
+- **A "clean" review is evidence, not proof.** Here the plan review and the code
+  review directly contradicted each other. Checking the decisive fact in source
+  resolved it; on challenge, the code review withdrew its clean verdict. When two
+  reviews disagree, verify rather than picking one.
+- **Fixing a symptom's first half can look done.** Revealing the corner made it
+  appear in FOV while leaving it visually dark — the user's actual complaint.
+  Trace the symptom to the pixel, not to the first system that explains it.
+- **Concurrent sessions must not share a worktree.** A delegated child session
+  restarted and repeatedly reverted edits in the shared worktree. Worktrees share
+  the git object store, so the reliable recovery is
+  `git reset --hard <sha>` into your own worktree, then push from there. Treat a
+  session with a live `active_session_id` as actively writing.
 
 ## Recommended next steps
 
-- PR 2 (per-side apron underdraw blending) and PR 3 (door sizing) are the
-  two remaining root causes from the original four-symptom report — out
-  of scope here by explicit instruction, tracked separately.
-- Consider whether the ADR README index
-  (`docs/knowledge/adr/README.md`) should be updated with an entry for
-  ADR 0079 in a future docs-maintenance pass; it was not updated in this
-  session to avoid manual-index merge-conflict risk (matching the same
-  policy already applied to `docs/knowledge/handoffs/INDEX.md`).
+- PR 2: per-side apron underdraw blending, so each apron sliver draws the pack it
+  faces and inherits the facing cell's visibility. Investigate whether FOV
+  `subFactor` 2 is too coarse for an 18.75% apron.
+- PR 3: door sizing — clamp width to the cell in both orientations, pin the
+  bottom to the tile edge, overflow only northward, and retire the rotation path
+  in favour of genuine side-on E/W art.
 
 ## Systems touched
 
