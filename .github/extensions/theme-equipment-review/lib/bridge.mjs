@@ -112,6 +112,13 @@ export async function runThemeEquipmentReviewCommand(command, repoRoot, log) {
 }
 
 /**
+ * Long-lived branch that holds authored plans as the shared "common place".
+ * `init` reads the plan from here (via an immutable commit pinned at dispatch),
+ * not from whatever workspace branch happens to be checked out.
+ */
+const PLANS_BRANCH = 'assets/plans';
+
+/**
  * Resolve the git ref the workflow should run against.
  *
  * `gh workflow run` without `--ref` dispatches against the repository's
@@ -138,20 +145,48 @@ export async function resolveDispatchRef(repoRoot, env = loadRepoEnv(repoRoot)) 
 }
 
 /**
+ * Resolve the repository's DEFAULT branch. `init` runs the pipeline *tooling*
+ * from here (not the caller's workspace branch) so a stale feature branch can
+ * never ship out-of-date scripts, while the plan itself comes from the pinned
+ * `assets/plans` commit.
+ */
+export async function resolveDefaultBranch(repoRoot, env = loadRepoEnv(repoRoot)) {
+  const { stdout } = await execFileAsync(
+    'gh',
+    ['repo', 'view', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'],
+    { cwd: repoRoot, env, encoding: 'utf8', windowsHide: true, timeout: 20_000 },
+  );
+  const branch = stdout.trim();
+  if (!branch) {
+    throw new Error(
+      'Could not resolve the repository default branch for the theme-equipment workflow.',
+    );
+  }
+  return branch;
+}
+
+/**
  * Confirm the authored plan is visible on the remote ref the workflow
- * will check out. This must be judged against the *remote*, so the fetch
- * has to succeed: a failed fetch leaves any local ref at whatever it was
- * last time, and stale local state can still contain a plan that is no
- * longer on the branch the workflow will run.
+ * will check out, and return the **immutable commit SHA** of that ref's tip
+ * so the dispatch can pin it (rather than the mutable branch name). Pinning
+ * the SHA closes a dispatch TOCTOU: without it, a concurrent save could swap
+ * the branch's bytes between this check and the workflow's fetch.
+ *
+ * This must be judged against the *remote*, so the fetch has to succeed: a
+ * failed fetch leaves any local ref at whatever it was last time, and stale
+ * local state can still contain a plan that is no longer on the branch the
+ * workflow will run.
  *
  * The tip is fetched into a private, per-call ref rather than read from
  * `FETCH_HEAD` or `origin/<ref>`, both of which are shared per repository
  * and can be overwritten by a concurrent git process mid-check.
  *
- * Beyond existence, the remote blob is compared byte-for-byte with the
- * working-tree file. An overwritten-but-not-pushed plan would pass an
+ * Beyond existence, when a local copy exists it is compared byte-for-byte
+ * with the remote blob. An overwritten-but-not-pushed plan would pass an
  * existence-only check while the workflow initializes a stale roster; plan
- * immutability then locks in the drift.
+ * immutability then locks in the drift. When no local copy exists (a plan
+ * authored on another machine), the remote copy is authoritative and used
+ * as-is.
  */
 export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv(repoRoot)) {
   const options = { cwd: repoRoot, env, encoding: 'utf8', windowsHide: true, timeout: 30_000 };
@@ -167,6 +202,14 @@ export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv
         { cause: error },
       );
     }
+    let sha;
+    try {
+      const { stdout } = await execFileAsync('git', ['rev-parse', scratch], options);
+      sha = stdout.trim();
+    } catch (error) {
+      throw new Error(`Could not resolve the tip commit of origin/${ref}.`, { cause: error });
+    }
+    if (!sha) throw new Error(`Could not resolve the tip commit of origin/${ref}.`);
     let remoteContent;
     try {
       const { stdout } = await execFileAsync(
@@ -187,7 +230,7 @@ export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv
       localContent = readFileSync(localPath, 'utf8');
     } catch {
       // No local file — nothing to compare; the remote copy is what will run.
-      return;
+      return sha;
     }
     if (remoteContent !== localContent) {
       throw new Error(
@@ -196,6 +239,7 @@ export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv
           `plan from the remote ref, and plan immutability will lock in any drift.`,
       );
     }
+    return sha;
   } finally {
     await execFileAsync('git', ['update-ref', '-d', scratch], options).catch(() => {});
   }
@@ -209,11 +253,23 @@ export async function dispatchThemeEquipmentWorkflow(repoRoot, setId, action) {
     throw new Error(`Invalid theme-equipment set id "${setId}".`);
   }
   const env = loadRepoEnv(repoRoot);
-  const ref = await resolveDispatchRef(repoRoot, env);
   const planPath = `data/theme-equipment-sets/${setId}.json`;
+
+  // `init` runs the pipeline tooling from the DEFAULT branch (never a stale
+  // workspace branch) and reads the plan from the durable `assets/plans`
+  // branch, pinned to an immutable commit so a concurrent save cannot swap
+  // the bytes between the check here and the workflow's fetch. run-phase and
+  // publish continue to operate the caller's branch tooling against durable
+  // state and are left unchanged.
+  let ref;
+  let planRef;
   if (action === 'init') {
-    await assertPlanOnRef(repoRoot, ref, planPath, env);
+    ref = await resolveDefaultBranch(repoRoot, env);
+    planRef = await assertPlanOnRef(repoRoot, PLANS_BRANCH, planPath, env);
+  } else {
+    ref = await resolveDispatchRef(repoRoot, env);
   }
+
   const args = [
     'workflow',
     'run',
@@ -226,7 +282,7 @@ export async function dispatchThemeEquipmentWorkflow(repoRoot, setId, action) {
     `set_id=${setId}`,
   ];
   if (action === 'init') {
-    args.push('--field', `plan_path=${planPath}`);
+    args.push('--field', `plan_path=${planPath}`, '--field', `plan_ref=${planRef}`);
   }
   try {
     await execFileAsync('gh', args, {
@@ -236,7 +292,7 @@ export async function dispatchThemeEquipmentWorkflow(repoRoot, setId, action) {
       windowsHide: true,
       timeout: 30_000,
     });
-    return { dispatched: true, action, setId, ref };
+    return { dispatched: true, action, setId, ref, ...(planRef ? { planRef } : {}) };
   } catch (error) {
     const detail = typeof error?.stderr === 'string' ? error.stderr.trim() : '';
     throw new Error(detail || error?.message || String(error));
@@ -303,24 +359,20 @@ export async function themeEquipmentRunStatus(repoRoot, setId) {
     return { available: false, errorKind: 'invalid-set-id' };
   }
   const env = loadRepoEnv(repoRoot);
-  let ref;
-  try {
-    ref = await resolveDispatchRef(repoRoot, env);
-  } catch (error) {
-    return { available: false, errorKind: 'no-branch', detail: error?.message };
-  }
   let stdout;
   try {
+    // No `--branch` filter: `init` now runs on the default branch while
+    // run-phase/publish run on the caller's branch, so a branch filter would
+    // hide half the runs for a set. Correlation is by displayTitle+setId via
+    // selectThemeEquipmentRun, which is branch-agnostic.
     ({ stdout } = await execFileAsync(
       'gh',
       [
         'run',
         'list',
         `--workflow=${RUN_STATUS_WORKFLOW}`,
-        '--branch',
-        ref,
         '--limit',
-        '20',
+        '30',
         '--json',
         'databaseId,status,conclusion,url,createdAt,displayTitle',
       ],
@@ -336,7 +388,7 @@ export async function themeEquipmentRunStatus(repoRoot, setId) {
   } catch {
     return { available: false, errorKind: 'parse-failed' };
   }
-  return { available: true, run: selectThemeEquipmentRun(runs, setId), ref };
+  return { available: true, run: selectThemeEquipmentRun(runs, setId) };
 }
 
 export function loadRepoEnv(repoRoot, baseEnv = process.env) {

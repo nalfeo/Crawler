@@ -328,7 +328,9 @@ export function renderHtml(bootstrap) {
             '<div class="controls"><button class="primary" data-save ' + (busy || parseError ? 'disabled' : '') + '>Save plan to repo</button>' +
             '<label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" data-overwrite> overwrite existing file</label></div>' +
             (draft.saved
-              ? '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong>. Commit and push it to this branch, then open the set and initialize it on GitHub — the workflow reads the plan from the pushed ref, not your working tree.</p>'
+              ? (draft.saved.durable
+                  ? '<p class="muted">Pushed <strong>' + esc(draft.saved.planPath) + '</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong> (commit <code>' + esc(String(draft.saved.durable.commit).slice(0, 7)) + '</code>). Open the set and initialize it on GitHub — init reads the plan from ' + esc(draft.saved.durable.branch) + ', so any workspace can run it.</p>'
+                  : '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong> locally but did <strong>not</strong> publish it to the shared plans branch. It will not be visible to a GitHub init until it is pushed.</p>')
               : '') +
           '</section>'
           : '') +

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
+import { promisify } from 'node:util';
 import { z } from 'zod';
 import { createRunStore } from './store/index.js';
 import type { RunStore } from './store/types.js';
@@ -43,6 +45,47 @@ const SET_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const INDEX_LOAD_CONCURRENCY = 4;
 /** Grace period for pooled sockets to drain before forcing exit. */
 const EXIT_DRAIN_GRACE_MS = 500;
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Long-lived branch that holds authored plans as the single shared "common
+ * place". Publishing here (rather than to whatever workspace branch happens to
+ * be checked out) lets any machine — and the `init` workflow — read the same
+ * authoritative plan.
+ */
+const PLANS_BRANCH = 'assets/plans';
+/**
+ * Overall wall-clock budget for a durable publish. It is deliberately shorter
+ * than the canvas bridge's per-command timeout (`DEFAULT_COMMAND_TIMEOUT_MS`,
+ * 120s) so this process regains control — to verify or roll back — before the
+ * bridge kills it mid-`gh` call and strands a half-completed push.
+ */
+const PUBLISH_DEADLINE_MS = 90_000;
+/** Upper bound on any single `gh api` call within the publish budget. */
+const PUBLISH_PER_CALL_MS = 25_000;
+
+/** Input handed to a plan publisher: exactly the bytes written locally. */
+export interface ThemeSetPlanPublishInput {
+  readonly setId: string;
+  /** Repo-relative POSIX path, e.g. `data/theme-equipment-sets/<id>.json`. */
+  readonly planPath: string;
+  /** The exact file contents written to disk, so the remote copy is identical. */
+  readonly content: string;
+  readonly displayName: string;
+  readonly overwrite: boolean;
+}
+
+/** Coordinates of the published plan on the durable branch. */
+export interface ThemeSetPlanPublishResult {
+  readonly branch: string;
+  readonly commit: string;
+  readonly url: string;
+}
+
+export type ThemeSetPlanPublisher = (
+  input: ThemeSetPlanPublishInput,
+) => Promise<ThemeSetPlanPublishResult>;
 
 const reviewSchema = z
   .object({
@@ -129,6 +172,12 @@ export interface ThemeEquipmentReviewCliDeps {
    * point so commands that never synthesize don't require Azure config.
    */
   readonly rosterChat?: () => ThemeRosterChatCaller;
+  /**
+   * Publishes a saved plan to the durable `assets/plans` branch. Optional so
+   * hermetic tests can inject a fake (or omit it for local-only saves); the
+   * CLI entry point wires the real `gh`-backed publisher in `main()`.
+   */
+  readonly publishPlan?: ThemeSetPlanPublisher;
 }
 
 export async function executeThemeEquipmentReviewCommand(
@@ -474,7 +523,7 @@ function readAuthoredPlans(repoRoot: string): readonly AuthoredPlanEntry[] {
  */
 export async function savePlan(
   command: { readonly plan: unknown; readonly overwrite?: boolean },
-  deps: Pick<ThemeEquipmentReviewCliDeps, 'store' | 'repoRoot'>,
+  deps: Pick<ThemeEquipmentReviewCliDeps, 'store' | 'repoRoot' | 'publishPlan'>,
 ): Promise<Record<string, unknown>> {
   const plan = themeEquipmentSetPlanSchema.parse(command.plan);
   // Enforce the 40+ char design-language contract. The canonical plan schema
@@ -517,8 +566,9 @@ export async function savePlan(
   }
 
   const previous = exists ? readFileSync(target, 'utf8') : null;
+  const content = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(dir, { recursive: true });
-  writeFileSync(target, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
+  writeFileSync(target, content, 'utf8');
 
   // `init` runs on GitHub, outside this process's serializer, so state can
   // appear between the check above and the write. Re-check and roll back so
@@ -544,17 +594,69 @@ export async function savePlan(
     );
   }
 
+  const planPath = `${THEME_SET_PLAN_DIR.split(path.sep).join('/')}/${plan.id}.json`;
+
+  // Push the plan to the durable `assets/plans` branch so it is the shared
+  // "common place" every workspace and the init workflow read. The local
+  // write alone is misleading — it implies the plan is shared when it may only
+  // exist on one machine's working tree — so a definitive publish failure
+  // rolls the local write back (but only if it still holds *our* bytes, so a
+  // concurrent editor is never clobbered).
+  //
+  // NOTE: this is not atomic with `init`. `init` consumes the plan from
+  // `assets/plans` into immutable durable state and is the authoritative
+  // consumer; a save that races an in-flight init of the same brand-new set
+  // can be dropped (last-writer-before-init-reads wins), but state is never
+  // corrupted. Full cross-store atomicity would need a shared reservation
+  // protocol and is intentionally out of scope.
+  let durable: ThemeSetPlanPublishResult | undefined;
+  if (deps.publishPlan) {
+    try {
+      durable = await deps.publishPlan({
+        setId: plan.id,
+        planPath,
+        content,
+        displayName: plan.displayName,
+        overwrite: command.overwrite === true,
+      });
+    } catch (error) {
+      rollbackIfUnchanged(target, content, previous);
+      throw new Error(
+        `Saved ${plan.id} locally but could not publish it to ${PLANS_BRANCH}; the local write was ` +
+          `rolled back so it does not look shared. ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
   return {
     saved: true,
     replaced: exists,
     setId: plan.id,
-    planPath: `${THEME_SET_PLAN_DIR.split(path.sep).join('/')}/${plan.id}.json`,
+    planPath,
+    ...(durable ? { durable } : {}),
   };
 }
 
 function rollback(target: string, previous: string | null): void {
   if (previous === null) rmSync(target, { force: true });
   else writeFileSync(target, previous, 'utf8');
+}
+
+/**
+ * Roll back only if the file still holds exactly the bytes we wrote. If a
+ * concurrent editor replaced them between our write and this rollback, leave
+ * their content in place rather than clobbering it with the pre-save copy.
+ */
+function rollbackIfUnchanged(target: string, ourBytes: string, previous: string | null): void {
+  let current: string | null;
+  try {
+    current = readFileSync(target, 'utf8');
+  } catch {
+    current = null;
+  }
+  if (current !== ourBytes) return;
+  rollback(target, previous);
 }
 
 function requireMutation(result: ThemeSetMutationResult): ThemeEquipmentSetState {
@@ -664,6 +766,212 @@ export function createThemeEquipmentArtifactReader(options: {
   };
 }
 
+/**
+ * Default plan publisher: pushes the authored plan to the long-lived
+ * `assets/plans` branch via the GitHub Contents API so every workspace and the
+ * `init` workflow read the same authoritative copy.
+ *
+ * Concurrency safety, in order of the checks below:
+ *  - Branch bootstrap: a 404 on the branch creates it from the default-branch
+ *    tip; a 422 (a racing save created it first) is reconciled by re-reading.
+ *  - Overwrite: the *remote* file existence is authoritative — a remote plan
+ *    with `overwrite !== true` is a hard stop even if the local check passed.
+ *  - Compare-and-swap: the PUT carries the remote blob `sha`, so a concurrent
+ *    same-file write makes exactly one PUT win.
+ *  - Ambiguous failure: if the PUT times out or the connection drops, the push
+ *    may still have landed; the remote blob is re-read and compared byte-for-
+ *    byte before the failure is believed, so a slow-but-successful push is not
+ *    double-reported as an error (and then rolled back) by the caller.
+ *
+ * Every `gh` call is bounded, and the whole sequence shares a wall-clock
+ * deadline shorter than the bridge's command timeout so the caller always
+ * regains control to verify or roll back (never stranded mid-PUT).
+ *
+ * Auth is ambient (`gh`'s own credential or `GH_TOKEN`); `{owner}`/`{repo}`
+ * are filled by `gh` from the current repository's remote.
+ */
+export function createGhPlanPublisher(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): ThemeSetPlanPublisher {
+  return async (input) => {
+    const deadline = Date.now() + PUBLISH_DEADLINE_MS;
+    const gh = (args: readonly string[]) => runGhApi(args, env, deadline);
+
+    const branchProbe = await gh([`repos/{owner}/{repo}/branches/${PLANS_BRANCH}`]);
+    if (branchProbe.status === 404) {
+      await ensurePlansBranch(gh);
+    } else if (!branchProbe.ok) {
+      throw new Error(branchProbe.errorMessage);
+    }
+
+    const encodedPath = input.planPath.split('/').map(encodeURIComponent).join('/');
+    const contentsPath = `repos/{owner}/{repo}/contents/${encodedPath}`;
+
+    const remoteProbe = await gh([`${contentsPath}?ref=${PLANS_BRANCH}`]);
+    let remoteSha: string | undefined;
+    if (remoteProbe.ok) {
+      const parsed = safeJson(remoteProbe.stdout) as { sha?: unknown } | undefined;
+      remoteSha = typeof parsed?.sha === 'string' ? parsed.sha : undefined;
+      if (!input.overwrite) {
+        throw new Error(
+          `${input.planPath} already exists on ${PLANS_BRANCH}; pass overwrite to replace the shared copy.`,
+        );
+      }
+    } else if (remoteProbe.status !== 404) {
+      throw new Error(remoteProbe.errorMessage);
+    }
+
+    const putArgs = [
+      '--method',
+      'PUT',
+      contentsPath,
+      '-f',
+      `message=chore(theme-equipment): save plan ${input.setId} (${input.displayName})`,
+      '-f',
+      `content=${Buffer.from(input.content, 'utf8').toString('base64')}`,
+      '-f',
+      `branch=${PLANS_BRANCH}`,
+    ];
+    if (remoteSha) putArgs.push('-f', `sha=${remoteSha}`);
+
+    const put = await gh(putArgs);
+    if (put.ok) {
+      const parsed = safeJson(put.stdout) as
+        | { commit?: { sha?: unknown; html_url?: unknown }; content?: { html_url?: unknown } }
+        | undefined;
+      return {
+        branch: PLANS_BRANCH,
+        commit: typeof parsed?.commit?.sha === 'string' ? parsed.commit.sha : '',
+        url:
+          typeof parsed?.content?.html_url === 'string'
+            ? parsed.content.html_url
+            : typeof parsed?.commit?.html_url === 'string'
+              ? parsed.commit.html_url
+              : '',
+      };
+    }
+
+    // Ambiguous failure: the PUT may have landed. Verify the remote blob before
+    // believing the error, so a slow-but-successful push is reported as success.
+    const verify = await gh([`${contentsPath}?ref=${PLANS_BRANCH}`]);
+    if (verify.ok) {
+      const parsed = safeJson(verify.stdout) as { html_url?: unknown } | undefined;
+      if (decodeContentsPayload(parsed) === input.content) {
+        return {
+          branch: PLANS_BRANCH,
+          commit: '',
+          url: typeof parsed?.html_url === 'string' ? parsed.html_url : '',
+        };
+      }
+    }
+    throw new Error(put.errorMessage);
+  };
+}
+
+interface GhApiResult {
+  readonly ok: boolean;
+  readonly status: number | null;
+  readonly stdout: string;
+  readonly errorMessage: string;
+}
+
+/** Run one bounded `gh api` call, surfacing the HTTP status rather than throwing. */
+async function runGhApi(
+  args: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+  deadline: number,
+): Promise<GhApiResult> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    return {
+      ok: false,
+      status: null,
+      stdout: '',
+      errorMessage: 'Plan publish deadline exceeded before completing the GitHub API calls.',
+    };
+  }
+  try {
+    const { stdout } = await execFileAsync('gh', ['api', ...args], {
+      env: { ...env },
+      encoding: 'utf8',
+      windowsHide: true,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: Math.min(PUBLISH_PER_CALL_MS, remaining),
+    });
+    return { ok: true, status: 200, stdout, errorMessage: '' };
+  } catch (error) {
+    const stderr =
+      typeof (error as { stderr?: unknown })?.stderr === 'string'
+        ? ((error as { stderr: string }).stderr as string)
+        : '';
+    const statusMatch = /HTTP (\d{3})/.exec(stderr);
+    const status = statusMatch ? Number(statusMatch[1]) : null;
+    const message = stderr.trim() || (error instanceof Error ? error.message : String(error));
+    return {
+      ok: false,
+      status,
+      stdout: '',
+      errorMessage: `gh api ${args[0] ?? ''} failed: ${message}`,
+    };
+  }
+}
+
+/** Create `assets/plans` from the default-branch tip, reconciling a create race. */
+async function ensurePlansBranch(
+  gh: (args: readonly string[]) => Promise<GhApiResult>,
+): Promise<void> {
+  const repoProbe = await gh(['repos/{owner}/{repo}']);
+  if (!repoProbe.ok) throw new Error(repoProbe.errorMessage);
+  const defaultBranch =
+    typeof (safeJson(repoProbe.stdout) as { default_branch?: unknown } | undefined)
+      ?.default_branch === 'string'
+      ? ((safeJson(repoProbe.stdout) as { default_branch: string }).default_branch as string)
+      : '';
+  if (!defaultBranch) throw new Error('Could not resolve the default branch to seed assets/plans.');
+
+  const refProbe = await gh([`repos/{owner}/{repo}/git/ref/heads/${defaultBranch}`]);
+  if (!refProbe.ok) throw new Error(refProbe.errorMessage);
+  const sha =
+    typeof (safeJson(refProbe.stdout) as { object?: { sha?: unknown } } | undefined)?.object
+      ?.sha === 'string'
+      ? ((safeJson(refProbe.stdout) as { object: { sha: string } }).object.sha as string)
+      : '';
+  if (!sha) throw new Error('Could not resolve the default-branch sha to seed assets/plans.');
+
+  const create = await gh([
+    '--method',
+    'POST',
+    'repos/{owner}/{repo}/git/refs',
+    '-f',
+    `ref=refs/heads/${PLANS_BRANCH}`,
+    '-f',
+    `sha=${sha}`,
+  ]);
+  if (create.ok) return;
+  // 422 == the ref already exists (a concurrent save won the create). Confirm
+  // it now exists and continue; anything else is a real failure.
+  if (create.status === 422) {
+    const recheck = await gh([`repos/{owner}/{repo}/branches/${PLANS_BRANCH}`]);
+    if (recheck.ok) return;
+  }
+  throw new Error(create.errorMessage);
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Decode a GitHub Contents API payload's base64 `content` field to UTF-8. */
+function decodeContentsPayload(parsed: unknown): string | null {
+  const record = parsed as { content?: unknown; encoding?: unknown } | undefined;
+  if (!record || typeof record.content !== 'string' || record.encoding !== 'base64') return null;
+  return Buffer.from(record.content.replace(/\n/g, ''), 'base64').toString('utf8');
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   try {
     const encoded = argv[0];
@@ -675,6 +983,7 @@ async function main(argv: readonly string[]): Promise<number> {
       now: () => new Date(),
       repoRoot,
       rosterChat: () => createAzureThemeRosterChatCaller({ env: process.env }),
+      publishPlan: createGhPlanPublisher(process.env),
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
