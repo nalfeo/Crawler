@@ -5,14 +5,7 @@
  * Tab preferences let the player reorder or hide custom tabs.
  */
 
-import {
-  type CustomTag,
-  type ItemDef,
-  type ItemTag,
-  KNOWN_TAGS,
-  isKnownTag,
-  getItemById,
-} from './items.js';
+import { type CustomTag, type ItemDef, type ItemTag, KNOWN_TAGS, getItemById } from './items.js';
 import { getEquipmentDefForItem } from './equipmentDefs.js';
 import type { EquipmentSlotId } from './equipment-slots.js';
 import type { GeneratedEquipmentInstanceKey } from './generated-equipment-types.js';
@@ -63,25 +56,6 @@ export function createInventoryBag(): InventoryBag {
 
 export function createTabPreferences(): TabPreferences {
   return { order: [...KNOWN_TAGS], hidden: new Set() };
-}
-
-/** Canonical discriminated view across the legacy static and generated-reference lanes. */
-export function listInventoryEntries(bag: InventoryBag): readonly InventoryBagEntry[] {
-  return [
-    ...bag.slots.map(
-      (slot): StackableStaticInventoryEntry => ({
-        kind: 'stackable-static-item',
-        itemId: slot.itemId,
-        quantity: slot.quantity,
-      }),
-    ),
-    ...(bag.generatedEquipment ?? []).map(
-      (entry): GeneratedEquipmentInventoryEntry => ({
-        kind: entry.kind,
-        instanceKey: entry.instanceKey,
-      }),
-    ),
-  ];
 }
 
 /** Check for one exact generated instance reference. */
@@ -335,7 +309,7 @@ export function sortSlots(
  * Collect all unique tags present in the player's current inventory.
  * Only tags attached to items the player actually holds appear.
  */
-export function getActiveTags(bag: InventoryBag, catalog?: readonly ItemDef[]): ItemTag[] {
+function getActiveTags(bag: InventoryBag, catalog?: readonly ItemDef[]): ItemTag[] {
   const tags = new Set<ItemTag>();
   for (const slot of bag.slots) {
     const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);
@@ -384,30 +358,4 @@ export function getVisibleTabs(
   result.push(...remaining);
 
   return result;
-}
-
-// ---------------------------------------------------------------------------
-// Tab preference mutations
-// ---------------------------------------------------------------------------
-
-/** Move a tab to a new position in the order. */
-export function reorderTab(prefs: TabPreferences, tag: ItemTag, newIndex: number): void {
-  const idx = prefs.order.indexOf(tag);
-  if (idx !== -1) {
-    prefs.order.splice(idx, 1);
-  }
-  const clamped = Math.max(0, Math.min(prefs.order.length, newIndex));
-  prefs.order.splice(clamped, 0, tag);
-}
-
-/** Hide a custom tab. Known tags cannot be hidden. */
-export function hideTab(prefs: TabPreferences, tag: ItemTag): boolean {
-  if (isKnownTag(tag)) return false;
-  prefs.hidden.add(tag as CustomTag);
-  return true;
-}
-
-/** Show a previously hidden custom tab. */
-export function showTab(prefs: TabPreferences, tag: CustomTag): void {
-  prefs.hidden.delete(tag);
 }

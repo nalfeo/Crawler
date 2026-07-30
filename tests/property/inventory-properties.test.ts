@@ -5,7 +5,6 @@ import {
   addGeneratedEquipmentReference,
   addItem,
   hasGeneratedEquipmentReference,
-  listInventoryEntries,
   removeItem,
   removeGeneratedEquipmentReference,
   hasItem,
@@ -182,11 +181,11 @@ describe('inventory invariants (property-based)', () => {
           expect(removeGeneratedEquipmentReference(bag, removedKey) !== undefined).toBe(existed);
 
           const expected = keys.filter((key) => key !== removedKey);
-          expect(
-            listInventoryEntries(bag)
-              .filter((entry) => entry.kind === 'generated-instance')
-              .map((entry) => entry.instanceKey),
-          ).toEqual(expected);
+          // Verify each expected key is still present and the removed key is gone.
+          for (const key of expected) {
+            expect(hasGeneratedEquipmentReference(bag, key)).toBe(true);
+          }
+          expect(hasGeneratedEquipmentReference(bag, removedKey)).toBe(false);
         },
       ),
     );
@@ -200,12 +199,10 @@ describe('inventory invariants (property-based)', () => {
         addGeneratedEquipmentReference(bag, key);
 
         expect(() => addGeneratedEquipmentReference(bag, key)).toThrow();
-        expect(hasGeneratedEquipmentReference(bag, key)).toBe(true);
-        expect(
-          listInventoryEntries(bag).filter(
-            (entry) => entry.kind === 'generated-instance' && entry.instanceKey === key,
-          ),
-        ).toHaveLength(1);
+        // The key is still present exactly once after the duplicate rejection —
+        // check count directly so a regression that pushes before checking would
+        // be caught even though hasGeneratedEquipmentReference uses .some().
+        expect(bag.generatedEquipment?.filter((e) => e.instanceKey === key).length).toBe(1);
       }),
     );
   });

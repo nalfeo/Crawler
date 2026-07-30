@@ -5,7 +5,6 @@ import {
   addGeneratedEquipmentReference,
   addItem,
   hasGeneratedEquipmentReference,
-  listInventoryEntries,
   removeItem,
   removeGeneratedEquipmentReference,
   hasItem,
@@ -15,11 +14,7 @@ import {
   filterByEquipmentSlot,
   filterEquippable,
   sortSlots,
-  getActiveTags,
   getVisibleTabs,
-  reorderTab,
-  hideTab,
-  showTab,
   type InventoryBag,
   type TabPreferences,
 } from '../../src/shared/inventory.js';
@@ -73,16 +68,6 @@ describe('InventoryBag', () => {
     const first = 'gei:v1:inventory-test:0' as GeneratedEquipmentInstanceKey;
     const second = 'gei:v1:inventory-test:1' as GeneratedEquipmentInstanceKey;
 
-    it('exposes static stacks and exact generated keys as discriminated entries', () => {
-      addItem(bag, 'test-ore', 3, testCatalog);
-      addGeneratedEquipmentReference(bag, first);
-
-      expect(listInventoryEntries(bag)).toEqual([
-        { kind: 'stackable-static-item', itemId: 'test-ore', quantity: 3 },
-        { kind: 'generated-instance', instanceKey: first },
-      ]);
-    });
-
     it('rejects a duplicate exact key without changing the bag', () => {
       addGeneratedEquipmentReference(bag, first);
       const before = structuredClone(bag);
@@ -91,22 +76,6 @@ describe('InventoryBag', () => {
         'Generated equipment instance already exists in bag',
       );
       expect(bag).toEqual(before);
-    });
-
-    it('listInventoryEntries returns a snapshot — mutating a listed entry does not affect the bag', () => {
-      addGeneratedEquipmentReference(bag, first);
-      const entries = listInventoryEntries(bag);
-      const listed = entries.find((e) => e.kind === 'generated-instance');
-      expect(listed).toBeDefined();
-
-      // Force-cast to mutate the returned object
-      (listed as { instanceKey: string }).instanceKey = 'gei:v1:mutated:0';
-
-      // The bag's stored entry must be unchanged
-      expect(hasGeneratedEquipmentReference(bag, first)).toBe(true);
-      expect(
-        hasGeneratedEquipmentReference(bag, 'gei:v1:mutated:0' as GeneratedEquipmentInstanceKey),
-      ).toBe(false);
     });
 
     it('removes only the requested key and leaves distinct instances intact', () => {
@@ -373,33 +342,31 @@ describe('Tab system', () => {
     prefs = createTabPreferences();
   });
 
-  describe('getActiveTags', () => {
-    it('returns empty for empty bag', () => {
-      expect(getActiveTags(bag, testCatalog)).toEqual([]);
-    });
-
-    it('returns tags of held items', () => {
-      addItem(bag, 'test-ore', 1, testCatalog);
-      addItem(bag, 'test-sword', 1, testCatalog);
-      const tags = getActiveTags(bag, testCatalog);
-      expect(tags).toContain('Materials');
-      expect(tags).toContain('Weapons');
-      expect(tags).not.toContain('Consumables');
-    });
-
-    it('includes custom tags', () => {
-      addItem(bag, 'stinky-bone', 1, testCatalog);
-      const tags = getActiveTags(bag, testCatalog);
-      expect(tags).toContain('Materials');
-      expect(tags).toContain('Smelly Stuff');
-    });
-  });
-
   describe('getVisibleTabs', () => {
+    it('returns empty for empty bag', () => {
+      expect(getVisibleTabs(bag, prefs, testCatalog)).toEqual([]);
+    });
+
     it('only shows tabs for held items', () => {
       addItem(bag, 'test-ore', 1, testCatalog);
       const tabs = getVisibleTabs(bag, prefs, testCatalog);
       expect(tabs).toEqual(['Materials']);
+    });
+
+    it('includes every active tag from held items', () => {
+      addItem(bag, 'test-ore', 1, testCatalog);
+      addItem(bag, 'test-sword', 1, testCatalog);
+      const tabs = getVisibleTabs(bag, prefs, testCatalog);
+      expect(tabs).toContain('Materials');
+      expect(tabs).toContain('Weapons');
+      expect(tabs).not.toContain('Consumables');
+    });
+
+    it('includes custom tags from held items', () => {
+      addItem(bag, 'stinky-bone', 1, testCatalog);
+      const tabs = getVisibleTabs(bag, prefs, testCatalog);
+      expect(tabs).toContain('Materials');
+      expect(tabs).toContain('Smelly Stuff');
     });
 
     it('respects hidden custom tags', () => {
@@ -408,14 +375,6 @@ describe('Tab system', () => {
       const tabs = getVisibleTabs(bag, prefs, testCatalog);
       expect(tabs).toContain('Materials');
       expect(tabs).not.toContain('Smelly Stuff');
-    });
-
-    it('cannot hide known tags', () => {
-      addItem(bag, 'test-ore', 1, testCatalog);
-      const result = hideTab(prefs, 'Materials');
-      expect(result).toBe(false);
-      const tabs = getVisibleTabs(bag, prefs, testCatalog);
-      expect(tabs).toContain('Materials');
     });
 
     it('orders known tags before custom tags', () => {
@@ -434,7 +393,10 @@ describe('Tab system', () => {
       addItem(bag, 'test-potion', 1, testCatalog);
 
       // Default order has Materials before Weapons before Consumables
-      reorderTab(prefs, 'Consumables', 0);
+      const consumablesIndex = prefs.order.indexOf('Consumables');
+      expect(consumablesIndex).toBeGreaterThanOrEqual(0);
+      const [consumables] = prefs.order.splice(consumablesIndex, 1);
+      prefs.order.splice(0, 0, consumables!);
       const tabs = getVisibleTabs(bag, prefs, testCatalog);
       expect(tabs[0]).toBe('Consumables');
     });
@@ -445,10 +407,10 @@ describe('Tab system', () => {
       addItem(bag, 'stinky-bone', 1, testCatalog);
       const smelly = customTag('Smelly Stuff');
 
-      hideTab(prefs, smelly);
+      prefs.hidden.add(smelly);
       expect(getVisibleTabs(bag, prefs, testCatalog)).not.toContain('Smelly Stuff');
 
-      showTab(prefs, smelly);
+      prefs.hidden.delete(smelly);
       expect(getVisibleTabs(bag, prefs, testCatalog)).toContain('Smelly Stuff');
     });
   });

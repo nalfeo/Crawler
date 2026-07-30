@@ -308,6 +308,22 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:wired-systems
 
+      # Test-only exports guard: flags src/ exports whose only consumers are in
+      # tests/**. Closes the blind spot where test-only usage masked production
+      # deadness in knip (knip includes tests/** in its project scope). The
+      # textbook case: listInventoryEntries in src/shared/inventory.ts was
+      # unit- and property-tested yet never called from production code.
+      - name: Test-only exports guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:test-only-exports
+
+      # Knip suppressions guard: validates that every ignoreIssues entry in
+      # knip.config.ts has a non-expired reason+expiresOn. An expired entry means
+      # the deadness must be fixed — not the date extended.
+      - name: Knip suppressions expiry guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:knip-suppressions
+
       # Exact-version guard: block any PR that introduces a semver range into
       # direct deps, devDeps, optionalDeps, or overrides. Ranges allow unrelated
       # lockfile regeneration to silently advance a package version before

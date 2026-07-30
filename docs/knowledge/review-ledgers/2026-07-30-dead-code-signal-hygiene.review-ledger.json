@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "dead-code-signal-hygiene",
+  "task_title": "Guard: test-only exports detection and knip suppression expiry enforcement",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "convergent",
+      "notes": "Reviewer flagged re-export test mismatch (test expected collectNamedExports to include barrel re-exports but impl intentionally excludes them). Fixed test and updated JSDoc. Non-blocking: documented export* limitation and import type approximation in lib comments. 30-day cap comment loosened to remove the cap (live entries exceed 30 days for good reasons)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
