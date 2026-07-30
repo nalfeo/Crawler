@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "wall-inset-fov-corners",
+  "task_title": "Dynamic wall inset masking and FOV corner reveal",
+  "estimated_apples": 2,
+  "stages": {}
+}
