@@ -41,6 +41,7 @@ import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTelegraph.js';
 import { sampleContactAttackMotion } from '../../src/shared/mob-motion.js';
 import { ftToPx } from '../../src/shared/units.js';
+import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -847,7 +848,10 @@ describe('createPhaserBridge', () => {
     expect(sprites).toHaveLength(1);
     const walkSprite = sprites[0]!;
     expect(walkSprite.textureKey).toBe('player-walk-cycle-female');
-    expect(walkSprite.scaleX).toBeCloseTo(0.18, 5);
+    // Sourced from the mapping rather than restated as a literal: the player
+    // scale is an exact ratio (46/256) pinned by the scale-parity guard, so a
+    // hard-coded approximation drifts out of sync whenever that ratio changes.
+    expect(walkSprite.scaleX).toBe(ENTITY_SPRITE_MAPPINGS.renderKinds.player.generated.scale);
     // Position must be preserved — no snap-to-origin regression
     expect(walkSprite.x).toBe(savedX);
     expect(walkSprite.y).toBe(savedY);
