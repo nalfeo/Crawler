@@ -6,7 +6,12 @@ import path from 'node:path';
 import process from 'node:process';
 import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
-import { evaluateAudit } from './npm-audit.mjs';
+import {
+  AUDIT_EXCEPTIONS,
+  evaluateAudit,
+  extractAuditExceptionsFromSource,
+  findReasonRestatementViolations,
+} from './npm-audit.mjs';
 
 const ACTIVE_DATE = new Date('2026-07-24T00:00:00Z');
 const SCRIPT = fileURLToPath(new URL('./npm-audit.mjs', import.meta.url));
@@ -31,6 +36,50 @@ const FIND_MY_WAY_ADVISORY = {
 function report(vulnerabilities) {
   return { auditReportVersion: 2, vulnerabilities };
 }
+
+test('fails when expiresOn changes without a matching reason update', () => {
+  const previous = [{ ...AUDIT_EXCEPTIONS[0], expiresOn: '2026-07-31' }];
+  const current = [AUDIT_EXCEPTIONS[0]];
+
+  assert.deepEqual(findReasonRestatementViolations(previous, current), [
+    {
+      packageName: 'brace-expansion',
+      previousExpiresOn: '2026-07-31',
+      currentExpiresOn: '2026-08-13',
+    },
+  ]);
+});
+
+test('passes when expiresOn and reason both change', () => {
+  const previous = [
+    {
+      ...AUDIT_EXCEPTIONS[0],
+      expiresOn: '2026-07-31',
+      reason: 'Previous investigation text.',
+    },
+  ];
+  const current = [AUDIT_EXCEPTIONS[0]];
+
+  assert.deepEqual(findReasonRestatementViolations(previous, current), []);
+});
+
+test('does not flag added or removed exception entries', () => {
+  const base = [AUDIT_EXCEPTIONS[0]];
+  const withAddition = [AUDIT_EXCEPTIONS[0], AUDIT_EXCEPTIONS[1]];
+
+  assert.deepEqual(findReasonRestatementViolations(base, withAddition), []);
+  assert.deepEqual(findReasonRestatementViolations(withAddition, base), []);
+});
+
+test('passes for unrelated edits when exceptions are unchanged', () => {
+  const sourceWithUnrelatedEdit = `
+const SOME_UNRELATED_VALUE = 'changed';
+export const AUDIT_EXCEPTIONS = ${JSON.stringify(AUDIT_EXCEPTIONS, null, 2)};
+`;
+  const previous = extractAuditExceptionsFromSource(sourceWithUnrelatedEdit);
+
+  assert.deepEqual(findReasonRestatementViolations(previous, AUDIT_EXCEPTIONS), []);
+});
 
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
