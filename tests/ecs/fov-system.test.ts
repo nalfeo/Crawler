@@ -304,6 +304,65 @@ describe('FOV System', () => {
     expect(floorMap.isVisibleSubtile(0, 0)).toBe(true);
   });
 
+  it('HARD GATE: reveals all four interior corner blocks of an enclosed room without leaking vision past them', () => {
+    // The defect: a room's interior corner wall tile is diagonal from the
+    // player with BOTH orthogonal neighbours (the two wall runs meeting at
+    // that corner) opaque — exactly the pattern `hasBlockedCornerSeam` exists
+    // to detect for a ray passing THROUGH a diagonal gap. But the corner
+    // block itself is the ray's TERMINUS, not something beyond it, so it was
+    // being seam-rejected and stayed permanently black even though the two
+    // wall runs beside it lit up correctly. Fix: an opaque tile a ray
+    // terminates on is exempt from the seam rule; only rays looking PAST an
+    // opaque tile remain seam-blocked.
+    //
+    // Build a fully-enclosed 10x10 room (walls forming a ring at x/y in
+    // {5,14}, floor interior x/y in [6,13]) inside a larger open map, with
+    // the player standing dead-center. Assert:
+    //   1. All four interior corner wall tiles are visible (the fix).
+    //   2. Tiles diagonally BEYOND each corner (outside the room) are NOT
+    //      revealed — the seam rule still blocks genuine look-through gaps,
+    //      and revealing the opaque corner block must not leak vision past it.
+    const N = 25;
+    const paint = (t: TileMap): void => {
+      for (let x = 5; x <= 14; x++) {
+        t.flags[5 * N + x] = TilePresets.WALL; // north wall
+        t.flags[14 * N + x] = TilePresets.WALL; // south wall
+      }
+      for (let y = 5; y <= 14; y++) {
+        t.flags[y * N + 5] = TilePresets.WALL; // west wall
+        t.flags[y * N + 14] = TilePresets.WALL; // east wall
+      }
+    };
+    const floorMap = runFovAt(makeOpenMap(N, 2, paint), 10, 10);
+
+    const corners: ReadonlyArray<readonly [number, number]> = [
+      [5, 5],
+      [14, 5],
+      [5, 14],
+      [14, 14],
+    ];
+    for (const [cx, cy] of corners) {
+      expect(floorMap.isVisible(cx, cy)).toBe(true);
+    }
+
+    // Diagonally beyond each corner (one tile past it, outside the room ring)
+    // must stay hidden — the fix must not leak vision past the corner block.
+    const beyondCorners: ReadonlyArray<readonly [number, number]> = [
+      [4, 4],
+      [15, 4],
+      [4, 15],
+      [15, 15],
+    ];
+    for (const [bx, by] of beyondCorners) {
+      expect(floorMap.isVisible(bx, by)).toBe(false);
+    }
+
+    // Sanity: the wall runs beside the corners (already working pre-fix) and
+    // the room interior remain visible, so the fix didn't regress the rest.
+    expect(floorMap.isVisible(10, 5)).toBe(true); // mid north wall
+    expect(floorMap.isVisible(6, 6)).toBe(true); // interior near corner
+  });
+
   it('visible bitmap is quarter-tile sized (4× tile count)', () => {
     const floorMap = makeSmallMap();
     const tileCount = floorMap.width * floorMap.height;
