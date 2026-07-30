@@ -609,15 +609,19 @@ describe('achievementSystem', () => {
       expect(world.achievements.unlockedIds.has('floor2-floor-cleared')).toBe(true);
     });
 
-    it('derives hasBetrayedAlly from a currently-Friendly family with recorded trash kills', () => {
+    it('derives hasBetrayedAlly from a currently-neutral-or-better family with recorded trash kills', () => {
       // Regression test for the multi-model-review-found unreachability bug:
       // `betrayerFlag` is never set `true` by any production system (only a
       // dev-only lab), so `hasBetrayedAlly` must derive from real, already-
-      // tracked facts — a present family currently at 'friendly' band that
-      // also has at least one player-attributed trash kill against it.
+      // tracked facts — a present family currently at neutral-or-better standing
+      // (relation >= 50) that also has at least one player-attributed trash kill.
+      //
+      // Why neutral instead of friendly: the maximum achievable relation via
+      // shipped emergent events is ~68 (neutral band 50–75); the friendly band
+      // (76+) is unreachable without wiring additional mechanics.
       const mirekin = asFamilyId('mirekin');
       const world = createTestWorld({ seed: 42, floor: 2 });
-      world.factionRelations.set(mirekin, 90); // 'friendly' band (76-100)
+      world.factionRelations.set(mirekin, 90); // 'friendly' band (76-100) — also neutral-or-better
       world.floorExtendedState = {
         familyState: {
           presentFamilies: [mirekin],
@@ -629,12 +633,17 @@ describe('achievementSystem', () => {
 
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(true);
 
-      // Friendly band alone, with no recorded kills, is not betrayal.
+      // Neutral band (50–75) — the reachable case via positive emergent events —
+      // should also trigger the betrayal signal when kills are recorded.
+      world.factionRelations.set(mirekin, 60); // 'neutral' band
+      world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 1]]);
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(true);
+
+      // Neutral-or-better standing alone, with no recorded kills, is not betrayal.
       world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 0]]);
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(false);
 
-      // Kills recorded, but the family is no longer Friendly (e.g. hostile),
-      // is also not betrayal by this definition.
+      // Kills recorded, but the family is in hostile band — not betrayal by this definition.
       world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 1]]);
       world.factionRelations.set(mirekin, 30); // 'hostile' band
       expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(false);
@@ -703,9 +712,10 @@ describe('achievementSystem', () => {
           betrayerFlag: true,
           decapitatedFamilies: new Set([mirekin]),
           bossEncounters: new Map([[mirekin, bossEncounter(mirekin)]]),
-          // mirekin is at 'friendly' band (90) but has a recorded trash kill
-          // against it — the real hasBetrayedAlly signal (betrayerFlag itself
-          // is dead/lab-only and intentionally ignored by achievementSystem).
+          // mirekin is at 'friendly' band (90), which satisfies neutral-or-better
+          // standing — the real hasBetrayedAlly signal checks for a family at
+          // neutral-or-better (>= 50) with recorded trash kills. (betrayerFlag
+          // itself is dead/lab-only and intentionally ignored by achievementSystem.)
           trashKillsByFamily: new Map([[mirekin, 1]]),
         },
       };

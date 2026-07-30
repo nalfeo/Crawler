@@ -127,10 +127,12 @@ export const ACHIEVEMENT_NUMBER_FACTS = [
   'completedQuestCount',
   'questLogSize',
   'playerGold',
+  'peakGold',
   'unlockedAbilityCount',
   'clearedFloorCount',
   'familiesAtFriendlyCount',
   'familiesAtHateCount',
+  'familiesAtNeutralOrBetterCount',
   'familyBossesDefeated',
   'familyBossEncounterCount',
   'familiesEngagedInCombatCount',
@@ -143,6 +145,7 @@ export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
   'completedQuestCount',
   'questLogSize',
   'playerGold',
+  'peakGold',
   'unlockedAbilityCount',
   'clearedFloorCount',
 ] as const;
@@ -158,6 +161,7 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'floor2SafeRoomVisited',
   'hasMetBroker',
   'allPresentFamiliesFriendly',
+  'allPresentFamiliesNeutralOrBetter',
   'allPresentFamiliesEngagedInCombat',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
@@ -504,7 +508,7 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * (`ember-wand`, `frost-crook`) and physical (`iron-cleaver`, `ashwood-bow`)
  * Floor 2 weapon bases — all have empty inherent stat bonuses, so the Common
  * item carries no non-armor stat bonus (rarity contract). Rewards are restricted
- * to tier1/tier2/tier3 (Common/Uncommon/Rare) — Unique is intentionally never
+ * to tier1/tier2/tier3 (Common/Uncommon) — Unique is intentionally never
  * used (deferred from this epic). `iconId`s are placeholder keys; no art is
  * generated or required to ship this slice.
  */
@@ -563,10 +567,12 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       completedQuestCount: 0,
       questLogSize: 0,
       playerGold: 0,
+      peakGold: 0,
       unlockedAbilityCount: 0,
       clearedFloorCount: 0,
       familiesAtFriendlyCount: 0,
       familiesAtHateCount: 0,
+      familiesAtNeutralOrBetterCount: 0,
       familyBossesDefeated: 0,
       familyBossEncounterCount: 0,
       familiesEngagedInCombatCount: 0,
@@ -582,6 +588,7 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       floor2SafeRoomVisited: false,
       hasMetBroker: false,
       allPresentFamiliesFriendly: false,
+      allPresentFamiliesNeutralOrBetter: false,
       allPresentFamiliesEngagedInCombat: false,
     },
     questIds: [],

@@ -89,19 +89,20 @@ function familiesAtBandCount(world: GameWorld, band: ReturnType<typeof bandFor>)
 }
 
 /**
- * Whether the player currently has a family at Friendly standing that they've
- * also landed at least one player-attributed trash kill against ("betrayal").
+ * Whether the player currently has a family at neutral-or-better standing that
+ * they've also landed at least one player-attributed trash kill against
+ * ("double agent" behaviour).
  *
- * `Floor2State.betrayerFlag` (a boolean the doc comment describes as flipped
- * "once the player attacks a Friendly family") is never set by any production
- * system — it's mutated only inside a dev-only lab sandbox
- * (`src/labs/family-territory-lab`) and is otherwise permanently `false`. That
- * made the "Double Agent" achievement unreachable through real gameplay.
- * Relation bands are driven solely by explicit settlement/emergent-event
- * deltas (not combat), and passive decay defaults to 0, so a family's current
- * band is never retroactively changed by killing its trash mobs — this makes
- * "currently Friendly despite recorded kills against them" a robust,
- * already-tracked, real-facts substitute for the same betrayal beat.
+ * **Why neutral instead of friendly:** the `betrayerFlag` (originally checked
+ * here) is never set by any production system — only by a dev-only lab.  The
+ * replacement derivation is "family currently at neutral-or-better standing
+ * despite recorded kills against them."  Friendly (≥ 76) is unreachable via
+ * shipped mechanics: the maximum relation achievable through the six defined
+ * emergent events is 68 (neutral band, 50–75).  Using neutral (≥ 50) as the
+ * threshold makes the achievement reachable through normal gameplay — a
+ * positive event (e.g. `tributeDelivered`, `pickASideChosen`) can push a
+ * family from 45 (hostile default) into neutral, and the player can also kill
+ * that family's trash mobs during the same run.
  */
 function hasBetrayedFriendlyFamily(world: GameWorld): boolean {
   if (world.floor !== 2) return false;
@@ -109,7 +110,8 @@ function hasBetrayedFriendlyFamily(world: GameWorld): boolean {
   const presentFamilies = familyState?.presentFamilies ?? [];
   for (const familyId of presentFamilies) {
     const kills = familyState?.trashKillsByFamily?.get(familyId) ?? 0;
-    if (kills > 0 && bandFor(getRelation(world, familyId)) === 'friendly') {
+    const band = bandFor(getRelation(world, familyId));
+    if (kills > 0 && (band === 'neutral' || band === 'friendly')) {
       return true;
     }
   }
@@ -140,6 +142,11 @@ function evaluateUnlockRule(rule: AchievementUnlockRule, facts: AchievementFactS
 }
 
 export function collectCurrentFloorAchievementFacts(world: GameWorld): AchievementFactSnapshot {
+  // Track the running peak gold balance for the "Hoarder's Ledger" achievement.
+  // Updated here (before facts are snapshotted) so the peak is captured even if
+  // the player spends down before the next tick.
+  world.peakGold = Math.max(world.peakGold, world.playerGold);
+
   const empty = createEmptyAchievementFactSnapshot();
   const floor1Objective = world.floor === 1 ? world.floorScenario?.objective : undefined;
   const floor2TrashKills =
@@ -178,12 +185,28 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     : 0;
   const familiesAtFriendlyCount = familiesAtBandCount(world, 'friendly');
   const familiesAtHateCount = familiesAtBandCount(world, 'hate');
+  // Neutral-or-better: families at relation >= 50 (neutral or friendly band).
+  // Positive emergent events can push families from hostile (45 default) into
+  // neutral (50–75), so this threshold is reachable via shipped mechanics.
+  const familiesAtNeutralOrBetterCount =
+    world.floor === 2
+      ? (familyState?.presentFamilies ?? []).filter(
+          (id) =>
+            bandFor(getRelation(world, id)) !== 'hostile' &&
+            bandFor(getRelation(world, id)) !== 'hate',
+        ).length
+      : 0;
   const presentFamilyCount = world.floor === 2 ? (familyState?.presentFamilies?.length ?? 0) : 0;
   // Dynamic "every present family is Friendly" check — Floor 2's roster size
   // varies (3 or 4 families), so a fixed numeric threshold would either miss a
   // 4-family run or under-require a 3-family run.
   const allPresentFamiliesFriendly =
     presentFamilyCount > 0 && familiesAtFriendlyCount === presentFamilyCount;
+  // Neutral-or-better variant: all present families at neutral standing or above.
+  // Reachable via positive emergent events (max reachable relation ≈ 68 for
+  // family 0, which is within the neutral band 50–75).
+  const allPresentFamiliesNeutralOrBetter =
+    presentFamilyCount > 0 && familiesAtNeutralOrBetterCount === presentFamilyCount;
   // Same dynamic-threshold reasoning as `allPresentFamiliesFriendly` above,
   // applied to combat instead of reputation — a fixed `>= 4` threshold would
   // be unreachable on the majority-case 3-family roster.
@@ -207,10 +230,12 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       completedQuestCount: completedQuestIds.length,
       questLogSize: world.questLog.size,
       playerGold: world.playerGold,
+      peakGold: world.peakGold,
       unlockedAbilityCount: unlockedAbilityCount(world),
       clearedFloorCount: floorCleared ? 1 : 0,
       familiesAtFriendlyCount,
       familiesAtHateCount,
+      familiesAtNeutralOrBetterCount,
       familyBossesDefeated,
       familyBossEncounterCount,
       familiesEngagedInCombatCount,
@@ -218,6 +243,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     booleanFacts: {
       ...empty.booleanFacts,
       allPresentFamiliesFriendly,
+      allPresentFamiliesNeutralOrBetter,
       allPresentFamiliesEngagedInCombat,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
       staircaseUnlocked:

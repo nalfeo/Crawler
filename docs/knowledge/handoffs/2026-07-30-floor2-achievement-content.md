@@ -165,6 +165,21 @@ is duplicated rather than imported) is real and confirmed by direct inspection:
   constructed `GameWorld` state in `tests/game/achievement-system.test.ts`'s
   integration test, unlocking a representative sample of the new achievements
   through the real evaluation pipeline (not a lab-only harness).
+- **CI recovery pass (2026-07-30)**: a code review found that six relationship
+  achievements used thresholds unreachable via shipped mechanics. The production
+  event system (`quests.floor2.events.json`, `emergentEventSystem`) was
+  analysed: relations start at 45 (hostile band), the highest single-family
+  value achievable via all positive events is ~68 (neutral band 50–75), and the
+  Friendly band (76+) is never reachable without wiring additional mechanics.
+  All six achievements were re-scoped to neutral-or-better criteria, and the
+  `hasBetrayedAlly` derivation was updated from `friendly`-only to
+  `neutral-or-better`, making it reachable. A headless Floor 2 runner does not
+  yet exercise the full achievement pipeline end-to-end (that requires Floor 2
+  win-path automation, a separate epic), so the validation path here is: (a)
+  analysed production mechanics manually, (b) updated integration tests to cover
+  the reachable cases, (c) confirmed all facts are exercised through
+  `achievementSystem(world)` in `floor2-reward-bundle-claim.integration.test.ts`
+  using the real runtime entry point.
 
 ## Review ledger
 
