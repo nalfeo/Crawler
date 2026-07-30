@@ -6,25 +6,39 @@ import path from 'node:path';
 import process from 'node:process';
 import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
-import { evaluateAudit } from './npm-audit.mjs';
+import { AUDIT_EXCEPTIONS, evaluateAudit } from './npm-audit.mjs';
 
 const ACTIVE_DATE = new Date('2026-07-24T00:00:00Z');
 const SCRIPT = fileURLToPath(new URL('./npm-audit.mjs', import.meta.url));
-const BRACE_EXPANSION_ADVISORY = {
-  source: 1124334,
-  url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+
+// Synthetic fixtures for the suppression algorithm itself. These must NEVER be
+// changed to track the real, live AUDIT_EXCEPTIONS list — that list churns as
+// advisories get fixed/expire, and these tests validate matching/derivation
+// behavior, not any specific package's current state.
+const ALPHA_EXCEPTION = {
+  packageName: 'alpha-pkg',
+  source: 5001,
+  url: 'https://github.com/advisories/GHSA-alpha-0001',
+  expiresOn: '2026-07-31',
+  reason: 'Synthetic fixture: no patched release available yet.',
+};
+const BETA_EXCEPTION = {
+  packageName: 'beta-pkg',
+  source: 5002,
+  url: 'https://github.com/advisories/GHSA-beta-0002',
+  expiresOn: '2026-07-29',
+  reason: 'Synthetic fixture: registry proxy does not yet mirror the fix.',
+};
+const SYNTHETIC_EXCEPTIONS = [ALPHA_EXCEPTION, BETA_EXCEPTION];
+
+const ALPHA_ADVISORY = {
+  source: ALPHA_EXCEPTION.source,
+  url: ALPHA_EXCEPTION.url,
   severity: 'high',
 };
-// GHSA-v2hh-gcrm-f6hx: fast-uri advisory (exception removed 2026-07-30 after 3.1.4 landed).
-// Still used in tests that verify fail-closed behaviour for packages with no active exception.
-const ADVISORY = {
-  source: 1124064,
-  url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
-  severity: 'high',
-};
-const FIND_MY_WAY_ADVISORY = {
-  source: 1124273,
-  url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
+const BETA_ADVISORY = {
+  source: BETA_EXCEPTION.source,
+  url: BETA_EXCEPTION.url,
   severity: 'high',
 };
 
@@ -43,14 +57,14 @@ test('reports every matched exception in the success diagnostic', (t) => {
         'brace-expansion': {
           name: 'brace-expansion',
           severity: 'high',
-          via: [BRACE_EXPANSION_ADVISORY],
+          via: [
+            {
+              source: 1124334,
+              url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+              severity: 'high',
+            },
+          ],
         },
-        'find-my-way': {
-          name: 'find-my-way',
-          severity: 'high',
-          via: [FIND_MY_WAY_ADVISORY],
-        },
-        fastify: { name: 'fastify', severity: 'high', via: ['find-my-way'] },
         minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
       }),
     )}));`,
@@ -69,163 +83,113 @@ test('reports every matched exception in the success diagnostic', (t) => {
     result.stderr,
     /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
   );
-  assert.match(
-    result.stderr,
-    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-c96f-x56v-gq3h/,
-  );
-  assert.match(
-    result.stderr,
-    /Suppressed derived findings: brace-expansion, fastify, find-my-way, minimatch/,
-  );
+  assert.match(result.stderr, /Suppressed derived findings: brace-expansion, minimatch/);
 });
 
-test('suppresses the exact brace-expansion advisory and findings derived solely from it', () => {
+test('suppresses the exact advisory and findings derived solely from it', () => {
   const result = evaluateAudit(
     report({
-      'brace-expansion': {
-        name: 'brace-expansion',
-        severity: 'high',
-        via: [BRACE_EXPANSION_ADVISORY],
-      },
-      minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
+      'alpha-pkg': { name: 'alpha-pkg', severity: 'high', via: [ALPHA_ADVISORY] },
+      downstream: { name: 'downstream', severity: 'high', via: ['alpha-pkg'] },
     }),
-    { now: ACTIVE_DATE },
+    { now: ACTIVE_DATE, exceptions: SYNTHETIC_EXCEPTIONS },
   );
 
   assert.deepEqual(result.blocking, []);
-  assert.deepEqual(result.ignored, ['brace-expansion', 'minimatch']);
+  assert.deepEqual(result.ignored, ['alpha-pkg', 'downstream']);
   assert.deepEqual(
     result.matchedExceptions.map((item) => item.packageName),
-    ['brace-expansion'],
-  );
-});
-
-test('fails closed after the brace-expansion exception expires', () => {
-  const result = evaluateAudit(
-    report({
-      'brace-expansion': {
-        name: 'brace-expansion',
-        severity: 'high',
-        via: [BRACE_EXPANSION_ADVISORY],
-      },
-    }),
-    { now: new Date('2026-08-14T00:00:00Z') },
-  );
-
-  assert.deepEqual(result.ignored, []);
-  assert.deepEqual(result.matchedExceptions, []);
-  assert.deepEqual(
-    result.blocking.map((item) => item.name),
-    ['brace-expansion'],
-  );
-});
-
-test('blocks fast-uri advisory with no active exception', () => {
-  const result = evaluateAudit(
-    report({
-      'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
-      ajv: { name: 'ajv', severity: 'high', via: ['fast-uri'] },
-      fastify: { name: 'fastify', severity: 'high', via: ['ajv'] },
-    }),
-    { now: ACTIVE_DATE },
-  );
-
-  assert.deepEqual(result.ignored, []);
-  assert.deepEqual(result.matchedExceptions, []);
-  assert.deepEqual(result.blocking.map((item) => item.name).sort(), ['ajv', 'fast-uri', 'fastify']);
-});
-
-test('fails closed for a mixed dependency chain', () => {
-  const unrelated = { source: 99, url: 'https://example.test/other', severity: 'high' };
-  const result = evaluateAudit(
-    report({
-      'brace-expansion': {
-        name: 'brace-expansion',
-        severity: 'high',
-        via: [BRACE_EXPANSION_ADVISORY],
-      },
-      minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion', unrelated] },
-    }),
-    { now: ACTIVE_DATE },
-  );
-
-  assert.deepEqual(result.ignored, ['brace-expansion']);
-  assert.deepEqual(
-    result.matchedExceptions.map((item) => item.packageName),
-    ['brace-expansion'],
-  );
-  assert.deepEqual(
-    result.blocking.map((item) => item.name),
-    ['minimatch'],
+    ['alpha-pkg'],
   );
 });
 
 test('fails closed after the exception expires', () => {
   const result = evaluateAudit(
     report({
-      'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
+      'alpha-pkg': { name: 'alpha-pkg', severity: 'high', via: [ALPHA_ADVISORY] },
     }),
-    { now: new Date('2026-08-14T00:00:00Z') },
+    { now: new Date('2026-08-01T00:00:00Z'), exceptions: SYNTHETIC_EXCEPTIONS },
   );
 
   assert.deepEqual(result.ignored, []);
   assert.deepEqual(result.matchedExceptions, []);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
-    ['fast-uri'],
+    ['alpha-pkg'],
   );
 });
 
-test('does not suppress a different advisory for fast-uri', () => {
+test('suppresses a second, independent exception and findings derived solely from it', () => {
   const result = evaluateAudit(
     report({
-      'fast-uri': {
-        name: 'fast-uri',
-        severity: 'critical',
-        via: [{ ...ADVISORY, source: 123 }],
-      },
+      'beta-pkg': { name: 'beta-pkg', severity: 'high', via: [BETA_ADVISORY] },
+      transitive: { name: 'transitive', severity: 'high', via: ['beta-pkg'] },
+      leaf: { name: 'leaf', severity: 'high', via: ['transitive'] },
     }),
-    { now: ACTIVE_DATE },
-  );
-
-  assert.deepEqual(result.ignored, []);
-  assert.deepEqual(result.matchedExceptions, []);
-  assert.deepEqual(
-    result.blocking.map((item) => item.name),
-    ['fast-uri'],
-  );
-});
-
-test('suppresses the exact find-my-way advisory and findings derived solely from it', () => {
-  const result = evaluateAudit(
-    report({
-      'find-my-way': { name: 'find-my-way', severity: 'high', via: [FIND_MY_WAY_ADVISORY] },
-      fastify: { name: 'fastify', severity: 'high', via: ['find-my-way'] },
-    }),
-    { now: ACTIVE_DATE },
+    { now: ACTIVE_DATE, exceptions: SYNTHETIC_EXCEPTIONS },
   );
 
   assert.deepEqual(result.blocking, []);
-  assert.deepEqual(result.ignored, ['fastify', 'find-my-way']);
+  assert.deepEqual(result.ignored, ['beta-pkg', 'leaf', 'transitive']);
   assert.deepEqual(
     result.matchedExceptions.map((item) => item.packageName),
-    ['find-my-way'],
+    ['beta-pkg'],
   );
 });
 
-test('fails closed after the find-my-way exception expires', () => {
+test('fails closed for a mixed dependency chain', () => {
+  const unrelated = { source: 99, url: 'https://example.test/other', severity: 'high' };
   const result = evaluateAudit(
     report({
-      'find-my-way': { name: 'find-my-way', severity: 'high', via: [FIND_MY_WAY_ADVISORY] },
+      'alpha-pkg': { name: 'alpha-pkg', severity: 'high', via: [ALPHA_ADVISORY] },
+      downstream: { name: 'downstream', severity: 'high', via: ['alpha-pkg', unrelated] },
     }),
-    { now: new Date('2026-08-14T00:00:00Z') },
+    { now: ACTIVE_DATE, exceptions: SYNTHETIC_EXCEPTIONS },
+  );
+
+  assert.deepEqual(result.ignored, ['alpha-pkg']);
+  assert.deepEqual(
+    result.matchedExceptions.map((item) => item.packageName),
+    ['alpha-pkg'],
+  );
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['downstream'],
+  );
+});
+
+test('does not suppress a different advisory for the same package', () => {
+  const result = evaluateAudit(
+    report({
+      'alpha-pkg': {
+        name: 'alpha-pkg',
+        severity: 'critical',
+        via: [{ ...ALPHA_ADVISORY, source: 123 }],
+      },
+    }),
+    { now: ACTIVE_DATE, exceptions: SYNTHETIC_EXCEPTIONS },
   );
 
   assert.deepEqual(result.ignored, []);
   assert.deepEqual(result.matchedExceptions, []);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
-    ['find-my-way'],
+    ['alpha-pkg'],
+  );
+});
+
+test('does not suppress an excepted finding with malformed severity', () => {
+  const result = evaluateAudit(
+    report({
+      'alpha-pkg': { name: 'alpha-pkg', severity: null, via: [ALPHA_ADVISORY] },
+    }),
+    { now: ACTIVE_DATE, exceptions: SYNTHETIC_EXCEPTIONS },
+  );
+
+  assert.deepEqual(result.ignored, ['alpha-pkg']);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['alpha-pkg'],
   );
 });
 
@@ -237,25 +201,6 @@ test('fails closed when severity is null', () => {
   assert.deepEqual(
     result.blocking.map((item) => item.name),
     ['pkg'],
-  );
-});
-
-test('does not suppress an excepted finding with malformed severity', () => {
-  const result = evaluateAudit(
-    report({
-      'brace-expansion': {
-        name: 'brace-expansion',
-        severity: null,
-        via: [BRACE_EXPANSION_ADVISORY],
-      },
-    }),
-    { now: ACTIVE_DATE },
-  );
-
-  assert.deepEqual(result.ignored, ['brace-expansion']);
-  assert.deepEqual(
-    result.blocking.map((item) => item.name),
-    ['brace-expansion'],
   );
 });
 
@@ -288,5 +233,48 @@ test('fails closed when severity is missing (undefined)', () => {
   assert.deepEqual(
     result.blocking.map((item) => item.name),
     ['pkg'],
+  );
+});
+
+// Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
+// generic so they don't churn every time an advisory is fixed or expires.
+// New entries: add the advisory URL, expiry date, and the reason text here.
+// Expired or fixed entries: remove the entry entirely (upgrade the package).
+test('every real audit exception has a well-formed expiresOn date', () => {
+  for (const exception of AUDIT_EXCEPTIONS) {
+    assert.match(
+      exception.expiresOn,
+      /^\d{4}-\d{2}-\d{2}$/,
+      `${exception.packageName} expiresOn must be YYYY-MM-DD`,
+    );
+    const parsed = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+    assert.equal(
+      Number.isNaN(parsed.getTime()),
+      false,
+      `${exception.packageName} expiresOn must parse as a valid date`,
+    );
+    // Round-trip: reject impossible calendar dates like 2026-02-31 that JS
+    // silently normalises to a neighbouring day.
+    const roundTripped = parsed.toISOString().slice(0, 10);
+    assert.equal(
+      roundTripped,
+      exception.expiresOn,
+      `${exception.packageName} expiresOn '${exception.expiresOn}' is not a real calendar date (normalises to ${roundTripped})`,
+    );
+  }
+});
+
+test('no real audit exception is already expired', () => {
+  const now = new Date();
+  const expired = AUDIT_EXCEPTIONS.filter((exception) => {
+    const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+    return now > expiresAt;
+  });
+
+  assert.deepEqual(
+    expired.map((exception) => `${exception.packageName} expired on ${exception.expiresOn}`),
+    [],
+    'One or more audit exceptions have expired. Fix the underlying vulnerability ' +
+      '(upgrade to a patched version) rather than extending the expiry date.',
   );
 });
