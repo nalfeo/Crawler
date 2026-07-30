@@ -635,9 +635,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // inspection scene with the wrong floor or the wrong RNG state.
   const urlScenario = scenarioPresetIdFromUrl();
   let selectedScenarioPresetId =
-    urlScenario ??
-    persisted?.scenarioPresetId ??
-    DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
+    urlScenario ?? persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
   let currentSeed =
     urlScenario != null
       ? (getAiRunnerScenarioPreset(urlScenario)?.defaultSeed ?? INITIAL_SEED)
