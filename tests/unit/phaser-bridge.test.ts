@@ -785,6 +785,76 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.scaleX).toBeCloseTo(0.1796875, 5);
   });
 
+  it('upgrades player Image to Sprite when walk-cycle texture late-loads (Image→Sprite reconcile)', () => {
+    // Exercise the path where the player entity is first created as a plain
+    // Image (because the walk-cycle texture has not loaded yet) and is later
+    // reconciled into an animated Sprite when the texture becomes available.
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'player-walk-cycle-female': {
+          briefId: 'player-walk-cycle-female',
+          spriteName: 'player-walk-cycle-female',
+          assetPath: 'generated/player-walk-cycle-female.png',
+          approvedAt: '2026-07-01T00:00:00.000Z',
+          sourceRun: 'test-run',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '8/8',
+          judgeScore: '2',
+          animation: {
+            frameWidth: 64,
+            frameHeight: 64,
+            frameCount: 8,
+            frameRate: 12,
+            loop: true,
+          },
+        },
+      },
+    });
+
+    const loadedKeys = new Set<string>(['kenney-tiny-dungeon']);
+    const { scene, images, sprites } = createSceneStub({
+      kenneyLoaded: true,
+      generatedRegistry: registry,
+      textureExists: (key) => loadedKeys.has(key),
+    });
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    // First sync: walk-cycle texture not yet loaded → Kenney Image fallback
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+    expect(sprites).toHaveLength(0);
+    const kenneyImage = images[0]!;
+    expect(kenneyImage.textureKey).toBe('kenney-tiny-dungeon');
+    expect((kenneyImage as unknown as { anims?: unknown }).anims).toBeUndefined();
+    const savedX = kenneyImage.x;
+    const savedY = kenneyImage.y;
+
+    // Simulate late-load: walk-cycle PNG finishes loading
+    loadedKeys.add('player-walk-cycle-female');
+
+    // Second sync: reconcile detects stale Image → destroys it, recreates as Sprite
+    bridge.sync(world);
+
+    expect(kenneyImage.destroyed).toBe(true);
+    expect(sprites).toHaveLength(1);
+    const walkSprite = sprites[0]!;
+    expect(walkSprite.textureKey).toBe('player-walk-cycle-female');
+    expect(walkSprite.scaleX).toBeCloseTo(0.18, 5);
+    // Position must be preserved — no snap-to-origin regression
+    expect(walkSprite.x).toBe(savedX);
+    expect(walkSprite.y).toBe(savedY);
+    // Must be a Sprite (has .anims), not a plain Image
+    expect(walkSprite.anims).toBeDefined();
+  });
+
   it('fades the skull marker out quickly while the corpse desaturates and fades', () => {
     const { scene, images } = createSceneStub();
     const bridge = createPhaserBridge(scene);
