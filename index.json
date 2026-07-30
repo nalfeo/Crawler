@@ -1,5 +1,16 @@
 [
   {
+    "commit": "00bdda09ddc1865bf80ac9aa8ef0999297b85944",
+    "commitDate": "2026-07-30T09:42:22Z",
+    "commitSubject": "Reuse prior CI recovery loop incidents instead of opening duplicates (#2355)",
+    "capturedAt": "2026-07-30T10:50:27.727Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30532400664",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/00bdda09ddc1865bf80ac9aa8ef0999297b85944.json"
+  },
+  {
     "commit": "de14465c949e269df89654f602fee3dbd76a44e6",
     "commitDate": "2026-07-30T08:19:38Z",
     "commitSubject": "fix(terrain,fov): stop wall inset bleeding into rock, and reveal + light room corners (#2359)",
