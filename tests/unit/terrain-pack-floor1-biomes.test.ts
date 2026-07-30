@@ -169,10 +169,22 @@ describe('buildTerrainLayer — Floor 1 per-family pack assignment', () => {
   it('keeps the wall SILHOUETTE continuous across a dungeon/cave seam', () => {
     // Both tiles see each other as "wall", so neither is classified isolated —
     // this is what stops a visible notch at a biome boundary.
+    //
+    // Both scenarios pad with real in-bounds FLOOR tiles rather than using a
+    // bare 1x1/2x1 map: with the dynamic wall-inset fix, an out-of-bounds
+    // neighbor now reads as wall/rock (for edge full-bleed), so a degenerate
+    // map would make every neighbor of every wall tile read as wall
+    // regardless of the seam under test, collapsing both cases to the same
+    // (fully-enclosed) frame.
     const { scene, rt } = createPackScene(allKeys);
-    const isolated = makeFloorMap([TerrainType.STONE_WALL], 1, 1);
+    const isolatedGrid = Array<TerrainType>(9).fill(TerrainType.STONE_FLOOR);
+    isolatedGrid[4] = TerrainType.STONE_WALL; // center of 3x3, all-floor neighbors
+    const isolated = makeFloorMap(isolatedGrid, 3, 3);
     const { scene: sceneB, rt: rtB } = createPackScene(allKeys);
-    const adjacent = makeFloorMap([TerrainType.STONE_WALL, TerrainType.CAVE_WALL], 2, 1);
+    const adjacentGrid = Array<TerrainType>(12).fill(TerrainType.STONE_FLOOR);
+    adjacentGrid[5] = TerrainType.STONE_WALL; // (1,1) of 4x3
+    adjacentGrid[6] = TerrainType.CAVE_WALL; // (2,1) of 4x3
+    const adjacent = makeFloorMap(adjacentGrid, 4, 3);
 
     buildTerrainLayer(scene, isolated, { terrainPacks: floor1Packs });
     buildTerrainLayer(sceneB, adjacent, { terrainPacks: floor1Packs });
