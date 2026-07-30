@@ -1,0 +1,201 @@
+# ORIENTATION + ASPECT NOTE (Asset Forge, 2026-07-29)
+#
+# WHY THIS BRIEF EXISTS, SEPARATE FROM `tile-door-v1`: the approved front-facing
+# door (`tile-door-v1-var-9`, opaque box ~77x114, aspect ~0.68) renders correctly
+# tall under the height-authoritative fit (`scale = ftToPx(6.5) / box.height`)
+# but its WIDTH then follows the same scale, landing ~5.2 ft wide in a 4 ft tile
+# -- about 0.6 ft of overhang onto EACH neighbouring tile. That overhang used to
+# be accepted because it was assumed to land on masonry, never on walkable
+# floor; that assumption is now known false (wall silhouettes are inset), so a
+# narrower-aspect replacement is required. `tile-door-v1` itself is NOT touched
+# by this brief -- it stays live in the renderer's fallback chain until a
+# separate wiring PR swaps the keys.
+#
+# THE MATH THAT SETS THE TARGET. The renderer's rule is fixed and this brief
+# does NOT ask for a renderer change: height is always scaled to exactly 6.5 ft
+# (`DOOR_TARGET_HEIGHT_FT`), and rendered width = aspect * 6.5 ft where
+# aspect = opaque box width / opaque box height. Solving for a 4 ft rendered
+# width: aspect = 4 / 6.5 = 0.615, i.e. an opaque box close to 1:1.625
+# (width:height). Target range 0.58-0.65 (1:1.75 to 1:1.54) is acceptable --
+# the low end still clears the tile edge-to-edge with headroom, the high end
+# leaves a few inches of overhang that is cosmetically negligible. AVOID
+# repeating the round-4/5/6 aspect-drift failure recorded in `tile-door-v1.yaml`
+# and `tile-door-open-v1.yaml`: three straight rounds of prose alone failed to
+# move the delivered aspect off ~1:1.25 (aspect ~0.8). This brief fixes that by
+# being explicit about the NARROWER DOOR LEAF (not a taller canvas -- the canvas
+# height stays pinned at the top of the cell) and by requiring the delivered
+# aspect to be MEASURED against the 0.58-0.65 target before any variant is
+# approved, never trusted from the prompt alone.
+#
+# MECHANICAL (same load-bearing reason as `tile-door-v1`). Declare height 128,
+# never 112 -- `resizeSpriteStrategy()` picks 'height' only when
+# height >= 2*width; 112 falls through to 'fit', which LETTERBOXES and leaves
+# transparent rows under the door, failing `anchor-derivable`. 'height' locks
+# the height and lets the width follow the drawn subject, so the art is
+# aspect-true by construction and the narrower leaf drawn below directly
+# narrows the shipped width.
+#
+# MEASURED OUTCOME (2026-07-29 Asset Forge session) -- TARGET NOT MET, NO
+# VARIANT APPROVED FROM THIS BRIEF. This is now the FOURTH prompt-only attempt
+# in the door family's history to move the delivered opaque-box aspect off the
+# generator's apparent ~0.8 default:
+#   1-3. `tile-door-side-v1`/`tile-door-open-side-v1`, three rounds asking for
+#        a rotated/quarter-turn appearance -- all landed face-on, ~0.8.
+#   4.   This brief (`tile-door-tall-v1`), explicit percentage + pixel
+#        targets (170x205-equivalent framing) for a NARROWER leaf in an
+#        unchanged-height cell -- generated raw opaque bbox measured
+#        224x274 = aspect 0.818, i.e. within noise of the CURRENTLY APPROVED
+#        `tile-door-v1-var-9` (measured whole-silhouette bbox 93x114 =
+#        aspect 0.816). No material narrowing occurred.
+# Two further same-session probes (not committed; diagnostic only) tested
+# different levers and both failed the same way:
+#   5.   Real-world-reference-class reframing ("arrow-slit/chimney-flue"
+#        door, target ~0.45) -- 6 raw candidates measured 0.772-1.043,
+#        i.e. WORSE (wider), not better.
+#   6.   A structural change instead of prose: `generation.sheet` set to a
+#        non-square 2x4 grid (cellW=256, cellH=512, cell aspect 0.5) so the
+#        model's own working canvas was genuinely taller-than-wide, still
+#        using this brief's door description -- 9 raw candidates measured
+#        0.852-0.973, again NOT narrower.
+# Conclusion: across six attempts spanning three distinct techniques (prompt
+# wording, real-world reference class, and non-square generation canvas), the
+# delivered door-subject aspect never moved outside roughly 0.75-1.0. This
+# reads as a genuine generator capability ceiling for this subject, not a
+# prompting gap -- per the session's instructions, iteration STOPPED here and
+# the finding is reported (see the 2026-07-29 door-art handoff) rather than
+# approving an off-target variant. `tile-door-v1`/`tile-door-open-v1` remain
+# the only approved/wired NS door art. A future session should try a
+# materially different avenue (a different image deployment/model, or
+# compositing a separately-generated stone lintel/archway extension above the
+# existing approved door art) rather than a seventh prompt-only round.
+type: prop
+name: tile-door-tall-v1
+description: |
+  A heavy CLOSED DUNGEON DOOR set in a slim, TALL stone archway, front
+  elevation, looking STRAIGHT AT THE DOOR dead-on -- the face of the door is
+  exactly parallel to the screen, with NO tilt, NO rotation, NO oblique angle
+  and NO perspective. Modern high-quality pixel art, silhouette readable at
+  16px.
+
+  THIS IS ONE HALF OF A TWO-FRAME ANIMATION. The other frame is the same
+  doorway with the leaf swung open (`tile-door-tall-open-v1`). The ARCHWAY MUST
+  BE IDENTICAL BETWEEN THE TWO: same slim grey stone jambs up both sides, same
+  round-headed stone arch across the top, same width, same height. Only the
+  door leaf moves.
+
+  THE DOOR MUST READ AS NARROW AND TALL -- like a slim postern set deep into a
+  thick wall, NOT like a wide barn door. This is the single most important
+  layout requirement in this brief.
+
+  THE ARCHWAY: slim cool-grey blocky stone -- narrow jambs up the left and
+  right sides and a shallow round-headed arch over the top, no more than about
+  ONE TENTH of the total width on each side. Keep it SLIM: the timber leaf is
+  the subject and must still dominate the picture. No threshold stone across
+  the bottom -- the leaf runs to the bottom edge.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The whole
+  drawn subject -- stone arch plus door leaf together -- must be approximately
+  155 PIXELS WIDE and 250 PIXELS TALL: the FULL HEIGHT of the cell, top margin
+  to bottom margin, and just under TWO THIRDS of its width (opaque
+  width:height near 155:250 = 0.62). This is markedly NARROWER, relative to its
+  height, than an ordinary door -- picture a tall slot in a thick wall rather
+  than a broad doorway.
+  - The left ~20% and the right ~20% of the cell are completely EMPTY
+    transparent background.
+  - THREE planks on the leaf, not four.
+  - EXACTLY ONE DOOR PER CELL. Never stack two doors in a column and never draw
+    a double door pair side by side.
+
+  REAL-WORLD SIZE. The archway renders 4 FEET WIDE x 6.5 FEET TALL overall (a
+  tall, narrow postern), with the timber leaf about 3 feet wide inside it. A
+  person is 5.75 ft tall and must have clear headroom passing under this arch.
+
+  WHAT IT IS:
+  - A single closed door LEAF of heavy vertical TIMBER PLANKS -- THREE planks,
+    with deep seams between them, visible grain, and splits and dents at the
+    lower corners where boots have kicked it.
+  - The top of the leaf is gently ARCHED, following the stone arch above it.
+  - IRON BANDING: two broad HORIZONTAL iron straps running all the way across
+    the leaf, riveted with fat round studs that read clearly at small size. The
+    bands are the strongest readable detail on the door.
+  - A heavy IRON RING HANDLE a little above the middle of the leaf, hanging
+    from a round backplate. Big enough to read at 16px.
+  - Wear everywhere: rust bleeding down from the rivets, scuffed timber, grime
+    settled in the seams.
+
+  IT IS NOT: an open doorway, a dark archway standing empty, a portcullis, a
+  gate, a double door, a wide barn door, a cupboard, a wardrobe, a bookcase, a
+  crate, a chest, a window, or a shuttered panel. It is ONE narrow, tall closed
+  timber leaf filling a slim stone archway.
+
+  MOOD -- a grimy reality-TV dungeon. Heavy, permanent and unwelcoming: the
+  object that keeps the contestants in. Tired, worn, long shut, never ornate
+  and never fantasy-decorative.
+
+  COLOUR -- the leaf is a warm desaturated walnut-brown with 4-5 tone stops so
+  the planks separate clearly; the iron banding, rivets and ring are a dull
+  dark grey-black metal with tarnished rust-brown streaks. It must NOT be pale,
+  washed out, or low-contrast. Keep a clear dark outline and clear tonal
+  separation between timber and iron. BANNED: neon, pure white, pure black,
+  saturated red, saturated yellow, orange, teal, cyan, blue, green, magenta,
+  purple, gold leaf, gemstones, glowing runes, magical glow, and any ornate
+  carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The upper edge of
+  each iron band and the left curve of the ring catch the highlight; shadow
+  falls down and to the right.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering for the timber grain -- no mushy gradients, no
+  airbrush, no floating unsupported elements.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils,
+  labels, captions, watermarks or signatures anywhere on the door.
+
+  BACKGROUND: fully transparent OUTSIDE the archway silhouette only. Draw ONLY
+  the slim stone archway and the door leaf inside it. Do NOT paint a masonry
+  wall beyond the arch, a floor slab, a rectangular backing panel, a border, a
+  vignette, or any cast/contact/drop shadow. Every pixel outside the archway's
+  own silhouette must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the door's colours so
+  it can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 64
+  height: 128
+anchor:
+  x: 32
+  y: 126
+sensors:
+  # A narrow leaf in a narrow archway occupies LESS of its own bounding box
+  # than the wider `tile-door-v1` door did (more of the box is the transparent
+  # left/right margin at 20% each vs 14% each), so the floor is lowered from
+  # 0.55. Ceiling kept at 0.96 for the same reason as `tile-door-v1`: the arched
+  # top removes ~4-8% of the box at the corners, and a genuine
+  # background-removal failure lands at ~0.99-1.0. Bounds set BEFORE
+  # generating, from the target geometry (155x250 opaque in a ~248x256 frame).
+  opaqueRatio:
+    min: 0.45
+    max: 0.96
+  # Grounded, center-of-mass anchor for the same reason as `tile-door-v1`: the
+  # archway is a three-mass subject (left jamb, leaf, right jamb) once stone is
+  # present, and `grip` picks exactly one contiguous run of the bottom row,
+  # which resolves off-centre. Not a loosened gate -- `grip` is the wrong
+  # contract for any subject whose footprint is separated masses.
+  anchor:
+    derive: true
+    mode: center-of-mass
+    bandRows: 8
+    centerToleranceX: 10
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
