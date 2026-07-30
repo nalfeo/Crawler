@@ -155,6 +155,7 @@ export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
 export type AchievementCurrentRunNumberFact = (typeof ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'staircaseBattleStarted',
+  'staircaseSpawned',
   'staircaseUnlocked',
   'safeRoomDiscovered',
   'equipmentUnlocked',
@@ -593,6 +594,7 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
     },
     booleanFacts: {
       staircaseBattleStarted: false,
+      staircaseSpawned: false,
       staircaseUnlocked: false,
       safeRoomDiscovered: false,
       equipmentUnlocked: false,

@@ -288,7 +288,7 @@ Human review of the PR flagged 3 blocking items. All 3 fixed on the same branch:
   mirroring the existing `allPresentFamiliesFriendly` test; updated the
   Floor-1-zero-facts test.
 - `tests/property/achievement-facts-properties.test.ts` — grew the boolean-facts
-  arbitrary array 11→12 and added the `allPresentFamilyBossesEngaged` mapping
+  arbitrary array 12→13 and added the `allPresentFamilyBossesEngaged` mapping
   (required for `tsc` to pass).
 - `tests/property/floor2-reward-bundle-affinity.property.test.ts` — fixed the
   stale "never rare" property assertion (see CI fix above).

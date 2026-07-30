@@ -52,7 +52,7 @@ function makeFloor2World(runKey = RUN_KEY): { world: GameWorld; playerEid: numbe
  * single-family roster is not a reachable production state and would trivially
  * satisfy "all present families engaged in combat"-style facts, unlocking
  * unrelated achievements (e.g. floor2-scorched-earth) alongside floor2-field-kit
- * and breaking this test's single-unlock assumption.
+ * and floor2-made-an-enemy, breaking this test's deterministic two-unlock assumption.
  */
 function seedFloor2Kill(world: GameWorld, kills = 1): void {
   world.floorId = 'floor2';

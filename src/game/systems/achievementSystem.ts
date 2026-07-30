@@ -253,6 +253,9 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       allPresentFamiliesEngagedInCombat,
       allPresentFamilyBossesEngaged,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
+      staircaseSpawned:
+        floor1Objective?.staircaseSpawned === true ||
+        world.floorExtendedState?.familyState?.staircaseSpawned === true,
       staircaseUnlocked:
         floor1Objective?.staircaseUnlocked === true ||
         world.floorExtendedState?.familyState?.staircaseUnlocked === true,
