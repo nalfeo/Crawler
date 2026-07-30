@@ -523,7 +523,7 @@ export function isDuplicateDispatch(state, fingerprint) {
 
 export function automationStallAction({
   state,
-  headSha: _headSha,
+  headSha,
   fingerprint,
   now = new Date(),
   staleMinutes = AUTOMATION_STALE_MINUTES,
@@ -534,6 +534,12 @@ export function automationStallAction({
     !['active', 'dispatched', 'escalated'].includes(state.status)
   ) {
     return 'new';
+  }
+
+  const liveHead = compact(headSha);
+  const stateHead = compact(state.headSha);
+  if (liveHead && stateHead && liveHead !== stateHead) {
+    return 'progressed';
   }
 
   const currentFingerprint = compact(fingerprint);
