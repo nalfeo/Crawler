@@ -11,6 +11,17 @@
     "path": "by-sha/abb949bc2f8afacaedc1c70ad7c7e612c27bff19.json"
   },
   {
+    "commit": "3ab2016b0dea14be7c92d9b90c6b1d18a75bbdad",
+    "commitDate": "2026-07-30T10:16:27-07:00",
+    "commitSubject": "docs(handoff): merge-train work stoppage from shared owner-PAT rate-limit exhaustion",
+    "capturedAt": "2026-07-30T18:20:11.710Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30565620029",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/3ab2016b0dea14be7c92d9b90c6b1d18a75bbdad.json"
+  },
+  {
     "commit": "00bdda09ddc1865bf80ac9aa8ef0999297b85944",
     "commitDate": "2026-07-30T09:42:22Z",
     "commitSubject": "Reuse prior CI recovery loop incidents instead of opening duplicates (#2355)",
