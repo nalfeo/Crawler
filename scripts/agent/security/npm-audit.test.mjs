@@ -272,3 +272,24 @@ test('fails closed when severity is missing (undefined)', () => {
     ['pkg'],
   );
 });
+
+test('blocks fast-uri — no exception after package upgrade to 3.1.4', () => {
+  // fast-uri was upgraded to 3.1.4 in this repo; the advisory is patched and
+  // no exception should suppress it if it reappears.
+  const fastUriAdvisory = {
+    source: 1124064,
+    url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
+    severity: 'high',
+  };
+  const result = evaluateAudit(
+    report({ 'fast-uri': { name: 'fast-uri', severity: 'high', via: [fastUriAdvisory] } }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['fast-uri'],
+  );
+});
