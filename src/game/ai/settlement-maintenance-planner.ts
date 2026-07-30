@@ -601,6 +601,13 @@ function runEquipmentLoop(
   playerEid: number,
   decisions: SettlementMaintenanceDecision[],
 ): SettlementMaintenanceTerminationReason {
+  // The AI equipment-maintenance feature flag gates all purchasing and equipping
+  // of generated stock. When disabled, the loop is a no-op — the spec contract
+  // ("disabling a consumer stops new generation and mutation through that
+  // consumer") applies to this AI consumer just as it does to UX/world ones.
+  if (!world.floor2EquipmentFlags.floor2EquipmentAiMaintenance) {
+    return 'exhausted';
+  }
   const blacklistedInstanceIds = new Set<string>();
   const loggedSkipKeys = new Set<string>();
   const protectedSlots = getStaticProtectedSlots(world, playerEid);
