@@ -195,46 +195,53 @@ describe('Floor 2 headless completion', () => {
     ).toBe(true);
   }, 60_000);
 
-  it('lets the headless AI actually purchase and equip Quartermaster stock on the real default path', async () => {
-    // Enabling floor2EquipmentEconomy activates a real, already-wired
-    // consumer beyond boss chests: `runSettlementMaintenancePlanner` (called
-    // unconditionally every frame from headless-runner.ts) purchases and
-    // equips Quartermaster/shop stock through the atomic
-    // `purchaseQuartermasterOffer` API whenever the AI is inside the
-    // settlement. This proves that activation reaches a real consumer beyond
-    // boss chests, closing the plan-review concern that this content might
-    // be "inert-but-untested" for the headless AI client (unlike the
-    // interactive game, which has no Quartermaster UI yet — see PR
-    // description / handoff / issue #2334 for that caveat).
+  it('lets the headless AI actually purchase and equip Quartermaster stock once AI equipment maintenance is enabled', async () => {
+    // Enabling floor2EquipmentEconomy activates a real, already-wired data
+    // consumer beyond boss chests: real Quartermaster/shop stock is
+    // generated during settlement init. Whether the AI *acts* on that stock
+    // is gated by a separate flag, `floor2EquipmentAiMaintenance`, which
+    // `initializeFloor2Scenario` (the real shipped path) deliberately does
+    // NOT enable — it is in the same not-yet-wired category as
+    // `floor2EquipmentUx`/`floor2EquipmentWorld` (no player-facing
+    // Quartermaster UI exists yet; see issue #2334). So on the true real
+    // default path, `runSettlementMaintenancePlanner`'s equipment loop is
+    // intentionally inert today (`runEquipmentLoop` short-circuits to
+    // `'exhausted'` immediately when `floor2EquipmentAiMaintenance` is
+    // false) — that is correct behavior per the "disabled consumer stops
+    // mutation" contract, not a bug.
     //
-    // This deliberately does NOT drive a full organic AI run to an emergent
-    // purchase: `runEquipmentLoop` can legitimately return zero decisions on
-    // any given real playthrough (no unclaimed achievement, no open boss
-    // chest, and every candidate scoring <= 0 relative to the current
-    // loadout all short-circuit before a single decision is pushed — see
-    // `runSettlementMaintenancePlanner`'s early "exhausted" returns). A CI
-    // run on seed 77 hit exactly that path and produced zero decisions over
-    // the full 20000-frame budget even though the wiring itself was sound,
-    // proving that "an organic run eventually buys something" is not a valid
-    // determinism guarantee for this assertion (rule: never bend the gate to
-    // fit one seed — fix the test's premise instead).
-    //
-    // So instead this constructs the one condition the claim actually
-    // depends on directly, using the exact real production init
-    // (`initializeFloor2Scenario`, invoked here via `runHeadless` with NO
-    // flag override — the real default path) plus the exact real settlement
-    // anchor (`resolveFloor2SettlementAnchor`) and the exact real planner
-    // entry point (`runSettlementMaintenancePlanner`) that the organic AI
-    // loop would otherwise call. Teleporting the player onto the real
-    // settlement anchor and guaranteeing affordability removes the emergent
-    // dependency while still exercising every real link in the chain: real
-    // init → real generated Quartermaster stock → real settlement layout →
-    // real planner → real atomic purchase API → real equip.
+    // This test proves the purchase MECHANISM itself is real and reachable
+    // through the real production wiring once that consumer is turned on
+    // (the same pattern as the "economy explicitly enabled" test above):
+    // real init (`initializeFloor2Scenario`) → real generated Quartermaster
+    // stock → real settlement layout → real planner
+    // (`runSettlementMaintenancePlanner`) → real atomic purchase API → real
+    // equip. It deliberately does NOT drive a full organic AI run to an
+    // emergent purchase: `runEquipmentLoop` can legitimately return zero
+    // decisions on any given real playthrough even with AI maintenance
+    // enabled (no unclaimed achievement, no open boss chest, and every
+    // equipment candidate scoring <= 0 relative to the current loadout all
+    // short-circuit before a single decision is pushed). An earlier version
+    // of this test asserted `decisionKinds.length > 0` after a full organic
+    // 20000-frame run with no flag override; CI's `ubuntu-latest` runner hit
+    // exactly that legitimate empty branch on seed 77 and produced zero
+    // decisions even though the wiring was sound, proving "an organic run
+    // eventually buys something" is not a valid determinism guarantee (rule:
+    // never bend the gate to fit one seed/run — fix the test's premise
+    // instead). So instead this constructs the one condition the claim
+    // actually depends on directly, using the exact real settlement anchor
+    // (`resolveFloor2SettlementAnchor`) and the exact real planner entry
+    // point that the organic AI loop would otherwise call, with AI
+    // maintenance explicitly enabled since the real path does not yet turn
+    // it on.
     let decisionKinds: readonly string[] = [];
     await runHeadless(new BehaviorTreeAI({ seed: 77 }), {
       seed: 77,
       floorId: 'floor2',
       maxFrames: 1,
+      floor2EquipmentFlags: {
+        floor2EquipmentAiMaintenance: true,
+      },
       onFinish: (world) => {
         const anchor = resolveFloor2SettlementAnchor(world);
         if (!anchor) throw new Error('Test requires a resolvable Floor 2 settlement anchor');
