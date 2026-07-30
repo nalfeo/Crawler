@@ -82,6 +82,8 @@ describe('generated equipment real-pipeline integration', () => {
     expect(world.floor2EquipmentFlags.floor2EquipmentRegistry).toBe(true);
     expect(world.floor2EquipmentFlags.floor2EquipmentCatalog).toBe(true);
     expect(world.floor2EquipmentFlags.floor2EquipmentRewards).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentEconomy).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentAiMaintenance).toBe(true);
     const input = createInputState();
     const floor2Options = createFloorMainSceneOptions('floor2');
     const bag = world.inventories.get(player)!;

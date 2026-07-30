@@ -278,3 +278,24 @@ test('no real audit exception is already expired', () => {
       '(upgrade to a patched version) rather than extending the expiry date.',
   );
 });
+
+test('blocks fast-uri — no exception after package upgrade to 3.1.4', () => {
+  // fast-uri was upgraded to 3.1.4 in this repo (GHSA-v2hh-gcrm-f6hx is patched).
+  // Regression guard: no exception should suppress it if it reappears in a future audit.
+  const fastUriAdvisory = {
+    source: 1124064,
+    url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
+    severity: 'high',
+  };
+  const result = evaluateAudit(
+    report({ 'fast-uri': { name: 'fast-uri', severity: 'high', via: [fastUriAdvisory] } }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
+  assert.deepEqual(
+    result.blocking.map((item) => item.name),
+    ['fast-uri'],
+  );
+});

@@ -185,6 +185,14 @@ describe('Floor 1 to Floor 2 production transition', () => {
     const floor2Player = spawnPlayer(floor2, 0, 0);
     floor2Options?.configureWorld?.(floor2, floor2Player);
 
+    // Floor 2's generated-equipment economy is live on the real path (the
+    // Quartermaster generates fresh shop stock into the registry once
+    // carryover restore completes), so floor2's registry is a strict
+    // superset of what floor1 carried over rather than an exact match.
+    // Assert every carried-over instance survived restore untouched, and
+    // that new stock was appended on top of it (not before/instead of it —
+    // restore-then-generate ordering is exactly what prevents the
+    // 'registry-not-empty' restore-precondition crash).
     const floor2Registry = snapshotGeneratedEquipmentRegistry(floor2);
     expect(floor2Registry.runKey).toBe(floor1Registry.runKey);
     expect(floor2Registry.generationPolicy).toEqual(floor1Registry.generationPolicy);

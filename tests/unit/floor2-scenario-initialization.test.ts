@@ -198,7 +198,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
     ).toBe(MERCHANTS_CHARM_DEF.id);
   });
 
-  it('enables Floor 2 equipment reward flags during scenario initialization', () => {
+  it('enables the real shipped Floor 2 equipment flag closure during scenario initialization', () => {
     const { world, playerEid } = createScenarioWorld();
 
     initializeFloor2Scenario(world, playerEid);
@@ -206,6 +206,16 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(world.floor2EquipmentFlags.floor2EquipmentRegistry).toBe(true);
     expect(world.floor2EquipmentFlags.floor2EquipmentCatalog).toBe(true);
     expect(world.floor2EquipmentFlags.floor2EquipmentRewards).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentEconomy).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentAiMaintenance).toBe(true);
+    // `floor2EquipmentUx` and `floor2EquipmentWorld` are declared flags with
+    // zero enforcement sites anywhere in src/ today (no player-facing
+    // Quartermaster UI yet — see issue #2334, and no world-placement
+    // feature gates on `floor2EquipmentWorld`). They are intentionally NOT
+    // asserted true here; the real shipped path correctly leaves them at
+    // their world default until something actually enforces them.
+    expect(world.floor2EquipmentFlags.floor2EquipmentUx).toBe(false);
+    expect(world.floor2EquipmentFlags.floor2EquipmentWorld).toBe(false);
   });
 
   it('completes the starter quest the first time the player enters the settlement area', () => {
