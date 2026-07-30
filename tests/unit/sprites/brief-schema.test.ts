@@ -338,29 +338,29 @@ describe('briefSchema', () => {
       expect(result.success).toBe(true);
     });
 
-    it('rejects an enabled sequence brief with rows !== 1', () => {
+    it('accepts an enabled sequence brief with a multi-row grid (rows × cols === frameCount)', () => {
+      // Any rectangular layout is valid as long as rows × cols === frameCount.
+      // A 2×2 grid for a 4-frame walk cycle is the canonical migrated layout.
+      const result = briefSchema.safeParse({
+        ...validBrief,
+        generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+        frameSequence: { enabled: true, frameCount: 4, frameRate: 8, loop: true },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an enabled sequence brief whose rows × cols does not match frameCount', () => {
       const result = briefSchema.safeParse({
         ...validBrief,
         generation: { sheet: { rows: 2, cols: 3, emptyCells: [], nativeCanvas: 192 } },
-        frameSequence: { enabled: true, frameCount: 3, frameRate: 8, loop: true },
+        frameSequence: { enabled: true, frameCount: 4, frameRate: 8, loop: true },
       });
       expect(result.success).toBe(false);
       if (!result.success) {
         const messages = result.error.issues.map((i) => i.message);
-        expect(messages.some((m) => m.includes('rows === 1'))).toBe(true);
-      }
-    });
-
-    it('rejects an enabled sequence brief whose cols does not match frameCount', () => {
-      const result = briefSchema.safeParse({
-        ...validBrief,
-        generation: { sheet: { rows: 1, cols: 4, emptyCells: [], nativeCanvas: 256 } },
-        frameSequence: { enabled: true, frameCount: 3, frameRate: 8, loop: true },
-      });
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        const messages = result.error.issues.map((i) => i.message);
-        expect(messages.some((m) => m.includes('cols === frameSequence.frameCount'))).toBe(true);
+        expect(messages.some((m) => m.includes('rows × cols === frameSequence.frameCount'))).toBe(
+          true,
+        );
       }
     });
 
