@@ -566,8 +566,7 @@ export function createInventoryUI(
     let entries = buildRenderEntries();
 
     if (externalSlotFilter !== null) {
-      const slotFilter = externalSlotFilter;
-      entries = entries.filter((entry) => entry.slotIds.includes(slotFilter));
+      entries = entries.filter((entry) => entry.slotIds.includes(externalSlotFilter));
     }
 
     if (searchQuery) {
@@ -577,9 +576,8 @@ export function createInventoryUI(
           entry.def.name.toLowerCase().includes(lowerQuery) ||
           entry.def.description.toLowerCase().includes(lowerQuery),
       );
-    } else if (activeTag !== null) {
-      const tagFilter = activeTag;
-      entries = entries.filter((entry) => entry.def.tags.includes(tagFilter));
+    } else if (activeTag) {
+      entries = entries.filter((entry) => entry.def.tags.includes(activeTag));
     }
 
     return [...entries].sort((a, b) => {
@@ -907,9 +905,12 @@ export function createInventoryUI(
 
   function computeRenderSignature(): string {
     const entries = buildRenderEntries();
-    let signature = [activeTag ?? '*', searchQuery, currentSortBy, externalSlotFilter ?? '*'].join(
-      '|',
-    );
+    let signature = [
+      activeTag ?? '*',
+      searchQuery,
+      currentSortBy,
+      externalSlotFilter ?? '*',
+    ].join('|');
     for (const entry of entries) {
       // Fold in the *selected* generated icon variant and whether its texture is
       // loaded yet, so the grid re-renders once async sprite warm-loading
@@ -917,7 +918,8 @@ export function createInventoryUI(
       // cells would stay on their text fallback until the next inventory
       // mutation). Selecting via the same path as the icon keeps them in sync.
       const iconEntry = selectGeneratedEntry(entry.itemId);
-      const iconReady = iconEntry !== null && scene.textures?.exists(iconEntry.textureKey) === true;
+      const iconReady =
+        iconEntry !== null && scene.textures?.exists(iconEntry.textureKey) === true;
       signature += `;${entry.renderKey}:${entry.quantity}:${entry.itemId}:${
         iconEntry?.textureKey ?? ''
       }:${iconReady ? 1 : 0}`;
