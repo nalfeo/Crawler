@@ -247,11 +247,7 @@ describe('computeNormalizedWeaponAnchor', () => {
       weaponAnchor: { x: 40, y: 28 },
     });
     const withDefault = computeNormalizedWeaponAnchor(entry);
-    const withExplicit = computeNormalizedWeaponAnchor(
-      entry,
-      64,
-      64,
-    );
+    const withExplicit = computeNormalizedWeaponAnchor(entry, 64, 64);
     expect(withDefault).toEqual(withExplicit);
   });
 });

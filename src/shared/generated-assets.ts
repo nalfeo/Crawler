@@ -467,7 +467,7 @@ export interface OpaqueFit {
  * `resolveOpaqueFit` anchors on. Recomputing this validation at the call site
  * is how origin and scale drift apart on malformed bounds.
  */
-export function resolveOpaqueBox(
+function resolveOpaqueBox(
   bounds: OpaqueBounds | undefined,
   canvasWidth: number,
   canvasHeight: number,
