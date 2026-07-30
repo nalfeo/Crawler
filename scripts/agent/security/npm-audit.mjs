@@ -18,7 +18,7 @@ export const AUDIT_EXCEPTIONS = [
     packageName: 'fast-uri',
     source: 1124064,
     url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
-    expiresOn: '2026-07-29',
+    expiresOn: '2026-08-14',
     reason: 'Microsoft npm proxy does not yet mirror fixed 3.x release 3.1.4.',
   },
   {

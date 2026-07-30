@@ -70,7 +70,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
   );
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-07-29: https:\/\/github\.com\/advisories\/GHSA-v2hh-gcrm-f6hx/,
+    /Temporary audit exception through 2026-08-14: https:\/\/github\.com\/advisories\/GHSA-v2hh-gcrm-f6hx/,
   );
   assert.match(
     result.stderr,
@@ -167,7 +167,7 @@ test('fails closed after the exception expires', () => {
     report({
       'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
     }),
-    { now: new Date('2026-07-30T00:00:00Z') },
+    { now: new Date('2026-08-15T00:00:00Z') },
   );
 
   assert.deepEqual(result.ignored, []);
