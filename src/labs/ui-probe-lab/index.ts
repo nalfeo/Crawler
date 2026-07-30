@@ -51,6 +51,7 @@ import {
   MERCHANTS_CHARM_DEF,
 } from '../../shared/equipmentDefs.js';
 import { GAME } from '../../shared/constants.js';
+import type { GeneratedEquipmentInventoryEntry } from '../../shared/inventory.js';
 import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
 import { addItem, createInventoryBag } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
@@ -373,7 +374,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.inventoryUI = createInventoryUI(this, {
         // Double-clicking an equippable inventory cell routes through the real
         // core orchestration (swap + atomic rollback), then both panes refresh.
-        onEquipItem: (itemId) => this.equipInventoryItem(itemId),
+        onEquipItem: (item) => this.equipInventoryItem(item),
       });
       this.equipmentUI = createEquipmentUI(this, {
         onSlotFilterChange: (slotId) => this.inventoryUI?.setEquipmentSlotFilter(slotId),
@@ -434,8 +435,8 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     }
 
     /** Equip a bag item through the real core orchestration and refresh panes. */
-    private equipInventoryItem(itemId: string): boolean {
-      const result = equipFromBag(this.world, this.playerEid, itemId);
+    private equipInventoryItem(item: string | GeneratedEquipmentInventoryEntry): boolean {
+      const result = equipFromBag(this.world, this.playerEid, item);
       if (result.ok) {
         this.inventoryUI?.refresh(this.world);
         this.equipmentUI?.refresh(this.world);

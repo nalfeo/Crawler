@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import inventorybagLaneAccessRule from './tools/eslint-rules/inventorybag-lane-access.js';
 
 const layerImportPatterns = (layer) => [
   layer,
@@ -10,6 +11,12 @@ const layerImportPatterns = (layer) => [
   `**/${layer}`,
   `**/${layer}/**`,
 ];
+
+const crawlerLocalPlugin = {
+  rules: {
+    'no-direct-inventorybag-lane-read': inventorybagLaneAccessRule,
+  },
+};
 
 export default tseslint.config(
   {
@@ -97,27 +104,11 @@ export default tseslint.config(
       // Intentional corruption fixture for defensive-path testing.
       'tests/ecs/equipment.test.ts',
     ],
+    plugins: {
+      crawler: crawlerLocalPlugin,
+    },
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "MemberExpression[property.name='generatedEquipment']",
-          message:
-            'Do not read InventoryBag.generatedEquipment directly outside src/shared/inventory.ts. Use listInventoryEntries/listGeneratedEquipmentReferences instead.',
-        },
-        {
-          selector:
-            "MemberExpression[property.name='slots'][object.type='Identifier'][object.name=/^(bag|currentBag|inventory)$/]",
-          message:
-            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
-        },
-        {
-          selector:
-            "MemberExpression[property.name='slots'][object.type='CallExpression'][object.callee.type='MemberExpression'][object.callee.property.name='get'][object.callee.object.type='MemberExpression'][object.callee.object.property.name='inventories']",
-          message:
-            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
-        },
-      ],
+      'crawler/no-direct-inventorybag-lane-read': 'error',
     },
   },
   {
@@ -205,23 +196,6 @@ export default tseslint.config(
     rules: {
       'no-restricted-syntax': [
         'error',
-        {
-          selector: "MemberExpression[property.name='generatedEquipment']",
-          message:
-            'Do not read InventoryBag.generatedEquipment directly outside src/shared/inventory.ts. Use listInventoryEntries/listGeneratedEquipmentReferences instead.',
-        },
-        {
-          selector:
-            "MemberExpression[property.name='slots'][object.type='Identifier'][object.name=/^(bag|currentBag|inventory)$/]",
-          message:
-            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
-        },
-        {
-          selector:
-            "MemberExpression[property.name='slots'][object.type='CallExpression'][object.callee.type='MemberExpression'][object.callee.property.name='get'][object.callee.object.type='MemberExpression'][object.callee.object.property.name='inventories']",
-          message:
-            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
-        },
         // Dot notation: something.sprite.width / .height
         {
           selector:

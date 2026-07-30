@@ -32,7 +32,9 @@ import {
   GENERATED_SPRITE_REGISTRY_KEY,
 } from '../../src/engine/generatedAssets/index.js';
 import {
+  buildGeneratedSpriteRegistry,
   emptyGeneratedSpriteRegistry,
+  GENERATED_MANIFEST_VERSION,
   type GeneratedSpriteRegistry,
 } from '../../src/shared/generated-assets.js';
 import { isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
@@ -40,10 +42,16 @@ import { hashStringToSeed } from '../../src/shared/random.js';
 import { createInventoryUI } from '../../src/engine/InventoryUI.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
+import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
+import { addGeneratedEquipmentToBag } from '../../src/core/systems/equipmentSystem.js';
+import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
+import { createInventoryBag } from '../../src/shared/inventory.js';
+import { generatedEquipmentRunKeyFromSeed } from '../../src/shared/generated-equipment-types.js';
 import {
   loadShippedManifestRaw,
   shippedManifestShardsExist,
 } from '../helpers/generated-manifest.js';
+import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
 /** The 14 active single-lineage item icons + the bat weaponId alias. */
 const ITEM_ART_EXPECTATIONS: ReadonlyArray<{ itemId: string; concept: string }> = [
@@ -167,6 +175,24 @@ function seedWorldWithStuckItems(): GameWorld {
   return world;
 }
 
+function seedWorldWithGeneratedOnlyBag(): GameWorld {
+  const world = createTestWorld({
+    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(42),
+  });
+  world.inventories.clear();
+  world.inventories.set(1, createInventoryBag());
+  const generated = createGeneratedEquipmentInstance(
+    world,
+    generatedEquipmentInput({
+      baseId: MERCHANTS_CHARM_DEF.id,
+      slots: ['neck'],
+    }),
+  );
+  const added = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
+  expect(added.ok).toBe(true);
+  return world;
+}
+
 /** Mirror of `InventoryUI.selectGeneratedEntry`'s per-item seed derivation. */
 function uiSeedFor(itemId: string, world: GameWorld): number {
   return (hashStringToSeed(itemId) ^ (world.seed | 0)) | 0;
@@ -183,47 +209,53 @@ async function loadRealShippedRegistry(): Promise<GeneratedSpriteRegistry> {
 }
 
 describe('InventoryUI real render path over the shipped manifest (observe-before-done)', () => {
-  it('renders each normalized item to its resolver-chosen real texture, never a placeholder', async () => {
-    if (!shippedManifestShardsExist()) {
-      // Fresh checkout with no generated art on disk — nothing to observe.
-      return;
-    }
-    const registry = await loadRealShippedRegistry();
-    const record: RenderRecord = { imageKeys: [], textStrings: [] };
-    const scene = makeRecordingScene(registry, record);
-    const world = seedWorldWithStuckItems();
+  it(
+    'renders each normalized item to its resolver-chosen real texture, never a placeholder',
+    async () => {
+      if (!shippedManifestShardsExist()) {
+        // Fresh checkout with no generated art on disk — nothing to observe.
+        return;
+      }
+      const registry = await loadRealShippedRegistry();
+      const record: RenderRecord = { imageKeys: [], textStrings: [] };
+      const scene = makeRecordingScene(registry, record);
+      const world = seedWorldWithStuckItems();
 
-    // A tall panel guarantees all 15 cells render (4 rows) rather than paginating.
-    const ui = createInventoryUI(scene as never, { height: 2000 });
-    ui.toggle(world); // open + applyLayout + renderItems
+      // A tall panel guarantees all 15 cells render (4 rows) rather than paginating.
+      const ui = createInventoryUI(scene as never, { height: 2000 });
+      ui.toggle(world); // open + applyLayout + renderItems
 
-    for (const { itemId, concept } of ITEM_ART_EXPECTATIONS) {
-      const entry = resolveItemSprite(registry, itemId, uiSeedFor(itemId, world));
-      expect(entry, `resolver returned null for "${itemId}"`).not.toBeNull();
-      expect(isPlaceholderEntry(entry!), `"${itemId}" resolved to a placeholder`).toBe(false);
-      // The panel drew EXACTLY the texture the resolver chose (same seed formula).
-      expect(
-        record.imageKeys,
-        `InventoryUI did not render real art for "${itemId}" (expected image "${entry!.textureKey}")`,
-      ).toContain(entry!.textureKey);
-      // And it belongs to the expected concept lineage (bare or legacy `-vN`).
-      const bareMatch = entry!.briefId === concept;
-      const versionedMatch = new RegExp(`^${concept}-v\\d+$`).test(entry!.briefId);
-      expect(
-        bareMatch || versionedMatch,
-        `"${itemId}" rendered briefId "${entry!.briefId}", not a "${concept}" lineage`,
-      ).toBe(true);
-    }
+      for (const { itemId, concept } of ITEM_ART_EXPECTATIONS) {
+        const entry = resolveItemSprite(registry, itemId, uiSeedFor(itemId, world));
+        expect(entry, `resolver returned null for "${itemId}"`).not.toBeNull();
+        expect(isPlaceholderEntry(entry!), `"${itemId}" resolved to a placeholder`).toBe(false);
+        // The panel drew EXACTLY the texture the resolver chose (same seed formula).
+        expect(
+          record.imageKeys,
+          [
+            `InventoryUI did not render real art for "${itemId}"`,
+            `(expected image "${entry!.textureKey}")`,
+          ].join(' '),
+        ).toContain(entry!.textureKey);
+        // And it belongs to the expected concept lineage (bare or legacy `-vN`).
+        const bareMatch = entry!.briefId === concept;
+        const versionedMatch = new RegExp(`^${concept}-v\\d+$`).test(entry!.briefId);
+        expect(
+          bareMatch || versionedMatch,
+          `"${itemId}" rendered briefId "${entry!.briefId}", not a "${concept}" lineage`,
+        ).toBe(true);
+      }
 
-    // No placeholder texture was drawn in the panel at all.
-    for (const key of record.imageKeys) {
-      expect(key.endsWith('-placeholder'), `a placeholder texture was rendered: "${key}"`).toBe(
-        false,
-      );
-    }
-    // The image branch actually ran for every seeded item (not the text fallback).
-    expect(record.imageKeys.length).toBeGreaterThanOrEqual(ITEM_ART_EXPECTATIONS.length);
-  });
+      // No placeholder texture was drawn in the panel at all.
+      for (const key of record.imageKeys) {
+        expect(key.endsWith('-placeholder'), `a placeholder texture was rendered: "${key}"`).toBe(
+          false,
+        );
+      }
+      // The image branch actually ran for every seeded item (not the text fallback).
+      expect(record.imageKeys.length).toBeGreaterThanOrEqual(ITEM_ART_EXPECTATIONS.length);
+    },
+  );
 
   it('negative control: an empty registry renders zero images (every item falls to text)', () => {
     const record: RenderRecord = { imageKeys: [], textStrings: [] };
@@ -239,5 +271,34 @@ describe('InventoryUI real render path over the shipped manifest (observe-before
     expect(record.textStrings.length, 'placeholder text fallback should have run').toBeGreaterThan(
       0,
     );
+  });
+
+  it('renders a generated-only bag through the real InventoryUI path', () => {
+    const record: RenderRecord = { imageKeys: [], textStrings: [] };
+    const registry = buildGeneratedSpriteRegistry({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'merchants-stained-charm-ui-test': {
+          briefId: MERCHANTS_CHARM_DEF.id,
+          assetPath: 'generated/merchants-stained-charm-ui-test.png',
+          anchor: { x: 0.5, y: 0.5 },
+          approvedAt: '2026-07-30T00:00:00.000Z',
+          sourceRun: 'ui-test',
+          variantIndex: 0,
+          sensorScore: '0.99',
+          judgeScore: '0.99',
+          facingDirection: 'right',
+        },
+      },
+    });
+    const scene = makeRecordingScene(registry, record);
+    const world = seedWorldWithGeneratedOnlyBag();
+
+    const ui = createInventoryUI(scene as never, { height: 800 });
+    ui.toggle(world);
+
+    expect(ui.getCellScreenBounds(0)).not.toBeNull();
+    expect(ui.getCellIndexForItem(MERCHANTS_CHARM_DEF.id)).toBe(0);
+    expect(record.imageKeys).toContain('merchants-stained-charm-ui-test');
   });
 });
