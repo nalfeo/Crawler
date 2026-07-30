@@ -96,7 +96,10 @@ function preparePurchase(
     return failure('unknown-shop', 'Settlement shop is missing or unknown');
   }
   if (request.quantity !== 1) {
-    return failure('invalid-quantity', 'Settlement shop purchases require an exact quantity of one');
+    return failure(
+      'invalid-quantity',
+      'Settlement shop purchases require an exact quantity of one',
+    );
   }
   const lineItem = shop.inventory.find((item) => item.itemId === request.itemId);
   if (!lineItem) {
@@ -116,7 +119,10 @@ function preparePurchase(
   if (world.playerGold < lineItem.unitPrice) {
     return failure('insufficient-funds', 'Player cannot afford this settlement shop item');
   }
-  return { ok: true, prepared: { settlement, shop, lineItem, catalogItemId: catalogItem.itemId, bag } };
+  return {
+    ok: true,
+    prepared: { settlement, shop, lineItem, catalogItemId: catalogItem.itemId, bag },
+  };
 }
 
 export function getSettlementShopOfferViews(
@@ -166,7 +172,9 @@ export function purchaseSettlementShopOffer(
   const nextShop: Floor2ShopInstance = {
     ...shop,
     inventory: shop.inventory.map((entry) =>
-      entry.itemId === lineItem.itemId ? { ...entry, stock: entry.stock - request.quantity } : entry,
+      entry.itemId === lineItem.itemId
+        ? { ...entry, stock: entry.stock - request.quantity }
+        : entry,
     ),
   };
   const nextSettlement = {

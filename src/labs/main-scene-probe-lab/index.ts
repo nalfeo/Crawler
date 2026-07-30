@@ -619,9 +619,7 @@ export interface MainSceneProbeApi {
     readonly displayName: string | null;
   }>;
   /** Get the raw seeded inventory snapshot for a non-Quartermaster settlement shop NPC. */
-  getSettlementShopInventorySnapshot(
-    npcEid: number,
-  ): ReadonlyArray<{
+  getSettlementShopInventorySnapshot(npcEid: number): ReadonlyArray<{
     readonly itemId: string;
     readonly quantity: number;
     readonly unitPrice: number;

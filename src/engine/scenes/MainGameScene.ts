@@ -356,8 +356,7 @@ declare global {
       getWorld?: () => GameWorld;
       getPlayerEid?: () => number;
       getIntroData?: () =>
-        | { playerName: string; playerGender: 'female' | 'male' | 'other' }
-        | undefined;
+        { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined;
       getDirectorCommentaryText?: () => string | null;
       /**
        * Dev-only: which art each door tile rendered from on the last overlay
@@ -791,8 +790,7 @@ export class MainGameScene extends Phaser.Scene {
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
     const introData = this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
-      | { playerName: string; playerGender: 'female' | 'male' | 'other' }
-      | undefined;
+      { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined;
     if (introData) {
       this.world.playerName = introData.playerName;
       this.world.playerGender = introData.playerGender;
@@ -1040,8 +1038,7 @@ export class MainGameScene extends Phaser.Scene {
               getPlayerEid: () => this.playerEid,
               getIntroData: () =>
                 this.game.registry.get(INTRO_DATA_REGISTRY_KEY) as
-                  | { playerName: string; playerGender: 'female' | 'male' | 'other' }
-                  | undefined,
+                  { playerName: string; playerGender: 'female' | 'male' | 'other' } | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
               // Door-art provenance for the REAL game, not just the probe lab.
               // Without this the only instrument for "which door art actually
@@ -1345,7 +1342,10 @@ export class MainGameScene extends Phaser.Scene {
     return true;
   }
 
-  private resolveActiveSettlementShop(): { kind: 'quartermaster' | 'shop'; shop: Floor2ShopInstance } | null {
+  private resolveActiveSettlementShop(): {
+    kind: 'quartermaster' | 'shop';
+    shop: Floor2ShopInstance;
+  } | null {
     if (this.activeSettlementShopNpcEid !== null) {
       const active = this.resolveSettlementShopByNpc(this.activeSettlementShopNpcEid);
       if (active) {
@@ -2029,11 +2029,7 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedSettlementShopNpcEid = null;
     if (quartermasterOpen && quartermasterToggleRequested) {
       this.quartermasterUI?.toggle(this.world);
-    } else if (
-      settlementShopNpcEidRequested !== null &&
-      safeCtx &&
-      !isUiLockOpen()
-    ) {
+    } else if (settlementShopNpcEidRequested !== null && safeCtx && !isUiLockOpen()) {
       this.openSettlementShopPanel(settlementShopNpcEidRequested);
     } else if (this.quartermasterUI?.isOpen()) {
       if (safeCtx) {
@@ -3137,8 +3133,7 @@ export class MainGameScene extends Phaser.Scene {
     // Degrades safely: an entry with no/mismatched bounds falls back to the
     // whole canvas, which still yields a correctly-height-fitted door.
     const rawDoorRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
-      | GeneratedSpriteRegistry
-      | undefined;
+      GeneratedSpriteRegistry | undefined;
     const generatedDoorRegistry =
       rawDoorRegistry && typeof rawDoorRegistry.entries === 'function' ? rawDoorRegistry : null;
     const generatedDoorBounds = new Map<string, OpaqueBounds>();

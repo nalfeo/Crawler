@@ -192,7 +192,10 @@ export const mainSceneProbe = {
       displayName: string | null;
     }>
   > =>
-    page.evaluate((eid) => window.__mainSceneProbe!.getSettlementShopInventorySnapshot(eid), npcEid),
+    page.evaluate(
+      (eid) => window.__mainSceneProbe!.getSettlementShopInventorySnapshot(eid),
+      npcEid,
+    ),
   purchaseFirstQuartermasterOffer: (
     page: Page,
   ): Promise<{ ok: boolean; reason?: string; goldSpent?: number }> =>
