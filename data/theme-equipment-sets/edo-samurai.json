@@ -81,14 +81,9 @@
       "slots": ["feet"]
     },
     {
-      "id": "left-kao-ring",
-      "displayName": "Left Kao Ring",
-      "slots": ["ringLeft"]
-    },
-    {
-      "id": "right-kao-ring",
-      "displayName": "Right Kao Ring",
-      "slots": ["ringRight"]
+      "id": "kao-ring",
+      "displayName": "Kao Ring",
+      "slots": ["ringLeft", "ringRight"]
     },
     {
       "id": "tasuki-cord",
@@ -96,24 +91,14 @@
       "slots": ["neck"]
     },
     {
-      "id": "tekko-bracer-left",
-      "displayName": "Tekko Bracer (Left)",
-      "slots": ["leftWrist"]
+      "id": "tekko-bracers",
+      "displayName": "Tekko Bracers",
+      "slots": ["leftWrist", "rightWrist"]
     },
     {
-      "id": "tekko-bracer-right",
-      "displayName": "Tekko Bracer (Right)",
-      "slots": ["rightWrist"]
-    },
-    {
-      "id": "sode-arm-guard-left",
-      "displayName": "Sode Arm Guard (Left)",
-      "slots": ["leftArm"]
-    },
-    {
-      "id": "sode-arm-guard-right",
-      "displayName": "Sode Arm Guard (Right)",
-      "slots": ["rightArm"]
+      "id": "sode-arm-guards",
+      "displayName": "Sode Arm Guards",
+      "slots": ["leftArm", "rightArm"]
     }
   ]
 }

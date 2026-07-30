@@ -33,6 +33,10 @@ import {
   themeEquipmentSetPlanSchema,
   type ThemeEquipmentSetPlan,
 } from './theme-equipment-set.js';
+import { MIRROR_SLOT_PAIRS } from '../../src/shared/equipment-slots.js';
+
+/** Human-readable "leftArm+rightArm" list for the roster prompt, from the canonical pairs. */
+const MIRROR_PAIR_PROMPT_LIST = MIRROR_SLOT_PAIRS.map(([a, b]) => `${a}+${b}`).join(', ');
 
 /**
  * Minimal chat surface this module needs: a single structured-JSON
@@ -181,7 +185,9 @@ export function buildRosterSystemPrompt(): string {
     '- weaponType is a broad weapon category (sword, axe, bow, spear, dagger, hammer, ...), not the item name.',
     `- Cover at least ${THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS} DISTINCT equipment slots.`,
     `- Valid slot ids (use only these): ${NON_HAND_EQUIPMENT_SLOT_IDS.join(', ')}.`,
-    '- Each equipment entry lists the slots that one item occupies; most items occupy exactly one.',
+    '- Each equipment entry lists the slots that ONE item occupies.',
+    `- Mirror-pair slots MUST be a single unified item that lists BOTH sides — never a left item and a right item. Pairs: ${MIRROR_PAIR_PROMPT_LIST}. e.g. one "Bracers" with slots ["leftWrist","rightWrist"], one ring with slots ["ringLeft","ringRight"], one arm item with slots ["leftArm","rightArm"].`,
+    '- Every other item occupies exactly one slot.',
     '- Prefer plain, archetypal gear for the theme. These are BASE items that later get recoloured and resized into variants, so avoid one-off named artifacts.',
     '- Names must be evocative of the theme but readable at 32px: concrete objects, not abstractions.',
   ].join('\n');
@@ -202,7 +208,7 @@ export function buildRosterUserPrompt(
   }
   lines.push(
     '',
-    `Propose the roster. Aim for ${THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES + 1} weapons across that many distinct weapon types, and one item per valid equipment slot.`,
+    `Propose the roster. Aim for ${THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES + 1} weapons across that many distinct weapon types, and cover the equipment slots — one item per slot, except mirror pairs (${MIRROR_PAIR_PROMPT_LIST}) which are each a single unified item listing both sides.`,
   );
   if (previousFailure) {
     lines.push(
