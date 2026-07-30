@@ -212,6 +212,12 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
   // be unreachable on the majority-case 3-family roster.
   const allPresentFamiliesEngagedInCombat =
     presentFamilyCount > 0 && familiesEngagedInCombatCount === presentFamilyCount;
+  // Same dynamic-threshold reasoning, applied to boss-den engagement (started
+  // the fight, not necessarily won it) — distinct from `familyBossesDefeated`,
+  // which requires a win. Grounds a "braved every den" feat without requiring
+  // the player to have cleared them all.
+  const allPresentFamilyBossesEngaged =
+    presentFamilyCount > 0 && familyBossEncounterCount === presentFamilyCount;
   const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
   const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
@@ -245,7 +251,11 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       allPresentFamiliesFriendly,
       allPresentFamiliesNeutralOrBetter,
       allPresentFamiliesEngagedInCombat,
+      allPresentFamilyBossesEngaged,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
+      staircaseSpawned:
+        floor1Objective?.staircaseSpawned === true ||
+        world.floorExtendedState?.familyState?.staircaseSpawned === true,
       staircaseUnlocked:
         floor1Objective?.staircaseUnlocked === true ||
         world.floorExtendedState?.familyState?.staircaseUnlocked === true,
