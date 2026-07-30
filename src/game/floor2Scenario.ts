@@ -1053,6 +1053,11 @@ export function initializeFloor2Scenario(
       ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
       : undefined;
 
+  if (options?.playerCarryover) {
+    restorePlayerCarryover(world, playerEid, options.playerCarryover);
+    initializePlayerWeaponSkills(world, playerEid);
+  }
+
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
@@ -1089,11 +1094,6 @@ export function initializeFloor2Scenario(
         }
       }
     }
-  }
-
-  if (options?.playerCarryover) {
-    restorePlayerCarryover(world, playerEid, options.playerCarryover);
-    initializePlayerWeaponSkills(world, playerEid);
   }
 
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
