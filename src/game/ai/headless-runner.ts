@@ -91,7 +91,6 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
-
 interface EquipmentSpendTelemetry {
   readonly soldOfferKeys: Set<string>;
   goldSpentOnEquipment: number;
