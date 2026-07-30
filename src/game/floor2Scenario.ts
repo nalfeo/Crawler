@@ -955,6 +955,15 @@ export function initializeFloor2Scenario(
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentRewards = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+  // `floor2EquipmentAiMaintenance` gates the headless/behavior-tree AI's
+  // ability to act on the generated stock this flag closure produces
+  // (purchase + equip via `runSettlementMaintenancePlanner`). Without this,
+  // the economy would be generated but have zero real consumer that ever
+  // acts on it — the same "shipped inert" failure class this flag closure
+  // exists to eliminate. There is no interactive-game equivalent consumer
+  // yet (no Quartermaster purchase UI — see issue #2334); this only affects
+  // AI-controlled runs (headless completion tests, win-rate sweeps).
+  world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);
     initializePlayerWeaponSkills(world, playerEid);

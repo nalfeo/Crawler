@@ -195,26 +195,27 @@ describe('Floor 2 headless completion', () => {
     ).toBe(true);
   }, 60_000);
 
-  it('lets the headless AI actually purchase and equip Quartermaster stock once AI equipment maintenance is enabled', async () => {
+  it('lets the headless AI actually purchase and equip Quartermaster stock on the real default path', async () => {
     // Enabling floor2EquipmentEconomy activates a real, already-wired data
     // consumer beyond boss chests: real Quartermaster/shop stock is
     // generated during settlement init. Whether the AI *acts* on that stock
-    // is gated by a separate flag, `floor2EquipmentAiMaintenance`, which
-    // `initializeFloor2Scenario` (the real shipped path) deliberately does
-    // NOT enable — it is in the same not-yet-wired category as
-    // `floor2EquipmentUx`/`floor2EquipmentWorld` (no player-facing
-    // Quartermaster UI exists yet; see issue #2334). So on the true real
-    // default path, `runSettlementMaintenancePlanner`'s equipment loop is
-    // intentionally inert today (`runEquipmentLoop` short-circuits to
-    // `'exhausted'` immediately when `floor2EquipmentAiMaintenance` is
-    // false) — that is correct behavior per the "disabled consumer stops
-    // mutation" contract, not a bug.
+    // is gated by a separate flag, `floor2EquipmentAiMaintenance`. This is
+    // now enabled by `initializeFloor2Scenario` (the real shipped path)
+    // alongside the other four equipment flags, specifically so that this
+    // consumer is genuinely live rather than "shipped inert" (the ADR
+    // 0034/0036 failure class this whole PR exists to eliminate) — an
+    // earlier revision of this fix left `floor2EquipmentAiMaintenance` off
+    // by default and only overrode it inside this test, which reproduced
+    // that exact failure class one layer down; see the PR discussion / this
+    // handoff's "Post-open-PR CI fix" section for the full story. There is
+    // still no interactive-game equivalent consumer (no Quartermaster
+    // purchase UI — see issue #2334); this flag only affects AI-controlled
+    // runs (headless completion tests, win-rate sweeps).
     //
     // This test proves the purchase MECHANISM itself is real and reachable
-    // through the real production wiring once that consumer is turned on
-    // (the same pattern as the "economy explicitly enabled" test above):
-    // real init (`initializeFloor2Scenario`) → real generated Quartermaster
-    // stock → real settlement layout → real planner
+    // through the real production wiring on the real default path: real
+    // init (`initializeFloor2Scenario`, no flag override) → real generated
+    // Quartermaster stock → real settlement layout → real planner
     // (`runSettlementMaintenancePlanner`) → real atomic purchase API → real
     // equip. It deliberately does NOT drive a full organic AI run to an
     // emergent purchase: `runEquipmentLoop` can legitimately return zero
@@ -223,25 +224,20 @@ describe('Floor 2 headless completion', () => {
     // equipment candidate scoring <= 0 relative to the current loadout all
     // short-circuit before a single decision is pushed). An earlier version
     // of this test asserted `decisionKinds.length > 0` after a full organic
-    // 20000-frame run with no flag override; CI's `ubuntu-latest` runner hit
-    // exactly that legitimate empty branch on seed 77 and produced zero
-    // decisions even though the wiring was sound, proving "an organic run
-    // eventually buys something" is not a valid determinism guarantee (rule:
-    // never bend the gate to fit one seed/run — fix the test's premise
-    // instead). So instead this constructs the one condition the claim
-    // actually depends on directly, using the exact real settlement anchor
+    // 20000-frame run; CI's `ubuntu-latest` runner hit exactly that
+    // legitimate empty branch on seed 77 and produced zero decisions even
+    // though the wiring was sound, proving "an organic run eventually buys
+    // something" is not a valid determinism guarantee (rule: never bend the
+    // gate to fit one seed/run — fix the test's premise instead). So instead
+    // this constructs the one condition the claim actually depends on
+    // directly, using the exact real settlement anchor
     // (`resolveFloor2SettlementAnchor`) and the exact real planner entry
-    // point that the organic AI loop would otherwise call, with AI
-    // maintenance explicitly enabled since the real path does not yet turn
-    // it on.
+    // point that the organic AI loop would otherwise call.
     let decisionKinds: readonly string[] = [];
     await runHeadless(new BehaviorTreeAI({ seed: 77 }), {
       seed: 77,
       floorId: 'floor2',
       maxFrames: 1,
-      floor2EquipmentFlags: {
-        floor2EquipmentAiMaintenance: true,
-      },
       onFinish: (world) => {
         const anchor = resolveFloor2SettlementAnchor(world);
         if (!anchor) throw new Error('Test requires a resolvable Floor 2 settlement anchor');
