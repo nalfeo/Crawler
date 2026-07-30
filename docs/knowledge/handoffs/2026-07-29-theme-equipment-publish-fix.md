@@ -68,8 +68,17 @@ dedup/ordering/manifest mutation; the inner blob loop was the dominant cost).
   max in-flight GETs is `>1` and `<= cap` while every byte still lands; a
   mid-batch failure proves the whole batch settles (`settled === keyCount`)
   before the error propagates.
-- **After (runtime):** re-dispatch `publish` from this branch and confirm it
-  reaches `assets/queue` (see next steps) — the real-pipeline confirmation.
+- **After (runtime):** run 30500748320 (branch `theme-equipment-review-ops`,
+  23:49→00:19 UTC):
+  - "Checkout for publish" → **success in 5 s** — no "refusing to merge
+    unrelated histories"; the `fetch-depth: 0` fix is confirmed ✅
+  - "Publish approved theme set" ran ~29 min (vs ~39 min downloads-only in the
+    failed run) — parallel download speedup confirmed ✅
+  - Failed with a **content conflict** (`CONFLICT (modify/delete):
+    public/assets/generated/manifest.json` + `CONFLICT (content):
+    src/shared/data/sprite-catalog.json`) — unrelated to the shallow-checkout
+    or serial-download fixes; `main` advanced with new sprite catalog changes
+    while the queue was stale between the two publish attempts.
 
 ## Tests
 
