@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "restore-tree-mask-fix-attribution",
+  "task_title": "Restore TREE to wall mask; correct ADR/handoff attribution",
+  "estimated_apples": 1,
+  "stages": {}
+}
