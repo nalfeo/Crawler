@@ -1,0 +1,189 @@
+{
+  "briefId": "classic-fantasy-basic-leather-leather-cap-v1",
+  "spriteName": "classic-fantasy-basic-leather-leather-cap-v1-var-0",
+  "assetPath": "generated/classic-fantasy-basic-leather-leather-cap-v1-var-0.png",
+  "approvedAt": "2026-07-30T00:34:34.916Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-leather-cap-v1/2026-07-28T04-12-01-7529de9d",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 28,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 220 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 19,
+          "y": 38
+        },
+        {
+          "x": 20,
+          "y": 38
+        },
+        {
+          "x": 21,
+          "y": 38
+        },
+        {
+          "x": 22,
+          "y": 38
+        },
+        {
+          "x": 23,
+          "y": 38
+        },
+        {
+          "x": 24,
+          "y": 38
+        },
+        {
+          "x": 25,
+          "y": 38
+        },
+        {
+          "x": 26,
+          "y": 38
+        },
+        {
+          "x": 27,
+          "y": 38
+        },
+        {
+          "x": 28,
+          "y": 38
+        },
+        {
+          "x": 19,
+          "y": 39
+        },
+        {
+          "x": 20,
+          "y": 39
+        },
+        {
+          "x": 21,
+          "y": 39
+        },
+        {
+          "x": 22,
+          "y": 39
+        },
+        {
+          "x": 23,
+          "y": 39
+        },
+        {
+          "x": 24,
+          "y": 39
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 31,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:42:46.898Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design is consistent with Crawler's aesthetic, featuring a simple, functional leather cap with a clear silhouette and utilitarian details like the iron rivet and buckle. However, it lacks a strong authored contradiction or darkly humorous element."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is clean and consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is clean and consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts a simple, rounded leather cap with three stitched panels, a central rivet, and a chin strap with a buckle, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and easily distinguishable at game scale on a dark floor tile. The cap's shape and features are immediately recognizable."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is presented as an isolated, wearable icon with no extraneous elements or background distractions."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates the specified materials and design elements, such as mid-brown boiled leather, stitching, and plain iron fittings. However, the chin strap could be slightly more prominent to emphasize its presence."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3212,
+      "completionTokens": 375,
+      "totalTokens": 3587
+    }
+  },
+  "type": null,
+  "contentHash": "2e9a1749b1c0c9a9a3d56522e460589e27a49e3d62f32fd7d37d2e2cb03853e4",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 3,
+    "width": 51,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-cap-v1/2026-07-28T04-12-01-7529de9d/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-cap-v1/2026-07-28T04-12-01-7529de9d/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-cap-v1/2026-07-28T04-12-01-7529de9d/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
