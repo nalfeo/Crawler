@@ -60,11 +60,11 @@ test('reports every matched exception in the success diagnostic', (t) => {
   assert.equal(result.status, 0);
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-07-31: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
+    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
   );
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-07-31: https:\/\/github\.com\/advisories\/GHSA-c96f-x56v-gq3h/,
+    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-c96f-x56v-gq3h/,
   );
   assert.match(
     result.stderr,
@@ -102,7 +102,7 @@ test('fails closed after the brace-expansion exception expires', () => {
         via: [BRACE_EXPANSION_ADVISORY],
       },
     }),
-    { now: new Date('2026-08-01T00:00:00Z') },
+    { now: new Date('2026-08-14T00:00:00Z') },
   );
 
   assert.deepEqual(result.ignored, []);
@@ -147,7 +147,7 @@ test('fails closed after the exception expires', () => {
         via: [BRACE_EXPANSION_ADVISORY],
       },
     }),
-    { now: new Date('2026-08-01T00:00:00Z') },
+    { now: new Date('2026-08-14T00:00:00Z') },
   );
 
   assert.deepEqual(result.ignored, []);
@@ -200,7 +200,7 @@ test('fails closed after the find-my-way exception expires', () => {
     report({
       'find-my-way': { name: 'find-my-way', severity: 'high', via: [FIND_MY_WAY_ADVISORY] },
     }),
-    { now: new Date('2026-08-01T00:00:00Z') },
+    { now: new Date('2026-08-14T00:00:00Z') },
   );
 
   assert.deepEqual(result.ignored, []);
