@@ -44,22 +44,32 @@ export const GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES: readonly GeneratedEquip
 
 /**
  * Equipment-reward tiers (Floor 2 reward-content slice). `tier1` is the lowest
- * tier (unlocked earliest), `tier3` the highest for achievement rewards.
- * `tier4` is reserved for boss chests (85% Uncommon / 15% Rare per PLAN.md
- * §E3-C). Each tier resolves to a SINGLE generated-equipment instance whose
- * rarity is drawn from {@link EQUIPMENT_REWARD_TIER_RARITIES}. Only `tier4`
- * may draw `rare`; achievement tiers (tier1–tier3) never draw rare.
+ * tier (unlocked earliest); `tier4` is the highest and is Rare-capable (85%
+ * Uncommon / 15% Rare per PLAN.md §E3-C). Each tier resolves to a SINGLE
+ * generated-equipment instance (not the legacy fixed 3-item
+ * Common+Uncommon+Rare bundle) whose rarity is drawn from
+ * {@link EQUIPMENT_REWARD_TIER_RARITIES}. `tier1`-`tier3` never draw `rare` —
+ * that is a deliberate content decision (Floor 2's `hard`-difficulty
+ * achievements cap at Uncommon), not a technical limit. `tier4` is shared by
+ * two callers that both need the epic's best non-Unique rarity: boss chests
+ * (all of them) and the small set of `brutal`-difficulty achievements (the
+ * epic's hardest, most narratively-final unlocks) — both use the identical
+ * 85/15 Uncommon/Rare pool, so there is exactly one Rare-capable tier, not two
+ * parallel ones.
  */
 export const EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3', 'tier4'] as const;
 export type EquipmentRewardTier = (typeof EQUIPMENT_REWARD_TIERS)[number];
 
 /**
- * Achievement-reward tier subset. Excludes `tier4` which is reserved for boss
- * chests only — authored achievement JSON must never specify tier4 as a reward
- * tier, and the achievement schema enforces this boundary at parse time.
+ * Achievement-reward tier set. Equal to {@link EQUIPMENT_REWARD_TIERS} —
+ * achievements may use every tier including `tier4`, sharing its 85/15
+ * Uncommon/Rare pool with boss chests (see the tier-ladder doc above). Kept as
+ * a separate named alias (rather than importing `EQUIPMENT_REWARD_TIERS`
+ * directly at every achievement-schema call site) so a future narrowing back
+ * to a strict subset stays a one-line change.
  */
-export const ACHIEVEMENT_EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3'] as const;
-export type AchievementEquipmentRewardTier = (typeof ACHIEVEMENT_EQUIPMENT_REWARD_TIERS)[number];
+export const ACHIEVEMENT_EQUIPMENT_REWARD_TIERS = EQUIPMENT_REWARD_TIERS;
+export type AchievementEquipmentRewardTier = EquipmentRewardTier;
 
 export function isEquipmentRewardTier(value: string): value is EquipmentRewardTier {
   return (EQUIPMENT_REWARD_TIERS as readonly string[]).includes(value);
@@ -68,9 +78,16 @@ export function isEquipmentRewardTier(value: string): value is EquipmentRewardTi
 /**
  * Per-tier allowed rarity pool, in weighted-draw order (index 0 is favored,
  * see {@link EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS}). `tier1` is common-only.
- * `tier2` and `tier3` share the same {common, uncommon} rarity SET but differ
- * in which rarity dominates — `tier2` favors common, `tier3` favors uncommon.
- * `tier4` (boss chests) draws {uncommon, rare} at 85%/15%.
+ * `tier2` and `tier3` share the same {common, uncommon} rarity SET (never
+ * rare) but differ in which rarity dominates — `tier2` favors common,
+ * `tier3` favors uncommon — so the effective build-affinity chance rises
+ * monotonically tier1 < tier2 < tier3 purely from the existing per-rarity
+ * affinity contract (Common 25% / Uncommon 50%), with no separate "tier bonus"
+ * needed. This directly reuses — never replaces — the canonical
+ * `REWARD_BUNDLE_AFFINITY_PROB` contract from the Floor 2 reward-bundle
+ * resolver. `tier4` draws {uncommon, rare} at 85%/15% per PLAN.md §E3-C —
+ * the one tier that can resolve the epic's best non-Unique rarity, shared by
+ * boss chests and `brutal`-difficulty achievements alike.
  */
 export const EQUIPMENT_REWARD_TIER_RARITIES: Readonly<
   Record<EquipmentRewardTier, readonly GeneratedEquipmentRarity[]>

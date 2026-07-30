@@ -155,6 +155,7 @@ export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
 export type AchievementCurrentRunNumberFact = (typeof ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'staircaseBattleStarted',
+  'staircaseSpawned',
   'staircaseUnlocked',
   'safeRoomDiscovered',
   'equipmentUnlocked',
@@ -166,6 +167,7 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'allPresentFamiliesFriendly',
   'allPresentFamiliesNeutralOrBetter',
   'allPresentFamiliesEngagedInCombat',
+  'allPresentFamilyBossesEngaged',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
@@ -189,9 +191,12 @@ export type AchievementReward =
        * must span both magic and physical affinity so both pools are non-empty
        * for any player build (the resolver fails closed otherwise). `tier`
        * gates the resolvable rarity pool — see
-       * {@link EQUIPMENT_REWARD_TIER_RARITIES} in generated-equipment-types.ts;
-       * achievement tiers (tier1–tier3) never resolve a Rare item — only `tier4`
-       * (reserved for boss chests) may draw Rare.
+       * {@link EQUIPMENT_REWARD_TIER_RARITIES} in generated-equipment-types.ts.
+       * `tier1`-`tier3` never resolve Rare (Common/Uncommon only, by design —
+       * see the "Rare rarity" note on the Floor 2 catalog below); `tier4` is
+       * Rare-capable and shared by boss chests and the handful of
+       * `brutal`-difficulty achievements alike (see
+       * {@link ACHIEVEMENT_EQUIPMENT_REWARD_TIERS}).
        */
       readonly type: 'equipment';
       readonly bases: readonly string[];
@@ -511,10 +516,16 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * `src/game/systems/achievementSystem.ts`). Reward `bases` span magic
  * (`ember-wand`, `frost-crook`) and physical (`iron-cleaver`, `ashwood-bow`)
  * Floor 2 weapon bases — all have empty inherent stat bonuses, so the Common
- * item carries no non-armor stat bonus (rarity contract). Rewards are restricted
- * to tier1/tier2/tier3 (Common/Uncommon) — Unique is intentionally never
- * used (deferred from this epic). `iconId`s are placeholder keys; no art is
- * generated or required to ship this slice.
+ * item carries no non-armor stat bonus (rarity contract). Reward rarity spans
+ * Common/Uncommon/Rare (via `tier1`-`tier4`); Unique is intentionally never
+ * used (deferred from this epic). Only `tier4` (used by the 3 `brutal`-difficulty
+ * achievements: `floor2-family-annihilator`, `floor2-floor-cleared`,
+ * `floor2-scorched-earth`, sharing the same tier boss chests use) can resolve
+ * Rare — `tier1`-`tier3` are deliberately capped at Uncommon so the epic's
+ * single best rarity stays reserved for its hardest, most narratively-final
+ * achievements. See the "Rare rarity" note in the PR handoff for the full
+ * rationale. `iconId`s are placeholder keys; no art is generated or required
+ * to ship this slice.
  */
 export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, floor2Achievements);
 export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
@@ -583,6 +594,7 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
     },
     booleanFacts: {
       staircaseBattleStarted: false,
+      staircaseSpawned: false,
       staircaseUnlocked: false,
       safeRoomDiscovered: false,
       equipmentUnlocked: false,
@@ -594,6 +606,7 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       allPresentFamiliesFriendly: false,
       allPresentFamiliesNeutralOrBetter: false,
       allPresentFamiliesEngagedInCombat: false,
+      allPresentFamilyBossesEngaged: false,
     },
     questIds: [],
     completedQuestIds: [],

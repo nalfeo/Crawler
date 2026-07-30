@@ -208,10 +208,99 @@ adjudicated by claude-opus-4.8, round 1, 3 valid concerns/3 resolved, clean).
 **Not touched** (sibling-owned, per explicit instruction): `src/game/floor2Scenario.ts`,
 `src/core/floor2-equipment-flags.ts`, `src/core/quartermaster-purchase.ts`.
 
+## Post-review fix round (2026-07-31)
+
+Human review of the PR flagged 3 blocking items. All 3 fixed on the same branch:
+
+1. **Red CI (`Integration Tests`).** Two root causes, both fixed at the source
+   (not weakened): a stale `seedFloor2Kill` test fixture that no longer matched
+   real gameplay shape, and an `npm audit`/`fast-uri` dependency exception that
+   needed updating in `scripts/agent/security/npm-audit.mjs` +
+   `package.json`/`package-lock.json`. A **third** CI failure surfaced during
+   this fix round's own `verify:fast`: `floor2-reward-bundle-affinity.property.test.ts`
+   asserted `instance.rarity` is never `'rare'` for **any** tier — a hard-coded
+   invariant from before `tier4` existed. Fixed by asserting rarity is within
+   `EQUIPMENT_REWARD_TIER_RARITIES[tier]` (the actual per-tier contract) instead
+   of a blanket exclusion; also corrected the file's stale doc comment claiming
+   no tier could ever resolve `rare`.
+
+2. **Generic-counter density.** The reviewer's instruction was to cut **at
+   least half** of the ~10 bare-threshold-read achievements (gold/ability
+   counts), not swap which counters were used. Original first pass dropped 2
+   quest-log-size achievements but _added_ a third gold tier and third ability
+   tier — net movement ~zero. Fixed by collapsing to **exactly one** gold
+   achievement (`floor2-pocket-change`) and **exactly one** ability-count
+   achievement (`floor2-new-tricks`), removing `floor2-comfortable`,
+   `floor2-deep-pockets`, `floor2-growing-arsenal`, `floor2-loaded-toolkit`
+   entirely, and backfilling with 4 Floor2-grounded replacements built from
+   already-computed-but-previously-unused facts:
+   - `floor2-staircase-spotted` (`staircaseDiscovered`, basic/tier1)
+   - `floor2-breach-the-gate` (`staircaseBattleStarted`, standard/tier2)
+   - `floor2-braved-the-dens` (`familyBossEncounterCount >= 2`, standard/tier2)
+   - `floor2-no-den-unbraved` (new `allPresentFamilyBossesEngaged` derived
+     boolean — mirrors the existing `allPresentFamiliesFriendly`/
+     `allPresentFamiliesEngagedInCombat` pattern: dynamically checks against
+     the _actual_ present-family roster size, 3 or 4, not a fixed threshold —
+     hard/tier3)
+   - **Explicitly rejected backfill candidates, because no observable signal
+     exists for them today** (per instruction: state this rather than
+     substitute another counter): **territory control** — `trashTerritories`
+     in `world.ts` is a static init-time archetype assignment, not a live
+     tracker; **cave traversal** — no distinct tracked event; **den clears
+     without taking damage** — no per-den damage-taken tracking exists;
+     **Quartermaster purchase/interaction** — would require reading state
+     gated behind `getFloor2EquipmentEconomyAccess`, the same flag sibling PR
+     #2333 confirms is "currently gated off by an unset flag"; gating an
+     achievement on a not-yet-live feature would violate "every achievement
+     must be unlockable by already-implemented gameplay."
+
+3. **Rare-rarity rationale.** ADR 0070 originally deferred a Rare-capable tier
+   entirely ("Deviation note"), and the code comments asserted "no tier may
+   ever resolve Rare" as if it were a hard contract rather than a choice —
+   but the epic explicitly permits Common/Uncommon/**Rare** (only Unique is
+   deferred), so a `hard`-difficulty achievement being unable to ever reach
+   the epic's best allowed rarity was an unjustified gap, not policy. Decision:
+   **added a real `tier4`** (`EQUIPMENT_REWARD_TIERS` gains `'tier4'`,
+   `EQUIPMENT_REWARD_TIER_RARITIES.tier4 = ['rare', 'uncommon']`), reserved for
+   `difficulty: 'brutal'` achievements only — the 3 hardest, full-floor-mastery
+   unlocks (`floor2-family-annihilator`, `floor2-floor-cleared`,
+   `floor2-scorched-earth`, each requiring engagement/defeat of every present
+   family on the floor). `tier1`-`tier3` **remain** intentionally Uncommon-capped
+   for `basic`/`standard`/`hard` — this is now recorded explicitly as a
+   **deliberate design decision** (not an artifact of reusing the tier shape):
+   Floor 2's top _achievements_ intentionally cap at Uncommon; only the
+   _hardest_ (`brutal`) unlocks reach Rare, and Unique remains out of scope
+   epic-wide. Rationale is recorded in ADR 0070's new "Amendment (2026-07-31)"
+   section, which also documents the change is additive/zero-risk (no
+   exhaustive switch over tier values in the resolver;
+   `RARITY_EFFECT_BUDGET.rare` already existed). The run-global gauntlet
+   achievement (`floor2-run-two-floor-gauntlet`, hard/tier3) was deliberately
+   **not** promoted to tier4 — the reviewer's "hardest achievements" ask was
+   read as the 3 floor-scoped full-floor-mastery achievements specifically.
+
+### Tests added/updated for this fix round
+
+- `tests/unit/achievements.test.ts` — rewrote the Unique-rarity test to also
+  assert tier4/brutal pairing; added a dedicated "never resolves Rare outside
+  tier4" test.
+- `tests/game/achievement-system.test.ts` — new 3-case test for
+  `allPresentFamilyBossesEngaged` (3-family, 4-family-partial, 4-family-full),
+  mirroring the existing `allPresentFamiliesFriendly` test; updated the
+  Floor-1-zero-facts test.
+- `tests/property/achievement-facts-properties.test.ts` — grew the boolean-facts
+  arbitrary array 12→13 and added the `allPresentFamilyBossesEngaged` mapping
+  (required for `tsc` to pass).
+- `tests/property/floor2-reward-bundle-affinity.property.test.ts` — fixed the
+  stale "never rare" property assertion (see CI fix above).
+- Re-verified: exact 36-entry count (30 floor-scoped + 6 current_run), unique
+  IDs, no stale references to the 4 dropped achievement IDs anywhere in the
+  repo, all reward tiers valid.
+
 ## Unresolved issues / recommended next steps
 
 - None outstanding. All review-harness findings (adversarial plan review + code
-  review + multi-model review) were fixed and verified, not deferred.
+  review + multi-model review) and all 3 human-review blocking items were
+  fixed and verified, not deferred.
 - Two minor items noted but explicitly deferred as out-of-scope hardening (recorded
   in the plan-review ledger notes, not defects): stricter JSON catalog validation
   (suggestion only), and the eternal duplicated broker-goal-ID string constant
@@ -219,4 +308,57 @@ adjudicated by claude-opus-4.8, round 1, 3 valid concerns/3 resolved, clean).
   test instead of being imported).
 - If the equipment economy flag (PR #2333, sibling session) changes reward
   resolution behavior in the future, re-verify that this PR's reward-resolution
-  tests still pass — no dependency existed at merge time.
+  tests still pass — no dependency existed at merge time. PR #2333 remains open
+  and red as of this fix round; not a blocker for this PR since no dependency
+  was assumed.
+
+## Post-merge branch situation and the `tier4` / PR #2341 collision (2026-07-31)
+
+While fixing the 3 human-review blocking items above, `gh pr view 2339` revealed
+**PR #2339 had already been squash-merged** to `main` — the reviewer's feedback
+had arrived after the merge, not before it. The fix work up to that point had
+been made as uncommitted changes on the now-deleted, already-merged local
+branch. Recovery: stashed the uncommitted fixes (`git stash push -u`), created a
+fresh branch `floor2-achievements-postmerge-fixes` off updated `origin/main`,
+then `git stash pop` to replay the fixes — producing genuine merge conflicts
+against everything that had landed on `main` since the squash-merge.
+
+Most conflicts were mechanical (main had independently re-fixed the same two
+`npm audit` findings this session had also patched — took main's newer,
+re-verified versions outright) or additive-but-disjoint (main had also added a
+new `allPresentFamiliesNeutralOrBetter` boolean fact at the same array index
+this fix round's `allPresentFamilyBossesEngaged` used — both facts are real and
+needed; resolved by growing the property-test's boolean arbitrary from 12 to 13
+entries and giving each fact its own index).
+
+One conflict was a genuine design collision, not a mechanical merge: a sibling
+PR (#2341, "85%/15% Uncommon/Rare boss-chest rarity split") landed after #2339
+merged and **independently added its own `tier4`** — reserved exclusively for
+boss chests, with the achievement-schema enum
+(`ACHIEVEMENT_EQUIPMENT_REWARD_TIERS`) hard-excluding it. This fix round's
+Rare-rationale work (blocking item 3, above) had **also** added a `tier4`,
+reserved for achievements only. Neither PR knew about the other's `tier4`.
+Merging both as written would have made the achievement content's 3 `brutal`
+rewards fail Zod schema validation outright — a hard break, not a style
+disagreement, and squarely rule #11 territory (never silently reinterpret an
+established contract). Escalated to the human via `ask_user` rather than
+guessing.
+
+**Resolution (human's explicit call)**: `tier4` is now **one shared
+Rare-capable tier**, used by both boss chests and `brutal`-difficulty
+achievements, at the boss-chest PR's 85%/15% Uncommon/Rare split
+(`EQUIPMENT_REWARD_TIER_RARITIES.tier4 = ['uncommon', 'rare']`, weight `0.85`
+adopted from #2341's already-in-place weight table rather than this session's
+original `['rare', 'uncommon']` choice). `ACHIEVEMENT_EQUIPMENT_REWARD_TIERS`
+/ `AchievementEquipmentRewardTier` are now plain aliases of the full
+`EQUIPMENT_REWARD_TIERS` set — not a narrower 3-tier exclusion — so the
+achievement schema accepts `tier4` achievements directly. No behavioral change
+for boss chests: the tier is a rarity-pool lookup, not a chest/achievement-type
+discriminator, so sharing it introduces no new coupling. Recorded as a second
+amendment to ADR 0070 (see `docs/knowledge/adr/0070-achievement-reward-content-tiers.md`).
+
+All 3 original review items (CI red, generic-counter density, Rare rationale)
+remain fully addressed on the new branch; typecheck and the full targeted test
+set (unit + integration + property, 123 tests across the touched files) pass.
+This is being published as a **new PR** referencing #2339 as prior context,
+since #2339 itself is already merged and its branch deleted.

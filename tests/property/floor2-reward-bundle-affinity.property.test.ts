@@ -15,6 +15,7 @@ import { SeededRandom } from '../../src/shared/random.js';
 import {
   ACHIEVEMENT_EQUIPMENT_REWARD_TIERS,
   EQUIPMENT_REWARD_TIERS,
+  EQUIPMENT_REWARD_TIER_RARITIES,
 } from '../../src/shared/generated-equipment-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -31,9 +32,9 @@ const MIXED_BASES = [
  * unit test; here we prove the monotonic/threshold contract holds for arbitrary
  * rolls and confirm the empirical alignment frequency tracks the exact
  * Common 25% / Uncommon 50% / Rare 75% targets. These pure-function checks
- * cover `rare` too even though no achievement tier can resolve a `rare`
- * instance (the resolver-routing check below only exercises the tiers that
- * are actually reachable — common/uncommon).
+ * cover `rare` too, since `tier4` (see {@link EQUIPMENT_REWARD_TIER_RARITIES})
+ * is Rare-capable — the resolver-routing check below asserts every tier only
+ * ever resolves rarities within its own declared pool.
  */
 describe('reward bundle affinity — threshold properties', () => {
   it('is exactly `roll < prob` for every rarity and roll', () => {
@@ -138,8 +139,7 @@ describe('reward bundle resolution — determinism property', () => {
           const world = createTestWorld({ seed: 7, floor: 2, generatedEquipmentRunKey: runKey });
           const bundle = resolveEquipmentRewardBundle(world, achievementId, MIXED_BASES, tier);
           const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
-          // tier4 (boss chests) may draw rare; achievement tiers (tier1–tier3) never should.
-          expect(instance.rarity).not.toBe('rare');
+          expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).toContain(instance.rarity);
         },
       ),
       { numRuns: 60 },

@@ -155,7 +155,8 @@ describe('resolveEquipmentRewardBundle — structure and tier rarity bounds', ()
       const bundle = resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES, tier);
       const rarity = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!.rarity;
       expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).toContain(rarity);
-      // Achievement tiers (tier1–tier3) never produce rare; tier4 (boss chests) may.
+      // Achievement tiers (tier1–tier3) never produce rare; tier4 (boss chests
+      // and brutal-difficulty achievements) may.
       if (tier !== 'tier4') {
         expect(rarity).not.toBe('rare');
       }

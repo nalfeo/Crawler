@@ -456,6 +456,74 @@ describe('achievementSystem', () => {
       ).toBe(true);
     });
 
+    it('computes allPresentFamilyBossesEngaged dynamically against the actual present-family count (3 or 4 families)', () => {
+      // Regression test: mirrors the allPresentFamiliesFriendly bug class —
+      // "No Den Unbraved" must never use a fixed encounter-count threshold,
+      // it must compare against the actual roster size for the run.
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      const glimmerfolk = asFamilyId('glimmerfolk');
+
+      const threeFamilyWorld = createTestWorld({ seed: 42, floor: 2 });
+      threeFamilyWorld.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+            [faceless, bossEncounter(faceless)],
+          ]),
+        },
+      };
+      expect(
+        collectCurrentFloorAchievementFacts(threeFamilyWorld).booleanFacts
+          .allPresentFamilyBossesEngaged,
+      ).toBe(true);
+
+      const fourFamilyWorldPartial = createTestWorld({ seed: 42, floor: 2 });
+      fourFamilyWorldPartial.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless, glimmerfolk],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+            [faceless, bossEncounter(faceless)],
+            // glimmerfolk's den never entered — this must stay false.
+          ]),
+        },
+      };
+      // Bug this guards against: a fixed ">= 3 encounters" rule would have
+      // unlocked here even though the 4th present family's den was never entered.
+      expect(
+        collectCurrentFloorAchievementFacts(fourFamilyWorldPartial).booleanFacts
+          .allPresentFamilyBossesEngaged,
+      ).toBe(false);
+
+      const fourFamilyWorldFull = createTestWorld({ seed: 42, floor: 2 });
+      fourFamilyWorldFull.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless, glimmerfolk],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+            [faceless, bossEncounter(faceless)],
+            [glimmerfolk, bossEncounter(glimmerfolk)],
+          ]),
+        },
+      };
+      expect(
+        collectCurrentFloorAchievementFacts(fourFamilyWorldFull).booleanFacts
+          .allPresentFamilyBossesEngaged,
+      ).toBe(true);
+    });
+
     it('reports zero family-band/boss facts on Floor 1 (no family state at all)', () => {
       const world = createTestWorld({ seed: 42 });
 
@@ -467,6 +535,7 @@ describe('achievementSystem', () => {
       expect(facts.numberFacts.familyBossEncounterCount).toBe(0);
       expect(facts.numberFacts.familiesEngagedInCombatCount).toBe(0);
       expect(facts.booleanFacts.allPresentFamiliesFriendly).toBe(false);
+      expect(facts.booleanFacts.allPresentFamilyBossesEngaged).toBe(false);
       expect(facts.booleanFacts.hasBetrayedAlly).toBe(false);
       expect(facts.booleanFacts.hasMetBroker).toBe(false);
     });
