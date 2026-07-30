@@ -462,11 +462,12 @@ export interface OpaqueFit {
  * bounds when they are present and consistent with the loaded texture,
  * otherwise the whole canvas.
  *
- * Internal helper for {@link resolveOpaqueFit}, which validates the bounds once
- * and derives origin AND scale from the same box so they cannot drift apart on
- * malformed bounds.
+ * Exported so callers that need a non-height-authoritative fit (doors are
+ * width-authoritative) can derive their own scale from the SAME box
+ * `resolveOpaqueFit` anchors on. Recomputing this validation at the call site
+ * is how origin and scale drift apart on malformed bounds.
  */
-function resolveOpaqueBox(
+export function resolveOpaqueBox(
   bounds: OpaqueBounds | undefined,
   canvasWidth: number,
   canvasHeight: number,

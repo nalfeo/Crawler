@@ -134,11 +134,6 @@ export const GENERATED_DOOR_TEXTURE_KEYS = {
   openVertical: 'tile-door-open-side-v1-var-0',
 } as const satisfies Record<string, string>;
 
-/** Every generated door texture key, for the renderer to probe at load time. */
-export const ALL_GENERATED_DOOR_TEXTURE_KEYS: readonly string[] = Object.values(
-  GENERATED_DOOR_TEXTURE_KEYS,
-);
-
 /** Kenney Tiny Dungeon spritesheet key (placeholder fallback art). */
 export const DOOR_SHEET_KEY = 'kenney-tiny-dungeon';
 

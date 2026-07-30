@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveDoorRenderMode,
   GENERATED_DOOR_TEXTURE_KEYS,
-  ALL_GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_SHEET_KEY,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
@@ -10,6 +9,7 @@ import {
 } from '../../src/engine/sprites/door-visuals.js';
 
 const K = GENERATED_DOOR_TEXTURE_KEYS;
+const ALL_GENERATED_DOOR_TEXTURE_KEYS = Object.values(K);
 
 /** Terse call helper: keys present, sheet on/off, orientation, optional pack key. */
 function resolve(

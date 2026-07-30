@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_DOOR_TEXTURE_KEYS,
-  ALL_GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_TARGET_HEIGHT_FT,
   resolveGeneratedDoorContainFit,
 } from '../../src/engine/sprites/door-visuals.js';
+
+const ALL_GENERATED_DOOR_TEXTURE_KEYS = Object.values(GENERATED_DOOR_TEXTURE_KEYS);
 
 /**
  * The door render contract in `MainGameScene.updateDoorOverlay()` CONTAIN-fits
