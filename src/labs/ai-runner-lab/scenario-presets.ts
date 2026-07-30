@@ -397,6 +397,17 @@ function makeCaveSliceMap(): FloorMap {
  * exercise E/W), and the vertical material seam at `materialSeamX` puts a
  * square-cornered stone cell directly beside a rounded cave cell along the same
  * continuous wall run — the cross-pack seam that ADR 0078 scopes validation to.
+ *
+ * Also covers the two Floor 1 terrain defects fixed alongside the door/seam
+ * cases above:
+ *   - `voidWall`/`voidPocket`: a wall run bordered by explicit in-map VOID
+ *     (rock) on one side and floor on the other, for dynamic wall-inset
+ *     coverage (a wall must full-bleed against rock, not just against the map
+ *     edge — the outer border already covers the out-of-bounds case).
+ *   - The closed central chamber's four corners (`roomMinX/roomMaxX` ×
+ *     `roomMinY/roomMaxY`) are never touched by a door, so they double as
+ *     room-corner FOV coverage: with the player parked at `playerTile`
+ *     (chamber centre), all four interior corner blocks must be visible.
  */
 const TERRAIN_JUNCTION_SLICE = {
   widthTiles: 24,
@@ -450,6 +461,19 @@ const TERRAIN_JUNCTION_SLICE = {
   ],
   /** Centre of the chamber, facing the north wall's two doors and the seam. */
   playerTile: { x: 11, y: 10 },
+  /**
+   * A short wall run bordered by explicit in-map VOID (rock) on one side and
+   * ordinary floor on the other — the case Fix 1 (dynamic wall inset) exists
+   * for. Before the fix, the mask predicate treated the VOID neighbour the
+   * same as absent-floor, so the wall inset away from the rock and exposed a
+   * floor-pool sliver bleeding into it. Post-fix the wall should full-bleed
+   * against the VOID side (`voidX`) while still insetting normally against
+   * the floor side (`voidX + 1`) — both silhouettes are visible side-by-side
+   * on the same wall run for direct visual comparison.
+   */
+  voidWall: { x: 2, yStart: 8, yEnd: 11 },
+  /** The VOID pocket immediately west of `voidWall` (rock, not floor). */
+  voidPocket: { x: 1, yStart: 8, yEnd: 11 },
 } as const;
 
 /**
@@ -490,6 +514,8 @@ function makeTerrainJunctionSliceMap(): FloorMap {
     doors,
     stubs,
     playerTile,
+    voidWall,
+    voidPocket,
   } = TERRAIN_JUNCTION_SLICE;
 
   const config: MapConfig = {
@@ -542,6 +568,18 @@ function makeTerrainJunctionSliceMap(): FloorMap {
 
   for (const stub of stubs) {
     setWall(stub.x, stub.y);
+  }
+
+  // Fix 1 (dynamic wall inset) coverage: a short wall run bordered by
+  // explicit in-map VOID (rock) on its west side and ordinary floor on its
+  // east side. The wall must full-bleed against the VOID side and still
+  // inset normally against the floor side, visible side-by-side.
+  for (let y = voidWall.yStart; y <= voidWall.yEnd; y += 1) {
+    setWall(voidWall.x, y);
+  }
+  for (let y = voidPocket.yStart; y <= voidPocket.yEnd; y += 1) {
+    tileMap.flags[idx(voidPocket.x, y)] = TilePresets.WALL;
+    terrain[idx(voidPocket.x, y)] = TerrainType.VOID;
   }
 
   // Doors are punched AFTER the wall runs so a door always sits in a wall and

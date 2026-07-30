@@ -109,22 +109,62 @@ const PACK_CORRIDOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([TerrainTy
  * Terrain a wall's blob47 neighbour mask must read as WALL even though the tile
  * itself is not stamped from the wall atlas.
  *
- * A door is a hole punched through a wall line, and its own art
- * (`doorSet`) is a full-bleed tile whose jambs run edge to edge. If the mask
- * treated a door as floor, the walls flanking it would inset `WALL_INSET_PX`
- * away from the shared boundary and (on a rounded pack) curve away from it too,
- * leaving a visible strip of floor between wall and jamb — the wall would stop
- * short of the doorway instead of running into it. Counting the door as wall
- * makes the flanking cells reach that boundary flush, which is how a masonry
- * doorway actually reads.
+ * The governing rule (maintainer-specified): a wall only insets
+ * (`WALL_INSET_PX`) on a side whose neighbour is WALKABLE. A wall should NOT
+ * inset toward a neighbour that is itself solid/impassable — the wall body
+ * should reach flush to that boundary — because insetting there exposes a
+ * sliver of the wall pack's floor-pool underdraw (stamped so the inset region
+ * of a *walkable*-side quadrant isn't blank) sitting inside what is meant to
+ * read as solid rock/wood/wall. So this set is exactly "wall types ∪
+ * non-walkable-but-not-wall types the mask should still treat as solid",
+ * rather than a literal walkability predicate — there is no existing
+ * TerrainType → walkability helper in the codebase (`TileFlags`/`TilePresets`
+ * are a separate per-tile PHYSICS array from `TerrainType`, which is purely
+ * visual), so each addition here is a deliberate, documented choice:
  *
- * This is a NEIGHBOUR-ONLY rule: the door tile is still not a wall tile, so it
- * is never stamped from the wall atlas and never collides differently. Only the
- * silhouette of its neighbours changes.
+ *   - `STONE_WALL` / `CAVE_WALL` (via `PACK_WALL_TERRAIN_TYPES`): other pack
+ *     walls — a wall run must not inset against its own kind.
+ *   - `DOOR`: a hole punched through a wall line, whose own art (`doorSet`) is
+ *     a full-bleed tile whose jambs run edge to edge. If the mask treated a
+ *     door as floor, the walls flanking it would inset away from the shared
+ *     boundary and leave a visible strip of floor between wall and jamb — the
+ *     wall would stop short of the doorway instead of running into it.
+ *   - `VOID`: solid rock fill outside authored rooms (`TerrainType.VOID = 0`).
+ *     A wall bordering VOID previously insetted away from it, exposing a
+ *     sliver of ROOM FLOOR sitting inside the rock — light bleeding out past
+ *     the wall into what should be solid stone. This is the primary defect
+ *     this set exists to fix.
+ *   - `WOOD_WALL`: a different wall material, but still a wall — same
+ *     "must not inset against another wall" logic as `STONE_WALL`/`CAVE_WALL`.
+ *
+ * Deliberately EXCLUDED, even though non-walkable:
+ *   - `WATER` / `LAVA`: these are visible-through hazards, not rock — you can
+ *     see across/into them, so a wall should still inset toward them exactly
+ *     as it does toward ordinary floor (you can see the lava through the
+ *     inset gap; that is correct, not a bug).
+ *   - `TREE`: non-walkable, but a trunk neither fills its cell nor reads as a
+ *     wall face, so a wall should still inset toward it as it does toward
+ *     floor. No generator writes `TREE` today, so including it would have been
+ *     inert-but-wrong; revisit deliberately if trees are ever placed.
+ *   - `RUBBLE`: no generator currently places this terrain type and its
+ *     walkability semantics are not defined/authored anywhere, so it is left
+ *     out rather than guessed at; revisit if/when `RUBBLE` is actually used.
+ *
+ * This is a NEIGHBOUR-ONLY rule: none of these additions make the neighbour
+ * tile itself get stamped from the wall atlas — only the silhouette a wall
+ * selects for ITS OWN mask changes based on what borders it.
+ *
+ * See also `computeRawMask8`'s `outOfBoundsMatches` parameter
+ * (`src/shared/terrain-pack-mask.ts`) — the map-edge counterpart of this rule.
+ * A wall on the map boundary has no real neighbour past the edge; that missing
+ * neighbour must also read as solid (not floor), or the wall full-bleeds into
+ * nothing at the border the same way it used to bleed into VOID.
  */
 export const PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([
   ...PACK_WALL_TERRAIN_TYPES,
   TerrainType.DOOR,
+  TerrainType.VOID,
+  TerrainType.WOOD_WALL,
 ]);
 
 /**
@@ -478,10 +518,19 @@ export function buildTerrainLayer(
           const wallPack = packsByFamily[family];
           const maskFrameLookup = maskFrameLookups.get(family);
           if (wallPack && maskFrameLookup) {
-            const rawMask = computeRawMask8(tx, ty, width, height, (nx, ny) =>
-              PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(
-                floorMap.terrain[ny * width + nx] as TerrainType,
-              ),
+            const rawMask = computeRawMask8(
+              tx,
+              ty,
+              width,
+              height,
+              (nx, ny) =>
+                PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(
+                  floorMap.terrain[ny * width + nx] as TerrainType,
+                ),
+              // A map-edge neighbour has no real terrain to inspect — treat it
+              // as solid so a border wall full-bleeds instead of insetting
+              // into nothing (see PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES doc).
+              true,
             );
             const canonicalMask = normalizeBlob47Mask(rawMask);
             const frameIndex = maskFrameLookup.get(canonicalMask);

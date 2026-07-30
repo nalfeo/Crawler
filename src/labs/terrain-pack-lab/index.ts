@@ -484,11 +484,20 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
         const dy = ty * cell;
 
         if (PACK_WALL_TERRAINS.has(terrain)) {
-          // Compute 47-mask for this wall tile
-          const rawMask = computeRawMask8(tx, ty, map.width, map.height, (nx, ny) => {
-            const ni = ny * map.width + nx;
-            return PACK_WALL_MASK_NEIGHBOR_TERRAINS.has(map.terrain[ni] as number);
-          });
+          // Compute 47-mask for this wall tile. Out-of-bounds neighbours count
+          // as solid (matches the renderer) so a border wall full-bleeds
+          // instead of insetting into nothing at the map edge.
+          const rawMask = computeRawMask8(
+            tx,
+            ty,
+            map.width,
+            map.height,
+            (nx, ny) => {
+              const ni = ny * map.width + nx;
+              return PACK_WALL_MASK_NEIGHBOR_TERRAINS.has(map.terrain[ni] as number);
+            },
+            true,
+          );
           const maskIndex = normalizeBlob47Mask(rawMask);
           const frameNum = maskToFrame.get(maskIndex) ?? 0;
           const acol = frameNum % ATLAS_COLS_PACK;

@@ -83,6 +83,10 @@ function fovSystemReference(world: GameWorld): void {
     if (visibility <= 0) return;
     const tx = Math.floor(hx / sf);
     const ty = Math.floor(hy / sf);
+    // Seam rule applies to every tile so FOV agrees with lineOfSight. The
+    // interior-room-corner exemption lives inside hasBlockedCornerSeam (it
+    // ignores only the seam formed by the final step into an opaque target),
+    // so nothing special is needed here.
     const key = ty * tileMap.width + tx;
     let seamBlocked = seamCache.get(key);
     if (seamBlocked === undefined) {

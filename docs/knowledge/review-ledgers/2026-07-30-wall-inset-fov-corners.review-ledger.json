@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "wall-inset-fov-corners",
+  "task_title": "Dynamic wall inset masking and FOV corner reveal",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Two blocking defects found and independently verified in source. (1) The opaque-tile bypass in fovSystem.onVisible exempted the ENTIRE ray from the corner-seam rule, not just the terminal step, revealing opaque tiles genuinely peeked at through an earlier diagonal pinch. (2) Revealing the corner in FOV did not light it: light-field.ts gates source illumination on FloorMap.hasLineOfSight -> TileMap.lineOfSight, whose seam check runs before the target-reached break, so the corner rendered at ambient only - the user's reported symptom was 'corners don't get FOV/lighting' and only the FOV half was fixed. Both resolved by moving the exemption into the shared TileMap rule (terminal step only, keyed on target opacity) and reverting the fovSystem bypass, which restores FOV/LOS agreement instead of diverging it."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Returned a 'clean' verdict that was subsequently WITHDRAWN. It enumerated TileMap.lineOfSight consumers by symbol name and missed light-field.ts:254, which reaches it via the FloorMap.hasLineOfSight wrapper, and so wrongly concluded no consumer treats an opaque tile as an LOS endpoint. Recorded as non-clean because this round did not actually clear the change."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Reviewer conceded the missed consumer and confirmed both plan-review findings in source, then confirmed the shared-rule fix is correct: the exemption must key on target opacity (never origin), gameplay LOS is unaffected because every gameplay target stands on a transparent tile, and the memoized seamValue cache stays correct once opaque tiles write it again. Both findings fixed and gated."
+        }
+      ]
+    }
+  }
+}
