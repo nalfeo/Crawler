@@ -50,6 +50,9 @@ function enableFloor2Economy(world: TestWorld): void {
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+  // AI maintenance flag is required for the equipment-loop purchasing/equipping
+  // path; tests exercising those code paths must enable it.
+  world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
 }
 
 function buildSettlement(

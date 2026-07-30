@@ -94,6 +94,12 @@ describe('settlement-maintenance-planner: real Floor 2 safe-context integration'
     world.stores.position.y[playerEid] = worldPos.y;
     world.state = 'playing';
 
+    // `initializeFloor2Scenario` sets registry/catalog/rewards/economy flags
+    // but NOT `floor2EquipmentAiMaintenance` (the AI purchasing/equipping flag,
+    // gated on its own dependency closure including UX/world). Enable it here
+    // so this integration test can exercise the equipment loop directly.
+    world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
+
     const instance = generateEquipmentInstance(world, {
       baseId: 'iron-breastplate',
       itemLevel: world.playerLevel.level,

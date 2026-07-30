@@ -84,6 +84,38 @@ describe('Boss chest lifecycle — real headless pipeline', () => {
     expect(observed?.bundleCount).toBeGreaterThanOrEqual(1);
   });
 
+  it('creates an available Floor 2 boss chest on the real default path (no flag override)', async () => {
+    // Regression guard for the shipped-inert failure class (ADR 0034/0036):
+    // this intentionally passes NO floor2EquipmentFlags override, so it only
+    // passes if initializeFloor2Scenario itself enables floor2EquipmentEconomy
+    // in the real production path.
+    let observed:
+      | { chestCount: number; state: string | undefined; bundleCount: number }
+      | undefined;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 61 }), {
+      seed: 61,
+      floorId: 'floor2',
+      maxFrames: 5,
+      simulationOptions: {
+        postSystems: [killFirstPresentBossOnce()],
+      },
+      onFinish: (world) => {
+        const familyId = world.floorExtendedState?.familyState?.presentFamilies[0];
+        const chestId = familyId ? createBossChestId(familyId) : null;
+        observed = {
+          chestCount: world.bossChests.size,
+          state: chestId ? world.bossChests.get(chestId)?.state : undefined,
+          bundleCount: world.generatedEquipmentRewardBundles.size,
+        };
+      },
+    });
+
+    expect(observed?.chestCount).toBe(1);
+    expect(observed?.state).toBe('available');
+    expect(observed?.bundleCount).toBeGreaterThanOrEqual(1);
+  });
+
   it('never populates boss chests on Floor 1, even with a boss defeat and Floor 2 equipment flags set', async () => {
     // Floor 1 has no family/boss-chest system at all (its boss battles use a
     // separate spell-reward flow — see `floorScenario.ts`), so there is no
