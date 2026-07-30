@@ -149,6 +149,29 @@ describe('theme set index', () => {
     expect(result.sets.map((entry) => entry.id)).toEqual(['broken', 'classic-fantasy']);
     expect(result.sets[0]?.plan.status).toBe('invalid');
   });
+
+  it('lists remote-only durable plans so another workspace can select and initialize them', async () => {
+    const root = tempRepo();
+
+    const result = (await executeThemeEquipmentReviewCommand(
+      { action: 'list' },
+      {
+        store: memoryStore(),
+        repoRoot: root,
+        now: NOW,
+        listPublishedPlanIds: async () => ['classic-fantasy'],
+      },
+    )) as unknown as { sets: Array<{ id: string; plan: { status: string } }> };
+
+    expect(result.sets).toEqual([
+      {
+        id: 'classic-fantasy',
+        displayName: 'classic-fantasy',
+        plan: { status: 'remote-only' },
+        state: { status: 'none' },
+      },
+    ]);
+  });
 });
 
 describe('theme set plan saving', () => {
@@ -278,5 +301,93 @@ describe('theme set plan saving', () => {
         { store: memoryStore(), repoRoot: root, now: NOW },
       ),
     ).rejects.toThrow();
+  });
+
+  it('publishes the saved plan to the durable branch and reports it', async () => {
+    const root = tempRepo();
+    const plan = { ...canonicalPlan(), id: 'edo-samurai' };
+    const calls: Array<{
+      setId: string;
+      planPath: string;
+      content: string;
+      overwrite: boolean;
+    }> = [];
+    const publishPlan = async (input: {
+      setId: string;
+      planPath: string;
+      content: string;
+      displayName: string;
+      overwrite: boolean;
+    }) => {
+      calls.push({
+        setId: input.setId,
+        planPath: input.planPath,
+        content: input.content,
+        overwrite: input.overwrite,
+      });
+      return { branch: 'assets/plans', commit: 'deadbee', url: 'https://example/commit' };
+    };
+
+    const result = (await executeThemeEquipmentReviewCommand(
+      { action: 'save-plan', plan },
+      { store: memoryStore(), repoRoot: root, now: NOW, publishPlan },
+    )) as unknown as { durable?: { branch: string; commit: string } };
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.setId).toBe('edo-samurai');
+    expect(calls[0]?.planPath).toBe('data/theme-equipment-sets/edo-samurai.json');
+    expect(calls[0]?.overwrite).toBe(false);
+    // The publisher must receive exactly the bytes written to the local file.
+    expect(calls[0]?.content).toBe(
+      readFileSync(path.join(root, PLAN_DIR, 'edo-samurai.json'), 'utf8'),
+    );
+    expect(result.durable).toEqual({
+      branch: 'assets/plans',
+      commit: 'deadbee',
+      url: 'https://example/commit',
+    });
+  });
+
+  it('rolls the local write back when the durable publish fails', async () => {
+    const root = tempRepo();
+    const plan = { ...canonicalPlan(), id: 'edo-samurai' };
+    const target = path.join(root, PLAN_DIR, 'edo-samurai.json');
+    const publishPlan = async () => {
+      throw new Error('remote rejected the push');
+    };
+
+    await expect(
+      executeThemeEquipmentReviewCommand(
+        { action: 'save-plan', plan },
+        { store: memoryStore(), repoRoot: root, now: NOW, publishPlan },
+      ),
+    ).rejects.toThrow(/could not publish/i);
+
+    // A definitive publish failure must not leave a misleading local plan.
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it('does not publish when the set already has durable state', async () => {
+    const root = tempRepo();
+    const plan = canonicalPlan();
+    const store = memoryStore();
+    await saveThemeEquipmentSetState(
+      store,
+      buildThemeEquipmentSetStateFromPlan(plan, { updatedAt: NOW().toISOString() }),
+      { expectedRevision: null, now: NOW },
+    );
+    let published = false;
+    const publishPlan = async () => {
+      published = true;
+      return { branch: 'assets/plans', commit: 'x', url: '' };
+    };
+
+    await expect(
+      executeThemeEquipmentReviewCommand(
+        { action: 'save-plan', plan, overwrite: true },
+        { store, repoRoot: root, now: NOW, publishPlan },
+      ),
+    ).rejects.toThrow(/immutable/);
+    expect(published).toBe(false);
   });
 });
