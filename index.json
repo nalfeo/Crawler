@@ -1,5 +1,16 @@
 [
   {
+    "commit": "15aafa665da1c7b9a577560445adba49b4bb78c7",
+    "commitDate": "2026-07-30T21:08:11Z",
+    "commitSubject": "feat(sprites): default themed sets to unified mirror-pair items (bracers/rings/arm guards) (#2393)",
+    "capturedAt": "2026-07-30T22:15:26.310Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30582836218",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/15aafa665da1c7b9a577560445adba49b4bb78c7.json"
+  },
+  {
     "commit": "3932bbd3d2ac816fb1d60163237f7cc6dbb5e288",
     "commitDate": "2026-07-30T20:40:23Z",
     "commitSubject": "feat(ci-recovery): detect a dead stale-session harvest from outside the harvest (#2392)",
