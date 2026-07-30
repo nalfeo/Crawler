@@ -15,11 +15,6 @@ const BRACE_EXPANSION_ADVISORY = {
   url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
   severity: 'high',
 };
-const ADVISORY = {
-  source: 1124064,
-  url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
-  severity: 'high',
-};
 const FIND_MY_WAY_ADVISORY = {
   source: 1124273,
   url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
@@ -43,7 +38,6 @@ test('reports every matched exception in the success diagnostic', (t) => {
           severity: 'high',
           via: [BRACE_EXPANSION_ADVISORY],
         },
-        'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
         'find-my-way': {
           name: 'find-my-way',
           severity: 'high',
@@ -70,15 +64,11 @@ test('reports every matched exception in the success diagnostic', (t) => {
   );
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-07-29: https:\/\/github\.com\/advisories\/GHSA-v2hh-gcrm-f6hx/,
-  );
-  assert.match(
-    result.stderr,
     /Temporary audit exception through 2026-07-31: https:\/\/github\.com\/advisories\/GHSA-c96f-x56v-gq3h/,
   );
   assert.match(
     result.stderr,
-    /Suppressed derived findings: brace-expansion, fast-uri, fastify, find-my-way, minimatch/,
+    /Suppressed derived findings: brace-expansion, fastify, find-my-way, minimatch/,
   );
 });
 
@@ -123,68 +113,58 @@ test('fails closed after the brace-expansion exception expires', () => {
   );
 });
 
-test('suppresses the exact fast-uri advisory and findings derived solely from it', () => {
-  const result = evaluateAudit(
-    report({
-      'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
-      ajv: { name: 'ajv', severity: 'high', via: ['fast-uri'] },
-      fastify: { name: 'fastify', severity: 'high', via: ['ajv'] },
-    }),
-    { now: ACTIVE_DATE },
-  );
-
-  assert.deepEqual(result.blocking, []);
-  assert.deepEqual(result.ignored, ['ajv', 'fast-uri', 'fastify']);
-  assert.deepEqual(
-    result.matchedExceptions.map((item) => item.packageName),
-    ['fast-uri'],
-  );
-});
-
 test('fails closed for a mixed dependency chain', () => {
   const unrelated = { source: 99, url: 'https://example.test/other', severity: 'high' };
   const result = evaluateAudit(
     report({
-      'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
-      ajv: { name: 'ajv', severity: 'high', via: ['fast-uri', unrelated] },
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        via: [BRACE_EXPANSION_ADVISORY],
+      },
+      minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion', unrelated] },
     }),
     { now: ACTIVE_DATE },
   );
 
-  assert.deepEqual(result.ignored, ['fast-uri']);
+  assert.deepEqual(result.ignored, ['brace-expansion']);
   assert.deepEqual(
     result.matchedExceptions.map((item) => item.packageName),
-    ['fast-uri'],
+    ['brace-expansion'],
   );
   assert.deepEqual(
     result.blocking.map((item) => item.name),
-    ['ajv'],
+    ['minimatch'],
   );
 });
 
 test('fails closed after the exception expires', () => {
   const result = evaluateAudit(
     report({
-      'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        via: [BRACE_EXPANSION_ADVISORY],
+      },
     }),
-    { now: new Date('2026-07-30T00:00:00Z') },
+    { now: new Date('2026-08-01T00:00:00Z') },
   );
 
   assert.deepEqual(result.ignored, []);
   assert.deepEqual(result.matchedExceptions, []);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
-    ['fast-uri'],
+    ['brace-expansion'],
   );
 });
 
-test('does not suppress a different advisory for fast-uri', () => {
+test('does not suppress a different advisory for brace-expansion', () => {
   const result = evaluateAudit(
     report({
-      'fast-uri': {
-        name: 'fast-uri',
+      'brace-expansion': {
+        name: 'brace-expansion',
         severity: 'critical',
-        via: [{ ...ADVISORY, source: 123 }],
+        via: [{ ...BRACE_EXPANSION_ADVISORY, source: 123 }],
       },
     }),
     { now: ACTIVE_DATE },
@@ -194,7 +174,7 @@ test('does not suppress a different advisory for fast-uri', () => {
   assert.deepEqual(result.matchedExceptions, []);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
-    ['fast-uri'],
+    ['brace-expansion'],
   );
 });
 
@@ -245,15 +225,19 @@ test('fails closed when severity is null', () => {
 test('does not suppress an excepted finding with malformed severity', () => {
   const result = evaluateAudit(
     report({
-      'fast-uri': { name: 'fast-uri', severity: null, via: [ADVISORY] },
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: null,
+        via: [BRACE_EXPANSION_ADVISORY],
+      },
     }),
     { now: ACTIVE_DATE },
   );
 
-  assert.deepEqual(result.ignored, ['fast-uri']);
+  assert.deepEqual(result.ignored, ['brace-expansion']);
   assert.deepEqual(
     result.blocking.map((item) => item.name),
-    ['fast-uri'],
+    ['brace-expansion'],
   );
 });
 
