@@ -13,12 +13,14 @@
  * `reason` is also a build failure (reason-restatement rule).
  */
 
-import type { KnipConfig } from 'knip';
+import type { KnipConfig, KnipConfiguration } from 'knip';
 import { KNIP_SUPPRESSIONS } from './scripts/agent/health/knip-suppressions.js';
 
-const ignoreIssues: Record<string, string[]> = {};
+type KnipIgnoreIssues = NonNullable<KnipConfiguration['ignoreIssues']>;
+
+const ignoreIssues: KnipIgnoreIssues = {};
 for (const s of KNIP_SUPPRESSIONS) {
-  ignoreIssues[s.file] = [...s.issues];
+  ignoreIssues[s.file] = [...s.issues] as KnipIgnoreIssues[string];
 }
 
 export default {

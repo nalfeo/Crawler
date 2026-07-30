@@ -39,7 +39,8 @@ describe('findExpiredSuppressions', () => {
     const expired: KnipSuppression = { ...ALPHA, expiresOn: '2025-01-01' };
     const result = findExpiredSuppressions([expired, BETA], '2026-07-30');
     expect(result).toHaveLength(1);
-    expect(result[0].file).toBe('src/shared/alpha.ts');
+    const [firstExpired] = result;
+    expect(firstExpired!.file).toBe('src/shared/alpha.ts');
   });
 
   it('flags a suppression whose expiresOn equals today (boundary)', () => {
@@ -73,15 +74,14 @@ describe('findReasonRestatementViolations', () => {
 
     const violations = findReasonRestatementViolations(previous, current);
     expect(violations).toHaveLength(1);
-    expect(violations[0].file).toBe('src/shared/alpha.ts');
-    expect(violations[0].previousExpiresOn).toBe('2026-07-01');
-    expect(violations[0].currentExpiresOn).toBe('2030-12-31');
+    const [firstViolation] = violations;
+    expect(firstViolation!.file).toBe('src/shared/alpha.ts');
+    expect(firstViolation!.previousExpiresOn).toBe('2026-07-01');
+    expect(firstViolation!.currentExpiresOn).toBe('2030-12-31');
   });
 
   it('passes when expiresOn and reason BOTH change', () => {
-    const previous = [
-      { ...ALPHA, expiresOn: '2026-07-01', reason: 'Old reason.' },
-    ];
+    const previous = [{ ...ALPHA, expiresOn: '2026-07-01', reason: 'Old reason.' }];
     const current = [ALPHA]; // new reason and new expiresOn
 
     expect(findReasonRestatementViolations(previous, current)).toHaveLength(0);
@@ -115,12 +115,13 @@ describe('findReasonRestatementViolations', () => {
     ];
     const current = [
       ALPHA, // same reason, bumped date → violation
-      BETA,  // both reason and date changed → no violation
+      BETA, // both reason and date changed → no violation
     ];
 
     const violations = findReasonRestatementViolations(previous, current);
     expect(violations).toHaveLength(1);
-    expect(violations[0].file).toBe('src/shared/alpha.ts');
+    const [firstViolation] = violations;
+    expect(firstViolation!.file).toBe('src/shared/alpha.ts');
   });
 });
 
@@ -143,8 +144,9 @@ export const KNIP_SUPPRESSIONS: readonly KnipSuppression[] = [
 
     const result = extractSuppressionsFromSource(source);
     expect(result).toHaveLength(1);
-    expect(result[0].file).toBe('src/shared/foo.ts');
-    expect(result[0].expiresOn).toBe('2030-01-01');
+    const [firstSuppression] = result;
+    expect(firstSuppression!.file).toBe('src/shared/foo.ts');
+    expect(firstSuppression!.expiresOn).toBe('2030-01-01');
   });
 
   it('extracts an empty array', () => {

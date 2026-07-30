@@ -234,17 +234,11 @@ const SUPPRESSIONS_SCRIPT_PATH = 'scripts/agent/health/knip-suppressions.ts';
  * Limitation: uses Function() eval on the extracted array literal — safe
  * because this only runs in a trusted CI/dev environment, not in the browser.
  */
-export function extractSuppressionsFromSource(
-  source: string,
-): readonly KnipSuppression[] {
+export function extractSuppressionsFromSource(source: string): readonly KnipSuppression[] {
   // Match the exported KNIP_SUPPRESSIONS array literal.
-  const match = source.match(
-    /export const KNIP_SUPPRESSIONS[^=]*=\s*(\[\]|\[[\s\S]*?\n\]);/,
-  );
+  const match = source.match(/export const KNIP_SUPPRESSIONS[^=]*=\s*(\[\]|\[[\s\S]*?\n\]);/);
   if (!match) {
-    throw new Error(
-      `Could not find KNIP_SUPPRESSIONS declaration in ${SUPPRESSIONS_SCRIPT_PATH}`,
-    );
+    throw new Error(`Could not find KNIP_SUPPRESSIONS declaration in ${SUPPRESSIONS_SCRIPT_PATH}`);
   }
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const result = Function(`"use strict"; return (${match[1]});`)();

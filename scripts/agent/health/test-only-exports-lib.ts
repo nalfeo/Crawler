@@ -179,9 +179,7 @@ export function collectNamedExports(files: readonly SourceFile[]): ExportDef[] {
  * - `import defaultExport from '...'` (default imports)
  * - Dynamic `import('...')`
  */
-export function collectNamedImports(
-  files: readonly SourceFile[],
-): Map<string, Set<string>> {
+export function collectNamedImports(files: readonly SourceFile[]): Map<string, Set<string>> {
   const result = new Map<string, Set<string>>();
 
   const addImport = (name: string, filePath: string): void => {
@@ -296,14 +294,9 @@ export function findDuplicateExportNames(
 // AST helpers
 // ---------------------------------------------------------------------------
 
-function hasExportModifier(
-  node: ts.Declaration | ts.VariableStatement,
-): boolean {
-  const modifiers =
-    ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
-  return (
-    modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false
-  );
+function hasExportModifier(node: ts.Declaration | ts.VariableStatement): boolean {
+  const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+  return modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 
 function getDeclarationName(
@@ -323,9 +316,7 @@ function getDeclarationName(
   return node.name?.text;
 }
 
-function getBindingName(
-  name: ts.BindingName,
-): string | undefined {
+function getBindingName(name: ts.BindingName): string | undefined {
   if (ts.isIdentifier(name)) return name.text;
   // Object/array destructuring — skip; these are unusual at module level.
   return undefined;

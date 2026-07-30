@@ -39,11 +39,11 @@ function main(): void {
     report.error(
       `Could not resolve base ref for reason-restatement check: ${err instanceof Error ? err.message : String(err)}`,
       {
-        remediation:
-          'Ensure the repository checkout includes the base commit (fetch-depth: 0).',
+        remediation: 'Ensure the repository checkout includes the base commit (fetch-depth: 0).',
       },
     );
     report.finish();
+    return;
   }
 
   for (const v of reasonViolations) {

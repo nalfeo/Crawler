@@ -21,13 +21,14 @@
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 import {
   collectNamedExports,
+  collectNamedImports,
   findDuplicateExportNames,
-  findTestOnlyExports,
   type SourceFile,
 } from './test-only-exports-lib.js';
 
@@ -61,6 +62,51 @@ function readSourceFile(absPath: string): SourceFile {
   return { path: rel, content: readFileSync(absPath, 'utf8') };
 }
 
+function resolveBaseRef(): string | null {
+  if (process.env.GITHUB_BASE_SHA) return process.env.GITHUB_BASE_SHA;
+
+  for (const candidate of ['origin/main', 'main']) {
+    const result = spawnSync('git', ['merge-base', 'HEAD', candidate], {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    });
+    if (result.status === 0) {
+      return result.stdout.trim();
+    }
+  }
+
+  return null;
+}
+
+function listChangedSrcPaths(baseRef: string | null): string[] {
+  const changed = new Set<string>();
+  const diffSpecs = baseRef
+    ? [`${baseRef}...HEAD`, undefined, '--cached']
+    : [undefined, '--cached'];
+
+  for (const diffSpec of diffSpecs) {
+    const args = ['diff', '--name-only', '--diff-filter=ACMR'];
+    if (diffSpec) {
+      args.push(diffSpec);
+    }
+    args.push('--', 'src');
+
+    const result = spawnSync('git', args, {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    });
+    if (result.status !== 0) continue;
+
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const rel = line.trim().replace(/\\/g, '/');
+      if (!rel.startsWith('src/') || !rel.endsWith('.ts') || rel.endsWith('.d.ts')) continue;
+      changed.add(rel);
+    }
+  }
+
+  return [...changed];
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -73,6 +119,7 @@ function main(): void {
 
   const srcFiles = walkTsFiles(srcRoot).map(readSourceFile);
   const testFiles = walkTsFiles(testsRoot).map(readSourceFile);
+  const changedSrcPaths = new Set(listChangedSrcPaths(resolveBaseRef()));
 
   if (srcFiles.length === 0) {
     report.error('No src/**/*.ts files found — the guard is not scanning anything.', {
@@ -81,9 +128,22 @@ function main(): void {
     report.finish();
   }
 
-  // Warn about duplicate export names; they can cause false negatives.
+  if (changedSrcPaths.size === 0) {
+    report.info('No changed src/**/*.ts files detected in this branch or working tree; skipping.');
+    report.finish();
+  }
+
+  const changedSrcFiles = srcFiles.filter((file) => changedSrcPaths.has(file.path));
   const allExports = collectNamedExports(srcFiles);
-  for (const dup of findDuplicateExportNames(allExports)) {
+  const changedExports = collectNamedExports(changedSrcFiles);
+  const srcImports = collectNamedImports(srcFiles);
+  const testImports = collectNamedImports(testFiles);
+
+  // Warn about duplicate export names in changed files; they can cause false negatives.
+  const changedExportNames = new Set(changedExports.map((exp) => exp.name));
+  for (const dup of findDuplicateExportNames(allExports).filter((dup) =>
+    changedExportNames.has(dup.name),
+  )) {
     report.warn(
       `Duplicate export name "${dup.name}" found in multiple src/ files: ${dup.files.join(', ')}.`,
       {
@@ -94,7 +154,16 @@ function main(): void {
     );
   }
 
-  const testOnlyExports = findTestOnlyExports(srcFiles, testFiles);
+  const testOnlyExports = changedExports.flatMap((exp) => {
+    const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
+    const outsideSrcConsumers = [...srcConsumers].filter((file) => file !== exp.file);
+    if (outsideSrcConsumers.length > 0) return [];
+
+    const testConsumers = [...(testImports.get(exp.name) ?? new Set<string>())];
+    if (testConsumers.length === 0) return [];
+
+    return [{ ...exp, testConsumers }];
+  });
 
   for (const exp of testOnlyExports) {
     const consumers = exp.testConsumers.join(', ');
@@ -112,7 +181,7 @@ function main(): void {
 
   if (testOnlyExports.length === 0) {
     report.info(
-      `${allExports.length} src/ export(s) checked; none are consumed exclusively by tests.`,
+      `${changedExports.length} changed src/ export(s) checked; none are consumed exclusively by tests.`,
     );
   }
 
