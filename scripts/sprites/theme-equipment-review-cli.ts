@@ -128,19 +128,25 @@ export class PlanPublishError extends Error {
 
 /**
  * Classify a failed `gh api` result as retryable — a transient outage a later
- * retry could clear — versus definitive. Retryable: no HTTP status at all (a
- * timeout, a dropped connection, or the publish deadline elapsing), an explicit
- * `429`, any upstream `5xx`, or a `403` that names GitHub's rate/abuse limiting.
- * Everything else (auth `401`, conflict `409`, validation `422`, a plain
- * non-rate `403`) is definitive: retrying without the maintainer changing
- * something is futile, so the local write is rolled back as before.
+ * retry could clear — versus definitive. Retryable: a genuine transport
+ * transient with no HTTP status (`transient === true` — a timeout, a killed
+ * child, or the publish deadline elapsing), an explicit `429`, any upstream
+ * `5xx`, or a `403` that names GitHub's rate/abuse limiting. Everything else is
+ * definitive: auth `401`, conflict `409`, validation `422`, a plain non-rate
+ * `403`, and — crucially — a *null-status local fault* (missing `gh`, an
+ * unauthenticated CLI preflight, a bad argument) that also carries no HTTP
+ * status but must NOT sit pending forever. A null status is therefore retryable
+ * only when the caller flagged it as a transport transient; retrying anything
+ * else without the maintainer changing something is futile, so the local write
+ * is rolled back as before.
  */
 export function isRetryableGhFailure(result: {
   readonly status: number | null;
   readonly errorMessage: string;
+  readonly transient?: boolean;
 }): boolean {
-  const { status, errorMessage } = result;
-  if (status === null) return true;
+  const { status, errorMessage, transient } = result;
+  if (status === null) return transient === true;
   if (status === 429) return true;
   if (status >= 500) return true;
   if (status === 403 && /rate limit|secondary rate|abuse/i.test(errorMessage)) return true;
@@ -973,9 +979,23 @@ export function createGhPlanPublisher(
     const remoteProbe = await gh([`${contentsPath}?ref=${PLANS_BRANCH}`]);
     let remoteSha: string | undefined;
     if (remoteProbe.ok) {
-      const parsed = safeJson(remoteProbe.stdout) as { sha?: unknown } | undefined;
+      const parsed = safeJson(remoteProbe.stdout) as
+        | { sha?: unknown; html_url?: unknown }
+        | undefined;
       remoteSha = typeof parsed?.sha === 'string' ? parsed.sha : undefined;
       if (!input.overwrite) {
+        // The shared copy already exists. If it is byte-for-byte this plan, the
+        // write is a no-op — treat it as idempotent success so a retry of a
+        // partially-landed publish completes without escalating to an overwrite
+        // that could clobber a *different* maintainer's plan under the same id.
+        // Only genuinely differing content is refused pending explicit overwrite.
+        if (decodeContentsPayload(parsed) === input.content) {
+          return {
+            branch: PLANS_BRANCH,
+            commit: '',
+            url: typeof parsed?.html_url === 'string' ? parsed.html_url : '',
+          };
+        }
         throw new Error(
           `${input.planPath} already exists on ${PLANS_BRANCH}; pass overwrite to replace the shared copy.`,
         );
@@ -1041,6 +1061,16 @@ interface GhApiResult {
   readonly status: number | null;
   readonly stdout: string;
   readonly errorMessage: string;
+  /**
+   * True only for a genuine transport-level transient that carries no HTTP
+   * status: the child was killed by our per-call timeout / publish deadline, or
+   * the connection dropped mid-flight. It distinguishes a retryable outage from
+   * a definitive *local* fault (a missing `gh` binary, an unauthenticated CLI
+   * preflight, a bad argument) which also lacks an HTTP status but must roll the
+   * plan back rather than sit pending forever. Undefined is treated as
+   * non-transient (definitive).
+   */
+  readonly transient?: boolean;
 }
 
 /** Wrap a failed `gh api` result as a classified, retry-aware publisher error. */
@@ -1064,6 +1094,7 @@ async function runGhApi(
       status: null,
       stdout: '',
       errorMessage: 'Plan publish deadline exceeded before completing the GitHub API calls.',
+      transient: true,
     };
   }
   try {
@@ -1083,11 +1114,27 @@ async function runGhApi(
     const statusMatch = /HTTP (\d{3})/.exec(stderr);
     const status = statusMatch ? Number(statusMatch[1]) : null;
     const message = stderr.trim() || (error instanceof Error ? error.message : String(error));
+    // A null-status failure is only a retryable transient when it is a genuine
+    // transport problem: the child was killed by our timeout, OR `gh` surfaced a
+    // recognized network-layer error. A non-zero exit with no HTTP status that
+    // is none of those — ENOENT (no `gh`), an auth preflight failure, a bad
+    // argument — is a definitive local fault that must roll back rather than sit
+    // pending forever.
+    const killed = (error as { killed?: unknown }).killed === true;
+    const signal = (error as { signal?: unknown }).signal;
+    const code = (error as { code?: unknown }).code;
+    const transportError =
+      code !== 'ENOENT' &&
+      /ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|socket hang up|network is unreachable|i\/o timeout|TLS handshake|connection reset|timed out/i.test(
+        stderr,
+      );
+    const transient = status === null && (killed || signal === 'SIGTERM' || transportError);
     return {
       ok: false,
       status,
       stdout: '',
       errorMessage: `gh api ${args[0] ?? ''} failed: ${message}`,
+      transient,
     };
   }
 }
@@ -1097,7 +1144,7 @@ async function ensurePlansBranch(
   gh: (args: readonly string[]) => Promise<GhApiResult>,
 ): Promise<void> {
   const repoProbe = await gh(['repos/{owner}/{repo}']);
-  if (!repoProbe.ok) throw new Error(repoProbe.errorMessage);
+  if (!repoProbe.ok) throw planPublishFailure(repoProbe);
   const defaultBranch =
     typeof (safeJson(repoProbe.stdout) as { default_branch?: unknown } | undefined)
       ?.default_branch === 'string'
@@ -1106,7 +1153,7 @@ async function ensurePlansBranch(
   if (!defaultBranch) throw new Error('Could not resolve the default branch to seed assets/plans.');
 
   const refProbe = await gh([`repos/{owner}/{repo}/git/ref/heads/${defaultBranch}`]);
-  if (!refProbe.ok) throw new Error(refProbe.errorMessage);
+  if (!refProbe.ok) throw planPublishFailure(refProbe);
   const sha =
     typeof (safeJson(refProbe.stdout) as { object?: { sha?: unknown } } | undefined)?.object
       ?.sha === 'string'
@@ -1129,8 +1176,12 @@ async function ensurePlansBranch(
   if (create.status === 422) {
     const recheck = await gh([`repos/{owner}/{repo}/branches/${PLANS_BRANCH}`]);
     if (recheck.ok) return;
+    // The branch very likely exists but the confirming read failed. Classify the
+    // recheck so a transient outage stays retryable (keeps the plan pending)
+    // instead of being reported as a definitive failure that rolls it back.
+    throw planPublishFailure(recheck);
   }
-  throw new Error(create.errorMessage);
+  throw planPublishFailure(create);
 }
 
 function safeJson(text: string): unknown {

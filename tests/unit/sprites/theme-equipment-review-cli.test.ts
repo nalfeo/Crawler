@@ -472,13 +472,19 @@ describe('createGhPlanPublisher', () => {
     readonly status: number | null;
     readonly stdout: string;
     readonly errorMessage: string;
+    readonly transient?: boolean;
   }
   const ghOk = (stdout = '{}'): GhResult => ({ ok: true, status: 200, stdout, errorMessage: '' });
-  const ghErr = (status: number | null, errorMessage = 'gh failed'): GhResult => ({
+  const ghErr = (
+    status: number | null,
+    errorMessage = 'gh failed',
+    transient?: boolean,
+  ): GhResult => ({
     ok: false,
     status,
     stdout: '',
     errorMessage,
+    ...(transient === undefined ? {} : { transient }),
   });
   const isBranchProbe = (args: readonly string[]): boolean =>
     args.length === 1 && args[0]!.includes('/branches/');
@@ -535,6 +541,34 @@ describe('createGhPlanPublisher', () => {
     };
     const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
     await expect(publish({ ...baseInput, overwrite: false })).rejects.toThrow(/already exists/);
+  });
+
+  it('treats a byte-identical remote plan as idempotent success without overwrite (retry-safe)', async () => {
+    // A retry of a partially-landed publish finds the shared copy already holds
+    // exactly these bytes. Writing again is a no-op, so it must succeed WITHOUT
+    // forcing an overwrite that could clobber a different plan under the same id.
+    const encoded = Buffer.from(baseInput.content, 'utf8').toString('base64');
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      if (isBranchProbe(args)) return ghOk();
+      if (isContentsGet(args))
+        return ghOk(
+          JSON.stringify({
+            sha: 'abc123',
+            content: encoded,
+            encoding: 'base64',
+            html_url: 'https://example/blob',
+          }),
+        );
+      throw new Error(
+        `PUT must not run when the remote copy is already identical: ${args.join(' ')}`,
+      );
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    const result = await publish({ ...baseInput, overwrite: false });
+
+    expect(result.branch).toBe('assets/plans');
+    expect(result.commit).toBe(''); // no PUT ran → no fresh commit sha
+    expect(result.url).toBe('https://example/blob');
   });
 
   it('sends the remote blob sha as a compare-and-swap when overwriting', async () => {
@@ -618,14 +652,58 @@ describe('createGhPlanPublisher', () => {
     // The branch-create POST carried the resolved default-branch tip sha.
     expect(seen.some((s) => s.includes('sha=mainsha'))).toBe(true);
   });
+
+  it('classifies a transient branch-bootstrap failure as retryable (does not roll the plan back)', async () => {
+    // The branch is missing, so bootstrap runs; the repo probe then hits a
+    // transient outage. It must surface as a retryable PlanPublishError so the
+    // caller keeps the authored plan pending rather than discarding it.
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      if (isBranchProbe(args)) return ghErr(404, 'no branch'); // → bootstrap
+      if (args[0] === 'repos/{owner}/{repo}') return ghErr(503, 'server error');
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    const error = await publish({ ...baseInput }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PlanPublishError);
+    expect((error as PlanPublishError).retryable).toBe(true);
+  });
+
+  it('classifies a null-status local fault (missing gh) as definitive, not pending', async () => {
+    // A branch probe that fails with no HTTP status and no transient flag is a
+    // local fault (e.g. `gh` missing / unauthenticated), which must roll the
+    // plan back rather than sit pending forever.
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      if (isBranchProbe(args)) return ghErr(null, 'gh api failed: spawn gh ENOENT', false);
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    const error = await publish({ ...baseInput }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PlanPublishError);
+    expect((error as PlanPublishError).retryable).toBe(false);
+  });
 });
 
 describe('isRetryableGhFailure', () => {
-  it('treats a missing HTTP status (timeout / dropped connection / deadline) as retryable', () => {
-    expect(isRetryableGhFailure({ status: null, errorMessage: 'connection reset' })).toBe(true);
+  it('treats a genuine transport transient (null status + transient flag) as retryable', () => {
     expect(
-      isRetryableGhFailure({ status: null, errorMessage: 'Plan publish deadline exceeded' }),
+      isRetryableGhFailure({ status: null, errorMessage: 'connection reset', transient: true }),
     ).toBe(true);
+    expect(
+      isRetryableGhFailure({
+        status: null,
+        errorMessage: 'Plan publish deadline exceeded',
+        transient: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('treats a null-status local fault (missing gh / auth / bad args) as definitive', () => {
+    // No HTTP status AND not flagged transient → a local/config fault that a
+    // blind retry cannot clear, so it must roll back rather than sit pending.
+    expect(
+      isRetryableGhFailure({ status: null, errorMessage: 'spawn gh ENOENT', transient: false }),
+    ).toBe(false);
+    expect(isRetryableGhFailure({ status: null, errorMessage: 'gh: not logged in' })).toBe(false);
   });
 
   it('treats explicit rate limiting and upstream 5xx as retryable', () => {

@@ -331,7 +331,7 @@ export function renderHtml(bootstrap) {
             (draft.saved
               ? (draft.saved.durable
                   ? (draft.saved.durable.pending
-                      ? '<p class="muted" style="border-left:3px solid var(--true-color-orange,#d29922);padding-left:10px">Saved <strong>' + esc(draft.saved.planPath) + '</strong> to your working tree, but it is <strong>not yet shared</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong>: ' + esc(String(draft.saved.durable.reason || 'a transient publish error')) + '. Nothing was lost — your plan is safe locally. GitHub init reads the plan from ' + esc(draft.saved.durable.branch) + ', so retry the publish before initializing.</p>' +
+                      ? '<p class="muted" style="border-left:3px solid var(--true-color-orange,#d29922);padding-left:10px">Saved <strong>' + esc(draft.saved.planPath) + '</strong> to your working tree, but it is <strong>not yet shared</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong>: ' + esc(String(draft.saved.durable.reason || 'a transient publish error')) + '. Nothing was lost — your plan is safe locally. GitHub init reads the plan from ' + esc(draft.saved.durable.branch) + ', so retry the publish before initializing. If the retry reports the shared copy already exists and differs, tick “overwrite existing file” only if you mean to replace it.</p>' +
                         '<div class="controls"><button class="primary" data-retry-publish ' + (busy ? 'disabled' : '') + '>Retry publish</button></div>'
                       : '<p class="muted">Pushed <strong>' + esc(draft.saved.planPath) + '</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong> ' + (draft.saved.durable.commit ? '(commit <code>' + esc(String(draft.saved.durable.commit).slice(0, 7)) + '</code>)' : '(commit pending)') + '. Open the set and initialize it on GitHub — init reads the plan from ' + esc(draft.saved.durable.branch) + ', so any workspace can run it.</p>')
                   : '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong> locally but did <strong>not</strong> publish it to the shared plans branch. It will not be visible to a GitHub init until it is pushed.</p>')
@@ -368,10 +368,13 @@ export function renderHtml(bootstrap) {
       planEditor?.addEventListener('change', () => { draft.planText = planEditor.value; renderCreate(); });
       document.querySelector('[data-synth]')?.addEventListener('click', synthRoster);
       document.querySelector('[data-save]')?.addEventListener('click', () => savePlan());
-      // Retry after a transient publish outage: force overwrite so a prior
-      // attempt that partially landed is replaced idempotently rather than
-      // tripping the "already exists" guard.
-      document.querySelector('[data-retry-publish]')?.addEventListener('click', () => savePlan({ forceOverwrite: true }));
+      // Retry after a transient publish outage. It does NOT force overwrite: if
+      // this attempt's bytes already landed, the publisher treats an identical
+      // remote copy as idempotent success; if a *different* plan now occupies
+      // the shared id, the retry is refused unless the maintainer explicitly
+      // ticks "overwrite existing file" — so a retry can never silently clobber
+      // someone else's plan.
+      document.querySelector('[data-retry-publish]')?.addEventListener('click', () => savePlan());
     }
 
     async function synthRoster() {
@@ -400,9 +403,8 @@ export function renderHtml(bootstrap) {
       }
     }
 
-    async function savePlan(options) {
+    async function savePlan() {
       if (busy) return;
-      const forceOverwrite = options?.forceOverwrite === true;
       let plan;
       try {
         plan = JSON.parse(draft.planText);
@@ -410,7 +412,7 @@ export function renderHtml(bootstrap) {
         draft.error = 'Roster JSON is invalid: ' + error.message;
         return renderCreate();
       }
-      const overwrite = forceOverwrite || document.querySelector('[data-overwrite]')?.checked === true;
+      const overwrite = document.querySelector('[data-overwrite]')?.checked === true;
       draft.error = null;
       busy = true;
       renderCreate();
