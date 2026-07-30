@@ -12,8 +12,11 @@ strip (contact-L → passing-L → contact-R → passing-R), 8fps looping, gener
 via the `frameSequence` sprite pipeline and approved through
 `npm run sprites:approve -- --sequence` with zero sensor-threshold relaxation.
 
-Stacked on `nalfeo-bookish-eureka` (unmerged PR #2321) — do not rebase this
-branch away from that base; it must stay stacked.
+Originally stacked on `nalfeo-bookish-eureka` (PR #2321). That base merged to
+`main` mid-session, and `main` independently gained two overlapping pieces of
+concurrent work (see "Post-hoc rebase reconciliation" below). The branch was
+rebased cleanly onto `origin/main` after PR #2321 merged; it is no longer
+stacked on an unmerged branch.
 
 ## What shipped
 
@@ -93,14 +96,51 @@ branch away from that base; it must stay stacked.
    test asserting each of the three `world.playerGender` values resolves to
    its own distinct, shipped 4-frame animated manifest entry.
 3. ✅ Real-game observation in `npm run dev` (NOT a lab): played the intro
-   picking She/Her, He/Him, and the third option. Confirmed three visually
-   distinct sprites (ponytail / short-hair-broader-build / short-spiky-hair),
-   correct empty-hands neutral pose, correct horizontal flip on movement
-   direction, and a stable floor line with no vertical bob across the cycle.
-   Scale (`0.18`) was verified empirically against the drawn on-screen size,
-   not just via the `0.72/4` arithmetic — the postprocess crop is
-   bbox-driven, so the figure-to-frame ratio at 256×256 was independently
-   confirmed to still render at the pre-existing on-screen size.
+   picking She/Her, He/Him, and the third option, three separate playthroughs.
+   Confirmed three visually distinct sprites (ponytail / short-hair-broader-build
+   / short-spiky-hair), correct empty-hands neutral pose, correct horizontal
+   flip on movement direction, and a stable floor line with no vertical bob
+   across the cycle for all three. Idle (frame 0) snap-to-rest confirmed for
+   female and male. Scale was verified empirically against the drawn
+   on-screen size (player consistently reads at the same on-screen footprint
+   as before the change, next to the WELCOME sign and floor tiles), not just
+   via arithmetic — the postprocess crop is bbox-driven, so the
+   figure-to-frame ratio at 256×256 was independently confirmed to still
+   render at the pre-existing on-screen size. See "Post-hoc rebase
+   reconciliation" below for the corrected exact scale value.
+
+## Post-hoc rebase reconciliation (after this handoff was first drafted)
+
+The intended base (`nalfeo-bookish-eureka` / PR #2321) merged to `main` while
+this session was still in flight, **and** `main` independently gained two
+overlapping pieces of concurrent work:
+
+1. Another session removed the fixed-grid `frameSequence` slicer as a
+   superset generalization (arbitrary `rows×cols`, not just the single-row
+   removal this session had already done narrowly). Rebased onto that
+   superset and dropped this session's narrower reimplementation entirely —
+   no functional loss, `scripts/sprites/slice-sheet.ts` /
+   `brief-schema.ts` + tests now match `main`'s version.
+2. Another session wired the **old**, now-unused single-gender
+   `player-walk-cycle` shard (64×64, `scale: 0.71875`) to the player render
+   kind, along with a new deterministic guard,
+   `tests/unit/player-npc-scale-parity.test.ts`, asserting exact
+   `toBeCloseTo(_, 5)` scale/height parity between the player and welcome-room
+   NPC height (`46px` at `PIXELS_PER_FOOT = 8`, `heightFt = 5.75`). Rebasing
+   surfaced that this session's originally-shipped scale (`0.18`, a rounded
+   approximation) would have **failed that 5-decimal-precision guard** once
+   merged. **Corrected the scale to the exact value, `46/256 = 0.1796875`**,
+   in all four places in `entity-sprite-mappings.json` (top-level default +
+   all three gender variants) and in the corresponding test assertions. Also
+   repointed `player-npc-scale-parity.test.ts`'s import from the old
+   `player-walk-cycle.json` shard to `player-walk-cycle-female.json` (the new
+   default/female variant) since the old shard is no longer the player's
+   pinned texture. All tests pass at the corrected value; `verify:fast` and
+   `verify:pr-prereqs` re-run clean post-rebase.
+
+The rebase was resolved commit-by-commit with genuine conflict review (not
+blind `--ours`/`--theirs`) in every file except the slicer, where `--ours`
+(main's superset) was taken deliberately per point 1 above.
 
 ## Known risk — flagged for future work (NOT gated)
 
