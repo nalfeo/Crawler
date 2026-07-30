@@ -91,6 +91,36 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/**/*.ts', 'tests/**/*.ts'],
+    ignores: [
+      'src/shared/inventory.ts',
+      // Intentional corruption fixture for defensive-path testing.
+      'tests/ecs/equipment.test.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='generatedEquipment']",
+          message:
+            'Do not read InventoryBag.generatedEquipment directly outside src/shared/inventory.ts. Use listInventoryEntries/listGeneratedEquipmentReferences instead.',
+        },
+        {
+          selector:
+            "MemberExpression[property.name='slots'][object.type='Identifier'][object.name=/^(bag|currentBag|inventory)$/]",
+          message:
+            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
+        },
+        {
+          selector:
+            "MemberExpression[property.name='slots'][object.type='CallExpression'][object.callee.type='MemberExpression'][object.callee.property.name='get'][object.callee.object.type='MemberExpression'][object.callee.object.property.name='inventories']",
+          message:
+            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
+        },
+      ],
+    },
+  },
+  {
     files: ['src/core/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -170,10 +200,28 @@ export default tseslint.config(
       'tests/ecs/spawners/**/*.test.ts',
       'tests/ecs/drop-system.test.ts',
       'tests/game/ability-system.test.ts',
+      'tests/ecs/equipment.test.ts',
     ],
     rules: {
       'no-restricted-syntax': [
         'error',
+        {
+          selector: "MemberExpression[property.name='generatedEquipment']",
+          message:
+            'Do not read InventoryBag.generatedEquipment directly outside src/shared/inventory.ts. Use listInventoryEntries/listGeneratedEquipmentReferences instead.',
+        },
+        {
+          selector:
+            "MemberExpression[property.name='slots'][object.type='Identifier'][object.name=/^(bag|currentBag|inventory)$/]",
+          message:
+            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
+        },
+        {
+          selector:
+            "MemberExpression[property.name='slots'][object.type='CallExpression'][object.callee.type='MemberExpression'][object.callee.property.name='get'][object.callee.object.type='MemberExpression'][object.callee.object.property.name='inventories']",
+          message:
+            'Do not read InventoryBag.slots directly outside src/shared/inventory.ts. Use listInventoryEntries/listStaticInventorySlots or accessor helpers instead.',
+        },
         // Dot notation: something.sprite.width / .height
         {
           selector:

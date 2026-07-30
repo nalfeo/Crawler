@@ -3,8 +3,9 @@ import { getFloor2EquipmentEconomyAccess } from './floor2-equipment-flags.js';
 import { getGeneratedEquipmentInstance } from './generated-equipment-registry.js';
 import { findGeneratedPhysicalOwners } from './systems/equipmentSystem.js';
 import {
+  addGeneratedEquipmentReference,
   canAcceptGeneratedEquipment,
-  type GeneratedEquipmentInventoryEntry,
+  cloneInventoryBag,
   type InventoryBag,
 } from '../shared/inventory.js';
 import type {
@@ -219,15 +220,8 @@ export function purchaseQuartermasterOffer(
   if (!result.ok) return result;
 
   const { offer, stock, bag } = result.prepared;
-  const generatedEntry: GeneratedEquipmentInventoryEntry = {
-    kind: 'generated-instance',
-    instanceKey: offer.instanceId,
-  };
-  const nextBag: InventoryBag = {
-    ...bag,
-    slots: [...bag.slots],
-    generatedEquipment: [...(bag.generatedEquipment ?? []), generatedEntry],
-  };
+  const nextBag: InventoryBag = cloneInventoryBag(bag);
+  addGeneratedEquipmentReference(nextBag, offer.instanceId);
   const nextStock: Floor2QuartermasterStockState = {
     ...stock,
     offers: stock.offers.map((candidate) =>

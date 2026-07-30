@@ -26,7 +26,7 @@ import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
-import { addItem } from '../../shared/inventory.js';
+import { addItem, listStaticInventorySlots } from '../../shared/inventory.js';
 import { ITEM_CATALOG } from '../../shared/items.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -325,8 +325,9 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
     private updateHud(): void {
       const bag = this.world.inventories.get(this.playerEid);
-      const totalItems = bag ? bag.slots.reduce((sum, s) => sum + s.quantity, 0) : 0;
-      const uniqueItems = bag ? bag.slots.length : 0;
+      const staticSlots = bag ? listStaticInventorySlots(bag) : [];
+      const totalItems = staticSlots.reduce((sum, slot) => sum + slot.quantity, 0);
+      const uniqueItems = staticSlots.length;
 
       hud.textContent = [
         `Items: ${totalItems} (${uniqueItems} unique)`,

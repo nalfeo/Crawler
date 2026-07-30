@@ -17,6 +17,7 @@ import {
   createTabPreferences,
   filterByEquipmentSlot,
   filterByTag,
+  listStaticInventorySlots,
   getVisibleTabs,
   search,
   sortSlots,
@@ -490,7 +491,7 @@ export function createInventoryUI(
   function getFilteredSlots(): InventorySlot[] {
     if (!currentBag) return [];
 
-    let slots: InventorySlot[] = currentBag.slots;
+    let slots: InventorySlot[] = [...listStaticInventorySlots(currentBag)];
 
     if (externalSlotFilter !== null) {
       slots = filterByEquipmentSlot(currentBag, externalSlotFilter);
@@ -815,7 +816,7 @@ export function createInventoryUI(
   }
 
   function computeRenderSignature(): string {
-    const slots = currentBag?.slots ?? [];
+    const slots = currentBag ? listStaticInventorySlots(currentBag) : [];
     let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}|${externalSlotFilter ?? '*'}`;
     for (const slot of slots) {
       // Fold in the *selected* generated icon variant and whether its texture is

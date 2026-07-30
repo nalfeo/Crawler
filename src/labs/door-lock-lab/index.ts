@@ -9,6 +9,7 @@ import { FloorMap } from '../../core/map/FloorMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { TilePresets, BiomeType } from '../../shared/map-types.js';
+import { addItem, createInventoryBag } from '../../shared/inventory.js';
 import { registerLab } from '../registry.js';
 import type { GameWorld } from '../../core/world.js';
 import type { DoorLockCondition, DoorConditionOperator } from '../../core/door-lock.js';
@@ -175,17 +176,14 @@ function createDoorLockLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   }
 
   function syncInventory(): void {
-    const bag = world.inventories.get(player);
-    if (!bag) {
+    if (!world.inventories.has(player)) {
       throw new Error('Player inventory was not initialized.');
     }
-    bag.slots.length = 0;
+    const bag = createInventoryBag();
     if (settings.keyPresent) {
-      bag.slots.push({
-        itemId: KEY_ITEM_ID,
-        quantity: Math.max(1, Math.floor(settings.keyQuantity)),
-      });
+      addItem(bag, KEY_ITEM_ID, Math.max(1, Math.floor(settings.keyQuantity)));
     }
+    world.inventories.set(player, bag);
   }
 
   function configureWorld(): void {

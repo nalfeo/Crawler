@@ -88,6 +88,7 @@ import {
   type SynthCueSpec,
 } from '../audio/audio-cue-engine.js';
 import { createRewardOpeningAudioController } from '../reward-opening-audio.js';
+import { hasItem } from '../../shared/inventory.js';
 import { prefersReducedMotion } from '../reduced-motion.js';
 import {
   blurLightField,
@@ -3972,11 +3973,8 @@ export class MainGameScene extends Phaser.Scene {
       }
       const optionRows = stock.map((entry) => {
         const item = getItemById(entry.itemId);
-        const owned = item
-          ? this.world.inventories
-              .get(this.playerEid)
-              ?.slots.some((slot) => slot.itemId === item.id)
-          : false;
+        const bag = this.world.inventories.get(this.playerEid);
+        const owned = item ? (bag ? hasItem(bag, item.id) : false) : false;
         const affordable = this.world.playerGold >= entry.cost;
         return {
           id: `shop-stock:${entry.itemId}`,

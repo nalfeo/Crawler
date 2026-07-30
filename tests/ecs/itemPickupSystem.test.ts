@@ -5,7 +5,7 @@ import { spawnPlayer, spawnDroppedItem, spawnGold, spawnXpGem } from '../../src/
 import { DroppedItem, Inventory } from '../../src/core/components.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { itemPickupSystem } from '../../src/core/systems/itemPickupSystem.js';
-import { getItemCount } from '../../src/shared/inventory.js';
+import { getItemCount, listStaticInventorySlots } from '../../src/shared/inventory.js';
 import { getItemByIndex } from '../../src/shared/items.js';
 import { PICKUP_SPARKLE_COLORS } from '../../src/shared/vfx-events.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -68,7 +68,7 @@ describe('itemPickupSystem', () => {
     itemPickupSystem(world, collisions);
 
     const bag = world.inventories.get(playerEid)!;
-    expect(bag.slots.length).toBe(2);
+    expect(listStaticInventorySlots(bag).length).toBe(2);
   });
 
   it('does not pick up items far away', () => {
@@ -78,7 +78,7 @@ describe('itemPickupSystem', () => {
     itemPickupSystem(world, collisions);
 
     const bag = world.inventories.get(playerEid)!;
-    expect(bag.slots.length).toBe(0);
+    expect(listStaticInventorySlots(bag).length).toBe(0);
   });
 
   it('removes dropped items even when item index is invalid', () => {
@@ -91,7 +91,7 @@ describe('itemPickupSystem', () => {
     expect(droppedItems.length).toBe(0);
 
     const bag = world.inventories.get(playerEid)!;
-    expect(bag.slots.length).toBe(0);
+    expect(listStaticInventorySlots(bag).length).toBe(0);
   });
 
   describe('pickup sparkle VFX', () => {

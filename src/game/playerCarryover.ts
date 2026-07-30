@@ -55,6 +55,7 @@ import {
 } from '../shared/generated-equipment-types.js';
 import { clearActiveWeaponDef } from '../core/active-weapon.js';
 import { createBossChestId, type BossChestState } from '../core/systems/bossChestRewards.js';
+import { listGeneratedEquipmentReferences, listStaticInventorySlots } from '../shared/inventory.js';
 
 const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
 
@@ -1619,10 +1620,18 @@ export function capturePlayerCarryover(
     },
     baseStats,
     coreStatPoints,
-    inventorySlots: inventory?.slots.map((slot) => ({ ...slot })) ?? [],
+    inventorySlots:
+      inventory === undefined
+        ? []
+        : listStaticInventorySlots(inventory).map((slot) => ({
+            itemId: slot.itemId,
+            quantity: slot.quantity,
+          })),
     equippedItemIds,
     generatedInventoryInstanceKeys:
-      inventory?.generatedEquipment?.map((entry) => entry.instanceKey) ?? [],
+      inventory === undefined
+        ? []
+        : listGeneratedEquipmentReferences(inventory).map((entry) => entry.instanceKey),
     generatedEquippedInstanceKeys,
     ...(generatedEquipmentRegistry ? { generatedEquipmentRegistry } : {}),
     generatedEquipmentRewardBundles: [...world.generatedEquipmentRewardBundles.values()].map(

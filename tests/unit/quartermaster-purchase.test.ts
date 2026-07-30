@@ -17,6 +17,7 @@ import type {
   Floor2SettlementSnapshot,
 } from '../../src/shared/floor-types.js';
 import { makeRunKey } from '../../src/shared/generated-equipment-types.js';
+import { listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 type TestWorld = ReturnType<typeof createTestWorld>;
@@ -149,9 +150,10 @@ describe('Quartermaster atomic purchase', () => {
       remainingGold: goldBefore - offerBefore.unitPrice,
     });
     expect(getGeneratedEquipmentInstance(world, offerBefore.instanceId)).toBe(instanceBefore);
-    expect(world.inventories.get(playerEid)?.generatedEquipment).toEqual([
-      { kind: 'generated-instance', instanceKey: offerBefore.instanceId },
-    ]);
+    const bagAfterPurchase = world.inventories.get(playerEid);
+    expect(
+      bagAfterPurchase ? listGeneratedEquipmentReferences(bagAfterPurchase) : undefined,
+    ).toEqual([{ kind: 'generated-instance', instanceKey: offerBefore.instanceId }]);
     expect(world.floorExtendedState!.settlement!.quartermasterStock!.offers[0]!.quantity).toBe(0);
 
     const afterSuccess = transactionSnapshot(world);

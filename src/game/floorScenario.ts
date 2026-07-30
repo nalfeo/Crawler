@@ -82,7 +82,7 @@ import { roomHopDistances } from './room-hops.js';
 import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
-import { addItem, hasItem, removeItem } from '../shared/inventory.js';
+import { addItem, hasItem, listStaticInventorySlots, removeItem } from '../shared/inventory.js';
 import { FLOOR2_HARVESTABLE_START_INDEX, HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
 import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
@@ -3115,7 +3115,7 @@ function countJunkInInventory(world: GameWorld): number {
   }
 
   let total = 0;
-  for (const slot of bag.slots) {
+  for (const slot of listStaticInventorySlots(bag)) {
     const item = getItemById(slot.itemId);
     if (!item) {
       continue;
@@ -3457,7 +3457,9 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
     return 'complete';
   }
   const bag = playerBag(world);
-  const hasEquippable = bag ? bag.slots.some((s) => isEquippableItem(s.itemId)) : false;
+  const hasEquippable = bag
+    ? listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId))
+    : false;
   if (hasEquippable) {
     return 'awaiting-equip';
   }
@@ -3737,7 +3739,7 @@ export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean
   let equippedAny = false;
   // Snapshot the equippable slugs before mutation — `removeItem` may reshape
   // the underlying array while we iterate.
-  const equippableItemIds = bag.slots
+  const equippableItemIds = listStaticInventorySlots(bag)
     .filter((s) => isEquippableItem(s.itemId))
     .map((s) => s.itemId);
   for (const itemId of equippableItemIds) {
