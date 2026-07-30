@@ -81,6 +81,59 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     expect(Math.abs(debug.dodgeY)).toBeGreaterThan(0);
   });
 
+  it('keeps dodging a lane that is already in its active damaging phase', () => {
+    // Regression: travel steering used to wipe the mob-ability dodge vector for
+    // any cue whose phase was not `telegraph`. The Clockwork Kill-Saw stays lethal
+    // through `outbound`/`hold`/`return`, so the AI would walk into the moving blade
+    // the instant the telegraph ended.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+    // Warm-up poll: put the AI into quest-navigation EXPLORE with a real heading
+    // so predictive travel steering (not the raw objective heading) drives the
+    // next poll — that is the only path that can wipe the dodge vector.
+    ai.poll(input, world);
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const def = createClockworkKillSawDefinition();
+    // Lane running along +X straight through the player, already mid-swing.
+    world.mobAbilities.cues.push({
+      abilityId: def.abilityId,
+      casterEid: 99,
+      phase: 'outbound',
+      telegraphProgress: 1,
+      geometry: {
+        kind: 'lane',
+        originX: px - 16,
+        originY: py,
+        endX: px + 16,
+        endY: py,
+        dirX: 1,
+        dirY: 0,
+        widthFt: 6,
+        lengthFt: 32,
+      },
+      dangerColor: def.dangerColor,
+      announcementText: def.announcementText,
+      projectileX: px,
+      projectileY: py,
+    });
+
+    ai.poll(input, world);
+
+    // Travel steering must actually drive this poll, otherwise the regression
+    // (steering wiping the dodge) is not exercised at all.
+    expect(ai.getTravelSteeringDebug()).not.toBeNull();
+    const debug = ai.getOpportunisticDebug();
+    expect(debug.dodgeX).toBeCloseTo(0, 10);
+    expect(Math.abs(debug.dodgeY)).toBeGreaterThan(0);
+  });
+
   it('uses spawn-circle telegraphs as danger cues and dodges from the committed circle', () => {
     const world = createTestWorld({ seed: 42 });
     world.elapsedMs = 5000;

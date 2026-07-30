@@ -3573,7 +3573,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.farmPullY = 0;
         }
         const preserveMobAbilityDodge =
-          world.mobAbilities.cues.some((cue) => cue.phase === 'telegraph') ||
+          world.mobAbilities.cues.length > 0 ||
           world.mobAbilities.activeZones.some((zone) => {
             const dx = playerX - zone.circle.x;
             const dy = playerY - zone.circle.y;
@@ -3598,6 +3598,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         // so retire the additive travel dodge whenever steering drives the frame.
         // Mob-ability danger cues are different: their committed geometry is not
         // represented in travel steering, so preserve that dodge contribution.
+        // This covers every live cue phase, not just `telegraph` — the Clockwork
+        // Kill-Saw stays lethal through `outbound`/`hold`/`return`, so zeroing the
+        // dodge once the telegraph ends would walk the AI into the moving blade.
         // Slick-zone occupancy: if the player is currently inside an active zone,
         // the zone-branch dodge vector must also be preserved so the AI exits
         // rather than walking through the slick after travel steering takes over.
