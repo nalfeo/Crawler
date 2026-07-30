@@ -1,0 +1,122 @@
+{
+  "briefId": "classic-fantasy-basic-leather-iron-shortsword-v1",
+  "spriteName": "classic-fantasy-basic-leather-iron-shortsword-v1-var-2",
+  "assetPath": "generated/classic-fantasy-basic-leather-iron-shortsword-v1-var-2.png",
+  "approvedAt": "2026-07-30T00:29:51.563Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-iron-shortsword-v1/2026-07-28T04-07-24-da5304fa",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 31,
+        "y": 60
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 2,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:38:37.380Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design is consistent with the Crawler aesthetic, featuring a simple and functional weapon with a clear identity. The plain iron and leather materials align with the dark-fantasy theme, but the concept lacks a strong authored contradiction to elevate it."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is clean and consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is clean and consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts the described plain iron shortsword with a leather-wrapped wooden grip, a simple crossguard, and a round pommel. All elements of the brief are present and clear."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity issues or blending into the background. The sword is immediately recognizable."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates all the specified materials and details from the theme design language, including the plain iron, leather-wrapped grip, and unadorned design. It adheres closely to the utilitarian aesthetic described."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3172,
+      "completionTokens": 350,
+      "totalTokens": 3522
+    }
+  },
+  "type": null,
+  "contentHash": "0922c256855a0beee9b492b96b6ea5b4ec9a62361a145c434a16eca5285cd5e6",
+  "opaqueBounds": {
+    "x": 18,
+    "y": 4,
+    "width": 27,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-shortsword-v1/2026-07-28T04-07-24-da5304fa/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-shortsword-v1/2026-07-28T04-07-24-da5304fa/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-shortsword-v1/2026-07-28T04-07-24-da5304fa/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
