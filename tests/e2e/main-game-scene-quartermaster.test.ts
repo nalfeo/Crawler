@@ -61,26 +61,42 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     await waitForState(page, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
   }
 
-  it('shows Shop button in safe context when quartermasterStock exists', async () => {
+  async function interactWithQuartermasterNpc(): Promise<void> {
+    const npcs = await mainSceneProbe.getNpcRenderInfo(page);
+    const quartermaster = npcs.find((npc) => npc.defId === 'shop-the-quartermaster');
+    expect(quartermaster, 'floor2 should spawn a quartermaster NPC').toBeDefined();
+    await mainSceneProbe.setPlayerFeet(page, quartermaster!.feet.x, quartermaster!.feet.y);
+    await mainSceneProbe.queueInteraction(page);
+  }
+
+  async function interactWithNonQuartermasterShopNpc(): Promise<void> {
+    const npcs = await mainSceneProbe.getNpcRenderInfo(page);
+    const nonQuartermaster = npcs.find(
+      (npc) => npc.defId.startsWith('shop-the-') && npc.defId !== 'shop-the-quartermaster',
+    );
+    expect(nonQuartermaster, 'floor2 should spawn at least one non-quartermaster shop NPC').toBeDefined();
+    await mainSceneProbe.setPlayerFeet(page, nonQuartermaster!.feet.x, nonQuartermaster!.feet.y);
+    await mainSceneProbe.queueInteraction(page);
+  }
+
+  it('does not expose a Shop button in safe context while the panel is closed', async () => {
     await bootFloor2SafeScene();
 
     const state = await waitForState(page, (s) => s.safeContext, {
       label: 'in safe context',
     });
 
-    // On Floor 2 the settlement is initialised at boot, so quartermasterStock
-    // should already be present — the Shop button must be visible.
-    expect(
-      state.quartermasterButtonVisible,
-      'Shop button should be visible in safe context with stock',
-    ).toBe(true);
+    // Shop opens from NPC interaction, not from a persistent corner button.
+    expect(state.quartermasterButtonVisible, 'Shop button should stay hidden until panel open').toBe(
+      false,
+    );
     expect(state.quartermasterOpen, 'Quartermaster panel should start closed').toBe(false);
   });
 
-  it('opens and closes the Quartermaster panel via Q key request', async () => {
+  it('opens the Quartermaster panel by interacting with the quartermaster NPC', async () => {
     await bootFloor2SafeScene();
 
-    await mainSceneProbe.requestQuartermasterToggle(page);
+    await interactWithQuartermasterNpc();
     const opened = await waitForState(page, (s) => s.quartermasterOpen, {
       label: 'Quartermaster panel opened',
     });
@@ -100,7 +116,7 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
   it('Quartermaster panel closes when inventory opens (exclusivity)', async () => {
     await bootFloor2SafeScene();
 
-    await mainSceneProbe.requestQuartermasterToggle(page);
+    await interactWithQuartermasterNpc();
     await waitForState(page, (s) => s.quartermasterOpen, { label: 'Quartermaster opened' });
 
     await mainSceneProbe.requestInventoryToggle(page);
@@ -111,6 +127,17 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     expect(state.inventoryOpen, 'inventory must be open').toBe(true);
     expect(state.quartermasterOpen, 'Quartermaster must close when inventory opens').toBe(false);
     expect(state.primarySurfaceCount, 'only one panel open at a time').toBe(1);
+  });
+
+  it('opens the same purchase panel from non-quartermaster shop NPC interactions', async () => {
+    await bootFloor2SafeScene();
+
+    await interactWithNonQuartermasterShopNpc();
+    const opened = await waitForState(page, (s) => s.quartermasterOpen, {
+      label: 'shop panel opened from non-quartermaster NPC interaction',
+    });
+
+    expect(opened.quartermasterOpen).toBe(true);
   });
 
   it('generates purchasable stock offers on Floor 2 settlement bootstrap', async () => {
@@ -160,7 +187,7 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     expect(offers.length, 'need at least one offer to test keyboard purchase').toBeGreaterThan(0);
 
     await mainSceneProbe.setPlayerGold(page, 100_000);
-    await mainSceneProbe.requestQuartermasterToggle(page);
+    await interactWithQuartermasterNpc();
     await waitForState(page, (s) => s.quartermasterOpen, { label: 'Quartermaster opened' });
 
     const goldBefore = await mainSceneProbe.getPlayerGold(page);

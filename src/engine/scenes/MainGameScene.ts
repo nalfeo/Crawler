@@ -684,7 +684,7 @@ export class MainGameScene extends Phaser.Scene {
   /** Touch button for the boss chest panel. */
   private bossChestButton?: Phaser.GameObjects.Text;
 
-  /** Touch button for the Quartermaster shop panel. */
+  /** Touch dismiss button for the Quartermaster panel while it is open. */
   private quartermasterButton?: Phaser.GameObjects.Text;
 
   /** One-frame latch set by tapping the on-screen achievements button. */
@@ -693,7 +693,7 @@ export class MainGameScene extends Phaser.Scene {
   /** One-frame latch set by tapping the on-screen boss chest button. */
   private queuedBossChestsToggle = false;
 
-  /** One-frame latch set by tapping the on-screen quartermaster button. */
+  /** One-frame latch set by tapping the on-screen quartermaster dismiss button. */
   private queuedQuartermasterToggle = false;
 
   /**
@@ -1294,6 +1294,34 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedQuartermasterToggle = true;
   }
 
+  private isSettlementShopNpc(npcEid: number): boolean {
+    const settlement = this.world.floorExtendedState?.settlement;
+    if (!settlement) {
+      return false;
+    }
+    if (settlement.quartermasterShop.npcEid === npcEid) {
+      return true;
+    }
+    return settlement.shops.some((shop) => shop.npcEid === npcEid);
+  }
+
+  private tryOpenSettlementShopFromNpc(npcEid: number): boolean {
+    if (!this.isSettlementShopNpc(npcEid)) {
+      return false;
+    }
+    if (!isInSafeContext(this.world) || !this.world.floorExtendedState?.settlement?.quartermasterStock) {
+      return false;
+    }
+    this.closeMapOverlayIfOpen();
+    this.closeCharacterPanels({ keepQuartermaster: true });
+    if (this.quartermasterUI?.isOpen()) {
+      this.quartermasterUI.refresh(this.world);
+    } else {
+      this.quartermasterUI?.toggle(this.world);
+    }
+    return true;
+  }
+
   private resumePendingRewardPresentations(): void {
     if (this.rewardOpeningUI?.isOpen()) {
       return;
@@ -1723,9 +1751,6 @@ export class MainGameScene extends Phaser.Scene {
       !quartermasterOpen &&
       !abilitiesOpen;
 
-    // The Quartermaster button is only available in safe context when stock exists.
-    const hasQuartermasterStock = !!this.world.floorExtendedState?.settlement?.quartermasterStock;
-
     // Toggle the on-screen touch buttons in step with the key affordances.
     // Each button shows when its own panel is open (to allow touch dismiss) OR
     // when nothing is blocking (to allow opening a panel).
@@ -1742,7 +1767,7 @@ export class MainGameScene extends Phaser.Scene {
       .setVisible(this.world.bossChests.size > 0 && (bossChestsOpen || canOpenNew));
     this.quartermasterButton
       ?.setDepth(quartermasterOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
-      .setVisible(safeCtx && hasQuartermasterStock && (quartermasterOpen || canOpenNew));
+      .setVisible(quartermasterOpen);
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
@@ -1865,9 +1890,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.keyQuartermaster && Phaser.Input.Keyboard.JustDown(this.keyQuartermaster)),
     );
     this.queuedQuartermasterToggle = false;
-    if (safeCtx && hasQuartermasterStock && !isUiLockOpen() && quartermasterToggleRequested) {
-      this.closeMapOverlayIfOpen();
-      this.closeCharacterPanels({ keepQuartermaster: true });
+    if (quartermasterOpen && quartermasterToggleRequested) {
       this.quartermasterUI?.toggle(this.world);
     } else if (this.quartermasterUI?.isOpen()) {
       if (safeCtx) {
@@ -2140,7 +2163,7 @@ export class MainGameScene extends Phaser.Scene {
     this.bossChestButton = makeCornerButton(240, '💎 Chests', () => {
       this.queuedBossChestsToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(296, '🛒 Shop', () => {
+    this.quartermasterButton = makeCornerButton(296, '✕ Shop', () => {
       this.queuedQuartermasterToggle = true;
     });
     const applyMobileButtonScale = (scale: number): void => {
@@ -3815,6 +3838,9 @@ export class MainGameScene extends Phaser.Scene {
       this.dialogueBox?.setCloseVisible(false);
 
       if (interactionRequested) {
+        if (this.tryOpenSettlementShopFromNpc(nearNpcEid)) {
+          return;
+        }
         const instance = this.world.npcs.get(nearNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
