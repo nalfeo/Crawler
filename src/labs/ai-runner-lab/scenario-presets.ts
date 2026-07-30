@@ -55,7 +55,8 @@ export type AiRunnerScenarioPresetId =
   | 'floor1-default'
   | 'spawner-sealable-room'
   | 'spawner-unsealable-room'
-  | 'spawner-cave';
+  | 'spawner-cave'
+  | 'terrain-wall-junctions';
 
 export interface AiRunnerScenarioPreset {
   readonly id: AiRunnerScenarioPresetId;
@@ -120,6 +121,16 @@ const SCENARIO_PRESETS: ReadonlyArray<AiRunnerScenarioPreset> = [
       });
     },
   },
+  {
+    id: 'terrain-wall-junctions',
+    label: 'Terrain: wall/door junctions',
+    description:
+      'Fully-lit inspection slice. Doors on all four wall orientations plus a stone/cave material seam, so wall-into-door junctions and both corner styles are visible without hunting a procedural floor.',
+    defaultSeed: 4210,
+    configureWorld: (world, playerEid) => {
+      configureTerrainJunctionSlice(world, playerEid);
+    },
+  },
 ] as const;
 
 export const AI_RUNNER_SCENARIO_PRESETS = SCENARIO_PRESETS;
@@ -140,13 +151,15 @@ interface SpawnerSliceOptions {
   readonly doorTile?: { readonly x: number; readonly y: number };
 }
 
-function configureSpawnerSlice(
-  world: GameWorld,
-  playerEid: number,
-  options: SpawnerSliceOptions,
-): void {
+/**
+ * Shared world reset for every hand-authored lab slice: swap in the authored
+ * map and clear the procedural-floor state that would otherwise leak in from
+ * whatever the lab was running before (quest log, objective tick, arena
+ * bookkeeping, stray entities).
+ */
+function resetSliceWorld(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
   clearSliceEntities(world, playerEid);
-  world.floorMap = options.floorMap;
+  world.floorMap = floorMap;
   world.barriers = createBarrierRegistry();
   attachBarriersToFloorMap(world);
   world.spawnerArenaDoors.clear();
@@ -163,12 +176,20 @@ function configureSpawnerSlice(
   world.npcs.clear();
   world.doorLockConfigs.clear();
   world.goalFlags.clear();
+}
+
+function configureSpawnerSlice(
+  world: GameWorld,
+  playerEid: number,
+  options: SpawnerSliceOptions,
+): void {
+  resetSliceWorld(world, playerEid, options.floorMap);
 
   const spawnerTile = options.spawnerTile ?? { x: 8, y: 8 };
   const playerTile = options.playerTile ?? { x: 9, y: 8 };
   const doorTile = options.doorTile ?? { x: 8, y: 6 };
-  const spawnerPos = world.floorMap.tileToWorld(spawnerTile.x, spawnerTile.y);
-  const playerPos = world.floorMap.tileToWorld(playerTile.x, playerTile.y);
+  const spawnerPos = options.floorMap.tileToWorld(spawnerTile.x, spawnerTile.y);
+  const playerPos = options.floorMap.tileToWorld(playerTile.x, playerTile.y);
   const spawnerEid = spawnSpawner(world, spawnerPos.x, spawnerPos.y, RATS_NEST?.hp ?? 80, {
     defIndex: RATS_NEST_INDEX,
     contactDamage: RATS_NEST?.contactDamage ?? 8,
@@ -360,7 +381,186 @@ function makeCaveSliceMap(): FloorMap {
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 12, y: 8 });
 }
 
+/**
+ * Hand-authored geometry for the `terrain-wall-junctions` inspection slice.
+ *
+ * Exists because the wall silhouette defects this scene exists to catch —
+ * walls that stop short of a door, and cave-style rounded corners on cut-stone
+ * architecture — are only observable at specific tile adjacencies. On a real
+ * procedural floor those adjacencies exist but must be *hunted* for, and the
+ * hunt is what makes "observe before done" expensive and unreliable: fog,
+ * terrain streaming and camera framing all fight you. Here every junction the
+ * renderer can produce is placed at a known tile, in one screen, fully lit.
+ *
+ * The chamber walls carry a doorway on all four orientations (doors in a
+ * horizontal wall run exercise the N/S junction; doors in a vertical run
+ * exercise E/W), and the vertical material seam at `materialSeamX` puts a
+ * square-cornered stone cell directly beside a rounded cave cell along the same
+ * continuous wall run — the cross-pack seam that ADR 0078 scopes validation to.
+ */
+const TERRAIN_JUNCTION_SLICE = {
+  widthTiles: 24,
+  heightTiles: 20,
+  /** Chamber wall runs (inclusive bounds of the wall itself, not the interior). */
+  roomMinX: 7,
+  roomMaxX: 16,
+  roomMinY: 6,
+  roomMaxY: 13,
+  /** Tiles with `x >= materialSeamX` use cave terrain; the rest use stone. */
+  materialSeamX: 12,
+  /**
+   * One door per wall orientation, plus a second north door on the cave side of
+   * the seam so the door junction is covered in BOTH packs rather than only the
+   * dungeon pack whose bug prompted the scene.
+   */
+  doors: [
+    { x: 10, y: 6 }, // north wall, stone side
+    { x: 14, y: 6 }, // north wall, cave side
+    { x: 11, y: 13 }, // south wall, stone side
+    { x: 7, y: 10 }, // west wall, stone side
+    { x: 16, y: 10 }, // east wall, cave side
+  ],
+  /**
+   * Free-standing stubs. Elbows (L-shaped, two orthogonal neighbours) expose
+   * CONVEX corners, which is the adjacency where `rounded`/`square` styles
+   * differ most visibly. T-junctions (degree-3 cluster, three orthogonal
+   * neighbours) exercise the three-neighbour silhouette case that the convex
+   * corner alone misses. One elbow and one T-junction per material pack so
+   * both corner styles are covered for each terrain type.
+   */
+  stubs: [
+    // Elbows (convex corners): stone side, upper-left
+    { x: 4, y: 3 },
+    { x: 5, y: 3 },
+    { x: 4, y: 4 },
+    // Elbows (convex corners): cave side, upper-right
+    { x: 19, y: 3 },
+    { x: 20, y: 3 },
+    { x: 19, y: 4 },
+    // T-junction: stone side, lower-left — (5,16) has three wall neighbours
+    { x: 4, y: 16 },
+    { x: 5, y: 16 },
+    { x: 6, y: 16 },
+    { x: 5, y: 17 },
+    // T-junction: cave side, lower-right — (20,16) has three wall neighbours
+    { x: 19, y: 16 },
+    { x: 20, y: 16 },
+    { x: 21, y: 16 },
+    { x: 20, y: 17 },
+  ],
+  /** Centre of the chamber, facing the north wall's two doors and the seam. */
+  playerTile: { x: 11, y: 10 },
+} as const;
+
+/**
+ * Terrain-only inspection scene: no spawner, no enemies, no objective. The
+ * player is parked in the middle of the chamber so the north wall (two doors +
+ * the material seam) fills the view on load.
+ */
+function configureTerrainJunctionSlice(world: GameWorld, playerEid: number): void {
+  const floorMap = makeTerrainJunctionSliceMap();
+  resetSliceWorld(world, playerEid, floorMap);
+
+  const playerPos = floorMap.tileToWorld(
+    TERRAIN_JUNCTION_SLICE.playerTile.x,
+    TERRAIN_JUNCTION_SLICE.playerTile.y,
+  );
+  world.stores.position.x[playerEid] = playerPos.x;
+  world.stores.position.y[playerEid] = playerPos.y;
+  world.stores.velocity.x[playerEid] = 0;
+  world.stores.velocity.y[playerEid] = 0;
+  world.stores.health.current[playerEid] = world.stores.health.max[playerEid] || 100;
+
+  const starterWeaponDef = getWeaponDef(PRESET_STARTER_WEAPON_ID);
+  if (starterWeaponDef) {
+    equipStarterOrFallback(world, PRESET_STARTER_WEAPON_ID, starterWeaponDef);
+  }
+  world.state = 'playing';
+}
+
+function makeTerrainJunctionSliceMap(): FloorMap {
+  const {
+    widthTiles,
+    heightTiles,
+    roomMinX,
+    roomMaxX,
+    roomMinY,
+    roomMaxY,
+    materialSeamX,
+    doors,
+    stubs,
+    playerTile,
+  } = TERRAIN_JUNCTION_SLICE;
+
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizeFt: 4,
+    biome: BiomeType.DUNGEON,
+    seed: 1,
+    roomWidthRange: [4, 12],
+    roomHeightRange: [4, 12],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const idx = (x: number, y: number): number => y * widthTiles + x;
+  const isCaveSide = (x: number): boolean => x >= materialSeamX;
+
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  tileMap.fill(TilePresets.FLOOR);
+  const terrain = new Uint8Array(widthTiles * heightTiles);
+  for (let y = 0; y < heightTiles; y += 1) {
+    for (let x = 0; x < widthTiles; x += 1) {
+      terrain[idx(x, y)] = isCaveSide(x) ? TerrainType.CAVE_FLOOR : TerrainType.STONE_FLOOR;
+    }
+  }
+
+  const setWall = (x: number, y: number): void => {
+    tileMap.flags[idx(x, y)] = TilePresets.WALL;
+    terrain[idx(x, y)] = isCaveSide(x) ? TerrainType.CAVE_WALL : TerrainType.STONE_WALL;
+  };
+
+  // Outer border.
+  for (let x = 0; x < widthTiles; x += 1) {
+    setWall(x, 0);
+    setWall(x, heightTiles - 1);
+  }
+  for (let y = 0; y < heightTiles; y += 1) {
+    setWall(0, y);
+    setWall(widthTiles - 1, y);
+  }
+
+  // Central chamber walls — a closed rectangle, doors punched in below.
+  for (let x = roomMinX; x <= roomMaxX; x += 1) {
+    setWall(x, roomMinY);
+    setWall(x, roomMaxY);
+  }
+  for (let y = roomMinY; y <= roomMaxY; y += 1) {
+    setWall(roomMinX, y);
+    setWall(roomMaxX, y);
+  }
+
+  for (const stub of stubs) {
+    setWall(stub.x, stub.y);
+  }
+
+  // Doors are punched AFTER the wall runs so a door always sits in a wall and
+  // the flanking cells are guaranteed to be wall — which is precisely the
+  // junction under inspection.
+  for (const door of doors) {
+    tileMap.flags[idx(door.x, door.y)] = TilePresets.DOOR_OPEN;
+    terrain[idx(door.x, door.y)] = TerrainType.DOOR;
+  }
+
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, {
+    x: playerTile.x,
+    y: playerTile.y,
+  });
+}
+
 export const AI_RUNNER_SCENARIO_PRESET_TEST_HOOKS = {
   makeSealedRoomSliceMap,
   makeCaveSliceMap,
+  makeTerrainJunctionSliceMap,
+  TERRAIN_JUNCTION_SLICE,
 } as const;

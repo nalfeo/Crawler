@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "terrain-wall-junctions-lab-scene",
+  "task_title": "AI-runner inspection scene for terrain wall junctions",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Reviewer found two actionable items (both non-blocking): (1) unknown scenario IDs silently launch the wrong scene — fixed by returning default preset for non-empty unknown IDs instead of null; (2) deep link only controls seed/floor but not visual/AI state — scoped documentation claim to 'deterministic geometry'. Four remaining advisory items (orientation coverage, URL staleness after apply, Vite banner URL derivation, URL contract tests) are out of scope for this scene fix; scene geometry is the artifact under change. Classified as minor (no major design fork required)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified T-junction geometry (stone center (5,16) and cave center (20,16) each have 3 stub neighbors), URL-fallback logic, seed/floor initialization, and all 7 geometry tests pass. No significant issues found."
+        }
+      ]
+    }
+  }
+}

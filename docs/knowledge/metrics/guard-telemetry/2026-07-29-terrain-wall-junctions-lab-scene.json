@@ -1,0 +1,53 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "terrain-wall-junctions-lab-scene",
+  "date": "2026-07-29",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 510,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 503,
+      "crash": 3
+    },
+    "pr-preflight": {
+      "allow": 2
+    },
+    "pr-review-ledger": {
+      "allow": 2
+    }
+  },
+  "tools": {
+    "ask_user": 4,
+    "chrome-devtools-evaluate_script": 9,
+    "chrome-devtools-navigate_page": 2,
+    "chrome-devtools-new_page": 1,
+    "chrome-devtools-press_key": 1,
+    "chrome-devtools-resize_page": 3,
+    "chrome-devtools-take_screenshot": 9,
+    "create": 9,
+    "create_pull_request": 4,
+    "edit": 61,
+    "extensions_reload": 1,
+    "glob": 4,
+    "grep": 48,
+    "playwright-browser_click": 1,
+    "playwright-browser_find": 1,
+    "playwright-browser_navigate": 1,
+    "playwright-browser_press_key": 2,
+    "playwright-browser_run_code_unsafe": 19,
+    "playwright-browser_snapshot": 1,
+    "playwright-browser_take_screenshot": 4,
+    "powershell": 135,
+    "read_agent": 3,
+    "read_powershell": 8,
+    "rename_session": 1,
+    "rg": 24,
+    "skill": 1,
+    "task": 3,
+    "view": 150
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

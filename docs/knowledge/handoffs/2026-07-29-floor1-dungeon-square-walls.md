@@ -10,7 +10,7 @@ Producer → Sprite/Terrain Engineer
 
 ## Systems touched
 
-terrain-packs, rendering
+sprite-pipeline, mapgen, devtools
 
 ## Apples
 
@@ -56,10 +56,54 @@ co-resident packs — so `npm run terrain-packs:validate` failed with 40
 `files/floor1-after-door-full.png`). The renderer mask fix is proven on the real
 runtime path by a **fail-to-pass** unit test in `tests/unit/terrain-pack-renderer.test.ts`
 driving `buildTerrainLayer` — the same function `MainGameScene.ts:2251` calls.
-**Honest gap:** an in-game screenshot framing a door junction was never captured;
-teleporting to a doorway kept landing outside the terrain-streaming boundary. The
-door evidence is the deterministic repro + the fail-to-pass runtime-path test, not
-a game screenshot.
+**Honest gap (now closed):** the original session could not frame an in-game door
+junction — teleporting to a doorway kept landing outside the terrain-streaming
+boundary. That gap is what motivated the **inspection scene** below, and the
+junction has since been observed directly in the running lab.
+
+### Inspection scene: `terrain-wall-junctions`
+
+Per maintainer feedback ("build specialized scenes/floors like the spawner arenas
+that you can jump the AI runner lab directly to"), this branch adds a purpose-built
+AI-runner scenario preset that makes both defects permanently inspectable in one
+frame — no seed hunting, no streaming-boundary roulette:
+
+```
+http://localhost:15281/lab.html?lab=ai-runner&scenario=terrain-wall-junctions
+```
+
+- 24×20 slice, chamber walls x7–16 / y6–13, player spawned dead centre.
+- **5 doors** — one on each cardinal wall plus a second north door — so every
+  door/wall orientation is on screen at once.
+- **`materialSeamX = 12`** splits the chamber into `stone` (→ `floor1-dungeon`,
+  square corners) and `cave` (→ `floor1-cave`, rounded corners), so the two
+  styles are compared side by side across a seam, and the cross-pack boundary-ring
+  relaxation is visible rather than merely asserted.
+- 9 stub tiles produce isolated wall ends, tees and elbows.
+- A fully-lit lighting profile (`ambient: 1`, `discoveredLight: 1`) is applied for
+  this scenario so nothing is hidden by fog.
+
+`?scenario=<id>` is a new URL param on the ai-runner lab; it takes priority over
+persisted lab state and falls through to defaults for unknown ids.
+
+The scene's claims are guarded deterministically (not just visually) by
+`tests/unit/ai-runner-scenario-presets-wiring.test.ts`: every door is flanked by
+wall, all four orientations plus both packs are present, the material seam actually
+crosses a wall run, and the player spawn is passable and inside the chamber.
+
+**Observed:** loaded the URL, confirmed `__aiRunnerDebug().scenarioPreset ===
+'terrain-wall-junctions'`, and screenshotted the lit chamber — walls run flush into
+all five door frames with no notch, stone-side corners are square, cave-side corners
+are rounded.
+
+### `npm run lab` now prints the real lab URL
+
+Vite's startup banner advertises the server root (`/`), which serves `index.html` —
+the **game**, not the lab shell. Copying it lands you on the wrong page, and
+"forgot `lab.html`" has now burned multiple sessions (see also the 2026-07-25
+set-piece handoff). `tools/vite-plugin-lab-url-banner.ts` prints the correct
+`\u2026/lab.html?lab=<lab-id>` form once the dev server is listening; `formatLabUrl`
+is unit-tested.
 
 ## Key Decisions Made
 
@@ -128,6 +172,18 @@ Possible follow-ups:
   `[IO.File]::ReadAllText` / `WriteAllText`. The ledger CLI's `--json` flag is not
   usable from PowerShell (quote mangling) — edit the ledger JSON directly and then
   run `review:ledger -- validate`.
+- **The Phaser WebGL canvas cannot be read back.** `preserveDrawingBuffer` is false,
+  so `drawImage`-ing `#lab-canvas` into an overlay canvas to crop/zoom returns solid
+  black. To zoom in on a tile, use `chrome-devtools-resize_page` instead — the camera
+  follows the player, so a smaller viewport yields a tighter crop — or raise
+  `__floor1Debug.lighting.setConfig({ ambient: 1, discoveredLight: 1 })` to remove fog
+  before screenshotting.
+- **A purpose-built scenario preset beats seed hunting.** `scenario-presets.ts`'s
+  `configureWorld` hook lets a lab preset stamp an authored `floorMap` and reposition
+  the player, which is how the spawner arenas work. For any "this geometry renders
+  wrong" bug, authoring the geometry directly is faster than searching for a seed that
+  happens to contain it — and it leaves behind a permanent, deep-linkable artifact.
+  The shared world reset is now factored out as `resetSliceWorld`.
 
 ### Mistakes Made
 
@@ -147,6 +203,18 @@ Possible follow-ups:
 - Ran the first code-review round before the post-review edits existed, so round 2
   had to cover a moving target. Batching the plan-review fixes _then_ reviewing would
   have been one round cheaper.
+- **Sent the maintainer a lab URL without `lab.html`.** `/?lab=<id>` is not the lab
+  entry point — `/lab.html?lab=<id>` is. This has now cost multiple sessions (the
+  2026-07-25 set-piece handoff logged the identical lesson and it did not stick,
+  because a lesson buried in one handoff is not a control). Fixed structurally this
+  time: `npm run lab` now prints the correct URL itself.
+- **Left a stale dev server holding port 15281 from earlier in the session.** A new
+  `npm run lab` silently bound 15282 instead, so the maintainer's browser was loading
+  an old build of a URL that looked right — which reads as "the fix doesn't work"
+  rather than "you're on the wrong server". Early signal: Vite's banner said 15282
+  and I did not reconcile it against the URL I had already handed over. Fix: before
+  relaunching, `Get-NetTCPConnection -LocalPort 15281 -State Listen` → `Stop-Process`,
+  and launch **detached** so the server outlives the tool call.
 
 ### Opportunities for Future Improvement
 

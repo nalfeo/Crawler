@@ -6,6 +6,7 @@ import {
 } from './scripts/shared/session-server-ports.js';
 import { labTuningSavePlugin } from './tools/vite-plugin-save-tuning';
 import { generatedManifestPlugin } from './tools/vite-plugin-generated-manifest';
+import { labUrlBannerPlugin } from './tools/vite-plugin-lab-url-banner';
 
 const basePaths: Record<string, string> = {
   local: '/',
@@ -43,7 +44,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins:
       mode === 'lab'
-        ? [generatedManifestPlugin(), labTuningSavePlugin()]
+        ? [generatedManifestPlugin(), labTuningSavePlugin(), labUrlBannerPlugin()]
         : [generatedManifestPlugin()],
     build: {
       target: 'es2022',
