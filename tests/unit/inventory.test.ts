@@ -5,7 +5,6 @@ import {
   addGeneratedEquipmentReference,
   addItem,
   hasGeneratedEquipmentReference,
-  listInventoryEntries,
   removeItem,
   removeGeneratedEquipmentReference,
   hasItem,
@@ -73,16 +72,6 @@ describe('InventoryBag', () => {
     const first = 'gei:v1:inventory-test:0' as GeneratedEquipmentInstanceKey;
     const second = 'gei:v1:inventory-test:1' as GeneratedEquipmentInstanceKey;
 
-    it('exposes static stacks and exact generated keys as discriminated entries', () => {
-      addItem(bag, 'test-ore', 3, testCatalog);
-      addGeneratedEquipmentReference(bag, first);
-
-      expect(listInventoryEntries(bag)).toEqual([
-        { kind: 'stackable-static-item', itemId: 'test-ore', quantity: 3 },
-        { kind: 'generated-instance', instanceKey: first },
-      ]);
-    });
-
     it('rejects a duplicate exact key without changing the bag', () => {
       addGeneratedEquipmentReference(bag, first);
       const before = structuredClone(bag);
@@ -91,22 +80,6 @@ describe('InventoryBag', () => {
         'Generated equipment instance already exists in bag',
       );
       expect(bag).toEqual(before);
-    });
-
-    it('listInventoryEntries returns a snapshot — mutating a listed entry does not affect the bag', () => {
-      addGeneratedEquipmentReference(bag, first);
-      const entries = listInventoryEntries(bag);
-      const listed = entries.find((e) => e.kind === 'generated-instance');
-      expect(listed).toBeDefined();
-
-      // Force-cast to mutate the returned object
-      (listed as { instanceKey: string }).instanceKey = 'gei:v1:mutated:0';
-
-      // The bag's stored entry must be unchanged
-      expect(hasGeneratedEquipmentReference(bag, first)).toBe(true);
-      expect(
-        hasGeneratedEquipmentReference(bag, 'gei:v1:mutated:0' as GeneratedEquipmentInstanceKey),
-      ).toBe(false);
     });
 
     it('removes only the requested key and leaves distinct instances intact', () => {

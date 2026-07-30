@@ -65,25 +65,6 @@ export function createTabPreferences(): TabPreferences {
   return { order: [...KNOWN_TAGS], hidden: new Set() };
 }
 
-/** Canonical discriminated view across the legacy static and generated-reference lanes. */
-export function listInventoryEntries(bag: InventoryBag): readonly InventoryBagEntry[] {
-  return [
-    ...bag.slots.map(
-      (slot): StackableStaticInventoryEntry => ({
-        kind: 'stackable-static-item',
-        itemId: slot.itemId,
-        quantity: slot.quantity,
-      }),
-    ),
-    ...(bag.generatedEquipment ?? []).map(
-      (entry): GeneratedEquipmentInventoryEntry => ({
-        kind: entry.kind,
-        instanceKey: entry.instanceKey,
-      }),
-    ),
-  ];
-}
-
 /** Check for one exact generated instance reference. */
 export function hasGeneratedEquipmentReference(
   bag: InventoryBag,

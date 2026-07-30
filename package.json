@@ -100,6 +100,8 @@
     "verify": "bash scripts/agent/verify.sh",
     "verify:pr-prereqs": "node scripts/agent/review/pr-prereq-check.mjs",
     "check:wired-systems": "tsx scripts/agent/health/orphaned-systems.ts",
+    "check:test-only-exports": "tsx scripts/agent/health/test-only-exports.ts",
+    "check:knip-suppressions": "tsx scripts/agent/health/check-knip-suppressions.ts",
     "check:silent-reverts": "tsx scripts/agent/health/silent-reverts.ts",
     "check:physics-defs-sync": "tsx scripts/agent/health/check-physics-defs-sync.ts",
     "check:size-coverage": "tsx scripts/agent/health/check-size-coverage.ts",
