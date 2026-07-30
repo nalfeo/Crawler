@@ -70,7 +70,10 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     await mainSceneProbe.queueInteraction(page);
   }
 
-  async function interactWithNonQuartermasterShopNpc(): Promise<void> {
+  async function interactWithNonQuartermasterShopNpc(): Promise<{
+    eid: number;
+    defId: string;
+  }> {
     const npcs = await mainSceneProbe.getNpcRenderInfo(page);
     const nonQuartermaster = npcs.find(
       (npc) => npc.defId.startsWith('shop-the-') && npc.defId !== 'shop-the-quartermaster',
@@ -82,6 +85,7 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     await mainSceneProbe.setPlayerFeet(page, nonQuartermaster!.feet.x, nonQuartermaster!.feet.y);
     await mainSceneProbe.advanceSimulationFrames(page, 1);
     await mainSceneProbe.queueInteraction(page);
+    return { eid: nonQuartermaster!.eid, defId: nonQuartermaster!.defId };
   }
 
   it('does not expose a Shop button in safe context while the panel is closed', async () => {
@@ -138,12 +142,46 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
   it('opens the same purchase panel from non-quartermaster shop NPC interactions', async () => {
     await bootFloor2SafeScene();
 
-    await interactWithNonQuartermasterShopNpc();
+    const nonQuartermaster = await interactWithNonQuartermasterShopNpc();
     const opened = await waitForState(page, (s) => s.quartermasterOpen, {
       label: 'shop panel opened from non-quartermaster NPC interaction',
     });
+    const expectedInventory = await mainSceneProbe.getSettlementShopInventorySnapshot(
+      page,
+      nonQuartermaster.eid,
+    );
+    const shownInventory = await mainSceneProbe.getQuartermasterStockSnapshot(page);
 
     expect(opened.quartermasterOpen).toBe(true);
+    expect(shownInventory).toEqual(
+      expectedInventory.map((entry) => ({
+        offerId: entry.itemId,
+        quantity: entry.quantity,
+        unitPrice: entry.unitPrice,
+        displayName: entry.displayName,
+      })),
+    );
+  });
+
+  it('purchases from the interacted non-quartermaster shop inventory instead of Quartermaster stock', async () => {
+    await bootFloor2SafeScene();
+    await mainSceneProbe.setPlayerGold(page, 100_000);
+
+    const nonQuartermaster = await interactWithNonQuartermasterShopNpc();
+    await waitForState(page, (s) => s.quartermasterOpen, {
+      label: 'shop panel opened from non-quartermaster NPC interaction',
+    });
+    const before = await mainSceneProbe.getSettlementShopInventorySnapshot(page, nonQuartermaster.eid);
+    expect(before.length, 'non-quartermaster shop should have seeded inventory').toBeGreaterThan(0);
+
+    const result = await mainSceneProbe.purchaseFirstQuartermasterOffer(page);
+    expect(result.ok, 'purchase should succeed from non-quartermaster stock').toBe(true);
+
+    const after = await mainSceneProbe.getSettlementShopInventorySnapshot(page, nonQuartermaster.eid);
+    expect(
+      after.some((entry, index) => entry.quantity < (before[index]?.quantity ?? entry.quantity)),
+      'purchasing from a non-quartermaster shop should reduce that shop inventory',
+    ).toBe(true);
   });
 
   it('generates purchasable stock offers on Floor 2 settlement bootstrap', async () => {

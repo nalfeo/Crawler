@@ -121,9 +121,21 @@ import { createLogger } from '../../shared/logger.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
+import type { Floor2ShopInstance } from '../../shared/floor-types.js';
+import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 import { getAchievementById } from '../../shared/achievements.js';
+import {
+  getQuartermasterOfferViews,
+  purchaseQuartermasterOffer,
+} from '../../core/quartermaster-purchase.js';
+import {
+  getSettlementShopOfferViews,
+  purchaseSettlementShopOffer,
+  type SettlementShopOfferView,
+} from '../../core/settlement-shop-purchase.js';
+import type { ShopPanelOfferView } from '../QuartermasterUI.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -696,7 +708,9 @@ export class MainGameScene extends Phaser.Scene {
   /** One-frame latch set by tapping the on-screen quartermaster dismiss button. */
   private queuedQuartermasterToggle = false;
   /** One-frame latch set by interacting with any settlement shop NPC. */
-  private queuedQuartermasterOpenFromNpc = false;
+  private queuedSettlementShopNpcEid: number | null = null;
+  /** NPC identity whose settlement stock is currently being shown in the shared shop panel. */
+  private activeSettlementShopNpcEid: number | null = null;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -933,6 +947,10 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.quartermasterUI = createQuartermasterUI(this, {
       getPlayerEid: () => (this.playerEid >= 0 ? this.playerEid : undefined),
+      getTitle: (world) => this.resolveSettlementShopPanelTitle(world),
+      getOffers: (world, playerEid) => this.getSettlementShopPanelOffers(world, playerEid),
+      purchaseOffer: (world, playerEid, offer) =>
+        this.purchaseSettlementShopPanelOffer(world, playerEid, offer),
       onPurchaseResult: (result) => {
         if (result.ok) {
           this.hudUi?.sync(this.world, this.playerEid);
@@ -941,9 +959,14 @@ export class MainGameScene extends Phaser.Scene {
           this.flashHint(
             result.reason === 'inventory-capacity'
               ? 'Purchase failed — inventory is full.'
-              : 'Purchase failed — not enough gold.',
+              : result.reason === 'insufficient-funds'
+                ? 'Purchase failed — not enough gold.'
+                : 'Purchase failed — shop stock changed.',
           );
         }
+      },
+      onPanelClosed: () => {
+        this.activeSettlementShopNpcEid = null;
       },
     });
     this.gameOverUI = createGameOverUI(this, {
@@ -1296,26 +1319,135 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedQuartermasterToggle = true;
   }
 
-  private isSettlementShopNpc(npcEid: number): boolean {
+  private resolveSettlementShopByNpc(
+    npcEid: number,
+  ): { kind: 'quartermaster' | 'shop'; shop: Floor2ShopInstance } | null {
     const settlement = this.world.floorExtendedState?.settlement;
     if (!settlement) {
-      return false;
+      return null;
     }
     if (settlement.quartermasterShop.npcEid === npcEid) {
-      return true;
+      return { kind: 'quartermaster', shop: settlement.quartermasterShop };
     }
-    return settlement.shops.some((shop) => shop.npcEid === npcEid);
+    const shop = settlement.shops.find((entry) => entry.npcEid === npcEid);
+    return shop ? { kind: 'shop', shop } : null;
+  }
+
+  private isSettlementShopNpc(npcEid: number): boolean {
+    return this.resolveSettlementShopByNpc(npcEid) !== null;
   }
 
   private tryQueueSettlementShopOpenFromNpc(npcEid: number): boolean {
     if (!this.isSettlementShopNpc(npcEid)) {
       return false;
     }
-    this.queuedQuartermasterOpenFromNpc = true;
+    this.queuedSettlementShopNpcEid = npcEid;
     return true;
   }
 
-  private openQuartermasterPanel(): void {
+  private resolveActiveSettlementShop(): { kind: 'quartermaster' | 'shop'; shop: Floor2ShopInstance } | null {
+    if (this.activeSettlementShopNpcEid !== null) {
+      const active = this.resolveSettlementShopByNpc(this.activeSettlementShopNpcEid);
+      if (active) {
+        return active;
+      }
+    }
+    const settlement = this.world.floorExtendedState?.settlement;
+    return settlement ? { kind: 'quartermaster', shop: settlement.quartermasterShop } : null;
+  }
+
+  private resolveSettlementShopPanelTitle(_world: GameWorld): string {
+    const selection = this.resolveActiveSettlementShop();
+    if (!selection) {
+      return '🛒 SHOP';
+    }
+    if (selection.kind === 'quartermaster') {
+      return '🛒 QUARTERMASTER';
+    }
+    const archetypeName = getShopArchetype(selection.shop.archetypeId)?.name ?? 'Shop';
+    return `🛒 ${archetypeName.toUpperCase()}`;
+  }
+
+  private getSettlementShopPanelOffers(
+    world: GameWorld,
+    playerEid: number,
+  ): readonly ShopPanelOfferView[] {
+    const selection = this.resolveActiveSettlementShop();
+    if (!selection) {
+      return Object.freeze([]);
+    }
+    if (selection.kind === 'quartermaster') {
+      return getQuartermasterOfferViews(world, playerEid);
+    }
+    return getSettlementShopOfferViews(world, playerEid, selection.shop.npcEid);
+  }
+
+  private purchaseSettlementShopPanelOffer(
+    world: GameWorld,
+    playerEid: number,
+    offer: ShopPanelOfferView,
+  ): { ok: boolean; reason?: string; goldSpent?: number } {
+    const selection = this.resolveActiveSettlementShop();
+    if (!selection) {
+      return { ok: false, reason: 'unknown-shop' };
+    }
+    if (selection.kind === 'quartermaster') {
+      if (!('stockId' in offer)) {
+        return { ok: false, reason: 'invalid-stock-identity' };
+      }
+      return purchaseQuartermasterOffer(world, playerEid, {
+        stockId: offer.stockId,
+        offerId: offer.offerId,
+        quantity: 1,
+      });
+    }
+    const shopOffer = offer as SettlementShopOfferView;
+    return purchaseSettlementShopOffer(world, playerEid, selection.shop.npcEid, {
+      itemId: shopOffer.itemId,
+      quantity: 1,
+    });
+  }
+
+  public getSettlementShopOfferSnapshot(): ReadonlyArray<{
+    stockId?: string;
+    offerId: string;
+    quantity: number;
+    unitPrice: number;
+    displayName: string | null;
+  }> {
+    if (this.playerEid < 0) {
+      return [];
+    }
+    return this.getSettlementShopPanelOffers(this.world, this.playerEid).map((offer) => ({
+      ...('stockId' in offer ? { stockId: offer.stockId } : {}),
+      offerId: offer.offerId,
+      quantity: offer.quantity,
+      unitPrice: offer.unitPrice,
+      displayName: offer.displayName,
+    }));
+  }
+
+  public purchaseFirstSettlementShopOffer(): { ok: boolean; reason?: string; goldSpent?: number } {
+    if (this.playerEid < 0) {
+      return { ok: false, reason: 'no-player' };
+    }
+    const offer = this.getSettlementShopPanelOffers(this.world, this.playerEid).find(
+      (entry) => entry.canPurchase,
+    );
+    if (!offer) {
+      return { ok: false, reason: 'none-purchasable' };
+    }
+    const result = this.purchaseSettlementShopPanelOffer(this.world, this.playerEid, offer);
+    this.quartermasterUI?.refresh(this.world);
+    return result;
+  }
+
+  public getActiveSettlementShopNpcEid(): number | null {
+    return this.resolveActiveSettlementShop()?.shop.npcEid ?? null;
+  }
+
+  private openSettlementShopPanel(npcEid: number): void {
+    this.activeSettlementShopNpcEid = npcEid;
     this.closeMapOverlayIfOpen();
     this.closeCharacterPanels({ keepQuartermaster: true });
     if (this.quartermasterUI?.isOpen()) {
@@ -1892,19 +2024,17 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedQuartermasterToggle ||
       (this.keyQuartermaster && Phaser.Input.Keyboard.JustDown(this.keyQuartermaster)),
     );
-    const quartermasterOpenFromNpcRequested = this.queuedQuartermasterOpenFromNpc;
+    const settlementShopNpcEidRequested = this.queuedSettlementShopNpcEid;
     this.queuedQuartermasterToggle = false;
-    this.queuedQuartermasterOpenFromNpc = false;
-    const hasQuartermasterStock = !!this.world.floorExtendedState?.settlement?.quartermasterStock;
+    this.queuedSettlementShopNpcEid = null;
     if (quartermasterOpen && quartermasterToggleRequested) {
       this.quartermasterUI?.toggle(this.world);
     } else if (
-      quartermasterOpenFromNpcRequested &&
+      settlementShopNpcEidRequested !== null &&
       safeCtx &&
-      hasQuartermasterStock &&
       !isUiLockOpen()
     ) {
-      this.openQuartermasterPanel();
+      this.openSettlementShopPanel(settlementShopNpcEidRequested);
     } else if (this.quartermasterUI?.isOpen()) {
       if (safeCtx) {
         this.quartermasterUI.refresh(this.world);

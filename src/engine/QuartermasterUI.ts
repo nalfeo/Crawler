@@ -27,6 +27,7 @@ import {
   purchaseQuartermasterOffer,
   type QuartermasterOfferView,
 } from '../core/quartermaster-purchase.js';
+import type { SettlementShopOfferView } from '../core/settlement-shop-purchase.js';
 import type { GeneratedEquipmentRarity } from '../shared/generated-equipment-types.js';
 
 const PANEL_PADDING = 16;
@@ -81,10 +82,13 @@ function rarityColor(rarity: GeneratedEquipmentRarity): number {
   }
 }
 
-function offerSignature(offers: readonly QuartermasterOfferView[]): string {
+export type ShopPanelOfferView = QuartermasterOfferView | SettlementShopOfferView;
+
+function offerSignature(offers: readonly ShopPanelOfferView[]): string {
   return offers
     .map(
-      (o) => `${o.offerId}:${o.quantity}:${o.affordable}:${o.capacityAvailable}:${o.canPurchase}`,
+      (o) =>
+        `${o.offerId}:${o.quantity}:${o.affordable}:${'capacityAvailable' in o ? o.capacityAvailable : true}:${o.canPurchase}`,
     )
     .join('|');
 }
@@ -96,8 +100,16 @@ function goldSignature(world: GameWorld): string {
 export interface QuartermasterUIConfig {
   width?: number;
   height?: number;
+  title?: string;
   /** Resolves the entity that receives purchased equipment. */
   getPlayerEid: () => number | undefined;
+  getTitle?: (world: GameWorld) => string;
+  getOffers?: (world: GameWorld, playerEid: number) => readonly ShopPanelOfferView[];
+  purchaseOffer?: (
+    world: GameWorld,
+    playerEid: number,
+    offer: ShopPanelOfferView,
+  ) => { ok: boolean; reason?: string; goldSpent?: number };
   /**
    * Called after every completed purchase attempt so the caller can refresh
    * other dependent UI (inventory, equipment panel, HUD gold display, etc.).
@@ -181,6 +193,14 @@ export function createQuartermasterUI(
   const buyRowControls: BuyRowControl[] = [];
   let focusedBuyRowIndex = -1;
 
+  function resolveTitle(world: GameWorld): string {
+    return config.getTitle?.(world) ?? config.title ?? '🛒 QUARTERMASTER';
+  }
+
+  function resolveOffers(world: GameWorld, playerEid: number): readonly ShopPanelOfferView[] {
+    return config.getOffers?.(world, playerEid) ?? getQuartermasterOfferViews(world, playerEid);
+  }
+
   function clearRows(): void {
     for (const obj of rowObjects) obj.destroy();
     rowObjects.length = 0;
@@ -189,8 +209,8 @@ export function createQuartermasterUI(
   }
 
   function computeSignature(world: GameWorld, playerEid: number): string {
-    const offers = getQuartermasterOfferViews(world, playerEid);
-    return `${offerSignature(offers)}::${goldSignature(world)}`;
+    const offers = resolveOffers(world, playerEid);
+    return `${resolveTitle(world)}::${offerSignature(offers)}::${goldSignature(world)}`;
   }
 
   function applyBuyFocusVisual(control: BuyRowControl, focused: boolean): void {
@@ -215,7 +235,7 @@ export function createQuartermasterUI(
   function makeRow(
     world: GameWorld,
     playerEid: number,
-    offer: QuartermasterOfferView,
+    offer: ShopPanelOfferView,
     x: number,
     y: number,
     w: number,
@@ -229,7 +249,7 @@ export function createQuartermasterUI(
     rowObjects.push(box);
 
     // Item name + rarity label (rarity label uses distinct text color, not color alone)
-    const rarity = offer.utility?.rarity ?? 'common';
+    const rarity = offer.utility?.rarity;
     const nameColor = soldOut ? COLORS.textDisabled : COLORS.textPrimary;
     const itemName = offer.displayName ?? offer.offerId;
     const nameText = crispText(x + 12, y + 8, itemName, {
@@ -241,13 +261,15 @@ export function createQuartermasterUI(
     container.add(nameText);
     rowObjects.push(nameText);
 
-    const rarityText = crispText(x + 12 + (nameText.width + 8), y + 10, rarityLabel(rarity), {
-      fontFamily: FONT_FAMILY,
-      fontSize: '12px',
-      color: soldOut ? hex(COLORS.textDisabled) : hex(rarityColor(rarity)),
-    });
-    container.add(rarityText);
-    rowObjects.push(rarityText);
+    if (rarity) {
+      const rarityText = crispText(x + 12 + (nameText.width + 8), y + 10, rarityLabel(rarity), {
+        fontFamily: FONT_FAMILY,
+        fontSize: '12px',
+        color: soldOut ? hex(COLORS.textDisabled) : hex(rarityColor(rarity)),
+      });
+      container.add(rarityText);
+      rowObjects.push(rarityText);
+    }
 
     // Item level and stat summary
     const utilityParts: string[] = [];
@@ -283,11 +305,15 @@ export function createQuartermasterUI(
     rowObjects.push(priceText);
 
     const purchaseOffer = (): void => {
-      const result = purchaseQuartermasterOffer(world, playerEid, {
-        stockId: offer.stockId,
-        offerId: offer.offerId,
-        quantity: 1,
-      });
+      const result =
+        config.purchaseOffer?.(world, playerEid, offer) ??
+        ('stockId' in offer
+          ? purchaseQuartermasterOffer(world, playerEid, {
+              stockId: offer.stockId,
+              offerId: offer.offerId,
+              quantity: 1,
+            })
+          : { ok: false, reason: 'unknown-offer' });
       lastSignature = null;
       refresh(world);
       if (result.ok) {
@@ -351,7 +377,7 @@ export function createQuartermasterUI(
     }
   }
 
-  function unavailableLabel(offer: QuartermasterOfferView): string {
+  function unavailableLabel(offer: ShopPanelOfferView): string {
     switch (offer.purchaseFailure) {
       case 'insufficient-funds':
         return 'No gold';
@@ -364,7 +390,8 @@ export function createQuartermasterUI(
 
   function render(world: GameWorld, playerEid: number): void {
     clearRows();
-    const offers = getQuartermasterOfferViews(world, playerEid);
+    title.setText(resolveTitle(world)).setResolution(textResolution);
+    const offers = resolveOffers(world, playerEid);
 
     goldLabel
       .setText(`Gold: ${world.playerGold}g`)

@@ -415,6 +415,21 @@ export function getEquipmentDefForItem(itemId: string): EquipmentItemDef | undef
   return TEST_EQUIPMENT_OVERRIDES.get(itemId) ?? EQUIPMENT_BY_ITEM_ID.get(itemId);
 }
 
+/** Equipment definition for a weapon id slug, or undefined if it has no inventory item mapping. */
+export function getEquipmentDefForWeaponId(weaponId: string): EquipmentItemDef | undefined {
+  for (const def of TEST_EQUIPMENT_OVERRIDES.values()) {
+    if (def.weaponId === weaponId) {
+      return def;
+    }
+  }
+  for (const def of EQUIPMENT_BY_ITEM_ID.values()) {
+    if (def.weaponId === weaponId) {
+      return def;
+    }
+  }
+  return undefined;
+}
+
 /** True when the given inventory item slug maps to a piece of equipment. */
 export function isEquippableItem(itemId: string): boolean {
   return EQUIPMENT_BY_ITEM_ID.has(itemId);
