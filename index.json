@@ -1,5 +1,16 @@
 [
   {
+    "commit": "71ecf6e9bae12d551b0a8869963e3f05c62dde4b",
+    "commitDate": "2026-07-30T05:28:05Z",
+    "commitSubject": "Guard AUDIT_EXCEPTIONS expiry extensions behind reason restatement (#2347)",
+    "capturedAt": "2026-07-30T06:35:11.262Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30517091761",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/71ecf6e9bae12d551b0a8869963e3f05c62dde4b.json"
+  },
+  {
     "commit": "b20d4bb610e6f1ad2f305dec2f2302c1a74b5ff2",
     "commitDate": "2026-07-30T05:09:13Z",
     "commitSubject": "feat: implement 85%/15% Uncommon/Rare boss-chest rarity split (Floor 2) (#2341)",
