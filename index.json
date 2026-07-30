@@ -1,5 +1,16 @@
 [
   {
+    "commit": "15c37a664882447ed33b6427f4c02349fd6ce8fe",
+    "commitDate": "2026-07-30T06:50:09Z",
+    "commitSubject": "fix(achievements): post-merge review fixes for Floor 2 achievement content + tier4 collision resolution (#2360)",
+    "capturedAt": "2026-07-30T07:40:40.268Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30521452113",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/15c37a664882447ed33b6427f4c02349fd6ce8fe.json"
+  },
+  {
     "commit": "71ecf6e9bae12d551b0a8869963e3f05c62dde4b",
     "commitDate": "2026-07-30T05:28:05Z",
     "commitSubject": "Guard AUDIT_EXCEPTIONS expiry extensions behind reason restatement (#2347)",
