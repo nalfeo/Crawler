@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
@@ -23,6 +25,11 @@ const issue = {
   node_id: 'ISSUE_1067',
   number: 1067,
 };
+
+test('issue intake workflow subscribes to reopened issues', () => {
+  const workflow = readFileSync(path.resolve('.github/workflows/issue-copilot-intake.yml'), 'utf8');
+  assert.match(workflow, /types:\s*\[opened,\s*reopened,\s*closed\]/);
+});
 
 test('issue intake accepts only trusted opener and label combinations', () => {
   const cases = [
