@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3932bbd3d2ac816fb1d60163237f7cc6dbb5e288",
+    "commitDate": "2026-07-30T20:40:23Z",
+    "commitSubject": "feat(ci-recovery): detect a dead stale-session harvest from outside the harvest (#2392)",
+    "capturedAt": "2026-07-30T21:49:34.276Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30580955276",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/3932bbd3d2ac816fb1d60163237f7cc6dbb5e288.json"
+  },
+  {
     "commit": "0febc0b83607faef08852da9c1d30527baf9948f",
     "commitDate": "2026-07-30T20:29:48Z",
     "commitSubject": "fix(doors): retire dead rotation, wire side-on E/W art, contain-fit generated-door fallback (#2391)",
