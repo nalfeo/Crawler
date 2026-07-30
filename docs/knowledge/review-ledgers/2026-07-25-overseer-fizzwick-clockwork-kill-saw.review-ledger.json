@@ -1,0 +1,56 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "overseer-fizzwick-clockwork-kill-saw",
+  "task_title": "Implement Overseer Fizzwick CLOCKWORK KILL-SAW",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Alt A: runtime-only bespoke moving saw state — rejected because it would duplicate projectile/return cleanup instead of reusing existing returning-projectile lifecycle. Alt B: fully generic path-phase runtime overhaul before landing Fizzwick — rejected because it expands scope beyond the bounded issue. Chosen: keep typed mob-ability runtime as authoritative committed-path state, extend public cue/geometry phases beyond telegraph, and reuse/extend returning projectile lifecycle for outbound/hold/return/re-catch. Added clipped endpoint semantics, pass-aware hit latching, Queen/Panda regression coverage, explicit default-off zero-casts proof, and process notes for issue-comment 403 + registry override."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Finding 1: lane damage can bleed through walls near edges — accepted with ADR-0076 DEC-004 documentation as an arena-only ability where open-arena use is the intended deployment. Finding 2: clearMobAbility during active phase permanently disables boss ability for the encounter — fixed by replacing clearMobAbility call in updateActiveState with beginCooldownAfterActive to preserve ability registration."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Finding 1: Conflict markers in HEAD (critical) — already resolved in working tree by conflict-resolution agent; committed in this push. Finding 2: Test for target-despawn during active cast asserted old clearMobAbility behavior (byEntity.has=false) instead of new beginCooldownAfterActive behavior (phase=cooldown, registration preserved) — test updated to assert inst.phase==='cooldown' and byEntity.has===true. Finding 3: beginCooldownAfterActive fired recatch VFX at lane origin even during early abort when saw is mid-lane — fixed to use inst.activeState.projectileX/Y when available, falling back to geometry.originX/Y for normal completion."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Scope: the hand-resolved merge of a heavily-evolved main into the kill-saw branch (10 conflicted files, unified lane geometry, burst-event union, MobAbilityVfx rebuild). gpt-5.6-sol finding (Medium, VALID, FIXED): bt-ai-provider.ts preserveMobAbilityDodge guarded on cue.phase==='telegraph', so predictive travel steering zeroed the mob-ability dodge vector during outbound/hold/return — the AI walked into the still-lethal saw the instant the telegraph ended. Fixed by widening the predicate to world.mobAbilities.cues.length > 0; added regression test 'keeps dodging a lane that is already in its active damaging phase' in tests/unit/ai/mob-ability-circle-avoidance.test.ts, proven fail-without-fix via a revert check (the first draft of the test passed with the bug present because shouldTravelSteer() was false, so it was rewritten to use the two-poll quest-nav EXPLORE pattern and to assert getTravelSteeringDebug() is non-null). gemini-3.1-pro-preview finding 1 (Medium, INVALID): claimed castStartSeen cleanup was lost in the MobAbilityVfx merge — it is present at MobAbilityVfx.ts:1492 inside the caster-retirement loop; the reviewer's own edit was reverted. gemini-3.1-pro-preview finding 2 (High as filed, VALID but OUT OF SCOPE): syncTelegraphGeometryToCaster shifts a follows-caster lane's origin without re-running clipLaneLengthFt, so a moving lane could push through a wall. Adjudication: the function is byte-identical to origin/main (verified via git show origin/main:src/core/mob-abilities/runtime.ts), the branch does not modify it, the Clockwork Kill-Saw uses the default 'locked' origin mode, and the only follows-caster ability in the repo (bamboo-fed-berserk) uses circle geometry — so the lane branch is unreachable in production today. Pre-existing latent gap in main, zero impact on this PR; not fixed here to keep the merge resolution surgical. Both reviewers independently reported lane geometry unification, path-tracking semantics, the burst-event union, other abilities' VFX/lifecycles, determinism, and dead-code removal as clean."
+        }
+      ]
+    }
+  }
+}
