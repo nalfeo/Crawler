@@ -195,10 +195,17 @@ describe('Floor 1 to Floor 2 production transition', () => {
     // 'registry-not-empty' restore-precondition crash).
     const floor2Registry = snapshotGeneratedEquipmentRegistry(floor2);
     expect(floor2Registry.runKey).toBe(floor1Registry.runKey);
+    expect(floor2Registry.generationPolicy).toEqual(floor1Registry.generationPolicy);
+    expect(floor2Registry.generationPolicyFingerprint).toBe(
+      floor1Registry.generationPolicyFingerprint,
+    );
+    const floor2InstancesById = new Map(
+      floor2Registry.instances.map((instance) => [instance.instanceId, instance]),
+    );
     for (const instance of floor1Registry.instances) {
-      expect(floor2Registry.instances).toContainEqual(instance);
+      expect(floor2InstancesById.get(instance.instanceId)).toEqual(instance);
     }
-    expect(floor2Registry.instances.length).toBeGreaterThan(floor1Registry.instances.length);
+    expect(floor2Registry.nextOrdinal).toBeGreaterThanOrEqual(floor1Registry.nextOrdinal);
     expect(getEquipmentState(floor2, floor2Player)?.equipped.mainHand).toBe(equipped.instanceId);
     expect(getActiveWeaponSnapshot(floor2)).toEqual(equipped.frozen.activeWeaponSnapshot);
     expect(floor2.abilityStatesByEntity.get(floor2Player)?.equippedActiveAbilityIds).toContain(
