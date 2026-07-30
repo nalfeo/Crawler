@@ -1,0 +1,41 @@
+{
+  "briefId": "angry-roomba-v1",
+  "spriteName": "angry-roomba-v1-var-7",
+  "assetPath": "generated/angry-roomba-v1-var-7.png",
+  "approvedAt": "2026-07-06T17:33:08.458Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-L84vV8/angry-roomba-v1/2026-07-03T21-18-15-e5a2673f",
+  "variantIndex": 7,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "b6fe0d8bca98f8a0c04b855effd0aab157260cd924658e42768239399f2fdae0",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "brief",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 8,
+    "width": 57,
+    "height": 47,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

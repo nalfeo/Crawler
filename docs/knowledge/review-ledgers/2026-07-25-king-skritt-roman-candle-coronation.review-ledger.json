@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "king-skritt-roman-candle-coronation",
+  "task_title": "Implement King Skritt ROMAN-CANDLE CORONATION boss ability",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Plan posted as issue comment on #1955 before any code was written. Followed the established verdigris-glamour/bamboo-fed-berserk/undercity-mob-call pattern: typed adapter reads specific catalog fields and provides a named resolve handler to the generic executor. Key decisions confirmed: (1) new MobAbilityRadialProjectilesGeometry type in types.ts, (2) alternation via resolvedCasts % 2 in runtime.ts beginTelegraph, (3) resolve handler launches 12 spawnEnemyProjectile calls along committed spoke angles, (4) arena preset via spawnFromArchetype pattern, (5) VFX added to MobAbilityVfx.ts drawRadialTelegraph/spawnCoronationBurst. No alternatives proposed that would diverge from the established pattern."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["parallel_validation/code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "centralize-ci-gates-markers",
+  "task_title": "Centralize CI schedule+train gate and managed-comment markers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Reviewer identified blocking issue: local composite actions require checkout before use. Fix: added checkout step before train-gate in all 3 guarded workflows. Non-blocking items (marker completeness, test coverage) noted and addressed (test now validates checkout precedes gate). ci.yml dual-gate noted as acceptable design constraint (job-level if needed for downstream cascade)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

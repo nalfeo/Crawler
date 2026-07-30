@@ -1,0 +1,50 @@
+{
+  "briefId": "equipment/weapon/bone-saw",
+  "spriteName": "equipment/weapon/bone-saw",
+  "assetPath": "generated/equipment/weapon/bone-saw.png",
+  "approvedAt": "2026-07-18T01:45:33.608Z",
+  "sourceRun": "generated/runs/bone-saw/2026-07-18T01-39-45-manual",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 31,
+    "y": 61,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 61,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 29,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": null,
+  "type": "weapon",
+  "contentHash": "f4912b1422a1daacb0d77bf16c6e91e5c6c5c8fd0f3fe5c0255c4393dc985e76",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "equipment": {
+    "stableId": "weapon.bone-saw",
+    "runtimeKey": "equipment/weapon/bone-saw",
+    "category": "weapon",
+    "family": "blade",
+    "slot": "weapon",
+    "productionWaveId": "floor2-equipment-weapon-blade"
+  },
+  "opaqueBounds": {
+    "x": 21,
+    "y": 3,
+    "width": 23,
+    "height": 59,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "catalog": {
+    "description": "Generated sprite for stable runtime key: equipment/weapon/bone-saw."
+  }
+}

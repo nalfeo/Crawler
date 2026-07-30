@@ -32,7 +32,6 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
   });
 
   it('parses a valid --decision-mode', () => {
-    expect(cli('--decision-mode', 'slackAware').decisionMode).toBe(AIDecisionMode.SLACK_AWARE);
     expect(cli('--decision-mode', 'legacy').decisionMode).toBe(AIDecisionMode.LEGACY);
   });
 
@@ -40,16 +39,20 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(cli('--pathing-mode', 'riskRewardFused').pathingMode).toBe(
       AIPathingMode.RISK_REWARD_FUSED,
     );
-    expect(cli('--pathing-mode', 'navmesh').pathingMode).toBe(AIPathingMode.NAVMESH);
-    expect(cli('--pathing-mode', 'navmeshFused').pathingMode).toBe(AIPathingMode.NAVMESH_FUSED);
-    expect(cli('--pathing-mode', 'legacy').pathingMode).toBe(AIPathingMode.LEGACY);
   });
 
   it('parses both axes together alongside other flags', () => {
-    const args = cli('--seed', '99', '--decision-mode', 'slackAware', '--pathing-mode', 'legacy');
+    const args = cli(
+      '--seed',
+      '99',
+      '--decision-mode',
+      'legacy',
+      '--pathing-mode',
+      'riskRewardFused',
+    );
     expect(args.seed).toBe(99);
-    expect(args.decisionMode).toBe(AIDecisionMode.SLACK_AWARE);
-    expect(args.pathingMode).toBe(AIPathingMode.LEGACY);
+    expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
+    expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
   });
 
   it('defaults weapon personas on and supports an explicit legacy control', () => {

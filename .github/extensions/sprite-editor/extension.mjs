@@ -1,7 +1,16 @@
 import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension';
@@ -10,8 +19,18 @@ import { renderHtml } from './renderer.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXT_DIR, '..', '..', '..');
-const MANIFEST_PATH = path.join(REPO_ROOT, 'public', 'assets', 'generated', 'manifest.json');
+const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
+// The aggregate `manifest.json` is a build artifact and is NOT committed. The
+// source of truth is a directory of per-asset shards; this `.mjs` cannot import
+// the TypeScript shard helpers (scripts/sprites/generated-shards.ts) or the
+// derivation composer (src/shared/generated-catalog.ts), so the small subset it
+// needs is reimplemented inline below and MUST stay byte-compatible with them.
+const SHARDS_DIR = path.join(GENERATED_DIR, 'entries');
 const CATALOG_PATH = path.join(REPO_ROOT, 'src', 'shared', 'data', 'sprite-catalog.json');
+const GENERATED_MANIFEST_VERSION = 1;
+const GENERATED_ID_PREFIX = 'generated:';
+const GENERATED_SHEET_KEY = 'generated-manifest';
+const BASE_GENERATED_TAGS = ['generated', 'pipeline-approved'];
 const ANNOTATIONS_PATH = path.join(
   REPO_ROOT,
   'public',
@@ -46,7 +65,7 @@ const instances = new Map();
 const pendingStartups = new Map();
 
 let cache = {
-  manifestMtimeMs: -1,
+  manifestFingerprint: '',
   catalogMtimeMs: -1,
   annotationsMtimeMs: -1,
   manifest: null,
@@ -77,6 +96,124 @@ function writeJsonFile(filePath, value) {
   } finally {
     rmSync(tempPath, { force: true });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inline per-asset shard I/O + generated-catalog derivation.
+//
+// These mirror scripts/sprites/generated-shards.ts and
+// src/shared/generated-catalog.ts. A `.mjs` extension cannot import those TS
+// modules, so the minimal subset is duplicated here. Keep them in sync:
+//   - shard path: entries/<key>.json, with `/` in the key mapping to subdirs
+//   - serialization: JSON.stringify(entry, null, 2) + trailing newline
+//   - manifest: { version: 1, entries: { <key>: entry } }, keys sorted
+//   - derivation rules (id/label/spriteId from map key; tags = type-first;
+//     placeholder excluded) match the composer exactly.
+// ---------------------------------------------------------------------------
+
+function shardPathForKey(key) {
+  return `${path.join(SHARDS_DIR, ...key.split('/'))}.json`;
+}
+
+function listShardKeys() {
+  if (!existsSync(SHARDS_DIR)) return [];
+  const keys = [];
+  const walk = (abs, rel) => {
+    for (const dirent of readdirSync(abs, { withFileTypes: true })) {
+      const childRel = rel ? `${rel}/${dirent.name}` : dirent.name;
+      if (dirent.isDirectory()) {
+        walk(path.join(abs, dirent.name), childRel);
+      } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
+        keys.push(childRel.replace(/\.json$/iu, ''));
+      }
+    }
+  };
+  walk(SHARDS_DIR, '');
+  keys.sort((a, b) => a.localeCompare(b));
+  return keys;
+}
+
+function composeManifestFromShards() {
+  const entries = {};
+  for (const key of listShardKeys()) {
+    entries[key] = readJsonFile(shardPathForKey(key));
+  }
+  return { version: GENERATED_MANIFEST_VERSION, entries };
+}
+
+function writeShard(key, entry) {
+  const file = shardPathForKey(key);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeJsonFile(file, entry);
+}
+
+// Cheap change-detector for the shard set: file count + newest mtime. Catches
+// add/remove (count changes) and content edits (mtime bumps). Our own writes
+// bust the cache explicitly, so external edits are the only case this guards.
+function shardsFingerprint() {
+  if (!existsSync(SHARDS_DIR)) return '0:-1';
+  let count = 0;
+  let maxMtime = -1;
+  const walk = (abs) => {
+    for (const dirent of readdirSync(abs, { withFileTypes: true })) {
+      const child = path.join(abs, dirent.name);
+      if (dirent.isDirectory()) {
+        walk(child);
+      } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
+        count += 1;
+        const m = statSync(child).mtimeMs;
+        if (m > maxMtime) maxMtime = m;
+      }
+    }
+  };
+  walk(SHARDS_DIR);
+  return `${count}:${maxMtime}`;
+}
+
+function isPlaceholderManifestEntry(entry) {
+  if (entry?.placeholder === true) return true;
+  return typeof entry?.assetPath === 'string' && entry.assetPath.includes('-placeholder');
+}
+
+function deriveGeneratedTags(entry) {
+  const override = entry?.catalog?.tags;
+  if (Array.isArray(override) && override.length > 0) return [...override];
+  return entry?.type ? [entry.type, ...BASE_GENERATED_TAGS] : [...BASE_GENERATED_TAGS];
+}
+
+// Derive the read-time `generated:` catalog rows from the composed manifest.
+// The committed catalog no longer stores these; they exist only for display /
+// matching inside the editor.
+function deriveGeneratedCatalogRows(manifest) {
+  const rows = [];
+  for (const [key, entry] of Object.entries(manifest.entries ?? {})) {
+    if (isPlaceholderManifestEntry(entry)) continue;
+    rows.push({
+      id: `${GENERATED_ID_PREFIX}${key}`,
+      kind: 'sprite',
+      label: key,
+      description: entry?.catalog?.description ?? `Generated sprite from brief: ${entry.briefId}.`,
+      tags: deriveGeneratedTags(entry),
+      spriteId: key,
+      sheetKey: GENERATED_SHEET_KEY,
+      assetPath: entry.assetPath,
+      frame: 0,
+      col: 0,
+      row: 0,
+    });
+  }
+  rows.sort((a, b) => a.id.localeCompare(b.id));
+  return rows;
+}
+
+// The full catalog view = committed non-generated rows + derived generated rows.
+function composeFullCatalog(committed, manifest) {
+  const base = Array.isArray(committed)
+    ? committed.filter(
+        (entry) => typeof entry?.id === 'string' && !entry.id.startsWith(GENERATED_ID_PREFIX),
+      )
+    : [];
+  return [...base, ...deriveGeneratedCatalogRows(manifest)];
 }
 
 function sha256Hex(value) {
@@ -184,22 +321,24 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note) {
 }
 
 function loadData() {
-  const manifestMtimeMs = statSync(MANIFEST_PATH).mtimeMs;
+  const manifestFingerprint = shardsFingerprint();
   const catalogMtimeMs = statSync(CATALOG_PATH).mtimeMs;
   const annotationsMtimeMs = existsSync(ANNOTATIONS_PATH) ? statSync(ANNOTATIONS_PATH).mtimeMs : -1;
   if (
     cache.manifest &&
     cache.catalog &&
     cache.annotations &&
-    cache.manifestMtimeMs === manifestMtimeMs &&
+    cache.manifestFingerprint === manifestFingerprint &&
     cache.catalogMtimeMs === catalogMtimeMs &&
     cache.annotationsMtimeMs === annotationsMtimeMs
   ) {
     return cache;
   }
 
-  const manifest = readJsonFile(MANIFEST_PATH);
-  const catalog = readJsonFile(CATALOG_PATH);
+  const manifest = composeManifestFromShards();
+  // The committed catalog no longer stores generated rows; derive them from the
+  // manifest so the editor still has a full catalog view for matching/summaries.
+  const catalog = composeFullCatalog(readJsonFile(CATALOG_PATH), manifest);
   const annotations = readAnnotations();
   const catalogIndex = indexCatalogSprites(catalog);
   const summaries = Object.entries(manifest.entries ?? {})
@@ -241,7 +380,7 @@ function loadData() {
   ).sort((a, b) => a.localeCompare(b));
   const summaryByKey = new Map(summaries.map((summary) => [summary.key, summary]));
   cache = {
-    manifestMtimeMs,
+    manifestFingerprint,
     catalogMtimeMs,
     annotationsMtimeMs,
     manifest,
@@ -478,13 +617,15 @@ async function saveSprite(payload) {
       wrotePng = true;
     }
 
-    // Metadata edits and PNG saves both mutate the manifest; PNG writes refresh contentHash.
+    // Metadata edits and PNG saves both mutate the manifest entry; PNG writes
+    // refresh contentHash. Persist to the per-asset shard (the aggregate
+    // manifest.json is a build artifact and is no longer written here).
     if (hasMetadata || wrotePng) {
-      writeJsonFile(MANIFEST_PATH, data.manifest);
+      writeShard(key, data.manifest.entries[key]);
     }
-    if (hasMetadata) {
-      writeJsonFile(CATALOG_PATH, data.catalog);
-    }
+    // No catalog write: the committed catalog no longer stores generated rows;
+    // they are derived from the manifest at read time. Frame/col/row edits for
+    // generated sprites are inherently virtual (always 0) and never persisted.
     if (hasAnnotation) writeJsonFile(ANNOTATIONS_PATH, data.annotations);
     cache.manifest = null;
     cache.catalog = null;
@@ -517,31 +658,24 @@ async function revertSprite(payload) {
   if (!assetDiskPath) throw new CanvasError('invalid_path', 'Invalid asset path.');
 
   try {
-    const manifestHead = JSON.parse(
-      await execGit(['show', `HEAD:${repoPosixPath(MANIFEST_PATH)}`]),
-    );
-    const catalogHead = JSON.parse(await execGit(['show', `HEAD:${repoPosixPath(CATALOG_PATH)}`]));
+    // Source of truth at HEAD is the per-asset shard, not the aggregate.
+    let headEntry;
+    try {
+      headEntry = JSON.parse(
+        await execGit(['show', `HEAD:${repoPosixPath(shardPathForKey(key))}`]),
+      );
+    } catch {
+      throw new CanvasError('not_in_head', `Sprite "${key}" not found at HEAD.`);
+    }
     const pngHead = await execGit(['show', `HEAD:${repoPosixPath(assetDiskPath)}`], 'buffer');
 
-    const headEntry = manifestHead?.entries?.[key];
     if (!headEntry) throw new CanvasError('not_in_head', `Sprite "${key}" not found at HEAD.`);
     data.manifest.entries[key] = headEntry;
-
-    const summary = data.summaryByKey.get(key);
-    const catalogId = summary?.catalogId ?? null;
-    const headCatalogEntry = catalogHead.find((item) => {
-      if (!item || item.kind !== 'sprite') return false;
-      if (catalogId && item.id === catalogId) return true;
-      return typeof item.assetPath === 'string' && item.assetPath === headEntry.assetPath;
-    });
-    if (headCatalogEntry) {
-      const idx = data.catalog.findIndex((item) => item?.id === headCatalogEntry.id);
-      if (idx >= 0) data.catalog[idx] = headCatalogEntry;
-    }
+    // No committed-catalog revert: generated catalog rows are derived from the
+    // manifest, so restoring the shard restores the derived row too.
 
     writeFileSync(assetDiskPath, pngHead);
-    writeJsonFile(MANIFEST_PATH, data.manifest);
-    writeJsonFile(CATALOG_PATH, data.catalog);
+    writeShard(key, headEntry);
     // A save queues the edit onto the durable assets/queue branch. Reverting
     // only on disk would leave that queued edit live on the branch, so the
     // hourly reconciler (assets/queue → main) would resurface it and silently

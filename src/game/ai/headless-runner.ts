@@ -33,7 +33,6 @@ import {
 } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
-  AIPathingMode,
   AIState,
   type AIInputProvider,
   type AIPathingModeValue,
@@ -54,7 +53,6 @@ import {
 import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
-import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import {
@@ -135,9 +133,22 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
-   * Explicit Floor 2 equipment rollout configuration. Omitted preserves the
-   * world defaults (all disabled); dependency closure is validated by each
-   * enabled consumer before it mutates state.
+   * Explicit Floor 2 equipment rollout configuration, applied before scenario
+   * configuration. Omitted preserves the world defaults (all disabled); each
+   * enabled consumer validates its own dependency closure before mutating
+   * state. NOTE: on `floorId: 'floor2'`, `initializeFloor2Scenario` (the real
+   * shipped path) unconditionally overwrites five flags —
+   * `floor2EquipmentRegistry`, `floor2EquipmentCatalog`,
+   * `floor2EquipmentRewards`, `floor2EquipmentEconomy`, and
+   * `floor2EquipmentAiMaintenance` — as part of Floor 2's shipped content.
+   * The remaining two flags (`floor2EquipmentUx`, `floor2EquipmentWorld`)
+   * are NOT touched by the scenario initializer and are preserved as-is
+   * from any override supplied here. Note `floor2EquipmentUx` and
+   * `floor2EquipmentWorld` currently have zero enforcement sites anywhere
+   * in `src/` — they are declared-but-unenforced no-op flags, not yet
+   * wired to any gate.
+   * An override for the five scenario-set flags only has effect when
+   * disabling them (e.g. to isolate a scenario on a non-Floor-2 run).
    */
   floor2EquipmentFlags?: Partial<GameWorld['floor2EquipmentFlags']>;
   /**
@@ -522,7 +533,6 @@ export async function runHeadless(
     getDecisionMode?: () => string;
     getPathingMode?: () => AIPathingModeValue;
     getFloor2HuntFamilyId?: () => FamilyId | null;
-    disposeNavmesh?: () => void;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
   let lastFrameY = world.stores.position.y[playerEid] ?? 0;
@@ -621,10 +631,8 @@ export async function runHeadless(
     // `urgency` (from the post-tick `runPlan`). That is an observability
     // superset, NOT part of the deterministic sim: game behavior/determinism
     // stays byte-identical to main; only the emitted telemetry field set is
-    // broader. Prefer `decisionRunPlan` — the plan the SLACK_AWARE F1/F2 filters
-    // actually consulted this frame — falling back to the post-tick `runPlan`.
-    // In LEGACY `decisionRunPlan` is always null, so this falls back to
-    // `runPlan`, selecting the same plan a legacy-aware provider would.
+    // broader. Falls back to the post-tick `runPlan` when no decision-time
+    // plan is available.
     const tacticalDebug = navProvider.getTacticalRunDebug?.();
     const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
     const decisionMode = navProvider.getDecisionMode?.();
@@ -679,17 +687,6 @@ export async function runHeadless(
       ...canonicalPostSystems,
       ...(config.simulationOptions?.postSystems ?? []),
     ];
-
-    // Navmesh-routed pathing (NAVMESH and NAVMESH_FUSED) needs the recast WASM
-    // runtime initialized before the synchronous sim loop runs (the provider's
-    // poll() is sync and throws if the navmesh is not ready). Centralizing the
-    // await here means every headless caller — CLI, ai:ab-pathing-mode,
-    // ai:navmesh-sweep, and the determinism/functional tests — is covered without
-    // each remembering to init. LEGACY/RISK_REWARD_FUSED never touch it.
-    const pathingMode = navProvider.getPathingMode?.();
-    if (pathingMode === AIPathingMode.NAVMESH || pathingMode === AIPathingMode.NAVMESH_FUSED) {
-      await initNavmesh();
-    }
 
     // Main simulation loop
     while (frameCount < mergedConfig.maxFrames) {
@@ -1180,12 +1177,6 @@ export async function runHeadless(
       }
     }
     return crashStats;
-  } finally {
-    // Free the per-floor recast navmesh + query WASM allocations (outside the JS
-    // GC). No-op for LEGACY/RISK_REWARD_FUSED (no handle was ever built). Without
-    // this, the navmesh-sweep's sequential navmesh-routed runs would leak one
-    // handle each.
-    navProvider.disposeNavmesh?.();
   }
 
   const wallTimeMs = Date.now() - startTime;

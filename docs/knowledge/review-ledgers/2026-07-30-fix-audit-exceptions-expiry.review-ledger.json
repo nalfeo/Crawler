@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "fix-audit-exceptions-expiry",
+  "task_title": "Fix expired npm-audit exceptions (fast-uri, find-my-way)",
+  "estimated_apples": 2,
+  "stages": {}
+}

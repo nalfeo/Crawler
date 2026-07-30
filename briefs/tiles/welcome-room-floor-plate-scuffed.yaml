@@ -1,0 +1,116 @@
+# welcome-room-floor-plate-scuffed — Asset Forge, 2026-07-26.
+# Sibling of `welcome-room-floor-plate-clean`. See that brief's header for the
+# full `type: tile` / geometry / palette-lock rationale — it applies verbatim.
+# Short version: this is an OPAQUE full-bleed 4ft x 4ft floor plate, not a decal,
+# so edge-to-edge opacity is the requirement; `type: tile` forces 'stretch' +
+# `trimAndFit: false` so the shipped PNG is 256x256 and the aspect is 1:1 by
+# construction; strict palette quantization is the only lever that actually
+# controls colour on this model.
+type: tile
+name: welcome-room-floor-plate-scuffed
+description: |
+  A single square FLOOR PLATE seen from DIRECTLY OVERHEAD — flat top-down, the
+  camera looking straight down at the ground. This is studio-grade sheet
+  flooring laid down over dungeon stone: the reception set of a televised
+  dungeon reality show, where a production crew has covered the raw floor with
+  hard-wearing matte panelling so equipment can roll on it.
+
+  THIS IS THE SCUFFED VARIANT OF A FOUR-PLATE FAMILY. It is the SAME plate as
+  its siblings — same base material, same value range, same perimeter treatment
+  — differing ONLY in the accumulated detail on top. Here that detail is YEARS
+  OF FURNITURE BEING SHOVED AROUND THIS ROOM.
+
+  THE FAMILY LOCK — THIS PARAGRAPH IS VERBATIM IDENTICAL IN ALL FOUR BRIEFS OF
+  THIS FAMILY, AND THE FOUR PLATES ARE LAID DIRECTLY ADJACENT ON A GRID, SO THE
+  BASE SURFACE MUST MATCH EXACTLY:
+  The plate is COOL GREY CONCRETE-COMPOSITE STUDIO PANELLING — flat, matte and
+  slightly chalky, a MIDDLE grey with the faintest blue-green cast. Not pale, not
+  dark. It is NOT brown, NOT tan, NOT gold, NOT olive, NOT yellow, NOT ochre and
+  NOT warm wood. Dust and grime may push small patches a little warmer, but the
+  dominant impression of the whole tile must be COOL GREY. Fill the entire square
+  with it, edge to edge, with no transparent pixels anywhere.
+  The perimeter is a BARELY VISIBLE joint — a single one-step tonal shift a few
+  pixels in from the edge. Do NOT draw a dark keyline, a black frame, a border
+  outline, a bevel, a rim, a drop-shadowed edge or any hard contour around the
+  plate. A hard frame is what makes these read as a stamped repeating grid, which
+  is the exact defect this family exists to eliminate.
+  Vary the surface ASYMMETRICALLY: grain, dust and light wear must be noticeably
+  heavier toward one corner or one edge, never evenly distributed and never
+  mirror-symmetric, so neighbouring copies never look stamped.
+
+  WHAT TO DRAW ON TOP (this variant only):
+  - DRAG MARKS: two or three long, slightly curved, low-contrast smears where
+    something heavy was pushed across the panel. Each is a soft band of slightly
+    darker, slightly polished surface with a faintly lighter halo along one side.
+    They run at loose angles, not parallel to the plate edges, and they FADE OUT
+    before reaching the perimeter.
+  - BOOT SCUFFS: a scatter of short, irregular, dithered black-rubber heel marks
+    — small comma and arc shapes, denser toward one corner, none of them neatly
+    spaced.
+  - Slight abrasion of the matte finish inside the most-travelled band, showing a
+    faintly paler worn substrate through it.
+
+  FLAT TOP-DOWN, ABSOLUTELY NO PERSPECTIVE:
+  This is a flat ground plane. Do NOT draw the plate in 3/4 view. Do NOT give it
+  a visible thickness, side wall, bevelled rim, extruded edge or implied height.
+  Do NOT draw a cast shadow, a drop shadow, a contact shadow, or any shadow at
+  all. Props are drawn separately in 3/4 view and render upward from their
+  footprint on top of this tile, so any implied height or shadow here will look
+  wrong underneath them.
+
+  LOW CONTRAST AND DESATURATED:
+  Keep every tone inside a narrow mid-value band of cool desaturated concrete
+  greys. The scuffs are the darkest thing here and they are still only a few
+  steps below the surface tone — they must read as wear, not as holes punched in
+  the floor. NO SATURATED COLOUR AT ALL in this variant — no yellow, no ochre, no
+  gold, no olive, no green, no blue. No glow, no gloss, no specular highlight.
+
+  EDGE DISCIPLINE:
+  Keep strong linework away from the tile edges. These plates are scattered on a
+  4 ft grid next to each other and next to plates from the same family, so no
+  design element may require alignment with its neighbour. Every drag mark and
+  scuff must be fully self-contained and must not run off the edge as though it
+  continues onto the next tile.
+
+  NO TEXT of any kind. No numbers, no labels, no logos, no arrows, no symbols.
+
+  SHEET LAYOUT — THIS IS WHY THE LAST TWO ROUNDS OF THIS TILE WERE UNUSABLE.
+  Twice now the sixteen plates were drawn butted directly against each other with
+  no separation, so the whole sheet read as one single image and could not be cut
+  apart into individual sprites. Draw the sixteen plates as sixteen CLEARLY
+  SEPARATED squares. Between every row and every column, and all the way around
+  the outside of the grid, leave a WIDE, FLAT, COMPLETELY EMPTY GUTTER of a
+  single uniform BRIGHT MAGENTA (#ff00ff). The gutter must be at least 12 source
+  pixels wide, exactly the same colour everywhere, and must contain nothing at
+  all — no grain, no speckle, no shading, no border, no frame, no divider line.
+  Every plate sits fully inside its own cell and never touches another plate.
+
+  Rendered in the game at exactly 4 x 4 feet — one full floor tile. The art must
+  read believably at that size: keep detail count low enough to survive when the
+  tile is only a few dozen pixels on screen, and do not over-detail.
+
+  It must sit beside the already-approved welcome-room art without clashing:
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-rug, welcome-room-stanchion-pair, welcome-sign-left-v1 and
+  prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass, hard
+  dark outline, muted and dusty, never bright or saturated.
+palette:
+  id: welcome-room-studio-floor
+postprocessing:
+  paletteMode: strict
+sensors:
+  # See the sibling brief: a flat floor plate has no single ground-contact point,
+  # so bottom-centre grip is meaningless. Contract choice, not a relaxed
+  # threshold — every other sensor keeps its default, `interiorHoles` stays 0.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - floor
+  - studio-set
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

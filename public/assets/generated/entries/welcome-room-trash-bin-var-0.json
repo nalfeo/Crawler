@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-trash-bin",
+  "spriteName": "welcome-room-trash-bin-var-0",
+  "assetPath": "generated/welcome-room-trash-bin-var-0.png",
+  "approvedAt": "2026-07-25T06:45:39.906Z",
+  "sourceRun": "generated/runs/welcome-room-trash-bin/2026-07-25T05-56-21-347a3c97",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 30,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 30,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:57:27.834Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a dented metal bin overflowing with call sheets and a snapped clapperboard fits the darkly humorous and slightly absurd tone of Crawler. The worn and grimy aesthetic aligns with the dungeon's atmosphere, but the clapperboard could be more distinct to emphasize the showbiz contradiction."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a muted, desaturated palette and hard outlines consistent with the references. However, the shading on the bin could be slightly more refined to match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a muted, desaturated palette and hard outlines consistent with the references. However, the shading on the bin could be slightly more refined to match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a dented metal bin with crumpled call sheets and a snapped clapperboard, as described in the brief. The lid is crooked, and the overall design matches the requested details."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the object is easily identifiable as a trash bin at game scale. However, the clapperboard and call sheets could be slightly more distinct to enhance immediate recognition."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a grounded, world-space object with a clear base and appropriate perspective. The contact shadow is well-placed and consistent with the lighting direction."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2792,
+      "completionTokens": 392,
+      "totalTokens": 3184
+    }
+  },
+  "type": "prop",
+  "contentHash": "b6dc2fa374067858e64d25feb4ff2fd2564a46f7b574edc526fecadba32a0f96",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-trash-bin\\2026-07-25T05-56-21-347a3c97\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-trash-bin\\2026-07-25T05-56-21-347a3c97\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-trash-bin\\2026-07-25T05-56-21-347a3c97\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 3,
+    "width": 54,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

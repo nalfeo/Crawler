@@ -1,0 +1,61 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "shard-generated-manifest",
+  "task_title": "Shard the generated manifest + derive the catalog",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "convergent",
+      "notes": "Adversarial plan review enumerated 5 alternatives (committed aggregate + regenerate per check-in; committed aggregate + custom git merge driver; JSONL aggregate with merge=union; separate overrides file; sibling tactical Fix 1) and argued against the chosen shard design. Concerns raised & resolved: (1) gitignoring the committed aggregate ripples across deploy + ~5 integration tests + non-Vite Node consumers -> resolved by a Vite plugin that composes shards and emits the aggregate in writeBundle (all publish paths go through `npm run build`, so dev/preview/CI/Pages/prod are covered) plus `scripts/sprites/build-manifest.ts` for Node consumers; (2) resurrection risk: an in-flight branch could revive the committed manifest.json and silently diverge from the shards -> resolved by a hard resurrection guard in check-manifest.ts asserting the aggregate is NOT git-tracked; (3) the entries/ subdir vs detect-art-only.sh classifier -> resolved by confirming bash `case` globs match `/` for free (no edit to the classifier) and pinning it with a test assertion. Plan converged on shard-of-truth + read-time-derived catalog + gitignored build aggregate, matching the reviewer's own recommendation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 6,
+          "valid_count": 6,
+          "resolved_count": 6,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Three distinct models reviewed the diff range b85652791..HEAD; claude-opus-4.8 adjudicated. Validated concerns and resolutions: (C1) broken aggregate readers - asset-plan.ts/generate-one.ts still read the gitignored manifest.json from disk -> migrated to loadGeneratedManifest (shard-composed); (C2) path traversal via manifest key in shard I/O -> centralized assertSafeManifestKey trust boundary in generated-shards.ts routing every reader/writer through shardPathForKey, plus unapproveVariant catches the rejection and returns UnapproveError('not-found') before any fs access; (C3) proposed schema .strict() would reject 5 shards carrying a legit top-level equipment block the engine reads via .passthrough() -> kept passthrough (empirically verified, intentional forward-compat); (C4) placeholder predicate must key on explicit metadata / asset path, not spriteName (catches crescent-glaive + meteor-hammer) -> isPlaceholderManifestEntry made authoritative with C4 regression test; (C5) format drift: shards written without trailing newline / prettier shape -> formatJsonFilesSync after every writeShard loop in metadata-pipeline.ts + sidecar/server.ts; (C6) reconcile-queue read the aggregate for content hashes -> composes hashes from per-asset shards via git show <ref>:<shardPath>, with ART_SURFACE_ALLOWLIST keeping sprite-catalog.json tolerated in promote->main diffs. Adjudicated as non-applicable-by-design (recorded, not fixed): asset-request-publisher.ts hard-throw is intentional (user item 8 wanted it to break loudest; complementary to checkin-runtime.ts skip); unapprove empty-dir prune is cosmetic (git doesn't track empty dirs; zero effect on the success-gate diff). Round 2 clean across all three models."
+    }
+  }
+}

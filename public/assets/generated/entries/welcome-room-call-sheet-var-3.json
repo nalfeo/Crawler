@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-call-sheet",
+  "spriteName": "welcome-room-call-sheet-var-3",
+  "assetPath": "generated/welcome-room-call-sheet-var-3.png",
+  "approvedAt": "2026-07-25T21:24:28.830Z",
+  "sourceRun": "generated/runs/welcome-room-call-sheet/2026-07-25T21-08-33-c64c469a",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 24,
+    "y": 33,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 24,
+      "y": 33,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 24,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 24,
+        "y": 33
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T21:10:11.257Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a dog-eared, grimy call sheet on a clipboard fits well within the Crawler's dark-fantasy, reality-show aesthetic. The curling paper and worn edges add character, but the clip could be more distinctively battered or improvised to enhance the 'deranged reality-show' feel."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and muted palette. However, the clip's rendering feels slightly less detailed compared to the references' intricate textures."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and muted palette. However, the clip's rendering feels slightly less detailed compared to the references' intricate textures."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a dog-eared call sheet on a clipboard, with multiple sheets visible and a curling top page. The text is appropriately abstract and illegible, matching the brief's requirements."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with the curling page and clip easily recognizable. The sprite stands out well against the dark floor tile in the readability composite."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a cohesive, grounded object with a clear top-down perspective and appropriate proportions for its intended size and placement on a wall. The transparent background is correctly implemented."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3506,
+      "completionTokens": 391,
+      "totalTokens": 3897
+    }
+  },
+  "type": "prop",
+  "contentHash": "efb3bb1b7fe18f667544cbd93b170221d27947a0bcba6567e06996577faa15b3",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-call-sheet\\2026-07-25T21-08-33-c64c469a\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-call-sheet\\2026-07-25T21-08-33-c64c469a\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-call-sheet\\2026-07-25T21-08-33-c64c469a\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 5,
+    "width": 42,
+    "height": 53,
+    "canvasWidth": 48,
+    "canvasHeight": 64
+  }
+}

@@ -13,13 +13,7 @@
  * (`runAssetPrConsolidation`) so the decision logic is unit-tested without git.
  */
 
-import {
-  mergeCatalogs,
-  mergeManifests,
-  parseAssetIssueBody,
-  type CatalogEntry,
-  type GeneratedManifest,
-} from './asset-issues.js';
+import { parseAssetIssueBody } from './asset-issues.js';
 import {
   ASSET_CHECKIN_LABEL,
   CheckinError,
@@ -204,16 +198,15 @@ export interface AssetPrResult {
   readonly plan: ConsolidationPlan;
 }
 
-const MANIFEST_REL = 'public/assets/generated/manifest.json';
-const CATALOG_REL = 'src/shared/data/sprite-catalog.json';
-
 /**
  * Execute the consolidation: list open issues, union their art surfaces into a
  * fresh batch branch, push it, and open one PR. Side effects are injected.
  *
- * Binary safety: PNGs are materialized with `git checkout <branch> -- <path>`
- * (object-store → worktree, never through stdout); only the JSON manifest +
- * catalog are read as text and unioned with the pure helpers.
+ * Binary safety + conflict-free union: both PNGs AND per-asset manifest shards
+ * are materialized with `git checkout <branch> -- <path>` (object-store →
+ * worktree, never through stdout). Because each shard is a self-contained file
+ * keyed by manifestKey, disjoint check-ins never share a path, so the union is a
+ * plain per-file overlay with no JSON merge and no aggregate/catalog write.
  */
 export async function runAssetPrConsolidation(
   repoRoot: string,
@@ -232,7 +225,6 @@ export async function runAssetPrConsolidation(
   const remote = options.remote ?? 'origin';
   const baseBranch = options.baseBranch ?? 'main';
   const now = deps.now ?? (() => new Date());
-  const join = deps.joinPath ?? ((...s: string[]) => s.join('/'));
 
   const listed = await exec(deps.exec, repoRoot, 'gh', [
     'issue',
@@ -267,32 +259,29 @@ export async function runAssetPrConsolidation(
       `${remote}/${baseBranch}`,
     ]);
 
-    // Start from the base art surface, then union each source branch on top.
-    const manifests: GeneratedManifest[] = [];
-    const catalogs: CatalogEntry[][] = [];
+    // File-level union: materialize each source branch's approved PNGs AND
+    // their per-asset manifest shards into the worktree. Because every shard is
+    // a self-contained file keyed by manifestKey, disjoint check-ins never touch
+    // the same path, so a plain per-file checkout unions them with no
+    // manifest/catalog merge (the aggregate + catalog rows are derived).
     for (const branch of plan.sourceBranches) {
       const ref = `${remote}/${branch}`;
-      manifests.push(await readJsonFromRef(deps, repoRoot, ref, MANIFEST_REL));
-      catalogs.push(await readCatalogFromRef(deps, repoRoot, ref, CATALOG_REL));
-      // Materialize that branch's approved PNGs into the worktree (binary-safe).
       for (const asset of plan.assets) {
-        const repoRel = `public/assets/${asset.assetPath}`;
-        await exec(deps.exec, worktree, 'git', ['checkout', ref, '--', repoRel]).catch(() => ({
-          stdout: '',
-          stderr: '',
-          code: 0,
-        }));
+        const repoRels = [`public/assets/${asset.assetPath}`];
+        if (typeof asset.manifestKey === 'string' && asset.manifestKey.length > 0) {
+          repoRels.push(`public/assets/generated/entries/${asset.manifestKey}.json`);
+        }
+        for (const repoRel of repoRels) {
+          await exec(deps.exec, worktree, 'git', ['checkout', ref, '--', repoRel]).catch(() => ({
+            stdout: '',
+            stderr: '',
+            code: 0,
+          }));
+        }
       }
     }
 
-    const baseManifest = await deps.readJson<GeneratedManifest>(join(worktree, MANIFEST_REL));
-    const baseCatalog = await deps.readJson<CatalogEntry[]>(join(worktree, CATALOG_REL));
-    const mergedManifest = mergeManifests(baseManifest, ...manifests);
-    const mergedCatalog = mergeCatalogs(baseCatalog, ...catalogs);
-    await deps.writeJson(join(worktree, MANIFEST_REL), mergedManifest);
-    await deps.writeJson(join(worktree, CATALOG_REL), mergedCatalog);
-
-    await exec(deps.exec, worktree, 'git', ['add', '--', 'public/assets/generated', CATALOG_REL]);
+    await exec(deps.exec, worktree, 'git', ['add', '--', 'public/assets/generated']);
     await exec(deps.exec, worktree, 'git', ['commit', '-m', plan.commitMessage]);
     await exec(deps.exec, worktree, 'git', ['push', '-u', remote, plan.batchBranch]);
 
@@ -315,37 +304,6 @@ export async function runAssetPrConsolidation(
       () => undefined,
     );
     await deps.removeDir(worktree).catch(() => undefined);
-  }
-}
-
-async function readJsonFromRef(
-  deps: AssetPrRunnerDeps,
-  repoRoot: string,
-  ref: string,
-  relPath: string,
-): Promise<GeneratedManifest> {
-  const result = await deps.exec('git', ['show', `${ref}:${relPath}`], { cwd: repoRoot });
-  if (result.code !== 0) return { entries: {} };
-  try {
-    return JSON.parse(result.stdout) as GeneratedManifest;
-  } catch {
-    return { entries: {} };
-  }
-}
-
-async function readCatalogFromRef(
-  deps: AssetPrRunnerDeps,
-  repoRoot: string,
-  ref: string,
-  relPath: string,
-): Promise<CatalogEntry[]> {
-  const result = await deps.exec('git', ['show', `${ref}:${relPath}`], { cwd: repoRoot });
-  if (result.code !== 0) return [];
-  try {
-    const parsed = JSON.parse(result.stdout);
-    return Array.isArray(parsed) ? (parsed as CatalogEntry[]) : [];
-  } catch {
-    return [];
   }
 }
 

@@ -1,0 +1,21 @@
+{
+  "briefId": "bone-club",
+  "spriteName": "bone-club",
+  "assetPath": "generated/bone-club-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.370Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 2,
+    "y": 3,
+    "width": 12,
+    "height": 11,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

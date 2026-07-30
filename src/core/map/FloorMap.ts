@@ -28,6 +28,44 @@ export function normalizeSubFactor(n: number): number {
   return Math.max(1, Math.min(MAX_FOV_SUB_FACTOR, Math.round(n)));
 }
 
+/**
+ * Structural, import-free view of the live barrier state that backs the
+ * lookups installed via {@link FloorMap.setBarrierLookup} /
+ * {@link FloorMap.setBarrierPointLookup}.
+ *
+ * Its only purpose is to let `hasBarrierAtTile` / `hasBarrierAtPoint` answer
+ * `false` **without invoking the lookup closure** when the backing collection
+ * is provably empty. On a Floor-1 run those two methods are called 19.4 M and
+ * 14.8 M times respectively and return `true` **zero** times, because the
+ * registry stays empty for the whole run — so every one of those closure
+ * invocations is pure waste.
+ *
+ * ## Why a live reference and not a cached boolean
+ *
+ * The sizes are read **fresh on every query**. There is deliberately no flag,
+ * no `version` snapshot and no invalidation step, because a stale "no barriers
+ * here" flag would mean a barrier raised mid-run silently stops blocking —
+ * a gameplay bug the Floor-1 `RunStats` fingerprint could never catch (Floor 1
+ * raises no barriers). Reading `Set.size` / `Map.size` consults exactly the
+ * same ground truth the lookups themselves consult, so the gate cannot
+ * disagree with them.
+ *
+ * The source is the **world**, not the registry object, so that reassigning
+ * `world.barriers` (labs do this) is seen identically by the gate and by the
+ * closure — the closure body reads `world.barriers` live too.
+ *
+ * Kept as a structural type so `FloorMap` retains **zero import dependency**
+ * on `src/core/barriers` (see {@link FloorMap.setBarrierLookup}).
+ */
+export interface BarrierPresenceSource {
+  readonly barriers: {
+    /** Tile indices occupied by any live barrier — backs `isBarrierTile`. */
+    readonly blockedTiles: { readonly size: number };
+    /** Analytic (sub-tile) shapes — backs `isBarrierPointBlocked`. */
+    readonly ringShapes: { readonly size: number };
+  };
+}
+
 export class FloorMap implements FloorMapData {
   readonly config: MapConfig;
   readonly tileMap: TileMap;
@@ -205,12 +243,39 @@ export class FloorMap implements FloorMapData {
   private barrierLookup: ((tileX: number, tileY: number) => boolean) | null = null;
 
   /**
+   * Live, import-free view of the barrier state backing {@link barrierLookup}
+   * and {@link barrierPointLookup}. `null` means "no presence information" —
+   * the lookups are then always invoked, which is the pre-existing behaviour
+   * and what every non-registry lookup (tests, labs, hand-installed stubs)
+   * gets. See {@link BarrierPresenceSource}.
+   *
+   * Set only as part of a `setBarrier*Lookup` call so a presence source can
+   * never outlive the lookup it describes.
+   */
+  private barrierTilePresence: BarrierPresenceSource | null = null;
+
+  /**
    * Attach the barrier-tile predicate. Called once by the world wiring at
    * floor-load; passing `null` detaches. `isPassableAt` and
    * `isTilePassableWithBarriers` consult it.
+   *
+   * `presence` is optional and defaults to `null`. Pass it **only** when `fn`
+   * answers purely from `presence.barriers.blockedTiles` — i.e. when
+   * `blockedTiles.size === 0` implies `fn` returns `false` for every tile.
+   * Doing so lets `hasBarrierAtTile` skip the call entirely on the empty-
+   * registry fast path. Omitting it is always safe and always correct.
+   *
+   * Because `presence` is a parameter of this same call, re-installing a
+   * different lookup (or detaching with `setBarrierLookup(null)`) clears it
+   * automatically — a presence source can never be left attached to a lookup
+   * it does not describe.
    */
-  setBarrierLookup(fn: ((tileX: number, tileY: number) => boolean) | null): void {
+  setBarrierLookup(
+    fn: ((tileX: number, tileY: number) => boolean) | null,
+    presence: BarrierPresenceSource | null = null,
+  ): void {
     this.barrierLookup = fn;
+    this.barrierTilePresence = presence;
   }
 
   /**
@@ -225,11 +290,26 @@ export class FloorMap implements FloorMapData {
   private barrierPointLookup: ((xFt: number, yFt: number) => boolean) | null = null;
 
   /**
+   * Live presence view backing {@link barrierPointLookup} — the analytic
+   * (sub-tile) half of the same idea as {@link barrierTilePresence}. Gated on
+   * `ringShapes.size`.
+   */
+  private barrierPointPresence: BarrierPresenceSource | null = null;
+
+  /**
    * Attach the feet-precision barrier predicate. Called once by the world
    * wiring at floor-load; passing `null` detaches.
+   *
+   * `presence` follows the same contract as in {@link setBarrierLookup}: pass
+   * it only when `fn` answers purely from `presence.barriers.ringShapes`, so
+   * that `ringShapes.size === 0` implies `fn` returns `false` everywhere.
    */
-  setBarrierPointLookup(fn: ((xFt: number, yFt: number) => boolean) | null): void {
+  setBarrierPointLookup(
+    fn: ((xFt: number, yFt: number) => boolean) | null,
+    presence: BarrierPresenceSource | null = null,
+  ): void {
     this.barrierPointLookup = fn;
+    this.barrierPointPresence = presence;
   }
 
   /**
@@ -239,9 +319,16 @@ export class FloorMap implements FloorMapData {
    * needs feet precision — pathfinding stays tile-granular (an analytic ring
    * owns no tiles, which is acceptable: everyone is inside the arena and
    * movement collision enforces the wall).
+   *
+   * Fast path: when a {@link BarrierPresenceSource} is attached and it holds
+   * zero analytic shapes, the answer is `false` by construction and the lookup
+   * is skipped. The size is re-read every call, so a shape raised mid-run is
+   * seen immediately.
    */
   hasBarrierAtPoint(xFt: number, yFt: number): boolean {
-    return this.barrierPointLookup ? this.barrierPointLookup(xFt, yFt) : false;
+    const presence = this.barrierPointPresence;
+    if (presence !== null && presence.barriers.ringShapes.size === 0) return false;
+    return this.barrierPointLookup !== null ? this.barrierPointLookup(xFt, yFt) : false;
   }
 
   /**
@@ -249,9 +336,16 @@ export class FloorMap implements FloorMapData {
    * blocked by a barrier without going through the world-position wrapper.
    * Returns `false` when no lookup has been attached (i.e. no barriers on
    * this floor), which is the "no overlay" happy path.
+   *
+   * Fast path: when a {@link BarrierPresenceSource} is attached and it holds
+   * zero blocked tiles, the answer is `false` by construction and the lookup
+   * is skipped. The size is re-read every call, so a barrier raised mid-run is
+   * seen immediately.
    */
   hasBarrierAtTile(tileX: number, tileY: number): boolean {
-    return this.barrierLookup ? this.barrierLookup(tileX, tileY) : false;
+    const presence = this.barrierTilePresence;
+    if (presence !== null && presence.barriers.blockedTiles.size === 0) return false;
+    return this.barrierLookup !== null ? this.barrierLookup(tileX, tileY) : false;
   }
 
   /** Check if a feet world position is on a passable tile. */
@@ -317,6 +411,77 @@ export class FloorMap implements FloorMapData {
   isVisibleSubtile(hx: number, hy: number): boolean {
     if (hx < 0 || hx >= this.subWidth || hy < 0 || hy >= this.subHeight) return false;
     return this.visible[hy * this.subWidth + hx] !== 0;
+  }
+
+  /**
+   * Mark a sub-tile as both visible and discovered in one call.
+   *
+   * Exactly equivalent to `setVisible(hx, hy)` followed by
+   * `setDiscovered(hx, hy)` — the FOV system's only write pattern — but shares
+   * the bounds check, the sub-tile index, and the tile-index derivation that
+   * the two separate calls each recompute. FOV writes this for every lit
+   * sub-tile (up to ~10 K per pass at `subFactor` 2), so the duplicated work
+   * was measurable in the sim profile.
+   *
+   * Callers that need only one of the two bitmaps must keep using the
+   * individual setters.
+   */
+  markVisibleAndDiscovered(hx: number, hy: number): void {
+    const sw = this.subWidth;
+    if (hx < 0 || hx >= sw || hy < 0 || hy >= this.subHeight) return;
+    const subIdx = hy * sw + hx;
+    this.visible[subIdx] = 1;
+    this.discovered[subIdx] = 1;
+
+    const sf = this._subFactor;
+    const tileIdx = Math.floor(hy / sf) * this.config.widthTiles + Math.floor(hx / sf);
+    this.tileVisible[tileIdx] = 1;
+    this.tileDiscovered[tileIdx] = 1;
+
+    // Expand the bounding box that clearVisibility() will zero next frame.
+    if (hx < this.lastFovMinX) this.lastFovMinX = hx;
+    if (hy < this.lastFovMinY) this.lastFovMinY = hy;
+    if (hx > this.lastFovMaxX) this.lastFovMaxX = hx;
+    if (hy > this.lastFovMaxY) this.lastFovMaxY = hy;
+  }
+
+  /**
+   * Mark **every** sub-tile of tile `(tx, ty)` as visible and discovered.
+   *
+   * Used by the FOV system for opaque tiles. Shadowcasting only reports the
+   * sub-tiles a ray physically lands on, so a wall would otherwise be revealed
+   * (and lit) as a ragged partial block with the rest of the same tile still
+   * black. A wall the player can see is seen as a whole tile.
+   *
+   * Cheap: `subFactor` row fills plus one tile-cache write, and the FOV system
+   * calls it at most once per opaque tile per pass.
+   */
+  markTileVisibleAndDiscovered(tx: number, ty: number): void {
+    const tw = this.config.widthTiles;
+    if (tx < 0 || tx >= tw || ty < 0 || ty >= this.config.heightTiles) return;
+
+    const sf = this._subFactor;
+    const sw = this.subWidth;
+    const hx0 = tx * sf;
+    const hy0 = ty * sf;
+    const hx1 = hx0 + sf - 1;
+    const hy1 = hy0 + sf - 1;
+    for (let hy = hy0; hy <= hy1; hy++) {
+      const rowStart = hy * sw + hx0;
+      const rowEnd = rowStart + sf;
+      this.visible.fill(1, rowStart, rowEnd);
+      this.discovered.fill(1, rowStart, rowEnd);
+    }
+
+    const tileIdx = ty * tw + tx;
+    this.tileVisible[tileIdx] = 1;
+    this.tileDiscovered[tileIdx] = 1;
+
+    // Expand the bounding box that clearVisibility() will zero next frame.
+    if (hx0 < this.lastFovMinX) this.lastFovMinX = hx0;
+    if (hy0 < this.lastFovMinY) this.lastFovMinY = hy0;
+    if (hx1 > this.lastFovMaxX) this.lastFovMaxX = hx1;
+    if (hy1 > this.lastFovMaxY) this.lastFovMaxY = hy1;
   }
 
   /**

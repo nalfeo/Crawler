@@ -320,6 +320,38 @@ export const briefSchema = z
       })
       .strict()
       .default({ trimAndFit: false, minDimension: 64, paletteMode: 'none' }),
+    /**
+     * Opt-in ORDERED frame-sequence mode (walk-cycle animation sheets).
+     *
+     * When enabled, the sheet's cells are NOT independent design
+     * alternatives of one static sprite (the normal sheet-mode meaning) —
+     * they are an ORDERED sequence of poses of the SAME subject, read in
+     * row-major order (left-to-right within each row, top row first), meant
+     * to be packed into a single horizontal animation strip and played back
+     * frame-by-frame in the engine.
+     *
+     * Any rectangular layout is valid: 1×N (single row), 2×2, 2×3, etc.
+     * The only constraint is `rows × cols === frameCount` with no empty cells.
+     *
+     * Strictly opt-in and fully backward-compatible: every existing brief
+     * omits this field and behaves exactly as before. When enabled,
+     * `generation.sheet` is cross-validated (see `superRefine` below) to
+     * have exactly `frameCount` cells total — this reuses the content-aware
+     * slicing machinery (`slice-sheet.ts`) instead of introducing a parallel
+     * layout system.
+     */
+    frameSequence: z
+      .object({
+        enabled: z.boolean().default(false),
+        /** Ordered pose-frame count. Target for a walk cycle: 3. */
+        frameCount: z.number().int().min(2).max(8).default(3),
+        /** Intended playback rate (frames per second) for the packed strip. */
+        frameRate: z.number().positive().default(8),
+        /** Whether playback should loop. */
+        loop: z.boolean().default(true),
+      })
+      .strict()
+      .default({ enabled: false, frameCount: 3, frameRate: 8, loop: true }),
   })
   .strict()
   .superRefine((brief, ctx) => {
@@ -380,6 +412,28 @@ export const briefSchema = z
         path: ['generation', 'sheet'],
         message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
       });
+    }
+    // frameSequence mode: the grid cells are ordered animation frames, so
+    // rows × cols must equal frameCount and every cell must be a required frame.
+    // Any rectangular layout (1×N, 2×2, 2×3, etc.) is valid — the content-aware
+    // slicer reads cells in row-major order, matching the animation frame order.
+    if (brief.frameSequence.enabled) {
+      const { frameCount } = brief.frameSequence;
+      const totalCells = rows * cols;
+      if (totalCells !== frameCount) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet'],
+          message: `frameSequence.enabled requires generation.sheet.rows × cols === frameSequence.frameCount (${frameCount}), got ${rows}×${cols} = ${totalCells}`,
+        });
+      }
+      if (emptyCells.length > 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet', 'emptyCells'],
+          message: `frameSequence.enabled requires no empty cells — every cell is a required ordered frame`,
+        });
+      }
     }
   });
 

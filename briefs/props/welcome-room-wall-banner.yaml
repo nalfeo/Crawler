@@ -1,0 +1,147 @@
+# ASPECT NOTE (Asset Forge, 2026-07-25): the set-piece renderer is now
+# HEIGHT-AUTHORITATIVE (PhaserBridge scales by heightFt / nativeHeightPx and the
+# rendered WIDTH follows the PNG canvas aspect). So the canvas aspect ratio IS
+# the object's real-world proportions. This banner is ~6 ft wide x 2.5 ft tall,
+# so the canvas is declared 144x60 (2.4:1) and `sizeVariant: wide` reshapes the
+# sheet to 4 rows x 2 cols = 8 cells of 512x256 (2:1) so the model composes into
+# a genuinely wide cell instead of a square one. resizeSpriteStrategy() returns
+# 'width' for 144x60, which locks the output width at 144 and lets the height
+# follow the DRAWN subject's aspect — i.e. the shipped canvas is aspect-true by
+# construction.
+type: prop
+name: welcome-room-wall-banner
+sizeVariant: wide
+description: |
+  A sagging fabric WELCOME banner hung flat against a rough stone dungeon wall.
+  Front-elevation 3/4 view — you are looking at the face of the wall, the same
+  view as the already-approved welcome-room-desk (which has "WELCOME" painted on
+  its FRONT face). Modern high-quality pixel art, silhouette readable at 16px.
+
+  REAL-WORLD SIZE / PROPORTIONS — READ THIS TWICE, ROUND 1 FAILED ON IT.
+  The banner is approximately 6 FEET WIDE x 2.5 FEET TALL. Its bounding box must
+  therefore be almost exactly TWO AND A HALF TIMES WIDER THAN IT IS TALL
+  (width : height = 2.4 : 1). Round 1 came back at only 1.85 : 1 — too tall and
+  too stubby — so make it distinctly LONGER and FLATTER than feels natural.
+
+  Concretely, compose it inside the cell like this:
+  - The banner spans the FULL WIDTH of the cell, hard edge to hard edge, leaving
+    only the small standard margin at left and right.
+  - VERTICALLY IT IS SHORT. Leave a generous band of EMPTY BACKGROUND across the
+    TOP QUARTER of the cell and across the BOTTOM QUARTER of the cell. Every
+    painted pixel — including the fixing nails and cord loops at the top and the
+    lowest point of the frayed hem and the drooping corner at the bottom — must
+    fit inside the MIDDLE HALF of the cell's height. Nothing above that band,
+    nothing below it.
+  - Think of a long letterbox / cinemascope strip, or a road-side hoarding seen
+    face on. If it looks like a squarish plaque or a stubby rectangle, it is
+    wrong. If it looks almost too long and too thin, it is right.
+  - Within that flat strip, fill it: the cloth itself should occupy roughly
+    80-90% of the strip's area. It must NOT be a small object floating in the
+    middle of a big empty cell.
+
+  IT IS UNMISTAKABLY CLOTH. This is the single most important requirement.
+  - It is a limp, soft, heavy piece of woven fabric hanging on a wall. It hangs
+    under its own weight and therefore SAGS: the top edge dips in a shallow
+    catenary curve between its two fixing points, and the bottom hem is uneven
+    and wavy, never a straight ruled line.
+  - Soft vertical folds and creases run down the cloth, shown as narrow darker
+    tonal bands. There is a horizontal crease-shadow where it has been folded up
+    and stored between seasons.
+  - The bottom hem is frayed, with a few loose threads and a couple of moth-eaten
+    holes punched through the fabric — through-holes that show the stone wall
+    behind them.
+  - ONE TOP CORNER HAS COME AWAY FROM ITS FIXING and droops down, so that corner
+    of the banner hangs slack and folds over on itself. This asymmetric droop is
+    the reading cue that says "old cloth", so make it obvious.
+  - It is fixed to the wall with a couple of small tarnished brass nails or
+    tacks at the top edge, and short frayed cord loops.
+
+  IT IS EMPHATICALLY NOT ANY OF THESE — these are automatic rejections:
+  - NOT a rigid sign, plaque, board, panel, placard or shield.
+  - NOT a road sign, traffic sign, highway sign, diamond sign or any outdoor
+    signage of any kind.
+  - NOT a rope, cord, velvet rope, chain, garland, bunting, pennant string or
+    line of triangular flags.
+  - NOT a scroll, parchment, paper, poster or map.
+  - NOT a rug or carpet lying on a floor.
+  - NOT a wooden crate, box or barrel.
+  It is one single rectangular piece of hanging cloth. One piece. Nothing else.
+
+  THE LETTERING: the word WELCOME reads across the banner in large, hand-painted,
+  slab-serif show-business capitals, letter-spaced across the full width. The
+  paint has flaked and faded unevenly under years of studio lights, so parts of
+  some letters have worn away and the letterforms break up where the fabric
+  creases. Keep the letters chunky and few-pixel-simple so they survive at small
+  size — legibility of the WORD matters more than crispness of each glyph.
+
+  MOOD — this is a grimy reality-TV dungeon set, threadbare and over-used. The
+  welcome room is the dungeon's shabby reception, re-dressed for the cameras
+  season after season by three bored NPCs who have been stuck in it for years.
+  This banner is the staged, camera-facing half of the room: it is meant to look
+  welcoming and it fails, because it is exhausted. Tired, dusty, faded, sagging.
+  Nothing crisp, nothing new, nothing bright.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. This must sit beside the
+  already-approved welcome-room-desk, welcome-room-bookcase,
+  welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope,
+  welcome-room-show-poster, welcome-sign-left-v1 and prop-wall-sconce-v1 without
+  clashing: deep maroon, dark walnut, tarnished brass, muted and dusty, never
+  bright and never saturated. The banner cloth is a faded, dulled, greyed-out
+  deep maroon-red that has lost most of its chroma under the lights; the
+  lettering is a knocked-back tarnished off-gold / dirty cream, never vivid
+  yellow, never pure white. Overall value sits as dark as the welcome-room desk
+  and bookcase. BANNED: neon, pure white, pure black, saturated red, saturated
+  yellow, orange, teal, cyan, blue, green, magenta, purple, and any speckle of a
+  hue that is not in the maroon / walnut / brass family. A saturated or speckled
+  result is an automatic rejection.
+
+  RENDERING: hard dark contour around the cloth in the house prop style, muted
+  interior shading, lit from above (the wall sconces are overhead), soft
+  one-pixel contact shadow down and to the right where the cloth meets the wall.
+  This prop is WALL-MOUNTED: it hangs on the wall and does not rest on the floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the banner (and its fixings). Do NOT
+  paint the stone wall behind it, do not paint a backing panel, frame, border or
+  vignette — the wall is already painted underneath this art in the game. Every
+  pixel that is not banner must be fully transparent, except that the moth holes
+  should show transparent through the cloth.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the banner's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the banner.
+size:
+  width: 144
+  height: 60
+anchor:
+  x: 72
+  y: 52
+sensors:
+  # A hanging banner is a deliberately near-rectangular flat cloth panel, so it
+  # fills far more of its bounding box than the `prop` default range
+  # [0.10, 0.65], which is tuned for irregular grounded props. Same reasoning
+  # (and same 0.80 cap) as the already-approved welcome-room-show-poster: a
+  # genuine background-removal failure lands at ~0.95-1.0 and is still caught.
+  # The floor is raised to 0.35 because a banner that covers less than a third
+  # of its own bounding box is not a banner.
+  opaqueRatio:
+    min: 0.35
+    max: 0.85
+  # A wall-hung cloth has no grounded base, so bottom-center grip is meaningless.
+  anchor:
+    mode: center-of-mass
+  # Moth holes are through-holes by design and must not be scored as background
+  # bleed-through. The real bleed-through failure mode is still covered by the
+  # opaqueRatio cap above.
+  interiorHoles:
+    maxPixels: 256
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

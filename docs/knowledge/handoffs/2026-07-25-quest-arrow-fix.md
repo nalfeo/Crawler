@@ -20,6 +20,7 @@ Additionally, neither the docked radar dial nor the full-screen overlay minimap 
 ### 1. Screen arrows — rectangle-edge intersection
 
 Added `rectEdgePt(angle)` helper in `HudDirectionArrows.ts` that projects a direction angle onto the rectangular inset boundary using the formula:
+
 - `t = min(RX/|cos|, RY/|sin|)`
 - Returns `(CX + cos*t, CY + sin*t)`
 
@@ -47,6 +48,7 @@ Added `overlayArrowGraphics` (screen-space Graphics object, `HUD_DEPTH+5`) and `
 ## Tests
 
 Added:
+
 - `keeps an arrow on the same screen edge when the target angle varies slightly` — regression for the bouncing bug
 - `keeps crowded right-side arrows pinned to the right edge through later fan attempts` — regression for collision-avoidance reselecting the wrong edge
 - `pins arrows to the nearest screen edge not an intermediate ellipse position` — verifies 45° goes to bottom edge

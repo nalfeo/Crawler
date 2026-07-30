@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-potted-plant",
+  "spriteName": "welcome-room-potted-plant-var-0",
+  "assetPath": "generated/welcome-room-potted-plant-var-0.png",
+  "approvedAt": "2026-07-25T06:45:58.822Z",
+  "sourceRun": "generated/runs/welcome-room-potted-plant/2026-07-25T06-01-24-de17dc22",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 34,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 34,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 34,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T06:02:30.599Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a dusty, slightly wilted potted plant in a chipped terracotta pot fits the darkly humorous and slightly grimy aesthetic of the Crawler universe. The design is simple yet effective, with a clear identity and a subtle contradiction in its neglected state within a 'welcome' room."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a warm, desaturated palette and hard outlines consistent with the references. The shading and texture are well-executed, though the pot's highlights could be slightly more muted to better match the references' subdued lighting."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a warm, desaturated palette and hard outlines consistent with the references. The shading and texture are well-executed, though the pot's highlights could be slightly more muted to better match the references' subdued lighting."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a small potted plant with dusty, slightly wilted leaves in a chipped terracotta pot, as described in the brief. The details align well with the requested aesthetic and setting."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and easily distinguishable at game scale. The plant and pot are immediately recognizable, and the contact shadow is appropriately placed and subtle."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a cohesive, grounded object with a clear base and appropriate top-down perspective. It fits well within the 16px tile footprint and aligns with the spatial logic of the game world."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2835,
+      "completionTokens": 400,
+      "totalTokens": 3235
+    }
+  },
+  "type": "prop",
+  "contentHash": "893802dad8a5aeb2cb2d45541ebaf0fdfd861da5860f1438548596b750bb820f",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-potted-plant\\2026-07-25T06-01-24-de17dc22\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-potted-plant\\2026-07-25T06-01-24-de17dc22\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-potted-plant\\2026-07-25T06-01-24-de17dc22\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 3,
+    "width": 47,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

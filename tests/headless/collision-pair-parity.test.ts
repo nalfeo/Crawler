@@ -228,37 +228,88 @@ interface CollisionFingerprint {
 // back-to-back invocations, so we re-baseline to the new deterministic value and
 // track any gameplay significance separately from this test.
 //   seed  42:  8/267.30000019073486/10/6   →  6/246.44999980926514/10/8
+//
+// 2026-07-25 re-baseline — authoritative welcome-room prefab shell/door carve
+// (issue #2000): the room now writes real walls + door tiles during mapgen, so
+// early movement/combat interactions in this 1500-frame slice shift. Values
+// below are pinned from deterministic CI runs.
+//   seed   7:  3/145.74999713897705/10/0   →  4/143.47999715805054/10/2
+//   seed  13:  7/194.30000114440918/15/1   →  6/198.60000228881836/10/0
+//   seed  42:  6/246.44999980926514/10/8   →  5/184.30000019073486/10/10
+//   seed 137:  8/298.67000061273575/10/0   →  3/224.3999987244606/5/0
+//
+// 2026-07-29 re-baseline — applySolidProps: welcome-room bulk furniture now
+// writes real WINDOW (impassable/transparent) collision tiles. Previously the
+// feature was fully inert on a real floor (tagRoomAsSafe's restoreRoomInterior
+// repainted interior tiles back to plain floor, wiping the collision tiles
+// before the first frame). The fix was to call applySolidProps AFTER
+// tagRoomAsSafe, so solid-prop tiles survive into the live floor. This changes
+// the per-frame collision-pair set, cascades through applyDamage's RNG draws,
+// and drifts all four seeds. Determinism test (two back-to-back invocations per
+// seed) passed with the new values, confirming stability.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  4/143.47999715805054/10/2   →  5/140.30000066757202/5/2
+//   seed  13:  6/198.60000228881836/10/0   →  3/183.00000154972076/5/0
+//   seed  42:  5/184.30000019073486/10/10  →  3/199.30000019073486/10/2
+//   seed 137:  3/224.3999987244606/5/0     →  3/152.7199993133545/5/0
+//
+// 2026-07-29 re-baseline — restored spawn-room harvestable guarantee
+//
+// The current Floor 1 harvestable logic no longer excludes the spawn room from
+// the candidate pool; instead it allows NORMAL + SPAWN rooms and then relocates
+// one existing harvestable into the spawn room only if none landed there
+// naturally. That deterministic path changes early detours/crowding relative to
+// the short-lived "normal rooms only" branch state, so the merged-head parity
+// slice returns to the earlier post-`applySolidProps` fingerprint family below.
+// Re-baseline pinned only after the two-invocation determinism check stayed
+// green on the current branch head.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  4/109.17999935150146/10/2   →  5/140.30000066757202/5/2
+//   seed  13:  4/222.70000231266022/15/0   →  3/183.00000154972076/5/0
+//   seed  42:  2/194.59999990463257/10/4   →  3/199.30000019073486/10/2
+//   seed 137:  4/188.7999992966652/5/0     →  3/152.7199993133545/5/0
+// ## 2026-07-29 re-baseline — AIPathingMode.LEGACY removed; pathing mode updated to RISK_REWARD_FUSED
+//
+// LEGACY pathing was retired as a dead A/B arm (PR remove-dead-ai-arms). The runSlice
+// helper was updated from AIPathingMode.LEGACY → AIPathingMode.RISK_REWARD_FUSED (the
+// sole remaining + shipped mode). RISK_REWARD_FUSED and LEGACY differ in how they compute
+// headings (danger-aware fan scorer vs fixed-priority direction), so fingerprints
+// naturally diverge. Verified stable (determinism test below passed on the same CI run):
+//   seed   7: 5/140.30/5/2  →  6/152.18/0/2
+//   seed  13: 3/183.00/5/0  →  3/141.60/5/0
+//   seed  42: 3/199.30/10/2 →  3/192.45/5/6
+//   seed 137: 3/152.72/5/0  →  2/113.68/0/0
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 246.44999980926514,
-    damageTaken: 10,
-    finalScore: 8,
+    kills: 3,
+    damageDealt: 192.44999933242798,
+    damageTaken: 5,
+    finalScore: 6,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 145.74999713897705,
-    damageTaken: 10,
-    finalScore: 0,
+    kills: 6,
+    damageDealt: 152.18000078201294,
+    damageTaken: 0,
+    finalScore: 2,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 194.30000114440918,
-    damageTaken: 15,
-    finalScore: 1,
+    kills: 3,
+    damageDealt: 141.6000019311905,
+    damageTaken: 5,
+    finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 8,
-    damageDealt: 298.67000061273575,
-    damageTaken: 10,
+    kills: 2,
+    damageDealt: 113.67999935150146,
+    damageTaken: 0,
     finalScore: 0,
   },
 };
@@ -268,7 +319,7 @@ const PARITY_SEEDS = Object.keys(GOLDEN_FINGERPRINTS).map(Number);
 async function runSlice(seed: number): Promise<RunStats> {
   const ai = new BehaviorTreeAI({
     seed,
-    pathingMode: AIPathingMode.LEGACY,
+    pathingMode: AIPathingMode.RISK_REWARD_FUSED,
     retreatThreshold: 0.15,
     farmPullWeight: 0.07,
   });

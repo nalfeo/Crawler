@@ -1,11 +1,11 @@
 /**
- * Unit coverage for `selectSearchPromotion` — the legacy `--stage search`
+ * Unit coverage for `selectSearchPromotion` — the `--stage search`
  * hill-climb's round-to-round promotion gate in
  * `scripts/agent/perf/sweep-eval.ts` — and `assertLegacyBaselineProvenance`,
  * which vets an externally-loaded `--legacy-baseline` artifact before it is
  * injected as the search's fixed incumbent.
  *
- * A multi-model review round (gpt-5.3-codex) found this legacy local-smoke
+ * A multi-model review round (gpt-5.3-codex) found this local-smoke
  * path still promoted candidates by raw composite score alone
  * (`totalScoreOf`), never routing through `selectQualifiedWinner`'s hard
  * safety gate — reintroducing the exact GH-run-29597840666 bug class in the
@@ -16,11 +16,11 @@
  * headless games.
  *
  * A later review round found `searchCombo` (the caller of
- * `selectSearchPromotion`) gated non-LEGACY combos against their OWN baseline
- * instead of the fixed LEGACY+LEGACY incumbent `round-plan.ts`'s production
+ * `selectSearchPromotion`) gated non-incumbent combos against their OWN baseline
+ * instead of the fixed `riskRewardFused+legacy` incumbent `round-plan.ts`'s production
  * path always uses — `selectSearchPromotion` gained an `incumbentCombo` param
  * to fix this (tested above). A further review round flagged that the
- * optional `--legacy-baseline` artifact (an optimization to reuse one LEGACY
+ * optional `--legacy-baseline` artifact (an optimization to reuse one incumbent
  * shard across multiple combo searches) was consumed with no provenance
  * check, so a stale/wrong-floor/pre-v2 baseline could silently seed a
  * mis-calibrated incumbent — `assertLegacyBaselineProvenance` closes that gap
@@ -267,18 +267,17 @@ describe('selectSearchPromotion', () => {
     expect(promotion).toBeNull();
   });
 
-  it('non-LEGACY combo: correctly gates against LEGACY incumbent when incumbentCombo is provided (regression for GH review finding — navmesh+legacy wins vs legacy+legacy, not vs own baseline)', () => {
-    // Scenario: navmesh+legacy combo. The LEGACY incumbent (legacy+legacy /
-    // legacy-base config) wins 9/10 seeds. The navmesh combo candidate wins
-    // 10/10 seeds — strictly more than the LEGACY incumbent.
-    // Without threading incumbentCombo='legacy+legacy', buildLeaderboard
-    // would look for combo='navmesh+legacy' / configId='legacy-base' and find
+  it('non-incumbent combo: correctly gates against incumbent when incumbentCombo is provided (regression for GH review finding — challenger wins vs incumbent, not vs own baseline)', () => {
+    // Scenario: challenger combo. The incumbent wins 9/10 seeds. The challenger wins
+    // 10/10 seeds — strictly more than the incumbent.
+    // Without threading incumbentCombo='riskRewardFused+legacy', buildLeaderboard
+    // would look for combo='challenger' / configId='incumbent-base' and find
     // no rows, making winsVsIncumbentDelta null and disqualifying the candidate.
     const NAVMESH_COMBO = 'navmeshFused+slackAware';
-    const LEGACY_COMBO = 'legacy+legacy';
+    const LEGACY_COMBO = 'riskRewardFused+legacy';
 
     const rows: RunRow[] = [];
-    // LEGACY incumbent rows (tagged with legacy combo, legacy configId).
+    // Incumbent rows (tagged with incumbent combo, incumbent configId).
     for (let seed = 1; seed <= 10; seed++) {
       rows.push(
         seed === 10
@@ -329,13 +328,13 @@ describe('selectSearchPromotion', () => {
     expect(promotion?.bestId).toBe('navmesh-tuned');
   });
 
-  it('non-LEGACY combo: disqualifies when incumbentCombo is omitted and incumbent rows carry legacy combo tag (gate sees no incumbent → null delta)', () => {
+  it('non-incumbent combo: disqualifies when incumbentCombo is omitted and incumbent rows carry incumbent combo tag (gate sees no incumbent → null delta)', () => {
     // Same setup as the passing test above, but omitting incumbentCombo.
-    // buildLeaderboard looks for combo='navmesh+legacy' / 'legacy-base' and
+    // buildLeaderboard looks for combo='challenger' / 'legacy-base' and
     // finds no rows → winsVsIncumbentDelta null → candidate disqualified.
-    // This confirms that incumbentCombo must be threaded for non-LEGACY combos.
+    // This confirms that incumbentCombo must be threaded for non-incumbent combos.
     const NAVMESH_COMBO = 'navmeshFused+slackAware';
-    const LEGACY_COMBO = 'legacy+legacy';
+    const LEGACY_COMBO = 'riskRewardFused+legacy';
 
     const rows: RunRow[] = [];
     for (let seed = 1; seed <= 10; seed++) {
@@ -383,11 +382,14 @@ describe('selectSearchPromotion', () => {
 });
 
 describe('assertLegacyBaselineProvenance', () => {
-  const LEGACY_COMBO = 'legacy+legacy';
-  // The declared config/id must be the CANONICAL LEGACY base config — see the
-  // "tuned legacy+legacy candidate" test below for the exact spoof this guards.
+  const LEGACY_COMBO = 'riskRewardFused+legacy';
+  // The declared config/id must be the CANONICAL incumbent base config — see the
+  // "tuned riskRewardFused+legacy candidate" test below for the exact spoof this guards.
   const CANONICAL_LEGACY_ID = configId(
-    baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+    baseConfigForCombo({
+      pathing: AIPathingMode.RISK_REWARD_FUSED,
+      decision: AIDecisionMode.LEGACY,
+    }),
   );
   const VALID_META: ShardMeta = {
     schemaVersion: SHARD_SCHEMA_VERSION,
@@ -412,7 +414,7 @@ describe('assertLegacyBaselineProvenance', () => {
 
   function validArtifact(): ShardArtifact {
     const canonicalConfig = baseConfigForCombo({
-      pathing: AIPathingMode.LEGACY,
+      pathing: AIPathingMode.RISK_REWARD_FUSED,
       decision: AIDecisionMode.LEGACY,
     });
     const rows: RunRow[] = [];
@@ -515,10 +517,10 @@ describe('assertLegacyBaselineProvenance', () => {
     );
   });
 
-  it('rejects a tuned legacy+legacy shard — only the canonical LEGACY base config is a valid fixed incumbent', () => {
-    // A `--stage search-eval` shard for a tuned legacy+legacy candidate has one
-    // config, LEGACY-tagged rows, and valid provenance — but its configId is NOT
-    // the canonical LEGACY base config. The fixed incumbent must be exactly the
+  it('rejects a tuned riskRewardFused+legacy shard — only the canonical incumbent base config is a valid fixed incumbent', () => {
+    // A `--stage search-eval` shard for a tuned riskRewardFused+legacy candidate has one
+    // config, incumbent-tagged rows, and valid provenance — but its configId is NOT
+    // the canonical incumbent base config. The fixed incumbent must be exactly the
     // canonical base, not a search-tuned variant of it.
     const tunedId = CANONICAL_LEGACY_ID + ',scanRadius=0.9500';
     const artifact: ShardArtifact = {
@@ -529,7 +531,7 @@ describe('assertLegacyBaselineProvenance', () => {
       ),
     };
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
-      /canonical LEGACY base config/,
+      /canonical incumbent base config/,
     );
   });
 
@@ -540,7 +542,10 @@ describe('assertLegacyBaselineProvenance', () => {
     // configId(body) produces a different id, catching the tampered body.
     const artifact = validArtifact();
     const tunedBody = {
-      ...baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+      ...baseConfigForCombo({
+        pathing: AIPathingMode.RISK_REWARD_FUSED,
+        decision: AIDecisionMode.LEGACY,
+      }),
       aggression: 1.5,
     };
     artifact.configs[CANONICAL_LEGACY_ID] = tunedBody;
@@ -558,7 +563,7 @@ describe('assertLegacyBaselineProvenance', () => {
     // raw values can.
     const artifact = validArtifact();
     const canonicalBody = baseConfigForCombo({
-      pathing: AIPathingMode.LEGACY,
+      pathing: AIPathingMode.RISK_REWARD_FUSED,
       decision: AIDecisionMode.LEGACY,
     });
     const subDpTunedBody = { ...canonicalBody, aggression: canonicalBody.aggression! + 0.00001 };

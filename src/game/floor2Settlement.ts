@@ -72,6 +72,18 @@ export interface InitializeFloor2SettlementOptions {
    * configuration).  Defaults to `world.playerLevel.level` when omitted.
    */
   readonly effectivePlayerLevel?: number;
+  /**
+   * Skip generating initial Quartermaster equipment stock during settlement
+   * setup. Set this when the caller is about to restore a player-carryover
+   * snapshot: carryover restore requires `world.generatedEquipmentRegistry`
+   * to be empty (`restoreGeneratedEquipmentRegistry` hard-fails otherwise),
+   * so stock generation — which writes instances into that registry — must
+   * happen *after* restore completes, not during settlement init. Callers
+   * that set this to `true` are responsible for generating Quartermaster
+   * stock themselves once carryover restore has finished (see
+   * `floor2Scenario.ts`'s post-restore stock bootstrap).
+   */
+  readonly skipQuartermasterStock?: boolean;
 }
 
 const FLOOR2_SETTLEMENT_NPC_SPACING_TILES = 3;
@@ -225,10 +237,9 @@ export function initializeFloor2Settlement(
     });
   });
 
-  const quartermasterStock = createInitialFloor2QuartermasterStock(
-    world,
-    options.effectivePlayerLevel,
-  );
+  const quartermasterStock = options.skipQuartermasterStock
+    ? undefined
+    : createInitialFloor2QuartermasterStock(world, options.effectivePlayerLevel);
   const snapshot: Floor2SettlementSnapshot = {
     settlementRoomId: settlement.id,
     settlementRoomIds: settlements.map((room) => room.id),

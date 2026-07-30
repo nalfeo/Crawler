@@ -1,0 +1,21 @@
+{
+  "briefId": "floor-key-void",
+  "spriteName": "floor-key-void",
+  "assetPath": "generated/floor-key-void-placeholder.png",
+  "approvedAt": "2026-06-23T00:55:52.053Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 3,
+    "y": 1,
+    "width": 8,
+    "height": 12,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

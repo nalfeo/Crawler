@@ -3,8 +3,10 @@ import test from 'node:test';
 
 import {
   buildActionsState,
+  buildAssetPipelineState,
   buildTrainState,
   createDashboardSnapshot,
+  parseAssetRequestComments,
   parseTrainStatusComments,
 } from '../lib/model.mjs';
 
@@ -269,5 +271,375 @@ test('includes a warning when job-list fetches fail for one or more runs', () =>
   assert.ok(
     actions.warnings.some((w) => /job.*load|load.*job/i.test(w)),
     `expected a job-load warning in: ${JSON.stringify(actions.warnings)}`,
+  );
+});
+
+function assetComment(id, body, createdAt, login = 'github-actions[bot]') {
+  return {
+    id,
+    body,
+    createdAt,
+    updatedAt: createdAt,
+    url: `https://github.com/nalfeo/Crawler/issues/1313#issuecomment-${id}`,
+    author: { login },
+  };
+}
+
+test('resolves asset status within the newest queue attempt and marks unlinked terminal results inferred', () => {
+  const parsed = parseAssetRequestComments(
+    [
+      assetComment('1', '🎬 Queued for processing', '2026-07-25T00:00:00Z'),
+      assetComment(
+        '2',
+        '⚠️ Asset-request pipeline failed.\n\nError: old attempt failed',
+        '2026-07-25T00:01:00Z',
+      ),
+      assetComment(
+        '3',
+        '🔁 Re-queued (previous run appeared stale)\n\n- Workflow run: https://github.com/nalfeo/Crawler/actions/runs/30',
+        '2026-07-25T01:00:00Z',
+      ),
+      assetComment(
+        '4',
+        '✅ Asset-request pipeline complete.\n\n- summary: https://example.test/summary.json\n- selected for publication: variant 2',
+        '2026-07-25T01:03:00Z',
+      ),
+    ],
+    { now: '2026-07-25T01:04:00Z' },
+  );
+
+  assert.equal(parsed.state, 'complete');
+  assert.equal(parsed.stage, 'generated + selected');
+  assert.equal(parsed.attribution, 'inferred');
+  assert.equal(parsed.workflowUrl, null, 'a workflow URL is not copied across comment markers');
+  assert.equal(parsed.summaryUrl, 'https://example.test/summary.json');
+  assert.match(parsed.detail, /variant 2/);
+});
+
+test('surfaces failed, stale, and truncated-history asset states without inventing checkpoints', () => {
+  const failed = parseAssetRequestComments(
+    [
+      assetComment('1', '🎬 Queued for processing', '2026-07-25T00:00:00Z'),
+      assetComment(
+        '2',
+        '⚠️ Asset-request pipeline failed.\n\nError: provider refused the request',
+        '2026-07-25T00:01:00Z',
+      ),
+    ],
+    { now: '2026-07-25T00:02:00Z' },
+  );
+  assert.equal(failed.state, 'failed');
+  assert.match(failed.detail, /provider refused/);
+
+  const stale = parseAssetRequestComments(
+    [assetComment('3', '🎬 Queued for processing', '2026-07-25T00:00:00Z')],
+    { now: '2026-07-25T02:00:01Z' },
+  );
+  assert.equal(stale.state, 'stale');
+
+  const partial = parseAssetRequestComments([], {
+    historyTruncated: true,
+    now: '2026-07-25T02:00:01Z',
+  });
+  assert.equal(partial.state, 'truncated');
+  assert.equal(partial.attribution, 'partial');
+});
+
+test('builds distinct asset workflow and downstream promotion lanes with actionable failures', () => {
+  const pipeline = buildAssetPipelineState({
+    repository,
+    fetchedAt: '2026-07-25T06:03:00Z',
+    assetRequests: {
+      issues: [
+        {
+          number: 1313,
+          title: 'Asset request: war-pick',
+          url: 'https://github.com/nalfeo/Crawler/issues/1313',
+          comments: {
+            pageInfo: { hasPreviousPage: false },
+            nodes: [
+              assetComment(
+                '1',
+                '✅ Asset-request pipeline complete.\n\n- selected for publication: variant 2',
+                '2026-07-25T05:21:00Z',
+              ),
+            ],
+          },
+        },
+      ],
+      assetWorkflow: {
+        latestRun: {
+          id: 301,
+          status: 'completed',
+          conclusion: 'failure',
+          html_url: 'https://github.com/nalfeo/Crawler/actions/runs/301',
+          jobs: [
+            {
+              name: 'Ingest issues + drain queue',
+              html_url: 'https://github.com/nalfeo/Crawler/actions/runs/301/job/1',
+              steps: [
+                {
+                  name: 'Ingest asset-request issues',
+                  status: 'completed',
+                  conclusion: 'success',
+                  started_at: '2026-07-25T05:47:00Z',
+                  completed_at: '2026-07-25T05:48:00Z',
+                },
+                {
+                  name: 'Drain worker',
+                  status: 'completed',
+                  conclusion: 'success',
+                  started_at: '2026-07-25T05:48:00Z',
+                  completed_at: '2026-07-25T05:52:00Z',
+                },
+                {
+                  name: 'Publish selected variants',
+                  status: 'completed',
+                  conclusion: 'failure',
+                  started_at: '2026-07-25T05:52:00Z',
+                  completed_at: '2026-07-25T06:02:00Z',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      reconcilerWorkflow: { latestRun: null },
+      refs: [{ ref: 'refs/heads/assets/queue', sha: 'a'.repeat(40) }],
+      pullRequests: [],
+      errors: [],
+    },
+  });
+
+  assert.equal(pipeline.stages[0].state, 'success');
+  assert.equal(pipeline.stages[1].state, 'success');
+  assert.equal(pipeline.stages[2].state, 'failure');
+  assert.equal(pipeline.stages[3].lane, 'downstream reconciler');
+  assert.equal(pipeline.stages[3].state, 'queue-without-pr');
+  assert.equal(pipeline.severity, 'danger');
+  assert.equal(pipeline.defaultExpanded, true);
+  assert.equal(pipeline.counts.complete, 1);
+});
+
+test('collapses the asset section by default only when the pipeline is idle and healthy', () => {
+  const pipeline = buildAssetPipelineState({
+    repository,
+    fetchedAt: '2026-07-25T06:03:00Z',
+    assetRequests: {
+      issues: [],
+      assetWorkflow: {
+        latestRun: {
+          id: 301,
+          status: 'completed',
+          conclusion: 'success',
+          html_url: 'https://github.com/nalfeo/Crawler/actions/runs/301',
+          jobs: [
+            {
+              name: 'Ingest issues + drain queue',
+              steps: [
+                { name: 'Ingest asset-request issues', status: 'completed', conclusion: 'success' },
+                { name: 'Drain worker', status: 'completed', conclusion: 'success' },
+                { name: 'Publish selected variants', status: 'completed', conclusion: 'success' },
+              ],
+            },
+          ],
+        },
+      },
+      reconcilerWorkflow: {
+        latestRun: {
+          id: 302,
+          status: 'completed',
+          conclusion: 'success',
+          created_at: '2026-07-25T06:00:00Z',
+          updated_at: '2026-07-25T06:01:00Z',
+        },
+      },
+      refs: [],
+      pullRequests: [],
+      errors: [],
+    },
+  });
+
+  assert.equal(pipeline.severity, 'success');
+  assert.equal(pipeline.defaultExpanded, false);
+  assert.equal(pipeline.active, false);
+});
+
+test('marks an in-progress workflow step stale after the workflow window', () => {
+  const pipeline = buildAssetPipelineState({
+    repository,
+    fetchedAt: '2026-07-25T02:00:01Z',
+    assetRequests: {
+      issues: [],
+      assetWorkflow: {
+        latestRun: {
+          id: 301,
+          status: 'in_progress',
+          html_url: 'https://github.com/nalfeo/Crawler/actions/runs/301',
+          jobs: [
+            {
+              name: 'Ingest issues + drain queue',
+              steps: [
+                {
+                  name: 'Ingest asset-request issues',
+                  status: 'in_progress',
+                  started_at: '2026-07-25T01:00:00Z',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      reconcilerWorkflow: { latestRun: null },
+      refs: [],
+      pullRequests: [],
+      errors: [],
+    },
+  });
+
+  assert.equal(pipeline.stages[0].state, 'stale');
+  assert.equal(pipeline.severity, 'danger');
+  assert.equal(pipeline.defaultExpanded, true);
+});
+
+test('rejects asset pipeline markers from untrusted comment authors', () => {
+  const parsed = parseAssetRequestComments(
+    [
+      assetComment('1', '🎬 Queued for processing', '2026-07-25T00:00:00Z', 'github-actions[bot]'),
+      assetComment(
+        '2',
+        '✅ Asset-request pipeline complete.\n\n- selected for publication: spoofed-variant',
+        '2026-07-25T00:01:00Z',
+        'random-fork-user',
+      ),
+    ],
+    { now: '2026-07-25T00:02:00Z' },
+  );
+  assert.equal(
+    parsed.state,
+    'queued',
+    'spoofed completion from untrusted author must not advance state',
+  );
+  assert.equal(parsed.stage, 'queued');
+});
+
+test('classifies quality-stopped completion as failed requiring human intervention', () => {
+  const parsed = parseAssetRequestComments(
+    [
+      assetComment('1', '🎬 Queued for processing', '2026-07-25T00:00:00Z'),
+      assetComment(
+        '2',
+        '✅ Asset-request pipeline complete.\n\n- brief: `war-pick-brief`\n- run: `run-1`\n- summary: `path/summary.json`\n- selection: no acceptable variants; human intervention required (the sheet will not be regenerated)',
+        '2026-07-25T00:01:00Z',
+      ),
+    ],
+    { now: '2026-07-25T00:02:00Z' },
+  );
+  assert.equal(parsed.state, 'failed');
+  assert.equal(parsed.stage, 'quality-stopped');
+  assert.match(parsed.detail, /human intervention/);
+});
+
+test('does not flag assets/queue-without-pr as danger when reconciler last ran successfully', () => {
+  const pipeline = buildAssetPipelineState({
+    repository,
+    fetchedAt: '2026-07-25T06:03:00Z',
+    assetRequests: {
+      issues: [],
+      assetWorkflow: { latestRun: null },
+      reconcilerWorkflow: {
+        latestRun: {
+          id: 302,
+          status: 'completed',
+          conclusion: 'success',
+          html_url: 'https://github.com/nalfeo/Crawler/actions/runs/302',
+          created_at: '2026-07-25T06:00:00Z',
+          updated_at: '2026-07-25T06:01:00Z',
+        },
+      },
+      refs: [{ ref: 'refs/heads/assets/queue', sha: 'a'.repeat(40) }],
+      pullRequests: [],
+      errors: [],
+    },
+  });
+  assert.equal(
+    pipeline.stages[3].state,
+    'idle',
+    'bare queue branch after a successful reconciler run is a healthy no-op',
+  );
+  assert.equal(pipeline.severity, 'success');
+});
+
+test('flags assets/queue-without-pr when no successful reconciler run is on record', () => {
+  const pipeline = buildAssetPipelineState({
+    repository,
+    fetchedAt: '2026-07-25T06:03:00Z',
+    assetRequests: {
+      issues: [],
+      assetWorkflow: { latestRun: null },
+      reconcilerWorkflow: { latestRun: null },
+      refs: [{ ref: 'refs/heads/assets/queue', sha: 'a'.repeat(40) }],
+      pullRequests: [],
+      errors: [],
+    },
+  });
+  assert.equal(pipeline.stages[3].state, 'queue-without-pr');
+  assert.equal(pipeline.severity, 'danger');
+});
+
+test('overlays reconciler failure before queue topology so failures are not hidden by a queue PR', () => {
+  const pipeline = buildAssetPipelineState({
+    repository,
+    fetchedAt: '2026-07-25T06:03:00Z',
+    assetRequests: {
+      issues: [],
+      assetWorkflow: { latestRun: null },
+      reconcilerWorkflow: {
+        latestRun: {
+          id: 302,
+          status: 'completed',
+          conclusion: 'failure',
+          html_url: 'https://github.com/nalfeo/Crawler/actions/runs/302',
+          created_at: '2026-07-25T06:00:00Z',
+          updated_at: '2026-07-25T06:01:00Z',
+        },
+      },
+      refs: [{ ref: 'refs/heads/assets/queue', sha: 'a'.repeat(40) }],
+      pullRequests: [],
+      errors: [],
+    },
+  });
+  assert.equal(
+    pipeline.stages[3].state,
+    'failure',
+    'reconciler failure must surface even when queue branch exists',
+  );
+  assert.equal(pipeline.severity, 'danger');
+});
+
+test('surfaces a warning when no executable asset pipeline run was found in the bounded search', () => {
+  const pipeline = buildAssetPipelineState({
+    repository,
+    fetchedAt: '2026-07-25T06:03:00Z',
+    assetRequests: {
+      issues: [],
+      assetWorkflow: {
+        latestRun: null,
+        executableRunNotFound: true,
+      },
+      reconcilerWorkflow: { latestRun: null },
+      refs: [],
+      pullRequests: [],
+      errors: [],
+    },
+  });
+  assert.ok(
+    pipeline.warnings.some((w) => /executable.*run|run.*found/i.test(w)),
+    `expected executableRunNotFound warning in: ${JSON.stringify(pipeline.warnings)}`,
+  );
+  assert.equal(
+    pipeline.partial,
+    false,
+    'executableRunNotFound affects warnings but not partial flag',
   );
 });

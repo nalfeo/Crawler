@@ -1,0 +1,21 @@
+{
+  "briefId": "lucky-charm",
+  "spriteName": "lucky-charm",
+  "assetPath": "generated/lucky-charm-placeholder.png",
+  "approvedAt": "2026-06-23T00:55:52.051Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 2,
+    "y": 2,
+    "width": 12,
+    "height": 10,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

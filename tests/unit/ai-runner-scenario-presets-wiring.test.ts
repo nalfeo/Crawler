@@ -16,6 +16,7 @@ describe('AI runner scenario presets wiring', () => {
       'spawner-sealable-room',
       'spawner-unsealable-room',
       'spawner-cave',
+      'terrain-wall-junctions',
     ]);
     expect(getAiRunnerScenarioPreset('spawner-sealable-room')?.defaultSeed).toBe(4206);
     expect(getAiRunnerScenarioPreset('spawner-unsealable-room')?.defaultSeed).toBe(4206);
@@ -53,5 +54,90 @@ describe('AI runner scenario presets wiring', () => {
 
     expect(cave.terrain[8 * cave.width + 12]).toBe(TerrainType.CAVE_FLOOR);
     expect(cave.terrain[0]).toBe(TerrainType.CAVE_WALL);
+  });
+
+  describe('terrain-wall-junctions inspection slice', () => {
+    // This scene only earns its keep if it ACTUALLY contains the adjacencies it
+    // claims. A door that drifts off a wall run, or a material seam that stops
+    // crossing a wall, silently turns the scene into a scene of nothing — and
+    // the failure mode is "the screenshot looked fine", which is exactly what
+    // this scene exists to stop being the standard of proof.
+    const { makeTerrainJunctionSliceMap, TERRAIN_JUNCTION_SLICE } =
+      AI_RUNNER_SCENARIO_PRESET_TEST_HOOKS;
+    const map = makeTerrainJunctionSliceMap();
+    const at = (x: number, y: number): number => y * map.width + x;
+
+    it('puts every door inside a wall run, flanked by wall on both sides', () => {
+      for (const door of TERRAIN_JUNCTION_SLICE.doors) {
+        expect(map.terrain[at(door.x, door.y)]).toBe(TerrainType.DOOR);
+        expect(map.flags[at(door.x, door.y)]).toBe(TilePresets.DOOR_OPEN);
+
+        // A door in a horizontal wall run is flanked E/W; one in a vertical run
+        // is flanked N/S. Exactly one of those must hold, or the "door" is a
+        // hole in open floor and exercises no junction at all.
+        const flankedEW =
+          map.flags[at(door.x - 1, door.y)] === TilePresets.WALL &&
+          map.flags[at(door.x + 1, door.y)] === TilePresets.WALL;
+        const flankedNS =
+          map.flags[at(door.x, door.y - 1)] === TilePresets.WALL &&
+          map.flags[at(door.x, door.y + 1)] === TilePresets.WALL;
+        expect(flankedEW || flankedNS).toBe(true);
+      }
+    });
+
+    it('covers all four wall orientations and both material packs', () => {
+      const { roomMinX, roomMaxX, roomMinY, roomMaxY, materialSeamX, doors } =
+        TERRAIN_JUNCTION_SLICE;
+      expect(doors.some((d) => d.y === roomMinY)).toBe(true); // north
+      expect(doors.some((d) => d.y === roomMaxY)).toBe(true); // south
+      expect(doors.some((d) => d.x === roomMinX)).toBe(true); // west
+      expect(doors.some((d) => d.x === roomMaxX)).toBe(true); // east
+      // Door junctions must exist on BOTH sides of the material seam, so the
+      // fix is observable in the cave pack too and not just the dungeon pack.
+      expect(doors.some((d) => d.x < materialSeamX)).toBe(true);
+      expect(doors.some((d) => d.x >= materialSeamX)).toBe(true);
+    });
+
+    it('runs the material seam through a continuous wall run', () => {
+      // The cross-pack seam ADR 0078 scopes validation to is only observable
+      // where a stone wall cell is directly adjacent to a cave wall cell.
+      const { materialSeamX, roomMinY } = TERRAIN_JUNCTION_SLICE;
+      expect(map.terrain[at(materialSeamX - 1, roomMinY)]).toBe(TerrainType.STONE_WALL);
+      expect(map.terrain[at(materialSeamX, roomMinY)]).toBe(TerrainType.CAVE_WALL);
+    });
+
+    it('spawns the player on a passable tile with the junctions in view', () => {
+      const { playerTile, roomMinX, roomMaxX, roomMinY, roomMaxY } = TERRAIN_JUNCTION_SLICE;
+      expect(map.tileMap.isPassable(playerTile.x, playerTile.y)).toBe(true);
+      expect(playerTile.x).toBeGreaterThan(roomMinX);
+      expect(playerTile.x).toBeLessThan(roomMaxX);
+      expect(playerTile.y).toBeGreaterThan(roomMinY);
+      expect(playerTile.y).toBeLessThan(roomMaxY);
+    });
+
+    it('contains at least one T-junction stub (degree-3 wall cluster) per material pack', () => {
+      // A T-junction is a stub tile with three orthogonal wall-stub neighbours.
+      // Without at least one per pack the scene only exercises convex corners
+      // (elbows) and misses the three-neighbour silhouette case entirely.
+      const { stubs, materialSeamX } = TERRAIN_JUNCTION_SLICE;
+      const stubSet = new Set(stubs.map((s) => `${s.x},${s.y}`));
+      const stubNeighborCount = (x: number, y: number): number =>
+        [
+          [x - 1, y],
+          [x + 1, y],
+          [x, y - 1],
+          [x, y + 1],
+        ].filter(([nx, ny]) => stubSet.has(`${nx},${ny}`)).length;
+
+      const hasTeeOnStoneSide = stubs
+        .filter((s) => s.x < materialSeamX)
+        .some((s) => stubNeighborCount(s.x, s.y) >= 3);
+      const hasTeeOnCaveSide = stubs
+        .filter((s) => s.x >= materialSeamX)
+        .some((s) => stubNeighborCount(s.x, s.y) >= 3);
+
+      expect(hasTeeOnStoneSide).toBe(true);
+      expect(hasTeeOnCaveSide).toBe(true);
+    });
   });
 });

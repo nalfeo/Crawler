@@ -16,7 +16,10 @@ import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
 import { computeEffectiveSpeed, getStatusEffects } from '../core/status-effects.js';
-import { getMobAbilityMovementSpeedMultiplier } from '../core/mob-abilities/runtime.js';
+import {
+  getMobAbilityMovementSpeedMultiplier,
+  getMobAbilityRecoveryRemainingMs,
+} from '../core/mob-abilities/runtime.js';
 import {
   cancelEnemyProjectileTelegraph,
   getEffectiveTelegraphMs,
@@ -1926,6 +1929,19 @@ export function enemyAISystem(world: GameWorld): void {
     }
 
     const usePathing = floorMap !== null && persona !== PATH_PERSONA.STUPID;
+    const recoveryRemainingMs = getMobAbilityRecoveryRemainingMs(world, eid);
+
+    if (recoveryRemainingMs > 0) {
+      setVelocity(world, eid, 0, 0);
+      enemyBehavior.stuckFrames[eid] = 0;
+      cancelEnemyProjectileTelegraph(world, eid);
+      activeEnemies.push(eid);
+      const tracked = pathStates.get(eid);
+      if (tracked) {
+        tracked.lastTouchedFrame = world.frameCount;
+      }
+      continue;
+    }
 
     if (isTelegraphing) {
       // "Stop and aim": freeze movement for the whole telegraph window so the

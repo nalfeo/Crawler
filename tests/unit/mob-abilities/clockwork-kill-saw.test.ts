@@ -113,8 +113,8 @@ describe('Clockwork Kill-Saw — cadence and lock', () => {
     }
     expect(lane.originX).toBe(40);
     expect(lane.originY).toBe(10);
-    expect(lane.endpointX).toBe(40);
-    expect(lane.endpointY).toBe(42);
+    expect(lane.endX).toBe(40);
+    expect(lane.endY).toBe(42);
     expect(lane.widthFt).toBe(6);
     expect(lane.lengthFt).toBe(32);
 

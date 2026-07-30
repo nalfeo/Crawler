@@ -107,10 +107,17 @@ async function closeCreatedIssue({ requestFn, githubToken, owner, repo, issueNum
   });
 }
 
-async function updateCreatedIssueBody({ requestFn, githubToken, owner, repo, issueNumber }) {
+async function updateCreatedIssueBody({
+  requestFn,
+  githubToken,
+  owner,
+  repo,
+  issueNumber,
+  buildIssueBodyFn,
+}) {
   await requestFn(githubToken, `/repos/${owner}/${repo}/issues/${issueNumber}`, {
     method: 'PATCH',
-    body: { body: buildIssueBody(issueNumber) },
+    body: { body: buildIssueBodyFn(issueNumber) },
   });
 }
 
@@ -182,6 +189,9 @@ export async function runNightlyBalanceIssue({
   githubToken,
   intakeToken,
   repository,
+  issueTitle = ISSUE_TITLE,
+  issueLabels = ISSUE_LABELS,
+  buildIssueBodyFn = buildIssueBody,
   requestFn = request,
   paginateFn = paginate,
   graphqlFn = graphql,
@@ -193,7 +203,7 @@ export async function runNightlyBalanceIssue({
 
   const openIssues = await paginateFn(githubToken, `/repos/${owner}/${repo}/issues?state=open`);
   const existing = openIssues.find(
-    (candidate) => !candidate.pull_request && candidate.title === ISSUE_TITLE,
+    (candidate) => !candidate.pull_request && candidate.title === issueTitle,
   );
   if (existing) {
     // Only an issue this automation created can safely be mutated; a foreign
@@ -208,6 +218,7 @@ export async function runNightlyBalanceIssue({
       owner,
       repo,
       issueNumber: existing.number,
+      buildIssueBodyFn,
     });
 
     if (hasCompletedIntakeProof(existing)) {
@@ -235,9 +246,9 @@ export async function runNightlyBalanceIssue({
   const created = await requestFn(githubToken, `/repos/${owner}/${repo}/issues`, {
     method: 'POST',
     body: {
-      title: ISSUE_TITLE,
-      body: ISSUE_BODY,
-      labels: ISSUE_LABELS,
+      title: issueTitle,
+      body: buildIssueBodyFn(),
+      labels: issueLabels,
     },
   });
   const issue = created.data;
@@ -252,6 +263,7 @@ export async function runNightlyBalanceIssue({
       owner,
       repo,
       issueNumber: issue.number,
+      buildIssueBodyFn,
     });
   } catch (updateError) {
     try {

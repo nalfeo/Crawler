@@ -50,6 +50,18 @@ interface RgbaImage {
 export type SpeckleMode = 'edge-drop' | 'preserve-orphans' | 'disabled';
 export type EnclosedBackgroundMode = 'enabled' | 'disabled';
 
+/**
+ * Tight opaque bounding box of a sprite frame, in pixel coordinates relative
+ * to the top-left corner of the full cell (before any cropping or resizing).
+ * All four edges are inclusive. Exported for frame-sequence union-crop logic.
+ */
+export interface OpaqueRect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
 export interface PostprocessOptions {
   /** Canonical template module names to pass through without executing. */
   readonly disabledModules?: ReadonlyArray<string>;
@@ -66,6 +78,19 @@ export interface PostprocessOptions {
     readonly speckleMode?: SpeckleMode;
     readonly enclosedBackgroundMode?: EnclosedBackgroundMode;
   };
+  /**
+   * When set (for frame-sequence briefs), the `transparent-trim` module crops
+   * every frame to this pre-computed union bounding box + proportional margin
+   * instead of computing a per-frame tight bbox. This ensures every frame in
+   * the ordered walk cycle uses the SAME crop-to-canvas mapping (identical
+   * scale factor and floor-line placement) rather than a per-frame independent
+   * bbox that varies with silhouette width from pose to pose.
+   *
+   * Computed at runtime by {@link computeFrameSequenceUnionCropRect}; do NOT
+   * persist this field to disk — it must be re-derived from the current raw
+   * frames on every run/rerun so it stays current if frames are regenerated.
+   */
+  readonly sharedCropRect?: OpaqueRect;
 }
 
 export function postprocess(
@@ -114,6 +139,30 @@ export function normalizeDisabledModules(value: unknown, brief: Brief): string[]
   return activeNames.filter((name) => requested.has(name));
 }
 
+/**
+ * Modules that MUST be disabled for `frameSequence`-enabled briefs so every
+ * frame keeps uniform scale and centering across the ordered walk cycle.
+ *
+ * `transparent-trim` is no longer disabled here: it now uses a pre-computed
+ * union bounding box (passed as {@link PostprocessOptions.sharedCropRect}) so
+ * every frame is cropped to the SAME bbox + margin before resizing. Callers
+ * must supply `sharedCropRect` via {@link computeFrameSequenceUnionCropRect}.
+ *
+ * `trim-and-fit` is still disabled because it re-trims AFTER resize using an
+ * independent per-frame bbox, which would reintroduce different centering
+ * offsets per pose even after the initial crop is uniform.
+ *
+ * Returns `[]` for non-frame-sequence briefs (no behavior change) and filters
+ * to only modules actually active for this brief's type.
+ */
+export function frameSequenceDisabledModules(brief: Brief): string[] {
+  if (!brief.frameSequence.enabled) return [];
+  const activeNames = new Set(
+    getActiveModules(getPipelineForType(brief.type), brief.type).map(({ name }) => name),
+  );
+  return ['trim-and-fit'].filter((name) => activeNames.has(name));
+}
+
 export function postprocessWithTrace(
   rawPng: Buffer,
   brief: Brief,
@@ -129,16 +178,27 @@ export function postprocessWithTrace(
   let image = decodePng(rawPng);
   const backgroundSource = image;
 
-  // Determine if enclosed-region cleanup should run
-  const enclosedRegionMode: EnclosedBackgroundMode =
-    options.modules?.enclosedBackgroundMode ?? 'enabled';
-  const shouldRunEnclosedBackgroundCleanup =
-    enclosedRegionMode !== 'disabled' && (brief.type === 'enemy' || brief.type === 'character');
-
   // Load the pipeline template for this sprite type
   const pipeline = getPipelineForType(brief.type);
   const activeModules = getActiveModules(pipeline, brief.type);
   const disabledModules = new Set(normalizeDisabledModules(options.disabledModules, brief));
+
+  // Determine if enclosed-region cleanup should run. It runs for every sprite
+  // type whose pipeline keeps the `enclosed-regions` module active — i.e. all
+  // types except those that explicitly disable it (tiles, vfx) or that pass it
+  // in `disabledModules` at runtime, and unless the global escape hatch
+  // `enclosedBackgroundMode: 'disabled'` is set. Deriving the flag from the
+  // effective pipeline (rather than a hard-coded type list) also keeps
+  // `background-rekey`'s post-resize enclosed-island clearing tied to the SAME
+  // opt-out, so disabling `enclosed-regions` truly disables all enclosed
+  // cleanup instead of leaving the rekey pass punching holes.
+  const enclosedRegionMode: EnclosedBackgroundMode =
+    options.modules?.enclosedBackgroundMode ?? 'enabled';
+  const enclosedRegionsActive =
+    activeModules.some(({ name }) => name === 'enclosed-regions') &&
+    !disabledModules.has('enclosed-regions');
+  const shouldRunEnclosedBackgroundCleanup =
+    enclosedRegionMode !== 'disabled' && enclosedRegionsActive;
 
   // Execute each module in the pipeline
   for (const { name, config } of activeModules) {
@@ -202,6 +262,7 @@ export function postprocessWithTrace(
       },
       backgroundSource,
       shouldRunEnclosedBackgroundCleanup,
+      sharedCropRect: options.sharedCropRect,
     });
   }
 
@@ -380,13 +441,14 @@ export function removeEnclosedBackgroundRegions(
   image: RgbaImage,
   source: RgbaImage,
   toleranceSq: number = BACKGROUND_B_FRINGE_TOLERANCE_SQ,
+  seedToleranceSq: number = BACKGROUND_B_COLOR_TOLERANCE_SQ,
 ): RgbaImage {
   const { width, height } = image;
   if (width === 0 || height === 0) return image;
   const dst = new Uint8Array(image.data);
   const cornerColors = getCornerColors(source);
   if (cornerColors.length === 0) return { width, height, data: dst };
-  clearEnclosedBackgroundRegions(dst, width, height, cornerColors, toleranceSq);
+  clearEnclosedBackgroundRegions(dst, width, height, cornerColors, toleranceSq, seedToleranceSq);
   return { width, height, data: dst };
 }
 
@@ -463,16 +525,34 @@ function removeBackgroundFringe(
  *      within `toleranceSq` of any corner (background) colour.
  *   2. Flood-fill (4-connected) candidate pixels into connected components.
  *   3. A component is "enclosed" iff none of its pixels touch the image border.
- *   4. Clear (make transparent) every enclosed component whose area is at least
- *      `BACKGROUND_B_ENCLOSED_MIN_AREA`.
+ *   4. A component is "seeded" iff at least one of its pixels is within the
+ *      much tighter `seedToleranceSq` of a corner colour.
+ *   5. Clear (make transparent) every enclosed, seeded component whose area is
+ *      at least `BACKGROUND_B_ENCLOSED_MIN_AREA`.
  *
- * Why this preserves foreground detail: shadows and shaded body pixels sit far
- * (in squared RGB distance) from the pure background colour, so they are never
- * candidates. Only pixels that genuinely match the background colour AND are
- * trapped inside the silhouette (the edge flood can't reach them) are removed.
- * The exterior background is already transparent from the prior passes, so it is
- * not a candidate; any candidate touching the border is treated as exterior and
- * left alone.
+ * WHY THE TWO THRESHOLDS (do not collapse them back into one):
+ *
+ * `toleranceSq` here is the *fringe* tolerance (~12000, a radius of ~110 in RGB
+ * space). That radius is correct for clearing the anti-aliased magenta halo that
+ * blends into the subject, but it is far too loose to *decide* that a pixel is
+ * background on its own: warm mid-tones sit inside it. Measured against the real
+ * magenta key rgb(182,51,135), a tan/leather rgb(207,127,69) is only 10757 away —
+ * comfortably inside 12000. So a single loose threshold punched holes straight
+ * through skin, leather and cloth.
+ *
+ * The docstring used to claim "shadows and shaded body pixels sit far from the
+ * pure background colour, so they are never candidates". That is false for warm
+ * mid-tones against a magenta key, and it was silently eating foreground: across
+ * a 1617-sample sweep of generated runs, ~50% of all pixels this function cleared
+ * (532825 -> 268135) were false positives, and 415 samples had NOTHING genuine to
+ * clear yet still lost pixels.
+ *
+ * Edge keying gets away with the loose radius because its flood is anchored to
+ * already-transparent exterior pixels — contiguity with known background is the
+ * evidence. An enclosed region has no such anchor, so it must supply its own:
+ * at least one pixel that matches the background under the strict tolerance.
+ * Growth then proceeds at the loose tolerance, so a genuine trapped pocket still
+ * gets its halo cleaned; a speckle cluster of skin tone never seeds and survives.
  */
 function clearEnclosedBackgroundRegions(
   data: Uint8Array,
@@ -480,24 +560,37 @@ function clearEnclosedBackgroundRegions(
   height: number,
   cornerColors: ReadonlyArray<[number, number, number]>,
   toleranceSq: number,
+  seedToleranceSq: number,
 ): void {
   const total = width * height;
   if (total === 0) return;
 
-  const isCandidate = (idx: number): boolean => {
+  const distanceSq = (idx: number): number => {
     const offset = idx * 4;
-    const alpha = data[offset + 3] ?? 0;
-    if (alpha === 0) return false;
     const r = data[offset] ?? 0;
     const g = data[offset + 1] ?? 0;
     const b = data[offset + 2] ?? 0;
+    let min = Number.POSITIVE_INFINITY;
     for (const [cr, cg, cb] of cornerColors) {
       const dr = r - cr;
       const dg = g - cg;
       const db = b - cb;
-      if (dr * dr + dg * dg + db * db <= toleranceSq) return true;
+      const d = dr * dr + dg * dg + db * db;
+      if (d < min) min = d;
     }
-    return false;
+    return min;
+  };
+
+  const isCandidate = (idx: number): boolean => {
+    const alpha = data[idx * 4 + 3] ?? 0;
+    if (alpha === 0) return false;
+    return distanceSq(idx) <= toleranceSq;
+  };
+
+  const isSeed = (idx: number): boolean => {
+    const alpha = data[idx * 4 + 3] ?? 0;
+    if (alpha === 0) return false;
+    return distanceSq(idx) <= seedToleranceSq;
   };
 
   const visited = new Uint8Array(total);
@@ -511,12 +604,14 @@ function clearEnclosedBackgroundRegions(
     // BFS/DFS over this connected component of background-coloured pixels.
     const component: number[] = [];
     let touchesEdge = false;
+    let hasSeed = false;
     stack.length = 0;
     stack.push(start);
 
     while (stack.length > 0) {
       const idx = stack.pop() as number;
       component.push(idx);
+      if (!hasSeed && isSeed(idx)) hasSeed = true;
 
       const x = idx % width;
       const y = (idx - x) / width;
@@ -556,6 +651,7 @@ function clearEnclosedBackgroundRegions(
     }
 
     if (touchesEdge) continue;
+    if (!hasSeed) continue;
     if (component.length < BACKGROUND_B_ENCLOSED_MIN_AREA) continue;
 
     for (const idx of component) {
@@ -913,3 +1009,110 @@ function upscaleNearest(image: RgbaImage, dstW: number, dstH: number): RgbaImage
 // Re-export the internal image type so tests can build images without going
 // through PNG encoding/decoding.
 export type { RgbaImage };
+
+/**
+ * Compute the tight opaque bounding box of an image WITHOUT creating a new
+ * cropped image. Returns null when the image is entirely transparent.
+ *
+ * Used by {@link computeFrameSequenceUnionCropRect} to derive a shared crop
+ * rect across all frames of a walk-cycle brief.
+ */
+export function computeOpaqueRect(image: RgbaImage): OpaqueRect | null {
+  const { width, height, data } = image;
+  let top = height;
+  let bottom = -1;
+  let left = width;
+  let right = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const a = data[(y * width + x) * 4 + 3] ?? 0;
+      if (a > 0) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+  if (bottom === -1) return null;
+  return { left, top, right, bottom };
+}
+
+/**
+ * Crop a source image to the given rect (inclusive on all sides) plus a
+ * uniform `margin` padding on every edge. Source pixels outside the image
+ * bounds default to fully transparent. Returns an image of dimensions
+ * `(right - left + 1 + 2*margin) × (bottom - top + 1 + 2*margin)`.
+ *
+ * Used by the `transparent-trim` module when {@link PostprocessOptions.sharedCropRect}
+ * is set, so all frames in a walk-cycle brief are cropped to the same bbox.
+ */
+export function cropRectWithMargin(image: RgbaImage, rect: OpaqueRect, margin: number): RgbaImage {
+  const m = Math.max(0, Math.trunc(margin));
+  const contentW = Math.max(0, rect.right - rect.left + 1);
+  const contentH = Math.max(0, rect.bottom - rect.top + 1);
+  const newW = contentW + m * 2;
+  const newH = contentH + m * 2;
+  if (newW === 0 || newH === 0) return { width: 0, height: 0, data: new Uint8Array(0) };
+  const dst = new Uint8Array(newW * newH * 4); // initialized to 0 (transparent)
+  for (let y = 0; y < contentH; y++) {
+    const srcY = rect.top + y;
+    if (srcY < 0 || srcY >= image.height) continue;
+    const srcRowBase = srcY * image.width;
+    const dstRowBase = (y + m) * newW;
+    for (let x = 0; x < contentW; x++) {
+      const srcX = rect.left + x;
+      if (srcX < 0 || srcX >= image.width) continue;
+      const si = (srcRowBase + srcX) * 4;
+      const di = (dstRowBase + x + m) * 4;
+      dst[di] = image.data[si] ?? 0;
+      dst[di + 1] = image.data[si + 1] ?? 0;
+      dst[di + 2] = image.data[si + 2] ?? 0;
+      dst[di + 3] = image.data[si + 3] ?? 0;
+    }
+  }
+  return { width: newW, height: newH, data: dst };
+}
+
+/**
+ * Compute the UNION opaque bounding box across all raw frame PNGs in a
+ * frame-sequence brief. Each frame is decoded and passed through a minimal
+ * background-removal pass so background pixels do not inflate the bbox.
+ *
+ * Returns null when all frames are fully transparent (degenerate; the
+ * `transparent-trim` module skips trimming when it receives null and leaves
+ * the frame unchanged).
+ *
+ * This is the ONLY source of truth for the shared-crop rect that
+ * `postprocessWithTrace` uses (via {@link PostprocessOptions.sharedCropRect})
+ * to give every frame in a walk cycle the same scale factor and floor-line
+ * placement. Callers MUST recompute this value from the current raw frames
+ * on every run/rerun rather than persisting it to disk.
+ */
+export function computeFrameSequenceUnionCropRect(
+  rawPngs: ReadonlyArray<Buffer>,
+): OpaqueRect | null {
+  if (rawPngs.length === 0) return null;
+  let unionLeft = Infinity;
+  let unionTop = Infinity;
+  let unionRight = -Infinity;
+  let unionBottom = -Infinity;
+  let foundAny = false;
+  for (const raw of rawPngs) {
+    const image = decodePng(raw);
+    // Run the same flood-fill background removal the pipeline uses so the bbox
+    // only covers the character/subject, not the model-generated background.
+    const bgRemoved = removeBackgroundB(image);
+    const rect = computeOpaqueRect(bgRemoved);
+    if (rect !== null) {
+      foundAny = true;
+      if (rect.left < unionLeft) unionLeft = rect.left;
+      if (rect.top < unionTop) unionTop = rect.top;
+      if (rect.right > unionRight) unionRight = rect.right;
+      if (rect.bottom > unionBottom) unionBottom = rect.bottom;
+    }
+  }
+  return foundAny
+    ? { left: unionLeft, top: unionTop, right: unionRight, bottom: unionBottom }
+    : null;
+}

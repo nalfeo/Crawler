@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
+import { MANAGED_COMMENT_PREFIX } from './markers.mjs';
 import {
   AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
@@ -91,13 +92,8 @@ const IDLE_CAP_MAX = 20;
 // exists to close.
 const OUTSTANDING_RUN_STATUSES = ['queued', 'pending', 'in_progress', 'waiting', 'requested'];
 const REPAIR_WINDOW_SIZE = 6;
-const MANAGED_COMMENT_MARKERS = [
-  '<!-- crawler-ci-state:v1 -->',
-  '<!-- crawler-ci-task:v1',
-  '<!-- crawler-merge-train:v1 -->',
-  '<!-- crawler-review-request:v1',
-  '<!-- crawler-review-conflict:v1',
-];
+// MANAGED_COMMENT_PREFIX is imported from markers.mjs above.
+// isManagedCommentEvent uses MANAGED_COMMENT_PREFIX so new markers are covered automatically.
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
@@ -115,6 +111,8 @@ const DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS = 5000;
 export const DISPATCH_BLOCKED_LABEL_NAMES = new Set([
   'ci-conflict-order-wait', // ci-conflict-coordinator/state.mjs ORDER_WAIT_LABEL
   'ci-conflict-escalation', // ci-conflict-coordinator/state.mjs ESCALATION_LABEL
+  'ci-lifecycle-quarantined', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.QUARANTINED]
+  'ci-lifecycle-abandoned', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.ABANDONED]
   BLOCKED_LABEL, // 'merge-train-blocked'
   VALIDATION_FAILED_LABEL, // 'merge-train-validation-failed'
   HUMAN_APPROVAL_LABEL, // 'human-approval-required'
@@ -271,9 +269,85 @@ export function isCiFixPr(pullRequest) {
 // Returns true if the PR carries a label that indicates it is blocked by an
 // external mechanism and must not receive a CI Recovery dispatch slot.
 export function isDispatchBlocked(pullRequest) {
-  return (pullRequest.labels || []).some((label) =>
-    DISPATCH_BLOCKED_LABEL_NAMES.has(label.name),
+  return (pullRequest.labels || []).some((label) => DISPATCH_BLOCKED_LABEL_NAMES.has(label.name));
+}
+
+// Genuine waiting PRs stay hidden from broad sweeps. Once reconcile has already
+// converged a waiting PR back to an unowned state, broad repair sweeps may
+// surface it again so the existing exact repair-dispatch path can reacquire it.
+//
+// 2026-07-27 incident: production parks admission-gated PRs as
+// `owner=none,status=waiting,blockers=[]` (trigger `admission-wait`). Only
+// `status=idle` was accepted here, so that state was excluded from every sweep
+// and had no owner to advance it -- 17 of 31 open PRs became permanently
+// unreachable (oldest parked >2 days) and the merge train ran empty.
+//
+// A `waiting` PR that still records blockers is a genuine wait: something is
+// actively blocking it and reconcile parked it deliberately, so it stays
+// hidden. A `waiting` PR with no owner and no blockers has nothing left to wait
+// on and must be re-surfaced.
+export function isRepairWakeEligible(pullRequest) {
+  const labels = pullRequest.labels || [];
+  if (!labels.some((label) => label.name === WAITING_LABEL)) return false;
+  if (labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX))) {
+    return false;
+  }
+  if (labels.some((label) => label.name === WAITING_TRANSITION_LABEL)) return false;
+  const state = pullRequest.recoveryState;
+  if (state?.owner !== 'none') return false;
+  if (state.status === 'idle') return true;
+  return state.status === 'waiting' && (state.blockers || []).length === 0;
+}
+
+function ageOrder(left, right) {
+  return (
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+    left.number - right.number
   );
+}
+
+function selectRepairWindowPulls({ direct, waitingTransitions, sweep, now = new Date() }) {
+  const targetSize = Math.max(REPAIR_WINDOW_SIZE, direct.length);
+  const remainingAfterDirect = Math.max(targetSize - direct.length, 0);
+  if (remainingAfterDirect === 0) return direct;
+  const prioritizedTransitions = [...waitingTransitions]
+    .sort(ageOrder)
+    .slice(0, remainingAfterDirect);
+  const remainingAfterTransitions = Math.max(
+    remainingAfterDirect - prioritizedTransitions.length,
+    0,
+  );
+  if (remainingAfterTransitions === 0) {
+    return [...direct, ...prioritizedTransitions];
+  }
+  const sweepOrdered = [...sweep].sort(ageOrder);
+  const rotation =
+    Number.isFinite(now.getTime()) && now.getTime() > 0
+      ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+      : 0;
+  const rotated = rotateList(sweepOrdered, rotation);
+  return [...direct, ...prioritizedTransitions, ...rotated.slice(0, remainingAfterTransitions)];
+}
+
+// Labels meaning an external mechanism currently owns this PR's progress, so a
+// CI Recovery dispatch cannot advance it. This is DISPATCH_BLOCKED_LABEL_NAMES
+// minus WAITING_LABEL: `ci-recovery-waiting` is CI Recovery's own parking
+// label and is handled by the repair-wake predicate above, not here.
+//
+// 2026-07-27 incident: these were never applied on the train-enabled sweep
+// path, so PRs fenced by the conflict coordinator (which reconcile skips
+// unconditionally with `skip pr=#N reason=ci-conflict-order-wait`) and PRs
+// awaiting human approval occupied slots in the bounded REPAIR_WINDOW_SIZE
+// sweep, burning every dispatch on guaranteed no-ops.
+const EXTERNALLY_BLOCKED_LABEL_NAMES = new Set(
+  [...DISPATCH_BLOCKED_LABEL_NAMES].filter((name) => name !== WAITING_LABEL),
+);
+
+// Returns true if an external mechanism (conflict coordinator, merge-train
+// block, validation failure, or human approval) currently gates this PR,
+// making a broad-sweep CI Recovery dispatch a guaranteed no-op.
+export function isExternallyBlocked(pullRequest) {
+  return (pullRequest.labels || []).some((label) => EXTERNALLY_BLOCKED_LABEL_NAMES.has(label.name));
 }
 
 export function collectPrNumbers({
@@ -316,14 +390,9 @@ export function collectPrNumbers({
         !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
         !hasHealthyOwnerForSweep(pullRequest, now),
     );
-    return [...direct, ...waitingTransitions, ...sweep]
-      .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      )
-      .map((pullRequest) => pullRequest.number);
+    return selectRepairWindowPulls({ direct, waitingTransitions, sweep, now }).map(
+      (pullRequest) => pullRequest.number,
+    );
   }
   const directNumbers = eventPrNumbers(payload);
   const numbers = new Set(directNumbers);
@@ -335,10 +404,7 @@ export function collectPrNumbers({
 
   const normalizedRepo = repository.toLowerCase();
   for (const pullRequest of scheduledPulls) {
-    if (
-      !pullRequest.draft &&
-      pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
-    ) {
+    if (!pullRequest.draft && pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo) {
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (Number.isInteger(number) && number > 0) {
         pullsByNumber.set(number, pullRequest);
@@ -372,7 +438,7 @@ export function collectPrNumbers({
     if (!isWaiting) return false;
     const hasOwner = labels.some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX));
     const hasTransition = labels.some((l) => l.name === WAITING_TRANSITION_LABEL);
-    return hasOwner || hasTransition;
+    return hasOwner || hasTransition || isRepairWakeEligible(pr);
   });
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
@@ -424,9 +490,17 @@ export function eligibleTrainRecoveryPulls({
       const waiting = labels.some((label) => label.name === WAITING_LABEL);
       const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
       const owned = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
+      const repairWakeEligible = isRepairWakeEligible(pullRequest);
+      // Externally blocked PRs are skipped unconditionally by reconcile, so they
+      // must not consume one of the bounded REPAIR_WINDOW_SIZE slots. Directly
+      // triggered PRs still pass through so explicit dispatches stay honored.
+      const externallyBlocked = isExternallyBlocked(pullRequest);
       const shouldExcludeByLabels =
         hasQueueLabel ||
-        (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
+        (!directlyTriggered &&
+          (hasOptOutLabel ||
+            externallyBlocked ||
+            (waiting && !owned && !waitingTransition && !repairWakeEligible)));
       return (
         pullRequest.state === 'open' &&
         !pullRequest.draft &&
@@ -435,11 +509,7 @@ export function eligibleTrainRecoveryPulls({
         !shouldExcludeByLabels
       );
     })
-    .sort(
-      (left, right) =>
-        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-        left.number - right.number,
-    );
+    .sort(ageOrder);
 }
 
 export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {
@@ -692,7 +762,9 @@ export function recoveryTriggerForPr({
 export function isManagedCommentEvent(payload, eventName) {
   if (eventName !== 'issue_comment') return false;
   const body = String(payload.comment?.body || '').trimStart();
-  return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
+  // Use the shared prefix from markers.mjs so any new '<!-- crawler-...' marker
+  // is automatically filtered without touching this file.
+  return body.startsWith(MANAGED_COMMENT_PREFIX);
 }
 
 // Total number of `workflowFile` runs currently outstanding (not yet
@@ -868,14 +940,8 @@ export function resolveGlobalDispatchCaps(env = process.env) {
     IDLE_CAP_MAX,
   );
   return {
-    maxBudgetTrainBusy: parsePositiveInt(
-      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY,
-      trainCap,
-    ),
-    maxBudgetTrainIdle: parsePositiveInt(
-      env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE,
-      idleCap,
-    ),
+    maxBudgetTrainBusy: parsePositiveInt(env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_BUSY, trainCap),
+    maxBudgetTrainIdle: parsePositiveInt(env.CI_RECOVERY_MAX_DISPATCH_BUDGET_TRAIN_IDLE, idleCap),
     globalTrainDispatchCap: parsePositiveInt(env.CI_RECOVERY_GLOBAL_TRAIN_DISPATCH_CAP, trainCap),
     maxDispatchPerRun: parsePositiveInt(
       env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
@@ -1060,6 +1126,46 @@ export async function runFromEnv(env = process.env) {
     );
   }
 
+  // Bounded hydration pass for waiting/no-owner repair-wake candidates.
+  // hydrateRecoveryOwnership only covers owner-labelled PRs (it filters by
+  // OWNER_LABEL_PREFIX internally). isRepairWakeEligible requires the
+  // ABSENCE of an owner label, so those PRs always arrive at collectPrNumbers
+  // with recoveryState === undefined in production — making the predicate
+  // permanently false. This separate pass loads the recovery state comment
+  // for waiting/no-owner/no-transition candidates so isRepairWakeEligible
+  // can become true for a PR that reconcile has already converged to idle.
+  if (isRepairWindowSweepEvent({ payload, eventName, trainEnabled })) {
+    const waitingNoOwnerCandidates = scheduledPulls.filter(
+      (pr) =>
+        (pr.labels || []).some((l) => l.name === WAITING_LABEL) &&
+        !(pr.labels || []).some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX)) &&
+        !(pr.labels || []).some((l) => l.name === WAITING_TRANSITION_LABEL) &&
+        pr.recoveryState === undefined &&
+        pr.recoveryStateUnreadable === undefined,
+    );
+    if (waitingNoOwnerCandidates.length > 0) {
+      const hydratedWaiting = await Promise.all(
+        waitingNoOwnerCandidates.slice(0, OWNERSHIP_HYDRATION_BATCH_SIZE).map(async (pr) => {
+          try {
+            const comments = await requestWithBackoff(
+              () => paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`),
+              { label: `repair-wake-load-state-${pr.number}` },
+            );
+            return { ...pr, recoveryState: recoveryStateFromComments(comments) };
+          } catch (error) {
+            return {
+              ...pr,
+              recoveryState: null,
+              recoveryStateUnreadable: String(error?.message || error),
+            };
+          }
+        }),
+      );
+      const patchByNumber = new Map(hydratedWaiting.map((pr) => [pr.number, pr]));
+      scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
+    }
+  }
+
   // Lease-reaper pass (Fix A / issue #1783): runs on every scheduled sweep
   // OUTSIDE the dispatch budget. Ensures all owner-labeled PRs have been
   // hydrated (train-mode hydration above may stop early at targetDispatchable;
@@ -1093,11 +1199,65 @@ export async function runFromEnv(env = process.env) {
 
     const reaperNow = new Date();
     const reaperPrNumbers = identifyReapablePrs(scheduledPulls, reaperNow);
+
+    // Closed-fence reclaim: find ci-owner-pr-* repo labels whose PR is no longer
+    // open. These represent owner fences left behind when a PR was closed or
+    // merged while owned. They are NOT in scheduledPulls (open-only), so they
+    // must be discovered via the repo-label listing and merged into the shared
+    // reaper pool BEFORE selectReaperBatch so the combined set benefits from the
+    // same fair-rotation and REAPER_LANE_CAP budget accounting as stale open PRs.
+    const scheduledSet = new Set(scheduledPulls.map((p) => p.number));
+    const closedFenceCandidates = [];
+    try {
+      const allLabels = await requestWithBackoff(
+        () => paginate(token, `/repos/${owner}/${repo}/labels`),
+        { label: 'closed-fence-label-scan' },
+      );
+      const fenceNumbers = [
+        ...new Set(
+          allLabels
+            .map((l) => String(l.name || ''))
+            .filter((n) => n.startsWith(OWNER_LABEL_PREFIX))
+            .map((n) => Number.parseInt(n.slice(OWNER_LABEL_PREFIX.length), 10))
+            .filter((n) => Number.isInteger(n) && n > 0 && !scheduledSet.has(n)),
+        ),
+      ].sort((a, b) => a - b);
+      // Probe each candidate's state. Bound to avoid excessive API calls; the
+      // sweep runs every 10 minutes so unprobed candidates are retried soon.
+      const CAP_PROBE = 10;
+      for (const number of fenceNumbers.slice(0, CAP_PROBE)) {
+        let pull;
+        try {
+          pull = (
+            await requestWithBackoff(
+              () => request(token, `/repos/${owner}/${repo}/pulls/${number}`),
+              { label: `closed-fence-probe-${number}` },
+            )
+          ).data;
+        } catch {
+          continue;
+        }
+        if (String(pull?.state || '').toLowerCase() !== 'open') {
+          closedFenceCandidates.push(number);
+        }
+      }
+    } catch (error) {
+      process.stdout.write(`closed-fence-scan-error: ${error?.message || error}\n`);
+    }
+
+    // Merge stale-open and closed-fence candidates into one pool and select via
+    // the shared rotation + cap so neither category can starve the other.
+    const combinedReaperPool = [...new Set([...reaperPrNumbers, ...closedFenceCandidates])];
     // Rotate the eligible list once per sweep window before applying the cap
     // (see selectReaperBatch) so the tail cannot starve when more than
     // REAPER_LANE_CAP locks are stale.
-    const reaperBatch = selectReaperBatch(reaperPrNumbers, reaperNow);
+    const reaperBatch = selectReaperBatch(combinedReaperPool, reaperNow);
     for (const reaperPrNumber of reaperBatch) {
+      // Closed-fence candidates use a distinct trigger so reconcile.mjs and
+      // telemetry can distinguish them from stale-lock reclaims.
+      const reaperTrigger = closedFenceCandidates.includes(reaperPrNumber)
+        ? 'liveness-sweep:closed-owner-fence'
+        : 'lease-reaper';
       // Use a direct request() -- do NOT wrap in requestWithBackoff. Same
       // rationale as the normal dispatch loop: non-idempotent POST, retries
       // would create duplicate runs.
@@ -1108,13 +1268,13 @@ export async function runFromEnv(env = process.env) {
           inputs: {
             operation: 'reconcile',
             pr_number: String(reaperPrNumber),
-            trigger: 'lease-reaper',
+            trigger: reaperTrigger,
             lease_id: '',
           },
         },
       });
       reaperDispatchedSet.add(reaperPrNumber);
-      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=lease-reaper\n`);
+      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=${reaperTrigger}\n`);
     }
     if (reaperBatch.length > 0) {
       process.stdout.write(

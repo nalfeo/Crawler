@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "ci-dispatch-observability",
+  "task_title": "CI recovery: observable dispatch decision logging",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "stdout-into-run-log medium confirmed sound over artifact/step-summary/comment. Adopted reviewer fixes: (1) intent-based taskComment planned/dry-run/not-applicable, not 'posted'; (2) contract explicitly scoped to runs reaching a final dispatch-table decision (startup/ownership/opt-out guards already log their own reason lines and never summon copilot); (3) stage-specific determinant inputs added, attempt renamed stateAttempt, fingerprint/mode/terminalPass included; (4) snapshot {row,ctx,pass} captured in-loop instead of recomputing; (5) topology integration tests (early skip + terminal non-dispatch + dispatch). Dropped redundant taskSkipReason since action carries the skip reason."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-terra"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Finding 1 (Medium): terminal records lacked an explicit cap/ceiling field required by the task. Fixed by adding staleRetryCeilingReached, re-derived from ctx.stallAction===release (no new plumbing, no behavior change). Finding 2 (Medium): trigger/stateTrigger logged as unbounded free-form strings. Fixed via sanitizeTrigger (coerce-to-string + 120-char truncation); raw value deliberately preserved (not enum-collapsed) so anomalous triggers stay diagnosable. 4 new unit tests, test:guards 1816/0."
+        }
+      ]
+    }
+  }
+}
