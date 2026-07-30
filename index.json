@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a33161c5be3713986ff46218b27d6dfb6ee1089f",
+    "commitDate": "2026-07-30T00:39:10Z",
+    "commitSubject": "feat(labs): deep-linkable terrain-wall-junction inspection scene for the AI-runner lab (#2332)",
+    "capturedAt": "2026-07-30T01:44:57.119Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30503769353",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/a33161c5be3713986ff46218b27d6dfb6ee1089f.json"
+  },
+  {
     "commit": "f9bbd5955ceee6d6ce61ad7f53caeb653e211c0f",
     "commitDate": "2026-07-29T22:13:25Z",
     "commitSubject": "fix(terrain): square dungeon wall corners and flush door junctions (#2330)",
