@@ -2,7 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { executeThemeEquipmentReviewCommand } from '../../../scripts/sprites/theme-equipment-review-cli.js';
+import {
+  executeThemeEquipmentReviewCommand,
+} from '../../../scripts/sprites/theme-equipment-review-cli.js';
 import {
   buildThemeEquipmentSetStateFromPlan,
   loadThemeEquipmentSetPlan,
@@ -163,7 +165,14 @@ describe('theme set index', () => {
       },
     )) as unknown as { sets: Array<{ id: string; plan: { status: string } }> };
 
-    expect(result.sets).toEqual([{ id: 'classic-fantasy', displayName: 'classic-fantasy', plan: { status: 'remote-only' }, state: { status: 'none' } }]);
+    expect(result.sets).toEqual([
+      {
+        id: 'classic-fantasy',
+        displayName: 'classic-fantasy',
+        plan: { status: 'remote-only' },
+        state: { status: 'none' },
+      },
+    ]);
   });
 });
 

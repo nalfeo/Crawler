@@ -407,7 +407,9 @@ export async function listThemeSets(
 ): Promise<Record<string, unknown>> {
   const plans = readAuthoredPlans(deps.repoRoot);
   const publishedPlanIds = new Set(
-    await (deps.listPublishedPlanIds?.() ?? listPublishedThemeSetIds(deps.repoRoot)).catch(() => []),
+    await (
+      deps.listPublishedPlanIds?.() ?? listPublishedThemeSetIds(deps.repoRoot)
+    ).catch(() => []),
   );
 
   let statefulIds: ReadonlySet<string> | null = null;
@@ -485,10 +487,20 @@ export async function listPublishedThemeSetIds(
   repoRoot: string,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<readonly string[]> {
-  const options = { cwd: repoRoot, env: { ...env }, encoding: 'utf8' as const, windowsHide: true, timeout: 30_000 };
+  const options = {
+    cwd: repoRoot,
+    env: { ...env },
+    encoding: 'utf8' as const,
+    windowsHide: true,
+    timeout: 30_000,
+  };
   const scratch = `refs/theme-equipment-plans/${randomUUID()}`;
   try {
-    await execFileAsync('git', ['fetch', '--quiet', 'origin', `+${PLANS_BRANCH}:${scratch}`], options);
+    await execFileAsync(
+      'git',
+      ['fetch', '--quiet', 'origin', `+${PLANS_BRANCH}:${scratch}`],
+      options,
+    );
     const { stdout } = await execFileAsync(
       'git',
       ['ls-tree', '-r', '--name-only', scratch, '--', THEME_SET_PLAN_DIR.split(path.sep).join('/')],
@@ -497,7 +509,11 @@ export async function listPublishedThemeSetIds(
     return stdout
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .filter((line) => line.startsWith(`${THEME_SET_PLAN_DIR.split(path.sep).join('/')}/`) && line.endsWith('.json'))
+      .filter(
+        (line) =>
+          line.startsWith(`${THEME_SET_PLAN_DIR.split(path.sep).join('/')}/`) &&
+          line.endsWith('.json'),
+      )
       .map((line) => path.posix.basename(line, '.json'))
       .filter((id) => SET_ID_PATTERN.test(id))
       .sort();
