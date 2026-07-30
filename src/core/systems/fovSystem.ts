@@ -130,48 +130,21 @@ function createPassState(floorMap: FloorMap): FovPassState {
     const tileIdx = ty * tileW + tx;
     const firstTouchThisPass = state.seamGen[tileIdx] !== state.generation;
 
-    // Opaque tiles are revealed as WHOLE tiles, and are exempt from the
-    // corner-seam check below. `hasBlockedCornerSeam` exists to stop a ray
-    // from squeezing THROUGH a diagonal gap between two opaque tiles to see
-    // something BEYOND it — but here the ray isn't looking past this tile, it
-    // is looking AT it: the tile itself is the opaque surface the ray landed
-    // on. A room's interior corner block is diagonal from the player with
-    // both its orthogonal neighbours (the two wall runs forming the corner)
-    // opaque, so it satisfies the seam-blocking predicate even though nothing
-    // is being seen past it — applying the seam rule here left every interior
-    // room corner permanently black while the wall runs beside it lit up
-    // normally. You can always see the opaque tile a ray terminates on; what
-    // the seam rule must keep blocking is anything beyond it, which this
-    // branch does not touch — `lightPasses` already stops shadowcasting from
-    // continuing past an opaque tile, so nothing new becomes visible through
-    // it as a side effect of skipping the seam check here.
+    // Corner-seam rule, applied to EVERY tile across the entire ray from origin
+    // to candidate, matching the rule enforced by lineOfSight. This keeps FOV
+    // and LOS in agreement: if lineOfSight rejects a candidate due to a blocked
+    // corner seam, FOV rejects it too. Memoized per tile so the ray is walked
+    // once per tile rather than once per sub-tile mapping to it.
     //
-    // Shadowcasting only reports the sub-tiles a ray physically lands on —
-    // the face of the wall nearest the player — so at sub-tile resolution a
-    // seen wall would render half-lit with the rest of the same tile still
-    // black. Filling the tile makes walls read as solid blocks and lets the
-    // light field illuminate all of it.
-    //
-    // The seam memo doubles as the "already expanded this pass" flag: the
-    // fill covers every sub-tile of the tile, so later sub-tiles of the same
-    // tile have nothing left to add. This branch still sets `seamGen` (to
-    // preserve that dual use) but deliberately does NOT write `seamValue` —
-    // it is never read for an opaque tile, since every visit to this tile
-    // takes this same opaque branch again.
-    if ((flags[tileIdx]! & TileFlags.TRANSPARENT) === 0) {
-      if (firstTouchThisPass) {
-        state.seamGen[tileIdx] = state.generation;
-        floorMap.markTileVisibleAndDiscovered(tx, ty);
-      }
-      return;
-    }
-
-    // Transparent (floor) tiles keep the existing corner-seam rule, applied
-    // across the entire ray from origin to candidate, matching the
-    // consistency rules enforced by lineOfSight. This ensures FOV and LOS
-    // agree for floor tiles: if lineOfSight rejects a candidate due to a
-    // blocked corner seam, FOV rejects it too. Memoized per tile so the ray is
-    // walked once per tile rather than once per sub-tile mapping to it.
+    // The interior-room-corner case (a wall block diagonal from the player with
+    // both orthogonal neighbours opaque) is handled inside
+    // `hasBlockedCornerSeam` itself, which exempts the seam formed by the final
+    // step into an opaque target. Doing it there rather than bypassing the
+    // check here matters: a bypass would exempt seams encountered ANYWHERE
+    // earlier on the ray, revealing opaque tiles genuinely peeked at through a
+    // diagonal gap. Keeping the rule shared also keeps lineOfSight — and
+    // therefore the light field, which gates source illumination on it — in
+    // step with what FOV reveals, so a revealed corner is actually lit.
     let seamBlocked: boolean;
     if (firstTouchThisPass) {
       seamBlocked = tileMap.hasBlockedCornerSeam(state.originTileX, state.originTileY, tx, ty);
@@ -181,6 +154,21 @@ function createPassState(floorMap: FloorMap): FovPassState {
       seamBlocked = state.seamValue[tileIdx] !== 0;
     }
     if (seamBlocked) return;
+
+    // Opaque tiles are revealed as WHOLE tiles. Shadowcasting only reports the
+    // sub-tiles a ray physically lands on — the face of the wall nearest the
+    // player — so at sub-tile resolution a seen wall would render half-lit with
+    // the rest of the same tile still black. Filling the tile makes walls read
+    // as solid blocks and lets the light field illuminate all of it. The fill
+    // covers every sub-tile, so later sub-tiles of the same tile have nothing
+    // left to add. Nothing becomes visible *past* the tile: `lightPasses`
+    // already stops shadowcasting from continuing beyond an opaque tile.
+    if ((flags[tileIdx]! & TileFlags.TRANSPARENT) === 0) {
+      if (firstTouchThisPass) {
+        floorMap.markTileVisibleAndDiscovered(tx, ty);
+      }
+      return;
+    }
 
     floorMap.markVisibleAndDiscovered(hx, hy);
   };

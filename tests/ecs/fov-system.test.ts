@@ -363,6 +363,31 @@ describe('FOV System', () => {
     expect(floorMap.isVisible(6, 6)).toBe(true); // interior near corner
   });
 
+  // HARD GATE: the interior-corner exemption must cover ONLY the ray's final
+  // step. An opaque tile sitting behind a diagonal pinch crossed EARLIER on
+  // the ray is genuinely being peeked at through a gap and must stay hidden.
+  // A bypass that skips the seam check for all opaque tiles passes the
+  // four-corner gate above while silently failing this one.
+  it('HARD GATE: does not reveal an opaque tile behind an earlier blocked corner seam', () => {
+    const N = 25;
+    const paint = (t: TileMap): void => {
+      // Pinch the diagonal step (11,11) -> (12,12) from the player at (10,10).
+      t.flags[11 * N + 12] = TilePresets.WALL;
+      t.flags[12 * N + 11] = TilePresets.WALL;
+      // The opaque tile being peeked at through that pinch.
+      t.flags[13 * N + 13] = TilePresets.WALL;
+    };
+    const floorMap = runFovAt(makeOpenMap(N, 2, paint), 10, 10);
+
+    // Sanity: the two pinch walls themselves are terminal opaque tiles the
+    // player looks directly at, so they ARE visible.
+    expect(floorMap.isVisible(12, 11)).toBe(true);
+    expect(floorMap.isVisible(11, 12)).toBe(true);
+
+    // The gate: the wall beyond the pinch must not be revealed.
+    expect(floorMap.isVisible(13, 13)).toBe(false);
+  });
+
   it('visible bitmap is quarter-tile sized (4× tile count)', () => {
     const floorMap = makeSmallMap();
     const tileCount = floorMap.width * floorMap.height;
