@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
-import { getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import {
+  addGeneratedEquipmentToBag,
+  equipFromBag,
+  getEquipmentState,
+} from '../../src/core/systems/equipmentSystem.js';
+import {
+  createGeneratedEquipmentInstance,
+  listGeneratedEquipmentInstances,
+} from '../../src/core/generated-equipment-registry.js';
+import type { GameWorld } from '../../src/core/world.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import { setGoalFlag } from '../../src/core/door-lock.js';
 import {
@@ -11,8 +20,90 @@ import {
 import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
 import { AIState } from '../../src/game/ai/types.js';
 import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
-import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
 import { runSettlementMaintenancePlanner } from '../../src/game/ai/settlement-maintenance-planner.js';
+import type { Floor2QuartermasterStockState } from '../../src/shared/floor-types.js';
+import {
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  type GeneratedEquipmentInstanceKey,
+} from '../../src/shared/generated-equipment-types.js';
+
+const PLAYABILITY_TEST_UNIT_PRICE = 123;
+const PLAYABILITY_TEST_STOCK_ID = 'playability-test-stock';
+const PLAYABILITY_TEST_OFFER_ID = 'playability-test-offer';
+
+function createPlayabilityTestInstance(
+  world: Parameters<typeof createGeneratedEquipmentInstance>[0],
+) {
+  return createGeneratedEquipmentInstance(world, {
+    baseId: 'armor.playability-test-helm',
+    itemLevel: 3,
+    rarity: 'common',
+    enhancementLevel: 0,
+    resolvedEffects: [],
+    frozen: {
+      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+      displayName: 'Playability Test Helm',
+      artKey: 'equipment.playability-test-helm',
+      slots: ['head'],
+      tags: ['armor'],
+      weightLb: 1,
+      statBonuses: { armor: 1 },
+      abilityGrants: [],
+      passiveGrants: [],
+      activeWeaponSnapshot: null,
+    },
+  });
+}
+
+function replaceQuartermasterStockWithSoldOffer(
+  world: GameWorld,
+  instanceId: GeneratedEquipmentInstanceKey,
+): void {
+  const settlement = world.floorExtendedState?.settlement;
+  if (!settlement) {
+    throw new Error('Test requires a Floor 2 settlement snapshot');
+  }
+  const quartermasterStock: Floor2QuartermasterStockState = {
+    stockId: PLAYABILITY_TEST_STOCK_ID,
+    restockEpoch: 0,
+    offers: [
+      {
+        offerId: PLAYABILITY_TEST_OFFER_ID,
+        instanceId,
+        rarity: 'common',
+        unitPrice: PLAYABILITY_TEST_UNIT_PRICE,
+        quantity: 0,
+      },
+    ],
+    retiredInstanceIds: [],
+  };
+  world.floorExtendedState = {
+    ...world.floorExtendedState,
+    settlement: {
+      ...settlement,
+      quartermasterStock,
+    },
+  };
+}
+
+function clearPlayabilityRewardState(world: GameWorld): void {
+  world.achievements.unlockedIds.clear();
+  world.achievements.pendingPresentations.clear();
+  world.bossChests.clear();
+}
+
+function formatEquipFailureReason(reason: { readonly type: string }): string {
+  if ('message' in reason && typeof reason.message === 'string') {
+    return reason.message;
+  }
+  if ('instanceKey' in reason && typeof reason.instanceKey === 'string') {
+    return `${reason.type}: ${reason.instanceKey}`;
+  }
+  if ('slotId' in reason && typeof reason.slotId === 'string') {
+    return `${reason.type}: ${reason.slotId}`;
+  }
+  return reason.type;
+}
 
 describe('Floor 2 headless completion', () => {
   it('starts direct Floor 2 headless runs at level 5 with the charm equipped', async () => {
@@ -263,6 +354,181 @@ describe('Floor 2 headless completion', () => {
 
     expect(decisionKinds).toContain('purchase-equipment');
     expect(decisionKinds).toContain('equip-instance');
+  });
+
+  it('converts sold Quartermaster stock with no generated gear into a real headless invariant error', async () => {
+    let armed = false;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 211 }), {
+      seed: 211,
+      floorId: 'floor2',
+      maxFrames: 1,
+      settlementReturnRouting: true,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (armed) return;
+            armed = true;
+            clearPlayabilityRewardState(world);
+            const generated = createPlayabilityTestInstance(world);
+            replaceQuartermasterStockWithSoldOffer(world, generated.instanceId);
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('error');
+    expect(stats.error).toContain('Headless playability invariant failed:');
+    expect(stats.error).toContain(
+      `Spent ${PLAYABILITY_TEST_UNIT_PRICE} gold on equipment but ended with no generated equipment bagged or equipped`,
+    );
+    expect(stats.equipmentPlayability).toMatchObject({
+      goldSpentOnEquipment: PLAYABILITY_TEST_UNIT_PRICE,
+      baggedGeneratedCount: 0,
+      equippedGeneratedCount: 0,
+    });
+  });
+
+  it('converts unopened Floor 2 rewards into a real headless invariant error', async () => {
+    let armed = false;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 212 }), {
+      seed: 212,
+      floorId: 'floor2',
+      maxFrames: 1,
+      settlementReturnRouting: true,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (armed) return;
+            armed = true;
+            clearPlayabilityRewardState(world);
+            world.achievements.unlockedIds.add('playability-test-achievement');
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('error');
+    expect(stats.error).toContain('Headless playability invariant failed:');
+    expect(stats.error).toContain('Run ended with 1 unopened reward boxes');
+    expect(stats.equipmentPlayability).toMatchObject({
+      unopenedRewardBoxes: 1,
+    });
+  });
+
+  it('converts bagged generated gear with an empty matching slot into a real headless invariant error', async () => {
+    let armed = false;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 213 }), {
+      seed: 213,
+      floorId: 'floor2',
+      maxFrames: 1,
+      settlementReturnRouting: true,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (armed) return;
+            armed = true;
+            clearPlayabilityRewardState(world);
+            // Mainline eager maintenance now auto-equips better bagged gear each
+            // tick. Disable just that loop here so the fixture can still assert
+            // the deliberate "bagged gear left while slot is empty" invariant.
+            world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = false;
+            const generated = createPlayabilityTestInstance(world);
+            const result = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
+            if (!result.ok) {
+              throw new Error(
+                `Failed to seed generated gear: ${formatEquipFailureReason(result.reason)}`,
+              );
+            }
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('error');
+    expect(stats.error).toContain('Headless playability invariant failed:');
+    expect(stats.error).toContain(
+      '1 generated items remained bagged while a matching slot stayed empty',
+    );
+    expect(stats.equipmentPlayability).toMatchObject({
+      baggedGeneratedCount: 1,
+      unequippedWithEmptySlotCount: 1,
+    });
+  });
+
+  it('scopes the playability invariant off when settlement return routing stays disabled', async () => {
+    let armed = false;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 214 }), {
+      seed: 214,
+      floorId: 'floor2',
+      maxFrames: 1,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (armed) return;
+            armed = true;
+            clearPlayabilityRewardState(world);
+            const generated = createPlayabilityTestInstance(world);
+            replaceQuartermasterStockWithSoldOffer(world, generated.instanceId);
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('timeout');
+    expect(stats.error).toBeUndefined();
+    expect(stats.equipmentPlayability).toMatchObject({
+      goldSpentOnEquipment: PLAYABILITY_TEST_UNIT_PRICE,
+      baggedGeneratedCount: 0,
+      equippedGeneratedCount: 0,
+    });
+  });
+
+  it('returns normal Floor 2 RunStats when the synthetic Quartermaster purchase ends equipped', async () => {
+    let armed = false;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 215 }), {
+      seed: 215,
+      floorId: 'floor2',
+      maxFrames: 1,
+      settlementReturnRouting: true,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (armed) return;
+            armed = true;
+            clearPlayabilityRewardState(world);
+            const generated = createPlayabilityTestInstance(world);
+            replaceQuartermasterStockWithSoldOffer(world, generated.instanceId);
+            const addResult = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
+            if (!addResult.ok) {
+              throw new Error(
+                `Failed to seed generated gear: ${formatEquipFailureReason(addResult.reason)}`,
+              );
+            }
+            const equipResult = equipFromBag(
+              world,
+              1,
+              { kind: 'generated-instance', instanceKey: generated.instanceId },
+              { force: true },
+            );
+            if (!equipResult.ok) {
+              throw new Error(
+                `Failed to equip generated gear: ${equipResult.reasons.map(formatEquipFailureReason).join(', ')}`,
+              );
+            }
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('timeout');
+    expect(stats.error).toBeUndefined();
+    expect(stats.equipmentPlayability).toMatchObject({
+      goldSpentOnEquipment: PLAYABILITY_TEST_UNIT_PRICE,
+      baggedGeneratedCount: 0,
+      equippedGeneratedCount: 1,
+      unopenedRewardBoxes: 0,
+      unequippedWithEmptySlotCount: 0,
+    });
   });
 
   it('exercises floor 2 den-progress and boss-targeting flow without win gating', async () => {

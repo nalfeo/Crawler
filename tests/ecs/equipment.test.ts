@@ -9,13 +9,11 @@ import {
   addGeneratedEquipmentToBag,
   equipFromBag,
   unequip,
-  canEquip,
   getEffectiveStats,
   getEquipmentState,
   clearEquipmentState,
-  setEntityTags,
-  registerCustomRequirement,
 } from '../../src/core/systems/equipmentSystem.js';
+import { getCustomRequirements, getEntityTagMap } from '../../src/core/equipment-system-state.js';
 import {
   createGeneratedEquipmentInstance,
   getGeneratedEquipmentInstance,
@@ -128,6 +126,18 @@ function createGeneratedTestEquipment(
     },
   };
   return createGeneratedEquipmentInstance(world, input);
+}
+
+function setEntityTags(world: GameWorld, entity: number, tags: string[]): void {
+  getEntityTagMap(world).set(entity, new Set(tags));
+}
+
+function registerCustomRequirement(
+  world: GameWorld,
+  id: string,
+  predicate: (world: GameWorld, entity: number, itemDef: EquipmentItemDef) => boolean,
+): void {
+  getCustomRequirements(world).set(id, predicate);
 }
 
 describe('Equipment System', () => {
@@ -416,9 +426,11 @@ describe('Equipment System', () => {
         { type: 'minStat', stat: 'strength', value: 999 },
       ],
     });
-    const result = canEquip(world, entity, item);
-    expect(result.allowed).toBe(false);
-    expect(result.reasons.length).toBeGreaterThanOrEqual(3); // occupied + 2 requirements
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reasons.length).toBeGreaterThanOrEqual(3); // occupied + 2 requirements
+    }
   });
 
   // 21. Custom requirement predicate

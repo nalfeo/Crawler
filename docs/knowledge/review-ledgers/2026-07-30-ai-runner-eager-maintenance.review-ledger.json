@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "ai-runner-eager-maintenance",
+  "task_title": "AI runner eager maintenance tick — claim rewards and equip bag items anywhere",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-5",
+      "adversarial": false,
+      "plan_divergence": "convergent",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Plan reviewed: (1) safe-room bypass — `force:true` must be used on `equipFromBag` in the eager path so equipping works outside safe rooms, matching the pattern already established in `auto-progression.ts` and `merchant-weapon-intent.ts`. Resolved by adding `{force:true}` to `runBagOnlyEquipmentLoop`. (2) Test signal — tests setting `playerInSafeRoom=true` would pass even without `force:true`, masking the real fix. Resolved by changing equipment test cases to use `playerInSafeRoom=false` which proves `force:true` is the mechanism."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Two medium findings: (1) Missing bag-empty early-exit guard in `runBagOnlyEquipmentLoop` — without it, `buildEquipmentCandidates` (which calls `getQuartermasterOfferViews`) fires every tick on Floor 2 even when bag is empty, wasting work. Fixed by adding a `generatedEquipment.length === 0` guard before the loop. (2) Missing test for the deferred-retry path — if the two retry calls in step 4 of `runEagerMaintenanceTick` were removed, all 8 tests would still pass. Fixed by adding a 9th test: bag-at-capacity with 1 item → achievement deferred → loop equips the item (freeing capacity) → retry claims the achievement."
+        }
+      ]
+    }
+  }
+}
