@@ -11,6 +11,17 @@
     "path": "by-sha/00bdda09ddc1865bf80ac9aa8ef0999297b85944.json"
   },
   {
+    "commit": "9d30add61c05ea4825cc2f88d24787e63951a276",
+    "commitDate": "2026-07-30T09:15:47-07:00",
+    "commitSubject": "fix(ci-recovery): move read traffic off the shared owner-PAT rate-limit bucket",
+    "capturedAt": "2026-07-30T17:22:47.550Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30561479633",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/9d30add61c05ea4825cc2f88d24787e63951a276.json"
+  },
+  {
     "commit": "de14465c949e269df89654f602fee3dbd76a44e6",
     "commitDate": "2026-07-30T08:19:38Z",
     "commitSubject": "fix(terrain,fov): stop wall inset bleeding into rock, and reveal + light room corners (#2359)",
