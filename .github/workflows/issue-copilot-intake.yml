@@ -2,7 +2,7 @@ name: Issue Copilot Intake
 
 on:
   issues:
-    types: [opened, closed]
+    types: [opened, reopened, closed]
 
 permissions:
   contents: read

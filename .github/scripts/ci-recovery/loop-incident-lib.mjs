@@ -12,9 +12,9 @@
  * controlled blocker kinds, IDs, and URLs are recorded.  The investigation
  * agent fetches the source evidence directly from those links.
  *
- * Filing the issue activates the existing `issue-copilot-intake.yml` workflow
- * (triggered on `issues: opened`) exactly once.  Subsequent updates do not
- * re-trigger intake.
+ * Filing or reopening the issue activates the existing
+ * `issue-copilot-intake.yml` workflow (triggered on `issues: opened` and
+ * `issues: reopened`).  Same-state updates do not re-trigger intake.
  */
 import { createHash } from 'node:crypto';
 
@@ -138,6 +138,20 @@ export function buildLoopIncidentBody({
   ].join('\n');
 }
 
+function parseExistingLoopIncidentIssue(existing, fallbackLastSeenAt) {
+  const bodyStr = String(existing?.body || '');
+  const firstSeenMatch = bodyStr.match(/\*\*First seen:\*\* ([^\n]+)/);
+  const firstSeenAt = firstSeenMatch ? firstSeenMatch[1].trim() : fallbackLastSeenAt;
+  const repMatch = bodyStr.match(/\*\*Repetition count:\*\* (\d+)/);
+  const repetitionCount = repMatch ? Number.parseInt(repMatch[1], 10) + 1 : 2;
+  return { firstSeenAt, repetitionCount };
+}
+
+function isOpenIssue(issue) {
+  const state = String(issue?.state || '').toLowerCase();
+  return state === '' || state === 'open';
+}
+
 /**
  * File or update a deduplicated PR loop incident issue.
  *
@@ -154,7 +168,7 @@ export function buildLoopIncidentBody({
  * @param {number}  opts.attempt    - exhausted attempt count from reconciler state
  * @param {string|null} opts.workflowRunUrl - optional URL of the detecting workflow run
  * @param {Date}    [opts.now]
- * @returns {Promise<{action: 'created'|'updated', issueNumber: number}>}
+ * @returns {Promise<{action: 'created'|'updated'|'reopened', issueNumber: number}>}
  */
 export async function fileLoopIncident({
   request,
@@ -190,24 +204,31 @@ export async function fileLoopIncident({
     if (err.status !== 422) throw err;
   }
 
-  // Search for an existing open incident with this exact title (scoped to the
-  // label so the list stays small even in active repositories).
+  // Search for an existing incident with this exact title (scoped to the label
+  // so the list stays small even in active repositories). Prefer an already-open
+  // issue; otherwise reuse the most recently updated closed issue so repeated
+  // loops on the same PR preserve their first-seen timestamp and repetition
+  // count instead of creating a fresh duplicate issue.
   const openIssues = await paginate(
     token,
-    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(LOOP_INCIDENT_LABEL)}`,
+    `/repos/${owner}/${repo}/issues?state=all&labels=${encodeURIComponent(LOOP_INCIDENT_LABEL)}`,
   );
-  const existing = openIssues.find(
-    (issue) => !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
+  const matchingIssues = openIssues.filter(
+    (issue) =>
+      !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
   );
+  const existingOpen = matchingIssues.find((issue) => isOpenIssue(issue));
+  const existingClosed = [...matchingIssues]
+    .filter((issue) => !isOpenIssue(issue))
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.updated_at || left.created_at || 0);
+      const rightTime = Date.parse(right.updated_at || right.created_at || 0);
+      return rightTime - leftTime;
+    })[0];
+  const existing = existingOpen || existingClosed;
 
   if (existing) {
-    // Parse first-seen and repetition count from the existing body so updates
-    // accumulate monotonically without API round-trips.
-    const bodyStr = String(existing.body || '');
-    const firstSeenMatch = bodyStr.match(/\*\*First seen:\*\* ([^\n]+)/);
-    const firstSeenAt = firstSeenMatch ? firstSeenMatch[1].trim() : lastSeenAt;
-    const repMatch = bodyStr.match(/\*\*Repetition count:\*\* (\d+)/);
-    const repetitionCount = repMatch ? Number.parseInt(repMatch[1], 10) + 1 : 2;
+    const { firstSeenAt, repetitionCount } = parseExistingLoopIncidentIssue(existing, lastSeenAt);
 
     const body = buildLoopIncidentBody({
       prNumber,
@@ -225,10 +246,13 @@ export async function fileLoopIncident({
 
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
-      body: { body },
+      body: {
+        body,
+        ...(existingOpen ? {} : { state: 'open' }),
+      },
     });
 
-    return { action: 'updated', issueNumber: existing.number };
+    return { action: existingOpen ? 'updated' : 'reopened', issueNumber: existing.number };
   }
 
   // No existing open incident — create one.  GitHub's `issues: opened` event
