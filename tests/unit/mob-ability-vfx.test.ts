@@ -12,6 +12,8 @@ function createGraphicsStub() {
     beginPath: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
+    strokePath: vi.fn(),
+    fillTriangle: vi.fn(),
     closePath: vi.fn(),
     fillPath: vi.fn(),
     strokeCircle: vi.fn(),
@@ -93,6 +95,7 @@ function mockInstance() {
     committedGeometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
     committedTargetEid: 1,
     committedTargetGeneration: null,
+    activeState: null,
     resolvedCasts: 0,
     announcementsEmitted: 1,
     ownedEntityGenerations: new Map<number, number>(),
@@ -314,6 +317,7 @@ describe('MobAbilityVfx', () => {
     // cleared before PhaserBridge.sync ran).
     world.mobAbilities.cues.length = 0;
     world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
       abilityId: 'queen-mab-verdigris-glamour',
       geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
     });
@@ -323,12 +327,53 @@ describe('MobAbilityVfx', () => {
     expect(circles.length).toBeGreaterThan(circlesBeforeBurst);
   });
 
+  it('renders a re-catch burst only from an explicit re-catch event', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+
+    world.mobAbilities.pendingBursts.push({ kind: 'recatch', x: 40, y: 10 });
+    vfx.update(world);
+    expect(circles.length).toBeGreaterThan(0);
+
+    const afterRecatch = circles.length;
+    world.mobAbilities.cues.push({
+      abilityId: 'overseer-fizzwick-clockwork-kill-saw',
+      casterEid: 8,
+      phase: 'return',
+      telegraphProgress: 1,
+      geometry: {
+        kind: 'lane',
+        originX: 40,
+        originY: 10,
+        endX: 40,
+        endY: 42,
+        dirX: 0,
+        dirY: 1,
+        widthFt: 6,
+        lengthFt: 32,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'CLOCKWORK KILL-SAW — Mandatory overtime starts now!',
+      projectileX: 40,
+      projectileY: 20,
+    });
+    vfx.update(world);
+    world.mobAbilities.cues.length = 0;
+    vfx.update(world);
+    const beforeRemoval = circles.length;
+    expect(beforeRemoval).toBeGreaterThan(afterRecatch);
+    vfx.update(world);
+    expect(circles.length).toBe(beforeRemoval);
+  });
+
   it('dispatches Squick bursts through the undercity-specific renderer path', () => {
     const { scene, circles } = createSceneStub();
     const world = createTestWorld();
     const vfx = createMobAbilityVfx(scene);
 
     world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
       abilityId: 'queen-mab-verdigris-glamour',
       geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
     });
@@ -336,6 +381,7 @@ describe('MobAbilityVfx', () => {
     const genericCircleCount = circles.length;
 
     world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
       abilityId: 'plague-boss-squick-undercity-mob-call',
       geometry: { kind: 'circle', x: 42, y: 39, radiusFt: 12 },
     });
@@ -343,6 +389,46 @@ describe('MobAbilityVfx', () => {
     const undercityCircleCount = circles.length - genericCircleCount;
 
     expect(undercityCircleCount).toBeGreaterThan(genericCircleCount);
+  });
+
+  it('draws the exact committed lane geometry footprint for Clockwork Kill-Saw', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'overseer-fizzwick-clockwork-kill-saw',
+      casterEid: 8,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'lane',
+        originX: 40,
+        originY: 10,
+        endX: 40,
+        endY: 42,
+        dirX: 0,
+        dirY: 1,
+        widthFt: 6,
+        lengthFt: 32,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'CLOCKWORK KILL-SAW — Mandatory overtime starts now!',
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    // Main's shared lane renderer paints the exact committed footprint as a
+    // filled quad: the four corners are origin/end offset by half the lane
+    // width along the lane normal. For a 6ft-wide, 32ft-long north-facing lane
+    // from (40,10) to (40,42) that is x = 40ft ± 24px at y = 10ft and 42ft.
+    const halfWidthPx = ftToPx(6) * 0.5;
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(40) - halfWidthPx, ftToPx(10));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40) - halfWidthPx, ftToPx(42));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40) + halfWidthPx, ftToPx(42));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40) + halfWidthPx, ftToPx(10));
+    expect(telegraphGfx!.fillStyle).toHaveBeenCalledWith(0xef4444, expect.any(Number));
   });
 
   it('renders Tongue Repossession lane bursts through the dedicated committed-lane VFX path', () => {
@@ -362,6 +448,7 @@ describe('MobAbilityVfx', () => {
     };
 
     world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
       abilityId: 'queen-mab-verdigris-glamour',
       geometry: laneGeometry,
     });
@@ -369,6 +456,7 @@ describe('MobAbilityVfx', () => {
     const genericLaneBurstCircleCount = circles.length;
 
     world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
       abilityId: 'big-mama-bufo-tongue-repossession',
       geometry: laneGeometry,
     });
