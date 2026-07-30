@@ -13,7 +13,10 @@
  */
 import type Phaser from 'phaser';
 import { describe, it, expect } from 'vitest';
-import { buildTerrainLayer } from '../../src/engine/terrain-renderer.js';
+import {
+  buildTerrainLayer,
+  PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES,
+} from '../../src/engine/terrain-renderer.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
@@ -346,6 +349,55 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       (s) => poolKeys.has(s.key) && s.x === voidTileCenterX && s.y === voidTileCenterY,
     );
     expect(poolStampsAtVoidTile).toHaveLength(0);
+  });
+
+  it('HARD GATE: treats a TREE neighbour as wall so no floor apron leaks past a wall into a tree', () => {
+    // Same defect class as the VOID gate above, and this exact membership has
+    // already been dropped once (and shipped green) on the theory that TREE has
+    // no wall art. That theory is irrelevant: this is a NEIGHBOUR-ONLY rule, so
+    // including TREE never stamps the wall atlas into the tree tile — it only
+    // stops the wall from insetting away from a tile you cannot walk onto and
+    // exposing a floor sliver under the tree. The maintainer's rule is "do not
+    // inset on sides where the other side is not walkable"; TREE is not
+    // walkable, so it belongs in the set.
+    const { scene, rt } = createPackScene(allPackKeys);
+    // 3x3 grid, STONE_WALL at center; every neighbour is real in-bounds FLOOR
+    // *except* the north neighbour, which is TREE. Only the TREE signal is
+    // under test.
+    const grid = Array<TerrainType>(9).fill(TerrainType.STONE_FLOOR);
+    grid[1] = TerrainType.TREE; // (1,0) — north of center
+    grid[4] = TerrainType.STONE_WALL; // (1,1) — center, tile under test
+    const floorMap = makeFloorMap(grid, 3, 3);
+
+    buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    const wallStamps = rt.stamps.filter((s) => s.key === pack.wallAutotile.textureKey);
+    expect(wallStamps).toHaveLength(1);
+
+    const frameFor = (rawMask: number) =>
+      pack.wallAutotile.masks.find((m) => m.maskId === normalizeBlob47Mask(rawMask))!.frameIndex;
+    const isolatedFrame = frameFor(0);
+    const northFrame = frameFor(MASK_BIT.N);
+
+    // The wall must select the mask with its NORTH cardinal bit set (tree read
+    // as solid), not the isolated (mask 0, all-sides-inset) frame.
+    expect(wallStamps[0]!.frame).toBe(northFrame);
+    expect(northFrame).not.toBe(isolatedFrame);
+  });
+
+  it('HARD GATE: every non-walkable neighbour terrain type stays in the wall-mask set', () => {
+    // Direct set-membership backstop for the behavioural gates above. The
+    // behavioural tests only cover VOID and TREE; this catches a silent drop of
+    // any member of the rule, including WOOD_WALL and DOOR, which have no
+    // dedicated mask gate of their own.
+    for (const terrain of [
+      TerrainType.DOOR,
+      TerrainType.VOID,
+      TerrainType.WOOD_WALL,
+      TerrainType.TREE,
+    ]) {
+      expect(PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(terrain)).toBe(true);
+    }
   });
 
   it('HARD GATE: treats an out-of-bounds neighbour as wall so a map-edge wall full-bleeds instead of insetting into nothing', () => {

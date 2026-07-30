@@ -136,16 +136,16 @@ const PACK_CORRIDOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([TerrainTy
  *     this set exists to fix.
  *   - `WOOD_WALL`: a different wall material, but still a wall — same
  *     "must not inset against another wall" logic as `STONE_WALL`/`CAVE_WALL`.
+ *   - `TREE`: non-walkable, so the rule "only inset toward walkable space"
+ *     puts it here. No generator writes `TREE` today, so this is currently
+ *     inert; it is included so the set matches the stated rule rather than
+ *     only the terrain that happens to exist right now.
  *
  * Deliberately EXCLUDED, even though non-walkable:
  *   - `WATER` / `LAVA`: these are visible-through hazards, not rock — you can
  *     see across/into them, so a wall should still inset toward them exactly
  *     as it does toward ordinary floor (you can see the lava through the
  *     inset gap; that is correct, not a bug).
- *   - `TREE`: non-walkable, but a trunk neither fills its cell nor reads as a
- *     wall face, so a wall should still inset toward it as it does toward
- *     floor. No generator writes `TREE` today, so including it would have been
- *     inert-but-wrong; revisit deliberately if trees are ever placed.
  *   - `RUBBLE`: no generator currently places this terrain type and its
  *     walkability semantics are not defined/authored anywhere, so it is left
  *     out rather than guessed at; revisit if/when `RUBBLE` is actually used.
@@ -165,6 +165,7 @@ export const PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = n
   TerrainType.DOOR,
   TerrainType.VOID,
   TerrainType.WOOD_WALL,
+  TerrainType.TREE,
 ]);
 
 /**

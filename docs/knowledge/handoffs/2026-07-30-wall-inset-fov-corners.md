@@ -49,9 +49,9 @@ origin would let a wall-mounted light source leak through diagonal gaps.
   `outOfBoundsMatches` (default `false`, existing callers unchanged); wall-mask
   callers pass `true` so an edge wall full-bleeds.
 - `src/engine/terrain-renderer.ts` — `PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES`
-  extended with `VOID` and `WOOD_WALL`. `WATER`/`LAVA` excluded (visible-through,
-  so insetting toward them is correct); `TREE` excluded (a trunk neither fills
-  its cell nor reads as a wall face, and nothing writes it).
+  extended with `VOID`, `WOOD_WALL` and `TREE` (non-walkable ⇒ don't inset
+  toward it). `WATER`/`LAVA` excluded — visible-through, so insetting toward
+  them is correct.
 - `src/labs/terrain-pack-lab/index.ts` — mirrors the renderer's argument so lab
   and game never drift on this predicate.
 - `src/labs/ai-runner-lab/scenario-presets.ts` — `TERRAIN_JUNCTION_SLICE` gained
@@ -91,6 +91,22 @@ All 10 went from ambient-only to source-lit — the exact reported symptom.
 
 ## Lessons worth keeping
 
+- **A wrong constraint in a delegation prompt is indistinguishable, from the
+  inside, from a correct one.** This work was delegated with the explicit
+  instruction "do NOT relax `hasBlockedCornerSeam` itself or change
+  `lineOfSight`", and scoped at 2🍎. Both were mine and both were wrong: the
+  corner cannot be _lit_ without changing `lineOfSight`, because the light
+  field consumes it. The implementing session followed the constraint
+  correctly, diagnosed the leak on its own merits, and escalated rather than
+  exceeding its authority — which is exactly the required behaviour. When a
+  delegate reports "the fix needs what you told me not to touch", that is
+  signal about the constraint, not resistance to be overridden.
+- **Check provenance before calling something fabricated.** An earlier draft
+  of this handoff described the delegate as inventing a maintainer quote. It
+  was quoting its task prompt verbatim — which this session had written. The
+  session store (`turns.user_message` at `turn_index = 0`) settles this in one
+  query; assumptions about who said what are cheap to verify and expensive to
+  get wrong in a permanent record.
 - **Resolve consumers through wrapper names, not just the symbol.**
   `light-field.ts` calls `map.hasLineOfSight(...)`, so grepping it for
   `lineOfSight` returns **nothing**. This caused a code review to return a false
@@ -104,11 +120,12 @@ All 10 went from ambient-only to source-lit — the exact reported symptom.
 - **Fixing a symptom's first half can look done.** Revealing the corner made it
   appear in FOV while leaving it visually dark — the user's actual complaint.
   Trace the symptom to the pixel, not to the first system that explains it.
-- **Concurrent sessions must not share a worktree.** A delegated child session
-  restarted and repeatedly reverted edits in the shared worktree. Worktrees share
-  the git object store, so the reliable recovery is
-  `git reset --hard <sha>` into your own worktree, then push from there. Treat a
-  session with a live `active_session_id` as actively writing.
+- **A PR's head branch is not always the delegate's local branch name.** PR
+  #2359 is backed by `nalfeo-studious-pancake`; the implementing session's local
+  branch `nalfeo-wall-inset-fov-corners` was never pushed. Both sessions spent
+  effort on the belief they were editing the same thing. Confirm with
+  `gh pr view <n> --json headRefName,headRefOid` before concluding anything about
+  who changed what.
 
 ## Recommended next steps
 
