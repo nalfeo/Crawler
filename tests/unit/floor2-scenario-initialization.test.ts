@@ -185,7 +185,10 @@ describe('initializeFloor2Scenario manifest validation', () => {
 
     const settlementAnchor = resolveFloor2SettlementAnchor(world);
     expect(settlementAnchor).not.toBeNull();
-    const settlementAnchorTile = world.floorMap!.worldToTile(settlementAnchor!.x, settlementAnchor!.y);
+    const settlementAnchorTile = world.floorMap!.worldToTile(
+      settlementAnchor!.x,
+      settlementAnchor!.y,
+    );
     const settlementAnchorRoomId = world.floorMap!.roomGraph.getRoomAt(
       settlementAnchorTile.x,
       settlementAnchorTile.y,

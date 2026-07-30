@@ -66,6 +66,7 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     const quartermaster = npcs.find((npc) => npc.defId === 'shop-the-quartermaster');
     expect(quartermaster, 'floor2 should spawn a quartermaster NPC').toBeDefined();
     await mainSceneProbe.setPlayerFeet(page, quartermaster!.feet.x, quartermaster!.feet.y);
+    await mainSceneProbe.advanceSimulationFrames(page, 1);
     await mainSceneProbe.queueInteraction(page);
   }
 
@@ -74,8 +75,12 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     const nonQuartermaster = npcs.find(
       (npc) => npc.defId.startsWith('shop-the-') && npc.defId !== 'shop-the-quartermaster',
     );
-    expect(nonQuartermaster, 'floor2 should spawn at least one non-quartermaster shop NPC').toBeDefined();
+    expect(
+      nonQuartermaster,
+      'floor2 should spawn at least one non-quartermaster shop NPC',
+    ).toBeDefined();
     await mainSceneProbe.setPlayerFeet(page, nonQuartermaster!.feet.x, nonQuartermaster!.feet.y);
+    await mainSceneProbe.advanceSimulationFrames(page, 1);
     await mainSceneProbe.queueInteraction(page);
   }
 
@@ -87,9 +92,10 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     });
 
     // Shop opens from NPC interaction, not from a persistent corner button.
-    expect(state.quartermasterButtonVisible, 'Shop button should stay hidden until panel open').toBe(
-      false,
-    );
+    expect(
+      state.quartermasterButtonVisible,
+      'Shop button should stay hidden until panel open',
+    ).toBe(false);
     expect(state.quartermasterOpen, 'Quartermaster panel should start closed').toBe(false);
   });
 
