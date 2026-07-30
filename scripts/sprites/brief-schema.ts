@@ -325,16 +325,20 @@ export const briefSchema = z
      *
      * When enabled, the sheet's cells are NOT independent design
      * alternatives of one static sprite (the normal sheet-mode meaning) —
-     * they are an ORDERED sequence of poses of the SAME subject, read
-     * left-to-right, meant to be packed into a single horizontal
-     * animation strip and played back frame-by-frame in the engine.
+     * they are an ORDERED sequence of poses of the SAME subject, read in
+     * row-major order (left-to-right within each row, top row first), meant
+     * to be packed into a single horizontal animation strip and played back
+     * frame-by-frame in the engine.
+     *
+     * Any rectangular layout is valid: 1×N (single row), 2×2, 2×3, etc.
+     * The only constraint is `rows × cols === frameCount` with no empty cells.
      *
      * Strictly opt-in and fully backward-compatible: every existing brief
      * omits this field and behaves exactly as before. When enabled,
-     * `generation.sheet` is cross-validated (see `superRefine` below) to be
-     * a single row of exactly `frameCount` cells with no empty cells —
-     * this reuses the existing grid/slicing machinery (`slice-sheet.ts`)
-     * instead of introducing a parallel layout system.
+     * `generation.sheet` is cross-validated (see `superRefine` below) to
+     * have exactly `frameCount` cells total — this reuses the content-aware
+     * slicing machinery (`slice-sheet.ts`) instead of introducing a parallel
+     * layout system.
      */
     frameSequence: z
       .object({

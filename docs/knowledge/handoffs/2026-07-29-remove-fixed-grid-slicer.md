@@ -77,10 +77,13 @@ the required gutter, surfacing the defect rather than silently shipping bled fra
 
 ## Follow-ons
 
-- The `player-walk-cycle.yaml` brief has NOT been regenerated as part of this PR (it is
-  currently unwired — pipeline fixture only, referenced by `approve-cli.test.ts`). The
-  existing generated assets (if any) from the old 1×4 layout are incompatible with the
-  new 2×2 layout and would need to be regenerated.
+- The `player-walk-cycle.yaml` brief has NOT been regenerated as part of this PR. The brief
+  IS wired to the player render kind via `src/shared/data/entity-sprite-mappings.json` (the
+  `"player"` renderKind pins `briefId: "player-walk-cycle"`), and an approved asset from the
+  old 1×4 layout exists at `public/assets/generated/entries/player-walk-cycle.json`
+  (approved 2026-07-29T04:04:48). That asset is incompatible with the new 2×2 layout and
+  must be regenerated through the pipeline (provider + content-aware slicer) so the four
+  clean frames can be confirmed and a new approved entry committed.
 
 ## Apple estimate
 

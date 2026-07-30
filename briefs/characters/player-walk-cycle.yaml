@@ -2,9 +2,10 @@
 #
 # This brief opts into `frameSequence` (Slice B): the sheet's cells are NOT
 # independent design alternatives — they are ORDERED FRAMES of one side-view
-# walk cycle for the SAME contestant, packed into a single horizontal strip
-# and played back in the engine (Slice A consumes the `animation` manifest
-# descriptor this produces).
+# walk cycle for the SAME contestant, stored in a 2×2 row-major source grid
+# (top-left → top-right → bottom-left → bottom-right). Approval packs those
+# four frames into a single horizontal strip that the engine plays back
+# frame-by-frame (Slice A consumes the `animation` manifest descriptor).
 #
 # ART STYLE matches the rest of the cast (see welcome-goon-v3.yaml): cartoon
 # EarthBound / Chrono Trigger / Undertale bobblehead proportions, flat cel
