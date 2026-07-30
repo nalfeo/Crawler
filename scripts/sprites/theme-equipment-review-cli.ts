@@ -613,6 +613,57 @@ function artifactStoreKey(artifact: ThemeEquipmentArtifactEvidence): string | nu
   return null;
 }
 
+/** Payload returned by an in-process artifact read (mirrors the `artifact` command). */
+export interface ThemeEquipmentArtifactPayload {
+  readonly contentType: string;
+  readonly base64: string;
+}
+
+/**
+ * Build an in-process, warm-store reader for the read-only `artifact` command.
+ *
+ * The canvas otherwise fetches every preview image by spawning a fresh `node`
+ * process that loads the entire bundled CLI — including `@azure/storage-blob` —
+ * just to run one `store.get`. Measured live, that fixed cost is ~2.5-5s per
+ * image on a 3.6 KB PNG: pure process + module-load overhead, not byte transfer
+ * or a cache miss. Constructing the RunStore once and reusing it across reads
+ * collapses each subsequent read to a warm disk-cache hit.
+ *
+ * It is read-only by construction — it only ever issues `artifact` commands,
+ * which never mutate durable state — so it deliberately skips the per-command
+ * process isolation the mutation path still relies on. It shares the same disk
+ * cache the child processes already populate (`createRunStore` resolves a fixed
+ * cache dir keyed by the non-secret store identity), so even the first
+ * in-process read is a warm hit.
+ */
+export function createThemeEquipmentArtifactReader(options: {
+  readonly repoRoot: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}): {
+  read(setId: string, itemId: string, artifactId: string): Promise<ThemeEquipmentArtifactPayload>;
+} {
+  const store = createRunStore({ repoRoot: options.repoRoot, env: options.env ?? process.env });
+  const deps: ThemeEquipmentReviewCliDeps = {
+    store,
+    now: () => new Date(),
+    repoRoot: options.repoRoot,
+  };
+  return {
+    async read(setId, itemId, artifactId) {
+      const result = await executeThemeEquipmentReviewCommand(
+        { action: 'artifact', setId, itemId, artifactId },
+        deps,
+      );
+      const contentType = result.contentType;
+      const base64 = result.base64;
+      if (typeof contentType !== 'string' || typeof base64 !== 'string') {
+        throw new Error('Artifact command did not return a previewable payload.');
+      }
+      return { contentType, base64 };
+    },
+  };
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   try {
     const encoded = argv[0];

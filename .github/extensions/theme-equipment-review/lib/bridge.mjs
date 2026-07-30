@@ -16,6 +16,8 @@ function cliEntryResolverFor(repoRoot, log) {
   }
   return resolver;
 }
+
+export { cliEntryResolverFor };
 const SERIALIZED_ACTIONS = new Set([
   'state',
   'item-review',

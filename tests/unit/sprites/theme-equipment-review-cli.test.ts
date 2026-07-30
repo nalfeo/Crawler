@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
+  createThemeEquipmentArtifactReader,
   executeThemeEquipmentReviewCommand,
   presentState,
 } from '../../../scripts/sprites/theme-equipment-review-cli.js';
+import { createRunStore } from '../../../scripts/sprites/store/index.js';
 import {
   buildThemeEquipmentSetStateFromPlan,
   loadThemeEquipmentSetPlan,
@@ -396,5 +401,57 @@ describe('save-and-approve-brief command', () => {
         { store, now: NOW, repoRoot: process.cwd() },
       ),
     ).rejects.toThrow(/revision-conflict/);
+  });
+});
+
+describe('createThemeEquipmentArtifactReader', () => {
+  it('serves artifact bytes in-process from a single warm store', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'theme-artifact-reader-'));
+    const env = { SPRITES_RUN_STORE: 'local' } as const;
+    try {
+      // Seed a real local store: state doc with a raw-sheet artifact + bytes.
+      const seedStore = createRunStore({ repoRoot, env });
+      const plan = loadThemeEquipmentSetPlan('classic-fantasy', {
+        projectRoot: process.cwd(),
+        planPath: 'data/theme-equipment-sets/classic-fantasy.json',
+      });
+      const state = buildThemeEquipmentSetStateFromPlan(plan, { updatedAt: NOW().toISOString() });
+      const item = state.items[0]!;
+      const recorded = recordThemeSetItemPhaseArtifacts(
+        state,
+        item.id,
+        [
+          {
+            id: `${item.id}-sheet-r0-raw`,
+            kind: 'raw-sheet',
+            uri: `memory://${item.id}/run-1/sheet-00.png`,
+            summary: 'sheet-00.png',
+            briefId: item.id,
+            runId: 'run-1',
+          },
+        ],
+        [],
+      );
+      if (!recorded.ok) throw new Error('fixture artifact mutation failed');
+      await saveThemeEquipmentSetState(seedStore, recorded.state, {
+        expectedRevision: null,
+        now: NOW,
+      });
+      await seedStore.put(`${item.id}/run-1/sheet-00.png`, Buffer.from('png-bytes'));
+
+      const reader = createThemeEquipmentArtifactReader({ repoRoot, env });
+      // Two reads exercise the reused warm store; both must return the bytes.
+      for (const _ of [0, 1]) {
+        const payload = await reader.read(state.id, item.id, `${item.id}-sheet-r0-raw`);
+        expect(payload.contentType).toBe('image/png');
+        expect(Buffer.from(payload.base64, 'base64').toString()).toBe('png-bytes');
+      }
+
+      await expect(reader.read(state.id, item.id, 'does-not-exist')).rejects.toThrow(
+        /was not found/,
+      );
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 });
