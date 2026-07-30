@@ -609,19 +609,35 @@ describe('achievementSystem', () => {
       expect(world.achievements.unlockedIds.has('floor2-floor-cleared')).toBe(true);
     });
 
-    it('surfaces the betrayer flag as hasBetrayedAlly', () => {
+    it('derives hasBetrayedAlly from a currently-Friendly family with recorded trash kills', () => {
+      // Regression test for the multi-model-review-found unreachability bug:
+      // `betrayerFlag` is never set `true` by any production system (only a
+      // dev-only lab), so `hasBetrayedAlly` must derive from real, already-
+      // tracked facts — a present family currently at 'friendly' band that
+      // also has at least one player-attributed trash kill against it.
+      const mirekin = asFamilyId('mirekin');
       const world = createTestWorld({ seed: 42, floor: 2 });
+      world.factionRelations.set(mirekin, 90); // 'friendly' band (76-100)
       world.floorExtendedState = {
         familyState: {
-          presentFamilies: [asFamilyId('mirekin')],
+          presentFamilies: [mirekin],
           contestedResource: asResourceId('glimmercap'),
-          betrayerFlag: true,
+          betrayerFlag: false,
+          trashKillsByFamily: new Map([[mirekin, 1]]),
         },
       };
 
-      const facts = collectCurrentFloorAchievementFacts(world);
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(true);
 
-      expect(facts.booleanFacts.hasBetrayedAlly).toBe(true);
+      // Friendly band alone, with no recorded kills, is not betrayal.
+      world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 0]]);
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(false);
+
+      // Kills recorded, but the family is no longer Friendly (e.g. hostile),
+      // is also not betrayal by this definition.
+      world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 1]]);
+      world.factionRelations.set(mirekin, 30); // 'hostile' band
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(false);
     });
 
     it('reads hasMetBroker from the Broker intro-complete goal flag', () => {
@@ -671,6 +687,10 @@ describe('achievementSystem', () => {
           betrayerFlag: true,
           decapitatedFamilies: new Set([mirekin]),
           bossEncounters: new Map([[mirekin, bossEncounter(mirekin)]]),
+          // mirekin is at 'friendly' band (90) but has a recorded trash kill
+          // against it — the real hasBetrayedAlly signal (betrayerFlag itself
+          // is dead/lab-only and intentionally ignored by achievementSystem).
+          trashKillsByFamily: new Map([[mirekin, 1]]),
         },
       };
       world.goalFlags.set('floor2-broker-intro-complete', true);

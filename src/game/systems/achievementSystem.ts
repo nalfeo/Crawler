@@ -86,6 +86,34 @@ function familiesAtBandCount(world: GameWorld, band: ReturnType<typeof bandFor>)
   return count;
 }
 
+/**
+ * Whether the player currently has a family at Friendly standing that they've
+ * also landed at least one player-attributed trash kill against ("betrayal").
+ *
+ * `Floor2State.betrayerFlag` (a boolean the doc comment describes as flipped
+ * "once the player attacks a Friendly family") is never set by any production
+ * system — it's mutated only inside a dev-only lab sandbox
+ * (`src/labs/family-territory-lab`) and is otherwise permanently `false`. That
+ * made the "Double Agent" achievement unreachable through real gameplay.
+ * Relation bands are driven solely by explicit settlement/emergent-event
+ * deltas (not combat), and passive decay defaults to 0, so a family's current
+ * band is never retroactively changed by killing its trash mobs — this makes
+ * "currently Friendly despite recorded kills against them" a robust,
+ * already-tracked, real-facts substitute for the same betrayal beat.
+ */
+function hasBetrayedFriendlyFamily(world: GameWorld): boolean {
+  if (world.floor !== 2) return false;
+  const familyState = world.floorExtendedState?.familyState;
+  const presentFamilies = familyState?.presentFamilies ?? [];
+  for (const familyId of presentFamilies) {
+    const kills = familyState?.trashKillsByFamily?.get(familyId) ?? 0;
+    if (kills > 0 && bandFor(getRelation(world, familyId)) === 'friendly') {
+      return true;
+    }
+  }
+  return false;
+}
+
 function evaluateNumberCompare(
   left: number,
   op: AchievementNumberOperator,
@@ -154,7 +182,12 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
   // 4-family run or under-require a 3-family run.
   const allPresentFamiliesFriendly =
     presentFamilyCount > 0 && familiesAtFriendlyCount === presentFamilyCount;
-  const hasBetrayedAlly = familyState?.betrayerFlag === true;
+  // Same dynamic-threshold reasoning as `allPresentFamiliesFriendly` above,
+  // applied to combat instead of reputation — a fixed `>= 4` threshold would
+  // be unreachable on the majority-case 3-family roster.
+  const allPresentFamiliesEngagedInCombat =
+    presentFamilyCount > 0 && familiesEngagedInCombatCount === presentFamilyCount;
+  const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
   const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
 
@@ -183,6 +216,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     booleanFacts: {
       ...empty.booleanFacts,
       allPresentFamiliesFriendly,
+      allPresentFamiliesEngagedInCombat,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
       staircaseUnlocked:
         floor1Objective?.staircaseUnlocked === true ||

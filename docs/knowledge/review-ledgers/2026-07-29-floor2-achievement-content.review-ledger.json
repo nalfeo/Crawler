@@ -16,8 +16,17 @@
       "notes": "Adversarial rubber-duck (gpt-5.4, high effort) red-teamed the fact-derivation design. Alt A: derive facts from raw Map/Set .size on floor2Scenario state (original design) - rejected because those maps are eagerly pre-seeded for every present family at floor init (not lazily populated on real player action), so size-based counts unlock achievements without gameplay. Alt B: keep .size but add a new separate tracking field inside floor2Scenario.ts - rejected as unnecessary scope creep into a sibling-owned file when the existing per-family state (started flag, kills count) already distinguishes real progress from init scaffolding. Chosen: filter existing per-family entries on their already-present started===true / kills>0 discriminator computed entirely in achievementSystem.ts, no sibling-file edits needed. divergence=minor: the review pruned a threshold/derivation defect, no re-architecture. 6 concerns: (1) familyBossEncounterCount used raw .size over eagerly-seeded not-started boss encounters - FIXED, filtered on started===true, regression test added ('excludes not-yet-started boss encounters'). (2) familiesEngagedInCombatCount used raw .size over eagerly-seeded 0-kill entries - FIXED, filtered on kills>0, regression test added and one pre-existing buggy test corrected. (3) Court Favorite hardcoded a >=3 threshold but Floor 2 can spawn 3 OR 4 present families - FIXED, added a new allPresentFamiliesFriendly boolean fact computed dynamically against presentFamilies.length, regression test covers 3-family-all-friendly, 4-family-partial (guards the old bug), and 4-family-all-friendly. (4) 'Off This Floor' achievement rules had no explicit phase and defaulted to 'tick', but confirmFloor2StairDescend only evaluates the 'run_end_clear' phase right before flipping world.state to 'safe_room' (which then gates the entire tick pipeline off per MainGameScene.ts's world.state!=='playing' early-return) - FIXED, added phase:run_end_clear to both unlockRules, regression test proves tick-phase evaluation does NOT unlock it while run_end_clear-phase evaluation DOES. (5) achievementSystem.ts hardcodes the broker-intro-complete goal-ID string instead of importing floor2Scenario's exported constant - investigated: importing it would create a circular import, since floor2Scenario.ts already imports evaluateAchievementUnlocksForPhase from achievementSystem.ts. Kept the string literal and strengthened the explanatory comment instead - addressed via documented reasoning, not a code change (no functional defect). (6) JSON catalog validation could be stricter (suggestion only) - acknowledged and deferred as out-of-scope hardening, noted in the handoff; not a defect in current behavior."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Reviewer's only finding was that the 4 bug fixes existed only as uncommitted working-tree changes at the moment it started reviewing (branch HEAD at review start still had all 4 pre-fix bugs). The fixes were committed (d87d8a7c8) concurrently with the review run; git diff main...HEAD now includes achievementSystem.ts, achievements.ts, achievements.floor2.json, achievement-system.test.ts, and achievement-facts-properties.test.ts with the fixes present. No other findings: floor2Scenario.ts untouched, all 36 IDs unique, no reward-rarity violations, run-global achievements reference only allowlisted facts, quest ID literals match constants, layer boundaries clean."
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,
