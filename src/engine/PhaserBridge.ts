@@ -377,17 +377,25 @@ function warnGeneratedTextureUnresolved(
   type: string,
   generated: NonNullable<EntitySpriteMappings['renderKinds'][string]['generated']>,
   appearanceKey: string | undefined,
+  effective: { briefId: string; pinnedTextureKey: string },
 ): void {
   const warningKey = `${type}:${appearanceKey ?? ''}`;
   if (generatedTextureUnresolvedWarnings.has(warningKey)) {
     return;
   }
   generatedTextureUnresolvedWarnings.add(warningKey);
+  // Log the EFFECTIVE (post-variant-lookup) descriptor that was actually
+  // unresolvable, not just the render kind's top-level default — otherwise a
+  // broken per-appearance variant (e.g. a bad `male`/`other` pinnedTextureKey)
+  // logs the unrelated top-level/default key and misleads whoever is
+  // debugging the regression.
   logger.warn('Generated texture mapping configured but unresolvable; falling through', {
     type,
     appearanceKey,
-    briefId: generated.briefId,
-    pinnedTextureKey: generated.pinnedTextureKey,
+    briefId: effective.briefId,
+    pinnedTextureKey: effective.pinnedTextureKey,
+    topLevelBriefId: generated.briefId,
+    topLevelPinnedTextureKey: generated.pinnedTextureKey,
   });
 }
 
@@ -401,6 +409,17 @@ function resolveGeneratedTexture(
     return null;
   }
 
+  // Resolution precedence (highest to lowest):
+  //   1. The global enemy variant-roll registry (`pickGeneratedEnemyTextureKey`)
+  //      — enemy-only; `'player'` is deliberately absent from its backing maps
+  //      (`GENERATED_BRIEF_BY_TYPE` / `GENERATED_BRIEF_BY_APPEARANCE_KEY`), so
+  //      this always misses for the player and falls through to (2).
+  //   2. This render kind's own `generated.variantsByAppearanceKey[appearanceKey]`
+  //      (e.g. player gender selecting one of several walk-cycle sheets).
+  //   3. The top-level `generated.briefId`/`pinnedTextureKey`/`scale` default.
+  // If (1) is ever extended to cover a render kind that ALSO configures
+  // `variantsByAppearanceKey`, the registry wins — (2) is local-override-only,
+  // it does not shadow the global registry.
   const registryKey = pickGeneratedEnemyTextureKey(
     getGeneratedSpriteRegistry(scene),
     type,
@@ -411,9 +430,6 @@ function resolveGeneratedTexture(
     return { key: registryKey, scale: generated.scale };
   }
 
-  // Per-appearanceKey override (e.g. player gender selecting one of several
-  // walk-cycle sheets) takes priority over the top-level descriptor. Falls
-  // back to the top level when the resolved appearanceKey has no entry.
   const variant =
     options?.appearanceKey !== undefined
       ? generated.variantsByAppearanceKey?.[options.appearanceKey]
@@ -432,7 +448,10 @@ function resolveGeneratedTexture(
 
   const textureKeys = scene.textures.getTextureKeys?.();
   if (!Array.isArray(textureKeys)) {
-    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey);
+    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey, {
+      briefId: effectiveBriefId,
+      pinnedTextureKey: effectivePinnedTextureKey,
+    });
     return null;
   }
 
@@ -452,7 +471,10 @@ function resolveGeneratedTexture(
     selectedKey = key;
   }
   if (selectedKey === undefined) {
-    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey);
+    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey, {
+      briefId: effectiveBriefId,
+      pinnedTextureKey: effectivePinnedTextureKey,
+    });
     return null;
   }
   return { key: selectedKey, scale: effectiveScale };
