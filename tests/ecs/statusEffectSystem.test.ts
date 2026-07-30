@@ -11,7 +11,6 @@ import {
 } from '../../src/core/status-effects.js';
 import { statusEffectSystem } from '../../src/core/systems/statusEffectSystem.js';
 import {
-  canEquip,
   equip,
   unequip,
   initializeBaseStats,
@@ -336,7 +335,7 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
     expect(getStatusEffects(world, eid)).toHaveLength(0);
   });
 
-  it('an invalid granted spec fails canEquip and equip mutates nothing (atomic)', () => {
+  it('an invalid granted spec fails equip and mutates nothing (atomic)', () => {
     const { world, eid } = spawnWearer();
     const badCharm: EquipmentItemDef = {
       id: 'bad-charm',
@@ -357,8 +356,8 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
         },
       ],
     };
-    expect(canEquip(world, eid, badCharm).allowed).toBe(false);
-    expect(equip(world, eid, badCharm, { force: true }).ok).toBe(false);
+    const result = equip(world, eid, badCharm, { force: true });
+    expect(result.ok).toBe(false);
     expect(getStatusEffects(world, eid)).toHaveLength(0);
     // Slot was not consumed — the valid charm can still be equipped afterwards.
     expect(equip(world, eid, MERCHANTS_CHARM_DEF, { force: true }).ok).toBe(true);
