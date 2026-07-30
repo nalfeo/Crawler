@@ -1,5 +1,16 @@
 [
   {
+    "commit": "de14465c949e269df89654f602fee3dbd76a44e6",
+    "commitDate": "2026-07-30T08:19:38Z",
+    "commitSubject": "fix(terrain,fov): stop wall inset bleeding into rock, and reveal + light room corners (#2359)",
+    "capturedAt": "2026-07-30T09:27:30.668Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30526889621",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/de14465c949e269df89654f602fee3dbd76a44e6.json"
+  },
+  {
     "commit": "15c37a664882447ed33b6427f4c02349fd6ce8fe",
     "commitDate": "2026-07-30T06:50:09Z",
     "commitSubject": "fix(achievements): post-merge review fixes for Floor 2 achievement content + tier4 collision resolution (#2360)",
