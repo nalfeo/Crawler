@@ -405,10 +405,24 @@ export function sortSlots(
   catalog?: readonly ItemDef[],
   resolveGenerated?: GeneratedInventoryEntryResolver,
 ): unknown[] {
+  // No-resolver path: sort the static lane only to preserve the InventorySlot[]
+  // return contract. Mixed bags contain generated entries that cannot be
+  // resolved without a resolver, so including them would both break the
+  // contract and produce an unresolvable undefined sort key.
+  const entries: InventoryBagEntry[] = resolveGenerated
+    ? [...listInventoryEntries(bag)]
+    : bag.slots.map(
+        (slot): StackableStaticInventoryEntry => ({
+          kind: 'stackable-static-item',
+          itemId: slot.itemId,
+          quantity: slot.quantity,
+        }),
+      );
+
   const resolve = (entry: InventoryBagEntry) =>
     resolveEntryMetadata(entry, catalog, resolveGenerated);
 
-  return [...listInventoryEntries(bag)].sort((a, b) => {
+  return entries.sort((a, b) => {
     const defA = resolve(a);
     const defB = resolve(b);
     if (!defA || !defB) return 0;

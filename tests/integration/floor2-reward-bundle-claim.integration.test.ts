@@ -8,15 +8,21 @@ import {
   unlockAchievement,
 } from '../../src/game/systems/achievementSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
-import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
+import {
+  createGeneratedEquipmentInstance,
+  listGeneratedEquipmentInstances,
+} from '../../src/core/generated-equipment-registry.js';
 import { getItemCount, hasGeneratedEquipmentReference } from '../../src/shared/inventory.js';
 import {
   FLOOR1_COMMON_CRAFTING_MATERIALS,
+  LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
   LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
 } from '../../src/shared/achievements.js';
+import { GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
 // Floor 2 achievements — all single-instance equipment bundles, tiered.
 const TIER1_ACHIEVEMENT_ID = 'floor2-field-kit';
@@ -256,6 +262,99 @@ describe('Floor 2 reward bundle — Floor 1 exclusion / equipment-free preservat
     claimAchievementReward(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID);
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+  });
+});
+
+describe('Legacy tier4 achievement bundle — claim usability regression', () => {
+  // These three achievements briefly resolved at tier4 before the tier model
+  // tightened to tier1-tier3. Persisted tier4 bundles must claim successfully,
+  // transferring the exact pre-resolved instance without re-rolling.
+  it.each([...LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS])(
+    'claims a persisted tier4 bundle for legacy achievement %s, transfers the exact instance, consumes the bundle',
+    (achievementId) => {
+      const runKey = `legacy-tier4-claim-${achievementId}`;
+      const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: runKey });
+      enableFloor2Rewards(world);
+      const playerEid = spawnPlayer(world, 0, 0);
+
+      // Inject a pre-existing tier4 bundle as if it was generated before the
+      // tier model migration, using a 'rare' rarity (within tier4's allowed pool).
+      const instance = createGeneratedEquipmentInstance(
+        world,
+        generatedEquipmentInput({ baseId: 'weapon.iron-cleaver', rarity: 'rare' }),
+      );
+      const instanceKey = instance.instanceId;
+      world.achievements.unlockedIds.add(achievementId);
+      world.generatedEquipmentRewardBundles.set(achievementId, {
+        schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+        achievementId,
+        tier: 'tier4',
+        instanceKeys: [instanceKey],
+      });
+
+      const instanceCountBefore = listGeneratedEquipmentInstances(world).length;
+
+      const result = claimAchievementReward(world, achievementId);
+
+      // Claim must succeed.
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      // Exactly the pre-generated instance is transferred — no re-roll.
+      expect(result.grantedEquipment).toHaveLength(1);
+      expect(result.grantedEquipment![0]!.instanceKey).toBe(instanceKey);
+
+      // Instance count unchanged (ownership transferred, not duplicated).
+      expect(listGeneratedEquipmentInstances(world).length).toBe(instanceCountBefore);
+
+      // Instance now in the player's bag.
+      const bag = world.inventories.get(playerEid)!;
+      expect(hasGeneratedEquipmentReference(bag, instanceKey)).toBe(true);
+
+      // Bundle consumed.
+      expect(world.generatedEquipmentRewardBundles.has(achievementId)).toBe(false);
+
+      // Achievement marked claimed.
+      expect(isAchievementClaimed(world, achievementId)).toBe(true);
+
+      // Idempotent: second claim returns alreadyClaimed, bag unchanged.
+      const second = claimAchievementReward(world, achievementId);
+      expect(second).toEqual({ ok: false, reason: 'alreadyClaimed' });
+      expect(hasGeneratedEquipmentReference(bag, instanceKey)).toBe(true);
+    },
+  );
+
+  it('a tier4 bundle on an achievement outside the legacy allowlist fails closed (grantFailed), bundle retained', () => {
+    const runKey = 'legacy-tier4-nonallowlisted-claim';
+    const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: runKey });
+    enableFloor2Rewards(world);
+    spawnPlayer(world, 0, 0);
+
+    // floor2-field-kit is a tier1 achievement — NOT in the legacy tier4 allowlist.
+    const achievementId = TIER1_ACHIEVEMENT_ID;
+    const instance = createGeneratedEquipmentInstance(
+      world,
+      generatedEquipmentInput({ baseId: 'weapon.iron-cleaver', rarity: 'rare' }),
+    );
+    const instanceKey = instance.instanceId;
+    world.achievements.unlockedIds.add(achievementId);
+    world.generatedEquipmentRewardBundles.set(achievementId, {
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId,
+      tier: 'tier4',
+      instanceKeys: [instanceKey],
+    });
+
+    const result = claimAchievementReward(world, achievementId);
+
+    // Must fail closed — the tier4 mismatch is not in the allowlist.
+    expect(result).toEqual({ ok: false, reason: 'grantFailed' });
+
+    // Achievement must remain unclaimed.
+    expect(isAchievementClaimed(world, achievementId)).toBe(false);
+
+    // Bundle must be retained so the claim stays retryable.
+    expect(world.generatedEquipmentRewardBundles.has(achievementId)).toBe(true);
   });
 });
 

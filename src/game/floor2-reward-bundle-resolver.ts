@@ -5,6 +5,7 @@ import {
   EQUIPMENT_REWARD_TIER_RARITIES,
   EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS,
   RARITY_EFFECT_BUDGET,
+  type AchievementEquipmentRewardTier,
   type EquipmentRewardTier,
   type GeneratedEquipmentRarity,
   type GeneratedEquipmentInstanceV1,
@@ -155,7 +156,7 @@ export interface Floor2RewardPoolRarityComposition {
 
 export type Floor2RewardPoolTierEligibilityReport = Readonly<
   Record<
-    EquipmentRewardTier,
+    AchievementEquipmentRewardTier,
     Readonly<Record<GeneratedEquipmentRarity, Floor2RewardPoolRarityComposition>>
   >
 >;
@@ -194,7 +195,7 @@ export function computeFloor2RewardPoolTierEligibility(
   weaponIds: ReadonlySet<string>,
 ): Floor2RewardPoolTierEligibilityReport {
   const report = {} as Record<
-    EquipmentRewardTier,
+    AchievementEquipmentRewardTier,
     Record<GeneratedEquipmentRarity, Floor2RewardPoolRarityComposition>
   >;
   for (const tier of ACHIEVEMENT_EQUIPMENT_REWARD_TIERS) {

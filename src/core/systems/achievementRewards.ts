@@ -23,6 +23,7 @@ import {
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
   FLOOR1_COMMON_CRAFTING_MATERIALS,
   FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
+  LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
   type AchievementCatalogRegistry,
   type AchievementReward,
 } from '../../shared/achievements.js';
@@ -111,11 +112,21 @@ export function claimAchievementReward(
     // vocabulary (ADR 0069 amendment; the resolver/claim boundary itself is
     // unchanged, see ADR 0068).
     const equipmentRewardTier = FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier];
+    // Legacy allowance: a small set of achievements briefly shipped with tier4
+    // bundles before the authored tier model tightened to tier1-tier3.
+    // If the persisted bundle is tier4 AND the achievementId is in the shared
+    // allowlist, pass tier4 as the expected tier so the already-generated
+    // instance is claimed verbatim — no re-roll, no stat/rarity change.
+    const existingBundle = world.generatedEquipmentRewardBundles.get(achievementId);
+    const effectiveTier =
+      existingBundle?.tier === 'tier4' && LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS.has(achievementId)
+        ? ('tier4' as const)
+        : equipmentRewardTier;
     const grant = claimGeneratedEquipmentRewardBundle(
       world,
       playerEid,
       achievementId,
-      equipmentRewardTier,
+      effectiveTier,
     );
     if (!grant.ok) {
       return { ok: false, reason: 'grantFailed' };
@@ -123,7 +134,7 @@ export function claimAchievementReward(
     world.achievements.claimedIds.add(achievementId);
     world.achievements.pendingPresentations.set(achievementId, {
       kind: 'equipment',
-      tier: equipmentRewardTier,
+      tier: effectiveTier,
       instanceKeys: grant.granted.map((entry) => entry.instanceKey),
     });
     return { ok: true, reward: achievement.reward, grantedEquipment: grant.granted };

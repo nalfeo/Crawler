@@ -420,6 +420,26 @@ describe('InventoryBag', () => {
       expect(sorted[1]!.itemId).toBe('test-ore');
       expect(sorted[2]!.itemId).toBe('test-potion');
     });
+
+    it('no-resolver path on a mixed bag returns only static slots, not generated entries', () => {
+      // Mixed bag: two static items + one generated entry.
+      addItem(bag, 'test-sword', 1, testCatalog); // Rare
+      addItem(bag, 'test-ore', 2, testCatalog); // Common
+      const genKey = 'gei:v1:sort-mixed-test:0' as GeneratedEquipmentInstanceKey;
+      addGeneratedEquipmentReference(bag, genKey);
+
+      // No-resolver overload — must return InventorySlot[] over static lane only.
+      const sorted = sortSlots(bag, 'rarity', testCatalog);
+
+      // Generated entry must be absent; only the 2 static items returned.
+      expect(sorted).toHaveLength(2);
+      expect(sorted[0]!.itemId).toBe('test-sword'); // Rare first
+      expect(sorted[1]!.itemId).toBe('test-ore'); // Common second
+
+      // Ensure the generated key is not lurking in the result under any shape.
+      const keys = sorted.map((s) => ('instanceKey' in s ? s.instanceKey : null));
+      expect(keys).not.toContain(genKey);
+    });
   });
 });
 

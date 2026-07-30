@@ -27,6 +27,7 @@ import {
   mergeAchievementFactSnapshots,
   isLootBoxTier,
   FLOOR1_COMMON_CRAFTING_MATERIALS,
+  LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
   LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
   LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION,
@@ -59,13 +60,6 @@ import { clearActiveWeaponDef } from '../core/active-weapon.js';
 import { createBossChestId, type BossChestState } from '../core/systems/bossChestRewards.js';
 
 const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
-// These achievements shipped briefly as tier4 before the authored tier model
-// collapsed to tier1-tier3. Preserve their already-generated exact instances.
-const LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS = new Set([
-  'floor2-family-annihilator',
-  'floor2-floor-cleared',
-  'floor2-scorched-earth',
-]);
 
 class PlayerCarryoverSnapshotError extends Error {
   constructor(message: string) {

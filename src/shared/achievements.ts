@@ -86,6 +86,23 @@ export const FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER: Readonly<
 });
 
 /**
+ * Achievement IDs that briefly resolved at `tier4` before the authored tier
+ * model tightened to tier1–tier3 (see ADR 0069 amendment). Persisted `tier4`
+ * bundles and presentations for these IDs are preserved verbatim at
+ * restore/claim time so the already-generated instances are never re-rolled
+ * or altered. Any achievement ID outside this set rejects a `tier4` bundle or
+ * presentation as tampered/stale state (fail-closed). Shared from
+ * `src/shared/` so both the core claim path (`achievementRewards.ts`) and the
+ * game carryover restore validator (`playerCarryover.ts`) use the single
+ * canonical allowlist without duplication.
+ */
+export const LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS: ReadonlySet<string> = new Set([
+  'floor2-family-annihilator',
+  'floor2-floor-cleared',
+  'floor2-scorched-earth',
+]);
+
+/**
  * Floor 1 achievement loot-box gold grant, monotonically increasing by tier.
  * Floor 1 loot boxes NEVER contain equipment (structurally guaranteed — the
  * `lootBox` reward variant has no equipment fields); they grant only gold
