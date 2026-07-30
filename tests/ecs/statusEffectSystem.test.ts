@@ -10,11 +10,7 @@ import {
   computeEffectiveSpeed,
 } from '../../src/core/status-effects.js';
 import { statusEffectSystem } from '../../src/core/systems/statusEffectSystem.js';
-import {
-  equip,
-  unequip,
-  initializeBaseStats,
-} from '../../src/core/systems/equipmentSystem.js';
+import { equip, unequip, initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import { GAME } from '../../src/shared/constants.js';
 import type { StatusEffectSpec } from '../../src/shared/status-effect-types.js';
