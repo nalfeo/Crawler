@@ -38,7 +38,11 @@ import { spawnDroppedItem } from '../../core/helpers.js';
 import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
-import { openBossChest, acknowledgeBossChestReveal } from '../../core/systems/bossChestRewards.js';
+import {
+  openBossChest,
+  acknowledgeBossChestReveal,
+  createBossChestRecord,
+} from '../../core/systems/bossChestRewards.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -57,7 +61,8 @@ import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
-import { spawnBossChestForDefeatedBoss } from '../../game/boss-chest-resolver.js';
+import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
+import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
 import {
   getQuartermasterOfferViews,
   purchaseQuartermasterOffer,
@@ -1305,9 +1310,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) {
         return;
       }
-      world.bossChests.delete('boss-chest:ratfolk');
-      world.generatedEquipmentRewardBundles.delete('boss-chest:ratfolk');
-      spawnBossChestForDefeatedBoss(world, 'ratfolk');
+      const chestId = 'boss-chest:ratfolk';
+      world.bossChests.delete(chestId);
+      world.generatedEquipmentRewardBundles.delete(chestId);
+      resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS, 'tier4');
+      const created = createBossChestRecord(world, chestId, 'ratfolk');
+      if (!created.ok) {
+        throw new Error(`probe boss chest setup failed: missing bundle for ${chestId}`);
+      }
       scene.bossChestUI?.refresh(world);
     },
 
