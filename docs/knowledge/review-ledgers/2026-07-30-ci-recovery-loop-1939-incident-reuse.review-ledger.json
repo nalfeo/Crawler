@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "ci-recovery-loop-1939-incident-reuse",
+  "task_title": "Reuse prior PR loop incidents",
+  "estimated_apples": 2,
+  "stages": {}
+}
