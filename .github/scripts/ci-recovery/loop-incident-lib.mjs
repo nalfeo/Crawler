@@ -12,9 +12,9 @@
  * controlled blocker kinds, IDs, and URLs are recorded.  The investigation
  * agent fetches the source evidence directly from those links.
  *
- * Filing the issue activates the existing `issue-copilot-intake.yml` workflow
- * (triggered on `issues: opened`) exactly once.  Subsequent updates do not
- * re-trigger intake.
+ * Filing or reopening the issue activates the existing
+ * `issue-copilot-intake.yml` workflow (triggered on `issues: opened` and
+ * `issues: reopened`).  Same-state updates do not re-trigger intake.
  */
 import { createHash } from 'node:crypto';
 
