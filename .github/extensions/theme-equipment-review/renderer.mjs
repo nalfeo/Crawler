@@ -330,7 +330,10 @@ export function renderHtml(bootstrap) {
             '<label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" data-overwrite> overwrite existing file</label></div>' +
             (draft.saved
               ? (draft.saved.durable
-                  ? '<p class="muted">Pushed <strong>' + esc(draft.saved.planPath) + '</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong> ' + (draft.saved.durable.commit ? '(commit <code>' + esc(String(draft.saved.durable.commit).slice(0, 7)) + '</code>)' : '(commit pending)') + '. Open the set and initialize it on GitHub — init reads the plan from ' + esc(draft.saved.durable.branch) + ', so any workspace can run it.</p>'
+                  ? (draft.saved.durable.pending
+                      ? '<p class="muted" style="border-left:3px solid var(--true-color-orange,#d29922);padding-left:10px">Saved <strong>' + esc(draft.saved.planPath) + '</strong> to your working tree, but it is <strong>not yet shared</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong>: ' + esc(String(draft.saved.durable.reason || 'a transient publish error')) + '. Nothing was lost — your plan is safe locally. GitHub init reads the plan from ' + esc(draft.saved.durable.branch) + ', so retry the publish before initializing.</p>' +
+                        '<div class="controls"><button class="primary" data-retry-publish ' + (busy ? 'disabled' : '') + '>Retry publish</button></div>'
+                      : '<p class="muted">Pushed <strong>' + esc(draft.saved.planPath) + '</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong> ' + (draft.saved.durable.commit ? '(commit <code>' + esc(String(draft.saved.durable.commit).slice(0, 7)) + '</code>)' : '(commit pending)') + '. Open the set and initialize it on GitHub — init reads the plan from ' + esc(draft.saved.durable.branch) + ', so any workspace can run it.</p>')
                   : '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong> locally but did <strong>not</strong> publish it to the shared plans branch. It will not be visible to a GitHub init until it is pushed.</p>')
               : '') +
           '</section>'
@@ -364,7 +367,11 @@ export function renderHtml(bootstrap) {
       });
       planEditor?.addEventListener('change', () => { draft.planText = planEditor.value; renderCreate(); });
       document.querySelector('[data-synth]')?.addEventListener('click', synthRoster);
-      document.querySelector('[data-save]')?.addEventListener('click', savePlan);
+      document.querySelector('[data-save]')?.addEventListener('click', () => savePlan());
+      // Retry after a transient publish outage: force overwrite so a prior
+      // attempt that partially landed is replaced idempotently rather than
+      // tripping the "already exists" guard.
+      document.querySelector('[data-retry-publish]')?.addEventListener('click', () => savePlan({ forceOverwrite: true }));
     }
 
     async function synthRoster() {
@@ -393,8 +400,9 @@ export function renderHtml(bootstrap) {
       }
     }
 
-    async function savePlan() {
+    async function savePlan(options) {
       if (busy) return;
+      const forceOverwrite = options?.forceOverwrite === true;
       let plan;
       try {
         plan = JSON.parse(draft.planText);
@@ -402,7 +410,7 @@ export function renderHtml(bootstrap) {
         draft.error = 'Roster JSON is invalid: ' + error.message;
         return renderCreate();
       }
-      const overwrite = document.querySelector('[data-overwrite]')?.checked === true;
+      const overwrite = forceOverwrite || document.querySelector('[data-overwrite]')?.checked === true;
       draft.error = null;
       busy = true;
       renderCreate();

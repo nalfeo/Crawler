@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createThemeEquipmentArtifactReader,
   createGhPlanPublisher,
   executeThemeEquipmentReviewCommand,
+  isRetryableGhFailure,
+  PlanPublishError,
   presentState,
+  savePlan,
+  THEME_SET_PLAN_DIR,
 } from '../../../scripts/sprites/theme-equipment-review-cli.js';
 import { createRunStore } from '../../../scripts/sprites/store/index.js';
 import {
@@ -613,5 +617,127 @@ describe('createGhPlanPublisher', () => {
     expect(result.commit).toBe('seeded');
     // The branch-create POST carried the resolved default-branch tip sha.
     expect(seen.some((s) => s.includes('sha=mainsha'))).toBe(true);
+  });
+});
+
+describe('isRetryableGhFailure', () => {
+  it('treats a missing HTTP status (timeout / dropped connection / deadline) as retryable', () => {
+    expect(isRetryableGhFailure({ status: null, errorMessage: 'connection reset' })).toBe(true);
+    expect(
+      isRetryableGhFailure({ status: null, errorMessage: 'Plan publish deadline exceeded' }),
+    ).toBe(true);
+  });
+
+  it('treats explicit rate limiting and upstream 5xx as retryable', () => {
+    expect(isRetryableGhFailure({ status: 429, errorMessage: 'too many requests' })).toBe(true);
+    expect(isRetryableGhFailure({ status: 500, errorMessage: 'server error' })).toBe(true);
+    expect(isRetryableGhFailure({ status: 503, errorMessage: 'unavailable' })).toBe(true);
+    expect(
+      isRetryableGhFailure({ status: 403, errorMessage: 'HTTP 403: API rate limit exceeded' }),
+    ).toBe(true);
+    expect(
+      isRetryableGhFailure({
+        status: 403,
+        errorMessage: 'You have exceeded a secondary rate limit',
+      }),
+    ).toBe(true);
+  });
+
+  it('treats auth, conflict, validation, and plain 403 as definitive', () => {
+    expect(isRetryableGhFailure({ status: 401, errorMessage: 'bad credentials' })).toBe(false);
+    expect(isRetryableGhFailure({ status: 409, errorMessage: 'conflict' })).toBe(false);
+    expect(isRetryableGhFailure({ status: 422, errorMessage: 'validation failed' })).toBe(false);
+    expect(
+      isRetryableGhFailure({ status: 403, errorMessage: 'HTTP 403: Resource not accessible' }),
+    ).toBe(false);
+  });
+});
+
+describe('savePlan graceful degradation on publish failure', () => {
+  const loadClothPlan = () =>
+    loadThemeEquipmentSetPlan('classic-fantasy', {
+      projectRoot: process.cwd(),
+      planPath: 'data/theme-equipment-sets/classic-fantasy.json',
+    });
+
+  const planFilePath = (repoRoot: string) =>
+    join(repoRoot, THEME_SET_PLAN_DIR, 'classic-fantasy.json');
+
+  it('keeps the local write and reports a pending state on a retryable publish failure', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'theme-save-retry-'));
+    try {
+      const store = memoryStore();
+      const result = await savePlan(
+        { plan: loadClothPlan() },
+        {
+          store,
+          repoRoot,
+          publishPlan: async () => {
+            throw new PlanPublishError('gh api ... failed: HTTP 403: API rate limit exceeded', {
+              retryable: true,
+              status: 403,
+            });
+          },
+        },
+      );
+
+      expect(result.saved).toBe(true);
+      const durable = result.durable as Record<string, unknown> | undefined;
+      expect(durable?.pending).toBe(true);
+      expect(durable?.retryable).toBe(true);
+      expect(String(durable?.reason)).toMatch(/rate limit/i);
+      // The authored plan must survive on disk so the maintainer can retry.
+      expect(existsSync(planFilePath(repoRoot))).toBe(true);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rolls back and throws on a definitive publish failure', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'theme-save-def-'));
+    try {
+      const store = memoryStore();
+      await expect(
+        savePlan(
+          { plan: loadClothPlan() },
+          {
+            store,
+            repoRoot,
+            publishPlan: async () => {
+              throw new PlanPublishError('gh api ... failed: HTTP 401: Bad credentials', {
+                retryable: false,
+                status: 401,
+              });
+            },
+          },
+        ),
+      ).rejects.toThrow(/rolled back so it does not look shared/);
+      // A definitive failure must not leave a misleading local-only plan behind.
+      expect(existsSync(planFilePath(repoRoot))).toBe(false);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rolls back and throws when a non-classified error is raised (backward compatible)', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'theme-save-plain-'));
+    try {
+      const store = memoryStore();
+      await expect(
+        savePlan(
+          { plan: loadClothPlan() },
+          {
+            store,
+            repoRoot,
+            publishPlan: async () => {
+              throw new Error('some non-publisher failure');
+            },
+          },
+        ),
+      ).rejects.toThrow(/rolled back so it does not look shared/);
+      expect(existsSync(planFilePath(repoRoot))).toBe(false);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 });

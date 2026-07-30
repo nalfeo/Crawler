@@ -104,6 +104,49 @@ export type ThemeSetPlanPublisher = (
   input: ThemeSetPlanPublishInput,
 ) => Promise<ThemeSetPlanPublishResult>;
 
+/**
+ * Failure raised by the durable plan publisher, carrying whether a later retry
+ * could plausibly succeed. `savePlan` uses `retryable` to decide between keeping
+ * the local write as an honest "not shared yet" pending state (transient outage)
+ * versus rolling it back (definitive failure). The overwrite-refusal path stays a
+ * plain `Error` because it is a definitive, user-actionable condition, not a
+ * transient publisher fault.
+ */
+export class PlanPublishError extends Error {
+  readonly retryable: boolean;
+  readonly status: number | null;
+  constructor(
+    message: string,
+    opts: { readonly retryable: boolean; readonly status: number | null },
+  ) {
+    super(message);
+    this.name = 'PlanPublishError';
+    this.retryable = opts.retryable;
+    this.status = opts.status;
+  }
+}
+
+/**
+ * Classify a failed `gh api` result as retryable — a transient outage a later
+ * retry could clear — versus definitive. Retryable: no HTTP status at all (a
+ * timeout, a dropped connection, or the publish deadline elapsing), an explicit
+ * `429`, any upstream `5xx`, or a `403` that names GitHub's rate/abuse limiting.
+ * Everything else (auth `401`, conflict `409`, validation `422`, a plain
+ * non-rate `403`) is definitive: retrying without the maintainer changing
+ * something is futile, so the local write is rolled back as before.
+ */
+export function isRetryableGhFailure(result: {
+  readonly status: number | null;
+  readonly errorMessage: string;
+}): boolean {
+  const { status, errorMessage } = result;
+  if (status === null) return true;
+  if (status === 429) return true;
+  if (status >= 500) return true;
+  if (status === 403 && /rate limit|secondary rate|abuse/i.test(errorMessage)) return true;
+  return false;
+}
+
 const reviewSchema = z
   .object({
     verdict: z.enum(['up', 'down']).nullable(),
@@ -693,6 +736,28 @@ export async function savePlan(
         overwrite: command.overwrite === true,
       });
     } catch (error) {
+      // A transient publish outage (GitHub rate limiting, a 5xx, or a dropped
+      // connection) must NOT destroy the maintainer's authored plan. Keep the
+      // local write and report an honest pending state so they can retry, rather
+      // than rolling back and throwing a "could not publish" error that reads
+      // like data loss. This is safe with respect to `init`: init reads the plan
+      // from `assets/plans`, 404s a plan that is only local, and refuses with a
+      // "commit and push first" message — so a pending plan can never be mistaken
+      // for a shared one. Definitive failures still roll back and throw below.
+      if (error instanceof PlanPublishError && error.retryable) {
+        return {
+          saved: true,
+          replaced: exists,
+          setId: plan.id,
+          planPath,
+          durable: {
+            branch: PLANS_BRANCH,
+            pending: true,
+            retryable: true,
+            reason: error.message,
+          },
+        };
+      }
       rollbackIfUnchanged(target, content, previous);
       throw new Error(
         `Saved ${plan.id} locally but could not publish it to ${PLANS_BRANCH}; the local write was ` +
@@ -899,7 +964,7 @@ export function createGhPlanPublisher(
     if (branchProbe.status === 404) {
       await ensurePlansBranch(gh);
     } else if (!branchProbe.ok) {
-      throw new Error(branchProbe.errorMessage);
+      throw planPublishFailure(branchProbe);
     }
 
     const encodedPath = input.planPath.split('/').map(encodeURIComponent).join('/');
@@ -916,7 +981,7 @@ export function createGhPlanPublisher(
         );
       }
     } else if (remoteProbe.status !== 404) {
-      throw new Error(remoteProbe.errorMessage);
+      throw planPublishFailure(remoteProbe);
     }
 
     const putArgs = [
@@ -967,7 +1032,7 @@ export function createGhPlanPublisher(
         };
       }
     }
-    throw new Error(put.errorMessage);
+    throw planPublishFailure(put);
   };
 }
 
@@ -976,6 +1041,14 @@ interface GhApiResult {
   readonly status: number | null;
   readonly stdout: string;
   readonly errorMessage: string;
+}
+
+/** Wrap a failed `gh api` result as a classified, retry-aware publisher error. */
+function planPublishFailure(result: GhApiResult): PlanPublishError {
+  return new PlanPublishError(result.errorMessage, {
+    retryable: isRetryableGhFailure(result),
+    status: result.status,
+  });
 }
 
 /** Run one bounded `gh api` call, surfacing the HTTP status rather than throwing. */
