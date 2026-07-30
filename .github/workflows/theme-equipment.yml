@@ -47,6 +47,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
+          # Full history is required: the publisher fetches assets/queue and main
+          # into this checkout and runs `git merge` (queue-commit.ts). A shallow
+          # depth-1 clone leaves the two tips with no common ancestor, so the
+          # merge fails with "refusing to merge unrelated histories". This matches
+          # the sibling sprite-queue-reconciler.yml which uses fetch-depth: 0 for
+          # the same assets/queue integration.
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 

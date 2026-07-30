@@ -800,6 +800,17 @@ export function selectCollectionTileSources(state: ThemeEquipmentSetState): Coll
   }
 }
 
+/**
+ * Bounded concurrency for the publish stager's Azure blob downloads. Each key
+ * writes to its own distinct path with an idempotent recursive mkdir, so the
+ * reads are independent — the only shared coupling is the outer cleanup of
+ * `stageRoot` on failure, which is why a rejecting batch must fully settle
+ * before it throws (below). 4 matches THEME_EQUIPMENT_JUDGE_CONCURRENCY; the
+ * installed Azure retry policy does not retry HTTP 429, so a higher fan-out
+ * would raise burst/throttle risk without a matching benefit.
+ */
+export const THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY = 4;
+
 export async function __stageThemeEquipmentRun(
   store: RunStore,
   stageRoot: string,
@@ -812,11 +823,21 @@ export async function __stageThemeEquipmentRun(
     throw new ThemeEquipmentRunnerError(`No stored run artifacts found under ${prefix}`);
   }
   const runDir = path.join(stageRoot, 'generated', 'runs', briefId, runId);
-  for (const key of keys) {
+  const downloadKey = async (key: string): Promise<void> => {
     const relative = key.slice(prefix.length);
     const destination = path.join(runDir, ...relative.split('/'));
     mkdirSync(path.dirname(destination), { recursive: true });
     writeFileSync(destination, await store.get(key));
+  };
+  for (let index = 0; index < keys.length; index += THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY) {
+    const batch = keys.slice(index, index + THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY);
+    // Settle the whole batch before propagating a failure: the caller deletes
+    // `stageRoot` on rejection, so no in-flight write may outlive this throw.
+    const results = await Promise.allSettled(batch.map(downloadKey));
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure && failure.status === 'rejected') {
+      throw failure.reason;
+    }
   }
 }
 

@@ -15,13 +15,6 @@ export const AUDIT_EXCEPTIONS = [
     reason: 'No patched brace-expansion release is available yet.',
   },
   {
-    packageName: 'fast-uri',
-    source: 1124064,
-    url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
-    expiresOn: '2026-08-13',
-    reason: 'Microsoft npm proxy does not yet mirror fixed 3.x release 3.1.4.',
-  },
-  {
     packageName: 'find-my-way',
     source: 1124273,
     url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',

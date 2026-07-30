@@ -19,6 +19,7 @@ import {
 import {
   __stageThemeEquipmentArtSurface,
   __stageThemeEquipmentRun,
+  THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY,
   createThemeEquipmentRunnerDeps,
   selectCollectionTileSources,
   ThemeEquipmentRunner,
@@ -352,6 +353,82 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
       expect(existsSync(path.join(stagedRun, 'processed', '04.judge.json'))).toBe(true);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
+      rmSync(stageRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('downloads run blobs with bounded concurrency and lands every byte', async () => {
+    const stageRoot = mkdtempSync(path.join(tmpdir(), 'theme-equipment-stage-conc-'));
+    const store = memoryStore();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const baseGet = store.get.bind(store);
+    store.get = async (key: string) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      try {
+        // Yield across the microtask/macrotask boundary so a serial
+        // implementation would show maxInFlight === 1.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return await baseGet(key);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+    try {
+      const keyCount = THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY * 3 + 1;
+      for (let index = 0; index < keyCount; index += 1) {
+        await store.put(
+          `iron-sword/run-1/processed/${String(index).padStart(2, '0')}.png`,
+          Buffer.from(`png-${index}`),
+        );
+      }
+
+      await __stageThemeEquipmentRun(store, stageRoot, 'iron-sword', 'run-1');
+
+      expect(maxInFlight).toBeGreaterThan(1);
+      expect(maxInFlight).toBeLessThanOrEqual(THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY);
+      const stagedRun = path.join(stageRoot, 'generated', 'runs', 'iron-sword', 'run-1');
+      for (let index = 0; index < keyCount; index += 1) {
+        const dest = path.join(stagedRun, 'processed', `${String(index).padStart(2, '0')}.png`);
+        expect(readFileSync(dest, 'utf8')).toBe(`png-${index}`);
+      }
+    } finally {
+      rmSync(stageRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('lets every in-flight download settle before propagating a failure', async () => {
+    const stageRoot = mkdtempSync(path.join(tmpdir(), 'theme-equipment-stage-fail-'));
+    const store = memoryStore();
+    let settled = 0;
+    const baseGet = store.get.bind(store);
+    store.get = async (key: string) => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        if (key.endsWith('01.png')) {
+          throw new Error('boom');
+        }
+        return await baseGet(key);
+      } finally {
+        settled += 1;
+      }
+    };
+    try {
+      // One full batch: a mid-batch rejection must not leave siblings in flight.
+      const keyCount = THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY;
+      for (let index = 0; index < keyCount; index += 1) {
+        await store.put(
+          `iron-sword/run-1/processed/${String(index).padStart(2, '0')}.png`,
+          Buffer.from(`png-${index}`),
+        );
+      }
+
+      await expect(
+        __stageThemeEquipmentRun(store, stageRoot, 'iron-sword', 'run-1'),
+      ).rejects.toThrow('boom');
+      expect(settled).toBe(keyCount);
+    } finally {
       rmSync(stageRoot, { recursive: true, force: true });
     }
   });
