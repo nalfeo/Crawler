@@ -6,6 +6,7 @@
  */
 import { z } from 'zod';
 import floor1Achievements from './data/achievements.floor1.json';
+import floor2Achievements from './data/achievements.floor2.json';
 import { EQUIPMENT_REWARD_TIERS, type EquipmentRewardTier } from './generated-equipment-types.js';
 import { ITEM_CATALOG, ItemRarity } from './items.js';
 
@@ -126,8 +127,15 @@ export const ACHIEVEMENT_NUMBER_FACTS = [
   'completedQuestCount',
   'questLogSize',
   'playerGold',
+  'peakGold',
   'unlockedAbilityCount',
   'clearedFloorCount',
+  'familiesAtFriendlyCount',
+  'familiesAtHateCount',
+  'familiesAtNeutralOrBetterCount',
+  'familyBossesDefeated',
+  'familyBossEncounterCount',
+  'familiesEngagedInCombatCount',
 ] as const;
 export type AchievementNumberFact = (typeof ACHIEVEMENT_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
@@ -137,6 +145,7 @@ export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
   'completedQuestCount',
   'questLogSize',
   'playerGold',
+  'peakGold',
   'unlockedAbilityCount',
   'clearedFloorCount',
 ] as const;
@@ -148,6 +157,12 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'equipmentUnlocked',
   'staircaseDiscovered',
   'runClearedFloor',
+  'hasBetrayedAlly',
+  'floor2SafeRoomVisited',
+  'hasMetBroker',
+  'allPresentFamiliesFriendly',
+  'allPresentFamiliesNeutralOrBetter',
+  'allPresentFamiliesEngagedInCombat',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
@@ -481,111 +496,23 @@ export function createAchievementCatalogRegistry(
 
 export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achievements);
 /**
- * Minimal Floor 2 catalog: one equipment-reward achievement per tier (tier1,
- * tier2, tier3) so the full tiered reward-content contract — real gold/materials
- * on Floor 1, tiered equipment on Floor 2 — is exercisable in-game/headless. The
- * reward `bases` span magic (`ember-wand`, `frost-crook`) and physical
- * (`iron-cleaver`, `ashwood-bow`) Floor 2 weapon bases — all have empty inherent
- * stat bonuses, so the Common item carries no non-armor stat bonus (rarity
- * contract). `iconId` is a placeholder key; no art is generated or required to
- * ship this slice.
+ * Floor 2 catalog, content-driven from `data/achievements.floor2.json` (mirrors
+ * the Floor 1 pattern in ADR-consistent style — a 30-entry-plus content array
+ * lives out of the schema/logic file so content diffs review separately from
+ * code diffs). Contains 30 floor-scoped achievements plus 6 `current_run`-scoped
+ * achievements spanning family reputation, family bosses, the settlement/Broker,
+ * the exit staircase, safe rooms, equipment/ability/stat progression, and gold —
+ * every criterion is driven by facts already emitted by real, shipped Floor 2
+ * systems (see `collectCurrentFloorAchievementFacts` in
+ * `src/game/systems/achievementSystem.ts`). Reward `bases` span magic
+ * (`ember-wand`, `frost-crook`) and physical (`iron-cleaver`, `ashwood-bow`)
+ * Floor 2 weapon bases — all have empty inherent stat bonuses, so the Common
+ * item carries no non-armor stat bonus (rarity contract). Rewards are restricted
+ * to tier1/tier2/tier3 (Common/Uncommon) — Unique is intentionally never
+ * used (deferred from this epic). `iconId`s are placeholder keys; no art is
+ * generated or required to ship this slice.
  */
-const FLOOR2_ACHIEVEMENT_DEFS: readonly unknown[] = [
-  {
-    id: 'floor2-field-kit',
-    floor: 2,
-    title: 'Floor 2 Field Kit',
-    popupText: 'New achievement: Floor 2 Field Kit!',
-    unlockCriteria: 'Defeat your first enemy on Floor 2.',
-    details:
-      'Unlock when you defeat your first enemy on Floor 2 to receive a starter equipment piece.',
-    directorFlavor:
-      'The prop department scraped together a starter kit from the discount bin. One piece, guaranteed Common quality, exactly the kind of inventory-management busywork the audience adores.',
-    iconId: 'achv-floor2-field-kit-placeholder',
-    difficulty: 'standard',
-    reward: {
-      type: 'equipment',
-      tier: 'tier1',
-      bases: [
-        'weapon.iron-cleaver',
-        'weapon.ashwood-bow',
-        'weapon.ember-wand',
-        'weapon.frost-crook',
-      ],
-    },
-    unlockRules: [
-      {
-        type: 'numberCompare',
-        fact: 'totalKills',
-        op: '>=',
-        value: 1,
-      },
-    ],
-  },
-  {
-    id: 'floor2-second-wind',
-    floor: 2,
-    title: 'Floor 2 Second Wind',
-    popupText: 'New achievement: Floor 2 Second Wind!',
-    unlockCriteria: 'Defeat 10 enemies on Floor 2.',
-    details:
-      'Unlock by defeating 10 enemies on Floor 2 to receive a Common-or-Uncommon equipment piece.',
-    directorFlavor:
-      'The audience is warming up. So is the prop budget — this one might actually be Uncommon.',
-    iconId: 'achv-floor2-second-wind-placeholder',
-    difficulty: 'standard',
-    reward: {
-      type: 'equipment',
-      tier: 'tier2',
-      bases: [
-        'weapon.iron-cleaver',
-        'weapon.ashwood-bow',
-        'weapon.ember-wand',
-        'weapon.frost-crook',
-      ],
-    },
-    unlockRules: [
-      {
-        type: 'numberCompare',
-        fact: 'totalKills',
-        op: '>=',
-        value: 10,
-      },
-    ],
-  },
-  {
-    id: 'floor2-veteran-cast',
-    floor: 2,
-    title: 'Floor 2 Veteran Cast',
-    popupText: 'New achievement: Floor 2 Veteran Cast!',
-    unlockCriteria: 'Defeat 30 enemies on Floor 2.',
-    details:
-      'Unlock by defeating 30 enemies on Floor 2 to receive an Uncommon-or-Common equipment piece.',
-    directorFlavor:
-      "You've earned top billing. The prop department's best (non-Rare) offering awaits.",
-    iconId: 'achv-floor2-veteran-cast-placeholder',
-    difficulty: 'hard',
-    reward: {
-      type: 'equipment',
-      tier: 'tier3',
-      bases: [
-        'weapon.iron-cleaver',
-        'weapon.ashwood-bow',
-        'weapon.ember-wand',
-        'weapon.frost-crook',
-      ],
-    },
-    unlockRules: [
-      {
-        type: 'numberCompare',
-        fact: 'totalKills',
-        op: '>=',
-        value: 30,
-      },
-    ],
-  },
-];
-export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, FLOOR2_ACHIEVEMENT_DEFS);
+export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, floor2Achievements);
 export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
   FLOOR1_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENT_CATALOG,
@@ -593,6 +520,11 @@ export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
 export const ALL_ACHIEVEMENTS: readonly AchievementDef[] = ACHIEVEMENT_CATALOG_REGISTRY.all;
 export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR1_ACHIEVEMENT_CATALOG.all;
 export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR2_ACHIEVEMENT_CATALOG.all;
+/** Count of Floor 2 floor-scoped achievements (excludes `current_run`-scoped entries). */
+export const FLOOR2_ACHIEVEMENT_COUNT = FLOOR2_ACHIEVEMENT_CATALOG.floorScoped.length;
+/** Count of Floor 2 `current_run`-scoped (run-global) achievements. */
+export const FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT =
+  FLOOR2_ACHIEVEMENT_CATALOG.currentRunGlobal.length;
 
 export function isAchievementFloor(value: number): value is AchievementFloor {
   return value === 1 || value === 2;
@@ -635,8 +567,15 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       completedQuestCount: 0,
       questLogSize: 0,
       playerGold: 0,
+      peakGold: 0,
       unlockedAbilityCount: 0,
       clearedFloorCount: 0,
+      familiesAtFriendlyCount: 0,
+      familiesAtHateCount: 0,
+      familiesAtNeutralOrBetterCount: 0,
+      familyBossesDefeated: 0,
+      familyBossEncounterCount: 0,
+      familiesEngagedInCombatCount: 0,
     },
     booleanFacts: {
       staircaseBattleStarted: false,
@@ -645,6 +584,12 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       equipmentUnlocked: false,
       staircaseDiscovered: false,
       runClearedFloor: false,
+      hasBetrayedAlly: false,
+      floor2SafeRoomVisited: false,
+      hasMetBroker: false,
+      allPresentFamiliesFriendly: false,
+      allPresentFamiliesNeutralOrBetter: false,
+      allPresentFamiliesEngagedInCombat: false,
     },
     questIds: [],
     completedQuestIds: [],
