@@ -2,8 +2,8 @@
   "briefId": "player-walk-cycle-female",
   "spriteName": "player-walk-cycle-female",
   "assetPath": "generated/player-walk-cycle-female.png",
-  "approvedAt": "2026-07-30T00:00:39.921Z",
-  "sourceRun": "generated/runs/player-walk-cycle-female/2026-07-29T23-55-16-d8087eda",
+  "approvedAt": "2026-07-30T03:33:24.589Z",
+  "sourceRun": "generated/runs/player-walk-cycle-female/2026-07-30T02-53-03-b6c1f410",
   "variantIndex": 0,
   "anchor": null,
   "anchors": {
@@ -41,8 +41,8 @@
       "ok": true,
       "sensor": "anchor-center-of-mass",
       "anchor": {
-        "x": 110,
-        "y": 127
+        "x": 114,
+        "y": 128
       }
     },
     {
@@ -52,7 +52,7 @@
   ],
   "judgeScorecard": null,
   "type": "character",
-  "contentHash": "6e1eb6e56f53b876f66078b0299cae2d0e6e49c3861da5e074d6897b403a4672",
+  "contentHash": "47c11893183030d5fec68475d4e97cb347fa0d26cce27b8432ba185b32de9b21",
   "animation": {
     "frameWidth": 256,
     "frameHeight": 256,

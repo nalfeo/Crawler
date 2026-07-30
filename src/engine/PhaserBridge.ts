@@ -1222,7 +1222,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           visuals.set(eid, visual);
         }
 
-        const img = visual.obj;
+        let img = visual.obj;
         if (entityType === 'enemy') {
           const preferred = resolvePreferredTexture(visualType, {
             appearanceKey,
@@ -1255,6 +1255,43 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
+          }
+        }
+        if (entityType === 'player') {
+          // The player visual may be created (e.g. on floor-load / carryover)
+          // before its gender-keyed generated texture has finished loading, or
+          // may still be showing another gender's texture from a stale
+          // `visuals` cache entry keyed only by `visualType` (which is always
+          // 'player', so the type-mismatch recreate branch above never fires
+          // on a gender change). Reconcile to the appearanceKey-preferred
+          // texture whenever it differs so the walk sprite always matches
+          // `world.playerGender` (mirrors the enemy/NPC late-load reconcile
+          // above).
+          const preferred = resolvePreferredTexture(visualType, { appearanceKey });
+          if (img.texture.key !== preferred.key) {
+            img.setTexture(preferred.key, preferred.frame);
+            visual.baseScale = preferred.scale;
+            if (
+              generatedAnimationByTexture.has(preferred.key) &&
+              (img as Partial<Phaser.GameObjects.Sprite>).anims === undefined &&
+              typeof scene.add.sprite === 'function'
+            ) {
+              // The cached visual was created as a plain Image (no `.anims` —
+              // no walk animation was registered for its texture at creation
+              // time), but the reconciled texture DOES have one. An Image can
+              // never play a Phaser animation, so recreate it as a Sprite in
+              // place (mirrors the `hasWalkAnimation` branch above).
+              const { x: px, y: py } = img;
+              img.destroy();
+              const sprite =
+                preferred.frame !== undefined
+                  ? scene.add.sprite(px, py, preferred.key, preferred.frame)
+                  : scene.add.sprite(px, py, preferred.key);
+              sprite.setScale(preferred.scale);
+              visual = { obj: sprite, type: visualType, baseScale: preferred.scale };
+              visuals.set(eid, visual);
+              img = sprite;
+            }
           }
         }
         let isVisible = true;

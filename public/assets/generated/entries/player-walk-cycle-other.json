@@ -2,8 +2,8 @@
   "briefId": "player-walk-cycle-other",
   "spriteName": "player-walk-cycle-other",
   "assetPath": "generated/player-walk-cycle-other.png",
-  "approvedAt": "2026-07-30T00:07:52.395Z",
-  "sourceRun": "generated/runs/player-walk-cycle-other/2026-07-30T00-05-29-a4dc253d",
+  "approvedAt": "2026-07-30T03:01:07.072Z",
+  "sourceRun": "generated/runs/player-walk-cycle-other/2026-07-30T02-54-59-ed7dc25c",
   "variantIndex": 0,
   "anchor": null,
   "anchors": {
@@ -41,8 +41,8 @@
       "ok": true,
       "sensor": "anchor-center-of-mass",
       "anchor": {
-        "x": 112,
-        "y": 124
+        "x": 109,
+        "y": 125
       }
     },
     {
@@ -52,7 +52,7 @@
   ],
   "judgeScorecard": null,
   "type": "character",
-  "contentHash": "ed5b668fce7d5a2a58a09cbcea7456d4b3649549ca8df3018f9e9d11a90480f0",
+  "contentHash": "4a3f91b69d233bd5f7f39d360acfc354069d4f7bf3ea7f920f1e4ae13888b3a6",
   "animation": {
     "frameWidth": 256,
     "frameHeight": 256,

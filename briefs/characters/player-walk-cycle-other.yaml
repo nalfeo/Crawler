@@ -112,6 +112,25 @@ description: |
      and bottom row as two different camera heights or moments — they are
      simply the next two frames in the SAME walk cycle, at the SAME scale and
      SAME floor-line height as the top row.
+   - CRITICAL FACING DIRECTION: the character faces the SAME way — a
+     right-facing side profile — in ALL 4 cells, with no exceptions. The
+     labels "contact-right" and "passing-right" name WHICH FOOT is forward/in
+     contact with the ground during the stride, NOT a change in which
+     direction the character is facing or turning toward the viewer. Do NOT
+     mirror, flip, or turn the character to face left (or face the viewer) in
+     the bottom-left ("contact-right") or any other cell. In every cell the
+     face/nose points the same way, and the satchel strap sits on the SAME
+     shoulder/side of the back in every cell — a strap or face flipping to
+     the opposite side between cells is always a FAILURE, exactly like a
+     bled or cut-off limb.
+   - CRITICAL DETAIL PARITY: render at the SAME fine pixel-art detail level,
+     line weight, and shading complexity as this character's other two gender
+     variants (player-walk-cycle-female.yaml / player-walk-cycle-male.yaml) —
+     crisp individual strands/tufts suggested in the hair, the belt/strap
+     hardware and multi-tone shading on the tunic and boots clearly rendered.
+     A visibly flatter, blockier, or lower-detail pass than the sibling
+     variants is a FAILURE even if every other rule above is satisfied —
+     regenerate rather than accept a softer/simpler render.
 
   SIZE ON THE SHEET: the standing figure spans roughly 80-90% of its cell's
   narrower axis, centered, feet on a common invisible floor line at the SAME
