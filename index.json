@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0febc0b83607faef08852da9c1d30527baf9948f",
+    "commitDate": "2026-07-30T20:29:48Z",
+    "commitSubject": "fix(doors): retire dead rotation, wire side-on E/W art, contain-fit generated-door fallback (#2391)",
+    "capturedAt": "2026-07-30T21:24:09.463Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30580109399",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/0febc0b83607faef08852da9c1d30527baf9948f.json"
+  },
+  {
     "commit": "a2438d4123a05b4cb0519ec46994a880b27868d0",
     "commitDate": "2026-07-30T17:57:27Z",
     "commitSubject": "Theme-equipment review: warm artifact-read latency fix + durable save-plan to assets/plans (#2378)",
