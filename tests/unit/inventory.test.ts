@@ -10,11 +10,8 @@ import {
   removeGeneratedEquipmentReference,
   hasItem,
   getItemCount,
-  search,
-  filterByTag,
   filterByEquipmentSlot,
   filterEquippable,
-  sortSlots,
   getVisibleTabs,
   listStaticInventorySlots,
   type InventoryBag,
@@ -234,57 +231,6 @@ describe('InventoryBag', () => {
     });
   });
 
-  describe('search', () => {
-    it('finds items by name', () => {
-      addItem(bag, 'test-ore', 1, testCatalog);
-      addItem(bag, 'test-sword', 1, testCatalog);
-      const results = search(bag, 'ore', testCatalog);
-      expect(results).toHaveLength(1);
-      expect(results[0]!.itemId).toBe('test-ore');
-    });
-
-    it('finds items by description', () => {
-      addItem(bag, 'test-potion', 1, testCatalog);
-      const results = search(bag, 'healing', testCatalog);
-      expect(results).toHaveLength(1);
-      expect(results[0]!.itemId).toBe('test-potion');
-    });
-
-    it('is case-insensitive', () => {
-      addItem(bag, 'test-ore', 1, testCatalog);
-      expect(search(bag, 'TEST ORE', testCatalog)).toHaveLength(1);
-    });
-
-    it('returns empty for no matches', () => {
-      addItem(bag, 'test-ore', 1, testCatalog);
-      expect(search(bag, 'zzzzz', testCatalog)).toHaveLength(0);
-    });
-  });
-
-  describe('filterByTag', () => {
-    it('filters by known tag', () => {
-      addItem(bag, 'test-ore', 1, testCatalog);
-      addItem(bag, 'test-sword', 1, testCatalog);
-      const materials = filterByTag(bag, 'Materials', testCatalog);
-      expect(materials).toHaveLength(1);
-      expect(materials[0]!.itemId).toBe('test-ore');
-    });
-
-    it('filters by custom tag', () => {
-      addItem(bag, 'stinky-bone', 1, testCatalog);
-      addItem(bag, 'test-ore', 1, testCatalog);
-      const smelly = filterByTag(bag, customTag('Smelly Stuff'), testCatalog);
-      expect(smelly).toHaveLength(1);
-      expect(smelly[0]!.itemId).toBe('stinky-bone');
-    });
-
-    it('multi-tagged items appear in both tags', () => {
-      addItem(bag, 'stinky-bone', 1, testCatalog);
-      expect(filterByTag(bag, 'Materials', testCatalog)).toHaveLength(1);
-      expect(filterByTag(bag, customTag('Smelly Stuff'), testCatalog)).toHaveLength(1);
-    });
-  });
-
   describe('filterByEquipmentSlot', () => {
     it('returns equippable items for the selected slot only', () => {
       addItem(bag, 'merchants-stained-charm', 1);
@@ -329,40 +275,6 @@ describe('InventoryBag', () => {
     });
   });
 
-  describe('sortSlots', () => {
-    it('sorts by rarity descending by default', () => {
-      addItem(bag, 'test-ore', 1, testCatalog); // Common
-      addItem(bag, 'test-sword', 1, testCatalog); // Rare
-      addItem(bag, 'test-potion', 1, testCatalog); // Uncommon
-
-      const sorted = sortSlots(bag, 'rarity', testCatalog);
-      expect(sorted[0]!.itemId).toBe('test-sword'); // Rare first
-      expect(sorted[1]!.itemId).toBe('test-potion'); // Uncommon
-      expect(sorted[2]!.itemId).toBe('test-ore'); // Common
-    });
-
-    it('sorts by name alphabetically', () => {
-      addItem(bag, 'test-sword', 1, testCatalog);
-      addItem(bag, 'test-ore', 1, testCatalog);
-      addItem(bag, 'test-potion', 1, testCatalog);
-
-      const sorted = sortSlots(bag, 'name', testCatalog);
-      expect(sorted[0]!.itemId).toBe('test-ore');
-      expect(sorted[1]!.itemId).toBe('test-potion');
-      expect(sorted[2]!.itemId).toBe('test-sword');
-    });
-
-    it('sorts by quantity descending', () => {
-      addItem(bag, 'test-ore', 3, testCatalog);
-      addItem(bag, 'test-potion', 1, testCatalog);
-      addItem(bag, 'stinky-bone', 7, testCatalog);
-
-      const sorted = sortSlots(bag, 'quantity', testCatalog);
-      expect(sorted[0]!.itemId).toBe('stinky-bone');
-      expect(sorted[1]!.itemId).toBe('test-ore');
-      expect(sorted[2]!.itemId).toBe('test-potion');
-    });
-  });
 });
 
 describe('Tab system', () => {

@@ -267,39 +267,6 @@ export function getItemCount(bag: InventoryBag, itemId: string): number {
 // Querying / filtering
 // ---------------------------------------------------------------------------
 
-/**
- * Search slots by item name or description (case-insensitive substring match).
- * Returns matching slots (references, not copies).
- */
-export function search(
-  bag: InventoryBag,
-  query: string,
-  catalog?: readonly ItemDef[],
-): InventorySlot[] {
-  const lowerQuery = query.toLowerCase();
-  return bag.slots.filter((slot) => {
-    const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);
-    if (!def) return false;
-    return (
-      def.name.toLowerCase().includes(lowerQuery) ||
-      def.description.toLowerCase().includes(lowerQuery)
-    );
-  });
-}
-
-/** Filter slots to those whose item has a given tag. */
-export function filterByTag(
-  bag: InventoryBag,
-  tag: ItemTag,
-  catalog?: readonly ItemDef[],
-): InventorySlot[] {
-  return bag.slots.filter((slot) => {
-    const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);
-    if (!def) return false;
-    return def.tags.includes(tag);
-  });
-}
-
 /** Filter slots to equippable items that can be worn in the given equipment slot. */
 export function filterByEquipmentSlot(bag: InventoryBag, slotId: EquipmentSlotId): InventorySlot[] {
   return bag.slots.filter((slot) => {
@@ -321,43 +288,6 @@ export function filterEquippable(bag: InventoryBag): InventorySlot[] {
 // ---------------------------------------------------------------------------
 
 export type SortField = 'name' | 'rarity' | 'quantity';
-
-const RARITY_ORDER: Record<string, number> = {
-  Common: 0,
-  Uncommon: 1,
-  Rare: 2,
-  Epic: 3,
-  Legendary: 4,
-};
-
-/**
- * Return a sorted copy of the bag's slots.
- * Default sort: by rarity (descending), then name (ascending).
- */
-export function sortSlots(
-  bag: InventoryBag,
-  sortBy: SortField = 'rarity',
-  catalog?: readonly ItemDef[],
-): InventorySlot[] {
-  const resolve = (id: string) => (catalog ? catalog.find((d) => d.id === id) : getItemById(id));
-
-  return [...bag.slots].sort((a, b) => {
-    const defA = resolve(a.itemId);
-    const defB = resolve(b.itemId);
-    if (!defA || !defB) return 0;
-
-    switch (sortBy) {
-      case 'rarity': {
-        const diff = (RARITY_ORDER[defB.rarity] ?? 0) - (RARITY_ORDER[defA.rarity] ?? 0);
-        return diff !== 0 ? diff : defA.name.localeCompare(defB.name);
-      }
-      case 'name':
-        return defA.name.localeCompare(defB.name);
-      case 'quantity':
-        return b.quantity - a.quantity;
-    }
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Tab system
