@@ -85,7 +85,14 @@ const expectedHeadSha = (process.env.EXPECTED_HEAD_SHA || '').trim().toLowerCase
 const expectedBaseRef = (process.env.EXPECTED_BASE_REF || '').trim();
 const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
-const readToken = pat || process.env.GITHUB_TOKEN || '';
+// Reads prefer a dedicated token (the GitHub App installation token supplied by
+// ci-recovery.yml) because every classic PAT belonging to the same user shares a
+// single 5,000 req/hour core bucket. This workflow is the highest-volume REST
+// consumer in the repo, so routing its reads through the PAT exhausted that shared
+// bucket and 403'd every other owner-scoped automation. Falls back to the PAT and
+// then GITHUB_TOKEN so local runs and tests are unchanged.
+const readToken =
+  (process.env.CI_RECOVERY_READ_TOKEN || '').trim() || pat || process.env.GITHUB_TOKEN || '';
 const live = mode === 'live';
 const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
@@ -909,10 +916,18 @@ async function dispatchWorkflow(workflow, inputs) {
     process.stdout.write(`dry-run would-dispatch workflow=${workflow} pr=#${prNumber}\n`);
     return;
   }
-  await request(readToken, `/repos/${owner}/${repo}/actions/workflows/${workflow}/dispatches`, {
-    method: 'POST',
-    body: { ref: 'main', inputs },
-  });
+  // Dispatch stays on the owner PAT: workflow_dispatch attribution affects whether
+  // the resulting run is scheduled or parked in `action_required`. Dispatches are a
+  // negligible share of this workflow's REST volume, so keeping them on the PAT
+  // costs nothing while preserving proven trigger behavior.
+  await request(
+    pat || readToken,
+    `/repos/${owner}/${repo}/actions/workflows/${workflow}/dispatches`,
+    {
+      method: 'POST',
+      body: { ref: 'main', inputs },
+    },
+  );
 }
 
 async function release(reason, nextState = null) {
@@ -2841,16 +2856,20 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       process.stdout.write(`queue unchanged merge-train pr=#${prNumber}\n`);
     }
     // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
-    // strict up-to-date merge policy does not block it forever.  readToken is
-    // CRAWLER_CI_PAT || GITHUB_TOKEN — CRAWLER_CI_PAT emits normal push events
+    // strict up-to-date merge policy does not block it forever.  This MUST stay on
+    // CRAWLER_CI_PAT (not the App read token) — CRAWLER_CI_PAT emits normal push events
     // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
     if (pr.mergeable_state === 'behind') {
       if (live) {
         try {
-          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
-            method: 'PUT',
-            body: { expected_head_sha: pr.head.sha },
-          });
+          await request(
+            pat || readToken,
+            `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
+            {
+              method: 'PUT',
+              body: { expected_head_sha: pr.head.sha },
+            },
+          );
           process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
         } catch (err) {
           // 422 covers "already up-to-date" and stale expected_head_sha — log
@@ -2893,13 +2912,13 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     process.stdout.write(`dry-run would-arm-auto-merge pr=#${prNumber}\n`);
   }
   // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
-  // strict up-to-date merge policy does not block it forever.  readToken is
-  // CRAWLER_CI_PAT || GITHUB_TOKEN — CRAWLER_CI_PAT emits normal push events
+  // strict up-to-date merge policy does not block it forever.  This MUST stay on
+  // CRAWLER_CI_PAT (not the App read token) — CRAWLER_CI_PAT emits normal push events
   // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
   if (pr.mergeable_state === 'behind') {
     if (live) {
       try {
-        await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
+        await request(pat || readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
           method: 'PUT',
           body: { expected_head_sha: pr.head.sha },
         });
