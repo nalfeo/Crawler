@@ -16,8 +16,23 @@
       "notes": "Rejected ambiguous lootBox overloading and incomplete two-read-site migration. Revised to an explicit lootTable discriminator with ADR updates, one identity-preserving inventory query model, Common output normalization plus validation, instance-key UI state, and aligned/opposite/neutral pool tests. The explicit discriminator preserves the user-mandated loot-box concept while structurally separating Floor 1 materials from Floor 2 generated equipment."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,
