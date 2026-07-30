@@ -856,7 +856,9 @@ function validatePendingAchievementRewardPresentations(snapshot: PlayerCarryover
       achievement.reward.lootTable === 'floor2-generated-equipment'
     ) {
       const expectedTier = FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier];
-      if (expectedTier !== presentation.tier) {
+      const isLegacyTier4Presentation =
+        presentation.tier === 'tier4' && LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS.has(achievementId);
+      if (expectedTier !== presentation.tier && !isLegacyTier4Presentation) {
         throw new PlayerCarryoverSnapshotError(
           `Pending reward presentation for ${achievementId} has tier "${presentation.tier}", expected "${expectedTier}"`,
         );
