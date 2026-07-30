@@ -742,8 +742,8 @@ describe('createPhaserBridge', () => {
 
   it('prefers Kenney sprite + frame when the sheet texture exists', () => {
     // Exclude the generated player art so this exercises the Kenney FALLBACK.
-    // The `player` render kind now also pins generated art (the real walk
-    // cycle sheet), which otherwise wins and hides this branch.
+    // The `player` render kind now also pins generated art (the gender-matched
+    // walk-cycle sheets), which otherwise wins and hides this branch.
     const { scene, images } = createSceneStub({
       kenneyLoaded: true,
       textureExists: (key) => !key.startsWith('player-walk-cycle'),
@@ -764,7 +764,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
   });
 
-  it('prefers the pinned generated player art over the Kenney sheet', () => {
+  it('prefers the pinned generated player art over the Kenney sheet (default gender: female)', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -777,10 +777,12 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('player-walk-cycle');
-    // 64px art at 0.71875 => exactly 46px drawn box == 5.75 ft, matching the
+    // world.playerGender defaults to 'female' (src/core/world.ts), so the
+    // variantsByAppearanceKey['female'] entry wins over the top-level default.
+    expect(images[0]?.textureKey).toBe('player-walk-cycle-female');
+    // 256px art at 0.1796875 => exactly 46px drawn box == 5.75 ft, matching the
     // welcome-room NPCs. See `player-npc-scale-parity.test.ts` for the guard.
-    expect(images[0]?.scaleX).toBeCloseTo(0.71875, 5);
+    expect(images[0]?.scaleX).toBeCloseTo(0.1796875, 5);
   });
 
   it('fades the skull marker out quickly while the corpse desaturates and fades', () => {

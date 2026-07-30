@@ -357,6 +357,40 @@ function resolveNpcTexture(
   return resolveTexture(scene, 'npc');
 }
 
+/**
+ * Textures/appearanceKeys already reported through {@link warnGeneratedTextureUnresolved}
+ * this session, so a persistently-unresolvable mapping logs once instead of
+ * spamming every render tick.
+ */
+const generatedTextureUnresolvedWarnings = new Set<string>();
+
+/**
+ * `resolveGeneratedTexture` returning `null` means the entity silently falls
+ * through to its Kenney/procedural fallback with NO indication that a
+ * `generated` mapping was configured but unresolvable. That silence is
+ * exactly what let a broken/unwired generated player texture ship
+ * undetected in the past (see the Rhea Vale regression, PR #2321) — log
+ * once per (type, appearanceKey) so a similar regression is loud instead of
+ * silent.
+ */
+function warnGeneratedTextureUnresolved(
+  type: string,
+  generated: NonNullable<EntitySpriteMappings['renderKinds'][string]['generated']>,
+  appearanceKey: string | undefined,
+): void {
+  const warningKey = `${type}:${appearanceKey ?? ''}`;
+  if (generatedTextureUnresolvedWarnings.has(warningKey)) {
+    return;
+  }
+  generatedTextureUnresolvedWarnings.add(warningKey);
+  logger.warn('Generated texture mapping configured but unresolvable; falling through', {
+    type,
+    appearanceKey,
+    briefId: generated.briefId,
+    pinnedTextureKey: generated.pinnedTextureKey,
+  });
+}
+
 function resolveGeneratedTexture(
   scene: Phaser.Scene,
   type: string,
@@ -377,20 +411,32 @@ function resolveGeneratedTexture(
     return { key: registryKey, scale: generated.scale };
   }
 
-  if (scene.textures.exists(generated.pinnedTextureKey)) {
-    return { key: generated.pinnedTextureKey, scale: generated.scale };
+  // Per-appearanceKey override (e.g. player gender selecting one of several
+  // walk-cycle sheets) takes priority over the top-level descriptor. Falls
+  // back to the top level when the resolved appearanceKey has no entry.
+  const variant =
+    options?.appearanceKey !== undefined
+      ? generated.variantsByAppearanceKey?.[options.appearanceKey]
+      : undefined;
+  const effectiveBriefId = variant?.briefId ?? generated.briefId;
+  const effectivePinnedTextureKey = variant?.pinnedTextureKey ?? generated.pinnedTextureKey;
+  const effectiveScale = variant?.scale ?? generated.scale;
+
+  if (scene.textures.exists(effectivePinnedTextureKey)) {
+    return { key: effectivePinnedTextureKey, scale: effectiveScale };
   }
 
-  if (scene.textures.exists(generated.briefId)) {
-    return { key: generated.briefId, scale: generated.scale };
+  if (scene.textures.exists(effectiveBriefId)) {
+    return { key: effectiveBriefId, scale: effectiveScale };
   }
 
   const textureKeys = scene.textures.getTextureKeys?.();
   if (!Array.isArray(textureKeys)) {
+    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey);
     return null;
   }
 
-  const prefix = `${generated.briefId}-var-`;
+  const prefix = `${effectiveBriefId}-var-`;
   let selectedKey: string | undefined;
   let selectedVariant = -1;
   for (const key of textureKeys) {
@@ -405,7 +451,11 @@ function resolveGeneratedTexture(
     selectedVariant = variantIndex;
     selectedKey = key;
   }
-  return selectedKey === undefined ? null : { key: selectedKey, scale: generated.scale };
+  if (selectedKey === undefined) {
+    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey);
+    return null;
+  }
+  return { key: selectedKey, scale: effectiveScale };
 }
 
 function getProceduralTextureForType(type: string): string {
@@ -786,7 +836,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               : refineEnemyVisualKind(world, eid)
             : entityType;
         const appearanceKey =
-          entityType === 'enemy' ? world.enemyAppearanceKeys.get(eid) : undefined;
+          entityType === 'enemy'
+            ? world.enemyAppearanceKeys.get(eid)
+            : entityType === 'player'
+              ? world.playerGender
+              : undefined;
         // Positions/velocities are stored in feet; scale feet → pixels for
         // rendering (the only place pixels exist). All downstream geometry
         // (beam/melee/aoe lengths, tip offsets) is computed in pixels too.
