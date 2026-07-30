@@ -13,7 +13,7 @@ export const AUDIT_EXCEPTIONS = [
     url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
     expiresOn: '2026-08-13',
     reason:
-      'Patched brace-expansion@5.0.8 exists upstream but the Microsoft npm proxy does not yet mirror it.',
+      'brace-expansion@5.0.8 is patched upstream; Microsoft npm proxy (ms-feed-12.pkgs.visualstudio.com) does not yet mirror it (re-verified 2026-07-30).',
   },
 ];
 

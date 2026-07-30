@@ -238,6 +238,8 @@ test('fails closed when severity is missing (undefined)', () => {
 
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.
+// New entries: add the advisory URL, expiry date, and the reason text here.
+// Expired or fixed entries: remove the entry entirely (upgrade the package).
 test('every real audit exception has a well-formed expiresOn date', () => {
   for (const exception of AUDIT_EXCEPTIONS) {
     assert.match(
