@@ -1,5 +1,16 @@
 [
   {
+    "commit": "abb949bc2f8afacaedc1c70ad7c7e612c27bff19",
+    "commitDate": "2026-07-30T17:06:37Z",
+    "commitSubject": "feat(sprites): genuinely side-on E/W closed door art (N/S taller + E/W open findings reported, not shipped) (#2375)",
+    "capturedAt": "2026-07-30T18:02:14.046Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30565323865",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/abb949bc2f8afacaedc1c70ad7c7e612c27bff19.json"
+  },
+  {
     "commit": "00bdda09ddc1865bf80ac9aa8ef0999297b85944",
     "commitDate": "2026-07-30T09:42:22Z",
     "commitSubject": "Reuse prior CI recovery loop incidents instead of opening duplicates (#2355)",
