@@ -295,12 +295,48 @@ a future slice to prevent this landmine shape from recurring for other
 resolver call sites; out of scope here since it is a broader architectural
 change beyond this slice's reward-content boundary.
 
-### Deviation note
+### Deviation note (historical, superseded by amendment below)
 
-The user's request described "rare unless canonical plan explicitly defines a
-higher tier" — the canonical epic plan does not currently define a tier4+, so
-`EQUIPMENT_REWARD_TIER_RARITIES` intentionally has **no** tier whose pool
-includes `rare`. Adding a Rare-capable tier is deferred to a future slice.
+At the time this ADR was first written, the canonical epic plan had no tier4+,
+so `EQUIPMENT_REWARD_TIER_RARITIES` intentionally contained no Rare-capable
+tier. That deferment is superseded by the 2026-07-31 amendment below.
+
+### Amendment (2026-07-31): shared `tier4` across boss chests and brutal achievements
+
+After the Floor 2 achievement-content merge and subsequent review-fix recovery,
+we reconciled a cross-PR `tier4` collision with the already-landed boss-chest
+85%/15% Uncommon/Rare split: both lines of work needed `tier4`, and keeping
+achievement rewards excluded from it would have made the three `brutal`
+achievement rewards fail schema validation.
+
+Escalated to the human per rule #11 (never silently reinterpret an established
+contract); resolution: **`tier4` is one shared Rare-capable tier, used by both
+boss chests and `brutal`-difficulty achievements**, at the boss-chest PR's
+85%/15% Uncommon/Rare split (`EQUIPMENT_REWARD_TIER_RARITIES.tier4 =
+['uncommon', 'rare']`, weight `0.85` for the primary/uncommon draw — order and
+weight adopted from the boss-chest design since it landed second and its
+weight table was already in place). Consequences:
+
+- `ACHIEVEMENT_EQUIPMENT_REWARD_TIERS` / `AchievementEquipmentRewardTier` are
+  now plain aliases of the full `EQUIPMENT_REWARD_TIERS` set (`tier1`-`tier4`),
+  not a narrower 3-tier exclusion — the achievement Zod schema now accepts
+  `tier4` achievements directly.
+- `tier4` remains restricted in authored achievement content to the three
+  `difficulty: 'brutal'` entries (`floor2-family-annihilator`,
+  `floor2-floor-cleared`, `floor2-scorched-earth`). Their mastery bars are
+  intentionally high but not identical: annihilator requires defeating 3+
+  family bosses, scorched-earth requires engaging every present family in
+  combat, and floor-cleared requires completing the leave-floor objective/run
+  clear.
+- No behavioral difference for boss chests: they always drew from
+  `EQUIPMENT_REWARD_TIER_RARITIES.tier4` regardless of which side "owns" the
+  tier name: the tier is a rarity-pool lookup, not a chest/achievement type
+  discriminator, so there is no code path anywhere that branches on "is this
+  tier4 draw a boss chest or an achievement" — sharing the tier introduces no
+  new coupling.
+- This reconciles cleanly with the boss-chest PR's own design note (the
+  85/15 split its ADR/PR description establishes); no further changes were
+  needed there beyond widening the achievement-side enum.
 
 ## Alternatives Considered
 

@@ -17,7 +17,10 @@ import {
   getAchievementCatalogForFloor,
   parseAchievementCatalog,
 } from '../../src/shared/achievements.js';
-import { EQUIPMENT_REWARD_TIERS } from '../../src/shared/generated-equipment-types.js';
+import {
+  EQUIPMENT_REWARD_TIERS,
+  EQUIPMENT_REWARD_TIER_RARITIES,
+} from '../../src/shared/generated-equipment-types.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -220,15 +223,33 @@ describe('floor2 achievements catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('never awards Unique rarity — every reward is an equipment reward on tier1/tier2/tier3', () => {
+  it('never awards Unique rarity, and reserves the Rare-capable tier4 for brutal achievements', () => {
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
       expect(achievement.reward.type).toBe('equipment');
       if (achievement.reward.type === 'equipment') {
-        expect(EQUIPMENT_REWARD_TIERS).toContain(achievement.reward.tier);
+        const tier = achievement.reward.tier;
+        expect(EQUIPMENT_REWARD_TIERS).toContain(tier);
         // GeneratedEquipmentRarity itself has no 'unique' member (type-level
-        // guarantee), but assert the tier is one of the three known reward
-        // tiers as a deterministic runtime regression check too.
-        expect(['tier1', 'tier2', 'tier3']).toContain(achievement.reward.tier);
+        // guarantee), but assert the tier's allowed rarity pool never
+        // includes 'unique' as a deterministic runtime regression check too.
+        expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).not.toContain('unique');
+        // tier4 is the only Rare-capable tier and is reserved for the
+        // hardest ('brutal') achievements; everything else stays on the
+        // deliberately Uncommon-capped tier1/tier2/tier3 (see ADR 0070).
+        if (tier === 'tier4') {
+          expect(achievement.difficulty).toBe('brutal');
+        } else {
+          expect(achievement.difficulty).not.toBe('brutal');
+          expect(['tier1', 'tier2', 'tier3']).toContain(tier);
+        }
+      }
+    }
+  });
+
+  it('never resolves Rare rarity outside the dedicated tier4 pool', () => {
+    for (const achievement of FLOOR2_ACHIEVEMENTS) {
+      if (achievement.reward.type === 'equipment' && achievement.reward.tier !== 'tier4') {
+        expect(EQUIPMENT_REWARD_TIER_RARITIES[achievement.reward.tier]).not.toContain('rare');
       }
     }
   });
