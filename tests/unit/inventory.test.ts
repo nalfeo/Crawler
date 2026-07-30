@@ -274,7 +274,6 @@ describe('InventoryBag', () => {
       expect(filterEquippable(bag)).toHaveLength(0);
     });
   });
-
 });
 
 describe('Tab system', () => {
