@@ -57,6 +57,15 @@ function walkTsFiles(absDir: string): string[] {
   return out;
 }
 
+function isProductionSrcPath(relPath: string): boolean {
+  return (
+    relPath.startsWith('src/') &&
+    !relPath.startsWith('src/labs/') &&
+    relPath.endsWith('.ts') &&
+    !relPath.endsWith('.d.ts')
+  );
+}
+
 function readSourceFile(absPath: string): SourceFile {
   const rel = path.relative(fromRepo(), absPath).replace(/\\/g, '/');
   return { path: rel, content: readFileSync(absPath, 'utf8') };
@@ -99,7 +108,7 @@ function listChangedSrcPaths(baseRef: string | null): string[] {
 
     for (const line of result.stdout.split(/\r?\n/)) {
       const rel = line.trim().replace(/\\/g, '/');
-      if (!rel.startsWith('src/') || !rel.endsWith('.ts') || rel.endsWith('.d.ts')) continue;
+      if (!isProductionSrcPath(rel)) continue;
       changed.add(rel);
     }
   }
@@ -117,7 +126,9 @@ function main(): void {
   const srcRoot = fromRepo('src');
   const testsRoot = fromRepo('tests');
 
-  const srcFiles = walkTsFiles(srcRoot).map(readSourceFile);
+  const srcFiles = walkTsFiles(srcRoot)
+    .map(readSourceFile)
+    .filter((file) => isProductionSrcPath(file.path));
   const testFiles = walkTsFiles(testsRoot).map(readSourceFile);
   const changedSrcPaths = new Set(listChangedSrcPaths(resolveBaseRef()));
 

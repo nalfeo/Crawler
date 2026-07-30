@@ -94,6 +94,13 @@ describe('findReasonRestatementViolations', () => {
     expect(findReasonRestatementViolations(previous, current)).toHaveLength(0);
   });
 
+  it('does NOT flag when expiresOn is shortened with the same reason', () => {
+    const previous = [ALPHA];
+    const current = [{ ...ALPHA, expiresOn: '2029-12-31' }];
+
+    expect(findReasonRestatementViolations(previous, current)).toHaveLength(0);
+  });
+
   it('does NOT flag a newly added entry (no previous baseline)', () => {
     const previous: KnipSuppression[] = [];
     const current = [ALPHA];

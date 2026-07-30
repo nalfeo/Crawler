@@ -111,9 +111,9 @@ describe('collectNamedImports', () => {
     expect(result.get('c')).toContain('src/bar.ts');
   });
 
-  it('collects re-export specifiers (barrel files)', () => {
+  it('does NOT treat re-export specifiers (barrel files) as import evidence', () => {
     const result = collectNamedImports([src('src/index.ts', "export { foo } from './foo.js';")]);
-    expect(result.get('foo')).toContain('src/index.ts');
+    expect(result.has('foo')).toBe(false);
   });
 
   it('does NOT collect namespace imports', () => {
@@ -209,8 +209,7 @@ describe('findTestOnlyExports', () => {
     expect(firstResult!.name).toBe('foo');
   });
 
-  it('does NOT flag an export consumed via a src/ barrel re-export', () => {
-    // barrel.ts re-exports foo → barrel is an implicit src/ consumer.
+  it('flags an export when tests reach it only through a src/ barrel re-export', () => {
     const srcFiles = [
       src('src/shared/foo.ts', 'export function foo() {}'),
       src('src/shared/index.ts', "export { foo } from './foo.js';"),
@@ -219,9 +218,11 @@ describe('findTestOnlyExports', () => {
       src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/index.js';"),
     ];
 
-    // index.ts imports foo → outsideSrcConsumers.length > 0 → NOT flagged.
     const results = findTestOnlyExports(srcFiles, testFiles);
-    expect(results).toHaveLength(0);
+    expect(results).toHaveLength(1);
+    const [firstResult] = results;
+    expect(firstResult!.name).toBe('foo');
+    expect(firstResult!.file).toBe('src/shared/foo.ts');
   });
 
   it('flags multiple test-only exports from the same file', () => {

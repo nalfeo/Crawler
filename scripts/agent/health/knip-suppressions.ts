@@ -189,7 +189,8 @@ export function findExpiredSuppressions(
 }
 
 /**
- * Detect entries where `expiresOn` was extended without updating `reason`
+ * Detect entries where `expiresOn` was extended to a later date without
+ * updating `reason`
  * (same pattern as `findReasonRestatementViolations` in npm-audit.mjs).
  *
  * Returns a list of `{ file, previousExpiresOn, currentExpiresOn }` tuples.
@@ -208,7 +209,7 @@ export function findReasonRestatementViolations(
   for (const current of currentSuppressions) {
     const previous = previousByFile.get(current.file);
     if (!previous) continue; // new entry — no prior to compare against
-    if (previous.expiresOn !== current.expiresOn && previous.reason === current.reason) {
+    if (current.expiresOn > previous.expiresOn && previous.reason === current.reason) {
       violations.push({
         file: current.file,
         previousExpiresOn: previous.expiresOn,
@@ -240,7 +241,6 @@ export function extractSuppressionsFromSource(source: string): readonly KnipSupp
   if (!match) {
     throw new Error(`Could not find KNIP_SUPPRESSIONS declaration in ${SUPPRESSIONS_SCRIPT_PATH}`);
   }
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const result = Function(`"use strict"; return (${match[1]});`)();
   if (!Array.isArray(result)) {
     throw new Error('KNIP_SUPPRESSIONS declaration is not an array');
@@ -307,9 +307,12 @@ export function getReasonRestatementViolationsForCurrentBranch(): Array<{
   let previousSuppressions: readonly KnipSuppression[];
   try {
     previousSuppressions = extractSuppressionsFromSource(baseSrc);
-  } catch {
-    // If parsing fails on the base version, skip comparison rather than failing.
-    return [];
+  } catch (err) {
+    throw new Error(
+      `Could not parse KNIP_SUPPRESSIONS from base ref ${baseRef}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
   }
 
   return findReasonRestatementViolations(previousSuppressions, KNIP_SUPPRESSIONS);

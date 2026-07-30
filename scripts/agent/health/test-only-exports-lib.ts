@@ -28,11 +28,11 @@
  *   In practice this is extremely rare for well-named top-level exports. The
  *   guard emits a warning when it detects duplicate export names so the author
  *   can investigate.
- * - `export * from '...'` barrels are not tracked as src consumers. If a symbol
- *   is only surfaced through a `export *` barrel, it may be falsely reported as
- *   test-only. Named re-exports (`export { foo } from '...'`) are correctly
- *   tracked; only the `export *` form is unhandled. In this codebase `export *`
- *   is not used (the barrels use named re-exports), so this is not a current risk.
+ * - Re-exports are not tracked as src consumers. If a symbol is only surfaced
+ *   through a barrel and tests import it through that barrel, the original
+ *   export will still be reported unless some non-test `src/` file imports it.
+ *   This is deliberate: a re-export is API exposure, not evidence of runtime
+ *   production use.
  * - Namespace imports (`import * as X from '...'`) are not counted as
  *   named-import evidence. This is a false-negative risk for rare patterns.
  * - Dynamic imports are not tracked.
@@ -46,8 +46,9 @@
  *   the original export to be flagged. This is conservative (may produce false
  *   negatives for barrel-mediated test-only usage), but avoids false positives.
  *
- * File I/O lives in the thin `test-only-exports.ts` wrapper so this module
- * can be unit-tested with synthetic file contents.
+ * File I/O and repo-specific path scoping (for example excluding `src/labs/**`
+ * from production evidence) live in the thin `test-only-exports.ts` wrapper so
+ * this module can be unit-tested with synthetic file contents.
  */
 
 import ts from 'typescript';
@@ -164,7 +165,7 @@ export function collectNamedExports(files: readonly SourceFile[]): ExportDef[] {
 
 /**
  * For each file, collect all named identifiers brought in via import
- * declarations (including named re-exports in `src/` barrel files).
+ * declarations.
  *
  * Returns a `Map<symbolName, Set<importingFilePath>>` so callers can quickly
  * ask "which files import symbol X?".
@@ -172,8 +173,6 @@ export function collectNamedExports(files: readonly SourceFile[]): ExportDef[] {
  * Handles:
  * - `import { foo, bar } from '...'`
  * - `import { foo as localFoo } from '...'` (tracks the *original* name `foo`)
- * - `export { foo } from '...'` (barrel re-export — counts as a `src/` consumer)
- *
  * Does NOT handle:
  * - `import * as X from '...'` (namespace — would require tracking X.foo usage)
  * - `import defaultExport from '...'` (default imports)
@@ -207,19 +206,6 @@ export function collectNamedImports(files: readonly SourceFile[]): Map<string, S
           for (const el of bindings.elements) {
             // el.propertyName is the original name (if aliased); el.name is the local alias.
             const originalName = el.propertyName ? el.propertyName.text : el.name.text;
-            addImport(originalName, file.path);
-          }
-        }
-      }
-
-      // export { foo, bar as baz } from '...' (re-export specifier)
-      if (ts.isExportDeclaration(node) && node.moduleSpecifier && node.exportClause) {
-        if (ts.isNamedExports(node.exportClause)) {
-          for (const specifier of node.exportClause.elements) {
-            // propertyName is the original imported name; name is the re-exported alias.
-            const originalName = specifier.propertyName
-              ? specifier.propertyName.text
-              : specifier.name.text;
             addImport(originalName, file.path);
           }
         }

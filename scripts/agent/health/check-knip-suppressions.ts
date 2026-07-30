@@ -22,19 +22,15 @@ import {
   getReasonRestatementViolationsForCurrentBranch,
 } from './knip-suppressions.js';
 
-function main(): void {
-  const report = new Report('health-knip-suppressions');
+type ReasonViolation = {
+  file: string;
+  previousExpiresOn: string;
+  currentExpiresOn: string;
+};
 
-  // ── 1. Reason-restatement check ──────────────────────────────────────────
-  // Must run first (same as npm-audit.mjs) so an agent that only bumps the
-  // date without changing the reason sees the violation immediately.
-  let reasonViolations: Array<{
-    file: string;
-    previousExpiresOn: string;
-    currentExpiresOn: string;
-  }>;
+function getReasonViolationsOrReport(report: Report): ReasonViolation[] | null {
   try {
-    reasonViolations = getReasonRestatementViolationsForCurrentBranch();
+    return getReasonRestatementViolationsForCurrentBranch();
   } catch (err) {
     report.error(
       `Could not resolve base ref for reason-restatement check: ${err instanceof Error ? err.message : String(err)}`,
@@ -43,6 +39,18 @@ function main(): void {
       },
     );
     report.finish();
+    return null;
+  }
+}
+
+function main(): void {
+  const report = new Report('health-knip-suppressions');
+
+  // ── 1. Reason-restatement check ──────────────────────────────────────────
+  // Must run first (same as npm-audit.mjs) so an agent that only bumps the
+  // date without changing the reason sees the violation immediately.
+  const reasonViolations = getReasonViolationsOrReport(report);
+  if (!reasonViolations) {
     return;
   }
 
