@@ -456,9 +456,9 @@ export async function listThemeSets(
 ): Promise<Record<string, unknown>> {
   const plans = readAuthoredPlans(deps.repoRoot);
   const publishedPlanIds = new Set(
-    await (
-      deps.listPublishedPlanIds?.() ?? listPublishedThemeSetIds(deps.repoRoot)
-    ).catch(() => []),
+    await (deps.listPublishedPlanIds?.() ?? listPublishedThemeSetIds(deps.repoRoot)).catch(
+      () => [],
+    ),
   );
 
   let statefulIds: ReadonlySet<string> | null = null;

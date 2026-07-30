@@ -2,9 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  executeThemeEquipmentReviewCommand,
-} from '../../../scripts/sprites/theme-equipment-review-cli.js';
+import { executeThemeEquipmentReviewCommand } from '../../../scripts/sprites/theme-equipment-review-cli.js';
 import {
   buildThemeEquipmentSetStateFromPlan,
   loadThemeEquipmentSetPlan,
