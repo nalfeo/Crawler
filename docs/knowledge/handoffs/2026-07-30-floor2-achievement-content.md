@@ -160,11 +160,16 @@ is duplicated rather than imported) is real and confirmed by direct inspection:
 - **Observe before done**: rendered the full catalog in the `achievements-ui-lab`
   and `achievements` canvas mid-session and visually confirmed correct
   presentation/claim flow for a sample of the new entries (see prior checkpoints).
-  Per rule #9, the actual behavior-change verification is the real headless/unit
-  path, not the lab: `evaluateAchievementUnlocksForPhase` is exercised against
-  constructed `GameWorld` state in `tests/game/achievement-system.test.ts`'s
-  integration test, unlocking a representative sample of the new achievements
-  through the real evaluation pipeline (not a lab-only harness).
+  The behavior-change verification calls the real production entry point
+  `achievementSystem(world)` (not a lab stub) in
+  `tests/integration/floor2-reward-bundle-claim.integration.test.ts`, but the
+  world state used is manually constructed — not produced by a running Floor 2
+  game or headless runner. A full end-to-end Floor 2 headless pipeline that
+  exercises the fact-producing mechanics (emergent events, kill routing, staircase
+  descent) through to achievement evaluation does not yet exist; that is a
+  separate Floor 2 win-path automation epic. The reachability of each fact was
+  validated by manually tracing the production code paths (`emergentEventSystem`,
+  `quests.floor2.events.json`, kill-tracking) rather than by observing a live run.
 - **CI recovery pass (2026-07-30)**: a code review found that six relationship
   achievements used thresholds unreachable via shipped mechanics. The production
   event system (`quests.floor2.events.json`, `emergentEventSystem`) was
