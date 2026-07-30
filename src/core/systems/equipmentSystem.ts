@@ -73,16 +73,12 @@ import {
   coreGrantGeneratedEquipmentPassiveAbility,
   revokeEquipmentAbilityGrantsCore,
 } from '../ability-grants.js';
+import { getCustomRequirements, getEntityTagMap } from '../equipment-system-state.js';
 
 // --- Side-map storage ---
 
 const equipmentStates = new WeakMap<GameWorld, Map<number, EquipmentState>>();
-const entityTags = new WeakMap<GameWorld, Map<number, Set<string>>>();
 const instanceCounters = new WeakMap<GameWorld, { next: number }>();
-const customRequirements = new WeakMap<
-  GameWorld,
-  Map<string, (world: GameWorld, entity: number, itemDef: EquipmentItemDef) => boolean>
->();
 const generatedDefViews = new WeakMap<GeneratedEquipmentInstanceV1, EquipmentItemDef>();
 
 function getEquipmentMap(world: GameWorld): Map<number, EquipmentState> {
@@ -94,15 +90,6 @@ function getEquipmentMap(world: GameWorld): Map<number, EquipmentState> {
   return map;
 }
 
-function getEntityTagMap(world: GameWorld): Map<number, Set<string>> {
-  let map = entityTags.get(world);
-  if (!map) {
-    map = new Map();
-    entityTags.set(world, map);
-  }
-  return map;
-}
-
 function getNextInstanceId(world: GameWorld): EquipmentInstanceId {
   let counter = instanceCounters.get(world);
   if (!counter) {
@@ -110,17 +97,6 @@ function getNextInstanceId(world: GameWorld): EquipmentInstanceId {
     instanceCounters.set(world, counter);
   }
   return counter.next++;
-}
-
-function getCustomRequirements(
-  world: GameWorld,
-): Map<string, (world: GameWorld, entity: number, itemDef: EquipmentItemDef) => boolean> {
-  let map = customRequirements.get(world);
-  if (!map) {
-    map = new Map();
-    customRequirements.set(world, map);
-  }
-  return map;
 }
 
 // --- State management ---
@@ -632,26 +608,8 @@ export function initializeBaseStats(
   }
 }
 
-/** Set entity tags (for hasTag/notTag requirements). */
-export function setEntityTags(world: GameWorld, entity: number, tags: string[]): void {
-  getEntityTagMap(world).set(entity, new Set(tags));
-}
-
-/** Register a custom equip requirement predicate. Must be pure and deterministic. */
-export function registerCustomRequirement(
-  world: GameWorld,
-  id: string,
-  predicate: (world: GameWorld, entity: number, itemDef: EquipmentItemDef) => boolean,
-): void {
-  getCustomRequirements(world).set(id, predicate);
-}
-
 /** Check if an item can be equipped — returns allowed + reasons. */
-export function canEquip(
-  world: GameWorld,
-  entity: number,
-  itemDef: EquipmentItemDef,
-): CanEquipResult {
+function canEquip(world: GameWorld, entity: number, itemDef: EquipmentItemDef): CanEquipResult {
   const reasons: EquipFailureReason[] = [];
 
   // Validation

@@ -84,7 +84,6 @@ import {
   type SynthCueSpec,
 } from '../audio/audio-cue-engine.js';
 import { createRewardOpeningAudioController } from '../reward-opening-audio.js';
-import { hasItem } from '../../shared/inventory.js';
 import { prefersReducedMotion } from '../reduced-motion.js';
 import {
   blurLightField,
@@ -121,6 +120,7 @@ import { getNpcDef } from '../../shared/npc-types.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 import { getAchievementById } from '../../shared/achievements.js';
+import { listStaticInventorySlots } from '../../shared/inventory.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -857,9 +857,9 @@ export class MainGameScene extends Phaser.Scene {
       // Double-click an equippable item to equip it (safe-room gated by
       // equipFromBag). Both panes refresh so the paper-doll and bag stay in
       // sync after the swap.
-      onEquipItem: (item) => {
+      onEquipItem: (inventoryEntry) => {
         if (this.playerEid < 0) return;
-        const result = equipFromBag(this.world, this.playerEid, item);
+        const result = equipFromBag(this.world, this.playerEid, inventoryEntry);
         if (result.ok) {
           this.inventoryUI?.refresh(this.world);
           this.equipmentUI?.refresh(this.world);
@@ -3921,7 +3921,10 @@ export class MainGameScene extends Phaser.Scene {
       const optionRows = stock.map((entry) => {
         const item = getItemById(entry.itemId);
         const bag = this.world.inventories.get(this.playerEid);
-        const owned = item ? (bag ? hasItem(bag, item.id) : false) : false;
+        const owned =
+          item !== undefined &&
+          bag !== undefined &&
+          listStaticInventorySlots(bag).some((slot) => slot.itemId === item.id);
         const affordable = this.world.playerGold >= entry.cost;
         return {
           id: `shop-stock:${entry.itemId}`,
