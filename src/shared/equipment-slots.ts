@@ -64,3 +64,47 @@ export function isValidSlotId(id: string): boolean {
 export function getSlotLabel(slotId: EquipmentSlotId): string {
   return SLOT_BY_ID.get(slotId)?.label ?? slotId;
 }
+
+/**
+ * Left/right mirror-symmetric slot pairs. A real garment covers BOTH sides of
+ * the body at once — a pair of bracers, arm wraps that go on both arms, a ring
+ * that fits either hand — so a single equipment item is expected to carry both
+ * slot ids rather than being split into a left item and a right item.
+ *
+ * `mainHand`/`offHand` are deliberately NOT a mirror pair: they are
+ * functionally distinct hands (a weapon vs a shield), not the same garment
+ * mirrored. `gloves` is already a single both-hands slot.
+ *
+ * This is inert metadata — the runtime equipment stack already supports
+ * multi-slot items (an item's `slots` is an array). It exists so authoring
+ * tooling can enforce "one unified item per mirror pair" from a single source
+ * of truth colocated with `SLOT_REGISTRY`, and every id is guaranteed valid.
+ */
+export const MIRROR_SLOT_PAIRS: readonly (readonly [EquipmentSlotId, EquipmentSlotId])[] = [
+  ['leftArm', 'rightArm'],
+  ['leftWrist', 'rightWrist'],
+  ['ringLeft', 'ringRight'],
+] as const;
+
+// Fail fast at module load if a pair ever names a slot that is not in the
+// registry — keeps this table honest against SLOT_REGISTRY edits.
+for (const [a, b] of MIRROR_SLOT_PAIRS) {
+  if (!VALID_SLOT_IDS.has(a) || !VALID_SLOT_IDS.has(b)) {
+    throw new Error(`MIRROR_SLOT_PAIRS references unknown slot id in pair [${a}, ${b}]`);
+  }
+}
+
+const MIRROR_PARTNER_BY_ID: ReadonlyMap<EquipmentSlotId, EquipmentSlotId> = new Map(
+  MIRROR_SLOT_PAIRS.flatMap(([a, b]) => [[a, b] as const, [b, a] as const]),
+);
+
+/** Set of every slot id that participates in a mirror pair, for O(1) lookup. */
+export const MIRROR_SLOT_IDS: ReadonlySet<EquipmentSlotId> = new Set(MIRROR_PARTNER_BY_ID.keys());
+
+/**
+ * The mirror partner of `slotId` (e.g. `getMirrorSlot('ringLeft') === 'ringRight'`),
+ * or `undefined` when the slot is not part of a mirror pair.
+ */
+export function getMirrorSlot(slotId: EquipmentSlotId): EquipmentSlotId | undefined {
+  return MIRROR_PARTNER_BY_ID.get(slotId);
+}

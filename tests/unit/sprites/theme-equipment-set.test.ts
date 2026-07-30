@@ -31,6 +31,7 @@ import {
   themeEquipmentSetStateKey,
   themeSetItemAwaitsGeneration,
   themeSetItemHasPhaseOutput,
+  validateThemeSetPlanMirrorSlots,
   type ThemeEquipmentSetReviewPhase,
   type ThemeEquipmentSetState,
 } from '../../../scripts/sprites/theme-equipment-set.js';
@@ -40,6 +41,7 @@ import {
   type ConditionalWriteConditions,
   type RunStore,
 } from '../../../scripts/sprites/store/types.js';
+import { getMirrorSlot } from '../../../src/shared/equipment-slots.js';
 import { CachingRunStore } from '../../../scripts/sprites/store/caching-store.js';
 import { SharedResourceCache } from '../../../scripts/sprites/store/shared-cache.js';
 
@@ -1073,13 +1075,24 @@ describe('buildThemeEquipmentSetStateFromPlan', () => {
       displayName: `${weaponType} of Plan`,
       weaponType,
     })),
-    equipment: NON_HAND_EQUIPMENT_SLOT_IDS.slice(0, THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS).map(
-      (slot) => ({
-        id: `${slot.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}-plan-item`,
-        displayName: `${slot} Plan Item`,
-        slots: [slot],
-      }),
-    ),
+    equipment: (() => {
+      // One item per slot, EXCEPT mirror pairs which become a single unified item
+      // covering both sides (required by the plan schema's mirror rule).
+      const covered = new Set<string>();
+      const items: Array<{ id: string; displayName: string; slots: string[] }> = [];
+      for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
+        if (covered.has(slot)) continue;
+        const partner = getMirrorSlot(slot);
+        const slots = partner ? [slot, partner] : [slot];
+        for (const s of slots) covered.add(s);
+        items.push({
+          id: `${slot.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}-plan-item`,
+          displayName: `${slot} Plan Item`,
+          slots,
+        });
+      }
+      return items;
+    })(),
   };
 
   it('expands a plan into a valid, empty roster-phase state', () => {
@@ -1109,6 +1122,113 @@ describe('buildThemeEquipmentSetStateFromPlan', () => {
 
   it('rejects a malformed plan shape', () => {
     expect(() => buildThemeEquipmentSetStateFromPlan({ id: 'bad' }, { updatedAt: NOW })).toThrow();
+  });
+});
+
+describe('mirror-pair unified-slot authoring rule', () => {
+  // Self-contained plan factory (minimalPlan is scoped to another describe).
+  function unifiedPlan() {
+    const covered = new Set<string>();
+    const equipment: Array<{ id: string; displayName: string; slots: string[] }> = [];
+    for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
+      if (covered.has(slot)) continue;
+      const partner = getMirrorSlot(slot);
+      const slots = partner ? [slot, partner] : [slot];
+      for (const s of slots) covered.add(s);
+      equipment.push({
+        id: `${slot.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}-item`,
+        displayName: `${slot} Item`,
+        slots,
+      });
+    }
+    return {
+      id: 'mirror-fixture',
+      displayName: 'Mirror Fixture',
+      themeDesignLanguage: 'plain weathered leather and dull brass',
+      weapons: WEAPON_TYPES.map((weaponType) => ({
+        id: `${weaponType}-fixture`,
+        displayName: `${weaponType} Fixture`,
+        weaponType,
+      })),
+      equipment,
+    };
+  }
+
+  it('validateThemeSetPlanMirrorSlots returns no reasons for unified mirror items', () => {
+    expect(
+      validateThemeSetPlanMirrorSlots([
+        { id: 'bracers', slots: ['leftWrist', 'rightWrist'] },
+        { id: 'ring', slots: ['ringLeft', 'ringRight'] },
+        { id: 'helm', slots: ['head'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('flags a lone single-side mirror item (singleton)', () => {
+    const reasons = validateThemeSetPlanMirrorSlots([{ id: 'ring-left', slots: ['ringLeft'] }]);
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toMatchObject({
+      code: 'mirror-slot-unpaired',
+      path: ['equipment', 0, 'slots'],
+    });
+    expect(reasons[0]!.message).toContain('ringRight');
+  });
+
+  it('flags two separate single-side items (one reason per offending item)', () => {
+    const reasons = validateThemeSetPlanMirrorSlots([
+      { id: 'bracer-left', slots: ['leftWrist'] },
+      { id: 'bracer-right', slots: ['rightWrist'] },
+    ]);
+    expect(reasons).toHaveLength(2);
+    expect(reasons.map((reason) => reason.path?.[1])).toEqual([0, 1]);
+    for (const reason of reasons) expect(reason.code).toBe('mirror-slot-unpaired');
+  });
+
+  it('build rejects a plan whose mirror pair is split into two items', () => {
+    const base = unifiedPlan();
+    const splitPlan = {
+      ...base,
+      equipment: [
+        ...base.equipment.filter(
+          (item) => !item.slots.includes('leftWrist') && !item.slots.includes('rightWrist'),
+        ),
+        { id: 'left-bracer', displayName: 'Left Bracer', slots: ['leftWrist'] },
+        { id: 'right-bracer', displayName: 'Right Bracer', slots: ['rightWrist'] },
+      ],
+    };
+    expect(() => buildThemeEquipmentSetStateFromPlan(splitPlan, { updatedAt: NOW })).toThrow(
+      /mirror slot/,
+    );
+  });
+
+  it('build accepts the coalesced unified-mirror fixture', () => {
+    expect(() =>
+      buildThemeEquipmentSetStateFromPlan(unifiedPlan(), { updatedAt: NOW }),
+    ).not.toThrow();
+  });
+
+  it('state-load path still accepts legacy split single-side mirror items', () => {
+    // The mirror rule guards the plan-authoring boundary ONLY. Existing stored
+    // states (incl. in-progress Azure-blob states) with split left/right items
+    // must keep loading via parseThemeEquipmentSetState.
+    const state = makeState();
+    const splitItem = state.items.find(
+      (item) =>
+        item.kind === 'equipment' &&
+        item.slots.length === 1 &&
+        getMirrorSlot(item.slots[0]!) !== undefined,
+    );
+    expect(splitItem).toBeDefined();
+    expect(() => cloneState(state)).not.toThrow();
+  });
+});
+
+describe('every committed theme-equipment plan', () => {
+  const planIds = ['classic-fantasy', 'classic-fantasy-basic-leather', 'edo-samurai'] as const;
+  it.each(planIds)('%s loads and builds without a mirror-slot violation', (planId) => {
+    const plan = loadThemeEquipmentSetPlan(planId);
+    expect(validateThemeSetPlanMirrorSlots(plan.equipment)).toEqual([]);
+    expect(() => buildThemeEquipmentSetStateFromPlan(plan, { updatedAt: NOW })).not.toThrow();
   });
 });
 

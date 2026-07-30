@@ -12,6 +12,7 @@ import {
   THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS,
   THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES,
 } from '../../../scripts/sprites/theme-equipment-set.js';
+import { getMirrorSlot } from '../../../src/shared/equipment-slots.js';
 
 const REQUEST = {
   setId: 'edo-samurai',
@@ -23,17 +24,26 @@ const REQUEST = {
 const WEAPON_TYPES = ['sword', 'spear', 'bow', 'dagger', 'club', 'axe'] as const;
 
 function validRoster(): Record<string, unknown> {
+  // One item per slot, EXCEPT mirror pairs (leftArm/rightArm, etc.) which are a
+  // single unified item covering both sides — required by the plan schema.
+  const covered = new Set<string>();
+  const equipment: Array<{ id: string; displayName: string; slots: string[] }> = [];
+  let index = 0;
+  for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
+    if (covered.has(slot)) continue;
+    const partner = getMirrorSlot(slot);
+    const slots = partner ? [slot, partner] : [slot];
+    for (const s of slots) covered.add(s);
+    equipment.push({ id: `gear-${index}`, displayName: `Gear ${index}`, slots });
+    index += 1;
+  }
   return {
-    weapons: WEAPON_TYPES.map((weaponType, index) => ({
-      id: `weapon-${index}`,
-      displayName: `Weapon ${index}`,
+    weapons: WEAPON_TYPES.map((weaponType, i) => ({
+      id: `weapon-${i}`,
+      displayName: `Weapon ${i}`,
       weaponType,
     })),
-    equipment: NON_HAND_EQUIPMENT_SLOT_IDS.map((slot, index) => ({
-      id: `gear-${index}`,
-      displayName: `Gear ${index}`,
-      slots: [slot],
-    })),
+    equipment,
   };
 }
 
@@ -150,6 +160,23 @@ describe('theme roster synthesis', () => {
     equipment[0]!.id = 'weapon-0';
 
     expect(() => validateRosterProposal(JSON.stringify(roster), REQUEST)).toThrow();
+  });
+
+  it('rejects a split left/right mirror-pair roster through the human-edit path', () => {
+    const split = validRoster();
+    const equipment = split.equipment as { id: string; displayName: string; slots: string[] }[];
+    // Replace the unified mirror item with two separate single-side items.
+    const unifiedIndex = equipment.findIndex((entry) => entry.slots.length === 2);
+    expect(unifiedIndex).toBeGreaterThanOrEqual(0);
+    const [a, b] = equipment[unifiedIndex]!.slots;
+    equipment.splice(
+      unifiedIndex,
+      1,
+      { id: 'mirror-a', displayName: 'Mirror A', slots: [a!] },
+      { id: 'mirror-b', displayName: 'Mirror B', slots: [b!] },
+    );
+
+    expect(() => validateRosterProposal(JSON.stringify(split), REQUEST)).toThrow(/mirror slot/);
   });
 
   it('publishes the imported thresholds and the valid slot list in the system prompt', () => {
