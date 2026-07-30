@@ -1143,6 +1143,12 @@ export function equipFromBag(
   entity: number,
   item: string | GeneratedEquipmentInventoryEntry,
   options?: EquipOptions,
+): EquipFromBagResult;
+export function equipFromBag(
+  world: GameWorld,
+  entity: number,
+  item: string | GeneratedEquipmentInventoryEntry,
+  options?: EquipOptions,
 ): EquipFromBagResult {
   if (typeof item !== 'string') {
     return equipGeneratedFromBag(world, entity, item, options);

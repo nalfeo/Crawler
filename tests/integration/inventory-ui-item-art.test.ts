@@ -209,53 +209,50 @@ async function loadRealShippedRegistry(): Promise<GeneratedSpriteRegistry> {
 }
 
 describe('InventoryUI real render path over the shipped manifest (observe-before-done)', () => {
-  it(
-    'renders each normalized item to its resolver-chosen real texture, never a placeholder',
-    async () => {
-      if (!shippedManifestShardsExist()) {
-        // Fresh checkout with no generated art on disk — nothing to observe.
-        return;
-      }
-      const registry = await loadRealShippedRegistry();
-      const record: RenderRecord = { imageKeys: [], textStrings: [] };
-      const scene = makeRecordingScene(registry, record);
-      const world = seedWorldWithStuckItems();
+  it('renders each normalized item to its resolver-chosen real texture, never a placeholder', async () => {
+    if (!shippedManifestShardsExist()) {
+      // Fresh checkout with no generated art on disk — nothing to observe.
+      return;
+    }
+    const registry = await loadRealShippedRegistry();
+    const record: RenderRecord = { imageKeys: [], textStrings: [] };
+    const scene = makeRecordingScene(registry, record);
+    const world = seedWorldWithStuckItems();
 
-      // A tall panel guarantees all 15 cells render (4 rows) rather than paginating.
-      const ui = createInventoryUI(scene as never, { height: 2000 });
-      ui.toggle(world); // open + applyLayout + renderItems
+    // A tall panel guarantees all 15 cells render (4 rows) rather than paginating.
+    const ui = createInventoryUI(scene as never, { height: 2000 });
+    ui.toggle(world); // open + applyLayout + renderItems
 
-      for (const { itemId, concept } of ITEM_ART_EXPECTATIONS) {
-        const entry = resolveItemSprite(registry, itemId, uiSeedFor(itemId, world));
-        expect(entry, `resolver returned null for "${itemId}"`).not.toBeNull();
-        expect(isPlaceholderEntry(entry!), `"${itemId}" resolved to a placeholder`).toBe(false);
-        // The panel drew EXACTLY the texture the resolver chose (same seed formula).
-        expect(
-          record.imageKeys,
-          [
-            `InventoryUI did not render real art for "${itemId}"`,
-            `(expected image "${entry!.textureKey}")`,
-          ].join(' '),
-        ).toContain(entry!.textureKey);
-        // And it belongs to the expected concept lineage (bare or legacy `-vN`).
-        const bareMatch = entry!.briefId === concept;
-        const versionedMatch = new RegExp(`^${concept}-v\\d+$`).test(entry!.briefId);
-        expect(
-          bareMatch || versionedMatch,
-          `"${itemId}" rendered briefId "${entry!.briefId}", not a "${concept}" lineage`,
-        ).toBe(true);
-      }
+    for (const { itemId, concept } of ITEM_ART_EXPECTATIONS) {
+      const entry = resolveItemSprite(registry, itemId, uiSeedFor(itemId, world));
+      expect(entry, `resolver returned null for "${itemId}"`).not.toBeNull();
+      expect(isPlaceholderEntry(entry!), `"${itemId}" resolved to a placeholder`).toBe(false);
+      // The panel drew EXACTLY the texture the resolver chose (same seed formula).
+      expect(
+        record.imageKeys,
+        [
+          `InventoryUI did not render real art for "${itemId}"`,
+          `(expected image "${entry!.textureKey}")`,
+        ].join(' '),
+      ).toContain(entry!.textureKey);
+      // And it belongs to the expected concept lineage (bare or legacy `-vN`).
+      const bareMatch = entry!.briefId === concept;
+      const versionedMatch = new RegExp(`^${concept}-v\\d+$`).test(entry!.briefId);
+      expect(
+        bareMatch || versionedMatch,
+        `"${itemId}" rendered briefId "${entry!.briefId}", not a "${concept}" lineage`,
+      ).toBe(true);
+    }
 
-      // No placeholder texture was drawn in the panel at all.
-      for (const key of record.imageKeys) {
-        expect(key.endsWith('-placeholder'), `a placeholder texture was rendered: "${key}"`).toBe(
-          false,
-        );
-      }
-      // The image branch actually ran for every seeded item (not the text fallback).
-      expect(record.imageKeys.length).toBeGreaterThanOrEqual(ITEM_ART_EXPECTATIONS.length);
-    },
-  );
+    // No placeholder texture was drawn in the panel at all.
+    for (const key of record.imageKeys) {
+      expect(key.endsWith('-placeholder'), `a placeholder texture was rendered: "${key}"`).toBe(
+        false,
+      );
+    }
+    // The image branch actually ran for every seeded item (not the text fallback).
+    expect(record.imageKeys.length).toBeGreaterThanOrEqual(ITEM_ART_EXPECTATIONS.length);
+  });
 
   it('negative control: an empty registry renders zero images (every item falls to text)', () => {
     const record: RenderRecord = { imageKeys: [], textStrings: [] };
@@ -280,8 +277,9 @@ describe('InventoryUI real render path over the shipped manifest (observe-before
       entries: {
         'merchants-stained-charm-ui-test': {
           briefId: MERCHANTS_CHARM_DEF.id,
+          spriteName: 'merchants-stained-charm-ui-test',
           assetPath: 'generated/merchants-stained-charm-ui-test.png',
-          anchor: { x: 0.5, y: 0.5 },
+          anchor: { x: 8, y: 8, source: 'brief' },
           approvedAt: '2026-07-30T00:00:00.000Z',
           sourceRun: 'ui-test',
           variantIndex: 0,
