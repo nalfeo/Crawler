@@ -1283,11 +1283,22 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) {
         return;
       }
-      world.bossChests.set('boss-chest:ratfolk', {
-        chestId: 'boss-chest:ratfolk',
+      const chestId = 'boss-chest:ratfolk';
+      // Delete any stale state so this probe is idempotent.
+      world.bossChests.delete(chestId);
+      world.generatedEquipmentRewardBundles.delete(chestId);
+      // Directly seed the chest record — this probe tests the button-visibility
+      // and panel-open interaction, NOT the real game-layer acquisition path.
+      // Do NOT replace this with spawnBossChestForDefeatedBoss(): that function
+      // is Floor 2-only and returns silently on Floor 1 without adding anything
+      // to world.bossChests, causing the probe to wait forever for a button
+      // that never becomes visible.  The real game-layer acquisition path is
+      // exercised by tests that boot on Floor 2 specifically.
+      world.bossChests.set(chestId, {
+        chestId,
         familyId: 'ratfolk',
         state: 'available',
-        createdAtMs: 0,
+        createdAtMs: world.elapsedMs,
       });
       scene.bossChestUI?.refresh(world);
     },
