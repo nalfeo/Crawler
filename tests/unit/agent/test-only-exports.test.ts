@@ -3,6 +3,7 @@ import {
   collectNamedExports,
   collectNamedImports,
   findDuplicateExportNames,
+  findNewlyTestOnlyExports,
   findTestOnlyExports,
   type SourceFile,
 } from '../../../scripts/agent/health/test-only-exports-lib.js';
@@ -254,6 +255,81 @@ describe('findTestOnlyExports', () => {
     const [firstResult] = results;
     expect(firstResult!.testConsumers).toContain('tests/unit/a.test.ts');
     expect(firstResult!.testConsumers).toContain('tests/property/b.test.ts');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findNewlyTestOnlyExports
+// ---------------------------------------------------------------------------
+
+describe('findNewlyTestOnlyExports', () => {
+  it('ignores test-only exports that already existed in the base snapshot', () => {
+    const baseSrc = [
+      src(
+        'src/shared/inventory.ts',
+        ['export function search() {}', 'export function getVisibleTabs() {}'].join('\n'),
+      ),
+    ];
+    const baseTests = [
+      src(
+        'tests/unit/inventory.test.ts',
+        "import { search } from '../../src/shared/inventory.js';",
+      ),
+    ];
+    const currentSrc = [
+      src(
+        'src/shared/inventory.ts',
+        [
+          'export function search() {}',
+          'export function getVisibleTabs() {}',
+          'export function listStaticInventorySlots() {}',
+        ].join('\n'),
+      ),
+    ];
+    const currentTests = [
+      src(
+        'tests/unit/inventory.test.ts',
+        [
+          "import { search } from '../../src/shared/inventory.js';",
+          "import { listStaticInventorySlots } from '../../src/shared/inventory.js';",
+        ].join('\n'),
+      ),
+    ];
+
+    expect(
+      findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests),
+    ).toEqual([
+      {
+        name: 'listStaticInventorySlots',
+        file: 'src/shared/inventory.ts',
+        testConsumers: ['tests/unit/inventory.test.ts'],
+      },
+    ]);
+  });
+
+  it('flags an unchanged export whose last production caller was removed by the branch', () => {
+    const baseSrc = [
+      src('src/shared/foo.ts', 'export function foo() {}'),
+      src('src/game/bar.ts', "import { foo } from '../shared/foo.js';"),
+    ];
+    const baseTests = [src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';")];
+    const currentSrc = [
+      src('src/shared/foo.ts', 'export function foo() {}'),
+      src('src/game/bar.ts', 'export function bar() {}'),
+    ];
+    const currentTests = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
+
+    expect(
+      findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests),
+    ).toEqual([
+      {
+        name: 'foo',
+        file: 'src/shared/foo.ts',
+        testConsumers: ['tests/unit/foo.test.ts'],
+      },
+    ]);
   });
 });
 

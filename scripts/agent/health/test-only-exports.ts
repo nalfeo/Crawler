@@ -27,8 +27,8 @@ import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 import {
   collectNamedExports,
-  collectNamedImports,
   findDuplicateExportNames,
+  findNewlyTestOnlyExports,
   type SourceFile,
 } from './test-only-exports-lib.js';
 
@@ -116,6 +116,65 @@ function listChangedSrcPaths(baseRef: string | null): string[] {
   return [...changed];
 }
 
+function listChangedPaths(baseRef: string | null, roots: readonly string[]): string[] {
+  const changed = new Set<string>();
+  const diffSpecs = baseRef
+    ? [`${baseRef}...HEAD`, undefined, '--cached']
+    : [undefined, '--cached'];
+
+  for (const diffSpec of diffSpecs) {
+    const args = ['diff', '--name-only', '--diff-filter=ACMRD'];
+    if (diffSpec) {
+      args.push(diffSpec);
+    }
+    args.push('--', ...roots);
+
+    const result = spawnSync('git', args, {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    });
+    if (result.status !== 0) continue;
+
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const rel = line.trim().replace(/\\/g, '/');
+      if (rel) changed.add(rel);
+    }
+  }
+
+  return [...changed];
+}
+
+function readSourceFileAtRef(ref: string, relPath: string): SourceFile | null {
+  const result = spawnSync('git', ['show', `${ref}:${relPath}`], {
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0) return null;
+  return { path: relPath, content: result.stdout };
+}
+
+function buildBaseSnapshot(
+  currentFiles: readonly SourceFile[],
+  changedPaths: ReadonlySet<string>,
+  baseRef: string,
+  roots: readonly string[],
+): SourceFile[] {
+  const baseFiles = new Map(currentFiles.map((file) => [file.path, file]));
+
+  for (const relPath of changedPaths) {
+    const isUnderRoot = roots.some((root) => relPath === root || relPath.startsWith(`${root}/`));
+    if (!isUnderRoot) continue;
+    const baseFile = readSourceFileAtRef(baseRef, relPath);
+    if (baseFile) {
+      baseFiles.set(relPath, baseFile);
+    } else {
+      baseFiles.delete(relPath);
+    }
+  }
+
+  return [...baseFiles.values()];
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -130,7 +189,8 @@ function main(): void {
     .map(readSourceFile)
     .filter((file) => isProductionSrcPath(file.path));
   const testFiles = walkTsFiles(testsRoot).map(readSourceFile);
-  const changedSrcPaths = new Set(listChangedSrcPaths(resolveBaseRef()));
+  const baseRef = resolveBaseRef();
+  const changedSrcPaths = new Set(listChangedSrcPaths(baseRef));
 
   if (srcFiles.length === 0) {
     report.error('No src/**/*.ts files found — the guard is not scanning anything.', {
@@ -144,11 +204,15 @@ function main(): void {
     report.finish();
   }
 
-  const changedSrcFiles = srcFiles.filter((file) => changedSrcPaths.has(file.path));
   const allExports = collectNamedExports(srcFiles);
-  const changedExports = collectNamedExports(changedSrcFiles);
-  const srcImports = collectNamedImports(srcFiles);
-  const testImports = collectNamedImports(testFiles);
+  const changedExports = allExports.filter((exp) => changedSrcPaths.has(exp.file));
+  const testOnlyExports = (() => {
+    if (!baseRef) return [];
+    const changedPaths = new Set(listChangedPaths(baseRef, ['src', 'tests']));
+    const baseSrcFiles = buildBaseSnapshot(srcFiles, changedPaths, baseRef, ['src']);
+    const baseTestFiles = buildBaseSnapshot(testFiles, changedPaths, baseRef, ['tests']);
+    return findNewlyTestOnlyExports(srcFiles, testFiles, baseSrcFiles, baseTestFiles);
+  })();
 
   // Warn about duplicate export names in changed files; they can cause false negatives.
   const changedExportNames = new Set(changedExports.map((exp) => exp.name));
@@ -164,17 +228,6 @@ function main(): void {
       },
     );
   }
-
-  const testOnlyExports = changedExports.flatMap((exp) => {
-    const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
-    const outsideSrcConsumers = [...srcConsumers].filter((file) => file !== exp.file);
-    if (outsideSrcConsumers.length > 0) return [];
-
-    const testConsumers = [...(testImports.get(exp.name) ?? new Set<string>())];
-    if (testConsumers.length === 0) return [];
-
-    return [{ ...exp, testConsumers }];
-  });
 
   for (const exp of testOnlyExports) {
     const consumers = exp.testConsumers.join(', ');
@@ -192,7 +245,7 @@ function main(): void {
 
   if (testOnlyExports.length === 0) {
     report.info(
-      `${changedExports.length} changed src/ export(s) checked; none are consumed exclusively by tests.`,
+      `${changedExports.length} changed src/ export(s) checked; none newly became test-only.`,
     );
   }
 

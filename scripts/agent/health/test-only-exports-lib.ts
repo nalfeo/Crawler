@@ -253,6 +253,31 @@ export function findTestOnlyExports(
   return result;
 }
 
+function exportKey(exp: Pick<TestOnlyExport, 'file' | 'name'>): string {
+  return `${exp.file}::${exp.name}`;
+}
+
+/**
+ * Compare two repo snapshots and return only exports that became test-only in
+ * the current snapshot. This filters out pre-existing debt in files that a PR
+ * merely happened to touch, while still catching unchanged exports whose last
+ * production caller was removed by the branch.
+ */
+export function findNewlyTestOnlyExports(
+  currentSrcFiles: readonly SourceFile[],
+  currentTestFiles: readonly SourceFile[],
+  baseSrcFiles: readonly SourceFile[],
+  baseTestFiles: readonly SourceFile[],
+): TestOnlyExport[] {
+  const baseKeys = new Set(
+    findTestOnlyExports(baseSrcFiles, baseTestFiles).map((exp) => exportKey(exp)),
+  );
+
+  return findTestOnlyExports(currentSrcFiles, currentTestFiles).filter(
+    (exp) => !baseKeys.has(exportKey(exp)),
+  );
+}
+
 /**
  * Detect duplicate export names across all files (a name exported by two or
  * more files). The name-based import scan cannot distinguish which file a
