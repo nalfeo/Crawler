@@ -1269,6 +1269,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // the achievements panel to be visibly open first.
       achievementsUI.refresh(world);
       achievementsUI.claimReward(achievementId);
+      scene.inventoryUI?.refresh(world);
     },
 
     seedPendingRewardResumeScenario: () => {
@@ -1390,6 +1391,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         quantity: 1,
       });
       scene?.quartermasterUI?.refresh(world);
+      scene?.inventoryUI?.refresh(world);
       if (result.ok) {
         const purchased = getGeneratedEquipmentInstance(world, result.instanceId);
         return {
@@ -1420,6 +1422,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const acknowledged = acknowledgeBossChestReveal(world, chest.chestId);
       if (!acknowledged.ok) return { ok: false, reason: acknowledged.reason };
       scene.bossChestUI?.refresh(world);
+      scene.inventoryUI?.refresh(world);
       return { ok: true };
     },
 
