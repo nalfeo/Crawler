@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b66148f38249630f92b8e53226d0e621bb7c0315",
+    "commitDate": "2026-07-30T02:25:35Z",
+    "commitSubject": "sprites: remove fixed-grid frameSequence slicer — one content-aware path for all briefs (#2337)",
+    "capturedAt": "2026-07-30T03:32:53.540Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30508842440",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/b66148f38249630f92b8e53226d0e621bb7c0315.json"
+  },
+  {
     "commit": "85cfcd624d999a62bfe63dffc606c49d21773ff2",
     "commitDate": "2026-07-30T01:57:50Z",
     "commitSubject": "fix(sprites): unblock + speed up theme-equipment publish (fetch-depth 0 + parallel blob stage) (#2338)",
