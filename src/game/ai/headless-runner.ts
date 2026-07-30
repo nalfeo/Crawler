@@ -26,10 +26,7 @@ import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
-import {
-  FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
-  denUnlockGoalId,
-} from '../floor2Scenario.js';
+import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -89,7 +86,6 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
     readRunState(world) === 'safe_room'
   );
 }
-
 
 // Floor 1 AI-driver auto-actions (NPC talk, boss-reward spell pick, shop
 // prize/buy/equip, stair descend, stat allocation) live in ./auto-progression.ts
