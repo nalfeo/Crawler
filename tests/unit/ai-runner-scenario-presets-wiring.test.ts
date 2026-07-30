@@ -139,5 +139,49 @@ describe('AI runner scenario presets wiring', () => {
       expect(hasTeeOnStoneSide).toBe(true);
       expect(hasTeeOnCaveSide).toBe(true);
     });
+
+    it('borders a wall run with explicit in-map VOID on one side and floor on the other (Fix 1 coverage)', () => {
+      // The dynamic wall-inset fix must be observable against real in-map rock,
+      // not just the map's own out-of-bounds edge (the outer border already
+      // covers that case). `voidWall` is a straight wall column; `voidPocket`
+      // is VOID immediately west of it; the column's east side stays floor.
+      const { voidWall, voidPocket } = TERRAIN_JUNCTION_SLICE;
+      expect(voidPocket.x).toBe(voidWall.x - 1);
+      for (let y = voidWall.yStart; y <= voidWall.yEnd; y += 1) {
+        expect(map.flags[at(voidWall.x, y)]).toBe(TilePresets.WALL);
+        // West neighbour is explicit VOID (rock), not merely a wall terrain type.
+        expect(map.terrain[at(voidPocket.x, y)]).toBe(TerrainType.VOID);
+        expect(map.flags[at(voidPocket.x, y)]).toBe(TilePresets.WALL);
+        // East neighbour of the wall column stays ordinary passable floor, so
+        // the inset-vs-no-inset contrast is visible on the same wall run.
+        expect(map.tileMap.isPassable(voidWall.x + 1, y)).toBe(true);
+        expect(map.terrain[at(voidWall.x + 1, y)]).not.toBe(TerrainType.VOID);
+      }
+    });
+
+    it('never punches a door at a central-chamber corner, so all four interior corners stay solid wall (Fix 2 coverage)', () => {
+      // Fix 2 (FOV corner reveal) needs a fully-enclosed room whose four
+      // interior corner blocks are genuinely opaque wall — if a door ever
+      // drifted onto a corner tile, that corner would no longer exercise the
+      // seam-rejection bug the fix addresses.
+      const { roomMinX, roomMaxX, roomMinY, roomMaxY, doors, playerTile } = TERRAIN_JUNCTION_SLICE;
+      const corners: ReadonlyArray<readonly [number, number]> = [
+        [roomMinX, roomMinY],
+        [roomMaxX, roomMinY],
+        [roomMinX, roomMaxY],
+        [roomMaxX, roomMaxY],
+      ];
+      for (const [cx, cy] of corners) {
+        expect(doors.some((d) => d.x === cx && d.y === cy)).toBe(false);
+        expect(map.flags[at(cx, cy)]).toBe(TilePresets.WALL);
+        expect(map.terrain[at(cx, cy)]).not.toBe(TerrainType.VOID);
+      }
+      // The player sits at the chamber centre, so the fully-enclosed corners
+      // above are within default FOV radius and observable in the scene.
+      expect(playerTile.x).toBeGreaterThan(roomMinX);
+      expect(playerTile.x).toBeLessThan(roomMaxX);
+      expect(playerTile.y).toBeGreaterThan(roomMinY);
+      expect(playerTile.y).toBeLessThan(roomMaxY);
+    });
   });
 });

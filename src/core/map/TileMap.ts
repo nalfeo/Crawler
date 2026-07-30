@@ -166,6 +166,15 @@ export class TileMap {
    *
    * Used by the FOV visibility callback to ensure consistent corner-seam
    * behavior across the full ray.
+   *
+   * Terminal-step exemption: when the *target* tile is itself opaque, the seam
+   * formed by the final step into it is ignored. A wall block diagonally across
+   * an inside room corner is part of the room's own enclosure — the player is
+   * standing in the room looking at it — so it must read as seen and lit rather
+   * than as a peek through a gap. Seams encountered *earlier* on the ray still
+   * block, so this never exempts a whole ray. The exemption keys off the target
+   * only, never the origin: exempting an opaque origin would let a
+   * wall-mounted light source leak through diagonal gaps.
    */
   hasBlockedCornerSeam(x0: number, y0: number, x1: number, y1: number): boolean {
     const dx = Math.abs(x1 - x0);
@@ -175,6 +184,7 @@ export class TileMap {
     let err = dx - dy;
     let x = x0;
     let y = y0;
+    const targetOpaque = !this.isTransparent(x1, y1);
 
     while (x !== x1 || y !== y1) {
       const prevX = x;
@@ -188,11 +198,13 @@ export class TileMap {
         err += dx;
         y += sy;
       }
+      const reachedTarget = x === x1 && y === y1;
+      if (reachedTarget && targetOpaque) break;
       const steppedDiagonally = x !== prevX && y !== prevY;
       if (steppedDiagonally && !this.isTransparent(x, prevY) && !this.isTransparent(prevX, y)) {
         return true;
       }
-      if (x === x1 && y === y1) break;
+      if (reachedTarget) break;
     }
 
     return false;
@@ -209,7 +221,17 @@ export class TileMap {
    *
    * Also applies corner-seam blocking: if a diagonal step has both orthogonal
    * corners opaque, the passage is blocked, ensuring consistent visibility
-   * rules across all rays (LOS is symmetric).
+   * rules across all rays.
+   *
+   * Terminal-step exemption (mirrors `hasBlockedCornerSeam`): when the target
+   * tile is itself opaque, the seam formed by the final step into it is
+   * ignored, so an inside room corner is lit by the light field rather than
+   * left at ambient. `light-field.ts` calls this via `FloorMap.hasLineOfSight`
+   * for every cell it lights, wall cells included. This makes LOS asymmetric
+   * when exactly one endpoint is opaque — it is NOT symmetric in that case —
+   * which is safe because nothing ever occupies an opaque tile: every gameplay
+   * consumer (combat targeting, NPC checks) has both endpoints on walkable
+   * floor. The exemption keys off the target only, never the origin.
    *
    * Pure integer math: no allocation, no randomness, no floating point.
    */
@@ -221,6 +243,7 @@ export class TileMap {
     let err = dx - dy;
     let x = x0;
     let y = y0;
+    const targetOpaque = !this.isTransparent(x1, y1);
 
     while (x !== x1 || y !== y1) {
       const prevX = x;
@@ -234,13 +257,15 @@ export class TileMap {
         err += dx;
         y += sy;
       }
+      const reachedTarget = x === x1 && y === y1;
+      if (reachedTarget && targetOpaque) break;
       const steppedDiagonally = x !== prevX && y !== prevY;
       if (steppedDiagonally && !this.isTransparent(x, prevY) && !this.isTransparent(prevX, y)) {
         return false;
       }
       // Reaching the target tile means the path was clear; the target tile
       // itself is never treated as a blocker.
-      if (x === x1 && y === y1) break;
+      if (reachedTarget) break;
       if (!this.isTransparent(x, y)) return false;
     }
 
