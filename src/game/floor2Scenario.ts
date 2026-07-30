@@ -945,6 +945,7 @@ export function initializeFloor2Scenario(
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+  world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);
     initializePlayerWeaponSkills(world, playerEid);
@@ -1052,6 +1053,11 @@ export function initializeFloor2Scenario(
       ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
       : undefined;
 
+  if (options?.playerCarryover) {
+    restorePlayerCarryover(world, playerEid, options.playerCarryover);
+    initializePlayerWeaponSkills(world, playerEid);
+  }
+
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
@@ -1088,11 +1094,6 @@ export function initializeFloor2Scenario(
         }
       }
     }
-  }
-
-  if (options?.playerCarryover) {
-    restorePlayerCarryover(world, playerEid, options.playerCarryover);
-    initializePlayerWeaponSkills(world, playerEid);
   }
 
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
