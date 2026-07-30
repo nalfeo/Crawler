@@ -856,9 +856,9 @@ export class MainGameScene extends Phaser.Scene {
       // Double-click an equippable item to equip it (safe-room gated by
       // equipFromBag). Both panes refresh so the paper-doll and bag stay in
       // sync after the swap.
-      onEquipItem: (itemId) => {
+      onEquipItem: (inventoryEntry) => {
         if (this.playerEid < 0) return;
-        const result = equipFromBag(this.world, this.playerEid, itemId);
+        const result = equipFromBag(this.world, this.playerEid, inventoryEntry);
         if (result.ok) {
           this.inventoryUI?.refresh(this.world);
           this.equipmentUI?.refresh(this.world);

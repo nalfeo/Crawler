@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
-import { classifyGameOverOutcome } from '../../src/game/ai/game-over-classifier.js';
+import { classifyGameOverOutcome } from '../../src/game/ai/headless-runner-invariants.js';
 import { FLOOR2_TIMEOUT_GOAL_ID } from '../../src/game/floor2Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 

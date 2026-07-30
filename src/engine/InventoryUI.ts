@@ -10,21 +10,25 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
+import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
-import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
-import {
-  createTabPreferences,
-  filterByEquipmentSlot,
-  filterByTag,
-  getVisibleTabs,
-  search,
-  sortSlots,
-  type SortField,
+import type {
+  GeneratedEquipmentInventoryEntry,
+  InventoryBag,
+  InventorySlot,
+  TabPreferences,
 } from '../shared/inventory.js';
+import { createTabPreferences, type SortField } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
-import { isEquippableItem } from '../shared/equipmentDefs.js';
-import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
+import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
+import {
+  ItemRarity,
+  type ItemDef,
+  type ItemTag,
+  RARITY_COLORS,
+  getItemById,
+} from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -49,6 +53,20 @@ const CELL_GAP = 10;
 const COLS = 5;
 const BORDER_WIDTH = 2;
 const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
+const RARITY_SORT_ORDER: Record<string, number> = {
+  Common: 0,
+  Uncommon: 1,
+  Rare: 2,
+  Epic: 3,
+  Legendary: 4,
+};
+const GENERATED_RARITY_TO_ITEM_RARITY: Record<string, ItemRarity> = {
+  common: ItemRarity.Common,
+  uncommon: ItemRarity.Uncommon,
+  rare: ItemRarity.Rare,
+  epic: ItemRarity.Epic,
+  legendary: ItemRarity.Legendary,
+};
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -79,7 +97,13 @@ export interface InventoryUIConfig {
    * cell (ARPG idiom; single click/tap still pins the tooltip). The coordinator
    * decides whether the equip is allowed (safe-room gate) and refreshes panes.
    */
-  onEquipItem?: (itemId: string) => void;
+  onEquipItem?: (item: string | GeneratedEquipmentInventoryEntry) => void;
+}
+
+interface RenderInventorySlot {
+  readonly slot: InventorySlot;
+  readonly def: ItemDef;
+  readonly generatedEntry?: GeneratedEquipmentInventoryEntry;
 }
 
 /** Max ms between two clicks on the same cell to count as an equip double-click. */
@@ -104,6 +128,8 @@ export function createInventoryUI(
    * without assuming a fixed sort position.
    */
   getCellIndexForItem(itemId: string): number | null;
+  /** Test/automation affordance: visible rendered inventory item ids in cell order. */
+  getVisibleItemIds(): string[];
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -141,6 +167,7 @@ export function createInventoryUI(
   let searchQuery = '';
   let externalSlotFilter: EquipmentSlotId | null = null;
   let currentBag: InventoryBag | null = null;
+  let currentWorld: GameWorld | null = null;
   let currentSortBy: SortField = 'rarity';
   const tabPrefs: TabPreferences = createTabPreferences();
   let playerEid = -1;
@@ -401,11 +428,72 @@ export function createInventoryUI(
     tooltipObjects.length = 0;
   }
 
+  function getBaseRenderSlots(): RenderInventorySlot[] {
+    if (!currentBag) return [];
+
+    const staticSlots: RenderInventorySlot[] = currentBag.slots
+      .map((slot) => {
+        const def = getItemById(slot.itemId);
+        return def ? { slot, def } : null;
+      })
+      .filter((slot): slot is RenderInventorySlot => slot !== null);
+    const generatedSlots: RenderInventorySlot[] = [];
+    for (const generatedEntry of currentBag.generatedEquipment ?? []) {
+      const generated = currentWorld
+        ? getGeneratedEquipmentInstance(currentWorld, generatedEntry.instanceKey)
+        : undefined;
+      if (!generated?.baseId) continue;
+      generatedSlots.push({
+        slot: { itemId: generated.baseId, quantity: 1 },
+        def: {
+          id: generated.baseId,
+          name: generated.frozen.displayName,
+          description: '',
+          tags: [...generated.frozen.tags] as ItemTag[],
+          rarity: GENERATED_RARITY_TO_ITEM_RARITY[generated.rarity] ?? ItemRarity.Common,
+          maxStack: 1,
+        },
+        generatedEntry,
+      });
+    }
+    return [...staticSlots, ...generatedSlots];
+  }
+
+  function getRenderSlotKey(slot: RenderInventorySlot): string {
+    return slot.generatedEntry?.instanceKey ?? `static:${slot.slot.itemId}:${slot.slot.quantity}`;
+  }
+
+  function getVisibleRenderTabs(): ItemTag[] {
+    const active = new Set<ItemTag>();
+    for (const candidate of getBaseRenderSlots()) {
+      for (const tag of candidate.def.tags) {
+        active.add(tag);
+      }
+    }
+    for (const hidden of tabPrefs.hidden) {
+      active.delete(hidden);
+    }
+    const ordered: ItemTag[] = [];
+    const placed = new Set<ItemTag>();
+    for (const tag of tabPrefs.order) {
+      if (active.has(tag) && !placed.has(tag)) {
+        ordered.push(tag);
+        placed.add(tag);
+      }
+    }
+    for (const tag of [...active].sort()) {
+      if (!placed.has(tag)) {
+        ordered.push(tag);
+      }
+    }
+    return ordered;
+  }
+
   function renderTabs(): void {
     clearTabObjects();
     if (!currentBag) return;
 
-    const tabs = getVisibleTabs(currentBag, tabPrefs);
+    const tabs = getVisibleRenderTabs();
     if (activeTag !== null && !tabs.includes(activeTag)) {
       activeTag = null;
     }
@@ -487,26 +575,65 @@ export function createInventoryUI(
     }
   }
 
-  function getFilteredSlots(): InventorySlot[] {
+  function getFilteredSlots(): RenderInventorySlot[] {
     if (!currentBag) return [];
 
-    let slots: InventorySlot[] = currentBag.slots;
+    const allSlots = getBaseRenderSlots();
+    let slots: RenderInventorySlot[] = allSlots;
 
-    if (externalSlotFilter !== null) {
-      slots = filterByEquipmentSlot(currentBag, externalSlotFilter);
+    const slotFilter = externalSlotFilter;
+    if (slotFilter !== null) {
+      const staticFiltered = allSlots
+        .filter((candidate) => !candidate.generatedEntry)
+        .filter((candidate) => {
+          const def = getEquipmentDefForItem(candidate.slot.itemId);
+          return def?.slots.includes(slotFilter) === true;
+        });
+      const generatedFiltered = allSlots
+        .filter((candidate) => candidate.generatedEntry)
+        .filter((candidate) => {
+          const def = getEquipmentDefForItem(candidate.slot.itemId);
+          return def?.slots.includes(slotFilter) === true;
+        });
+      slots = [...staticFiltered, ...generatedFiltered];
     }
-
-    const filteredBag: InventoryBag = { slots };
 
     if (searchQuery) {
-      slots = search(filteredBag, searchQuery);
+      const query = searchQuery.toLowerCase();
+      slots = slots.filter((candidate) => {
+        return (
+          candidate.def.name.toLowerCase().includes(query) ||
+          (candidate.def.description ?? '').toLowerCase().includes(query)
+        );
+      });
     } else if (activeTag) {
-      slots = filterByTag(filteredBag, activeTag);
+      const tagFilter = activeTag;
+      slots = slots.filter((candidate) => candidate.def.tags.includes(tagFilter));
     }
 
-    // Sort
-    const tempBag = { slots };
-    return sortSlots(tempBag, currentSortBy);
+    return [...slots].sort((left, right) => {
+      if (currentSortBy === 'quantity') {
+        const quantity = right.slot.quantity - left.slot.quantity;
+        if (quantity !== 0) return quantity;
+        const byItemId = left.slot.itemId.localeCompare(right.slot.itemId);
+        return byItemId !== 0
+          ? byItemId
+          : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
+      }
+      const leftName = left.def.name;
+      const rightName = right.def.name;
+      if (currentSortBy === 'rarity') {
+        const rarityDiff =
+          (RARITY_SORT_ORDER[right.def.rarity] ?? 0) - (RARITY_SORT_ORDER[left.def.rarity] ?? 0);
+        if (rarityDiff !== 0) return rarityDiff;
+      }
+      const byName = leftName.localeCompare(rightName);
+      if (byName !== 0) return byName;
+      const byItemId = left.slot.itemId.localeCompare(right.slot.itemId);
+      return byItemId !== 0
+        ? byItemId
+        : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
+    });
   }
 
   function renderItems(): void {
@@ -525,9 +652,9 @@ export function createInventoryUI(
     const gridLeft = snap(panelX + (panelWidth - gridPixelWidth) / 2);
 
     for (let i = 0; i < Math.min(slots.length, maxVisible); i++) {
-      const slot = slots[i]!;
-      const def = getItemById(slot.itemId);
-      if (!def) continue;
+      const renderSlot = slots[i]!;
+      const slot = renderSlot.slot;
+      const def = renderSlot.def;
 
       const col = i % COLS;
       const row = Math.floor(i / COLS);
@@ -578,7 +705,7 @@ export function createInventoryUI(
           clearTooltip();
           lastClickItemId = null;
           lastClickTime = Number.NEGATIVE_INFINITY;
-          config.onEquipItem(slot.itemId);
+          config.onEquipItem(renderSlot.generatedEntry ?? slot.itemId);
           return;
         }
 
@@ -705,7 +832,7 @@ export function createInventoryUI(
 
     // Re-show (or drop) the pinned tooltip after rebuilding the grid.
     if (pinned !== null) {
-      const stillPresent = slots.some((s) => s.itemId === pinned!.slot.itemId);
+      const stillPresent = slots.some((candidate) => candidate.slot.itemId === pinned!.slot.itemId);
       if (stillPresent) {
         showTooltip(pinned.def, pinned.slot, pinned.x, pinned.y);
       } else {
@@ -796,6 +923,7 @@ export function createInventoryUI(
   }
 
   function refresh(world: GameWorld): void {
+    currentWorld = world;
     playerEid = findPlayerEid(world);
     currentBag = playerEid >= 0 ? (world.inventories.get(playerEid) ?? null) : null;
     currentWorldSeed = world.seed | 0;
@@ -815,9 +943,10 @@ export function createInventoryUI(
   }
 
   function computeRenderSignature(): string {
-    const slots = currentBag?.slots ?? [];
+    const slots = getFilteredSlots();
     let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}|${externalSlotFilter ?? '*'}`;
-    for (const slot of slots) {
+    for (const candidate of slots) {
+      const slot = candidate.slot;
       // Fold in the *selected* generated icon variant and whether its texture is
       // loaded yet, so the grid re-renders once async sprite warm-loading
       // finishes (the slot contents alone are unchanged, so without this the
@@ -825,7 +954,7 @@ export function createInventoryUI(
       // mutation). Selecting via the same path as the icon keeps them in sync.
       const entry = selectGeneratedEntry(slot.itemId);
       const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
-      signature += `;${slot.itemId}:${slot.quantity}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
+      signature += `;${slot.itemId}:${slot.quantity}:${candidate.generatedEntry?.instanceKey ?? '-'}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
     }
     return signature;
   }
@@ -860,6 +989,7 @@ export function createInventoryUI(
       const i = cellItemIds.indexOf(itemId);
       return i >= 0 ? i : null;
     },
+    getVisibleItemIds: () => [...cellItemIds],
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
     setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {

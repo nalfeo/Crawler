@@ -399,6 +399,20 @@ export interface Floor2ProgressionMetrics {
   exitCompleted: boolean;
 }
 
+/** End-of-run equipment usability + reward-resolution invariants. */
+export interface EquipmentPlayabilityMetrics {
+  /** Total Quartermaster equipment gold observed as spent this run. */
+  goldSpentOnEquipment: number;
+  /** Generated equipment entries still bagged at run end. */
+  baggedGeneratedCount: number;
+  /** Generated equipment instances equipped at run end (de-duplicated). */
+  equippedGeneratedCount: number;
+  /** Unclaimed achievement rewards + non-claimed boss chests at run end. */
+  unopenedRewardBoxes: number;
+  /** Bagged generated instances that could fill an empty matching slot. */
+  unequippedWithEmptySlotCount: number;
+}
+
 /**
  * Run statistics for performance tracking.
  */
@@ -466,4 +480,6 @@ export interface RunStats {
    * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
    */
   weaponTelemetry?: WeaponTelemetrySummary;
+  /** End-of-run deterministic equipment/reward playability metrics. */
+  equipmentPlayability?: EquipmentPlayabilityMetrics;
 }
