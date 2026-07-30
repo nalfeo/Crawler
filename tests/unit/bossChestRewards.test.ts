@@ -22,7 +22,7 @@ function makeWorld(runKey = 'boss-chest-core-test') {
 function makeChestedWorld(runKey?: string) {
   const world = makeWorld(runKey);
   const chestId = createBossChestId(FAMILY_ID);
-  resolveEquipmentRewardBundle(world, chestId, BASES, 'tier1');
+  resolveEquipmentRewardBundle(world, chestId, BASES, 'tier4');
   const created = createBossChestRecord(world, chestId, FAMILY_ID);
   return { world, chestId, created };
 }
@@ -188,7 +188,7 @@ describe('revealedGrant presentation snapshot', () => {
 
     expect(world.bossChests.get(chestId)!.revealedGrant).toEqual({
       kind: 'equipment',
-      tier: 'tier1',
+      tier: 'tier4',
       instanceKeys: result.granted!.map((entry) => entry.instanceKey),
     });
   });
