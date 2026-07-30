@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "theme-equipment-review-status-ux",
+  "task_title": "Theme-equipment review: generate/regenerate labels, gate thumbs on generation, run-status strip, non-disruptive review",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Changes 7-10. 0 blocking, 5 major all resolved: (1) run-status setId correlation via workflow run-name + distinct available/errorKind states; (2) two projections hasPhaseOutput vs validatePhaseArtifactsForUpVote never conflated; (3) variant-approval stays pipeline-only, awaiting-generation until approved-variant; (4) polling guards (timeout, single-inflight, set+ref fence, requery node); (5) roster hasPhaseOutput=true (entry is the output). Minors: reviewStatus active-tab-only, itemCard-only gating (not shared reviewButtons), invariant tests, databaseId int validation + rel=noreferrer."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "resolved_count": 2,
+          "models": ["gpt-5.5"],
+          "clean": true,
+          "notes": "Changes 7-10. 2 Medium findings, both fixed with regression tests. Finding 1: draftFeedback keyed only by raw item id + collection sentinel -> collection draft leaked across set-switch and an item id literally collection collided with the set-level box; fixed with scope-namespaced feedbackKey(scope,id) cleared in openSet+loadIndex but not load(). Finding 2: run-status correlation suffix-spoofable; fixed with anchored setId-escaped regex.",
+          "round": 1,
+          "concerns_count": 2
+        },
+        {
+          "resolved_count": 1,
+          "models": ["gpt-5.6-sol"],
+          "clean": true,
+          "notes": "Changes 11-16 (renderer status UX + judge null-rationale + run-active control lock). 1 Medium finding: the active-run banner reported live progress but review controls stayed enabled during an in-flight run, so a mid-run verdict/bulk/advance/brief mutation would either fail the runner final atomic CAS save (all ~30min paid vision work discarded) or silently overwrite the maintainer change, and the banner count would drift. Fix: gate every durable-state mutation on isRunActive() (review thumbs incl. the shared brief Save-and-Approve up-button, bulk Approve remaining, Advance); run-phase/refresh/back stay enabled; a visible lock note explains why; the run-status poll re-renders (not just patches the strip) on an active<->inactive transition so controls actually lock/unlock, and a broken poll never leaves them stuck locked. Regression guard test added. Live-verified [disabled] controls + lock note against real in-progress run 30345704005.",
+          "round": 2,
+          "concerns_count": 1
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,147 @@
+# ORIENTATION + ASPECT NOTE (Asset Forge, 2026-07-29)
+#
+# Sibling of `tile-door-tall-v1` (same wall slot, OPEN instead of closed). Same
+# aspect target and same reasoning: opaque box width:height near 0.58-0.65 so
+# that, under the EXISTING height-authoritative renderer rule (unchanged by
+# this brief -- `scale = ftToPx(6.5) / box.height`), the rendered width lands
+# close to the 4 ft tile instead of overhanging ~0.6 ft onto each neighbouring
+# tile as the current `tile-door-open-v1-var-0` (aspect ~0.8) does.
+#
+# BOTH STATES MUST MATCH. `tile-door-tall-v1` and this brief are sampled in the
+# SAME `sprites:run` against a shared-archway spec and the winning pair is
+# selected by MEASURING the relationship (opaque geometry + arch-stone-only
+# palette), never by the pipeline's independent per-state auto-pick -- that is
+# the exact defect class the 2026-07-28 door session catalogued (a closed/open
+# pair that each passed every gate alone and still disagreed by 1.45 ft and a
+# 56.8 vs 7.2 warm-hue delta as a pair).
+#
+# THE OPENING MUST BE OPAQUE, NOT TRANSPARENT. The dark gap is the room BEYOND
+# the door -- it is painted opaque near-black. If left transparent, the floor
+# tile underneath shows straight through and the door reads as a hole in the
+# world.
+#
+# MEASURED OUTCOME (2026-07-29 Asset Forge session) -- TARGET NOT MET, NO
+# VARIANT APPROVED FROM THIS BRIEF, same conclusion as `tile-door-tall-v1`
+# (see that file's full measurement log). Six attempts across the closed/open
+# pair and two diagnostic-only probes all landed the delivered opaque-box
+# aspect in the ~0.75-1.0 band, never materially narrower than the currently
+# approved `tile-door-open-v1-var-0`. Treated as a genuine generator
+# capability ceiling for this subject, not a prompting gap; iteration STOPPED
+# per the session's instructions rather than approving an off-target variant.
+# `tile-door-v1`/`tile-door-open-v1` remain the only approved/wired NS door
+# art. See the 2026-07-29 door-art handoff for the full attempt log and the
+# recommended next avenue (different model/deployment, or compositing a
+# separately generated lintel extension above the existing approved art).
+type: prop
+name: tile-door-tall-open-v1
+description: |
+  THE SAME DOOR as `tile-door-tall-v1` in this game, drawn OPEN. Front
+  elevation, looking STRAIGHT THROUGH the opening dead-on -- the plane of the
+  doorway is exactly parallel to the screen, with NO tilt, NO rotation, NO
+  oblique angle and NO perspective. Modern high-quality pixel art, silhouette
+  readable at 16px.
+
+  IT IS THE SAME OBJECT, SECOND FRAME. Picture the closed door: a tall,
+  NARROW, round-headed leaf of WARM WALNUT timber with three top-to-bottom
+  plank seams, two broad dark iron straps riveted with fat studs, and a heavy
+  iron ring handle, set in a slim stone archway. Now that exact door has swung
+  inward. Same timber, same colour, same straps, same rivets, same ring, same
+  arched head, same width, same height. A viewer flicking between the two
+  pictures must see ONE door opening -- not a second, different door.
+
+  THE DOORWAY MUST READ AS NARROW AND TALL, matching the closed frame -- a
+  slim postern set deep into a thick wall, NOT a wide gate.
+
+  THE ARCHWAY IS SHARED WITH THE CLOSED FRAME AND MUST NOT MOVE: slim
+  cool-grey blocky stone -- narrow jambs up the left and right sides and a
+  shallow round-headed arch over the top, no more than about ONE TENTH of the
+  total width on each side. Keep it SLIM so the opening and the leaf still
+  dominate. No threshold stone across the bottom. The stone must be the same
+  colour, the same thickness and the same shape as it is in the closed frame.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The whole
+  drawn subject -- stone arch plus dark opening plus swung leaf -- must be
+  approximately 155 PIXELS WIDE and 250 PIXELS TALL: the FULL HEIGHT of the
+  cell, top margin to bottom margin, and just under TWO THIRDS of its width
+  (opaque width:height near 155:250 = 0.62), matching the closed frame exactly.
+  - The left ~20% and the right ~20% of the cell are completely EMPTY
+    transparent background.
+  - The top of the opening is gently ARCHED, matching the closed door's arch.
+  - EXACTLY ONE DOORWAY PER CELL.
+
+  REAL-WORLD SIZE. The archway renders 4 FEET WIDE x 6.5 FEET TALL overall. A
+  person is 5.75 ft tall.
+
+  THE SWUNG LEAF: the door has swung INWARD and stands against the INSIDE of
+  the LEFT side of the opening, seen at a steep angle. Make it about ONE THIRD
+  the width of the opening and run it the full height -- wide enough that its
+  identity survives: the warm walnut still reads as WARM, and at least one
+  iron strap, its rivets and a hint of the plank seams are visible on it. Shade
+  it perhaps one or two tone stops down because it stands inside the room, NOT
+  so dark that it turns grey and stops looking like the same timber. If the
+  leaf reads as a dark sliver you cannot identify, it is wrong.
+
+  IT IS NOT: a closed door, a portcullis, a gate, a wide gateway, an archway
+  standing empty with no door in it at all, a window, a mine shaft, or a cave
+  mouth. It is one narrow open timber door swung aside inside a slim stone
+  archway.
+
+  MOOD -- a grimy reality-TV dungeon. The way out is open and it is not
+  reassuring: the dark beyond is flat and unlit.
+
+  COLOUR -- the opening is a very dark desaturated blue-black, near-black but
+  not pure black, with a faint lift near the floor. THE LEAF IS THE SAME WARM
+  WALNUT AS THE CLOSED DOOR: a rich, clearly warm red-brown that reads as
+  timber, not as grey. This is the single most-checked thing in this brief.
+  The iron straps, rivets and ring are dull dark grey-black metal with
+  tarnished rust-brown streaks. Keep a clear dark outline. BANNED: neon, pure
+  white, pure black, saturated red, saturated yellow, orange, teal, cyan, blue,
+  green, magenta, purple, gold leaf, gemstones, glowing runes, magical glow,
+  torchlight glare, visible fire, and any ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently -- the same
+  direction as the closed door, because it is the same door in the same wall.
+  The swung leaf still catches that light on its upper-left: keep enough of it
+  lit that the warm walnut is unmistakable.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering -- no mushy gradients, no airbrush, no
+  floating unsupported elements.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils,
+  labels, captions, watermarks or signatures anywhere.
+
+  BACKGROUND: fully transparent OUTSIDE the archway silhouette only. Draw ONLY
+  the slim stone archway, the dark opening and the swung leaf. Do NOT paint a
+  masonry wall beyond the arch, a floor slab, a rectangular backing panel, a
+  border, a vignette, or any cast/contact/drop shadow.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the artwork so it can
+  be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 64
+  height: 128
+anchor:
+  x: 32
+  y: 126
+sensors:
+  opaqueRatio:
+    min: 0.45
+    max: 0.96
+  anchor:
+    derive: true
+    mode: center-of-mass
+    bandRows: 8
+    centerToleranceX: 10
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

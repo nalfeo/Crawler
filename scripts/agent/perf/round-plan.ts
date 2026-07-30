@@ -191,10 +191,10 @@ export interface RoundCheckpoint {
   incumbentConfigId: string;
   /**
    * The combo string whose rows contain the incumbent — `LEGACY_COMBO_ID`
-   * (`'legacy+legacy'`) when a `legacyBaseline` was provided in
+   * (`'riskRewardFused+legacy'`) when a `legacyBaseline` was provided in
    * {@link initCheckpoint}, otherwise equal to `combo`. Must be passed to
    * {@link buildLeaderboard} as `incumbentCombo` so flip-gating correctly
-   * identifies the incumbent's run rows even for non-`legacy+legacy` combos.
+   * identifies the incumbent's run rows even for non-incumbent combos.
    */
   incumbentCombo: string;
   /** Current per-knob step size (halves on a round with no improvement). */
@@ -255,8 +255,8 @@ export function resolveInitRunInputs(
 
 /** Build the round-0 checkpoint from a combo's baseline shard (`--stage search-baseline`).
  *
- * When `legacyBaseline` is provided and the combo is not `legacy+legacy`, the
- * LEGACY incumbent config becomes the safety-gate reference (matching the final
+ * When `legacyBaseline` is provided and the combo is not `riskRewardFused+legacy`, the
+ * incumbent config becomes the safety-gate reference (matching the final
  * graduation gate in {@link selectQualifiedWinner}). Without it, the combo's
  * own base config is used, which can allow a flip-tainted candidate to pass the
  * in-search gate while still being rejected at graduation.
@@ -286,14 +286,14 @@ export function initCheckpoint(
     steps[knob] = rangeFor(knob).step;
   }
 
-  // Incumbent for the safety gate: use the LEGACY incumbent (from legacyBaseline)
-  // for non-LEGACY combos so that the in-search net-win check mirrors the final
-  // graduation gate (`selectQualifiedWinner`). For `legacy+legacy` the combo
-  // IS the LEGACY incumbent, so no separate baseline is needed.
+  // Incumbent for the safety gate: use the incumbent (from legacyBaseline)
+  // for non-incumbent combos so that the in-search net-win check mirrors the final
+  // graduation gate (`selectQualifiedWinner`). For `riskRewardFused+legacy` the combo
+  // IS the incumbent, so no separate baseline is needed.
   const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
   let incumbentConfigId = baseId;
   // incumbentCombo tracks which combo string owns the incumbent rows in `rows`.
-  // For a non-LEGACY combo with a legacyBaseline, the incumbent rows carry
+  // For a non-incumbent combo with a legacyBaseline, the incumbent rows carry
   // `combo: LEGACY_COMBO_ID`, NOT `combo: comboStr` — so buildLeaderboard must
   // be given the correct `incumbentCombo` or it will find no incumbent rows,
   // winsVsIncumbentDelta becomes null, and selectQualifiedWinner disqualifies
@@ -310,25 +310,25 @@ export function initCheckpoint(
         `initCheckpoint(${comboStr}): legacyBaseline shard must contain exactly one config, got ${legacyIds.length}`,
       );
     }
-    // The declared config/id must be the CANONICAL LEGACY base config — not
-    // merely "exactly one config, tagged combo=legacy+legacy" — because a
-    // same-build `--stage search-eval` shard for a *tuned* `legacy+legacy`
-    // candidate also has one config, LEGACY-tagged rows, and valid row facts,
+    // The declared config/id must be the CANONICAL incumbent base config — not
+    // merely "exactly one config, tagged combo=riskRewardFused+legacy" — because a
+    // same-build `--stage search-eval` shard for a *tuned* `riskRewardFused+legacy`
+    // candidate also has one config, incumbent-tagged rows, and valid row facts,
     // so it would otherwise pass every check below and silently replace the
-    // fixed incumbent with a tuned (non-canonical) LEGACY variant.
+    // fixed incumbent with a tuned (non-canonical) incumbent variant.
     const canonicalLegacyConfig = baseConfigForCombo({
-      pathing: AIPathingMode.LEGACY,
+      pathing: AIPathingMode.RISK_REWARD_FUSED,
       decision: AIDecisionMode.LEGACY,
     });
     const canonicalLegacyId = configId(canonicalLegacyConfig);
     if (legacyId !== canonicalLegacyId) {
       throw new Error(
         `initCheckpoint(${comboStr}): legacyBaseline shard's declared config must be the ` +
-          `canonical LEGACY base config (id '${canonicalLegacyId}'), got a tuned/non-canonical ` +
+          `canonical incumbent base config (id '${canonicalLegacyId}'), got a tuned/non-canonical ` +
           `config (id '${legacyId}').`,
       );
     }
-    // Also verify the stored config BODY is *exactly* the canonical LEGACY base
+    // Also verify the stored config BODY is *exactly* the canonical incumbent base
     // config — the key check above catches a mis-keyed artifact, but the body
     // could still carry tuned values if the canonical key string was supplied
     // manually while the config object itself was a tuned variant. Comparing
@@ -343,9 +343,9 @@ export function initCheckpoint(
     if (storedBody !== canonicalLegacyBody) {
       throw new Error(
         `initCheckpoint(${comboStr}): legacyBaseline shard config body does not match the ` +
-          `canonical LEGACY base config. Config key '${legacyId}' is correct, but the stored ` +
-          `config body's values differ from the untuned canonical LEGACY base. The config body ` +
-          `must be exactly the canonical LEGACY base, not a tuned variant under a ` +
+          `canonical incumbent base config. Config key '${legacyId}' is correct, but the stored ` +
+          `config body's values differ from the untuned canonical incumbent base. The config body ` +
+          `must be exactly the canonical incumbent base, not a tuned variant under a ` +
           `canonical-looking key.`,
       );
     }
@@ -405,25 +405,25 @@ export function initCheckpoint(
 }
 
 /**
- * Derive the canonical LEGACY baseline shard (`{meta, configs, rows}` with
- * EXACTLY the round-0 canonical LEGACY config + its rows) from an
- * already-checkpointed `legacy+legacy` {@link RoundCheckpoint} — used when
- * `legacy+legacy` itself is cross-run RESUMED (see `resume-import` in
- * `.github/workflows/ai-sweep.yml`), so no fresh `search-baseline-legacy+legacy`
+ * Derive the canonical incumbent baseline shard (`{meta, configs, rows}` with
+ * EXACTLY the round-0 canonical incumbent config + its rows) from an
+ * already-checkpointed `riskRewardFused+legacy` {@link RoundCheckpoint} — used when
+ * `riskRewardFused+legacy` itself is cross-run RESUMED (see `resume-import` in
+ * `.github/workflows/ai-sweep.yml`), so no fresh `search-baseline-riskRewardFused+legacy`
  * shard is produced by the `baseline` job this run (that job only runs for
- * FRESH combos). Without this, non-LEGACY combos initialized fresh this same
+ * FRESH combos). Without this, non-incumbent combos initialized fresh this same
  * run would silently fall back to their own base as the in-search incumbent
- * instead of hard-requiring the real LEGACY incumbent — the exact bug class
- * this workflow elsewhere hard-fails on (see `checkpoint-init`'s LEGACY
+ * instead of hard-requiring the real incumbent — the exact bug class
+ * this workflow elsewhere hard-fails on (see `checkpoint-init`'s incumbent
  * baseline requirement).
  *
  * Safe because `RoundCheckpoint.configs`/`rows` are ADDITIVE-ONLY across
  * rounds (`applyRoundResult` only merges in new entries, never removes) — the
- * original round-0 canonical LEGACY config + rows are guaranteed to still be
- * present in a `legacy+legacy` checkpoint at ANY round. This filters them
+ * original round-0 canonical incumbent config + rows are guaranteed to still be
+ * present in a `riskRewardFused+legacy` checkpoint at ANY round. This filters them
  * back out into the exact shard shape {@link initCheckpoint}'s
  * `legacyBaseline` parameter already validates (exactly one config, all rows
- * tagged `combo=legacy+legacy` referencing that config) — reusing that
+ * tagged `combo=riskRewardFused+legacy` referencing that config) — reusing that
  * existing strict provenance check rather than adding a new one.
  */
 export function extractLegacyBaselineShard(checkpoint: RoundCheckpoint): ShardArtifact {
@@ -433,7 +433,7 @@ export function extractLegacyBaselineShard(checkpoint: RoundCheckpoint): ShardAr
     );
   }
   const canonicalLegacyConfig = baseConfigForCombo({
-    pathing: AIPathingMode.LEGACY,
+    pathing: AIPathingMode.RISK_REWARD_FUSED,
     decision: AIDecisionMode.LEGACY,
   });
   const canonicalLegacyId = configId(canonicalLegacyConfig);
@@ -442,8 +442,8 @@ export function extractLegacyBaselineShard(checkpoint: RoundCheckpoint): ShardAr
   if (!storedConfig || stableStringify(storedConfig) !== canonicalLegacyBody) {
     throw new Error(
       `extractLegacyBaselineShard(${checkpoint.combo}): checkpoint does not contain the canonical ` +
-        `LEGACY base config (id '${canonicalLegacyId}') with an exact-matching body — cannot derive ` +
-        `a baseline shard from a checkpoint whose round-0 config was never the canonical LEGACY base.`,
+        `incumbent base config (id '${canonicalLegacyId}') with an exact-matching body — cannot derive ` +
+        `a baseline shard from a checkpoint whose round-0 config was never the canonical incumbent base.`,
     );
   }
   const rows = checkpoint.rows.filter(
@@ -452,7 +452,7 @@ export function extractLegacyBaselineShard(checkpoint: RoundCheckpoint): ShardAr
   if (rows.length === 0) {
     throw new Error(
       `extractLegacyBaselineShard(${checkpoint.combo}): checkpoint has no rows for the canonical ` +
-        `LEGACY base config '${canonicalLegacyId}' — cannot derive a baseline shard.`,
+        `incumbent base config '${canonicalLegacyId}' — cannot derive a baseline shard.`,
     );
   }
   return {

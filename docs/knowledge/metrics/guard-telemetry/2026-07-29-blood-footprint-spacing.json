@@ -1,0 +1,26 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "blood-footprint-spacing",
+  "date": "2026-07-29",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 91,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 91
+    }
+  },
+  "tools": {
+    "ask_user": 3,
+    "create": 5,
+    "edit": 25,
+    "grep": 15,
+    "powershell": 30,
+    "rename_session": 1,
+    "sql": 2,
+    "view": 10
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

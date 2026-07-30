@@ -219,8 +219,8 @@ Options:
                            (deterministic expected-gain-vs-travel/risk/opportunity
                            utility; periodically returns to settlement to run the
                            maintenance planner — equip/shop/claim/abilities)
-  --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: ${defaultPathingMode})
-  --decision-mode <mode>  AI decision A/B axis: legacy | slackAware (default: legacy)
+  --pathing-mode <mode>   AI pathing A/B axis: riskRewardFused (default: ${defaultPathingMode})
+  --decision-mode <mode>  AI decision A/B axis: legacy (default: legacy)
   --help, -h              Show this help message
 
 Examples:
@@ -233,8 +233,5 @@ Examples:
   # Capture an event log + wasted-time summary for analysis
   node src/game/ai/headless-runner-cli.js --seed 42 --max-frames 7200 \\
     --event-log run.jsonl --event-summary run-summary.json
-
-  # A/B: legacy vs slack-aware decision mode
-  node src/game/ai/headless-runner-cli.js --seed 42 --decision-mode slackAware
 `;
 }

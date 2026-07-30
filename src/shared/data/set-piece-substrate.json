@@ -1,0 +1,28 @@
+{
+  "$comment": [
+    "SUBSTRATE = the carved terrain a set piece is authored on top of: the floor",
+    "inside the room and the wall ring around it. It is NOT part of the set-piece",
+    "def - map generation writes those tiles - but every tool that previews a set",
+    "piece has to draw it, or props get judged against the wrong background.",
+    "",
+    "This file exists because that went wrong three times in three renderers:",
+    "the Set Piece Lab hardcoded cool blue-grey STONE_FLOOR, the Set Piece Editor",
+    "drew a black void plus a Kenney placeholder wall ring, and only the game drew",
+    "the real warm-orange SAFE_ROOM_FLOOR. A prop reviewed on black, on blue-grey,",
+    "and on orange is three different props.",
+    "",
+    "Sprite ids here are pinned against the engine's own terrain->art resolution",
+    "(tile-visuals.ts) by tests/unit/set-piece-lab-fidelity.test.ts, so this cannot",
+    "silently drift from what the game actually stamps."
+  ],
+  "default": {
+    "floorSpriteId": "tile-stone-floor-v2-var-2",
+    "wallSpriteId": "tile-stone-wall-v1-var-5"
+  },
+  "bySetPiece": {
+    "welcome-room": {
+      "floorSpriteId": "tile-safe-room-floor-v1-var-0",
+      "note": "Carved STONE_FLOOR then repainted to SAFE_ROOM_FLOOR by tagRoomAsSafe."
+    }
+  }
+}

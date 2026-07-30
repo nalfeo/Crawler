@@ -22,6 +22,8 @@ import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import type { GeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from '../../src/engine/generatedAssets/index.js';
 
 /** Fill tint mode value re-exported from PhaserBridge; used by tests to distinguish fill from multiply mode. */
 export { PHASER_TINT_MODE_FILL } from '../../src/engine/PhaserBridge.js';
@@ -67,6 +69,11 @@ export class MockImage {
     this.textureKey = key;
     // Match Phaser semantics: setTexture(key) resets frame to the texture default.
     this.frame = frame ?? 0;
+    return this;
+  }
+
+  setFrame(frame: number): this {
+    this.frame = frame;
     return this;
   }
 
@@ -167,6 +174,129 @@ export class MockImage {
 
   destroy(): void {
     this.destroyed = true;
+  }
+}
+
+/**
+ * Minimal but behaviorally-faithful stand-in for `Phaser.Animations.AnimationManager`.
+ * Real Phaser stores a registered animation's frame list + frameRate + repeat
+ * config and every `Sprite.anims` (an `AnimationState`) advances its own
+ * `currentFrame` against that config once per real game-loop tick. Since these
+ * unit tests run with no WebGL/game-loop, {@link MockAnimationState.tick}
+ * plays that per-tick advance role explicitly so a test can deterministically
+ * assert "the frame index advances while playing, holds while stopped".
+ */
+class MockAnimationManager {
+  private readonly configs = new Map<
+    string,
+    { frameCount: number; frameRate: number; repeat: number }
+  >();
+
+  exists(key: string): boolean {
+    return this.configs.has(key);
+  }
+
+  create(config: { key: string; frames: unknown; frameRate: number; repeat: number }): void {
+    const frames = config.frames;
+    const frameCount = Array.isArray(frames) ? frames.length : 1;
+    this.configs.set(config.key, {
+      frameCount,
+      frameRate: config.frameRate,
+      repeat: config.repeat,
+    });
+  }
+
+  generateFrameNumbers(_textureKey: string, config: { start: number; end: number }): number[] {
+    const count = config.end - config.start + 1;
+    return Array.from({ length: count }, (_, i) => config.start + i);
+  }
+
+  getConfig(key: string): { frameCount: number; frameRate: number; repeat: number } | undefined {
+    return this.configs.get(key);
+  }
+}
+
+/**
+ * Per-sprite `Sprite.anims` (`AnimationState`) stand-in. `tick(deltaMs)` is a
+ * test-only hook that advances `currentFrame` the way Phaser's real
+ * `AnimationState.update` would during a game-loop frame, driven by the
+ * shared {@link MockAnimationManager}'s registered frameRate for the playing
+ * animation. Not part of the production `AnimationManagerLike`/`Sprite.anims`
+ * surface the bridge calls — only `play`/`stop`/`currentFrame` are.
+ */
+class MockAnimationState {
+  private currentKey: string | null = null;
+  private frameIndex = 0;
+  private playing = false;
+  private msAccumulator = 0;
+
+  constructor(private readonly manager: MockAnimationManager) {}
+
+  play(key: string, ignoreIfPlaying = false): this {
+    if (ignoreIfPlaying && this.playing && this.currentKey === key) {
+      return this;
+    }
+    this.currentKey = key;
+    this.frameIndex = 0;
+    this.msAccumulator = 0;
+    this.playing = true;
+    return this;
+  }
+
+  stop(): this {
+    this.playing = false;
+    return this;
+  }
+
+  get currentFrame(): { index: number } {
+    return { index: this.frameIndex };
+  }
+
+  get isPlaying(): boolean {
+    return this.playing;
+  }
+
+  /** Advance the current animation by `deltaMs` of simulated game-loop time. */
+  tick(deltaMs: number): void {
+    if (!this.playing || this.currentKey === null) {
+      return;
+    }
+    const config = this.manager.getConfig(this.currentKey);
+    if (!config || config.frameCount <= 1) {
+      return;
+    }
+    this.msAccumulator += deltaMs;
+    const frameDurationMs = 1000 / config.frameRate;
+    while (this.msAccumulator >= frameDurationMs) {
+      this.msAccumulator -= frameDurationMs;
+      const next = this.frameIndex + 1;
+      if (next < config.frameCount) {
+        this.frameIndex = next;
+      } else if (config.repeat === -1) {
+        this.frameIndex = 0;
+      } else {
+        // Non-looping animation: hold on the last frame.
+        this.frameIndex = config.frameCount - 1;
+        this.playing = false;
+        break;
+      }
+    }
+  }
+}
+
+/** `MockImage` plus the `.anims` surface `scene.add.sprite(...)` results carry. */
+class MockSprite extends MockImage {
+  readonly anims: MockAnimationState;
+
+  constructor(
+    x: number,
+    y: number,
+    textureKey: string,
+    frame: number | undefined,
+    animationManager: MockAnimationManager,
+  ) {
+    super(x, y, textureKey, frame);
+    this.anims = new MockAnimationState(animationManager);
   }
 }
 
@@ -337,6 +467,10 @@ export interface SceneStub {
   graphics: MockGraphics[];
   images: MockImage[];
   texts: MockText[];
+  /** Populated only when `options.generatedRegistry` is provided. */
+  sprites: MockSprite[];
+  /** Populated only when `options.generatedRegistry` is provided. */
+  animationManager: MockAnimationManager | null;
   scene: Phaser.Scene;
 }
 
@@ -346,9 +480,30 @@ export interface SceneStub {
  * probe so tests can exercise both the procedural and Kenney sprite-sheet paths.
  */
 export function createSceneStub(
-  options: { kenneyLoaded?: boolean; withGraphics?: boolean } = {},
+  options: {
+    kenneyLoaded?: boolean;
+    withGraphics?: boolean;
+    /**
+     * Narrows which texture keys `textures.exists` reports. Needed to separate
+     * the generated-art path from the Kenney-sheet fallback now that render
+     * kinds (e.g. `player`) can have BOTH — without it every key exists and the
+     * generated branch always wins, hiding the fallback path from tests.
+     */
+    textureExists?: (key: string) => boolean;
+    /**
+     * When provided, wires `scene.game.registry`, `scene.anims` (a
+     * {@link MockAnimationManager}), and `scene.add.sprite` so the bridge's
+     * generated-sprite-animation path (registration + `Sprite.anims.play/stop`)
+     * is fully exercised instead of no-op'd. Purely additive — omitting this
+     * keeps every pre-existing test's `scene.anims`/`scene.add.sprite`
+     * `undefined`, so the bridge falls back to plain `Image`s exactly as
+     * before.
+     */
+    generatedRegistry?: GeneratedSpriteRegistry;
+  } = {},
 ): SceneStub {
   const images: MockImage[] = [];
+  const sprites: MockSprite[] = [];
   const graphics: MockGraphics[] = [];
   const texts: MockText[] = [];
   const image = vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
@@ -356,6 +511,14 @@ export function createSceneStub(
     images.push(mockImage);
     return mockImage as unknown as Phaser.GameObjects.Image;
   });
+  const animationManager = options.generatedRegistry ? new MockAnimationManager() : null;
+  const addSprite = animationManager
+    ? vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+        const mockSprite = new MockSprite(x, y, textureKey, frame, animationManager);
+        sprites.push(mockSprite);
+        return mockSprite as unknown as Phaser.GameObjects.Sprite;
+      })
+    : undefined;
   const addGraphics = vi.fn((config?: { x?: number; y?: number }) => {
     const mockGraphics = new MockGraphics();
     if (config && typeof config === 'object') {
@@ -371,15 +534,23 @@ export function createSceneStub(
     return mockText as unknown as Phaser.GameObjects.Text;
   });
 
-  const textures = options.kenneyLoaded ? { exists: (_key: string) => true } : undefined;
+  const textures =
+    options.kenneyLoaded || options.generatedRegistry
+      ? { exists: (key: string) => options.textureExists?.(key) ?? true }
+      : undefined;
+
+  const generatedRegistry = options.generatedRegistry;
 
   return {
     graphics,
     images,
     texts,
+    sprites,
+    animationManager,
     scene: {
       add: {
         ...(options.withGraphics ? { graphics: addGraphics } : {}),
+        ...(addSprite ? { sprite: addSprite } : {}),
         image,
         text: addText,
       },
@@ -387,6 +558,17 @@ export function createSceneStub(
         getCamera: () => null,
       },
       textures,
+      ...(animationManager ? { anims: animationManager } : {}),
+      ...(generatedRegistry
+        ? {
+            game: {
+              registry: {
+                get: (key: string) =>
+                  key === GENERATED_SPRITE_REGISTRY_KEY ? generatedRegistry : undefined,
+              },
+            },
+          }
+        : {}),
     } as unknown as Phaser.Scene,
   };
 }

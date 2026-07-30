@@ -84,6 +84,32 @@ describe('floorManifestDefSchema — terrainPackId (refinement #6)', () => {
     );
     expect(result.success).toBe(false);
   });
+
+  it('accepts optional per-family pack selection with legacy fallback still available', () => {
+    const result = floorManifestDefSchema.safeParse(
+      buildValidManifest({
+        terrainPackId: 'industrial-cave',
+        terrainPacks: { cave: 'industrial-cave' },
+      }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.terrainPacks).toEqual({ cave: 'industrial-cave' });
+    }
+  });
+
+  it('rejects build-only or unknown ids in per-family pack selection', () => {
+    expect(
+      floorManifestDefSchema.safeParse(
+        buildValidManifest({ terrainPacks: { stone: 'caeles-fixture' } }),
+      ).success,
+    ).toBe(false);
+    expect(
+      floorManifestDefSchema.safeParse(
+        buildValidManifest({ terrainPacks: { cave: 'industrial-caves' } }),
+      ).success,
+    ).toBe(false);
+  });
 });
 
 describe('Floor 1 / Floor 2 manifest wiring', () => {

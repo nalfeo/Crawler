@@ -1,0 +1,21 @@
+{
+  "briefId": "audience-snack",
+  "spriteName": "audience-snack",
+  "assetPath": "generated/audience-snack-placeholder.png",
+  "approvedAt": "2026-06-24T03:52:54.399Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": null,
+  "opaqueBounds": {
+    "x": 4,
+    "y": 2,
+    "width": 8,
+    "height": 13,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

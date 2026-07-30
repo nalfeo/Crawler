@@ -1,0 +1,42 @@
+type: prop
+name: welcome-room-show-poster
+sizeVariant: large
+description: |
+  A curling promotional poster for the dungeon show, taped crooked to the stone wall: a grinning contestant silhouette and a season number, corners peeled. Warm desaturated dungeon palette with faded showbiz red and tarnished gold accents. Lit from the top wall; soft one-pixel contact shadow down and to the right. Worn by decades of syndication — dusty, threadbare, slightly grimy. 3/4 top-down pixel art, silhouette readable at 16px.
+
+  Rendered in the game at approximately 3 x 4 feet (1 tile = 16px = 2 feet). The art must read believably at that size — keep detail count low enough to survive at 16px and do not over-detail.
+
+  This prop must sit beside the already-approved welcome-room art without clashing: welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table, welcome-room-rug, welcome-room-velvet-rope, welcome-sign-left-v1 and prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass hardware, hard dark outline, muted and dusty, never bright or saturated.
+  PALETTE CORRECTION: keep the paper DARK, DUSTY and DESATURATED — a grimy
+  greyed-out ochre that has yellowed and dulled in a windowless dungeon, NOT
+  bright golden-tan parchment and NOT a clean treasure map. The title lettering
+  is a faded, dulled showbiz red and the season number a tarnished, muted gold —
+  both knocked back, never vivid. Overall value should sit as dark as the deep
+  maroon and dark-walnut welcome-room desk and bookcase it hangs above.
+  Shadow must be a tight one-pixel contact shadow down and to the right, not a
+  large soft drop shadow.
+
+  This poster is WALL-MOUNTED: it hangs on the stone wall and does not rest on
+  the floor.
+sensors:
+  anchor:
+    mode: center-of-mass
+  # A wall poster is a deliberately near-rectangular flat sheet, so it fills
+  # far more of its bounding box than the `prop` default range [0.1, 0.65],
+  # which is tuned for irregular grounded props (torches, rubble piles).
+  # Verified against the round-1/round-2 artifacts that background removal is
+  # working correctly (clean transparent margins); the measured ~0.71-0.75 is
+  # the true ratio of the poster rectangle. Capped at 0.80 rather than removed
+  # so a genuine background-removal failure (which lands at ~0.95-1.0) is still
+  # caught by this sensor.
+  opaqueRatio:
+    max: 0.8
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

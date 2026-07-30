@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ import {
   formatBossAbilityStatusReport,
   loadFloor2BossAbilityStatus,
 } from '../../scripts/agent/boss-ability-status-lib.js';
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 
 const manifestSchema = z
   .object({
@@ -245,6 +246,44 @@ describe('Floor 2 boss ability catalog', () => {
     expect(values.get('stacking')).toBe(false);
   });
 
+  it("preserves Don Paco's THE BIG GOB contract", () => {
+    const don = getFloor2BossAbilityByBossId('llama-boss');
+    expect(don).toMatchObject({
+      id: 'don-paco-the-big-gob',
+      attackName: 'THE BIG GOB',
+      announcementText: "Don Paco's painting the whole block!",
+      timing: {
+        firstEligibleAfterMs: 9000,
+        cooldownMs: 9000,
+        cooldownAnchor: 'resolution',
+        randomJitterMs: 0,
+      },
+      targeting: {
+        mode: 'player-direction',
+        lockAt: 'telegraph-start',
+        tracksPlayer: false,
+        origin: 'locked',
+      },
+      telegraph: {
+        durationMs: 1400,
+        shape: 'cone',
+        dangerColor: 'hostile-red',
+      },
+    });
+    expect(don?.telegraph.metrics).toEqual(
+      expect.arrayContaining([
+        { id: 'angle', value: 70, unit: 'degrees' },
+        { id: 'range', value: 30, unit: 'feet' },
+        { id: 'projectile-count', value: 5, unit: 'count' },
+      ]),
+    );
+    const values = effectValuesForBoss('llama-boss');
+    expect(values.get('projectile-count')).toBe(5);
+    expect(values.get('damage-profile')).toBe('moderate');
+    expect(values.get('slick-duration')).toBe(4000);
+    expect(values.get('slow-rule')).toBe('while-inside');
+  });
+
   it('projects codex content without delivery metadata', () => {
     for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
       const codex = toBossAbilityCodexEntry(ability);
@@ -272,13 +311,19 @@ describe('Floor 2 boss ability delivery status', () => {
     );
   });
 
-  it('derives all current work as blocked without storing an overall stage', () => {
+  it('derives the current backlog as blocked with the active king-skritt slice in progress', () => {
     const records = buildBossAbilityStatusRecords();
-    expect(records.every((record) => record.stage === 'blocked')).toBe(true);
+    const stageCounts = records.reduce<Record<string, number>>((counts, record) => {
+      counts[record.stage] = (counts[record.stage] ?? 0) + 1;
+      return counts;
+    }, {});
+    expect(stageCounts).toMatchObject({ blocked: 17, 'in-progress': 1 });
+    expect(Object.keys(stageCounts).sort()).toEqual(['blocked', 'in-progress']);
 
-    // Queen Mab, Big Panda Wei, and Overseer Fizzwick runtime/telegraph/arena
-    // slices are verified, but all three stay blocked overall behind the
-    // separate production-enable gate for real-game enablement/balance.
+    // Queen Mab, Squick, Big Panda Wei, Sovereign Cap, Big Mama Bufo, and
+    // Overseer Fizzwick runtime/telegraph/arena slices are verified,
+    // but all stay blocked overall behind the separate production-enable gate
+    // for real-game enablement/balance.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
     expect(queen?.status.arenaLabState).toBe('verified');
     expect(queen?.status.runtimeState).toBe('verified');
@@ -296,14 +341,24 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(fizzwick?.status.arenaLabState).toBe('verified');
     expect(fizzwick?.status.runtimeState).toBe('verified');
     expect(fizzwick?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
-    // The remaining abilities stay blocked purely by the production-enable
+    const bufo = records.find((record) => record.ability.bossArchetypeId === 'toadkin-boss');
+    expect(bufo?.status.arenaLabState).toBe('verified');
+    expect(bufo?.status.runtimeState).toBe('verified');
+    expect(bufo?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    const sovereign = records.find((record) => record.ability.bossArchetypeId === 'myconid-boss');
+    expect(sovereign?.status.arenaLabState).toBe('verified');
+    expect(sovereign?.status.runtimeState).toBe('verified');
+    expect(sovereign?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    // The other abilities remain blocked purely by the production-enable
     // gate; arena slices must not promote them to ready.
     for (const record of records.filter(
       (candidate) =>
         candidate.ability.bossArchetypeId !== 'faerie-boss' &&
         candidate.ability.bossArchetypeId !== 'ratfolk-boss' &&
         candidate.ability.bossArchetypeId !== 'panda-boss' &&
-        candidate.ability.bossArchetypeId !== 'gnome-boss',
+        candidate.ability.bossArchetypeId !== 'gnome-boss' &&
+        candidate.ability.bossArchetypeId !== 'myconid-boss' &&
+        candidate.ability.bossArchetypeId !== 'toadkin-boss',
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }
@@ -531,7 +586,7 @@ describe('Floor 2 boss ability delivery status', () => {
   it('prints a complete non-failing backlog report', () => {
     const report = formatBossAbilityStatusReport();
     expect(report).toContain('Floor 2 boss abilities: 18');
-    expect(report).toContain('Stages: blocked=18');
+    expect(report).toContain('Stages: blocked=17, in-progress=1');
     for (const ability of FLOOR2_BOSS_ABILITY_CATALOG.entries) {
       expect(report).toContain(`${ability.bossName} — ${ability.attackName}`);
     }
@@ -540,14 +595,7 @@ describe('Floor 2 boss ability delivery status', () => {
 
 describe('Floor 2 boss ability art evidence', () => {
   it('matches the real runtime art resolver and shipped manifest for all 18 bosses', () => {
-    const manifest = manifestSchema.parse(
-      JSON.parse(
-        readFileSync(
-          fileURLToPath(new URL('../../public/assets/generated/manifest.json', import.meta.url)),
-          'utf8',
-        ),
-      ),
-    );
+    const manifest = manifestSchema.parse(loadShippedManifest());
     const bossesById = new Map(
       floor2EnemyPack.archetypes
         .filter((archetype) => archetype.isBoss === true)

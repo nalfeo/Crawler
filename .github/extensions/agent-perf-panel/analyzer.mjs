@@ -26,12 +26,13 @@ const IGNORED_TYPES = new Set([
  *  "% of window" line. Exact entries win; anything not enumerated here falls
  *  back to the documented per-family prefix (see `resolveContextWindow`). */
 const MODEL_CONTEXT_WINDOW = {
+  'claude-opus-4.8': 200_000,
   'claude-opus-4.7': 200_000,
   'claude-opus-4.6': 200_000,
-  'claude-sonnet-4.6': 200_000,
-  'claude-sonnet-4.5': 200_000,
-  'claude-haiku-4.5': 200_000,
   'claude-sonnet-5': 200_000,
+  'claude-sonnet-4.6': 200_000,
+  // claude-sonnet-4.5 removed: deprecated by GitHub on 2026-05-06
+  'claude-haiku-4.5': 200_000,
   'gpt-5.5': 400_000,
   'gpt-5.4': 400_000,
   'gpt-5.3-codex': 400_000,
@@ -39,6 +40,7 @@ const MODEL_CONTEXT_WINDOW = {
   'gpt-5-mini': 400_000,
   'gemini-3.1-pro-preview': 1_000_000,
   'gemini-3.5-flash': 1_000_000,
+  'gemini-3.6-flash': 1_000_000,
   'mai-code-1-flash-picker': 200_000,
 };
 

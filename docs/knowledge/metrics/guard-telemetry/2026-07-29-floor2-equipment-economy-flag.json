@@ -1,0 +1,31 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "floor2-equipment-economy-flag",
+  "date": "2026-07-29",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 303,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 303
+    }
+  },
+  "tools": {
+    "create": 1,
+    "edit": 16,
+    "exit_plan_mode": 1,
+    "glob": 2,
+    "grep": 99,
+    "powershell": 59,
+    "read_agent": 6,
+    "read_powershell": 3,
+    "rg": 15,
+    "skill": 1,
+    "sql": 6,
+    "task": 3,
+    "view": 91
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

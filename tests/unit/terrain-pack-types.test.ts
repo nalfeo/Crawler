@@ -15,10 +15,12 @@ import {
   TERRAIN_PACK_CELL_PX,
   TERRAIN_PACK_IDS,
   RUNTIME_TERRAIN_PACK_IDS,
+  WALL_ACCENT_COUNT,
   provenanceSchema,
   terrainPackDefSchema,
   terrainPackIdSchema,
   runtimeTerrainPackIdSchema,
+  transformIdSchema,
 } from '../../src/shared/terrain-pack-types.js';
 import { BLOB47_CANONICAL_MASKS } from '../../src/shared/terrain-pack-mask.js';
 
@@ -30,6 +32,12 @@ function buildValidPackDef(overrides: Partial<Record<string, unknown>> = {}) {
     textureKey: `terrain-pack-test-${name}`,
   });
   const poolVariant = (name: string) => ({
+    id: name,
+    imagePath: `assets/terrain-packs/test/${name}.png`,
+    textureKey: `terrain-pack-test-${name}`,
+    allowedTransforms: ['none', 'flipH', 'flipV', 'flipHV'],
+  });
+  const accentVariant = (name: string) => ({
     id: name,
     imagePath: `assets/terrain-packs/test/${name}.png`,
     textureKey: `terrain-pack-test-${name}`,
@@ -58,6 +66,12 @@ function buildValidPackDef(overrides: Partial<Record<string, unknown>> = {}) {
       closedHorizontal: doorVariant('door-closed-horizontal'),
       closedVertical: doorVariant('door-closed-vertical'),
     },
+    wallAccents: [
+      accentVariant('accent-crack'),
+      accentVariant('accent-mineral-vein'),
+      accentVariant('accent-rust-brace'),
+      accentVariant('accent-damp-stain'),
+    ],
     ...overrides,
   };
 }
@@ -87,7 +101,7 @@ describe('runtimeTerrainPackIdSchema — runtime-only subset (Fix 5)', () => {
     }
   });
 
-  it('accepts industrial-cave (the only current runtime pack)', () => {
+  it('accepts industrial-cave (a registered runtime pack)', () => {
     expect(runtimeTerrainPackIdSchema.safeParse('industrial-cave').success).toBe(true);
   });
 
@@ -205,31 +219,120 @@ describe('terrainPackDefSchema — wallAutotile 47-mask table validation', () =>
   });
 });
 
-describe('terrainPackDefSchema — floor/corridor pool size bounds', () => {
+describe('terrainPackDefSchema — floor/corridor pool size bounds (widened 2026-07-25)', () => {
   it('rejects a pool with fewer than 3 variants', () => {
     const def = buildValidPackDef();
     const floorPool = def.floorPool.slice(0, 2);
     expect(terrainPackDefSchema.safeParse({ ...def, floorPool }).success).toBe(false);
   });
 
-  it('rejects a pool with more than 5 variants', () => {
+  it('rejects a pool with more than 12 variants', () => {
     const def = buildValidPackDef();
-    const extra = { id: 'floor-extra', imagePath: 'x.png', textureKey: 'x' };
-    const floorPool = [...def.floorPool, extra, extra, extra, extra];
+    const extra = {
+      id: 'floor-extra',
+      imagePath: 'x.png',
+      textureKey: 'x',
+      allowedTransforms: ['none'],
+    };
+    const floorPool = [...def.floorPool, ...Array.from({ length: 10 }, () => extra)];
     expect(terrainPackDefSchema.safeParse({ ...def, floorPool }).success).toBe(false);
   });
 
-  it('accepts pools at the 3 and 5 variant boundaries', () => {
+  it('accepts pools at the 3, 8 (target), and 12 variant boundaries', () => {
     const def = buildValidPackDef();
-    const five = [0, 1, 2, 3, 4].map((i) => ({
-      id: `floor-${i}`,
-      imagePath: `f${i}.png`,
-      textureKey: `f${i}`,
-    }));
+    const makeN = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `floor-${i}`,
+        imagePath: `f${i}.png`,
+        textureKey: `f${i}`,
+        allowedTransforms: ['none'],
+      }));
     expect(
       terrainPackDefSchema.safeParse({ ...def, floorPool: def.floorPool.slice(0, 3) }).success,
     ).toBe(true);
-    expect(terrainPackDefSchema.safeParse({ ...def, floorPool: five }).success).toBe(true);
+    expect(terrainPackDefSchema.safeParse({ ...def, floorPool: makeN(8) }).success).toBe(true);
+    expect(terrainPackDefSchema.safeParse({ ...def, floorPool: makeN(12) }).success).toBe(true);
+  });
+});
+
+describe('terrainPackDefSchema — poolVariant.allowedTransforms (2026-07-25 refinement #2)', () => {
+  it('accepts omitted transform metadata as an identity-only legacy variant', () => {
+    const def = buildValidPackDef();
+    const floorPool = def.floorPool.map(({ allowedTransforms: _drop, ...variant }) => variant);
+    expect(terrainPackDefSchema.safeParse({ ...def, floorPool }).success).toBe(true);
+  });
+
+  it('rejects a variant whose allowedTransforms omits "none"', () => {
+    const def = buildValidPackDef();
+    const floorPool = [
+      { ...def.floorPool[0]!, allowedTransforms: ['flipH'] },
+      ...def.floorPool.slice(1),
+    ];
+    const result = terrainPackDefSchema.safeParse({ ...def, floorPool });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a variant with a duplicate transform entry', () => {
+    const def = buildValidPackDef();
+    const floorPool = [
+      { ...def.floorPool[0]!, allowedTransforms: ['none', 'flipH', 'flipH'] },
+      ...def.floorPool.slice(1),
+    ];
+    const result = terrainPackDefSchema.safeParse({ ...def, floorPool });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unrecognized transform id', () => {
+    const def = buildValidPackDef();
+    const floorPool = [
+      { ...def.floorPool[0]!, allowedTransforms: ['none', 'rotate90'] },
+      ...def.floorPool.slice(1),
+    ];
+    const result = terrainPackDefSchema.safeParse({ ...def, floorPool });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a variant that only allows "none" (fully directional/unsafe art)', () => {
+    const def = buildValidPackDef();
+    const floorPool = [
+      { ...def.floorPool[0]!, allowedTransforms: ['none'] },
+      ...def.floorPool.slice(1),
+    ];
+    expect(terrainPackDefSchema.safeParse({ ...def, floorPool }).success).toBe(true);
+  });
+
+  it('transformIdSchema accepts exactly the 4 defined transforms', () => {
+    for (const t of ['none', 'flipH', 'flipV', 'flipHV']) {
+      expect(transformIdSchema.safeParse(t).success).toBe(true);
+    }
+    expect(transformIdSchema.safeParse('rotate90').success).toBe(false);
+  });
+});
+
+describe('terrainPackDefSchema — wallAccents (2026-07-25 refinement #3)', () => {
+  it(`requires exactly WALL_ACCENT_COUNT (${WALL_ACCENT_COUNT}) accent atlases`, () => {
+    const def = buildValidPackDef();
+    expect(
+      terrainPackDefSchema.safeParse({ ...def, wallAccents: def.wallAccents.slice(0, 3) }).success,
+    ).toBe(false);
+    expect(
+      terrainPackDefSchema.safeParse({
+        ...def,
+        wallAccents: [...def.wallAccents, def.wallAccents[0]],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts a def missing optional wallAccents', () => {
+    const def = buildValidPackDef();
+    const { wallAccents: _drop, ...rest } = def;
+    expect(terrainPackDefSchema.safeParse(rest).success).toBe(true);
+  });
+
+  it('rejects a wallAccents entry with unknown extra fields (strict schema)', () => {
+    const def = buildValidPackDef();
+    const wallAccents = [{ ...def.wallAccents[0]!, gridCols: 8 }, ...def.wallAccents.slice(1)];
+    expect(terrainPackDefSchema.safeParse({ ...def, wallAccents }).success).toBe(false);
   });
 });
 

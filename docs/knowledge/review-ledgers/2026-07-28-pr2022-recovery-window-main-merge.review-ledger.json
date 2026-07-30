@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "pr2022-recovery-window-main-merge",
+  "task_title": "Recover PR #2022 after main merge conflict and Bufo recovery regression",
+  "estimated_apples": 2,
+  "stages": {}
+}

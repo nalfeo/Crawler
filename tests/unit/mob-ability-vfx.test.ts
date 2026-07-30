@@ -14,8 +14,11 @@ function createGraphicsStub() {
     lineTo: vi.fn(),
     strokePath: vi.fn(),
     fillTriangle: vi.fn(),
+    closePath: vi.fn(),
+    fillPath: vi.fn(),
     strokeCircle: vi.fn(),
     fillCircle: vi.fn(),
+    fillPoints: vi.fn(),
     lineBetween: vi.fn(),
     setDepth: vi.fn().mockReturnThis(),
     setBlendMode: vi.fn().mockReturnThis(),
@@ -152,6 +155,118 @@ describe('MobAbilityVfx', () => {
     expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(3);
   });
 
+  it('draws committed lane telegraphs using the same locked endpoints', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'big-mama-bufo-tongue-repossession',
+      casterEid: 19,
+      phase: 'telegraph',
+      telegraphProgress: 0.4,
+      geometry: {
+        kind: 'lane',
+        originX: 10,
+        originY: 20,
+        endX: 30,
+        endY: 20,
+        dirX: 1,
+        dirY: 0,
+        widthFt: 3,
+        lengthFt: 20,
+      },
+      dangerColor: 'ability-theme',
+      announcementText: "TONGUE REPOSSESSION — Big Mama wants what's hers!",
+    });
+    world.mobAbilities.byEntity.set(19, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.beginPath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(10), ftToPx(21.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(30), ftToPx(21.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(30), ftToPx(18.5));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(10), ftToPx(18.5));
+    expect(telegraphGfx!.closePath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.fillPath).toHaveBeenCalledTimes(1);
+    expect(telegraphGfx!.fillStyle).toHaveBeenCalledWith(0x59c36a, expect.any(Number));
+    expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
+  });
+
+  it('draws Don Paco projectile-fan telegraphs with five landing circles and path lines', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'don-paco-the-big-gob',
+      casterEid: 14,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'projectile-fan',
+        originX: 40,
+        originY: 10,
+        facingRad: Math.PI / 2,
+        coneAngleDeg: 70,
+        rangeFt: 30,
+        paths: [
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 22.79,
+            endY: 34.57,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 30.99,
+            endY: 38.61,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 40,
+            endY: 40,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 49.01,
+            endY: 38.61,
+            impactRadiusFt: 3,
+          },
+          {
+            kind: 'projectile-path',
+            startX: 40,
+            startY: 10,
+            endX: 57.21,
+            endY: 34.57,
+            impactRadiusFt: 3,
+          },
+        ],
+      },
+      dangerColor: 'hostile-red',
+      announcementText: "THE BIG GOB — Don Paco's painting the whole block!",
+    });
+    world.mobAbilities.byEntity.set(14, mockInstance());
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const telegraphGfx = graphicsObjects[0];
+    expect(telegraphGfx).toBeDefined();
+    expect(telegraphGfx!.strokeCircle).toHaveBeenCalledTimes(5);
+    expect(telegraphGfx!.lineBetween).toHaveBeenCalled();
+  });
+
   it('draws the Tarnished indicator ring for debuffed entities', () => {
     const { scene, graphicsObjects } = createSceneStub();
     const world = createTestWorld();
@@ -231,8 +346,10 @@ describe('MobAbilityVfx', () => {
         kind: 'lane',
         originX: 40,
         originY: 10,
-        endpointX: 40,
-        endpointY: 42,
+        endX: 40,
+        endY: 42,
+        dirX: 0,
+        dirY: 1,
         widthFt: 6,
         lengthFt: 32,
       },
@@ -286,8 +403,10 @@ describe('MobAbilityVfx', () => {
         kind: 'lane',
         originX: 40,
         originY: 10,
-        endpointX: 40,
-        endpointY: 42,
+        endX: 40,
+        endY: 42,
+        dirX: 0,
+        dirY: 1,
         widthFt: 6,
         lengthFt: 32,
       },
@@ -298,11 +417,55 @@ describe('MobAbilityVfx', () => {
     const vfx = createMobAbilityVfx(scene);
     vfx.update(world);
 
+    // Main's shared lane renderer paints the exact committed footprint as a
+    // filled quad: the four corners are origin/end offset by half the lane
+    // width along the lane normal. For a 6ft-wide, 32ft-long north-facing lane
+    // from (40,10) to (40,42) that is x = 40ft ± 24px at y = 10ft and 42ft.
+    const halfWidthPx = ftToPx(6) * 0.5;
     const telegraphGfx = graphicsObjects[0];
     expect(telegraphGfx).toBeDefined();
-    expect(telegraphGfx!.lineStyle).toHaveBeenCalledWith(ftToPx(6), 0xef4444, expect.any(Number));
-    expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(40), ftToPx(10));
-    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40), ftToPx(42));
+    expect(telegraphGfx!.moveTo).toHaveBeenCalledWith(ftToPx(40) - halfWidthPx, ftToPx(10));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40) - halfWidthPx, ftToPx(42));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40) + halfWidthPx, ftToPx(42));
+    expect(telegraphGfx!.lineTo).toHaveBeenCalledWith(ftToPx(40) + halfWidthPx, ftToPx(10));
+    expect(telegraphGfx!.fillStyle).toHaveBeenCalledWith(0xef4444, expect.any(Number));
+  });
+
+  it('renders Tongue Repossession lane bursts through the dedicated committed-lane VFX path', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const vfx = createMobAbilityVfx(scene);
+    const laneGeometry = {
+      kind: 'lane' as const,
+      originX: 10,
+      originY: 10,
+      endX: 20,
+      endY: 10,
+      dirX: 1,
+      dirY: 0,
+      widthFt: 3,
+      lengthFt: 10,
+    };
+
+    world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
+      abilityId: 'queen-mab-verdigris-glamour',
+      geometry: laneGeometry,
+    });
+    vfx.update(world);
+    const genericLaneBurstCircleCount = circles.length;
+
+    world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
+      abilityId: 'big-mama-bufo-tongue-repossession',
+      geometry: laneGeometry,
+    });
+    vfx.update(world);
+    const tongueLaneBurstCircleCount = circles.length - genericLaneBurstCircleCount;
+
+    expect(tongueLaneBurstCircleCount).toBeGreaterThan(0);
+    expect(scene.add.rectangle).toHaveBeenCalled();
+    expect(scene.add.ellipse).toHaveBeenCalled();
   });
 
   it('retires telegraph graphics when the cue ends', () => {
@@ -361,6 +524,34 @@ describe('MobAbilityVfx', () => {
     expect(cleanupPoof!.y).toBe(ftToPx(20));
   });
 
+  it('draws persistent sovereign cloud rims for runtime-owned zones', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.ownedZones.push({
+      id: 42,
+      abilityId: 'sovereign-cap-spore-bloom',
+      casterEid: 9,
+      sourceId: 'mob-ability:sovereign-cap-spore-bloom:9',
+      geometry: {
+        kind: 'multi-circle',
+        circles: [
+          { kind: 'circle', x: 30, y: 30, radiusFt: 8 },
+          { kind: 'circle', x: 35, y: 28, radiusFt: 8 },
+          { kind: 'circle', x: 25, y: 28, radiusFt: 8 },
+        ],
+      },
+      durationMs: 4000,
+      tickIntervalMs: 500,
+      elapsedMs: 1500,
+      nextTickAtMs: 2000,
+      tick: () => {},
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+    const cloudGfx = graphicsObjects[0]!;
+    expect(cloudGfx.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(30), ftToPx(8));
+  });
+
   it('emits deterministic berserk motif shapes for active bamboo-fed buffs', () => {
     const { scene } = createSceneStub();
     const world = createTestWorld();
@@ -381,5 +572,25 @@ describe('MobAbilityVfx', () => {
 
     expect(scene.add.rectangle).toHaveBeenCalled();
     expect(scene.add.ellipse).toHaveBeenCalled();
+  });
+
+  it('draws persistent slick rims for active Don Paco zones', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.activeZones.push({
+      abilityId: 'don-paco-the-big-gob',
+      casterEid: 5,
+      sourceId: 'mob-ability:don-paco-the-big-gob:5:slick',
+      circle: { kind: 'circle', x: 30, y: 35, radiusFt: 3 },
+      remainingMs: 4000,
+      slowMultiplier: 0.65,
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    const slick = graphicsObjects[0];
+    expect(slick).toBeDefined();
+    expect(slick!.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(35), ftToPx(3));
   });
 });

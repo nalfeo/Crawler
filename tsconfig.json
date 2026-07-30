@@ -25,6 +25,8 @@
   "include": [
     "vite.config.ts",
     "vitest.config.ts",
+    "vitest.mutation.config.ts",
+    "knip.config.ts",
     "src/**/*.ts",
     "tests/**/*.ts",
     "scripts/**/*.ts",

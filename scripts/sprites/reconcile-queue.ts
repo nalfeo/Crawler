@@ -51,7 +51,8 @@
  * — running in CI (the hourly workflow) is the entire point of PR2.
  */
 
-import { ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
+import { parseAssetIssueBody } from './asset-issues.js';
+import { ASSET_CHECKIN_LABEL, ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
 
 /** How the reconcile cycle resolved. */
 export type ReconcileStatus = 'noop' | 'pr-open';
@@ -80,6 +81,14 @@ export interface ReconcileResult {
   readonly promoteCommit?: string;
   /** Art-surface paths that differ between queue and main (the batch). */
   readonly changedPaths?: readonly string[];
+  /**
+   * Issue numbers for open `asset-checkin` issues whose complete asset payload
+   * is fully covered by this promotion (and will therefore be closed by it).
+   * Empty when no issues are fully covered or the issue list query fails.
+   */
+  readonly closingIssueNumbers?: readonly number[];
+  /** True when issue-closure discovery completed successfully. */
+  readonly closingIssueDiscoveryComplete?: boolean;
 }
 
 export interface ReconcileDeps {
@@ -170,6 +179,8 @@ const MERGE_TRAIN_RE_ENSURE_EXCLUDE_LABELS = [
   'merge-train-validation-failed',
   'merge-train-landed',
 ] as const;
+const ISSUE_LIST_INITIAL_LIMIT = 200;
+const ISSUE_LIST_MAX_LIMIT = 5000;
 
 /**
  * True when `labels` carries any label under which the train has
@@ -242,11 +253,26 @@ async function mustGh(exec: Exec, cwd: string, args: readonly string[]): Promise
 }
 
 /**
+ * The guard's TOLERANCE surface — the set of paths a promotion diff may touch
+ * without being rejected. It is deliberately BROADER than `ASSET_SURFACE_PATHS`
+ * (what check-in actually WRITES, now only the sharded generated dir): the
+ * committed `sprite-catalog.json` no longer receives generated rows, but a diff
+ * that touches it (e.g. a hand-authored/sheet row, or migration cleanup) is
+ * still art-surface and safe to auto-merge. Keeping the guard tolerant of the
+ * catalog matches `detect-art-only.sh`'s classifier so a promote→main diff the
+ * guard accepts is precisely one CI classifies `art_only=true`.
+ */
+const ART_SURFACE_ALLOWLIST = [
+  ...ASSET_SURFACE_PATHS,
+  'src/shared/data/sprite-catalog.json',
+] as const;
+
+/**
  * Is `p` inside the art-surface allowlist? A path is trusted iff it is exactly
  * `src/shared/data/sprite-catalog.json` OR lives under `public/assets/generated/`.
- * Matches `detect-art-only.sh` (and PR1's `ASSET_SURFACE_PATHS`) EXACTLY so the
- * guard and the CI art-only classifier agree by construction — a promote→main
- * diff the guard accepts is precisely one `ci.yml` classifies `art_only=true`.
+ * Matches `detect-art-only.sh` EXACTLY so the guard and the CI art-only
+ * classifier agree by construction — a promote→main diff the guard accepts is
+ * precisely one `ci.yml` classifies `art_only=true`.
  *
  * Path handling is strict: reject absolute paths, backslashes, and any `.`/`..`
  * segment so a crafted entry can never escape the allowlist via traversal.
@@ -256,7 +282,7 @@ export function isArtSurfacePath(p: string): boolean {
   if (p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.includes('\\')) return false;
   const segments = p.split('/');
   if (segments.some((s) => s === '' || s === '.' || s === '..')) return false;
-  for (const surface of ASSET_SURFACE_PATHS) {
+  for (const surface of ART_SURFACE_ALLOWLIST) {
     // A surface entry is a single file (e.g. the catalog JSON) or a directory
     // (e.g. `public/assets/generated`). File entries match EXACTLY; directory
     // entries match DESCENDANTS ONLY. Never accept a bare directory path as
@@ -293,7 +319,7 @@ export function assertArtSurfaceOnly(
     throw new ReconcileError(
       'untrusted-diff',
       `Refusing to arm auto-merge: the promotion diff touches ${offenders.length} path(s) ` +
-        `outside the art-surface allowlist (${ASSET_SURFACE_PATHS.join(', ')}): ` +
+        `outside the art-surface allowlist (${ART_SURFACE_ALLOWLIST.join(', ')}): ` +
         `${offenders.join(', ')}. This should be impossible by construction; refusing ` +
         `to land a non-art change on ${baseBranch} and escalating.`,
     );
@@ -341,6 +367,7 @@ export function assertArtSurfaceModes(rawStdout: string, baseBranch = DEFAULT_BA
         `Refusing to arm auto-merge: unparseable staged raw-diff line "${line}".`,
       );
     }
+
     const fields = line.slice(1, tabIdx).trim().split(/\s+/);
     const dstMode = fields[1];
     const status = fields[4] ?? '?';
@@ -380,12 +407,13 @@ function buildPrContent(
   queueBranch: string,
   promoteBranch: string,
   baseBranch: string,
+  closingIssueNumbers: readonly number[] = [],
 ): { title: string; body: string } {
   const iso = now.toISOString();
   const count = changedPaths.length;
   const title = `chore(assets): reconcile queued sprite edits (${count} art path${count === 1 ? '' : 's'})`;
   const list = changedPaths.map((p) => `- \`${p}\``).join('\n');
-  const body = [
+  const parts = [
     `Automated art-only reconciliation of the durable \`${queueBranch}\` branch into`,
     `\`${baseBranch}\` (durable sprite-edit persistence, PR2).`,
     '',
@@ -402,13 +430,150 @@ function buildPrContent(
     '(`scripts/sprites/reconcile-queue.ts`). See',
     'ADR `2026-07-24-sprite-queue-reconciler`.</sub>',
     '',
-  ].join('\n');
+  ];
+  // Auto-close each fully-covered tracking issue when the PR merges.
+  for (const n of closingIssueNumbers) {
+    parts.push(`Closes #${n}`);
+  }
+  const body = parts.join('\n');
   return { title, body };
 }
 
 /** Common `gh` args that pin `--repo` when supplied. */
 function repoArgs(repo: string | undefined): string[] {
   return repo ? ['--repo', repo] : [];
+}
+
+/**
+ * Determine which open `asset-checkin` issues are fully covered by the current
+ * promotion and should therefore be closed when the promotion PR merges.
+ *
+ * An issue is "fully covered" when every asset in its payload is present in the
+ * post-promotion tree (`promotedRef`) and its payload `contentHash` exactly
+ * matches the manifest entry for that path. Hash-less legacy payload entries are
+ * treated as ambiguous and excluded (fail closed).
+ *
+ * The function returns `{ complete: false }` on discovery failures (issue list,
+ * promoted tree, manifest parse) so callers can defer merge arming rather than
+ * silently dropping `Closes #N` keywords.
+ *
+ * Exported for deterministic unit testing with a faked exec.
+ */
+export async function computeClosingIssueNumbers(
+  exec: Exec,
+  repoRoot: string,
+  baseRef: string,
+  repo: string | undefined,
+  // `promotedRef` is the post-harvest tree we are about to publish/merge.
+  // Defaults to `baseRef` in unit tests that don't pass it explicitly.
+  promotedRef = baseRef,
+): Promise<{ readonly issueNumbers: readonly number[]; readonly complete: boolean }> {
+  const listOpenIssues = async (): Promise<
+    | {
+        readonly ok: true;
+        readonly issues: Array<{ number?: unknown; body?: unknown }>;
+      }
+    | { readonly ok: false }
+  > => {
+    // `gh issue list` has a caller-provided cap (`--limit`). Re-query with a
+    // larger limit until the returned count is strictly below that limit, which
+    // proves we have the complete open set up to `ISSUE_LIST_MAX_LIMIT`.
+    let limit = ISSUE_LIST_INITIAL_LIMIT;
+    while (true) {
+      const issueResult = await exec(
+        'gh',
+        [
+          'issue',
+          'list',
+          ...repoArgs(repo),
+          '--label',
+          ASSET_CHECKIN_LABEL,
+          '--state',
+          'open',
+          '--json',
+          'number,body',
+          '--limit',
+          String(limit),
+        ],
+        { cwd: repoRoot },
+      );
+      if (issueResult.code !== 0) return { ok: false };
+      let rawIssues: Array<{ number?: unknown; body?: unknown }>;
+      try {
+        rawIssues = JSON.parse(issueResult.stdout.trim() || '[]') as Array<{
+          number?: unknown;
+          body?: unknown;
+        }>;
+      } catch {
+        return { ok: false };
+      }
+      if (!Array.isArray(rawIssues)) return { ok: false };
+      if (rawIssues.length < limit) return { ok: true, issues: rawIssues };
+      if (limit >= ISSUE_LIST_MAX_LIMIT) return { ok: false };
+      limit = Math.min(limit * 2, ISSUE_LIST_MAX_LIMIT);
+    }
+  };
+
+  const listed = await listOpenIssues();
+  if (!listed.ok) return { issueNumbers: [], complete: false };
+  if (listed.issues.length === 0) return { issueNumbers: [], complete: true };
+
+  // Inspect the exact post-promotion tree, not just path names:
+  // an asset is closable only when path + manifest contentHash both match.
+  const lsResult = await exec(
+    'git',
+    ['ls-tree', '--name-only', '-r', promotedRef, '--', ...ASSET_SURFACE_PATHS],
+    { cwd: repoRoot },
+  );
+  if (lsResult.code !== 0) return { issueNumbers: [], complete: false };
+  const promotedPaths = new Set<string>(
+    lsResult.stdout
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l !== ''),
+  );
+
+  // The aggregate manifest.json is no longer committed (it is a gitignored
+  // build artifact), so compose the assetPath -> contentHash map directly from
+  // the per-asset shards present in the promoted tree. `promotedPaths` already
+  // lists every file under the generated surface at `promotedRef`.
+  const shardPaths = [...promotedPaths].filter(
+    (p) => p.startsWith('public/assets/generated/entries/') && p.endsWith('.json'),
+  );
+  const manifestHashes = new Map<string, string>();
+  for (const shardPath of shardPaths) {
+    const shardResult = await exec('git', ['show', `${promotedRef}:${shardPath}`], {
+      cwd: repoRoot,
+    });
+    if (shardResult.code !== 0) continue;
+    let entry: { assetPath?: unknown; contentHash?: unknown };
+    try {
+      entry = JSON.parse(shardResult.stdout) as { assetPath?: unknown; contentHash?: unknown };
+    } catch {
+      continue;
+    }
+    const assetPath = entry.assetPath;
+    const contentHash = entry.contentHash;
+    if (typeof assetPath !== 'string' || typeof contentHash !== 'string') continue;
+    manifestHashes.set(assetPath, contentHash);
+  }
+
+  const closing: number[] = [];
+  for (const raw of listed.issues) {
+    if (typeof raw.number !== 'number') continue;
+    if (typeof raw.body !== 'string') continue;
+    const payload = parseAssetIssueBody(raw.body);
+    if (payload === null || payload.assets.length === 0) continue;
+    const allCovered = payload.assets.every((asset) => {
+      if (typeof asset.contentHash !== 'string' || asset.contentHash === '') return false;
+      const fullPath = `public/assets/${asset.assetPath}`;
+      if (!promotedPaths.has(fullPath)) return false;
+      return manifestHashes.get(asset.assetPath) === asset.contentHash;
+    });
+    if (allCovered) closing.push(raw.number);
+  }
+
+  return { issueNumbers: closing.sort((a, b) => a - b), complete: true };
 }
 
 /** Result of locating the open promote PR: its number and current labels. */
@@ -694,6 +859,16 @@ export async function runReconcile(
     }
 
     // 7. Open or update the ONE promote → main PR (idempotent; never duplicate).
+    //    Compute closing issue numbers non-fatally (transient gh failure must
+    //    never abort the reconcile cycle; we just omit the closing keywords).
+    const closingIssueDiscovery = await computeClosingIssueNumbers(
+      deps.exec,
+      repoRoot,
+      baseRef,
+      repo,
+      promoteCommit,
+    );
+    const closingIssueNumbers = closingIssueDiscovery.issueNumbers;
     const { title, body } = buildPrContent(
       changedPaths,
       promoteCommit,
@@ -701,6 +876,7 @@ export async function runReconcile(
       queueBranch,
       promoteBranch,
       baseBranch,
+      closingIssueNumbers,
     );
     const existing = await findOpenPromotePr(deps.exec, repoRoot, repo, promoteBranch, baseBranch);
     let prNumber: number;
@@ -795,33 +971,34 @@ export async function runReconcile(
       created = false;
     }
 
-    // 8. Arm auto-merge (squash). Idempotent: re-arming an already-armed PR is a
-    //    no-op on GitHub's side. `--match-head-commit <promoteCommit>` makes the
-    //    arm ABORT if the promote head SHA has drifted since we pushed it —
-    //    arm-time drift defense. NOTE: this validates only at ARM time, not at
-    //    the eventual merge; full merge-time protection requires a branch ruleset
-    //    restricting `assets/promote` pushes to the reconciler identity (see the
-    //    ADR Risks section). The sole-writer promote branch + single concurrency
-    //    lane is the primary guarantee here.
-    await mustGh(deps.exec, repoRoot, [
-      'pr',
-      'merge',
-      String(prNumber),
-      ...repoArgs(repo),
-      '--auto',
-      '--squash',
-      '--match-head-commit',
-      promoteCommit,
-    ]);
+    // 8. Arm auto-merge (squash) only when issue-closure discovery completed.
+    // If discovery fails, defer arming so the next cycle can restore the PR body
+    // closure contract before merge.
+    let armed = false;
+    if (closingIssueDiscovery.complete) {
+      await mustGh(deps.exec, repoRoot, [
+        'pr',
+        'merge',
+        String(prNumber),
+        ...repoArgs(repo),
+        '--auto',
+        '--squash',
+        '--match-head-commit',
+        promoteCommit,
+      ]);
+      armed = true;
+    }
 
     return {
       status: 'pr-open',
       promoteBranch,
       prNumber,
       created,
-      armed: true,
+      armed,
       promoteCommit,
       changedPaths,
+      closingIssueNumbers,
+      closingIssueDiscoveryComplete: closingIssueDiscovery.complete,
     };
   });
 }

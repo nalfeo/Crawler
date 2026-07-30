@@ -19,11 +19,15 @@ import { parseArgs } from 'util';
 import { fileURLToPath } from 'url';
 import { basename } from 'path';
 
+import { loadPersonaRouting, systemsByPersona } from './shared/persona-routing.js';
+
 interface TriageResult {
   requestType: string;
   verdict: 'RECOMMENDED' | 'RISKY' | 'NOT_RECOMMENDED';
   verdictReason: string;
   escalation?: string;
+  confidence?: number;
+  nextAction?: string;
   message: string;
   blockers?: string[];
   questions?: string[];
@@ -59,6 +63,8 @@ interface OrchestrationState {
   overall_progress: number;
   cloud_recovery_handoffs: number;
   blockers: string[];
+  contract_status?: PlanningContract['gateStatus'];
+  hard_gate?: string;
 }
 
 interface ProducerEvent {
@@ -131,17 +137,26 @@ export function triage(request: string): TriageResult {
   // Bug indicators: look for issue/problem keywords
   const bugKeywords =
     /crash|bug|error|fail|reproduce|diagnose|broken|can't|cannot|not working|should not|issue|glitch|problem|collision|walk through|stuck|blocked/;
+  const balanceKeywords =
+    /\b(?:balance|tuning|damage|health|economy|difficulty|drops?|spawn(?:\s+pressure|\s+rate)?|winrate|progression|xp|gold|currency|reward|cost|price)\b/;
+  const balanceChangeSignals =
+    /\d+%|playtest|\b(?:increase|decrease|reduce|boost|buff|nerf|harder|easier|more|less|faster|slower|higher|lower|change|adjust|rebalance|tune|set|deal|grant|raise|lower)\b|\b\d+\s*(?:damage|health|gold|xp|experience|currency|rewards?|seconds?|spawns?)\b/;
+  const cosmeticBalanceContexts =
+    /\b(?:ui|hud|menu|screen|overlay|popup|popups|log|report|filter|style|styles|visual|vfx|particle|audio|sound)\b/;
 
-  // Game balancing: explicit mention of balance + numbers/metrics (distinct quantitative signals)
+  // Game balancing: explicit gameplay-parameter changes require a human gate.
   if (
-    /balance|tuning|scale|damage|economy|difficulty|drops|spawn|winrate/.test(req) &&
-    /\d+%|playtest/.test(req)
+    balanceKeywords.test(req) &&
+    balanceChangeSignals.test(req) &&
+    !cosmeticBalanceContexts.test(req)
   ) {
     return {
       requestType: 'GAME_BALANCING',
       verdict: 'RISKY',
       verdictReason: 'Gameplay balance changes need human approval and baseline metrics first.',
       escalation: 'HUMAN_GATE',
+      confidence: 0.95,
+      nextAction: 'Collect baseline metrics and ask for approval.',
       message:
         '🎮 GAME BALANCING REQUEST\n\nThis is a gameplay balance decision. Requires human approval before implementation.\nNeed to collect baseline metrics, propose changes, and validate with playtesting.',
     };
@@ -153,6 +168,8 @@ export function triage(request: string): TriageResult {
       requestType: 'DEBUGGING',
       verdict: 'RECOMMENDED',
       verdictReason: 'Fixing a concrete bug is usually a good idea and low ambiguity.',
+      confidence: 0.9,
+      nextAction: 'Route to QA for reproduction and a real runtime artifact.',
       message:
         '🐛 DEBUGGING REQUEST\n\nThis is a diagnosis task. QA will reproduce and determine root cause.\nRoute to QA Engineer.',
     };
@@ -168,6 +185,8 @@ export function triage(request: string): TriageResult {
       verdict: 'RECOMMENDED',
       verdictReason: 'Investigation is a safe way to reduce uncertainty before changing behavior.',
       escalation: 'CONDITIONAL',
+      confidence: 0.85,
+      nextAction: 'Define the metric and evidence source before analysis.',
       message:
         '🔍 INVESTIGATION REQUEST\n\nThis is exploratory work. Will collect data and may spawn a follow-up task.\nRoute to QA Engineer + Game Designer for analysis.',
     };
@@ -180,6 +199,8 @@ export function triage(request: string): TriageResult {
       verdict: 'RECOMMENDED',
       verdictReason:
         'A feature request is reasonable to plan, but it still needs scope clarification first.',
+      confidence: 0.65,
+      nextAction: 'Ask for one measurable hard gate, then decompose.',
       message:
         '✨ FEATURE REQUEST\n\nThis is a feature/enhancement. Will decompose into slices and parallelize.\nProceed to clarification phase.',
       questions: [
@@ -198,6 +219,8 @@ export function triage(request: string): TriageResult {
       requestType: 'CHORE',
       verdict: 'RECOMMENDED',
       verdictReason: 'Non-gameplay cleanup is usually safe and suitable for direct execution.',
+      confidence: 0.85,
+      nextAction: 'Route to the owning engineering or DevOps persona.',
       message:
         '🧹 CHORE/REFACTOR REQUEST\n\nThis is a safe, non-gameplay change. Can be parallelized.\nRoute to Systems Engineer or DevOps.',
     };
@@ -209,6 +232,8 @@ export function triage(request: string): TriageResult {
     verdict: 'NOT_RECOMMENDED',
     verdictReason: 'The request is too ambiguous to execute safely without clarification.',
     escalation: 'CLARIFY',
+    confidence: 0.1,
+    nextAction: 'Ask the highest-value framing question before routing.',
     message:
       '❓ UNCLEAR REQUEST\n\nThe request is ambiguous. Need clarification before proceeding.',
     questions: [
@@ -229,6 +254,10 @@ export function renderTriage(request: string): string {
   const lines = [``, '🎯 PRODUCER TRIAGE', '', `Request: "${request}"`, ''];
   lines.push(`Type: ${result.requestType}`);
   lines.push(`Verdict: ${result.verdict} — ${result.verdictReason}`);
+  if (result.confidence !== undefined) {
+    lines.push(`Planning confidence: ${Math.round(result.confidence * 100)}%`);
+  }
+  if (result.nextAction) lines.push(`Next action: ${result.nextAction}`);
 
   if (result.escalation) {
     lines.push(`Escalation: ${result.escalation}`);
@@ -424,6 +453,80 @@ interface DecompositionResult {
   criticalPath: string[];
   parallelizableGroups: string[][];
   escalations: string[];
+  contract: PlanningContract;
+}
+
+export interface PlanningContract {
+  hardGate: string | null;
+  gateStatus: 'READY' | 'MISSING';
+  rankedTiebreakers: string[];
+  confidence: number;
+  readyForDelegation: boolean;
+  validationErrors: string[];
+}
+
+const SUCCESS_GATE_PATTERN =
+  /(?:\b(?:success|target|at least|minimum|within|reach|achieve|maintain)\b.{0,50}\b\d+(?:\.\d+)?\s*(?:%|ms|s|seconds?|minutes?|runs?|tests?)\b|\b\d+(?:\.\d+)?\s*%\s*(?:win\s*rate|coverage)\b|\ball\s+tests?\s+(?:pass|passing|passed)\b|\b(?:reach|achieve|maintain|ensure|verify)\s+zero\s+(?:regressions?|failures?)\b|\b(?:fps|latency)\s*(?:>=|<=|at least|below|under)\s*\d+)/i;
+
+function inferPlanningContract(request: string, slices: SliceDecomposition[]): PlanningContract {
+  const hasGate = SUCCESS_GATE_PATTERN.test(request);
+  const hardGate = hasGate
+    ? `Verify the request's stated measurable condition: "${request}".`
+    : null;
+
+  return {
+    hardGate,
+    gateStatus: hardGate ? 'READY' : 'MISSING',
+    rankedTiebreakers: [
+      'Preserve deterministic runtime behavior and existing gameplay contracts.',
+      'Keep each slice independently verifiable at its layer boundary.',
+      'Prefer parallel work only when dependencies are explicit and acyclic.',
+    ],
+    confidence: Math.max(0, Math.min(1, (hasGate ? 0.8 : 0.55) + (slices.length > 0 ? 0.1 : 0))),
+    readyForDelegation: Boolean(hardGate),
+    validationErrors: [],
+  };
+}
+
+export function validateDecomposition(result: DecompositionResult): string[] {
+  const errors: string[] = [];
+  const ids = new Set<string>();
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  for (const slice of result.slices) {
+    if (ids.has(slice.id)) {
+      errors.push(`Duplicate slice id: ${slice.id}`);
+    }
+    ids.add(slice.id);
+    if (slice.apples < 1 || slice.apples > 3) {
+      errors.push(`${slice.id} exceeds the 1–3🍎 slice limit.`);
+    }
+    for (const dependency of slice.dependencies) {
+      if (dependency === slice.id) {
+        errors.push(`${slice.id} depends on itself.`);
+      }
+    }
+  }
+
+  const visit = (id: string): void => {
+    if (visiting.has(id)) {
+      errors.push(`Dependency cycle detected at ${id}.`);
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    const slice = result.slices.find((candidate) => candidate.id === id);
+    for (const dependency of slice?.dependencies ?? []) {
+      if (!ids.has(dependency)) errors.push(`${id} depends on unknown slice ${dependency}.`);
+      else visit(dependency);
+    }
+    visiting.delete(id);
+    visited.add(id);
+  };
+
+  result.slices.forEach((slice) => visit(slice.id));
+  return [...new Set(errors)];
 }
 
 /**
@@ -446,6 +549,12 @@ export function decompose(request: string): DecompositionResult {
   if (/sound|audio|sfx|music/.test(req)) systemsInvolved.push('audio');
   if (/quest|objective|trigger|event/.test(req)) systemsInvolved.push('quests');
   if (/story|lore|dialogue|narrative/.test(req)) systemsInvolved.push('story');
+  if (
+    /component|pipeline|runtime|wire|wiring|headless|scene|ecs/.test(req) &&
+    systemsInvolved.length > 0
+  ) {
+    systemsInvolved.push('core');
+  }
 
   // Default to game/core systems if nothing specific matched
   if (systemsInvolved.length === 0) {
@@ -456,16 +565,11 @@ export function decompose(request: string): DecompositionResult {
   const slices: SliceDecomposition[] = [];
   const sliceId = (name: string) => name.toLowerCase().replace(/\s+/g, '-');
 
-  // Persona-to-systems mapping (from routing matrix)
-  const personaMapping: Record<string, string[]> = {
-    'Game Designer': ['combat', 'loot', 'progression', 'economy', 'floor-generation'],
-    'Content Designer': ['quests'],
-    'Graphics Designer': ['graphics'],
-    'Sound Designer': ['audio'],
-    'Story Designer': ['story'],
-    'UX Designer': ['ui'],
-    'Systems Engineer': ['ai', 'core'],
-  };
+  // Persona-to-systems mapping — loaded from the single routing manifest
+  // (`docs/agent-os/personas/routing.json`) so this file, the personas README,
+  // and the docs guard can never disagree about who owns what.
+  const routing = loadPersonaRouting();
+  const personaMapping = systemsByPersona(routing);
 
   // Group systems by persona
   const personaWork: Record<string, string[]> = {};
@@ -480,9 +584,12 @@ export function decompose(request: string): DecompositionResult {
       }
     }
     if (!assigned) {
-      // Default to Game Designer for unknown systems
-      if (!personaWork['Game Designer']) personaWork['Game Designer'] = [];
-      personaWork['Game Designer'].push(system);
+      // Unmapped systems are a routing gap, not game design. Surface them on
+      // the manifest's triage persona so the gap is explicit instead of
+      // silently landing on whichever persona happens to be listed first.
+      const bucket = routing.unrouted_persona;
+      if (!personaWork[bucket]) personaWork[bucket] = [];
+      personaWork[bucket].push(system);
     }
   }
 
@@ -510,9 +617,9 @@ export function decompose(request: string): DecompositionResult {
   );
   const uiSlices = slices.filter((s) => s.persona === 'UX Designer');
   const graphicsSlices = slices.filter((s) => s.persona === 'Graphics Designer');
-  const audioSlices = slices.filter((s) => s.persona === 'Sound Designer');
+  const gameAiSlices = slices.filter((s) => s.persona === 'Game AI Engineer');
 
-  // UI depends on core
+  // UI (including audio feedback) depends on core
   for (const slice of uiSlices) {
     slice.dependencies = coreSlices.map((s) => s.id);
   }
@@ -522,12 +629,12 @@ export function decompose(request: string): DecompositionResult {
     slice.dependencies = coreSlices.map((s) => s.id);
   }
 
-  // Audio depends on core
-  for (const slice of audioSlices) {
+  // Enemy AI depends on core
+  for (const slice of gameAiSlices) {
     slice.dependencies = coreSlices.map((s) => s.id);
   }
 
-  // Story can be parallel (no dependencies unless it references game systems)
+  // Content/story can be parallel (no dependencies unless it references game systems)
 
   // Compute parallelizable groups
   const parallelizableGroups: string[][] = [];
@@ -556,14 +663,21 @@ export function decompose(request: string): DecompositionResult {
 
   const totalApples = slices.reduce((sum, s) => sum + s.apples, 0);
 
-  return {
+  const result: DecompositionResult = {
     feature: request,
     slices,
     totalApples,
     criticalPath,
     parallelizableGroups,
     escalations: [],
+    contract: inferPlanningContract(request, slices),
   };
+  result.contract.validationErrors = [
+    ...new Set([...result.contract.validationErrors, ...validateDecomposition(result)]),
+  ];
+  result.contract.readyForDelegation =
+    result.contract.gateStatus === 'READY' && result.contract.validationErrors.length === 0;
+  return result;
 }
 
 /**
@@ -595,6 +709,17 @@ function handleDecompose(request: string): void {
   console.log(`Total Apple Estimate: ${result.totalApples}🍎`);
   console.log(`Slices: ${result.slices.length}`);
   console.log(`Parallelizable Groups: ${result.parallelizableGroups.length}`);
+  console.log(
+    `Hard gate: ${result.contract.hardGate ?? 'MISSING — clarify a measurable success condition before delegation'}`,
+  );
+  console.log(`Planning confidence: ${Math.round(result.contract.confidence * 100)}%`);
+  console.log('Tiebreakers:');
+  result.contract.rankedTiebreakers.forEach((tiebreaker, index) =>
+    console.log(`  ${index + 1}. ${tiebreaker}`),
+  );
+  if (!result.contract.readyForDelegation) {
+    console.log('Delegation: BLOCKED until the planning contract is complete and valid.');
+  }
 
   if (result.totalApples > 12) {
     console.log(
@@ -652,7 +777,11 @@ function handleDecompose(request: string): void {
     slices: initialSlices,
     overall_progress: 0,
     cloud_recovery_handoffs: 0,
-    blockers: result.escalations,
+    blockers: result.contract.hardGate
+      ? result.escalations
+      : ['Define a measurable hard gate before delegating slices.'],
+    contract_status: result.contract.gateStatus,
+    hard_gate: result.contract.hardGate ?? undefined,
   };
   appendJsonlLine(ORCHESTRATION_FILE, state);
   const event: ProducerEvent = {

@@ -1,23 +1,39 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { PNG } from 'pngjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyThemeSetItemReview,
   markThemeEquipmentSetPublished,
   parseThemeEquipmentSetState,
   themeEquipmentSetStateKey,
+  emptyThemeEquipmentItemPhases,
+  emptyThemeEquipmentSetPhases,
+  NON_HAND_EQUIPMENT_SLOT_IDS,
+  THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
+  THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS,
+  type ThemeEquipmentArtifactEvidence,
+  type ThemeEquipmentSetState,
 } from '../../../scripts/sprites/theme-equipment-set.js';
 import {
   __stageThemeEquipmentArtSurface,
   __stageThemeEquipmentRun,
+  THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY,
   createThemeEquipmentRunnerDeps,
+  selectCollectionTileSources,
   ThemeEquipmentRunner,
 } from '../../../scripts/sprites/theme-equipment-runner.js';
 import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
 
 const REPO_ROOT = path.resolve(process.cwd());
 const NOW = () => new Date('2026-07-25T04:07:30.322Z');
+
+function tinyPng(size = 2): Buffer {
+  const png = new PNG({ width: size, height: size });
+  png.data.fill(200);
+  return PNG.sync.write(png);
+}
 
 function memoryStore(): RunStore & { readonly mem: Map<string, Buffer>; puts: number } {
   const mem = new Map<string, Buffer>();
@@ -76,6 +92,212 @@ function runner(
   };
 }
 
+const COHESION_WEAPON_TYPES = ['sword', 'bow', 'axe', 'staff', 'dagger'] as const;
+
+function approvedVariantArtifact(
+  itemId: string,
+  variantIndex: number,
+): ThemeEquipmentArtifactEvidence {
+  return {
+    id: `${itemId}-approved-${variantIndex}`,
+    kind: THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
+    uri: `memory://${itemId}/variant-approval/${variantIndex}`,
+    provenance: 'unit-test',
+    briefId: `${itemId}-v2`,
+    runId: `run-${itemId}`,
+    variantIndex,
+  };
+}
+
+function rawSheetArtifact(itemId: string): ThemeEquipmentArtifactEvidence {
+  return {
+    id: `${itemId}-raw-sheet`,
+    kind: 'raw-sheet',
+    uri: `memory://${itemId}/sprite-sheets/sheet`,
+    provenance: 'unit-test',
+    briefId: `${itemId}-v2`,
+    runId: `run-${itemId}`,
+    summary: 'sheet-00.png',
+  };
+}
+
+function itemPhasesWith(
+  phase: 'sprite-sheets' | 'variant-approval',
+  artifacts: readonly ThemeEquipmentArtifactEvidence[],
+): ThemeEquipmentSetState['items'][number]['phases'] {
+  const phases = emptyThemeEquipmentItemPhases();
+  return {
+    ...phases,
+    [phase]: { artifacts: [...artifacts], evidence: [], review: { verdict: 'up' as const } },
+  };
+}
+
+/**
+ * Build a coverage-valid state parked at `variant-approval` (5 distinct weapon
+ * types + the minimum non-hand slots), each item carrying the given approved
+ * variant indices (deliberately out of array order to prove deterministic
+ * lowest-index selection). Slot items each carry a single variant.
+ */
+function makeVariantApprovalState(
+  weaponVariantIndices: readonly (readonly number[])[] = [[7, 2, 5], [4], [9, 3], [6, 1, 8], [2]],
+): ThemeEquipmentSetState {
+  const weaponItems = COHESION_WEAPON_TYPES.map((weaponType, index) => {
+    const id = `${weaponType}-of-moonlight`;
+    const indices = weaponVariantIndices[index] ?? [1];
+    return {
+      id,
+      displayName: `${weaponType} of Moonlight`,
+      kind: 'weapon' as const,
+      weaponType,
+      revision: 0,
+      revisionStatus: 'open' as const,
+      frozenPhases: [],
+      phases: itemPhasesWith(
+        'variant-approval',
+        indices.map((variantIndex) => approvedVariantArtifact(id, variantIndex)),
+      ),
+    };
+  });
+  const slotItems = NON_HAND_EQUIPMENT_SLOT_IDS.slice(
+    0,
+    THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS,
+  ).map((slot) => {
+    const id = `${slot.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}-relic`;
+    return {
+      id,
+      displayName: `${slot} Relic`,
+      kind: 'equipment' as const,
+      slots: [slot],
+      revision: 0,
+      revisionStatus: 'open' as const,
+      frozenPhases: [],
+      phases: itemPhasesWith('variant-approval', [approvedVariantArtifact(id, 0)]),
+    };
+  });
+  return parseThemeEquipmentSetState({
+    schemaVersion: 1,
+    id: 'moon-court-regalia',
+    displayName: 'Moon Court Regalia',
+    themeDesignLanguage: 'silver filigree and lunar enamel',
+    phase: 'variant-approval',
+    items: [...weaponItems, ...slotItems],
+    phases: emptyThemeEquipmentSetPhases(),
+    stateRevision: 0,
+    updatedAt: NOW().toISOString(),
+  });
+}
+
+function representativeKey(item: ThemeEquipmentSetState['items'][number]): string {
+  const approved = item.phases['variant-approval'].artifacts.filter(
+    (artifact) => artifact.kind === THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
+  );
+  const representative = approved.reduce((lowest, candidate) =>
+    (candidate.variantIndex ?? Infinity) < (lowest.variantIndex ?? Infinity) ? candidate : lowest,
+  );
+  const filename = `processed/${String(representative.variantIndex).padStart(2, '0')}.png`;
+  return `${representative.briefId}/${representative.runId}/${filename}`;
+}
+
+describe('selectCollectionTileSources', () => {
+  it('returns one tile per item at variant-approval, choosing the lowest variantIndex', () => {
+    const state = makeVariantApprovalState([[7, 2, 5], [4], [9, 3], [6, 1, 8], [2]]);
+    const sources = selectCollectionTileSources(state);
+
+    expect(sources).toHaveLength(state.items.length);
+    expect(sources[0]).toEqual({
+      key: 'sword-of-moonlight-v2/run-sword-of-moonlight/processed/02.png',
+      label: 'sword of Moonlight',
+    });
+    expect(sources[2]).toEqual({
+      key: 'axe-of-moonlight-v2/run-axe-of-moonlight/processed/03.png',
+      label: 'axe of Moonlight',
+    });
+    expect(sources.map((source) => source.label)).toEqual(
+      state.items.map((item) => item.displayName),
+    );
+    expect(sources.map((source) => source.key)).toEqual(state.items.map(representativeKey));
+  });
+
+  it('throws when an item has no approved-variant artifacts', () => {
+    const state = makeVariantApprovalState();
+    const broken = parseThemeEquipmentSetState({
+      ...state,
+      items: state.items.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              phases: {
+                ...item.phases,
+                'variant-approval': {
+                  ...item.phases['variant-approval'],
+                  artifacts: [],
+                },
+              },
+            }
+          : item,
+      ),
+    });
+
+    expect(() => selectCollectionTileSources(broken)).toThrow('has no approved-variant artifacts');
+  });
+
+  it('validates every approved artifact, not just the selected one', () => {
+    const state = makeVariantApprovalState([[2, 9], [4], [3], [1], [5]]);
+    // The lowest index (2) is well-formed; the unselected variant (9) drops runId.
+    const broken = parseThemeEquipmentSetState({
+      ...state,
+      items: state.items.map((item, index) => {
+        if (index !== 0) return item;
+        const approved = item.phases['variant-approval'].artifacts;
+        return {
+          ...item,
+          phases: {
+            ...item.phases,
+            'variant-approval': {
+              ...item.phases['variant-approval'],
+              artifacts: approved.map((artifact) =>
+                artifact.variantIndex === 9 ? { ...artifact, runId: undefined } : artifact,
+              ),
+            },
+          },
+        };
+      }),
+    });
+
+    expect(() => selectCollectionTileSources(broken)).toThrow('metadata is incomplete');
+  });
+
+  it('returns one raw-sheet tile per item at sprite-sheets', () => {
+    const base = makeVariantApprovalState();
+    const state = parseThemeEquipmentSetState({
+      ...base,
+      phase: 'sprite-sheets',
+      items: base.items.map((item) => ({
+        ...item,
+        phases: itemPhasesWith('sprite-sheets', [rawSheetArtifact(item.id)]),
+      })),
+    });
+
+    const sources = selectCollectionTileSources(state);
+
+    expect(sources).toHaveLength(state.items.length);
+    expect(sources[0]).toEqual({
+      key: 'sword-of-moonlight-v2/run-sword-of-moonlight/sheet-00.png',
+      label: 'sword of Moonlight',
+    });
+  });
+
+  it('throws for a phase without a contact sheet', () => {
+    const state = makeVariantApprovalState();
+    expect(() => selectCollectionTileSources({ ...state, phase: 'roster' })).toThrow(
+      'does not support phase',
+    );
+    expect(() => selectCollectionTileSources({ ...state, phase: 'complete' })).toThrow(
+      'does not support phase',
+    );
+  });
+});
+
 describe('ThemeEquipmentRunner roster production adapter', () => {
   it('constructs state-only dependencies without OpenAI credentials', () => {
     const deps = createThemeEquipmentRunnerDeps(REPO_ROOT, {}, NOW, 'state-only');
@@ -97,6 +319,11 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
       mkdirSync(generatedRoot, { recursive: true });
       mkdirSync(path.dirname(catalogPath), { recursive: true });
       writeFileSync(path.join(generatedRoot, 'manifest.json'), '{"existing":true}\n');
+      mkdirSync(path.join(generatedRoot, 'entries'), { recursive: true });
+      writeFileSync(
+        path.join(generatedRoot, 'entries', 'iron-sword-var-0.json'),
+        '{"briefId":"iron-sword"}\n',
+      );
       writeFileSync(catalogPath, '{"sprites":[]}\n');
       await store.put('iron-sword/run-1/summary.json', Buffer.from('{"candidates":[]}'));
       await store.put('iron-sword/run-1/processed/04.png', Buffer.from('png'));
@@ -114,12 +341,94 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
       expect(
         readFileSync(path.join(stageRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), 'utf8'),
       ).toContain('sprites');
+      // Per-asset shards under entries/ are staged alongside the aggregate.
+      expect(
+        existsSync(
+          path.join(stageRoot, 'public', 'assets', 'generated', 'entries', 'iron-sword-var-0.json'),
+        ),
+      ).toBe(true);
       const stagedRun = path.join(stageRoot, 'generated', 'runs', 'iron-sword', 'run-1');
       expect(existsSync(path.join(stagedRun, 'summary.json'))).toBe(true);
       expect(existsSync(path.join(stagedRun, 'processed', '04.png'))).toBe(true);
       expect(existsSync(path.join(stagedRun, 'processed', '04.judge.json'))).toBe(true);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
+      rmSync(stageRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('downloads run blobs with bounded concurrency and lands every byte', async () => {
+    const stageRoot = mkdtempSync(path.join(tmpdir(), 'theme-equipment-stage-conc-'));
+    const store = memoryStore();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const baseGet = store.get.bind(store);
+    store.get = async (key: string) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      try {
+        // Yield across the microtask/macrotask boundary so a serial
+        // implementation would show maxInFlight === 1.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return await baseGet(key);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+    try {
+      const keyCount = THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY * 3 + 1;
+      for (let index = 0; index < keyCount; index += 1) {
+        await store.put(
+          `iron-sword/run-1/processed/${String(index).padStart(2, '0')}.png`,
+          Buffer.from(`png-${index}`),
+        );
+      }
+
+      await __stageThemeEquipmentRun(store, stageRoot, 'iron-sword', 'run-1');
+
+      expect(maxInFlight).toBeGreaterThan(1);
+      expect(maxInFlight).toBeLessThanOrEqual(THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY);
+      const stagedRun = path.join(stageRoot, 'generated', 'runs', 'iron-sword', 'run-1');
+      for (let index = 0; index < keyCount; index += 1) {
+        const dest = path.join(stagedRun, 'processed', `${String(index).padStart(2, '0')}.png`);
+        expect(readFileSync(dest, 'utf8')).toBe(`png-${index}`);
+      }
+    } finally {
+      rmSync(stageRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('lets every in-flight download settle before propagating a failure', async () => {
+    const stageRoot = mkdtempSync(path.join(tmpdir(), 'theme-equipment-stage-fail-'));
+    const store = memoryStore();
+    let settled = 0;
+    const baseGet = store.get.bind(store);
+    store.get = async (key: string) => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        if (key.endsWith('01.png')) {
+          throw new Error('boom');
+        }
+        return await baseGet(key);
+      } finally {
+        settled += 1;
+      }
+    };
+    try {
+      // One full batch: a mid-batch rejection must not leave siblings in flight.
+      const keyCount = THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY;
+      for (let index = 0; index < keyCount; index += 1) {
+        await store.put(
+          `iron-sword/run-1/processed/${String(index).padStart(2, '0')}.png`,
+          Buffer.from(`png-${index}`),
+        );
+      }
+
+      await expect(
+        __stageThemeEquipmentRun(store, stageRoot, 'iron-sword', 'run-1'),
+      ).rejects.toThrow('boom');
+      expect(settled).toBe(keyCount);
+    } finally {
       rmSync(stageRoot, { recursive: true, force: true });
     }
   });
@@ -264,5 +573,38 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
       status: 'published',
       queueCommit: 'combined-queue-commit',
     });
+  });
+
+  it('at variant-approval judges one representative tile per item without regenerating', async () => {
+    const store = memoryStore();
+    const state = makeVariantApprovalState([[7, 2, 5], [4], [9, 3], [6, 1, 8], [2]]);
+    for (const item of state.items) {
+      for (const artifact of item.phases['variant-approval'].artifacts) {
+        const filename = `processed/${String(artifact.variantIndex).padStart(2, '0')}.png`;
+        await store.put(`${artifact.briefId}/${artifact.runId}/${filename}`, tinyPng());
+      }
+    }
+    store.mem.set(themeEquipmentSetStateKey(state.id), Buffer.from(`${JSON.stringify(state)}\n`));
+    store.puts = 0;
+    const getSpy = vi.spyOn(store, 'get');
+    const { runner: subject, evaluate } = runner(store);
+
+    const result = await subject.runPhase(state.id);
+
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    const fetchedProcessed = getSpy.mock.calls
+      .map((call) => call[0])
+      .filter((key) => key.includes('/processed/'));
+    // One tile per ITEM, never per variant: with 3 approved variants each, the
+    // old behavior fetched 3× the tiles and overflowed the 32-tile sheet cap.
+    expect(fetchedProcessed).toHaveLength(state.items.length);
+    expect(fetchedProcessed).toEqual(state.items.map(representativeKey));
+    // The non-representative variants (e.g. index 7 and 5 for the sword) were
+    // never fetched — only the lowest-index representative per item.
+    expect(fetchedProcessed).not.toContain(
+      'sword-of-moonlight-v2/run-sword-of-moonlight/processed/07.png',
+    );
+    expect(store.puts).toBe(1);
+    expect(result.phases['variant-approval'].collectionJudge?.score).toBe(4);
   });
 });

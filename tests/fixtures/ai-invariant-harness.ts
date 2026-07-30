@@ -28,11 +28,7 @@ export interface AIInvariantAxis {
 export const SLICE_A_DECISION_AXES: readonly AIInvariantAxis[] = [
   {
     decisionMode: AIDecisionMode.LEGACY,
-    pathingMode: AIPathingMode.LEGACY,
-  },
-  {
-    decisionMode: AIDecisionMode.SLACK_AWARE,
-    pathingMode: AIPathingMode.LEGACY,
+    pathingMode: AIPathingMode.RISK_REWARD_FUSED,
   },
 ] as const;
 
@@ -71,7 +67,6 @@ export interface AIInvariantTrace {
     readonly x: number;
     readonly y: number;
   };
-  readonly navPartialPathFallbacks: number;
   readonly markers: Readonly<Record<string, unknown>>;
 }
 
@@ -94,7 +89,7 @@ export interface AIInvariantCoverageRow {
 }
 
 const ALL_INVARIANTS = Object.values(AI_INVARIANT);
-const ALL_DECISION_MODES = [AIDecisionMode.LEGACY, AIDecisionMode.SLACK_AWARE] as const;
+const ALL_DECISION_MODES = [AIDecisionMode.LEGACY] as const;
 
 function sameAxis(left: AIInvariantAxis, right: AIInvariantAxis): boolean {
   return left.decisionMode === right.decisionMode && left.pathingMode === right.pathingMode;
@@ -154,7 +149,6 @@ export function captureAiInvariantTrace(
       x: input.moveX,
       y: input.moveY,
     },
-    navPartialPathFallbacks: ai.navPartialPathFallbacks,
     markers,
   };
 }
@@ -170,7 +164,7 @@ export function defineAiInvariantSuite(cases: readonly AIInvariantCase[]): void 
   const coverage = getAiInvariantCoverage(cases);
 
   describe('AI invariant applicability contract', () => {
-    it('covers every hard-gate invariant in legacy and slackAware modes', () => {
+    it('covers every hard-gate invariant in legacy mode', () => {
       const uncovered = coverage.filter((row) => row.applicableCases === 0);
       expect(
         uncovered.map((row) => `${row.invariant}/${row.decisionMode}`),

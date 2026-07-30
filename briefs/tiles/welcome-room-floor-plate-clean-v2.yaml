@@ -1,0 +1,248 @@
+# welcome-room-floor-plate-clean-v2 — Asset Forge, 2026-07-27.
+#
+# WHY V2 EXISTS. The v1 wave (shipped in #2099) is REJECTED for its intended
+# use. All four v1 plates baked a border frame into the canvas edge, measured as
+# mean row/column luma at the outer rows/cols against the interior mean:
+#   clean-var-2      ~4px  dark rim   edge luma 25  vs interior 84  = 70% delta
+#   scuffed-var-6    ~21px pale rim   edge luma 136 vs interior 70  = 93% delta
+#   tape-mark-var-0  ~3px  dark rim   edge luma 25  vs interior 77  = 67% delta
+#   cable-run-var-4  ~10px dark rim   edge luma 25  vs interior 78  = 68% delta
+# These are laid edge-to-edge on a 4ft grid, so a rim on each plate composites
+# into a continuous lattice across the whole floor — i.e. a framed plate makes
+# the stamped grid STRONGER than the tile this family exists to replace. It is
+# the same border-rim failure class as `tile-stone-floor-v1-var-2`; border
+# continuity checks were out of scope in the prior tile sensors, which is the
+# gap v1 fell through. The v1 "FAMILY LOCK" luma spread was measured on
+# INTERIORS and so
+# could not see an edge-family failure; the frames were not even consistent with
+# each other (one pale, three near-black), which reads as damage, not pattern.
+#
+# THE FIX IS A REFRAME, NOT MORE PROSE. v1 already contained an explicit "do NOT
+# draw a dark keyline, a black frame, a border outline, a bevel, a rim" sentence
+# and the model drew one anyway on 4/4 plates. Negation does not beat a strong
+# prior, and the prior is summoned by the word TILE: the shared `type: tile`
+# prompt scaffolding itself says "tile FRAME ... fill it edge-to-edge" and
+# "exactly one full tile variant in a square FRAME"
+# (scripts/sprites/build-prompt.ts). So v2 never calls the subject a tile or a
+# plate or an object of any kind. It is a CROP cut from the middle of a much
+# larger continuous floor, and the square boundary is the camera crop, not the
+# boundary of a thing. Proof-of-crop (detail visibly severed mid-stroke by the
+# edge) is stated as a positive requirement, because a positive requirement the
+# model can satisfy beats a negative one it can only avoid.
+#
+# HARD ACCEPT CRITERION, verified numerically before approval, never eyeballed:
+#   npm run sprites:edge-frame-check -- <png-path>
+#   interiorLuma = mean luma of rows/cols 24..(N-25)
+#   for each of the outer 6 rows and 6 cols on all four sides:
+#     abs(edgeLuma - interiorLuma) / interiorLuma  <  0.10
+# The threshold is NOT to be relaxed to go green.
+#
+# NO MAGENTA GUTTER PARAGRAPH. v1's `scuffed` was the only brief carrying the
+# "bright magenta #ff00ff gutter" sheet-layout instruction and it was the only
+# one of the four with a PALE rim (~21px, luma 136 = palette step [132,136,142])
+# rather than a dark one. The slicer cuts at the CENTRE of a detected background
+# band (scripts/sprites/slice-sheet.ts), so half the gutter lands inside each
+# cell and a strict palette quantize maps it to the nearest ramp step instead of
+# removing it. The other three briefs omitted the paragraph and sliced fine, so
+# v2 omits it everywhere and lets the default tile scaffolding do the cutting.
+#
+# GEOMETRY unchanged from v1: `type: tile` => 'stretch' + `trimAndFit: false`, so
+# the shipped PNG is exactly 256x256 by construction and the drawn box IS the
+# canvas. 1:1 aspect, no `sizeVariant` (FEET_PER_TILE = 4). Shipped pixels are
+# still MEASURED after generation and reported, never assumed. `paletteMode:
+# strict` and `interiorHoles` stays at its default 0; the only sensors stood down
+# are the `type: tile` contract's own (`opaqueRatio`, `edge.allowMainTouch`),
+# which are meaningless on a full-bleed surface.
+# ONE CROP PER SHEET (`sheet: 1x1 @ 1024`) — THIS IS THE LEVER THAT ACTUALLY
+# KILLED THE FRAME, AND IT IS A PIPELINE FACT, NOT A STYLE PREFERENCE.
+# The first v2 attempt kept the default 4x4 sheet and reworded the prompt as a
+# crop. All 16 variants still failed the edge check at ~74.5%, and — the tell —
+# they failed IDENTICALLY, at exactly luma 25.0 (palette step [24,25,28]) on all
+# four sides at every depth 0..5. Art does not fail that uniformly; pipelines do.
+# Probing the raw 1024x1024 sheet showed why: the model separated the 16 cells
+# with NEAR-BLACK gutters (dark column bands at x 0-8, 249-263, 504-519, 760-774,
+# 1016-1023), and `sliceSheet` cuts at the CENTRE of a detected band
+# (scripts/sprites/slice-sheet.ts), so ~7px of black gutter is baked into every
+# cell on every side. The `tile` postprocess pipeline is
+# transparent-trim -> resize -> speckle -> palette-quantize -> alpha-threshold
+# with NO background-removal module at all, so nothing keys that gutter out; it
+# just gets quantized to the darkest ramp step. That also explains v1 `scuffed`:
+# its brief was the only one demanding a bright magenta gutter, and magenta is
+# not keyed out either, so it quantized to [132,136,142] — luma 136, exactly its
+# measured pale rim. Magenta is therefore NOT the fix here (it is the fix for
+# types whose pipeline includes background removal; see repair-tile-matte.ts).
+# The fix is to have no gutter to bake in: one crop per sheet. 1024 -> 256 is an
+# exact 4:1 integer decimation by resize-nearest, so nothing is softened, and no
+# post-crop-and-rescale is performed anywhere.
+generation:
+  sheet:
+    rows: 1
+    cols: 1
+    nativeCanvas: 1024
+type: tile
+name: welcome-room-floor-plate-clean-v2
+description: |
+  A 4 ft x 4 ft SQUARE CROP CUT FROM THE MIDDLE of a much larger, continuous,
+  unbroken floor, seen from DIRECTLY OVERHEAD — flat top-down, the camera
+  looking straight down at the ground.
+
+  READ THIS FIRST. THIS IS NOT A TILE, A PANEL, A PLATE, A SLAB, A MAT OR AN
+  OBJECT. IT IS A CROP. The floor being drawn stretches for many metres in every
+  direction and runs far past all four sides of this square. What you are
+  drawing is one arbitrary patch of it, as if you stood over a huge floor and
+  photographed straight down at a random spot. The square boundary is the CAMERA
+  CROP. It is not the boundary of a thing, and nothing in the picture knows it
+  is there.
+
+  THE FULL-BLEED RULE — THIS IS THE SINGLE HARDEST REQUIREMENT AND IT IS
+  VERBATIM IDENTICAL IN ALL FOUR CROPS OF THIS FAMILY:
+  The material runs off ALL FOUR EDGES. The outermost pixels of the picture must
+  be INDISTINGUISHABLE from the pixels at the centre — same colour, same value,
+  same texture, same grain density, same everything. There is no border, no
+  frame, no outline, no keyline, no rim, no edge highlight, no edge darkening,
+  no lightening toward the margin, no vignette, no bevel, no drop shadow at the
+  margin, no rounded corners, no joint or grout line running along or parallel
+  to the crop edge, and NO CHANGE OF TONE OF ANY KIND anywhere near the edge.
+  Test it yourself before you finish: if the middle of the picture were covered
+  up, the remaining outer band would have to look like plain ordinary floor, and
+  would give no clue whatever about where the edge of the picture is.
+
+  THE LIGHTING IS PERFECTLY FLAT AND PERFECTLY EVEN — READ THIS, IT IS THE PART
+  THAT KEEPS GOING WRONG:
+  The last attempt had no drawn border at all and STILL failed, because it was
+  shaded like a photograph: the outer band of the picture was noticeably darker
+  than the middle, fading in gently over about twenty pixels all the way around.
+  That soft darkening is exactly as fatal as a drawn frame, because these crops
+  are laid edge to edge and the darkened bands of neighbouring crops butt up and
+  composite into a continuous lattice. So:
+  - The whole picture is lit by a single perfectly uniform ambient light. There
+    is NO light source, NO direction of light, NO falloff, NO gradient.
+  - There is NO photographic vignette, NO lens falloff, NO exposure ramp, NO
+    ambient-occlusion darkening toward the sides or into the corners, and NO
+    soft shadow creeping in from any side.
+  - The AVERAGE BRIGHTNESS of the outer band of the picture must be the SAME as
+    the average brightness of the middle, to within a few percent. Corners are
+    not darker. Corners are not lighter. Sides are not darker. Sides are not
+    lighter.
+  - If you would normally shade the outside of an image to make it sit nicely on
+    a page, DO NOT. This picture is not being looked at on its own; it is being
+    tiled.
+
+  HOW TO BUILD THE PICTURE — WORK IN THIS ORDER, IT MATTERS:
+  1. FIRST, fill the ENTIRE canvas, corner to corner, with the bare floor
+     material. Every pixel. Evenly lit. No border, no outline, nothing on it
+     yet. The four edges are finished at this point and you will not touch them
+     again.
+  2. THEN lay the broad soft tonal patches and the sparse cool grain over that
+     fill, running them right off all four edges.
+  3. THEN add the specific marks described below, ON TOP of that already
+     finished surface, as though they were applied to a floor that was already
+     there.
+  4. DO NOT, at any point after that, go back and tidy the outside of the
+     picture. Do not outline it. Do not darken or lighten its border. Do not
+     shade its corners. Do not put a mat, a mount, a card, a backing, a swatch
+     board or a frame behind it. This is not a product photo, a sticker, a
+     sample chip, a coaster or a framed picture, and it is not being presented
+     on anything. It is a crop of a floor.
+
+  PROOF THAT THE CROP IS REAL — DRAW THIS, IT IS A POSITIVE REQUIREMENT:
+  At least THREE separate details must be visibly SEVERED MID-STROKE by the
+  crop edge and continue off the picture — a scuff that is cut in half by the
+  left edge, a stain whose other half is outside the top of the frame, a band of
+  grain that walks straight off the bottom corner. A picture in which every
+  detail stops politely before reaching the edge is a REJECTION, because it
+  proves the floor was drawn as an object instead of cropped out of a larger
+  one.
+
+  SURFACE CHARACTER — BROAD AND SOFT, NOT CONFETTI:
+  Because the lighting is flat there is a temptation to fill the picture with an
+  even all-over scatter of coloured dots. DO NOT. That reads as television
+  static, not as concrete, and an attempt at this brief did exactly that. The
+  surface variation is mostly BROAD and SOFT: large, gentle, irregular patches a
+  single tonal step apart, several tens of pixels across, drifting slowly across
+  the picture so that one region is faintly cloudier or faintly cleaner than
+  another. Fine per-pixel grain exists on top of that, but it is SPARSE,
+  LOW-CONTRAST and COOL GREY — never warm, never tan, never orange, never ochre,
+  never gold, and never a uniform field of bright specks. If more than roughly
+  one pixel in eight is a speck, there are far too many. Flat lighting does NOT
+  mean a flat featureless surface; it means the surface has character without
+  any light source shading it.
+
+  THE FAMILY LOCK — VERBATIM IDENTICAL IN ALL FOUR CROPS OF THIS FAMILY. THE
+  FOUR ARE LAID DIRECTLY ADJACENT ON A GRID, SO THE BASE SURFACE MUST MATCH:
+  The floor is COOL GREY CONCRETE-COMPOSITE STUDIO PANELLING — flat, matte and
+  slightly chalky, a MIDDLE grey with the faintest blue-green cast. Not pale,
+  not dark. It is NOT brown, NOT tan, NOT gold, NOT olive, NOT yellow, NOT ochre
+  and NOT warm wood. Dust and grime may push small patches a little warmer, but
+  the dominant impression of the whole picture must be COOL GREY. Fill the
+  entire square with it, corner to corner, with no transparent pixels anywhere.
+  Vary the surface ASYMMETRICALLY: grain, dust and light wear must be noticeably
+  heavier toward one corner or one side, never evenly distributed and never
+  mirror-symmetric, so neighbouring crops never look stamped.
+
+  THE FICTION: this is studio-grade sheet flooring laid down over dungeon stone
+  — the reception set of a televised dungeon reality show, where a production
+  crew covered the raw floor with hard-wearing matte panelling so equipment can
+  roll on it.
+
+  THIS IS THE QUIET BASE VARIANT OF A FOUR-CROP FAMILY AND IT IS DELIBERATELY
+  DULL. It is the most-used variant, laid under every prop and every character
+  in the room, so it must not compete with them. Its whole job is to be a calm,
+  believable, non-repeating surface.
+
+  WHAT TO DRAW ON TOP (this variant only):
+  - Fine surface tooth: sparse dithered grain, a few tiny chips and pitting, a
+    faint patch or two where the matte finish has been polished by foot traffic.
+  - Light, honest wear — this floor is years old — but NO dramatic damage, NO
+    holes, NO cracks running corner to corner, NO puddles.
+  - Remember the proof-of-crop rule: some of that grain, pitting and polish must
+    be cut in half by the picture edge and carry on out of shot.
+
+  FLAT TOP-DOWN, ABSOLUTELY NO PERSPECTIVE:
+  This is a flat ground plane. Do NOT draw it in 3/4 view. Do NOT give it a
+  visible thickness, side wall, bevelled rim, extruded edge or implied height.
+  Do NOT draw a cast shadow, a drop shadow, a contact shadow, or any shadow at
+  all — nothing sits on this floor in the art. Props are drawn separately in 3/4
+  view and render upward from their footprint on top of this ground, so any
+  implied height or shadow here will look wrong underneath them.
+
+  LOW CONTRAST AND DESATURATED:
+  Keep every tone inside a narrow mid-value band of cool desaturated concrete
+  greys. No black areas, no white areas, NO SATURATED COLOUR AT ALL in this
+  variant — no yellow, no ochre, no gold, no olive, no green, no blue. No glow,
+  no gloss, no specular highlight. Detail must be legible but quiet.
+
+  NO TEXT of any kind. No numbers, no labels, no logos, no arrows, no symbols.
+
+  Rendered in the game at exactly 4 x 4 feet — one full floor cell. The art must
+  read believably at that size: keep detail count low enough to survive when the
+  square is only a few dozen pixels on screen, and do not over-detail.
+
+  It must sit beside the already-approved welcome-room art without clashing:
+  welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table,
+  welcome-room-rug, welcome-room-stanchion-pair, welcome-sign-left-v1 and
+  prop-wall-sconce-v1 — deep maroon and dark walnut wood, tarnished brass, hard
+  dark outline, muted and dusty, never bright or saturated.
+palette:
+  id: welcome-room-studio-floor
+postprocessing:
+  paletteMode: strict
+sensors:
+  # A flat ground crop has no single ground-contact point — its "base" is the
+  # entire surface — so a bottom-centre grip anchor is semantically meaningless.
+  # Centre-of-mass is the correct contract, the same call made for
+  # `welcome-room-cable-coil` and `welcome-room-stanchion-pair`. This is a
+  # contract choice, not a relaxed threshold: every other sensor keeps its
+  # default, including `interiorHoles: 0`.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - floor
+  - studio-set
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

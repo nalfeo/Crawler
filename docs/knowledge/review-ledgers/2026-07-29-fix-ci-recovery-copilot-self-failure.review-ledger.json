@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "fix-ci-recovery-copilot-self-failure",
+  "task_title": "Fix CI recovery copilot self-failure loop (blockersPresent gap)",
+  "estimated_apples": 2,
+  "stages": {}
+}

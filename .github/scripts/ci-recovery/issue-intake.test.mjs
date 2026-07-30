@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
@@ -23,6 +25,11 @@ const issue = {
   node_id: 'ISSUE_1067',
   number: 1067,
 };
+
+test('issue intake workflow subscribes to reopened issues', () => {
+  const workflow = readFileSync(path.resolve('.github/workflows/issue-copilot-intake.yml'), 'utf8');
+  assert.match(workflow, /types:\s*\[opened,\s*reopened,\s*closed\]/);
+});
 
 test('issue intake accepts only trusted opener and label combinations', () => {
   const cases = [
@@ -228,6 +235,59 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
             },
             trustedRoot('Issue #1307 required an implementation plan comment before the PR.'),
           ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  // Regression: reviewer used "required the detailed plan to be posted on the issue"
+  // which the original regex (planSubject-only) did not match.
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot(
+              'Issue #1307 explicitly required the detailed plan to be posted on the issue before any code was written. This note confirms that requirement was not met; recording the plan only in-session does not satisfy the issue-specific constraint. Since the timing requirement cannot be repaired retroactively, obtain an explicit maintainer waiver before approval.',
+            ),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  // Variation: "required a plan to be posted" (no adjective, no "the")
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('Issue #1307 required a plan to be posted on the issue.')],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  // Variation: "required the plan to be posted" (no adjective)
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('Issue #1307 required the plan to be posted before merging.')],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  // Non-matching: "plan" mentioned but not in a "plan to be posted" pattern
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('Issue #1307: please post a plan at your convenience.')],
         },
       },
       closingIssues,
@@ -738,13 +798,15 @@ test('openBlockingIssues keeps only open dependencies, case-insensitively', () =
   assert.deepEqual(openBlockingIssues(undefined), []);
   assert.deepEqual(openBlockingIssues([]), []);
   assert.deepEqual(
-    openBlockingIssues([{ number: 1, state: 'open' }, { number: 2, state: 'closed' }]),
+    openBlockingIssues([
+      { number: 1, state: 'open' },
+      { number: 2, state: 'closed' },
+    ]),
     [{ number: 1, state: 'open' }],
   );
-  assert.deepEqual(
-    openBlockingIssues([{ number: 3, state: 'OPEN' }]),
-    [{ number: 3, state: 'OPEN' }],
-  );
+  assert.deepEqual(openBlockingIssues([{ number: 3, state: 'OPEN' }]), [
+    { number: 3, state: 'OPEN' },
+  ]);
 });
 
 test('intakeOpenedIssue is blocked while an open blocker exists and never assigns', async () => {
@@ -755,7 +817,10 @@ test('intakeOpenedIssue is blocked while an open blocker exists and never assign
   };
   const paginate = async (_token, path) => {
     assert.ok(path.includes('/dependencies/blocked_by'));
-    return [{ number: 1851, state: 'open' }, { number: 1857, state: 'closed' }];
+    return [
+      { number: 1851, state: 'open' },
+      { number: 1857, state: 'closed' },
+    ];
   };
   const request = async () => {
     throw new Error('request must not be called by the blocked_by dependency fetch');
@@ -888,7 +953,11 @@ test('intakeUnblockedDependents assigns eligible unblocked dependents and skips 
     results.map((r) => r.number),
     [1892, 1902, 1903, 1904],
   );
-  assert.equal(results[0].assigned, true, 'automation-labeled owner-opened dependent should be assigned in unblock sweep');
+  assert.equal(
+    results[0].assigned,
+    true,
+    'automation-labeled owner-opened dependent should be assigned in unblock sweep',
+  );
   assert.equal(results[0].assignee, 'copilot-swe-agent');
   assert.equal(results[1].assigned, false);
   assert.match(results[1].reason, /blocked by open #1857/);

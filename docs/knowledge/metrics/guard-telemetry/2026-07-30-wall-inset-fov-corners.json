@@ -1,0 +1,44 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "wall-inset-fov-corners",
+  "date": "2026-07-30",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 303,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 302,
+      "crash": 1
+    }
+  },
+  "tools": {
+    "chrome-devtools-list_pages": 1,
+    "chrome-devtools-new_page": 1,
+    "chrome-devtools-take_screenshot": 1,
+    "edit": 20,
+    "extensions_reload": 1,
+    "glob": 1,
+    "grep": 51,
+    "list_powershell": 4,
+    "playwright-browser_click": 8,
+    "playwright-browser_console_messages": 1,
+    "playwright-browser_evaluate": 24,
+    "playwright-browser_navigate": 5,
+    "playwright-browser_press_key": 3,
+    "playwright-browser_resize": 2,
+    "playwright-browser_run_code_unsafe": 3,
+    "playwright-browser_snapshot": 5,
+    "playwright-browser_tabs": 3,
+    "playwright-browser_take_screenshot": 10,
+    "powershell": 72,
+    "read_powershell": 23,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "stop_powershell": 1,
+    "str_replace": 2,
+    "view": 59
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

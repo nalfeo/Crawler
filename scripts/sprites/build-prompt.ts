@@ -283,6 +283,35 @@ function outputSizeBlock(brief: Brief): string {
   return lines.join('\n');
 }
 
+/**
+ * Cartoon-figure rendering rules shared by `character` and `enemy` briefs.
+ *
+ * WHY THIS EXISTS: Crawler's figures are CARTOONISH (EarthBound, Chrono Trigger,
+ * Undertale, Zelda: A Link to the Past), while its props, weapons and tiles stay
+ * textured and grungy. That split is deliberate and matches the reference games —
+ * chibi characters inhabiting a detailed world.
+ *
+ * The global style preamble (`docs/agent-os/sprite-style.md`) is authored for
+ * WORLD art and asks for grunge, dithering and 3-5 tone stops. Those defaults are
+ * wrong for figures, so this block is injected AFTER the preamble and the brief
+ * subject, and explicitly overrides them. Do not re-add "realistic proportions",
+ * "nose bridge", "pupils and whites", or "avoid flat 2-tone" here — every one of
+ * those was previously in this file and is what drove figure art toward
+ * semi-realism across multiple regeneration waves.
+ *
+ * See `docs/knowledge/game-design/art-style-guide.md` ("Character Proportions",
+ * "Rendering"), which is the authoritative source this block implements.
+ */
+const CARTOON_FIGURE_RULES: readonly string[] = [
+  '- **Art style (overrides the style preamble for this subject):** draw a CARTOON figure in the tradition of EarthBound, Chrono Trigger, Undertale and Zelda: A Link to the Past. Charming and chunky, NOT gritty, NOT painterly, NOT semi-realistic, NOT photoreal.',
+  '- **Proportions are deliberately bobblehead:** for any upright/humanoid figure, roughly 3-4 heads tall in total, with the head about ONE THIRD of the whole height. A big head is REQUIRED, not a defect. Limbs are short, chunky and simplified; hands are mitten shapes without individual fingers.',
+  '- **Face:** simple and iconic — large dark dot or bean eyes, little or no nose, one simple mouth shape. Expression comes from a few large features. Do NOT render pupils-and-whites, a nose bridge, wrinkles, pores, stubble texture or individual teeth.',
+  '- **Rendering:** flat colour fills with hard-edged cel shading, 2-3 tone stops per material. No gradients, no airbrush blending. Flat is CORRECT here and does not read as unfinished.',
+  '- **Minimal dithering.** No dither noise, grain, speckle or grime texture on figures. Wear and age are drawn as a few deliberate simple shapes (a patch, a stain, a bent edge), never as texture.',
+  '- Keep the clean, consistent dark outline and the bold value separation that make the silhouette read at 1x.',
+  '- **About the attached reference images:** copy their TECHNIQUE ONLY — outline weight, palette discipline, pixel resolution and crispness. Do NOT copy their figure proportions or rendering density. Several references are older, more realistically-proportioned and more heavily textured art that this brief is deliberately moving away from.',
+];
+
 function typeRulesBlock(brief: Brief): string | null {
   if (brief.type === 'enemy') {
     const { cellW, cellH } = cellDims(brief);
@@ -307,10 +336,12 @@ function typeRulesBlock(brief: Brief): string | null {
         : [];
     return [
       '## Mob rules',
+      ...CARTOON_FIGURE_RULES,
       facingLine,
       ...bossLines,
       '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
-      `- For upright/humanoid mobs, normalize the figure to read as roughly a full ${brief.size.height}px-tall in-game sprite (about ${loH}-${hiH} source pixels tall in a ${cellW}x${cellH} cell) while keeping natural proportions. Avoid elongated, extra-tall limb/torso stretch.`,
+      `- For upright/humanoid mobs, normalize the figure to read as roughly a full ${brief.size.height}px-tall in-game sprite (about ${loH}-${hiH} source pixels tall in a ${cellW}x${cellH} cell). Measure that span from the TOP OF THE BIG HEAD to the soles. Avoid elongated, extra-tall limb/torso stretch.`,
+      '- Non-humanoid creatures (slimes, beasts, swarms) keep the same cartoon language: simple bold shapes, flat cel fills, large expressive eyes, no dither grime.',
       '- Anchor and composition should read from the mob silhouette itself, centered around the body mass.',
     ].join('\n');
   }
@@ -330,11 +361,10 @@ function typeRulesBlock(brief: Brief): string | null {
     const breatheHi = Math.round((cellH - loH) / 2);
     return [
       '## Character rules',
-      '- Keep the character generally camera-facing at a one-third-to-two-thirds turn, with readable facial features and a clear eye line toward camera. Never use a full side profile.',
-      `- **Height normalization:** default to a ${brief.size.height}px-tall final character read. In a ${cellW}×${cellH} source cell this is roughly ${loH}-${hiH} source pixels tall (top of head to sole of feet) with small top/bottom breathing room (about ${breatheLo}-${breatheHi} source pixels each). Keep proportions natural; do NOT stretch the body vertically to chase height, and do NOT center a tiny figure in a large empty box.`,
-      '- **Facial detail:** face must have individually readable eyes (pupils, whites), a nose bridge, and a closed or slightly open mouth — each feature rendered with several source pixels per output pixel. No smeared blobs for a face.',
-      '- **Hair readability:** preserve visible hair mass and hairline shape (braids/locs/twists/afro silhouette must be explicit). Do not collapse hair into a tiny cap, and do not blend hair into skin or background.',
-      '- **Contrast control:** prioritize strong dark outlines and clear light-vs-dark separation on face, hair, and outfit seams. Keep 3–5 readable tone steps (base/shadow/deep shadow/highlight) and avoid both muddy mid-tone clusters and overly flat 2-tone blocks.',
+      ...CARTOON_FIGURE_RULES,
+      '- Keep the character generally camera-facing at a one-third-to-two-thirds turn, with a clear eye line toward camera. Never use a full side profile.',
+      `- **Height normalization:** default to a ${brief.size.height}px-tall final character read. In a ${cellW}×${cellH} source cell this is roughly ${loH}-${hiH} source pixels tall (top of head to sole of feet) with small top/bottom breathing room (about ${breatheLo}-${breatheHi} source pixels each). Measure that span from the TOP OF THE BIG HEAD to the soles — do not shrink the body to make room for the head, and do not center a tiny figure in a large empty box.`,
+      '- **Hair readability:** hair is a bold simple mass with a clear silhouette (braids/locs/twists/afro shape must read as one deliberate shape). Do not collapse hair into a tiny cap, and do not blend hair into skin or background.',
       '- Avoid drab monochrome outfits. Use high-contrast wardrobe accents from across the available palette (cool + warm hues, not only browns/oranges).',
       '- Ensure hair and skin tones are clearly differentiated from clothing so the silhouette and face stay readable at 1×.',
       '- Preserve practical adventurer styling (functional gear, no ornate royal costume unless explicitly requested).',
@@ -428,10 +458,35 @@ function sheetLayoutBlock(brief: Brief, count: number): string {
   } else {
     lines.push('Every cell must contain exactly one variant — no empty cells.');
   }
-  lines.push(
-    'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose within the orientation rule, construction, material distribution, shading direction, and contrasting accent colors. Preserve subject identity, gameplay role, orientation, rendering style, and floor-context intensity. Do not reduce diversity to different shades of one dominant color. If the subject description leaves room for interpretation, cover the design space rather than producing near-duplicates.',
-  );
+  lines.push(brief.frameSequence.enabled ? walkCycleSequenceLine(brief) : variantExplorationLine());
   return lines.join('\n');
+}
+
+/**
+ * The default (non-sequence) instruction: cells are independent design
+ * alternatives of one static sprite, and the model should explore the
+ * design space rather than produce near-duplicates.
+ */
+function variantExplorationLine(): string {
+  return 'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose within the orientation rule, construction, material distribution, shading direction, and contrasting accent colors. Preserve subject identity, gameplay role, orientation, rendering style, and floor-context intensity. Do not reduce diversity to different shades of one dominant color. If the subject description leaves room for interpretation, cover the design space rather than producing near-duplicates.';
+}
+
+/**
+ * The frame-sequence instruction: cells are ORDERED FRAMES of ONE walk
+ * cycle for the SAME character, not independent design alternatives. This
+ * is the opposite intent of `variantExplorationLine` — identity, palette,
+ * outfit, and proportions must be held IDENTICAL across every cell, and the
+ * only thing allowed to change is the walking pose (limb/leg placement),
+ * read left-to-right as one continuous stride cycle.
+ */
+function walkCycleSequenceLine(brief: Brief): string {
+  const { frameCount } = brief.frameSequence;
+  return [
+    `These ${frameCount} cells are NOT independent design alternatives — they are ORDERED FRAMES of a single side-view walk-cycle animation for the exact same character, read left-to-right as one continuous walking stride.`,
+    'Keep identity strictly IDENTICAL across every frame: the same character, same face/head, same outfit and accessories, same color palette, same body proportions, same overall scale, and the same side-view (profile) orientation and camera angle.',
+    'The ONLY thing that may change between frames is the walking pose: leg stride and arm swing progressing smoothly through one gait cycle (for example: left leg forward / neutral mid-stride / right leg forward), so that played back in sequence the character appears to walk in place.',
+    "Do not change the character's design, clothing, colors, or size between frames. Do not add or remove props between frames. Do not have the character face a different direction in different frames.",
+  ].join('\n');
 }
 
 /**
@@ -479,6 +534,11 @@ function sheetConstraintsBlock(brief: Brief): string {
     '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
     `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Do NOT add any ground, cast, contact, or drop shadow beneath or around any variant — every cell must sit on a clean background with no shadow on the floor (shading and volume on the subject itself are fine). No per-cell background variation, no decorative borders between cells.`,
     '- Do not draw a frame, header, or footer around the grid.',
+    ...(brief.frameSequence.enabled
+      ? [
+          '- REMINDER: these are frames of ONE walk cycle for ONE character — identical identity, outfit, palette, and scale in every cell; only the leg/arm pose progresses between cells.',
+        ]
+      : []),
   ].join('\n');
 }
 

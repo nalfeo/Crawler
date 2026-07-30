@@ -21,6 +21,7 @@ import {
   LOOP_INCIDENT_LABEL,
   LOOP_INCIDENT_MARKER,
   buildLoopIncidentBody,
+  closeLoopIncident,
   fileLoopIncident,
   loopIncidentFingerprint,
   loopIncidentTitle,
@@ -479,6 +480,93 @@ test('PR #1243 scenario: third identical event increments count to 3, still no n
   assert.ok(updatedBody && updatedBody.includes('**Repetition count:** 3'));
 });
 
+test('reopens the most recent closed loop incident for the same PR instead of creating a duplicate issue', async (t) => {
+  const olderClosedIssue = {
+    number: 500,
+    title: loopIncidentTitle(PR_NUM),
+    state: 'closed',
+    updated_at: '2026-07-01T00:40:00.000Z',
+    body: buildLoopIncidentBody({
+      prNumber: PR_NUM,
+      headSha: HEAD_SHA,
+      blockerFingerprint: MARKER_REVIEW_FP,
+      blockers: MARKER_REVIEW_BLOCKER,
+      attempt: 2,
+      firstSeenAt: '2026-07-01T00:30:00.000Z',
+      lastSeenAt: '2026-07-01T00:40:00.000Z',
+      repetitionCount: 2,
+      workflowRunUrl: null,
+      prHtmlUrl: 'https://github.com/' + REPOSITORY + '/pull/' + PR_NUM,
+      repository: REPOSITORY,
+    }),
+  };
+  const newestClosedIssue = {
+    number: 501,
+    title: loopIncidentTitle(PR_NUM),
+    state: 'closed',
+    updated_at: '2026-07-01T01:00:00.000Z',
+    body: buildLoopIncidentBody({
+      prNumber: PR_NUM,
+      headSha: HEAD_SHA,
+      blockerFingerprint: MARKER_REVIEW_FP,
+      blockers: MARKER_REVIEW_BLOCKER,
+      attempt: 2,
+      firstSeenAt: '2026-07-01T00:30:00.000Z',
+      lastSeenAt: '2026-07-01T01:00:00.000Z',
+      repetitionCount: 3,
+      workflowRunUrl: null,
+      prHtmlUrl: 'https://github.com/' + REPOSITORY + '/pull/' + PR_NUM,
+      repository: REPOSITORY,
+    }),
+  };
+
+  let reopenedBody = null;
+  let reopenedState = null;
+  const { server, port, mutatingCalls } = await startMockServer({
+    ['POST /repos/' + OWNER + '/' + REPO + '/labels']: () => ({ status: 422, body: {} }),
+    ['GET /repos/' + OWNER + '/' + REPO + '/issues']: () => ({
+      body: [olderClosedIssue, newestClosedIssue],
+    }),
+    ['PATCH /repos/' + OWNER + '/' + REPO + '/issues/501']: (_url, body) => {
+      reopenedBody = body.body;
+      reopenedState = body.state;
+      return { body: { number: 501 } };
+    },
+  });
+  t.after(() => server.close());
+
+  const result = await fileLoopIncident({
+    request: makeMockRequest(port),
+    paginate: makeMockPaginate(port),
+    token: TOKEN,
+    owner: OWNER,
+    repo: REPO,
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: MARKER_REVIEW_FP,
+    blockers: MARKER_REVIEW_BLOCKER,
+    attempt: 2,
+    workflowRunUrl: null,
+    now: new Date('2026-07-01T01:30:00.000Z'),
+  });
+
+  assert.equal(result.action, 'reopened');
+  assert.equal(result.issueNumber, 501);
+  assert.equal(reopenedState, 'open', 'closed incident must be reopened');
+  assert.ok(
+    reopenedBody && reopenedBody.includes('**Repetition count:** 4'),
+    'reopened incident must increment repetition count',
+  );
+  assert.ok(
+    reopenedBody && reopenedBody.includes('**First seen:** 2026-07-01T00:30:00.000Z'),
+    'reopened incident must preserve the original first-seen timestamp',
+  );
+  const createCalls = mutatingCalls.filter(
+    (call) => call.method === 'POST' && call.url === '/repos/' + OWNER + '/' + REPO + '/issues',
+  );
+  assert.equal(createCalls.length, 0, 'must not create a duplicate issue when reopening');
+});
+
 // ── Scenario 4: Different PR — separate issue, no cross-contamination ─────────
 
 test('Different PR number creates a separate issue, not sharing PR #1243 incident', async (t) => {
@@ -602,3 +690,103 @@ test('workflowRunUrl is included in the issue body when provided', async (t) => 
 // What we CAN verify here is that the dry-run code path (reconciler-level,
 // not library-level) never calls fileLoopIncident — tested separately in
 // reconcile.test.mjs via the 'dry-run would-file-loop-incident' stdout line.
+
+// ── Scenario 8: closeLoopIncident closes an open loop incident ───────────────
+
+test('closeLoopIncident closes an open incident and returns action=closed', async (t) => {
+  const existingBody = buildLoopIncidentBody({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    blockerFingerprint: MARKER_REVIEW_FP,
+    blockers: MARKER_REVIEW_BLOCKER,
+    attempt: 2,
+    firstSeenAt: '2026-07-01T00:30:00.000Z',
+    lastSeenAt: '2026-07-01T00:30:00.000Z',
+    repetitionCount: 1,
+    workflowRunUrl: null,
+    prHtmlUrl: 'https://github.com/' + REPOSITORY + '/pull/' + PR_NUM,
+    repository: REPOSITORY,
+  });
+
+  const existingIssue = {
+    number: 501,
+    title: loopIncidentTitle(PR_NUM),
+    body: existingBody,
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startMockServer({
+    ['GET /repos/' + OWNER + '/' + REPO + '/issues']: () => ({ body: [existingIssue] }),
+    ['PATCH /repos/' + OWNER + '/' + REPO + '/issues/501']: () => ({ body: { number: 501 } }),
+  });
+  t.after(() => server.close());
+
+  const result = await closeLoopIncident({
+    request: makeMockRequest(port),
+    paginate: makeMockPaginate(port),
+    token: TOKEN,
+    owner: OWNER,
+    repo: REPO,
+    prNumber: PR_NUM,
+  });
+
+  assert.equal(result.action, 'closed');
+  assert.equal(result.issueNumber, 501);
+
+  const patchCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PATCH' && call.url === '/repos/' + OWNER + '/' + REPO + '/issues/501',
+  );
+  assert.ok(patchCall, 'must have patched the incident issue');
+  assert.equal(patchCall.body.state, 'closed');
+  assert.equal(patchCall.body.state_reason, 'completed');
+});
+
+test('closeLoopIncident returns action=not-found when no open incident exists', async (t) => {
+  const { server, port, mutatingCalls } = await startMockServer({
+    ['GET /repos/' + OWNER + '/' + REPO + '/issues']: () => ({ body: [] }),
+  });
+  t.after(() => server.close());
+
+  const result = await closeLoopIncident({
+    request: makeMockRequest(port),
+    paginate: makeMockPaginate(port),
+    token: TOKEN,
+    owner: OWNER,
+    repo: REPO,
+    prNumber: PR_NUM,
+  });
+
+  assert.equal(result.action, 'not-found');
+  assert.equal(
+    mutatingCalls.length,
+    0,
+    'must not issue any mutating calls when no incident exists',
+  );
+});
+
+test('closeLoopIncident ignores PRs that have the same title', async (t) => {
+  // Ensure an issue that happens to be a pull_request is ignored.
+  const prLike = {
+    number: 99,
+    title: loopIncidentTitle(PR_NUM),
+    body: '<!-- not a real incident -->',
+    pull_request: { url: 'https://github.com/...' },
+  };
+  const { server, port, mutatingCalls } = await startMockServer({
+    ['GET /repos/' + OWNER + '/' + REPO + '/issues']: () => ({ body: [prLike] }),
+  });
+  t.after(() => server.close());
+
+  const result = await closeLoopIncident({
+    request: makeMockRequest(port),
+    paginate: makeMockPaginate(port),
+    token: TOKEN,
+    owner: OWNER,
+    repo: REPO,
+    prNumber: PR_NUM,
+  });
+
+  assert.equal(result.action, 'not-found');
+  assert.equal(mutatingCalls.length, 0, 'must not close a pull_request item');
+});

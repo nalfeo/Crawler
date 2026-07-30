@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-27",
+  "session_slug": "deploy-stale-sha-exit-code-fix",
+  "task_title": "fix(deploy): gracefully abort stale-SHA publish instead of failing the job",
+  "estimated_apples": 1,
+  "stages": {}
+}

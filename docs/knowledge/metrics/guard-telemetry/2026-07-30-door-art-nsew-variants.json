@@ -1,0 +1,40 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "door-art-nsew-variants",
+  "date": "2026-07-30",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 241,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 241
+    }
+  },
+  "tools": {
+    "chrome-devtools-list_pages": 1,
+    "chrome-devtools-new_page": 1,
+    "create": 8,
+    "edit": 17,
+    "extensions_reload": 1,
+    "glob": 5,
+    "grep": 25,
+    "list_powershell": 1,
+    "playwright-browser_click": 2,
+    "playwright-browser_close": 1,
+    "playwright-browser_fill": 1,
+    "playwright-browser_find": 2,
+    "playwright-browser_navigate": 1,
+    "playwright-browser_snapshot": 1,
+    "playwright-browser_take_screenshot": 1,
+    "playwright-browser_type": 1,
+    "powershell": 84,
+    "read_powershell": 17,
+    "rename_branch": 1,
+    "skill": 1,
+    "stop_powershell": 1,
+    "view": 68
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

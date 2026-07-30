@@ -52,6 +52,10 @@ import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
+import {
+  getQuartermasterOfferViews,
+  purchaseQuartermasterOffer,
+} from '../../core/quartermaster-purchase.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -102,6 +106,14 @@ interface MainSceneInternals {
   world?: GameWorld;
   playerEid?: number;
   bridge?: unknown;
+  /**
+   * Darkness/fog RenderTexture drawn over the terrain. Exposed to the probe
+   * purely so art observations can inspect terrain as authored: the torch
+   * radius is small enough that cave rock and wall lighting are unreadable in
+   * a normal screenshot, which previously led to a wall restyle being judged
+   * against the flagstone spawn room instead of the cave.
+   */
+  lightOverlayRt?: { visible: boolean };
   hudUi?: {
     isMapOverlayOpen(): boolean;
     getFamilyRelationshipsState(): {
@@ -118,6 +130,7 @@ interface MainSceneInternals {
     claimReward(achievementId: string): void;
   };
   bossChestUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
+  quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
    * The shared reward-opening sequence overlay driven by `AchievementsUI` /
    * `BossChestUI`. Test/automation affordances only (`getPhase`/`getBucket`/
@@ -147,6 +160,7 @@ interface MainSceneInternals {
   achievementsButton?: { visible: boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   bossChestButton?: { visible: boolean; emit(eventName: string): boolean };
+  quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   modalPicker?: {
     isOpen(): boolean;
     close(): void;
@@ -160,6 +174,7 @@ interface MainSceneInternals {
   requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
   requestBossChestsToggle?(): void;
+  requestQuartermasterToggle?(): void;
   resumePendingRewardPresentations?(): void;
   setSimulationPaused(paused: boolean): void;
   advanceSimulationFrames?(frames?: number): void;
@@ -171,6 +186,26 @@ interface MainSceneInternals {
     packWallCount: number;
     packFloorCount: number;
     packCorridorCount: number;
+    packSpecialFloorCount: number;
+    packFloorSourceCounts: Record<string, number>;
+    packFloorTransformCounts: Record<string, number>;
+    packFloorComboCounts: Record<string, number>;
+    packCorridorSourceCounts: Record<string, number>;
+    packCorridorTransformCounts: Record<string, number>;
+    packCorridorComboCounts: Record<string, number>;
+    packWallAccentedCount: number;
+    packWallAccentCounts: Record<string, number>;
+    packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+    packLineworkRuns: readonly {
+      layerId: string;
+      tileCount: number;
+      hubTileCount: number;
+    }[];
+    packLineworkHubs: readonly { tx: number; ty: number }[];
   };
   getDoorRenderSummary(): {
     closedPackCount: number;
@@ -178,9 +213,11 @@ interface MainSceneInternals {
     closedKenneyCount: number;
     closedColorCount: number;
     openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   };
 }
 
@@ -260,6 +297,8 @@ export interface MainSceneState {
   readonly achievementsOpen: boolean;
   /** True when the boss chest panel is open. */
   readonly bossChestOpen: boolean;
+  /** True when the Quartermaster shop panel is open. */
+  readonly quartermasterOpen: boolean;
   /** True while a conversation is active. */
   readonly conversationOpen: boolean;
   /** Active NPC dialogue line index, or null when no conversation is open. */
@@ -270,6 +309,7 @@ export interface MainSceneState {
   readonly achievementsButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
   readonly bossChestButtonVisible: boolean;
+  readonly quartermasterButtonVisible: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
   /** True when safe-room-gated surfaces should be allowed. */
@@ -351,6 +391,54 @@ export interface TerrainRenderSummary {
   readonly packFloorCount: number;
   /** CORRIDOR tiles stamped from a terrain-pack `corridorPool` variant. */
   readonly packCorridorCount: number;
+  /** Role-keyed special-room floor tiles stamped from a terrain pack. */
+  readonly packSpecialFloorCount: number;
+  /**
+   * Live diversity instrumentation (2026-07-25 terrain-variance refinement
+   * #4): per-source and per-transform stamp counts from the REAL bake, so an
+   * e2e probe can assert "all 8 sources used" / histogram shape against the
+   * actual booted scene rather than just a synthetic sample.
+   */
+  readonly packFloorSourceCounts: Record<string, number>;
+  readonly packFloorTransformCounts: Record<string, number>;
+  readonly packFloorComboCounts: Record<string, number>;
+  readonly packCorridorSourceCounts: Record<string, number>;
+  readonly packCorridorTransformCounts: Record<string, number>;
+  readonly packCorridorComboCounts: Record<string, number>;
+  /** Number of WALL tiles that additionally received an accent-atlas stamp. */
+  readonly packWallAccentedCount: number;
+  /** Per-accent-id stamp counts. */
+  readonly packWallAccentCounts: Record<string, number>;
+  /**
+   * Cross-tile ground decals stamped between the ground and cover paint passes.
+   * The only pack mechanism that can express a feature larger than one cell, so
+   * this is the seam proving decals actually placed in the REAL booted scene.
+   */
+  readonly packGroundDecalCount: number;
+  /**
+   * Industrial-linework tiles stamped by the path pass (all layers summed).
+   * Unlike decals, these are chosen by TOPOLOGY: each tile's frame is its 2-edge
+   * Wang mask over the occupancy grid, so a non-zero count here proves that
+   * routed multi-tile runs — not scattered stamps — reached the real bake.
+   */
+  readonly packLineworkTileCount: number;
+  /** Props (switch stands, carts, valves) placed on eligible linework tiles. */
+  readonly packLineworkPropCount: number;
+  readonly packLineworkBuriedCount: number;
+  readonly packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+  /**
+   * One entry per maximal connected component of every linework layer. This is
+   * what the placement gate is asserted against headlessly: "at least 6 runs of
+   * at least 40 tiles, with at least 60% of total run length near a boss den or
+   * the resource heart" is a pure function of this array.
+   */
+  readonly packLineworkRuns: readonly {
+    readonly layerId: string;
+    readonly tileCount: number;
+    readonly hubTileCount: number;
+  }[];
+  /** Hub tiles (boss dens + resource heart) the concentration is measured against. */
+  readonly packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
 }
 
 /**
@@ -372,12 +460,16 @@ export interface DoorRenderSummary {
   readonly closedColorCount: number;
   /** Open doors rendered from a terrain-pack doorSet texture. */
   readonly openPackCount: number;
-  /** Open doors rendered from the Kenney open frame (non-destructive default). */
+  /** Open doors rendered from an approved GENERATED open-door texture. */
+  readonly openGeneratedCount: number;
+  /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the three CLOSED buckets — total closed doors actually rendered. */
+  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
+  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  readonly renderableOpenCount: number;
 }
 
 export interface BloodSurfaceProbeSummary {
@@ -419,6 +511,12 @@ export interface MainSceneProbeApi {
   advanceSimulationFrames(frames: number): void;
   /** Overwrite the player's FEET position and zero its velocity. */
   setPlayerFeet(x: number, y: number): void;
+  /**
+   * Show/hide the darkness+fog overlay. Art-observation affordance only —
+   * lets a screenshot show terrain as authored rather than as torch-lit.
+   * Returns false when the overlay does not exist yet.
+   */
+  setLightingOverlayVisible(visible: boolean): boolean;
   /** Seed an authoritative blood pool directly into the live world. */
   seedBloodPool(x: number, y: number, color: number): number | null;
   /** World + display-list summary for blood pools / bloody footprints. */
@@ -436,6 +534,8 @@ export interface MainSceneProbeApi {
   requestEquipToggle(): void;
   /** Queue Boss Chests ([C]) through the scene request path. */
   requestBossChestsToggle(): void;
+  /** Queue Quartermaster ([Q]) through the scene request path. */
+  requestQuartermasterToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Override the live world state machine value for targeted scene-flow probes. */
@@ -444,6 +544,8 @@ export interface MainSceneProbeApi {
   tapAbilitiesButton(): boolean;
   /** Emit a pointer tap on the Chests corner button. Returns false if unavailable/hidden. */
   tapBossChestButton(): boolean;
+  /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
+  tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
   queueAbilitiesAndAchievementsToggle(): void;
   /** Queue the shared interaction request used by touch and repeated E presses. */
@@ -498,6 +600,27 @@ export interface MainSceneProbeApi {
   acknowledgeRewardOpening(): void;
   /** Live `world.elapsedMs` — used to prove the sim is frozen while a reward presents. */
   getWorldElapsedMs(): number | null;
+  /** Current player gold — for asserting purchase outcomes. */
+  getPlayerGold(): number | null;
+  /** Set player gold — for arranging purchase preconditions in tests. */
+  setPlayerGold(amount: number): void;
+  /**
+   * Get a snapshot of the current Quartermaster stock offers (stockId, offerId, quantity,
+   * unitPrice, displayName). Returns an empty array if no stock exists.
+   */
+  getQuartermasterStockSnapshot(): ReadonlyArray<{
+    readonly stockId: string;
+    readonly offerId: string;
+    readonly quantity: number;
+    readonly unitPrice: number;
+    readonly displayName: string | null;
+  }>;
+  /**
+   * Purchase the first purchasable Quartermaster offer via the real purchase
+   * function and return the result. Used to exercise the full purchase path
+   * from an e2e test.
+   */
+  purchaseFirstQuartermasterOffer(): { ok: boolean; reason?: string; goldSpent?: number };
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -612,6 +735,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
       const bossChestOpen = scene?.bossChestUI?.isOpen() ?? false;
+      const quartermasterOpen = scene?.quartermasterUI?.isOpen() ?? false;
       const conversationNpcEid = scene?.conversationNpcEid ?? null;
       const conversationLineIndex =
         conversationNpcEid !== null
@@ -628,6 +752,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipmentOpen,
         achievementsOpen,
         bossChestOpen,
+        quartermasterOpen,
         conversationOpen: conversationNpcEid !== null,
         conversationLineIndex,
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
@@ -635,6 +760,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         bossChestButtonVisible: scene?.bossChestButton?.visible ?? false,
+        quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         primarySurfaceCount: [
           modalOpen,
           abilityLoadoutOpen,
@@ -642,6 +768,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           equipmentOpen,
           achievementsOpen,
           bossChestOpen,
+          quartermasterOpen,
         ].filter(Boolean).length,
         safeContext: (world?.playerInSafeRoom ?? false) || world?.state === 'safe_room',
         simulationPaused: scene?.isSimulationPaused() ?? false,
@@ -755,6 +882,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     advanceSimulationFrames: (frames: number) => {
       getScene()?.advanceSimulationFrames?.(frames);
+    },
+
+    setLightingOverlayVisible: (visible: boolean): boolean => {
+      const rt = getScene()?.lightOverlayRt;
+      if (!rt) return false;
+      rt.visible = visible;
+      return true;
     },
 
     setPlayerFeet: (x: number, y: number) => {
@@ -889,6 +1023,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.requestBossChestsToggle?.();
     },
 
+    requestQuartermasterToggle: () => {
+      getScene()?.requestQuartermasterToggle?.();
+    },
+
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
     },
@@ -915,6 +1053,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapBossChestButton: () => {
       const button = getScene()?.bossChestButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
+    },
+
+    tapQuartermasterButton: () => {
+      const button = getScene()?.quartermasterButton;
       if (!button?.visible) {
         return false;
       }
@@ -1038,6 +1185,29 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         packWallCount: summary?.packWallCount ?? 0,
         packFloorCount: summary?.packFloorCount ?? 0,
         packCorridorCount: summary?.packCorridorCount ?? 0,
+        packSpecialFloorCount: summary?.packSpecialFloorCount ?? 0,
+        packFloorSourceCounts: summary?.packFloorSourceCounts ?? {},
+        packFloorTransformCounts: summary?.packFloorTransformCounts ?? {},
+        packFloorComboCounts: summary?.packFloorComboCounts ?? {},
+        packCorridorSourceCounts: summary?.packCorridorSourceCounts ?? {},
+        packCorridorTransformCounts: summary?.packCorridorTransformCounts ?? {},
+        packCorridorComboCounts: summary?.packCorridorComboCounts ?? {},
+        packWallAccentedCount: summary?.packWallAccentedCount ?? 0,
+        packWallAccentCounts: summary?.packWallAccentCounts ?? {},
+        packGroundDecalCount: summary?.packGroundDecalCount ?? 0,
+        packLineworkTileCount: summary?.packLineworkTileCount ?? 0,
+        packLineworkPropCount: summary?.packLineworkPropCount ?? 0,
+        packLineworkBuriedCount: summary?.packLineworkBuriedCount ?? 0,
+        packLineworkBuriedSample: summary?.packLineworkBuriedSample ?? [],
+        packLineworkRuns: (summary?.packLineworkRuns ?? []).map((run) => ({
+          layerId: run.layerId,
+          tileCount: run.tileCount,
+          hubTileCount: run.hubTileCount,
+        })),
+        packLineworkHubs: (summary?.packLineworkHubs ?? []).map((hub) => ({
+          tx: hub.tx,
+          ty: hub.ty,
+        })),
       };
     },
 
@@ -1049,9 +1219,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
         openPackCount: summary?.openPackCount ?? 0,
+        openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
+        renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };
     },
 
@@ -1155,6 +1327,55 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getWorldElapsedMs: (): number | null => {
       const world = getScene()?.world;
       return world ? world.elapsedMs : null;
+    },
+
+    getPlayerGold: (): number | null => {
+      const world = getScene()?.world;
+      return world ? world.playerGold : null;
+    },
+
+    setPlayerGold: (amount: number): void => {
+      const world = getScene()?.world;
+      if (world) {
+        world.playerGold = amount;
+      }
+    },
+
+    getQuartermasterStockSnapshot: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return [];
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return [];
+      const views = getQuartermasterOfferViews(world, playerEid);
+      return views.map((v) => ({
+        stockId: v.stockId,
+        offerId: v.offerId,
+        quantity: v.quantity,
+        unitPrice: v.unitPrice,
+        displayName: v.displayName,
+      }));
+    },
+
+    purchaseFirstQuartermasterOffer: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return { ok: false, reason: 'no-world' };
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return { ok: false, reason: 'no-player' };
+      const views = getQuartermasterOfferViews(world, playerEid);
+      const purchasable = views.find((v) => v.canPurchase);
+      if (!purchasable) return { ok: false, reason: 'none-purchasable' };
+      const result = purchaseQuartermasterOffer(world, playerEid, {
+        stockId: purchasable.stockId,
+        offerId: purchasable.offerId,
+        quantity: 1,
+      });
+      scene?.quartermasterUI?.refresh(world);
+      if (result.ok) {
+        return { ok: true, goldSpent: result.goldSpent };
+      }
+      return { ok: false, reason: result.reason };
     },
 
     getRewardAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {

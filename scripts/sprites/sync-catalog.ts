@@ -16,6 +16,7 @@ import {
   type SpriteSheetCatalogEntry,
 } from '../../src/shared/sprite-catalog.js';
 import { formatCatalogJsonToString, writeCatalogJson } from './catalog-io.js';
+import { isGeneratedCatalogId } from '../../src/shared/generated-catalog.js';
 
 const DEFAULT_CATALOG_PATH = 'src/shared/data/sprite-catalog.json';
 
@@ -144,6 +145,13 @@ export function syncCatalog(
 
   if (!options?.prune) {
     for (const entry of existing) {
+      // `generated:` rows are never committed to the catalog — they are derived
+      // at read-time from the per-asset manifest shards (see
+      // src/shared/generated-catalog.ts). Drop any that leaked in so sync never
+      // re-persists a generated duplicate (enforced separately by CI).
+      if (isGeneratedCatalogId(entry.id)) {
+        continue;
+      }
       if (next.find((candidate) => candidate.id === entry.id)) {
         continue;
       }

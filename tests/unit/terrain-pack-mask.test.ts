@@ -16,6 +16,8 @@ import {
   CORNER_ADJACENCY,
   MASK_BIT,
   computeRawMask8,
+  edgeWangMaskFromOccupancy,
+  edgeWangStubSpan,
   edgeConnectionsFromMask,
   isCanonicalBlob47Mask,
   neighborMask8InTerrain,
@@ -146,6 +148,7 @@ describe('edgeConnectionsFromMask / quadrantStateFromMask', () => {
       S: false,
       W: false,
     });
+
     expect(edgeConnectionsFromMask(255)).toEqual({ N: true, E: true, S: true, W: true });
   });
 
@@ -180,5 +183,35 @@ describe('edgeConnectionsFromMask / quadrantStateFromMask', () => {
   it('classifies the NE corner as "edgeA"/"edgeB" when exactly one adjacent cardinal is set', () => {
     expect(quadrantStateFromMask(MASK_BIT.N, 'NE')).toBe('edgeA');
     expect(quadrantStateFromMask(MASK_BIT.E, 'NE')).toBe('edgeB');
+  });
+});
+
+describe('edge-Wang helpers', () => {
+  it('derives edge-Wang masks from occupied cardinal neighbours only', () => {
+    // prettier-ignore
+    const occupancy = Uint8Array.from([
+      0, 1, 0,
+      1, 1, 1,
+      0, 1, 0,
+    ]);
+    expect(edgeWangMaskFromOccupancy(occupancy, 3, 3, 1, 1)).toBe(
+      MASK_BIT.N | MASK_BIT.E | MASK_BIT.S | MASK_BIT.W,
+    );
+  });
+
+  it('treats out-of-bounds neighbours as unoccupied for edge-Wang masks', () => {
+    // prettier-ignore
+    const occupancy = Uint8Array.from([
+      1, 1,
+      0, 0,
+    ]);
+    expect(edgeWangMaskFromOccupancy(occupancy, 2, 2, 0, 0)).toBe(MASK_BIT.E);
+  });
+
+  it('returns the inclusive-exclusive stub span', () => {
+    expect(edgeWangStubSpan({ cellPx: 64, offsetPx: 25, widthPx: 14 })).toEqual({
+      start: 25,
+      end: 39,
+    });
   });
 });

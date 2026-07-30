@@ -1,0 +1,108 @@
+{
+  "briefId": "plague-censer-v2",
+  "spriteName": "plague-censer-v2-var-1",
+  "assetPath": "generated/plague-censer-v2-var-1.png",
+  "approvedAt": "2026-07-25T05:31:57.609Z",
+  "sourceRun": "generated/runs/plague-censer-v2/2026-07-25T05-28-48-25ffb7cb",
+  "variantIndex": 1,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 31,
+      "y": 36,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=27 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -69.40° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:30:36.275Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept aligns well with Crawler's design language, combining a dark-fantasy weapon with a grotesque and unsettling contradiction (screaming mouths and unnatural chain). The green smoke adds a touch of dark humor and menace."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the chain's irregularity could be refined to better match the references' clean yet detailed style."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the chain's irregularity could be refined to better match the references' clean yet detailed style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a spherical bronze censer with screaming mouth vents, dark green smoke, and an irregular chain, as described in the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear at game scale, and the green smoke and chain are distinguishable. However, the chain's irregularity could be slightly more pronounced for better readability."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and matches the brief, but minor adjustments could improve its integration with the reference style.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2548,
+      "completionTokens": 310,
+      "totalTokens": 2858
+    }
+  },
+  "type": "weapon",
+  "contentHash": "4b13e8399bc735499badd5dbafeabac6973d772432b6055e904be04c7d31ad9b",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/plague-censer-v2/2026-07-25T05-28-48-25ffb7cb/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/plague-censer-v2/2026-07-25T05-28-48-25ffb7cb/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/plague-censer-v2/2026-07-25T05-28-48-25ffb7cb/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 12,
+    "y": 3,
+    "width": 40,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

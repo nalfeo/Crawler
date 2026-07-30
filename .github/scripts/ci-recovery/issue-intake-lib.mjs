@@ -1,14 +1,7 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
+import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './markers.mjs';
 
-export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
-
-/**
- * Marker embedded in retroactive plan comments posted by the CI recovery
- * reconciler when a linked issue has an intake requirement but no Copilot plan
- * comment was ever posted. Used as an idempotency key so the reconciler never
- * posts the retroactive plan comment twice.
- */
-export const ISSUE_RECOVERY_PLAN_MARKER = '<!-- crawler-ci-recovery-plan:v1 -->';
+export { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
 const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
 const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
@@ -195,7 +188,8 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   const planSubject = '(?:plan comment|implementation plan|issue comment itself)';
   const mentionsMissingPlanRequirement = new RegExp(
     `(?:\\b(?:missing|required|requires?)\\s+(?:(?:an?|the)\\s+)?${planSubject}\\b|` +
-      `\\b${planSubject}\\b\\s+(?:(?:is|was|remains?)\\s+)?(?:missing|required)\\b)`,
+      `\\b${planSubject}\\b\\s+(?:(?:is|was|remains?)\\s+)?(?:missing|required)\\b|` +
+      `\\b(?:missing|required|requires?)\\b[^.!?]{0,60}?\\bplan\\s+to\\s+be\\s+posted\\b)`,
     'i',
   ).test(text);
   if (!mentionsMissingPlanRequirement) return [];
@@ -494,9 +488,7 @@ export async function getBlockingDependents({ paginate, token, owner, repo, issu
 
 /** Filters a dependency list down to the entries that are still open. */
 export function openBlockingIssues(dependencies) {
-  return (dependencies || []).filter(
-    (dep) => String(dep?.state || '').toLowerCase() === 'open',
-  );
+  return (dependencies || []).filter((dep) => String(dep?.state || '').toLowerCase() === 'open');
 }
 
 /**
@@ -622,10 +614,18 @@ export async function intakeUnblockedDependents({
       // assignment mutation is a benign race, not an infra failure — report it
       // as a skip so the sweep doesn't flag the workflow run red for it.
       if (err instanceof IssueNoLongerOpenError) {
-        results.push({ number: dependent.number, assigned: false, reason: 'dependent closed during processing' });
+        results.push({
+          number: dependent.number,
+          assigned: false,
+          reason: 'dependent closed during processing',
+        });
         continue;
       }
-      results.push({ number: dependent.number, assigned: false, error: String(err?.message || err) });
+      results.push({
+        number: dependent.number,
+        assigned: false,
+        error: String(err?.message || err),
+      });
     }
   }
   return results;

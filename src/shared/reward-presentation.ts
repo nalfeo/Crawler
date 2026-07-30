@@ -23,7 +23,6 @@
  */
 import { LOOT_BOX_TIERS, type LootBoxTier } from './achievements.js';
 import {
-  EQUIPMENT_REWARD_TIERS,
   type EquipmentRewardTier,
   type GeneratedEquipmentInstanceKey,
   type GeneratedEquipmentRarity,
@@ -98,14 +97,21 @@ const LOOT_BOX_TIER_WEIGHT: Readonly<Record<LootBoxTier, number>> = Object.freez
   ) as Record<LootBoxTier, number>,
 );
 
-const EQUIPMENT_TIER_WEIGHT: Readonly<Record<EquipmentRewardTier, number>> = Object.freeze(
-  Object.fromEntries(
-    EQUIPMENT_REWARD_TIERS.map((tier, index) => [
-      tier,
-      index / (EQUIPMENT_REWARD_TIERS.length - 1),
-    ]),
-  ) as Record<EquipmentRewardTier, number>,
-);
+// Explicit per-tier weights for equipment-reward excitement scoring. Values
+// are fixed (not dynamically derived from EQUIPMENT_REWARD_TIERS.length) so
+// that adding tier4 for boss chests does not silently re-normalize existing
+// tier2/tier3 weights and break existing excitement contracts.
+// tier1: 0 (common-only, lowest excitement)
+// tier2: 0.5 (common/uncommon, mid range)
+// tier3: 1.0 (uncommon-dominant, highest for achievements)
+// tier4: 1.0 (boss chests — uncommon/rare; same weight as tier3 since the
+//             excitement difference between tier3 and tier4 comes from rarity)
+const EQUIPMENT_TIER_WEIGHT: Readonly<Record<EquipmentRewardTier, number>> = Object.freeze({
+  tier1: 0,
+  tier2: 0.5,
+  tier3: 1.0,
+  tier4: 1.0,
+});
 
 const EQUIPMENT_RARITY_WEIGHT: Readonly<Record<GeneratedEquipmentRarity, number>> = {
   common: 0,
@@ -143,12 +149,9 @@ export function computeLootBoxExcitement(tier: LootBoxTier): RewardExcitement {
  * satisfies the hard example: tier2+common = (0.5+0)/2 = 0.25 "notable",
  * strictly less intense than tier2+uncommon = (0.5+0.5)/2 = 0.5 "exciting".
  *
- * Boss chests always resolve `tier1`+`common` (zero RNG, see
- * `src/game/boss-chest-resolver.ts`), so they deterministically compute to the
- * lowest "modest" bucket — the same as an equivalent tier1+common achievement
- * reward would. This is intentional and spec-faithful (the contract scales by
- * tier and rarity only), not an oversight; boss chests are a guaranteed
- * baseline drop by design, not a jackpot slot.
+ * Boss chests resolve at `tier4` with 85% Uncommon / 15% Rare (PLAN.md §E3-C),
+ * so they land in the "legendary" excitement bucket: tier4+uncommon = 0.75,
+ * tier4+rare = 1.0 (see `src/game/boss-chest-resolver.ts`).
  */
 export function computeEquipmentExcitement(
   tier: EquipmentRewardTier,

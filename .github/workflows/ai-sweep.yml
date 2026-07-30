@@ -3,7 +3,7 @@
 # WHAT IT DOES
 #   For each selected pathing×decision COMBO it runs a bounded, CHECKPOINTED
 #   round-DAG knob search on the TRAIN seed panel, then VALIDATES each combo's
-#   tuned finalist — plus the untuned LEGACY/LEGACY incumbent control — on a
+#   tuned finalist — plus the untuned riskRewardFused+legacy incumbent control — on a
 #   full seed panel, then fans the shard artifacts into ONE leaderboard (Σ
 #   composite score, win count, flips-vs-incumbent, clear time, xp, gold,
 #   min-HP) AND a safety-gated qualified-winner recommendation (>=90% wins AND
@@ -13,7 +13,7 @@
 #   aggregate-shards.ts), rendered to the run summary + a JSON artifact.
 #
 #   It only MEASURES. It never flips the shipped default (that is the separate,
-#   human-gated Stage-5 PR). Main stays LEGACY/LEGACY byte-identical.
+#   human-gated Stage-5 PR). Main stays riskRewardFused+legacy byte-identical.
 #
 # WHY THE ROUND-DAG REDESIGN (2026-07 timing fix)
 #   The prior design flattened an ENTIRE round's candidates × weapons × seeds
@@ -113,14 +113,14 @@
 #   An incomplete/duplicate/non-rectangular panel or an unprovable `secondary`
 #   fails that combo closed, same as any other incompatibility. Modern
 #   checkpoints (post-feature, `runInputs` present) are unaffected and keep
-#   the original strict raw-string equality. If `legacy+legacy` is itself
+#   the original strict raw-string equality. If `riskRewardFused+legacy` is itself
 #   cross-run resumed this run, `resume-import` also derives a
-#   `search-baseline-legacy+legacy` shard straight from the resumed
+#   `search-baseline-riskRewardFused+legacy` shard straight from the resumed
 #   checkpoint's own round-0 rows (`extractLegacyBaselineShard`) and uploads
 #   it under the SAME artifact name `checkpoint-init`'s existing
-#   download-by-pattern step already looks for — so non-LEGACY combos'
-#   in-search LEGACY-incumbent net-win gate is never silently narrowed just
-#   because legacy+legacy happened to be resumed rather than fresh this run.
+#   download-by-pattern step already looks for — so non-incumbent combos'
+#   in-search incumbent net-win gate is never silently narrowed just
+#   because riskRewardFused+legacy happened to be resumed rather than fresh this run.
 #
 # HOW TO RUN (staged, per the plan)
 #   - Cheap screen / calibration (DEFAULTS): rounds=2, train 1-24, validate 1-40.
@@ -144,7 +144,7 @@ on:
   workflow_dispatch:
     inputs:
       combos:
-        description: 'Combos to evaluate: "all" or a CSV of ids (e.g. legacy+legacy,navmeshFused+legacy)'
+        description: 'Combos to evaluate: "all" or a CSV of ids (e.g. riskRewardFused+legacy)'
         type: string
         default: 'all'
       train_seeds:
@@ -444,23 +444,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Derive legacy+legacy baseline shard from its resumed checkpoint (closes non-LEGACY incumbent gap)
-        # If legacy+legacy was itself cross-run RESUMED this run, it is
+      - name: Derive riskRewardFused+legacy baseline shard from its resumed checkpoint (closes non-incumbent gap)
+        # If riskRewardFused+legacy was itself cross-run RESUMED this run, it is
         # excluded from freshCombos, so the `baseline` job (fresh-only) never
-        # produces a fresh `search-baseline-legacy+legacy` shard this run.
-        # Without this step, EVERY non-LEGACY combo's `checkpoint-init` would
+        # produces a fresh `search-baseline-riskRewardFused+legacy` shard this run.
+        # Without this step, EVERY non-incumbent combo's `checkpoint-init` would
         # silently fall back to its own base as the in-search incumbent
-        # instead of hard-requiring the real LEGACY baseline — narrowing the
-        # net-win safety net purely because legacy+legacy happened to be
+        # instead of hard-requiring the real incumbent baseline — narrowing the
+        # net-win safety net purely because riskRewardFused+legacy happened to be
         # resumed rather than fresh. Deriving it straight from the resumed
         # checkpoint's own round-0 rows (additive-only across rounds — see
         # `extractLegacyBaselineShard`'s docstring) and uploading it under
-        # the SAME artifact name (`search-baseline-legacy+legacy`) — with the
-        # SAME local filename convention (`baseline-legacy+legacy.json`) the
+        # the SAME artifact name (`search-baseline-riskRewardFused+legacy`) — with the
+        # SAME local filename convention (`baseline-riskRewardFused+legacy.json`) the
         # `baseline` job's own upload uses — that `checkpoint-init`'s existing
         # download-by-pattern step already looks for closes this gap with NO
         # change to that step. Deliberately NOT `continue-on-error`: a
-        # resumed legacy+legacy checkpoint has ALREADY passed `resume-check`
+        # resumed riskRewardFused+legacy checkpoint has ALREADY passed `resume-check`
         # (a complete, duplicate-free, rectangular baseline panel is
         # required there too), so extraction failing here would mean this
         # step's own invariant is broken — silently falling back to the
@@ -470,23 +470,23 @@ jobs:
         # `baseline`/`checkpoint-init` both gating on
         # `needs.resume-import.result == 'success'` — stops the run loudly
         # rather than silently narrowing it.
-        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy') }}
+        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'riskRewardFused+legacy') }}
         run: |
           set -euo pipefail
           npx tsx scripts/agent/perf/round-plan.ts --mode extract-legacy-baseline \
-            --checkpoint "resumed/search-checkpoint-init-legacy+legacy.json" \
-            --out "baseline-legacy+legacy.json"
+            --checkpoint "resumed/search-checkpoint-init-riskRewardFused+legacy.json" \
+            --out "baseline-riskRewardFused+legacy.json"
 
-      - name: Upload derived legacy+legacy baseline shard (only when legacy+legacy was resumed)
-        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'legacy+legacy') }}
+      - name: Upload derived riskRewardFused+legacy baseline shard (only when riskRewardFused+legacy was resumed)
+        if: ${{ contains(fromJSON(steps.resume.outputs.resumedCombos), 'riskRewardFused+legacy') }}
         uses: actions/upload-artifact@v4
         with:
-          name: search-baseline-legacy+legacy
-          path: baseline-legacy+legacy.json
+          name: search-baseline-riskRewardFused+legacy
+          path: baseline-riskRewardFused+legacy.json
           if-no-files-found: error
           retention-days: 7
 
-      # Deliberately the LAST step in this job (after the legacy+legacy
+      # Deliberately the LAST step in this job (after the riskRewardFused+legacy
       # baseline derivation/upload above), not the first. Without
       # `continue-on-error`, a step failure stops every later step in the
       # SAME job from running at all — so if this ran earlier and the
@@ -496,7 +496,7 @@ jobs:
       # `round1-select`, and `validate` all gate on `!cancelled()` (not
       # `needs.resume-import.result == 'success'` — see their own comments
       # for why), so they would still download and continue from that
-      # partial bundle: every resumed combo EXCEPT `legacy+legacy` would look
+      # partial bundle: every resumed combo EXCEPT `riskRewardFused+legacy` would look
       # fully valid, silently reintroducing the narrowed-incumbent safety-net
       # gap this whole feature exists to close (found in review). Ordering
       # this upload last makes the bundle's existence depend on the WHOLE
@@ -652,10 +652,10 @@ jobs:
         with:
           name: search-baseline-${{ matrix.combo.combo }}
 
-      - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for the non-LEGACY combo net-win comparison)
+      - name: Download riskRewardFused+legacy baseline shard (optional — provides the incumbent for the non-incumbent combo net-win comparison)
         uses: actions/download-artifact@v4
         with:
-          pattern: search-baseline-legacy+legacy
+          pattern: search-baseline-riskRewardFused+legacy
           merge-multiple: true
           if-no-artifact-found: warn
 
@@ -669,21 +669,21 @@ jobs:
           set -euo pipefail
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
-          # For non-LEGACY combos, seed the net-win gate with the LEGACY incumbent
+          # For non-incumbent combos, seed the net-win gate with the incumbent
           # so the in-search comparison mirrors the final graduation gate.
-          # The LEGACY baseline is REQUIRED for non-LEGACY combos — without it,
+          # The incumbent baseline is REQUIRED for non-incumbent combos — without it,
           # initCheckpoint falls back to the combo's own base as incumbent, which
           # can promote a candidate that has more wins than its combo baseline yet
-          # fewer total wins than LEGACY (passes in-search gate but gets rejected
+          # fewer total wins than the incumbent (passes in-search gate but gets rejected
           # at final graduation). Fail fast here instead.
           LEGACY_BASELINE_FLAG=""
-          if [ "$COMBO" != "legacy+legacy" ]; then
-            if [ ! -f "baseline-legacy+legacy.json" ]; then
-              echo "❌ LEGACY baseline shard 'baseline-legacy+legacy.json' is required for non-LEGACY combo '$COMBO' but was not found." >&2
-              echo "   Ensure legacy+legacy is included in the 'combos' input and its checkpoint-init leg succeeded." >&2
+          if [ "$COMBO" != "riskRewardFused+legacy" ]; then
+            if [ ! -f "baseline-riskRewardFused+legacy.json" ]; then
+              echo "❌ incumbent baseline shard 'baseline-riskRewardFused+legacy.json' is required for non-incumbent combo '$COMBO' but was not found." >&2
+              echo "   Ensure riskRewardFused+legacy is included in the 'combos' input and its checkpoint-init leg succeeded." >&2
               exit 1
             fi
-            LEGACY_BASELINE_FLAG="--legacy-baseline baseline-legacy+legacy.json"
+            LEGACY_BASELINE_FLAG="--legacy-baseline baseline-riskRewardFused+legacy.json"
           fi
           npx tsx scripts/agent/perf/round-plan.ts \
             --mode init --combo "$COMBO" --baseline "baseline-$COMBO.json" $SECONDARY_FLAG $LEGACY_BASELINE_FLAG \
@@ -1522,10 +1522,10 @@ jobs:
         run: |
           set -euo pipefail
           ls -la shards
-          BASE_ID=$(npx tsx scripts/agent/perf/gen-configs.ts --combo legacy+legacy | jq -r .baseId)
-          echo "Incumbent (untuned LEGACY/LEGACY) config id: $BASE_ID"
+          BASE_ID=$(npx tsx scripts/agent/perf/gen-configs.ts --combo riskRewardFused+legacy | jq -r .baseId)
+          echo "Incumbent (untuned riskRewardFused+legacy) config id: $BASE_ID"
           npx tsx scripts/agent/perf/aggregate-shards.ts shards/*.json \
-            --incumbent-combo legacy+legacy --incumbent-config "$BASE_ID" \
+            --incumbent-combo riskRewardFused+legacy --incumbent-config "$BASE_ID" \
             --out leaderboard.json
 
       - uses: actions/upload-artifact@v4

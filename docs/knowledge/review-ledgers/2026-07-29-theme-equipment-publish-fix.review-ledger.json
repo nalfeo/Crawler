@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "theme-equipment-publish-fix",
+  "task_title": "fix(sprites): unblock + speed up theme-equipment publish (fetch-depth 0 + parallel blob stage)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (gpt-5.6-terra). Verdict approve-with-changes. Adopted: (1) per-batch Promise.allSettled then rethrow to avoid stage-cleanup write race; (2) download concurrency 4 (match THEME_EQUIPMENT_JUDGE_CONCURRENCY, Azure retry policy does not cover 429 so 8 risks burst); (3) hardcoded local constant not env knob; (4) add regression tests: workflow publish checkout has fetch-depth 0, delayed-store max-in-flight<=cap + all bytes land, failure settles before caller can clean stageRoot. Confirmed merge-base 9c8075 is common ancestor of assets/queue and main, so fetch-depth:0 is the correct+sufficient fix (not an orphan branch). Failed merge leaves state complete/held (queue-commit precedes publication mutation), safe to re-publish.",
+      "models": ["gpt-5.6-terra"]
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Separate-model code review (claude-sonnet-4.6) of commit 29d7c66a6 diff. No bugs/security/logic issues. Confirmed: Promise.allSettled settle-before-throw is race-free vs stageRoot cleanup; first-rejection rethrow matches prior serial short-circuit semantics (deliberate); tests exercise real bounded concurrency (maxInFlight>1 && <=cap) + full-byte landing + settle-on-failure + fetch-depth parsed as integer 0. Clean round 1."
+    }
+  }
+}

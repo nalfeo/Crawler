@@ -13,6 +13,28 @@
  *   bit 0 (  1): N   bit 1 (  2): E   bit 2 (  4): S   bit 3 (  8): W
  *   bit 4 ( 16): NE  bit 5 ( 32): SE  bit 6 ( 64): SW  bit 7 (128): NW
  *
+ * Relationship to the canonical cr31 numbering
+ * --------------------------------------------
+ * The reference blob47 literature (cr31 "Wang Blob", mirrored at
+ * https://www.boristhebrave.com/permanent/24/06/cr31/stagecast/wang/blob.html,
+ * and every OpenGameArt blob tileset that follows it) weights the bits as a
+ * CONTINUOUS CLOCKWISE CYCLE instead:
+ *
+ *   N=1  NE=2  E=4  SE=8  S=16  SW=32  W=64  NW=128
+ *
+ * Both weightings are bijections onto the same 47 shapes — only the *labels*
+ * differ — so nothing about our geometry, gating, or packing is affected. But
+ * the two numberings are NOT interchangeable: our mask 15 is not cr31's tile 15.
+ * Any cross-reference against published blob47 tables, tools, or tilesets must
+ * re-weight first (see `toCr31Index` in
+ * `tests/unit/sprites/terrain-pack-corners.test.ts`).
+ *
+ * The cr31 ordering has one property ours lacks: rotating a tile 90 degrees
+ * clockwise is exactly `index * 4 mod 255`. We do not currently rotate tiles at
+ * build or render time, so this buys us nothing today; adopting it would be a
+ * breaking migration of every manifest's `maskId` values and should be a
+ * deliberate, separately-scoped decision rather than a silent change.
+ *
  * Diagonal gating rule: a diagonal bit only survives normalization if BOTH of
  * its adjacent cardinal bits are also set in the raw mask, e.g. NE survives
  * only when N and E are both set. This is the standard "blob47" rule (used by
@@ -20,8 +42,10 @@
  * raw 8-neighbor combinations down to exactly 47 distinct canonical masks —
  * verified exhaustively in `tests/unit/terrain-pack-mask.test.ts`.
  *
- * Out-of-bounds neighbours are treated as non-matching (bit = 0), mirroring
- * the existing 4-directional `neighborMask()` in `tile-visuals.ts`.
+ * Out-of-bounds neighbours are treated as non-matching (bit = 0) by default,
+ * mirroring the existing 4-directional `neighborMask()` in `tile-visuals.ts`.
+ * `computeRawMask8`'s `outOfBoundsMatches` parameter can flip this per call
+ * site — see its doc comment for why the wall-mask callers need `true`.
  */
 
 /** Bit values for each of the 8 neighbour directions. Pinned — see module doc. */
@@ -106,11 +130,25 @@ export function isCanonicalBlob47Mask(mask: number): boolean {
 
 /**
  * Compute the raw 8-neighbor mask for tile (tx, ty), given a per-direction
- * match predicate. Out-of-bounds neighbours are treated as non-matching.
+ * match predicate.
  *
  * `matches(nx, ny)` should return whether the neighbour tile at (nx, ny)
  * counts as "the same wall" for autotiling purposes — callers typically check
  * terrain-type equality (see `neighborMask8InTerrain` for the common case).
+ *
+ * `outOfBoundsMatches` (default `false`) controls how a neighbour OUTSIDE the
+ * map bounds is treated:
+ *   - `false` (default): out-of-bounds counts as non-matching, i.e. "floor" —
+ *     correct for same-terrain pool/corridor matching (`neighborMask8InTerrain`),
+ *     where there is no terrain beyond the map to match against.
+ *   - `true`: out-of-bounds counts as matching, i.e. "wall" — required for the
+ *     pack wall-mask callers (`src/engine/terrain-renderer.ts`,
+ *     `src/labs/terrain-pack-lab/index.ts`). A wall tile on the map edge has no
+ *     real neighbour past the border; treating that missing neighbour as floor
+ *     made the wall inset into nothing, exposing a floor-pool sliver past the
+ *     map's edge. A wall should full-bleed against the edge exactly as it does
+ *     against solid rock (see `PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES` in
+ *     `terrain-renderer.ts` for the analogous in-bounds VOID/rock rule).
  */
 export function computeRawMask8(
   tx: number,
@@ -118,13 +156,14 @@ export function computeRawMask8(
   width: number,
   height: number,
   matches: (nx: number, ny: number) => boolean,
+  outOfBoundsMatches = false,
 ): number {
   const inBounds = (nx: number, ny: number): boolean =>
     nx >= 0 && nx < width && ny >= 0 && ny < height;
   const at = (dx: number, dy: number): boolean => {
     const nx = tx + dx;
     const ny = ty + dy;
-    return inBounds(nx, ny) && matches(nx, ny);
+    return inBounds(nx, ny) ? matches(nx, ny) : outOfBoundsMatches;
   };
   let mask = 0;
   if (at(0, -1)) mask |= MASK_BIT.N;
@@ -207,6 +246,34 @@ export type QuadrantCorner = (typeof QUADRANT_CORNERS)[number];
  * alone distinguishes 'concave' from 'full' whenever both cardinals are set.
  */
 export function quadrantStateFromMask(mask: number, corner: QuadrantCorner): QuadrantState {
+  return quadrantStateFromMaskImpl(mask, corner);
+}
+
+/**
+ * Whether the EXTREME OUTER CORNER of a blob47 wall cell is wall (true) or
+ * floor (false) for one corner of a canonical mask.
+ *
+ * This is the corner-side counterpart to `edgeConnectionsFromMask` and is the
+ * single shared definition of blob47 corner semantics — the pack validator's
+ * corner-coverage check and the quadrant-kit compositor both derive from it so
+ * the art and the gate can never disagree about what a corner should look like.
+ *
+ * The rule is exactly "the quadrant state is `full`":
+ *   - `full`    (both cardinals AND the diagonal) → the corner is interior to a
+ *               solid wall mass, so it is WALL.
+ *   - `concave` (both cardinals, diagonal ABSENT) → the diagonal neighbour is
+ *               floor, so the corner must be nicked out: FLOOR.
+ *   - `edgeA` / `edgeB` (one cardinal) → the wall body is inset off the absent
+ *               cardinal's edge, and the corner lies in that inset: FLOOR.
+ *   - `open`    (neither cardinal) → convex outer corner: FLOOR.
+ *
+ * Exactly one canonical mask (255) therefore has all four corners wall.
+ */
+export function cornerIsWallFromMask(mask: number, corner: QuadrantCorner): boolean {
+  return quadrantStateFromMaskImpl(mask, corner) === 'full';
+}
+
+function quadrantStateFromMaskImpl(mask: number, corner: QuadrantCorner): QuadrantState {
   const [cardA, cardB] = CORNER_ADJACENCY[corner];
   const bitA = MASK_BIT[cardA];
   const bitB = MASK_BIT[cardB];
@@ -218,4 +285,109 @@ export function quadrantStateFromMask(mask: number, corner: QuadrantCorner): Qua
   if (!hasA && hasB) return 'edgeB';
   // hasA && hasB
   return (mask & bitDiag) !== 0 ? 'full' : 'concave';
+}
+
+// --- Edge-matching ("2-edge") Wang tiles: the PATH counterpart of blob47 ---
+
+/**
+ * Blob47 above is a CORNER-matching Wang set, which is what makes it good at
+ * terrain patches. Its sibling is the EDGE-matching set, which is what makes
+ * paths and pipes: a tile's four edges are each either "path" or "blank", so a
+ * complete set is 2^4 = 16 tiles, and neighbouring tiles agree exactly when the
+ * shared edge has the same state on both sides.
+ *
+ * (Reference: cr31's Wang-tile pages — `wang/intro.html` "edge matching Wang
+ * tiles tend to produce path or maze designs", `wang/2edge.html`, which ships a
+ * PIPE tileset as its worked example, and `wang/shape.html`, whose rule that a
+ * tile is "never extended to cover any neighboring tile" is the join contract
+ * encoded by `EdgeWangStubContract` below.)
+ *
+ * Those 16 masks are exactly the segment vocabulary a linework run needs:
+ *
+ *   popcount 0 → 1 empty tile
+ *   popcount 1 → 4 end-caps      (N / E / S / W)
+ *   popcount 2 → 2 straights + 4 corners
+ *   popcount 3 → 4 T-junctions
+ *   popcount 4 → 1 cross
+ *
+ * so the renderer never carries an orientation: it derives the 4-bit mask from
+ * neighbouring occupancy and uses it DIRECTLY as the frame index. That identity
+ * (`frameIndex === maskId`) is why an edge-Wang atlas needs no `masks` table,
+ * unlike `wallAutotile`.
+ *
+ * Bit order is the SAME as `MASK_BIT` (N=1, E=2, S=4, W=8) so the two families
+ * can never disagree about what "north" means.
+ */
+export const EDGE_WANG_FRAME_COUNT = 16;
+
+/** The 4 cardinal directions in edge-Wang bit order, with their tile deltas. */
+export const EDGE_WANG_DIRECTIONS = [
+  { dir: 'N', bit: MASK_BIT.N, dx: 0, dy: -1 },
+  { dir: 'E', bit: MASK_BIT.E, dx: 1, dy: 0 },
+  { dir: 'S', bit: MASK_BIT.S, dx: 0, dy: 1 },
+  { dir: 'W', bit: MASK_BIT.W, dx: -1, dy: 0 },
+] as const satisfies ReadonlyArray<{
+  dir: 'N' | 'E' | 'S' | 'W';
+  bit: number;
+  dx: number;
+  dy: number;
+}>;
+
+/** The opposite direction bit — the edge a neighbour shares with this tile. */
+export const EDGE_WANG_OPPOSITE_BIT: Readonly<Record<'N' | 'E' | 'S' | 'W', number>> = {
+  N: MASK_BIT.S,
+  E: MASK_BIT.W,
+  S: MASK_BIT.N,
+  W: MASK_BIT.E,
+};
+
+/**
+ * Derive a tile's 4-bit edge-Wang mask from a flat row-major occupancy grid
+ * (non-zero = this tile carries the run). Out-of-bounds neighbours are
+ * unoccupied, so a run reaching the map border ends in an end-cap rather than
+ * pointing at nothing.
+ */
+export function edgeWangMaskFromOccupancy(
+  occupancy: Uint8Array,
+  width: number,
+  height: number,
+  tx: number,
+  ty: number,
+): number {
+  let mask = 0;
+  for (const { bit, dx, dy } of EDGE_WANG_DIRECTIONS) {
+    const nx = tx + dx;
+    const ny = ty + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    if (occupancy[ny * width + nx]) mask |= bit;
+  }
+  return mask;
+}
+
+/**
+ * The join contract, in the form the derivation enforces and the committed-art
+ * guard checks.
+ *
+ * Every frame whose mask has direction D set must present the SAME stub on
+ * edge D: pixels in `[offsetPx, offsetPx + widthPx)` along that edge are opaque
+ * and every other pixel on that edge is transparent. Two neighbouring tiles
+ * whose masks agree therefore butt together with no gap and no overlap, by
+ * construction — coherence is structural, not a tuning knob.
+ *
+ * The offset is measured left-to-right for the N/S edges and top-to-bottom for
+ * the E/W edges, so a single (offset, width) pair describes all four edges of a
+ * square cell.
+ */
+export interface EdgeWangStubContract {
+  readonly cellPx: number;
+  readonly offsetPx: number;
+  readonly widthPx: number;
+}
+
+/** Inclusive-exclusive pixel span of the stub along any edge. */
+export function edgeWangStubSpan(contract: EdgeWangStubContract): {
+  readonly start: number;
+  readonly end: number;
+} {
+  return { start: contract.offsetPx, end: contract.offsetPx + contract.widthPx };
 }
