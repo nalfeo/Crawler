@@ -136,16 +136,16 @@ jobs:
               Number.parseInt(process.env.HARVEST_LIVENESS_THRESHOLD_MINUTES, 10) ||
               lib.DEFAULT_HARVEST_THRESHOLD_MINUTES;
 
-            // Sample a window comfortably wider than the threshold. The sweep
-            // dispatches every 10 minutes, so 100 runs covers well over an hour.
-            const runs = await github.rest.actions.listWorkflowRuns({
+            const now = new Date();
+            const harvestRuns = await lib.collectRecentReconcileHarvestRuns({
+              listWorkflowRuns: (params) => github.rest.actions.listWorkflowRuns(params),
               owner,
               repo,
-              workflow_id: 'ci-recovery.yml',
-              per_page: 100,
+              workflowId: 'ci-recovery.yml',
+              thresholdMinutes,
+              now,
             });
-
-            const summary = lib.summarizeHarvestRuns(runs.data.workflow_runs);
+            const summary = lib.summarizeHarvestRuns(harvestRuns, now);
 
             const openPulls = await github.rest.pulls.list({
               owner,

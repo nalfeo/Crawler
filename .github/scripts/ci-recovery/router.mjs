@@ -215,7 +215,8 @@ export function parseRateLimitResetMilliseconds(error) {
 // condition and fail fast so the caller surfaces it to the liveness alarm
 // instead of silently grinding.
 export function isPrimaryRateLimitExhausted(error) {
-  if (Number(error?.status || 0) !== 403) {
+  const status = Number(error?.status || 0);
+  if (status !== 403 && status !== 429) {
     return false;
   }
   const remaining = error?.headers?.get?.('x-ratelimit-remaining');
@@ -227,6 +228,9 @@ export function isPrimaryRateLimitExhausted(error) {
 
 export function isRetryableError(error) {
   const status = Number(error?.status || 0);
+  if (status === 429 && isPrimaryRateLimitExhausted(error)) {
+    return false;
+  }
   if (status === 429) {
     return true;
   }

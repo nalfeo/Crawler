@@ -1,7 +1,7 @@
 # Stale-session harvest liveness alarm
 
 **Date:** 2026-07-30
-**Apples:** 2🍎 (estimated) / 2🍎 (actual) — CI/agent tooling only, capped at 3🍎 per policy
+**Apples:** 3🍎 (estimated) / 3🍎 (actual) — new CI-recovery liveness subsystem + workflow wiring + regression coverage
 
 ## Systems touched
 

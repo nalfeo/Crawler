@@ -1991,6 +1991,15 @@ test('isRetryableError does not retry a primary rate-limit exhaustion', () => {
   assert.equal(isRetryableError(exhausted), false);
 });
 
+test('isRetryableError does not retry a 429 primary rate-limit exhaustion', () => {
+  const exhausted = makeError(429, 'API rate limit exceeded for user ID 14006787', {
+    'x-ratelimit-remaining': '0',
+    'x-ratelimit-limit': '5000',
+  });
+  assert.equal(isPrimaryRateLimitExhausted(exhausted), true);
+  assert.equal(isRetryableError(exhausted), false);
+});
+
 test('isRetryableError still retries a rate-limit 403 that has budget remaining', () => {
   // Budget left but still 403 => not primary exhaustion; treat as transient.
   const transient = makeError(403, 'API rate limit exceeded', {
@@ -2009,7 +2018,11 @@ test('isRetryableError still retries secondary rate limits even at zero budget',
   assert.equal(isRetryableError(secondary), true);
 });
 
-test('isPrimaryRateLimitExhausted ignores non-403 and header-less errors', () => {
+test('isPrimaryRateLimitExhausted detects exhausted budget only on 403/429', () => {
+  assert.equal(
+    isPrimaryRateLimitExhausted(makeError(429, 'Too Many Requests', { 'x-ratelimit-remaining': '0' })),
+    true,
+  );
   assert.equal(isPrimaryRateLimitExhausted(makeError(404, 'Not Found')), false);
   assert.equal(isPrimaryRateLimitExhausted(makeError(403, 'Forbidden')), false);
   assert.equal(

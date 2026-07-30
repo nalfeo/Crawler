@@ -5,12 +5,14 @@ import test from 'node:test';
 import YAML from 'yaml';
 
 import {
+  collectRecentReconcileHarvestRuns,
   DEFAULT_HARVEST_THRESHOLD_MINUTES,
   HARVEST_INCIDENT_LABEL,
   HARVEST_INCIDENT_MARKER,
   HARVEST_INCIDENT_TITLE,
   buildHarvestIncidentBody,
   evaluateHarvestLiveness,
+  isReconcileHarvestRun,
   reconcileHarvestIncident,
   summarizeHarvestRuns,
 } from './harvest-liveness.mjs';
@@ -78,6 +80,57 @@ test('summarizeHarvestRuns tolerates empty and malformed input', () => {
   assert.equal(summarizeHarvestRuns(undefined, NOW).completedCount, 0);
   assert.equal(summarizeHarvestRuns([run({ updated_at: 'not-a-date' })], NOW).completedCount, 0);
   assert.equal(summarizeHarvestRuns([], NOW).minutesSinceSuccess, null);
+});
+
+test('isReconcileHarvestRun matches reconcile operation display titles only', () => {
+  assert.equal(
+    isReconcileHarvestRun({ display_title: 'CI Recovery (reconcile) for PR #123' }),
+    true,
+  );
+  assert.equal(
+    isReconcileHarvestRun({ display_title: 'CI Recovery (lease-heartbeat) for PR #123' }),
+    false,
+  );
+});
+
+test('collectRecentReconcileHarvestRuns filters to reconcile runs and paginates to threshold window', async () => {
+  const calls = [];
+  const pages = {
+    1: [
+      run({
+        display_title: 'CI Recovery (lease-heartbeat) for PR #10',
+        updated_at: '2026-07-30T16:59:00Z',
+      }),
+      run({
+        display_title: 'CI Recovery (reconcile) for PR #10',
+        updated_at: '2026-07-30T16:58:00Z',
+      }),
+    ],
+    2: [
+      run({
+        display_title: 'CI Recovery (reconcile) for PR #11',
+        updated_at: '2026-07-30T15:50:00Z',
+      }),
+    ],
+  };
+  const collected = await collectRecentReconcileHarvestRuns({
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    thresholdMinutes: 60,
+    now: NOW,
+    perPage: 2,
+    listWorkflowRuns: async (params) => {
+      calls.push(params);
+      return { data: { workflow_runs: pages[params.page] || [] } };
+    },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].event, 'workflow_dispatch');
+  assert.deepEqual(
+    collected.map((item) => item.display_title),
+    ['CI Recovery (reconcile) for PR #10', 'CI Recovery (reconcile) for PR #11'],
+  );
 });
 
 test('evaluateHarvestLiveness stays quiet when there is no open backlog', () => {
@@ -157,6 +210,9 @@ test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the 
   assert.match(body, /GraphQL has a separate budget/);
   assert.match(body, /Open PRs waiting: 21/);
   assert.match(body, /https:\/\/example\.test\/sweep/);
+  assert.match(body, /REPOSITORY=/);
+  assert.match(body, /\$\{REPOSITORY\}/);
+  assert.doesNotMatch(body, /\$\{\{ github\.repository \}\}/);
 });
 
 function fakeApi({ existing = [] } = {}) {
@@ -289,10 +345,12 @@ const SWEEP_STEPS = SWEEP.jobs['reconcile-liveness'].steps;
 const ALARM_STEP = SWEEP_STEPS.find(
   (step) => step.name === 'Verify stale-session harvest liveness',
 );
+const RECOVERY_WORKFLOW = YAML.parse(readFileSync('.github/workflows/ci-recovery.yml', 'utf8'));
 
 test('CI Liveness Sweep runs the harvest liveness alarm', () => {
   assert.ok(ALARM_STEP, 'sweep must contain the harvest liveness alarm step');
   assert.match(ALARM_STEP.with.script, /harvest-liveness\.mjs/);
+  assert.match(ALARM_STEP.with.script, /collectRecentReconcileHarvestRuns/);
   assert.ok(
     SWEEP_STEPS.some((step) => String(step.uses || '').startsWith('actions/checkout')),
     'alarm imports a repo file, so the sweep must check out the repository',
@@ -315,4 +373,8 @@ test('harvest liveness alarm never authenticates with the shared owner PAT', () 
 test('CI Liveness Sweep still runs on a schedule', () => {
   const schedule = SWEEP.on?.schedule ?? SWEEP[true]?.schedule;
   assert.ok(Array.isArray(schedule) && schedule.length > 0, 'sweep must stay scheduled');
+});
+
+test('CI Recovery workflow exposes operation in run-name for liveness filtering', () => {
+  assert.match(String(RECOVERY_WORKFLOW['run-name'] || ''), /inputs\.operation/);
 });

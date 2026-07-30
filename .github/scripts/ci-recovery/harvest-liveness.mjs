@@ -38,6 +38,73 @@ export const HARVEST_INCIDENT_MARKER = '<!-- crawler:ci-harvest-liveness -->';
 /** Minutes without a successful harvest run before the alarm fires. */
 export const DEFAULT_HARVEST_THRESHOLD_MINUTES = 60;
 
+function parseRunTimestamp(run) {
+  const at = Date.parse(run?.updated_at || run?.run_started_at || run?.created_at || '');
+  return Number.isFinite(at) ? at : null;
+}
+
+export function isReconcileHarvestRun(run) {
+  return String(run?.display_title || '')
+    .toLowerCase()
+    .includes('ci recovery (reconcile)');
+}
+
+/**
+ * Collect reconcile harvest runs and paginate until the sampled window reaches
+ * the threshold age.
+ *
+ * @param {{
+ *   listWorkflowRuns: (params: {
+ *     owner: string,
+ *     repo: string,
+ *     workflow_id: string,
+ *     event: string,
+ *     per_page: number,
+ *     page: number,
+ *   }) => Promise<{data?: {workflow_runs?: Array<any>}}>,
+ *   owner: string,
+ *   repo: string,
+ *   workflowId?: string,
+ *   thresholdMinutes?: number,
+ *   now?: Date,
+ *   perPage?: number,
+ * }} opts
+ */
+export async function collectRecentReconcileHarvestRuns({
+  listWorkflowRuns,
+  owner,
+  repo,
+  workflowId = 'ci-recovery.yml',
+  thresholdMinutes = DEFAULT_HARVEST_THRESHOLD_MINUTES,
+  now = new Date(),
+  perPage = 100,
+}) {
+  const cutoffMs = now.getTime() - thresholdMinutes * 60000;
+  const collected = [];
+  for (let page = 1; ; page += 1) {
+    const response = await listWorkflowRuns({
+      owner,
+      repo,
+      workflow_id: workflowId,
+      event: 'workflow_dispatch',
+      per_page: perPage,
+      page,
+    });
+    const runs = response?.data?.workflow_runs || [];
+    collected.push(...runs.filter((run) => isReconcileHarvestRun(run)));
+
+    const oldestRunAt = runs.reduce((oldest, run) => {
+      const at = parseRunTimestamp(run);
+      if (at === null) return oldest;
+      return oldest === null || at < oldest ? at : oldest;
+    }, null);
+    if (runs.length === 0) break;
+    if (oldestRunAt !== null && oldestRunAt <= cutoffMs) break;
+    if (runs.length < perPage) break;
+  }
+  return collected;
+}
+
 /**
  * Reduce a list of workflow runs to the liveness facts we care about.
  *
@@ -55,7 +122,7 @@ export function summarizeHarvestRuns(runs, now = new Date()) {
     .filter((run) => String(run?.status || '').toLowerCase() === 'completed')
     .map((run) => ({
       conclusion: String(run?.conclusion || '').toLowerCase(),
-      at: Date.parse(run?.updated_at || run?.run_started_at || run?.created_at || ''),
+      at: parseRunTimestamp(run),
       url: run?.html_url || null,
     }))
     .filter((run) => Number.isFinite(run.at))
@@ -137,6 +204,7 @@ export function buildHarvestIncidentBody({
   thresholdMinutes = DEFAULT_HARVEST_THRESHOLD_MINUTES,
   reason,
   workflowRunUrl = null,
+  repository = null,
 }) {
   const lastSuccess = summary.lastSuccessAt
     ? `${summary.lastSuccessAt} (${summary.minutesSinceSuccess}m ago)`
@@ -168,9 +236,10 @@ export function buildHarvestIncidentBody({
     '**Do not trust `gh api rate_limit`** — during the 2026-07-30 stoppage it reported ~4,400 core requests remaining while live calls returned `X-RateLimit-Remaining: 0`. Confirm with raw response headers instead:',
     '',
     '```bash',
+    `REPOSITORY="${repository || '<owner>/<repo>'}"`,
     'curl -s -D - -o /dev/null \\',
-    '  -H "Authorization: Bearer $CRAWLER_CI_PAT" \\',
-    '  https://api.github.com/repos/${{ github.repository }}/pulls?per_page=1 | grep -i x-ratelimit',
+    '  -H "Authorization: ******" \\',
+    '  "https://api.github.com/repos/${REPOSITORY}/pulls?per_page=1" | grep -i x-ratelimit',
     '```',
     '',
     'GraphQL has a separate budget and usually still works when REST is exhausted — `gh api graphql` is the fallback for triage and for manual `resolveReviewThread` / `addLabelsToLabelable` calls.',
@@ -243,6 +312,7 @@ export async function reconcileHarvestIncident({
     thresholdMinutes,
     reason: verdict.reason,
     workflowRunUrl,
+    repository: `${owner}/${repo}`,
   });
 
   if (existing) {
