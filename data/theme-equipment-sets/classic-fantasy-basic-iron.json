@@ -1,0 +1,118 @@
+{
+  "id": "classic-fantasy-basic-iron",
+  "displayName": "Classic Fantasy [Basic Iron]",
+  "themeDesignLanguage": "Plain iron armor and weapons that could be used by hedge knights, drafted peasants, or bottom tier grunts. Well-used but functional and cared for with limited adornment.",
+  "weapons": [
+    {
+      "id": "iron-long-sword",
+      "displayName": "Iron Long Sword",
+      "weaponType": "sword"
+    },
+    {
+      "id": "iron-battle-axe",
+      "displayName": "Iron Battle Axe",
+      "weaponType": "axe"
+    },
+    {
+      "id": "iron-war-hammer",
+      "displayName": "Iron War Hammer",
+      "weaponType": "hammer"
+    },
+    {
+      "id": "iron-spear",
+      "displayName": "Iron Spear",
+      "weaponType": "spear"
+    },
+    {
+      "id": "iron-dagger",
+      "displayName": "Iron Dagger",
+      "weaponType": "dagger"
+    },
+    {
+      "id": "iron-greatsword",
+      "displayName": "Iron Greatsword",
+      "weaponType": "sword"
+    }
+  ],
+  "equipment": [
+    {
+      "id": "iron-helm",
+      "displayName": "Iron Helm",
+      "slots": [
+        "head"
+      ]
+    },
+    {
+      "id": "iron-gorget",
+      "displayName": "Iron Gorget",
+      "slots": [
+        "neck"
+      ]
+    },
+    {
+      "id": "iron-shoulder-plates",
+      "displayName": "Iron Shoulder Plates",
+      "slots": [
+        "shoulders"
+      ]
+    },
+    {
+      "id": "iron-breastplate",
+      "displayName": "Iron Breastplate",
+      "slots": [
+        "chest"
+      ]
+    },
+    {
+      "id": "iron-gauntlets",
+      "displayName": "Iron Gauntlets",
+      "slots": [
+        "gloves"
+      ]
+    },
+    {
+      "id": "iron-belt",
+      "displayName": "Iron Belt",
+      "slots": [
+        "belt"
+      ]
+    },
+    {
+      "id": "iron-greaves",
+      "displayName": "Iron Greaves",
+      "slots": [
+        "legs"
+      ]
+    },
+    {
+      "id": "iron-boots",
+      "displayName": "Iron Boots",
+      "slots": [
+        "feet"
+      ]
+    },
+    {
+      "id": "iron-bracers",
+      "displayName": "Iron Bracers",
+      "slots": [
+        "leftWrist",
+        "rightWrist"
+      ]
+    },
+    {
+      "id": "iron-arm-guards",
+      "displayName": "Iron Arm Guards",
+      "slots": [
+        "leftArm",
+        "rightArm"
+      ]
+    },
+    {
+      "id": "iron-visored-helmet",
+      "displayName": "Iron Visored Helmet",
+      "slots": [
+        "face"
+      ]
+    }
+  ]
+}
