@@ -455,7 +455,7 @@ sprite_pipeline_touched="$sprites_touched"
 # dependencies_touched: at least one changed file is a dependency manifest
 # (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json), the
 # dependency-allowlist security script, or the npm-audit wrapper (which hosts
-# the temporary fast-uri exception). Consumed by security-review.yml to gate
+# temporary audit exceptions). Consumed by security-review.yml to gate
 # npm audit and the dep-allowlist check.
 dependencies_touched=false
 while IFS= read -r file; do
