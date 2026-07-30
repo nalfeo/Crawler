@@ -80,7 +80,7 @@ describe('theme equipment review command bridge', () => {
       coverage: { weaponTypeCount: 6, coveredSlotCount: 16 },
       gate: { canAdvance: false },
     });
-    expect(result.items).toHaveLength(22);
+    expect(result.items).toHaveLength(19);
   });
 
   it('persists item review through the canonical mutation and rejects stale revisions', async () => {
