@@ -428,6 +428,10 @@ describe('Floor 2 headless completion', () => {
             if (armed) return;
             armed = true;
             clearPlayabilityRewardState(world);
+            // Mainline eager maintenance now auto-equips better bagged gear each
+            // tick. Disable just that loop here so the fixture can still assert
+            // the deliberate "bagged gear left while slot is empty" invariant.
+            world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = false;
             const generated = createPlayabilityTestInstance(world);
             const result = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
             if (!result.ok) {

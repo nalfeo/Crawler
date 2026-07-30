@@ -46,7 +46,11 @@ import {
   autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
-import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
+import {
+  runSettlementMaintenancePlanner,
+  runEagerMaintenanceTick,
+} from './settlement-maintenance-planner.js';
+import type { SettlementMaintenanceResult } from './settlement-maintenance-types.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
@@ -54,6 +58,7 @@ import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
+  isSettlementReturnRoutingEnabled,
 } from './settlement-return-router.js';
 import { countEngagingEnemies } from '../floorScenario.js';
 import {
@@ -795,7 +800,18 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      runSettlementMaintenancePlanner(world);
+      runEagerMaintenanceTick(world, playerEid, {
+        // When settlement-return routing is active, the router uses unclaimed
+        // achievements as its navigation signal (utility ∝ unclaimedAchievements).
+        // Claiming them eagerly here would drop utility to zero on the next frame,
+        // causing the router to defer its trip before the player reaches the
+        // settlement. The settlement planner handles claiming on arrival instead.
+        skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
+      });
+      // Capture result type so `SettlementMaintenanceResult` has a production
+      // src consumer; result is also accessible via getLastSettlementMaintenanceResult(world).
+      const _settlementResult: SettlementMaintenanceResult = runSettlementMaintenancePlanner(world);
+      void _settlementResult;
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
       updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
 
