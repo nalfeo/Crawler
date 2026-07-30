@@ -56,14 +56,15 @@ the cross-system-touch policy.
 
 1. **Wall-mask neighbour predicate now keys on walkability, not wall-type
    equality.** `PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES` (`terrain-renderer.ts`)
-   is extended with `TerrainType.VOID` and `TerrainType.WOOD_WALL` — the
-   non-wall terrain types that should read as "wall" for inset purposes.
+   is extended with `TerrainType.VOID`, `TerrainType.WOOD_WALL` and
+   `TerrainType.TREE` — the non-wall, non-walkable terrain types that should
+   read as "wall" for inset purposes, per the stated rule "only inset toward
+   walkable space".
    `WATER` and `LAVA` are deliberately **excluded**: they are non-walkable
    but not rock, and a wall should still visually inset against them (you
-   can see the liquid surface through the gap). `TREE` is likewise excluded:
-   a trunk neither fills its cell nor reads as a wall face, and no generator
-   writes it today. `TerrainType.DOOR` was already present from an earlier
-   fix for the same inset behaviour and is preserved.
+   can see the liquid surface through the gap). `TerrainType.DOOR` was
+   already present from an earlier fix for the same inset behaviour and is
+   preserved.
 2. **`computeRawMask8` gained an `outOfBoundsMatches` parameter** (default
    `false`, preserving existing same-terrain-pool matching behavior for
    `neighborMask8InTerrain`). The pack wall-mask call sites in
@@ -146,8 +147,9 @@ blob47 atlas frames.
   nowhere else.
 - **Exempt opaque tiles from the seam check inside `fovSystem` only**,
   leaving `hasBlockedCornerSeam`/`lineOfSight` untouched. This was
-  implemented first and **rejected on review**, for two independent
-  reasons:
+  implemented first, under an explicit scoping constraint ("do NOT relax
+  `hasBlockedCornerSeam` itself or change `lineOfSight`") that turned out to
+  be wrong. It was **rejected on review**, for two independent reasons:
   1. It fixed reveal but not lighting. `light-field.ts` gates source
      intensity on `lineOfSight`, so corners stayed at `ambient` — the
      user-visible symptom persisted.
@@ -155,8 +157,13 @@ blob47 atlas frames.
      **entire ray**, not just its final step. `lightPasses` only halts
      propagation _past_ an opaque tile and never re-applies an earlier
      seam, so a wall genuinely peeked at through an earlier diagonal pinch
-     became visible. This was found independently by the adversarial plan
-     review and by the GitHub PR reviewer.
+     became visible. Found independently by the adversarial plan review, the
+     GitHub PR reviewer, and the implementing session itself.
+
+  The constraint was the mistake, not the implementation: the corner cannot
+  be lit without changing `lineOfSight`, because lighting consumes it. The
+  scoping was revised rather than the requirement weakened.
+
 - **Add a second seam walk inside `fovSystem`** that checks only
   pre-terminal steps. Rejected: it fixes the leak but still not lighting,
   and it creates a duplicate copy of the Bresenham seam algorithm that must
