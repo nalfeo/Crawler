@@ -81,7 +81,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
   assert.equal(result.status, 0);
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-07-31: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
+    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
   );
   assert.match(result.stderr, /Suppressed derived findings: brace-expansion, minimatch/);
 });
@@ -250,6 +250,14 @@ test('every real audit exception has a well-formed expiresOn date', () => {
       Number.isNaN(parsed.getTime()),
       false,
       `${exception.packageName} expiresOn must parse as a valid date`,
+    );
+    // Round-trip: reject impossible calendar dates like 2026-02-31 that JS
+    // silently normalises to a neighbouring day.
+    const roundTripped = parsed.toISOString().slice(0, 10);
+    assert.equal(
+      roundTripped,
+      exception.expiresOn,
+      `${exception.packageName} expiresOn '${exception.expiresOn}' is not a real calendar date (normalises to ${roundTripped})`,
     );
   }
 });
