@@ -1,5 +1,16 @@
 [
   {
+    "commit": "32ab83b873cbc169b60f9790ae9aebd49a6736d0",
+    "commitDate": "2026-07-30T22:42:13Z",
+    "commitSubject": "Fix CI-recovery head-drift classification to prevent stale retry-loop behavior (#2397)",
+    "capturedAt": "2026-07-30T23:50:35.810Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30588547321",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/32ab83b873cbc169b60f9790ae9aebd49a6736d0.json"
+  },
+  {
     "commit": "bcb066801baa1ba39b983d2b6ea81e2f4ba40df2",
     "commitDate": "2026-07-30T22:26:53Z",
     "commitSubject": "Enforce player-visible acquisition seams and Floor 2 headless equipment invariants (#2368)",
