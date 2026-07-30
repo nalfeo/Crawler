@@ -104,11 +104,11 @@ description: |
   - below the strip, a sliver of dark shadow where the door meets the floor,
     grounding it against the corridor tile.
 
-  REAL-WORLD SIZE. The wall this door interrupts is about 4 FEET TALL, the
-  full height of the door and its jamb. The visible edge-on strip is narrow --
-  around 1 to 1.5 FEET of visible width at most, a thin sliver compared to the
-  ~3 foot WIDE face a front-on door shows -- because you are seeing its
-  thickness, not its width.
+  REAL-WORLD SIZE. This door fits a wall slot about 4 FEET WIDE and renders
+  about 6.5 FEET TALL overall, so a 5.75 ft person clears it with headroom.
+  The visible edge-on strip is narrow -- around 1 to 1.5 FEET of visible width
+  at most, a thin sliver compared to the ~3 foot WIDE face a front-on door
+  shows -- because you are seeing its thickness, not its width.
 
   THE CANVAS ITSELF IS NARROW: this cell is only 48 SOURCE PIXELS WIDE by 128
   SOURCE PIXELS TALL -- a tall thin rectangle, not square. There is NOT enough

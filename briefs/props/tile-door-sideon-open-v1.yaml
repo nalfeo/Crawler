@@ -24,10 +24,6 @@
 # the door -- it is painted opaque near-black. If left transparent, the floor
 # tile underneath shows straight through and the door reads as a hole in the
 # world.
-# THE OPENING MUST BE OPAQUE, NOT TRANSPARENT. The dark gap is the room BEYOND
-# the door -- it is painted opaque near-black. If left transparent, the floor
-# tile underneath shows straight through and the door reads as a hole in the
-# world.
 #
 # REVISION 2 (2026-07-30) -- SAME ROOT-CAUSE FIX AS `tile-door-sideon-v1`.
 # Revision 1's description below used to open with "Front elevation, looking
@@ -175,8 +171,9 @@ description: |
     note, not a requirement, and must not read as a second door or a bright
     shape.
 
-  REAL-WORLD SIZE. Identical to the closed frame: the wall this doorway
-  interrupts is about 4 FEET TALL. The visible strip is narrow -- around 1 to
+  REAL-WORLD SIZE. Identical to the closed frame: this doorway fits a wall slot
+  about 4 FEET WIDE and renders about 6.5 FEET TALL overall, so a 5.75 ft
+  person clears it with headroom. The visible strip is narrow -- around 1 to
   1.5 FEET of visible width at most.
 
   THE CANVAS ITSELF IS NARROW: this cell is only 48 SOURCE PIXELS WIDE by 128
