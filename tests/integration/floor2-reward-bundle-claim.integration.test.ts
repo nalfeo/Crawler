@@ -44,19 +44,21 @@ function makeFloor2World(runKey = RUN_KEY): { world: GameWorld; playerEid: numbe
   return { world, playerEid };
 }
 
-/** Drive a Floor 2 trash kill so the real achievement tick sees totalKills >= 1.
+/**
+ * Drive a Floor 2 trash kill so the real achievement tick sees totalKills >= 1.
  *
- * Two families are present but only one has kills, so `allPresentFamiliesEngagedInCombat`
- * is false and "Scorched Earth" (which requires all present families engaged) does not
- * fire. With one kill, both `floor2-field-kit` (totalKills >= 1) and `floor2-made-an-enemy`
- * (familiesEngagedInCombatCount >= 1) unlock simultaneously — both are tier1 with a
- * single equipment instance, for a deterministic total of 2 instances.
+ * Uses a realistic 3-family roster (real Floor 2 always presents 3 or 4 families,
+ * fixed for the whole floor via `selectFloor2Roster` — see floor2Scenario.ts). A
+ * single-family roster is not a reachable production state and would trivially
+ * satisfy "all present families engaged in combat"-style facts, unlocking
+ * unrelated achievements (e.g. floor2-scorched-earth) alongside floor2-field-kit
+ * and floor2-made-an-enemy, breaking this test's deterministic two-unlock assumption.
  */
 function seedFloor2Kill(world: GameWorld, kills = 1): void {
   world.floorId = 'floor2';
   world.floorExtendedState = {
     familyState: {
-      presentFamilies: [asFamilyId('mirekin'), asFamilyId('ironbark')],
+      presentFamilies: [asFamilyId('mirekin'), asFamilyId('chitinous'), asFamilyId('faceless')],
       contestedResource: asResourceId('glimmercap'),
       betrayerFlag: false,
       trashKillsByFamily: new Map([[asFamilyId('mirekin'), kills]]),
