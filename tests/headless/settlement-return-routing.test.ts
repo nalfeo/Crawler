@@ -215,17 +215,28 @@ describe('settlement return routing (headless integration)', () => {
       simulationOptions: {
         preSystems: [
           (world) => {
-            // Defensive: deny any organic achievement accrual during this
-            // short window so this stays a clean "nothing to gain" utility
-            // case regardless of what the AI organically does while
-            // hunting. (Equipment/ability opportunity is already ~0 by
-            // default: `floor2EquipmentFlags` is omitted here, so the
-            // generated-stock economy stays disabled.)
+            // Deny organic achievement accrual: mark every currently-unlocked
+            // achievement as claimed so the router's unclaimedAchievements
+            // count stays zero regardless of what achievementSystem adds this
+            // frame. Clearing unlockedIds alone is insufficient because
+            // achievementSystem (canonical postSystems) re-unlocks achievements
+            // after preSystems runs; marking claimed suppresses the router's
+            // opportunity signal in the next AI poll without defeating the
+            // achievement dedup guard.
+            for (const id of world.achievements.unlockedIds) {
+              world.achievements.claimedIds.add(id);
+            }
             world.achievements.unlockedIds.clear();
           },
         ],
         postSystems: [
           (world) => {
+            // Mark any achievements freshly unlocked by achievementSystem
+            // (canonical postSystems) as claimed so they don't give the
+            // router a false opportunity signal on the next frame's AI poll.
+            for (const id of world.achievements.unlockedIds) {
+              world.achievements.claimedIds.add(id);
+            }
             if (!flagsForced) {
               flagsForced = true;
               world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
@@ -376,6 +387,15 @@ describe('settlement return routing (headless integration)', () => {
       simulationOptions: {
         postSystems: [
           (world) => {
+            // Mark any achievements freshly unlocked by achievementSystem
+            // (canonical postSystems) as claimed so they don't give the
+            // router a false opportunity signal on the next frame's AI poll.
+            // New Floor 2 achievements (e.g. kill-based) fire organically
+            // during this run; without this guard they arm the router and
+            // break the "stays idle" assertion.
+            for (const id of world.achievements.unlockedIds) {
+              world.achievements.claimedIds.add(id);
+            }
             observedStatuses.add(getSettlementReturnIntent(world).status);
             if (getLastSettlementMaintenanceResult(world)?.ran === true) {
               observedMaintenanceRan = true;
