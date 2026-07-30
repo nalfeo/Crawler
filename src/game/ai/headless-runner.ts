@@ -50,7 +50,10 @@ import {
   autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
-import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
+import {
+  runSettlementMaintenancePlanner,
+  runEagerMaintenanceTick,
+} from './settlement-maintenance-planner.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
@@ -766,6 +769,7 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      runEagerMaintenanceTick(world, playerEid);
       runSettlementMaintenancePlanner(world);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
