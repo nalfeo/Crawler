@@ -8,7 +8,7 @@ on:
 permissions:
   actions: write
   contents: read
-  issues: read
+  issues: write
   pull-requests: read
 
 jobs:
@@ -20,6 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Trigger CI Recovery router sweep
         uses: actions/github-script@v7
         with:
@@ -105,3 +108,94 @@ jobs:
               ref,
             });
             core.notice(`dispatched ci-pr-disposition.yml ref=${ref}`);
+
+      # Every step above dispatches and forgets. During the 2026-07-30 stoppage
+      # they kept firing on schedule for ~7 hours while every dispatched CI
+      # Recovery run 403'd on an exhausted owner-PAT budget, so no lease was ever
+      # reaped and no `merge-train` label was ever applied. Nothing noticed.
+      #
+      # This step closes the loop by verifying the harvest actually completes.
+      # It deliberately runs on the workflow's own GITHUB_TOKEN: that budget is
+      # scoped per repository installation and is independent of the shared
+      # owner-PAT bucket, so the alarm survives the exact failure it reports.
+      - name: Verify stale-session harvest liveness
+        uses: actions/github-script@v7
+        env:
+          HARVEST_LIVENESS_THRESHOLD_MINUTES: ${{ vars.HARVEST_LIVENESS_THRESHOLD_MINUTES || '60' }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const lib = await import(
+              pathToFileURL(
+                `${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-recovery/harvest-liveness.mjs`,
+              ).href
+            );
+
+            const { owner, repo } = context.repo;
+            const thresholdMinutes =
+              Number.parseInt(process.env.HARVEST_LIVENESS_THRESHOLD_MINUTES, 10) ||
+              lib.DEFAULT_HARVEST_THRESHOLD_MINUTES;
+
+            const now = new Date();
+            const harvestRuns = await lib.collectRecentReconcileHarvestRuns({
+              listWorkflowRuns: (params) => github.rest.actions.listWorkflowRuns(params),
+              owner,
+              repo,
+              workflowId: 'ci-recovery.yml',
+              thresholdMinutes,
+              now,
+            });
+            const summary = lib.summarizeHarvestRuns(harvestRuns, now);
+
+            const openPulls = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const backlogCount = openPulls.data.filter((pull) => !pull.draft).length;
+
+            const verdict = lib.evaluateHarvestLiveness({
+              summary,
+              backlogCount,
+              thresholdMinutes,
+            });
+
+            core.info(
+              `harvest-liveness stalled=${verdict.stalled} reason=${verdict.reason} ` +
+                `lastSuccess=${summary.lastSuccessAt ?? 'none'} ` +
+                `minutesSinceSuccess=${summary.minutesSinceSuccess ?? 'n/a'} ` +
+                `failuresSinceSuccess=${summary.consecutiveFailures} backlog=${backlogCount}`,
+            );
+
+            // Adapt octokit to the request/paginate shape the library expects.
+            const paginate = async (_token, path) => github.paginate(`GET ${path}`);
+            const request = async (_token, path, options = {}) => {
+              const response = await github.request(
+                `${options.method || 'GET'} ${path}`,
+                options.body || {},
+              );
+              return { data: response.data };
+            };
+
+            const result = await lib.reconcileHarvestIncident({
+              request,
+              paginate,
+              token: null,
+              owner,
+              repo,
+              verdict,
+              summary,
+              backlogCount,
+              thresholdMinutes,
+              workflowRunUrl: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            });
+
+            if (verdict.stalled) {
+              core.warning(
+                `stale-session harvest is STALLED (${verdict.reason}); incident ${result.action}` +
+                  (result.issueNumber ? ` #${result.issueNumber}` : ''),
+              );
+            } else {
+              core.notice(`stale-session harvest healthy; incident ${result.action}`);
+            }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
+import { SLOT_REGISTRY, getMirrorSlot } from '../../src/shared/equipment-slots.js';
 import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from './store/types.js';
 
 export const THEME_EQUIPMENT_SET_SCHEMA_VERSION = 1;
@@ -1365,6 +1365,42 @@ const themeEquipmentSetPlanEquipmentSchema = z
   })
   .strict();
 
+/**
+ * Reject split left/right mirror-pair items. Themed sets default to ONE unified
+ * item covering both sides of a mirror pair (a pair of bracers, arm wraps for
+ * both arms, a ring usable in either hand). An equipment item that lists one
+ * side of a mirror pair without its partner on the SAME item is invalid — this
+ * catches both a lone singleton ("signet-ring-left" with only `ringLeft`) and
+ * two separate single-side items (each fails on its own missing partner).
+ *
+ * Pure and side-effect free; returns one reason per offending slot so callers
+ * (and the roster-synth repair loop) get an actionable, per-slot message. The
+ * canonical pair list is `MIRROR_SLOT_PAIRS` in `equipment-slots.ts`, consulted
+ * here via `getMirrorSlot` so this rule can never drift from the slot registry.
+ */
+export function validateThemeSetPlanMirrorSlots(
+  equipment: readonly { readonly id: string; readonly slots: readonly string[] }[],
+): readonly ThemeSetGateReason[] {
+  const reasons: ThemeSetGateReason[] = [];
+  equipment.forEach((item, index) => {
+    const slotSet = new Set(item.slots);
+    for (const slot of item.slots) {
+      const partner = getMirrorSlot(slot);
+      if (partner !== undefined && !slotSet.has(partner)) {
+        reasons.push({
+          code: 'mirror-slot-unpaired',
+          message:
+            `Item "${item.id}" lists mirror slot "${slot}" without its pair "${partner}" on the same item; ` +
+            `themed sets use one unified item covering both sides. Left/right split items are not allowed — ` +
+            `add "${partner}" to this item's slots (or drop "${slot}").`,
+          path: ['equipment', index, 'slots'],
+        });
+      }
+    }
+  });
+  return reasons;
+}
+
 export const themeEquipmentSetPlanSchema = z
   .object({
     id: kebabIdSchema,
@@ -1374,7 +1410,20 @@ export const themeEquipmentSetPlanSchema = z
     weapons: z.array(themeEquipmentSetPlanWeaponSchema),
     equipment: z.array(themeEquipmentSetPlanEquipmentSchema),
   })
-  .strict();
+  .strict()
+  // Enforced on EVERY plan parse (build, load, roster synth/edit re-validation,
+  // and the authored-plan index) so a split mirror-pair item cannot be authored
+  // through any path. Deliberately NOT on the state schema — existing stored
+  // states with legacy split items must still load.
+  .superRefine((plan, ctx) => {
+    for (const reason of validateThemeSetPlanMirrorSlots(plan.equipment)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: reason.message,
+        path: reason.path ? [...reason.path] : ['equipment'],
+      });
+    }
+  });
 
 export type ThemeEquipmentSetPlan = z.infer<typeof themeEquipmentSetPlanSchema>;
 
@@ -1385,8 +1434,9 @@ export type ThemeEquipmentSetPlan = z.infer<typeof themeEquipmentSetPlanSchema>;
  * empty/held, and `stateRevision` starts at 0. Throws
  * `ThemeEquipmentSetValidationError` (via `parseThemeEquipmentSetState`) if
  * the expanded state fails schema or coverage validation — e.g. too few
- * distinct weapon types, too few distinct non-hand slots, or a duplicate
- * item id shared between the weapon and equipment lists.
+ * distinct weapon types, too few distinct non-hand slots, a duplicate
+ * item id shared between the weapon and equipment lists, or a split
+ * left/right mirror-pair item (see `validateThemeSetPlanMirrorSlots`).
  */
 export function buildThemeEquipmentSetStateFromPlan(
   plan: unknown,

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveDoorRenderMode,
   GENERATED_DOOR_TEXTURE_KEYS,
-  ALL_GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_SHEET_KEY,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
@@ -10,6 +9,7 @@ import {
 } from '../../src/engine/sprites/door-visuals.js';
 
 const K = GENERATED_DOOR_TEXTURE_KEYS;
+const ALL_GENERATED_DOOR_TEXTURE_KEYS = Object.values(K);
 
 /** Terse call helper: keys present, sheet on/off, orientation, optional pack key. */
 function resolve(
@@ -77,7 +77,6 @@ describe('resolveDoorRenderMode', () => {
     expect(resolve(false, { keys: [K.closedHorizontal], hasSheet: true })).toEqual({
       kind: 'generated',
       textureKey: K.closedHorizontal,
-      quarterTurnsCcw: 0,
     });
   });
 
@@ -85,7 +84,6 @@ describe('resolveDoorRenderMode', () => {
     expect(resolve(false, { keys: [K.closedHorizontal], hasSheet: false })).toEqual({
       kind: 'generated',
       textureKey: K.closedHorizontal,
-      quarterTurnsCcw: 0,
     });
   });
 
@@ -141,14 +139,15 @@ describe('resolveDoorRenderMode', () => {
   });
 
   describe('orientation selection within a state', () => {
-    it('vertical doorway prefers the vertical key when both are available', () => {
+    it('vertical doorway prefers the vertical (side-on) key when both are available', () => {
+      // The vertical key is genuine side-on E/W art; no rotation is applied.
       expect(
         resolve(false, {
           keys: [K.closedHorizontal, K.closedVertical],
           orientation: 'vertical',
           hasSheet: true,
         }),
-      ).toEqual({ kind: 'generated', textureKey: K.closedVertical, quarterTurnsCcw: 1 });
+      ).toEqual({ kind: 'generated', textureKey: K.closedVertical });
     });
 
     it('horizontal doorway prefers the horizontal key when both are available', () => {
@@ -158,80 +157,44 @@ describe('resolveDoorRenderMode', () => {
           orientation: 'horizontal',
           hasSheet: true,
         }),
-      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal, quarterTurnsCcw: 0 });
+      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal });
     });
 
     it('vertical doorway falls back to the horizontal key rather than to Kenney', () => {
-      // Today's shipped state: only closed-horizontal art exists. A side doorway
-      // must keep the generated art family instead of regressing to Kenney —
-      // this is the assertion that makes the change a no-op until new art lands.
+      // When the side-on art is unavailable, a side doorway must keep the
+      // generated art family (face-on leaf) instead of regressing to Kenney.
       expect(
         resolve(false, { keys: [K.closedHorizontal], orientation: 'vertical', hasSheet: true }),
-      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal, quarterTurnsCcw: 0 });
+      ).toEqual({ kind: 'generated', textureKey: K.closedHorizontal });
     });
 
     it('open vertical doorway falls back to open-horizontal, not to closed art', () => {
+      // The OPEN E/W door has no art (failed generation), so an open side doorway
+      // always falls back to the face-on open leaf. Never to closed art.
       expect(
         resolve(true, {
           keys: [K.openHorizontal, K.closedVertical],
           orientation: 'vertical',
           hasSheet: true,
         }),
-      ).toEqual({ kind: 'generated', textureKey: K.openHorizontal, quarterTurnsCcw: 0 });
+      ).toEqual({ kind: 'generated', textureKey: K.openHorizontal });
     });
   });
 
-  describe('quarter-turn (vertical art is authored face-on and rotated by the renderer)', () => {
-    // The turn is a property of the ASSET, not of the requested orientation.
-    // Deriving it from the resolved key — not from `orientation` — is what keeps
-    // every fallback path byte-identical to its pre-rotation behaviour, which is
-    // the whole safety argument for the change.
-    it('turns both vertical keys exactly one quarter CCW', () => {
+  it('the generated mode carries no rotation state (side-on art needs no turn)', () => {
+    // Regression guard for the retired `quarterTurnsCcw` field: the vertical key is
+    // now genuine side-on art, so no generated mode may carry a rotation flag.
+    for (const orientation of ['horizontal', 'vertical'] as const) {
       for (const [key, isOpen] of [
+        [K.closedHorizontal, false],
         [K.closedVertical, false],
-        [K.openVertical, true],
+        [K.openHorizontal, true],
       ] as const) {
-        expect(resolve(isOpen, { keys: [key], orientation: 'vertical', hasSheet: true })).toEqual({
-          kind: 'generated',
-          textureKey: key,
-          quarterTurnsCcw: 1,
-        });
+        expect(resolve(isOpen, { keys: [key], orientation, hasSheet: true })).not.toHaveProperty(
+          'quarterTurnsCcw',
+        );
       }
-    });
-
-    it('never turns a horizontal key, even when it is serving a vertical doorway', () => {
-      // The regression this pins: rotating on `orientation === "vertical"` rather
-      // than on the chosen key would turn face-on horizontal art sideways the
-      // moment vertical art is missing — strictly worse than the un-turned
-      // fallback it replaced.
-      for (const orientation of ['horizontal', 'vertical'] as const) {
-        for (const [key, isOpen] of [
-          [K.closedHorizontal, false],
-          [K.openHorizontal, true],
-        ] as const) {
-          expect(resolve(isOpen, { keys: [key], orientation, hasSheet: true })).toEqual({
-            kind: 'generated',
-            textureKey: key,
-            quarterTurnsCcw: 0,
-          });
-        }
-      }
-    });
-
-    it('leaves every non-generated mode free of rotation state', () => {
-      // Pack art is authored per-orientation and must never be turned.
-      expect(
-        resolve(false, {
-          keys: ALL_GENERATED_DOOR_TEXTURE_KEYS,
-          orientation: 'vertical',
-          hasSheet: true,
-          packDoorTextureKey: 'terrain-pack-industrial-cave-door-closed-vertical',
-        }),
-      ).not.toHaveProperty('quarterTurnsCcw');
-      expect(resolve(false, { orientation: 'vertical', hasSheet: true })).not.toHaveProperty(
-        'quarterTurnsCcw',
-      );
-    });
+    }
   });
 
   it('exports the wired manifest keys + Kenney frames the renderer stamps', () => {
@@ -239,7 +202,7 @@ describe('resolveDoorRenderMode', () => {
     // un-wire a door variant or swap the open/closed frames.
     expect(K).toEqual({
       closedHorizontal: 'tile-door-v1-var-9',
-      closedVertical: 'tile-door-side-v1-var-0',
+      closedVertical: 'tile-door-sideon-v1-var-0',
       openHorizontal: 'tile-door-open-v1-var-0',
       openVertical: 'tile-door-open-side-v1-var-0',
     });
