@@ -29,7 +29,7 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
     }),
     reachedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
     clearedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
-    booleans: fc.array(fc.boolean(), { minLength: 12, maxLength: 12 }),
+    booleans: fc.array(fc.boolean(), { minLength: 13, maxLength: 13 }),
   })
   .map((value) => {
     const empty = createEmptyAchievementFactSnapshot();
@@ -65,6 +65,7 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
         allPresentFamiliesFriendly: value.booleans[9]!,
         allPresentFamiliesEngagedInCombat: value.booleans[10]!,
         allPresentFamiliesNeutralOrBetter: value.booleans[11]!,
+        allPresentFamilyBossesEngaged: value.booleans[12]!,
       },
       questIds: value.questIds,
       completedQuestIds: value.completedQuestIds,
