@@ -1,5 +1,16 @@
 [
   {
+    "commit": "20ae36e93978a5d423dfedde672ec2c1691057bf",
+    "commitDate": "2026-07-30T17:43:13Z",
+    "commitSubject": "fix(terrain): restore TREE to wall mask; correct ADR/handoff attribution (#2382)",
+    "capturedAt": "2026-07-30T18:50:58.337Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30568080672",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/20ae36e93978a5d423dfedde672ec2c1691057bf.json"
+  },
+  {
     "commit": "abb949bc2f8afacaedc1c70ad7c7e612c27bff19",
     "commitDate": "2026-07-30T17:06:37Z",
     "commitSubject": "feat(sprites): genuinely side-on E/W closed door art (N/S taller + E/W open findings reported, not shipped) (#2375)",
