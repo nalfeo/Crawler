@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bcb066801baa1ba39b983d2b6ea81e2f4ba40df2",
+    "commitDate": "2026-07-30T22:26:53Z",
+    "commitSubject": "Enforce player-visible acquisition seams and Floor 2 headless equipment invariants (#2368)",
+    "capturedAt": "2026-07-30T23:35:13.131Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30587809474",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/bcb066801baa1ba39b983d2b6ea81e2f4ba40df2.json"
+  },
+  {
     "commit": "a1d0296abb1acd30a841b12dba15597df4c27f6c",
     "commitDate": "2026-07-30T21:42:41Z",
     "commitSubject": "feat(ai): eager maintenance tick — runner claims rewards and equips bag items outside settlement (#2390)",
