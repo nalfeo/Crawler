@@ -44,12 +44,19 @@ function makeFloor2World(runKey = RUN_KEY): { world: GameWorld; playerEid: numbe
   return { world, playerEid };
 }
 
-/** Drive a Floor 2 trash kill so the real achievement tick sees totalKills >= 1. */
+/** Drive a Floor 2 trash kill so the real achievement tick sees totalKills >= 1.
+ *
+ * Two families are present but only one has kills, so `allPresentFamiliesEngagedInCombat`
+ * is false and "Scorched Earth" (which requires all present families engaged) does not
+ * fire. With one kill, both `floor2-field-kit` (totalKills >= 1) and `floor2-made-an-enemy`
+ * (familiesEngagedInCombatCount >= 1) unlock simultaneously — both are tier1 with a
+ * single equipment instance, for a deterministic total of 2 instances.
+ */
 function seedFloor2Kill(world: GameWorld, kills = 1): void {
   world.floorId = 'floor2';
   world.floorExtendedState = {
     familyState: {
-      presentFamilies: [asFamilyId('mirekin')],
+      presentFamilies: [asFamilyId('mirekin'), asFamilyId('ironbark')],
       contestedResource: asResourceId('glimmercap'),
       betrayerFlag: false,
       trashKillsByFamily: new Map([[asFamilyId('mirekin'), kills]]),
@@ -71,7 +78,9 @@ describe('Floor 2 reward bundle — real unlock/claim pipeline (observe real art
     expect(bundle!.tier).toBe('tier1');
     expect(bundle!.instanceKeys).toHaveLength(1);
     const instanceCountAfterUnlock = listGeneratedEquipmentInstances(world).length;
-    expect(instanceCountAfterUnlock).toBe(1);
+    // Two tier1 achievements fire with the first kill: floor2-field-kit (totalKills >= 1)
+    // and floor2-made-an-enemy (familiesEngagedInCombatCount >= 1), one instance each.
+    expect(instanceCountAfterUnlock).toBe(2);
     const bundleKeys = [...bundle!.instanceKeys];
 
     // Claim transfers the bundle to the player's bag WITHOUT invoking the

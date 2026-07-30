@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "floor2-achievement-content",
+  "task_title": "Floor 2 achievement content",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck (gpt-5.4, high effort) red-teamed the fact-derivation design. Alt A: derive facts from raw Map/Set .size on floor2Scenario state (original design) - rejected because those maps are eagerly pre-seeded for every present family at floor init (not lazily populated on real player action), so size-based counts unlock achievements without gameplay. Alt B: keep .size but add a new separate tracking field inside floor2Scenario.ts - rejected as unnecessary scope creep into a sibling-owned file when the existing per-family state (started flag, kills count) already distinguishes real progress from init scaffolding. Chosen: filter existing per-family entries on their already-present started===true / kills>0 discriminator computed entirely in achievementSystem.ts, no sibling-file edits needed. divergence=minor: the review pruned a threshold/derivation defect, no re-architecture. 6 concerns: (1) familyBossEncounterCount used raw .size over eagerly-seeded not-started boss encounters - FIXED, filtered on started===true, regression test added ('excludes not-yet-started boss encounters'). (2) familiesEngagedInCombatCount used raw .size over eagerly-seeded 0-kill entries - FIXED, filtered on kills>0, regression test added and one pre-existing buggy test corrected. (3) Court Favorite hardcoded a >=3 threshold but Floor 2 can spawn 3 OR 4 present families - FIXED, added a new allPresentFamiliesFriendly boolean fact computed dynamically against presentFamilies.length, regression test covers 3-family-all-friendly, 4-family-partial (guards the old bug), and 4-family-all-friendly. (4) 'Off This Floor' achievement rules had no explicit phase and defaulted to 'tick', but confirmFloor2StairDescend only evaluates the 'run_end_clear' phase right before flipping world.state to 'safe_room' (which then gates the entire tick pipeline off per MainGameScene.ts's world.state!=='playing' early-return) - FIXED, added phase:run_end_clear to both unlockRules, regression test proves tick-phase evaluation does NOT unlock it while run_end_clear-phase evaluation DOES. (5) achievementSystem.ts hardcodes the broker-intro-complete goal-ID string instead of importing floor2Scenario's exported constant - investigated: importing it would create a circular import, since floor2Scenario.ts already imports evaluateAchievementUnlocksForPhase from achievementSystem.ts. Kept the string literal and strengthened the explanatory comment instead - addressed via documented reasoning, not a code change (no functional defect). (6) JSON catalog validation could be stricter (suggestion only) - acknowledged and deferred as out-of-scope hardening, noted in the handoff; not a defect in current behavior."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Reviewer's only finding was that the 4 bug fixes existed only as uncommitted working-tree changes at the moment it started reviewing (branch HEAD at review start still had all 4 pre-fix bugs). The fixes were committed (d87d8a7c8) concurrently with the review run; git diff main...HEAD now includes achievementSystem.ts, achievements.ts, achievements.floor2.json, achievement-system.test.ts, and achievement-facts-properties.test.ts with the fixes present. No other findings: floor2Scenario.ts untouched, all 36 IDs unique, no reward-rarity violations, run-global achievements reference only allowlisted facts, quest ID literals match constants, layer boundaries clean."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Three parallel independent-model code-review agents ran against the post-code_review-round-1 diff. mcr-sonnet (claude-sonnet-4.6) found floor2-scorched-earth's familiesEngagedInCombatCount>=4 rule unreachable on the majority-case (60%) 3-family roster - same root-cause class as the already-fixed Court Favorite bug, missed on this sibling achievement. mcr-codex (gpt-5.3-codex) found floor2-double-agent's hasBetrayedAlly fact (driven by familyState.betrayerFlag) permanently unreachable in production - betrayerFlag is only ever set true inside src/labs/family-territory-lab/index.ts (dev sandbox, never run in production); floor2Scenario.ts (sibling-owned, not touched) only ever initializes it false. mcr-codex and mcr-gemini (gemini-3.1-pro-preview) both independently flagged ~25 directorFlavor entries running shorter than flavor.instructions.md's sentence-count-by-difficulty contract. Adjudication (claude-opus-4.8): all 3 confirmed via direct code reading, not accepted at face value. Fixes: (1) added a new allPresentFamiliesEngagedInCombat boolean fact mirroring the existing allPresentFamiliesFriendly dynamic-threshold pattern, rewired floor2-scorched-earth's unlockRules from a fixed >=4 numberCompare to this boolean, with dynamic unlockCriteria/details text; (2) replaced the dead betrayerFlag read with a new hasBetrayedFriendlyFamily() helper deriving betrayal from already-tracked real signals (a present family currently in the 'friendly' relation band per bandFor/getRelation AND with trashKillsByFamily>0) - no sibling-file edits, no new tracking, both facts/helpers added only in achievementSystem.ts/achievements.ts; (3) measured floor1's actual per-difficulty sentence-count practice (basic avg 4.0, standard avg 4.9, hard avg 8.3) versus floor2's original much-shorter text (basic avg 1.2, standard avg 1.9, hard avg 3.3) and rewrote 35 of 36 directorFlavor entries to land at or above floor1's real practice (basic ~3, standard ~4, hard ~6) with genuine new production-crew jokes/details, not mechanical padding. Regression tests added/updated in tests/game/achievement-system.test.ts (positive/negative cases for the new betrayal derivation) and tests/property/achievement-facts-properties.test.ts (bumped boolean-fact arbitrary from 10 to 11 facts). A 4th, lower-severity finding from mcr-sonnet (a doc comment on the hand-duplicated broker-intro-complete goal-flag string overstated what the existing fact-computation test actually guarded) was also fixed: exported the constant for test-only use and added a dedicated drift-guard test importing both achievementSystem.ts's and floor2Scenario.ts's copies and asserting equality, with the comment corrected to point at that specific test rather than the general fact test. All fixes verified via npm run typecheck (clean) and the full targeted achievement test suite (5 files, 60 tests, all passing) plus npm run verify:fast.",
+          "valid_count": 3
+        }
+      ]
+    }
+  }
+}

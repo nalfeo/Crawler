@@ -1,0 +1,1048 @@
+[
+  {
+    "id": "floor2-field-kit",
+    "floor": 2,
+    "title": "Floor 2 Field Kit",
+    "popupText": "New achievement: Floor 2 Field Kit!",
+    "unlockCriteria": "Defeat your first enemy on Floor 2.",
+    "details": "Unlock when you defeat your first enemy on Floor 2 to receive a starter equipment piece.",
+    "directorFlavor": "The prop department scraped together a starter kit from the discount bin — one piece, guaranteed Common, no returns accepted. It's not much, but it beats walking this floor in whatever you had on when the elevator doors opened. Wardrobe is billing this as a costume change; the ledger is billing it as inventory management, and frankly the ledger wins that argument. It's exactly the kind of small procedural milestone the audience quietly loves right before things get serious. Enjoy it — it's the last thing on this floor that comes free.",
+    "iconId": "achv-floor2-field-kit-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "floor2-second-wind",
+    "floor": 2,
+    "title": "Floor 2 Second Wind",
+    "popupText": "New achievement: Floor 2 Second Wind!",
+    "unlockCriteria": "Defeat 10 enemies on Floor 2.",
+    "details": "Unlock by defeating 10 enemies on Floor 2 to receive a Common-or-Uncommon equipment piece.",
+    "directorFlavor": "The audience is warming up, and so, apparently, is the prop budget. Ten kills in and the discount-bin phase is officially behind you — this one might actually roll Uncommon. The Quartermaster's ledger notes the uptick with visible enthusiasm, which is more than it's shown you all season. Sponsors love a contestant with momentum; it's cheaper to advertise than a comeback story. Keep this pace and wardrobe might finally admit they've had better stock in the back the whole time.",
+    "iconId": "achv-floor2-second-wind-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 10
+      }
+    ]
+  },
+  {
+    "id": "floor2-veteran-cast",
+    "floor": 2,
+    "title": "Floor 2 Veteran Cast",
+    "popupText": "New achievement: Floor 2 Veteran Cast!",
+    "unlockCriteria": "Defeat 30 enemies on Floor 2.",
+    "details": "Unlock by defeating 30 enemies on Floor 2 to receive an Uncommon-or-Common equipment piece.",
+    "directorFlavor": "Thirty kills in, and you've earned top billing on a floor that wasn't expecting you to still be reading the credits. The prop department's best non-Rare offering is yours — no strings, no more discount-bin excuses, no more pretending Common is charming. The trash mobs stopped being a storyline several segments ago; now they're just a body count with production value behind it. Whatever the families currently think of you, the audience made up its mind a while back, and it's not subtle about it. The territory patrols have started routing around your usual haunts, which the writers insist is a coincidence. Keep this up and the sponsors start asking for your name spelled correctly, on the record, for once. That's the real achievement here. Every kill past ten was the floor recalibrating what it thought you were, and by kill thirty it clearly got the memo.",
+    "iconId": "achv-floor2-veteran-cast-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 30
+      }
+    ]
+  },
+  {
+    "id": "floor2-first-friend",
+    "floor": 2,
+    "title": "Making Friends",
+    "popupText": "New achievement: Making Friends!",
+    "unlockCriteria": "Get one Floor 2 family to neutral or better standing.",
+    "details": "Unlock once any Floor 2 family reaches neutral standing (50+). Positive emergent events — tribute runs, protection agreements, picking sides — raise families from the default hostile standing into neutral range.",
+    "directorFlavor": "One family actually likes you. Not ‘tolerates,’ not ‘hasn't ordered a hit yet’ — likes. Our focus groups are stunned; they had the under on this at zero. Keep it up and we might have to invent a new sponsorship category.",
+    "iconId": "achv-floor2-first-friend-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familiesAtNeutralOrBetterCount",
+        "op": ">=",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "floor2-inner-circle",
+    "floor": 2,
+    "title": "Inner Circle",
+    "popupText": "New achievement: Inner Circle!",
+    "unlockCriteria": "Get two Floor 2 families to neutral or better standing at once.",
+    "details": "Unlock once two separate Floor 2 families reach neutral standing simultaneously. Requires multiple positive emergent events to fire during the same run.",
+    "directorFlavor": "Two families, both Friendly, both convinced you're on their side. Diplomatically this is either genius or a house of cards waiting for one bad trash-pull to knock it over. The writers' room has already drafted three betrayal arcs just in case, because they've seen this show before. Sponsors love a coalition; they love the collapse even more, and they're patient people. Enjoy the goodwill while the territory board still believes in it.",
+    "iconId": "achv-floor2-inner-circle-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familiesAtNeutralOrBetterCount",
+        "op": ">=",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "id": "floor2-court-favorite",
+    "floor": 2,
+    "title": "Court Favorite",
+    "popupText": "New achievement: Court Favorite!",
+    "unlockCriteria": "Get every present Floor 2 family to neutral or better standing simultaneously.",
+    "details": "Unlock once every family present on Floor 2 is at neutral standing or above at the same time. A rare outcome requiring the right sequence of positive emergent events across all families on the roster.",
+    "directorFlavor": "Every family on the floor, Friendly, all at once. Somewhere the actuaries who model contestant survival odds just quietly deleted a spreadsheet and asked for a new one. This isn't supposed to be possible — the whole territory system assumes at least one grudge is always active, and the tuning docs say so in bold. We're airing it anyway, because it's genuinely the strangest thing we've filmed all season, and because the sponsors insisted the trophy segment needed an underdog story that isn't about dying for once. The territory director has stopped issuing hostile patrol orders entirely, which some of our engineers are calling a bug and others are calling a miracle. Enjoy the goodwill; the writers are already looking for a reason to end it, because unopposed peace does not test well with focus groups. It won't last. It never does.",
+    "iconId": "achv-floor2-court-favorite-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "allPresentFamiliesNeutralOrBetter",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-made-an-enemy",
+    "floor": 2,
+    "title": "Burned a Bridge",
+    "popupText": "New achievement: Burned a Bridge!",
+    "unlockCriteria": "Land kills against the forces of one Floor 2 family.",
+    "details": "Unlock once you have player-attributed kills on any Floor 2 family's trash mobs. You've made your first enemy — they noticed.",
+    "directorFlavor": "One family officially hates your guts, and the territory patrols are already rerouting to make sure you know it. Honestly, half the production crew was rooting for a little chaos this episode, and you delivered right on schedule. The relationship system logs it in permanent ink; there's no diplomacy path back from Hate on this floor, only avoidance and regret. Somewhere in the settlement, that family's name is being crossed off a very short list of contestants they'll tolerate. Congratulations — you're now somebody's problem.",
+    "iconId": "achv-floor2-made-an-enemy-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familiesEngagedInCombatCount",
+        "op": ">=",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "floor2-most-wanted",
+    "floor": 2,
+    "title": "Most Wanted",
+    "popupText": "New achievement: Most Wanted!",
+    "unlockCriteria": "Land kills against the forces of two or more Floor 2 families.",
+    "details": "Unlock once you have player-attributed kills on the trash mobs of two or more separate Floor 2 families. The territory board has multiple entries under your name.",
+    "directorFlavor": "Two families want you dead at the same time, and neither one is willing to wait in line for the privilege. This is the exact scenario the family-AI team warned us was 'theoretically survivable,' with the emphasis doing a lot of load-bearing work in that sentence. The territory director is having the time of its life reassigning patrols to box you in from two directions at once. Legal has asked us to stop calling this segment 'the gauntlet,' so we're calling it 'audience favorite content' instead — same thing, better clearance. Two hostile factions means two sets of grudge-fueled reinforcements, and neither of them checks with the other before showing up. Sleep with one eye open, and maybe don't linger near the contested resource unless you enjoy being flanked. Either way, the ratings have never been better. The territory board hasn't seen two active target flags at once since the stress-test build, and they're treating this like a training scenario they didn't expect to run for real.",
+    "iconId": "achv-floor2-most-wanted-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familiesEngagedInCombatCount",
+        "op": ">=",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "id": "floor2-double-agent",
+    "floor": 2,
+    "title": "Double Agent",
+    "popupText": "New achievement: Double Agent!",
+    "unlockCriteria": "Keep a family at neutral standing on paper while their trash mobs keep turning up dead by your hand.",
+    "details": "Unlock when any family currently at neutral or better standing also has at least one player-attributed trash kill recorded against them. Positive events raised their standing; you've been killing their people anyway.",
+    "directorFlavor": "You've still got a family listed as Friendly in the settlement's books, and their trash mobs are still turning up dead with your fingerprints on it. That's not strategy, that's a season arc, and the writers' room already gave you a nickname we can't say on a family-friendly broadcast. The betrayed family hasn't caught on yet — their reputation ledger hasn't caught up to the body count — but it will, and when it does the grudge sticks for good. Somewhere a sponsor just doubled their ad buy for the reunion episode. Diplomacy and violence were never supposed to run on separate clocks, but here you are, doing both at once and hoping nobody cross-references the paperwork. Enjoy it while the ledger still says Friendly.",
+    "iconId": "achv-floor2-double-agent-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "hasBetrayedAlly",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-boss-sighted",
+    "floor": 2,
+    "title": "Meet the Boss",
+    "popupText": "New achievement: Meet the Boss!",
+    "unlockCriteria": "Enter a family's boss den.",
+    "details": "Unlock the first time you engage a family boss encounter in its den.",
+    "directorFlavor": "You found the den, and the den found you right back. Whether you walk out again is a separate achievement entirely — this one's just for showing up. The family boss doesn't care that you're new to the neighborhood; it's already decided how this goes. Consider this the opening shot, not the highlight reel.",
+    "iconId": "achv-floor2-boss-sighted-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familyBossEncounterCount",
+        "op": ">=",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "floor2-den-breaker",
+    "floor": 2,
+    "title": "Den Breaker",
+    "popupText": "New achievement: Den Breaker!",
+    "unlockCriteria": "Defeat one family boss.",
+    "details": "Unlock when you defeat your first Floor 2 family boss.",
+    "directorFlavor": "One family boss down, decapitated in the most literal sense our compliance department allows us to say on air. The territory board just lost a name, and the remaining families noticed within the hour. Don't get comfortable — a leaderless family doesn't stop patrolling, it just gets meaner about it. The Quartermaster's chest-loot ledger updates itself the moment the body hits the floor, which the accountants find deeply satisfying. One den down, however many left standing are still deciding whether you're a threat or an opportunity.",
+    "iconId": "achv-floor2-den-breaker-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familyBossesDefeated",
+        "op": ">=",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "floor2-den-crusher",
+    "floor": 2,
+    "title": "Den Crusher",
+    "popupText": "New achievement: Den Crusher!",
+    "unlockCriteria": "Defeat two family bosses.",
+    "details": "Unlock when you defeat two Floor 2 family bosses in the same run.",
+    "directorFlavor": "Two family bosses, two vacant thrones, and a territory map that's already redrawing itself without asking permission. The remaining families are recalculating whether 'diplomacy' is suddenly a better strategy than 'territorial aggression,' and the smart ones are leaning toward diplomacy. Our writers were hoping for a longer power struggle, but a well-timed decapitation makes for great television regardless of the pacing notes. The chest-loot ledger has processed two boss-tier rewards now, and frankly so has our production budget for the finale. Whatever's left of the territory board is meeting in a room with fewer chairs than it used to have. Keep going and there won't be a board left to redraw at all. That's not a threat, that's just math. Two down doesn't mean the floor is done with you — the remaining families are quieter than they should be, and quiet is where the third act usually starts.",
+    "iconId": "achv-floor2-den-crusher-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familyBossesDefeated",
+        "op": ">=",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "id": "floor2-family-annihilator",
+    "floor": 2,
+    "title": "Family Annihilator",
+    "popupText": "New achievement: Family Annihilator!",
+    "unlockCriteria": "Defeat three or more family bosses.",
+    "details": "Unlock when you defeat three or more Floor 2 family bosses in the same run.",
+    "directorFlavor": "Three family bosses, and counting. There is no territory board left to redraw — you redrew it with a body count, and the remaining survivors have stopped sending patrols and started sending prayers instead. Our legal team wants it on record that this was not the intended difficulty curve for this floor; the balance team insists it absolutely was, and neither side is backing down. Whatever families are technically still present are keeping their heads down and their territory claims quiet. The audience numbers for this segment are the best we've had all season, and the sponsors are already asking whether you'll do it again next week. You won't. Nobody does this twice, and honestly, nobody should have to. The floor's own systems are running internal audits trying to figure out what a 'balanced' encounter even looks like with this many variables removed from it.",
+    "iconId": "achv-floor2-family-annihilator-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familyBossesDefeated",
+        "op": ">=",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "id": "floor2-settlement-found",
+    "floor": 2,
+    "title": "Civilization, Sort Of",
+    "popupText": "New achievement: Civilization, Sort Of!",
+    "unlockCriteria": "Find the Floor 2 settlement.",
+    "details": "Unlock by completing the quest to locate the Floor 2 settlement.",
+    "directorFlavor": "You found the one patch of this floor with a roof, a bar, and people who won't immediately try to kill you. Production insisted the settlement have working lighting; the caves budget did not survive that negotiation. It's not much, but after everything else on this floor, 'not actively hostile' counts as luxury. Enjoy the ambience while it lasts.",
+    "iconId": "achv-floor2-settlement-found-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "allQuestsComplete",
+        "questIds": ["floor2-find-settlement"]
+      }
+    ]
+  },
+  {
+    "id": "floor2-meet-the-broker",
+    "floor": 2,
+    "title": "Meet the Broker",
+    "popupText": "New achievement: Meet the Broker!",
+    "unlockCriteria": "Complete the Broker's introduction at the settlement.",
+    "details": "Unlock once you finish the Broker's introduction dialogue at the settlement.",
+    "directorFlavor": "You've met the Broker, the settlement's resident middleman for information nobody asked for and favors nobody wanted. Their intro monologue runs long by design — the contract stipulates full screen time regardless of how impatient you look. Somewhere behind that counter is a genuine plot lever, buried under three minutes of small talk about territory gossip. Consider the introduction the toll; everything useful comes after it.",
+    "iconId": "achv-floor2-meet-the-broker-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "hasMetBroker",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-way-out",
+    "floor": 2,
+    "title": "Found the Way Out",
+    "popupText": "New achievement: Found the Way Out!",
+    "unlockCriteria": "Unlock the Floor 2 exit staircase.",
+    "details": "Unlock once the Floor 2 exit staircase becomes accessible.",
+    "directorFlavor": "The exit is open. Nobody's making you use it yet — the trash mobs still need thinning, the families still need managing, and frankly the ratings are better while you're still down here. But the door's unlocked, and that's worth something on a floor that's tried this hard to keep you occupied. Consider it a professional courtesy from a production that does, occasionally, want you to survive. Use it whenever you're ready; we'll still be filming.",
+    "iconId": "achv-floor2-way-out-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "staircaseUnlocked",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-floor-cleared",
+    "floor": 2,
+    "title": "Off This Floor",
+    "popupText": "New achievement: Off This Floor!",
+    "unlockCriteria": "Complete the quest to leave Floor 2 and descend the staircase.",
+    "details": "Unlock by completing the leave-floor quest and confirming descent past Floor 2.",
+    "directorFlavor": "You did it — diplomacy, decapitation, or a healthy mix of both, and you're still standing at the bottom of the stairs looking up. The family politics reset behind you like nothing ever happened, which is either merciful or deeply insulting depending on how much blood you spilled to get here. Whatever alliances you built, whatever grudges you earned, none of it follows you up the staircase — the ledger closes the moment you confirm the descent. The production team has already started scouting Floor 3 for hazards; you get maybe one commercial break to enjoy this before the next set of problems introduces itself. The reunion special will absolutely bring up whichever family you betrayed, on camera, in detail. It always does — that's what reunion specials are for. Enjoy the descent while it lasts; it's the quietest this run gets. The staircase was the goal; whatever you did to deserve access to it is already becoming someone else's season-three cold open.",
+    "iconId": "achv-floor2-floor-cleared-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "allQuestsComplete",
+        "questIds": ["floor2-leave-floor"],
+        "phase": "run_end_clear"
+      },
+      {
+        "type": "booleanIs",
+        "fact": "runClearedFloor",
+        "value": true,
+        "phase": "run_end_clear"
+      }
+    ]
+  },
+  {
+    "id": "floor2-two-front-war",
+    "floor": 2,
+    "title": "Two-Front War",
+    "popupText": "New achievement: Two-Front War!",
+    "unlockCriteria": "Fight trash mobs from two different families.",
+    "details": "Unlock once you've landed player-attributed trash kills against two different Floor 2 families.",
+    "directorFlavor": "Two families' worth of trash mobs, and neither faction seems to have noticed the other one is also mad at you. Efficient, if not exactly diplomatic, and the territory director is thrilled the patrol routes are finally earning their keep. Somewhere in the settlement, two separate grudges are being logged under your name without either family comparing notes. Keep this up and you'll run out of factions before you run out of enemies. That's the kind of math the writers' room likes to see.",
+    "iconId": "achv-floor2-two-front-war-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familiesEngagedInCombatCount",
+        "op": ">=",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "id": "floor2-total-war",
+    "floor": 2,
+    "title": "Total War",
+    "popupText": "New achievement: Total War!",
+    "unlockCriteria": "Fight trash mobs from three different families.",
+    "details": "Unlock once you've landed player-attributed trash kills against three different Floor 2 families.",
+    "directorFlavor": "Three families' worth of trash mobs on your kill sheet, simultaneously, with zero coordination on your end and apparently none on theirs either. At this point you're not picking fights so much as running your own private war on multiple fronts, and the territory system is straining to keep the patrol maps updated in real time. The good news is nobody's coordinating against you yet — the family-AI team confirms that's still theoretically possible, just not observed. The bad news is that's exactly the kind of thing that changes the moment we cut to commercial. Three grudges running in parallel is more than most contestants manage to earn on purpose. The territory board doesn't have a clean word for what you're doing to it. Neither do we, honestly. Three grudges, three patrols, three separate notepads the territory director is now trying to reconcile into a single tactical picture — good luck to all of them.",
+    "iconId": "achv-floor2-total-war-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "familiesEngagedInCombatCount",
+        "op": ">=",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "id": "floor2-scorched-earth",
+    "floor": 2,
+    "title": "Scorched Earth",
+    "popupText": "New achievement: Scorched Earth!",
+    "unlockCriteria": "Fight trash mobs from every family present on Floor 2.",
+    "details": "Unlock once you've landed player-attributed trash kills against every family present on the floor — three or four, whatever the roster dealt you, all of it.",
+    "directorFlavor": "Every family present on the floor has trash-mob blood on the ledger with your name attached — three or four, whatever the roster dealt you, all of it. There is no faction left to make peace with, no territory left uncontested, no patrol route left that doesn't have you flagged as an active threat. The relationship system's tuning docs did not model a contestant hostile to literally everyone present at once — we checked, twice. The audience adores this kind of scorched-earth run precisely because it's unsustainable; someone always has to actually win the floor eventually, and right now that someone is doing it the hard way. The territory board has stopped drawing lines entirely, because every line currently points at you. Whatever alliances existed before you arrived, they don't anymore. That's not a compliment, exactly, but it's not not one either. The achievement tracker logged it under 'impressive,' but the production team's private notes use a different word entirely.",
+    "iconId": "achv-floor2-scorched-earth-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "allPresentFamiliesEngagedInCombat",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-safe-harbor",
+    "floor": 2,
+    "title": "Safe Harbor",
+    "popupText": "New achievement: Safe Harbor!",
+    "unlockCriteria": "Take shelter in a Floor 2 safe room.",
+    "details": "Unlock the first time you're inside a Floor 2 safe room.",
+    "directorFlavor": "Four walls, no families, no trash mobs, no minimap dread — just quiet, for once. It won't last; nothing on this floor lasts. But the production insurance department insists we acknowledge every safe room the moment you find one, on the record, for liability reasons. Breathe while you can.",
+    "iconId": "achv-floor2-safe-harbor-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "floor2SafeRoomVisited",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-suited-up",
+    "floor": 2,
+    "title": "Suited Up",
+    "popupText": "New achievement: Suited Up!",
+    "unlockCriteria": "Unlock the equipment system on Floor 2.",
+    "details": "Unlock once the equipment system is available to you on Floor 2.",
+    "directorFlavor": "Slots, sockets, and stat rolls, all yours now. The wardrobe department is thrilled to finally have something to do besides hand out starter gear nobody asked for. Every piece from here on rolls its own rarity, its own stats, its own story — no more discount-bin defaults. Try not to lose it all to the first ambush; wardrobe doesn't do refunds.",
+    "iconId": "achv-floor2-suited-up-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "equipmentUnlocked",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-pocket-change",
+    "floor": 2,
+    "title": "Pocket Change",
+    "popupText": "New achievement: Pocket Change!",
+    "unlockCriteria": "Carry 150 gold.",
+    "details": "Unlock once your gold balance reaches 150.",
+    "directorFlavor": "150 gold, burning a hole in your inventory. The sponsors would like to remind you the Quartermaster accepts all major currencies, including the ones you looted off corpses that used to be somebody's cousin. It's not a fortune, but it's the first number on this floor that feels like progress instead of survival. Spend it or don't; either way, the ledger's watching.",
+    "iconId": "achv-floor2-pocket-change-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "playerGold",
+        "op": ">=",
+        "value": 150
+      }
+    ]
+  },
+  {
+    "id": "floor2-comfortable",
+    "floor": 2,
+    "title": "Comfortable",
+    "popupText": "New achievement: Comfortable!",
+    "unlockCriteria": "Carry 300 gold.",
+    "details": "Unlock once your gold balance reaches 300.",
+    "directorFlavor": "300 gold and no immediate plans to spend it. The finance department is impressed; the writers are bored — hoarding doesn't make good television, but the sponsors love a contestant with liquidity regardless of what the ratings say. Keep it up and the Quartermaster might start recognizing you by name instead of by threat level, which is the closest thing to respect that stall gets to offer. Somewhere a production accountant is quietly filing this under 'fiscally responsible contestant,' a category that did not exist before this season. Don't let it go to your head; the gold doesn't fight for you.",
+    "iconId": "achv-floor2-comfortable-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "playerGold",
+        "op": ">=",
+        "value": 300
+      }
+    ]
+  },
+  {
+    "id": "floor2-deep-pockets",
+    "floor": 2,
+    "title": "Deep Pockets",
+    "popupText": "New achievement: Deep Pockets!",
+    "unlockCriteria": "Carry 500 gold.",
+    "details": "Unlock once your gold balance reaches 500.",
+    "directorFlavor": "500 gold in reserve, sitting there unspent while the Quartermaster's stock rotates past you like a store you can't be bothered to enter. Somewhere a production accountant is quietly furious that a contestant is out-saving the actual sponsors on their own show. We'd call this fiscal responsibility if we thought for one second you planned it that way, but the ledger doesn't ask motive, just balance. Either way, the number's real, the gold is yours, and the audience loves watching a hoard get bigger even when nothing happens with it. The Quartermaster has started quoting you prices nobody else gets, on the theory that you can clearly afford them. You still haven't bought anything. That, more than the number itself, is the achievement. At 500 gold unspent, you're not playing the economy anymore — you are the economy, and the Quartermaster is starting to resent the power imbalance.",
+    "iconId": "achv-floor2-deep-pockets-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "playerGold",
+        "op": ">=",
+        "value": 500
+      }
+    ]
+  },
+  {
+    "id": "floor2-new-tricks",
+    "floor": 2,
+    "title": "New Tricks",
+    "popupText": "New achievement: New Tricks!",
+    "unlockCriteria": "Unlock 2 abilities.",
+    "details": "Unlock once you've unlocked 2 passive abilities.",
+    "directorFlavor": "Two abilities unlocked, and the skill tree finally looks like it's going somewhere instead of just sitting there judging you. The stunt coordinators appreciate the extra options; it means fewer boring fight loops for the highlight reel. It's a small kit, but it's a kit, and that's more than you had an hour ago. Keep pulling the thread.",
+    "iconId": "achv-floor2-new-tricks-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "unlockedAbilityCount",
+        "op": ">=",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "id": "floor2-growing-arsenal",
+    "floor": 2,
+    "title": "Growing Arsenal",
+    "popupText": "New achievement: Growing Arsenal!",
+    "unlockCriteria": "Unlock 3 abilities.",
+    "details": "Unlock once you've unlocked 3 passive abilities.",
+    "directorFlavor": "Three abilities deep now, and the fight choreography team has officially run out of excuses to call your kit 'basic.' Sponsors are asking whether the next one comes with a cooldown timer they can put on a billboard. Probably, knowing this production. The build is starting to look intentional instead of accidental, which the writers find suspicious in a good way. Keep unlocking; the highlight reel has opinions about variety.",
+    "iconId": "achv-floor2-growing-arsenal-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "unlockedAbilityCount",
+        "op": ">=",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "id": "floor2-loaded-toolkit",
+    "floor": 2,
+    "title": "Loaded Toolkit",
+    "popupText": "New achievement: Loaded Toolkit!",
+    "unlockCriteria": "Unlock 5 abilities.",
+    "details": "Unlock once you've unlocked 5 passive abilities.",
+    "directorFlavor": "Five abilities unlocked, which is roughly four more than the balance team was comfortable with when they first sketched this floor. The kit's genuinely versatile now — there's a build-of-the-week segment forming in the edit bay whether you asked for one or not. The families have started adjusting their tactics around whatever you've been doing, which is either flattering or a very bad sign depending on how the next den goes. Territory patrols that used to engage on sight are starting to hesitate, and hesitation is not a trait this floor's AI was designed to have. Either way, the production loves a contestant who can no longer be summarized in one sentence. Five abilities is the point where 'contestant' starts sounding like 'threat' in the writers' notes. Wear it well. Five abilities is the loadout they write patch notes about — the question is whether you'll have unlocked the sixth before those notes go live.",
+    "iconId": "achv-floor2-loaded-toolkit-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "unlockedAbilityCount",
+        "op": ">=",
+        "value": 5
+      }
+    ]
+  },
+  {
+    "id": "floor2-sharpened-edge",
+    "floor": 2,
+    "title": "Sharpened Edge",
+    "popupText": "New achievement: Sharpened Edge!",
+    "unlockCriteria": "Reach skill level 8 in any skill.",
+    "details": "Unlock once any single skill reaches level 8.",
+    "directorFlavor": "Level 8 in a single skill is the kind of specialization our balance team keeps insisting isn't achievable this early, and yet here we are, watching one skill line do most of the actual work while the rest of your kit rides along for the highlight reel. The families have noticed the pattern too — the smart ones are already adjusting their approach angles to account for whatever you've been leaning on. We'd tell you to diversify, but frankly the ratings prefer a contestant with one terrifyingly good trick over five mediocre ones spread thin. The skill tree doesn't usually let a single branch get this far this fast; the tuning docs have a note about it now. Keep sharpening — level 8 is a milestone, not a ceiling. Whatever this build is, it's working, and the territory board is starting to notice. Your skill log is going to make someone in the balance room either very proud or very uncomfortable, and neither reaction is unearned. The floor didn't plan for a contestant who spent this long in one lane, and that miscalculation is now entirely your advantage.",
+    "iconId": "achv-floor2-sharpened-edge-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "maxSkillLevel",
+        "op": ">=",
+        "value": 8
+      }
+    ]
+  },
+  {
+    "id": "floor2-built-different",
+    "floor": 2,
+    "title": "Built Different",
+    "popupText": "New achievement: Built Different!",
+    "unlockCriteria": "Spend 10 stat points.",
+    "details": "Unlock once you've spent 10 stat points.",
+    "directorFlavor": "Ten stat points committed, no refunds, no regrets we're aware of. The character sheet is starting to look like a build someone actually planned instead of one clicked at random between fights. The sponsors appreciate a contestant who invests; the writers appreciate that it gives them something concrete to point at when the next fight goes suspiciously well. Ten points is enough to feel, not enough to break anything — the balance team is watching closely either way. Keep spending; the sheet's not done yet.",
+    "iconId": "achv-floor2-built-different-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "spentStatPoints",
+        "op": ">=",
+        "value": 10
+      }
+    ]
+  },
+  {
+    "id": "floor2-run-body-count",
+    "floor": 2,
+    "scope": "current_run",
+    "title": "Body Count of the Season",
+    "popupText": "New achievement: Body Count of the Season!",
+    "unlockCriteria": "Defeat 60 enemies across the run.",
+    "details": "Unlock once your cumulative run-wide kill count reaches 60, tracked across every floor you've cleared.",
+    "directorFlavor": "60 kills and climbing, tallied across every floor you've touched this run — rats, slimes, trash mobs, the works, no floor left uncounted. The season highlight reel is going to need its own dedicated editor at this rate. Nobody's counting the ones that got away; we only track the ones who didn't. That's not a policy decision, that's just how the ledger works. Sixty is a real number for a run that isn't over yet.",
+    "iconId": "achv-floor2-run-body-count-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 60
+      }
+    ]
+  },
+  {
+    "id": "floor2-run-hoarders-ledger",
+    "floor": 2,
+    "scope": "current_run",
+    "title": "Hoarder's Ledger",
+    "popupText": "New achievement: Hoarder's Ledger!",
+    "unlockCriteria": "Accumulate a peak gold balance of 800 at any point in the run.",
+    "details": "Unlock once your gold balance reaches 800 at any point in the current run. Tracks the highest balance seen this run, so spending down does not prevent the unlock.",
+    "directorFlavor": "800 gold, all yours, all at once, at some point during this run. The Quartermaster's accountants have started a betting pool on whether you'll ever actually spend it, and the odds are not in your favor. The production would like to remind sponsors that hoarding is not, in fact, a strategy we designed for — it's just what happens when a contestant refuses to buy anything nice for themselves. Eight hundred gold sitting idle is a genuine milestone regardless of intent. Spend it or don't; the ledger's not judging. Much.",
+    "iconId": "achv-floor2-run-hoarders-ledger-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "peakGold",
+        "op": ">=",
+        "value": 800
+      }
+    ]
+  },
+  {
+    "id": "floor2-run-two-floor-gauntlet",
+    "floor": 2,
+    "scope": "current_run",
+    "title": "Two-Floor Gauntlet",
+    "popupText": "New achievement: Two-Floor Gauntlet!",
+    "unlockCriteria": "Clear two floors in the same run.",
+    "details": "Unlock once you've cleared two separate floors within the current run.",
+    "directorFlavor": "Two floors cleared, same contestant, same run, no do-overs and no floor-reset excuses to hide behind. The production loves this one specifically because it can't be gamed — you either survived the transition intact or you didn't, and there's no partial credit. Floor 1's rats and Floor 2's families have nothing in common except that you outlasted both of them on the same clock. The territory board doesn't even know Floor 1 existed; it just knows you showed up already dangerous. That's the whole achievement, really — you're still here, still moving, still the same contestant the run started with. Two floors down is two floors more than most of this season's cast managed. Keep going; the run isn't finished collecting evidence on you yet. The notes from Floor 1 are already filed under 'context' in the production archive; Floor 2 will get its own entry once the run concludes.",
+    "iconId": "achv-floor2-run-two-floor-gauntlet-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "clearedFloorCount",
+        "op": ">=",
+        "value": 2,
+        "phase": "run_end_clear"
+      }
+    ]
+  },
+  {
+    "id": "floor2-run-skill-of-the-season",
+    "floor": 2,
+    "scope": "current_run",
+    "title": "Skill of the Season",
+    "popupText": "New achievement: Skill of the Season!",
+    "unlockCriteria": "Reach skill level 10 in any skill, at any point in the run.",
+    "details": "Unlock once any single skill reaches level 10 at any point during the current run.",
+    "directorFlavor": "Level 10 in one skill, run-wide, with no floor reset anywhere to hide behind if it hadn't held up. The stunt team has officially built a highlight package around whatever you've been doing with it, unprompted, on their own time. Sponsors want the naming rights on the ability itself; we haven't decided if we're selling them yet, but the conversation is happening. The number's real, and so is the reputation you've built carrying it across an entire run instead of just one floor. Level 10 doesn't happen by accident — the tuning docs assume most builds plateau well before this. Whatever you've been doing, keep doing it. The highlight reel certainly isn't complaining. Run-wide skill 10 means every floor saw you at this level — nothing here was borrowed from the warm-up, and the archive is noting that for the record.",
+    "iconId": "achv-floor2-run-skill-of-the-season-placeholder",
+    "difficulty": "hard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier3",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "maxSkillLevel",
+        "op": ">=",
+        "value": 10
+      }
+    ]
+  },
+  {
+    "id": "floor2-run-fully-outfitted",
+    "floor": 2,
+    "scope": "current_run",
+    "title": "Fully Outfitted",
+    "popupText": "New achievement: Fully Outfitted!",
+    "unlockCriteria": "Unlock the equipment system, tracked for the rest of the run.",
+    "details": "Unlock once the equipment system is available and stays flagged for the remainder of the current run.",
+    "directorFlavor": "Equipment unlocked, and it's staying unlocked for the rest of the run — no floor transition takes this away from you now. The wardrobe department considers this the real season premiere, discount-bin era officially over for good. Everything from here on is yours to keep, rarity and all. That's not nothing on a run this long.",
+    "iconId": "achv-floor2-run-fully-outfitted-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "equipmentUnlocked",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-run-ability-collector",
+    "floor": 2,
+    "scope": "current_run",
+    "title": "Ability Collector",
+    "popupText": "New achievement: Ability Collector!",
+    "unlockCriteria": "Unlock 6 abilities across the run.",
+    "details": "Unlock once you've unlocked 6 passive abilities at any point in the current run.",
+    "directorFlavor": "Six abilities collected over the course of the run, run-wide and floor-agnostic, with none of it wiped when the floor changed under you. At this point the fight choreography team has stopped trying to predict what you'll do next and started just filming everything, just in case. The season's build-diversity metrics have never looked better, and frankly neither has our highlight reel. Six abilities across a full run is more kit than most contestants assemble in a single floor. Keep collecting; the reel has room for more.",
+    "iconId": "achv-floor2-run-ability-collector-placeholder",
+    "difficulty": "standard",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier2",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "unlockedAbilityCount",
+        "op": ">=",
+        "value": 6
+      }
+    ]
+  }
+]

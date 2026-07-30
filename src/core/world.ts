@@ -317,6 +317,13 @@ export interface GameWorld {
   spawnerArenaEverArmed: Set<number>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
   playerGold: number;
+  /**
+   * Running maximum gold balance seen this floor session. Updated by `achievementSystem`
+   * each tick so the "Hoarder's Ledger" run-global achievement can fire even after the
+   * player spends down to < 800.  Resets to 0 on floor load; the carried peak from
+   * previous floors is preserved in `achievements.carriedRunFacts.numberFacts.peakGold`.
+   */
+  peakGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
   floorMap: FloorMap | null;
   /**
@@ -657,6 +664,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     barriers: createBarrierRegistry(),
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
+    peakGold: 0,
     floorMap: null,
     floorId: '',
     floorScenario: null,
