@@ -83,17 +83,17 @@ function fovSystemReference(world: GameWorld): void {
     if (visibility <= 0) return;
     const tx = Math.floor(hx / sf);
     const ty = Math.floor(hy / sf);
-    const key = ty * tileMap.width + tx;
-    let seamBlocked = seamCache.get(key);
-    if (seamBlocked === undefined) {
-      seamBlocked = tileMap.hasBlockedCornerSeam(originTile.x, originTile.y, tx, ty);
-      seamCache.set(key, seamBlocked);
-    }
-    if (seamBlocked) return;
     if (!tileMap.isTransparent(tx, ty)) {
       // Whole-tile wall reveal: a seen opaque tile is revealed in full, not
       // only on the sub-tiles a ray landed on. Written naively here (nested
       // loop over per-sub-tile setters) against the optimized row-fill path.
+      //
+      // Opaque terminal tiles are exempt from the corner-seam check: the
+      // seam rule exists to stop a ray squeezing THROUGH a diagonal gap
+      // between two opaque tiles to see something BEYOND them, not to hide
+      // the opaque tile itself. Checking seam-blocking here would leave
+      // every room's interior corner block permanently unseen (see
+      // fovSystem.ts for the full rationale).
       for (let dy = 0; dy < sf; dy++) {
         for (let dx = 0; dx < sf; dx++) {
           floorMap.setVisible(tx * sf + dx, ty * sf + dy);
@@ -102,6 +102,14 @@ function fovSystemReference(world: GameWorld): void {
       }
       return;
     }
+    // Transparent tiles keep the seam rule so FOV agrees with lineOfSight.
+    const key = ty * tileMap.width + tx;
+    let seamBlocked = seamCache.get(key);
+    if (seamBlocked === undefined) {
+      seamBlocked = tileMap.hasBlockedCornerSeam(originTile.x, originTile.y, tx, ty);
+      seamCache.set(key, seamBlocked);
+    }
+    if (seamBlocked) return;
     floorMap.setVisible(hx, hy);
     floorMap.setDiscovered(hx, hy);
   });

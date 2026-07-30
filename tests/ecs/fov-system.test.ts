@@ -296,8 +296,12 @@ describe('FOV System', () => {
     // A world position of (336, 320) → hx = floor(336/16) = 21 (still tile 10)
     expect(floorMap.isVisibleAt(336, 320)).toBe(true);
 
-    // Sub-tiles of a far-away tile should not be visible (close to map edge wall)
-    expect(floorMap.isVisibleSubtile(0, 0)).toBe(false);
+    // Tile (0,0) is the map's own border corner: it is opaque and diagonal
+    // from the player with both orthogonal neighbours (the border wall runs)
+    // also opaque. Post-fix, an opaque tile a ray terminates on is always
+    // revealed (the seam rule only blocks rays looking PAST an opaque tile,
+    // not the tile itself) — so this corner is correctly visible now.
+    expect(floorMap.isVisibleSubtile(0, 0)).toBe(true);
   });
 
   it('visible bitmap is quarter-tile sized (4× tile count)', () => {

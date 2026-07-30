@@ -42,8 +42,10 @@
  * raw 8-neighbor combinations down to exactly 47 distinct canonical masks —
  * verified exhaustively in `tests/unit/terrain-pack-mask.test.ts`.
  *
- * Out-of-bounds neighbours are treated as non-matching (bit = 0), mirroring
- * the existing 4-directional `neighborMask()` in `tile-visuals.ts`.
+ * Out-of-bounds neighbours are treated as non-matching (bit = 0) by default,
+ * mirroring the existing 4-directional `neighborMask()` in `tile-visuals.ts`.
+ * `computeRawMask8`'s `outOfBoundsMatches` parameter can flip this per call
+ * site — see its doc comment for why the wall-mask callers need `true`.
  */
 
 /** Bit values for each of the 8 neighbour directions. Pinned — see module doc. */
@@ -128,11 +130,25 @@ export function isCanonicalBlob47Mask(mask: number): boolean {
 
 /**
  * Compute the raw 8-neighbor mask for tile (tx, ty), given a per-direction
- * match predicate. Out-of-bounds neighbours are treated as non-matching.
+ * match predicate.
  *
  * `matches(nx, ny)` should return whether the neighbour tile at (nx, ny)
  * counts as "the same wall" for autotiling purposes — callers typically check
  * terrain-type equality (see `neighborMask8InTerrain` for the common case).
+ *
+ * `outOfBoundsMatches` (default `false`) controls how a neighbour OUTSIDE the
+ * map bounds is treated:
+ *   - `false` (default): out-of-bounds counts as non-matching, i.e. "floor" —
+ *     correct for same-terrain pool/corridor matching (`neighborMask8InTerrain`),
+ *     where there is no terrain beyond the map to match against.
+ *   - `true`: out-of-bounds counts as matching, i.e. "wall" — required for the
+ *     pack wall-mask callers (`src/engine/terrain-renderer.ts`,
+ *     `src/labs/terrain-pack-lab/index.ts`). A wall tile on the map edge has no
+ *     real neighbour past the border; treating that missing neighbour as floor
+ *     made the wall inset into nothing, exposing a floor-pool sliver past the
+ *     map's edge. A wall should full-bleed against the edge exactly as it does
+ *     against solid rock (see `PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES` in
+ *     `terrain-renderer.ts` for the analogous in-bounds VOID/rock rule).
  */
 export function computeRawMask8(
   tx: number,
@@ -140,13 +156,14 @@ export function computeRawMask8(
   width: number,
   height: number,
   matches: (nx: number, ny: number) => boolean,
+  outOfBoundsMatches = false,
 ): number {
   const inBounds = (nx: number, ny: number): boolean =>
     nx >= 0 && nx < width && ny >= 0 && ny < height;
   const at = (dx: number, dy: number): boolean => {
     const nx = tx + dx;
     const ny = ty + dy;
-    return inBounds(nx, ny) && matches(nx, ny);
+    return inBounds(nx, ny) ? matches(nx, ny) : outOfBoundsMatches;
   };
   let mask = 0;
   if (at(0, -1)) mask |= MASK_BIT.N;
