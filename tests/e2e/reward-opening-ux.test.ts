@@ -12,20 +12,20 @@
  * `tests/property/reward-presentation-excitement.property.test.ts` and
  * `tests/unit/achievement-reward-presentation.test.ts`. It is NOT re-proven
  * here with real content, because no currently-shipped content path can
- * exercise rarity variance:
+ * exercise rarity variance in a quick non-headless game-UI run:
  *   - every Floor 1 achievement reward is `lootBox`-type (tier-only scoring —
  *     `rarityWeight` is always 0 for these; see `achievements.floor1.json`),
  *     never `equipment`-type;
- *   - boss chests always resolve `tier1`+`common` deterministically by design
+ *   - boss chests resolve `tier4` (85% Uncommon / 15% Rare per PLAN.md §E3-C)
  *     (ADR 0069/0070 — see `openBossChest` in
- *     `src/core/systems/bossChestRewards.ts`), so they can never vary rarity
- *     either.
+ *     `src/core/systems/bossChestRewards.ts`), so rarity variance is real but
+ *     requires a headless run to exercise (see boss-chest-lifecycle.test.ts).
  * This suite instead proves the TIER axis in real content (two lootBox
  * achievements of different tiers land in different excitement buckets) and
  * proves every other hard-contract behavior (state ordering, skip, reduced
  * motion, duplicate input, summary accuracy, input lock) against the real
- * scene. If/when an `equipment`-type achievement or rarity-varying boss chest
- * ships, extend this suite to add a real rarity-axis case.
+ * scene. If/when an `equipment`-type achievement ships, extend this suite
+ * to add a real rarity-axis case with live game-UI content.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';

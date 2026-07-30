@@ -768,7 +768,7 @@ describe('player floor carryover', () => {
     },
   );
 
-  it('fails closed when a persisted boss chest revealedGrant is not tier1', () => {
+  it('fails closed when a persisted boss chest revealedGrant is not tier4', () => {
     const runKey = 'carryover-bad-revealedgrant-tier-run';
     const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
     const player = spawnPlayer(source, 0, 0);
@@ -792,7 +792,7 @@ describe('player floor carryover', () => {
     const destinationPlayer = spawnPlayer(destination, 0, 0);
 
     expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
-      /must have tier "tier1"/,
+      /must have tier "tier4"/,
     );
   });
 
@@ -810,7 +810,7 @@ describe('player floor carryover', () => {
         createdAtMs: 0,
         revealedGrant: {
           kind: 'equipment',
-          tier: 'tier1',
+          tier: 'tier4',
           instanceKeys: [
             'gei:v1:carryover-bad-revealedgrant-count-run:0',
             'gei:v1:carryover-bad-revealedgrant-count-run:1',
@@ -840,7 +840,7 @@ describe('player floor carryover', () => {
       createdAtMs: 0,
       revealedGrant: {
         kind: 'equipment',
-        tier: 'tier1',
+        tier: 'tier4',
         instanceKeys: [generated.instanceId],
       },
     });
@@ -1618,7 +1618,7 @@ describe('player floor carryover', () => {
         familyId: 'goblin-warband',
         state: 'revealed',
         createdAtMs: 123,
-        revealedGrant: { kind: 'equipment', tier: 'tier1', instanceKeys },
+        revealedGrant: { kind: 'equipment', tier: 'tier4', instanceKeys },
       });
       const snapshot = capturePlayerCarryover(source, player);
       const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
@@ -1631,7 +1631,7 @@ describe('player floor carryover', () => {
       expect(restoredChest?.state).toBe('revealed');
       expect(restoredChest?.revealedGrant).toEqual({
         kind: 'equipment',
-        tier: 'tier1',
+        tier: 'tier4',
         instanceKeys,
       });
     });
@@ -1692,7 +1692,7 @@ describe('player floor carryover', () => {
       );
       expect(addGeneratedEquipmentToBag(source, player, generated.instanceId).ok).toBe(true);
       const instanceKeys: readonly GeneratedEquipmentInstanceKey[] = [generated.instanceId];
-      const grant = { kind: 'equipment' as const, tier: 'tier1' as const, instanceKeys };
+      const grant = { kind: 'equipment' as const, tier: 'tier4' as const, instanceKeys };
       source.bossChests.set('boss-chest:rat-swarm', {
         chestId: 'boss-chest:rat-swarm',
         familyId: 'rat-swarm',

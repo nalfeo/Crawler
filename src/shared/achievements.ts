@@ -7,7 +7,10 @@
 import { z } from 'zod';
 import floor1Achievements from './data/achievements.floor1.json';
 import floor2Achievements from './data/achievements.floor2.json';
-import { EQUIPMENT_REWARD_TIERS, type EquipmentRewardTier } from './generated-equipment-types.js';
+import {
+  ACHIEVEMENT_EQUIPMENT_REWARD_TIERS,
+  type AchievementEquipmentRewardTier,
+} from './generated-equipment-types.js';
 import { ITEM_CATALOG, ItemRarity } from './items.js';
 
 /**
@@ -187,11 +190,12 @@ export type AchievementReward =
        * for any player build (the resolver fails closed otherwise). `tier`
        * gates the resolvable rarity pool — see
        * {@link EQUIPMENT_REWARD_TIER_RARITIES} in generated-equipment-types.ts;
-       * NO tier defined here may ever resolve a Rare item.
+       * achievement tiers (tier1–tier3) never resolve a Rare item — only `tier4`
+       * (reserved for boss chests) may draw Rare.
        */
       readonly type: 'equipment';
       readonly bases: readonly string[];
-      readonly tier: EquipmentRewardTier;
+      readonly tier: AchievementEquipmentRewardTier;
     }
   | { readonly type: 'none' };
 
@@ -290,7 +294,7 @@ const achievementRewardSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('equipment'),
       bases: z.array(z.string().min(1)).min(1),
-      tier: z.enum(EQUIPMENT_REWARD_TIERS),
+      tier: z.enum(ACHIEVEMENT_EQUIPMENT_REWARD_TIERS),
     })
     .strict(),
   z

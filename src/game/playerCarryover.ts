@@ -21,6 +21,7 @@ import {
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
 import {
   ALL_ACHIEVEMENTS,
+  BOSS_CHEST_ID_PREFIX,
   cloneAchievementFactSnapshot,
   getAchievementById,
   mergeAchievementFactSnapshots,
@@ -452,6 +453,45 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     if (!Object.prototype.hasOwnProperty.call(record, key)) return [];
     return partial[key] as unknown[];
   };
+
+  // Migration: v1 snapshots created before `tier4` was introduced used `tier1`
+  // for boss-chest reward bundles and revealedGrant entries. Upgrade them
+  // transparently so existing saved Floor 2 runs continue to load correctly.
+  const migrateBossChestTier = (entries: unknown[]): unknown[] => {
+    if (!Array.isArray(entries)) return entries;
+    return entries.map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return entry;
+      const e = entry as Record<string, unknown>;
+      if (
+        typeof e.revealedGrant === 'object' &&
+        e.revealedGrant !== null &&
+        (e.revealedGrant as Record<string, unknown>).tier === 'tier1'
+      ) {
+        return {
+          ...e,
+          revealedGrant: { ...(e.revealedGrant as object), tier: 'tier4' },
+        };
+      }
+      return entry;
+    });
+  };
+
+  const migrateBundleBossChestTier = (entries: unknown[]): unknown[] => {
+    if (!Array.isArray(entries)) return entries;
+    return entries.map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return entry;
+      const b = entry as Record<string, unknown>;
+      if (
+        typeof b.achievementId === 'string' &&
+        b.achievementId.startsWith(BOSS_CHEST_ID_PREFIX) &&
+        b.tier === 'tier1'
+      ) {
+        return { ...b, tier: 'tier4' };
+      }
+      return entry;
+    });
+  };
+
   const normalized: PlayerCarryoverSnapshot = {
     ...legacy,
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
@@ -461,10 +501,12 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     generatedEquippedInstanceKeys: readArrayField(
       'generatedEquippedInstanceKeys',
     ) as PlayerCarryoverSnapshot['generatedEquippedInstanceKeys'],
-    generatedEquipmentRewardBundles: readArrayField(
-      'generatedEquipmentRewardBundles',
+    generatedEquipmentRewardBundles: migrateBundleBossChestTier(
+      readArrayField('generatedEquipmentRewardBundles'),
     ) as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
-    bossChests: readArrayField('bossChests') as PlayerCarryoverSnapshot['bossChests'],
+    bossChests: migrateBossChestTier(
+      readArrayField('bossChests'),
+    ) as PlayerCarryoverSnapshot['bossChests'],
     lootBoxRewardBundles: readArrayField(
       'lootBoxRewardBundles',
     ) as PlayerCarryoverSnapshot['lootBoxRewardBundles'],
@@ -1117,16 +1159,16 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         `bossChests[${chest.chestId}].revealedGrant`,
       );
       // Boss chests only ever grant a single generated-equipment instance
-      // (tier1, ADR 0070) — never a lootBox bundle — so a persisted
+      // (tier4, PLAN.md §E3-C) — never a lootBox bundle — so a persisted
       // `revealedGrant` of the wrong kind is definitely tampered/corrupt data.
       if (chest.revealedGrant.kind !== 'equipment') {
         throw new PlayerCarryoverSnapshotError(
           `Boss chest ${chest.chestId} revealedGrant must be kind "equipment", got "${chest.revealedGrant.kind}"`,
         );
       }
-      if (chest.revealedGrant.tier !== 'tier1') {
+      if (chest.revealedGrant.tier !== 'tier4') {
         throw new PlayerCarryoverSnapshotError(
-          `Boss chest ${chest.chestId} revealedGrant must have tier "tier1", got "${chest.revealedGrant.tier}"`,
+          `Boss chest ${chest.chestId} revealedGrant must have tier "tier4", got "${chest.revealedGrant.tier}"`,
         );
       }
       if (chest.revealedGrant.instanceKeys.length !== 1) {
@@ -1202,12 +1244,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       }
       // Tier guard (fail-closed): boss-chest bundles have no backing
       // achievement to cross-check tier against, so hardcode the expected
-      // tier instead — boss chests always resolve at 'tier1' (100%
-      // deterministic common draw), matching the resolver's documented
-      // "Common-rarity contract" (see boss-chest-resolver.ts, ADR 0070).
-      if (bundle.tier !== 'tier1') {
+      // tier instead — boss chests resolve at 'tier4' (85% Uncommon / 15%
+      // Rare per PLAN.md §E3-C; see boss-chest-resolver.ts).
+      if (bundle.tier !== 'tier4') {
         throw new PlayerCarryoverSnapshotError(
-          `Boss chest reward bundle ${bundle.achievementId} has tier ${bundle.tier}, expected tier1`,
+          `Boss chest reward bundle ${bundle.achievementId} has tier ${bundle.tier}, expected tier4`,
         );
       }
     } else {

@@ -12,7 +12,10 @@ import { getGeneratedEquipmentInstance } from '../../src/core/generated-equipmen
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { SeededRandom } from '../../src/shared/random.js';
-import { EQUIPMENT_REWARD_TIERS } from '../../src/shared/generated-equipment-types.js';
+import {
+  ACHIEVEMENT_EQUIPMENT_REWARD_TIERS,
+  EQUIPMENT_REWARD_TIERS,
+} from '../../src/shared/generated-equipment-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const MIXED_BASES = [
@@ -130,11 +133,12 @@ describe('reward bundle resolution — determinism property', () => {
       fc.property(
         fc.integer({ min: 0, max: 100_000 }).map((n) => `run-${n}`),
         fc.integer({ min: 0, max: 100_000 }).map((n) => `ach-${n}`),
-        fc.constantFrom(...EQUIPMENT_REWARD_TIERS),
+        fc.constantFrom(...ACHIEVEMENT_EQUIPMENT_REWARD_TIERS),
         (runKey, achievementId, tier) => {
           const world = createTestWorld({ seed: 7, floor: 2, generatedEquipmentRunKey: runKey });
           const bundle = resolveEquipmentRewardBundle(world, achievementId, MIXED_BASES, tier);
           const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+          // tier4 (boss chests) may draw rare; achievement tiers (tier1–tier3) never should.
           expect(instance.rarity).not.toBe('rare');
         },
       ),

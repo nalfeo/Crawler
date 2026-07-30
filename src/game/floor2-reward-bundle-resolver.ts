@@ -2,7 +2,7 @@ import {
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES,
   EQUIPMENT_REWARD_TIER_RARITIES,
-  EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT,
+  EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS,
   RARITY_EFFECT_BUDGET,
   type EquipmentRewardTier,
   type GeneratedEquipmentRarity,
@@ -127,10 +127,10 @@ function substreamRng(
 
 /**
  * Weighted rarity pick for a tier's allowed rarity pool. The first entry in
- * {@link EQUIPMENT_REWARD_TIER_RARITIES} is favored at
- * {@link EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT}; a single-entry pool
- * (tier1) always resolves to that one rarity with zero RNG consumption, so
- * tier1 stays fully deterministic even before the RNG substream is touched.
+ * {@link EQUIPMENT_REWARD_TIER_RARITIES} is favored at the tier's weight from
+ * {@link EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS}; a single-entry pool (tier1)
+ * always resolves to that one rarity with zero RNG consumption, so tier1 stays
+ * fully deterministic even before the RNG substream is touched.
  */
 export function rollTierRarity(
   rng: SeededRandom,
@@ -139,16 +139,16 @@ export function rollTierRarity(
   const pool = EQUIPMENT_REWARD_TIER_RARITIES[tier];
   if (pool.length === 1) return pool[0]!;
   const roll = rng.next();
-  return roll < EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT ? pool[0]! : pool[1]!;
+  return roll < EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS[tier] ? pool[0]! : pool[1]!;
 }
 
 /**
- * Resolve an achievement's equipment reward into an immutable, tier-scoped,
- * single-item bundle and store it in `world.generatedEquipmentRewardBundles`
- * keyed by `achievementId`. The item's rarity is drawn from
- * {@link EQUIPMENT_REWARD_TIER_RARITIES}`[tier]` (see {@link rollTierRarity});
- * `tier1` is common-only, `tier2`/`tier3` share {common, uncommon} but differ in
- * which rarity is favored — no tier ever draws `rare`.
+ * Resolve an achievement's (or boss-chest's) equipment reward into an
+ * immutable, tier-scoped, single-item bundle and store it in
+ * `world.generatedEquipmentRewardBundles` keyed by `achievementId`. The item's
+ * rarity is drawn from {@link EQUIPMENT_REWARD_TIER_RARITIES}`[tier]` (see
+ * {@link rollTierRarity}). `tier1` is common-only; `tier2`/`tier3` draw
+ * {common, uncommon}; `tier4` (boss chests) draws {uncommon, rare} at 85/15.
  *
  * Determinism & isolation:
  * - Every random decision uses a bundle-specific {@link SeededRandom} derived
@@ -184,9 +184,8 @@ export function resolveEquipmentRewardBundle(
 
   // Enforce the reward rarity contract structurally against the ambient
   // generation policy, scoped to the rarities this tier can actually draw
-  // (never `rare` for tier1/tier2/tier3). See the fixed-3-item resolver's
-  // original comment for why this guard exists — a legal-but-non-default
-  // policy could otherwise silently violate the reward contract.
+  // (tier1/2/3 never draw `rare`; tier4 draws uncommon+rare). A legal-but-
+  // non-default policy could otherwise silently violate the reward contract.
   const effectUnits = world.generatedEquipmentRegistry.generationPolicy.rarityEffectUnits;
   for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
     if (effectUnits[rarity] > RARITY_EFFECT_BUDGET[rarity]) {
@@ -197,16 +196,20 @@ export function resolveEquipmentRewardBundle(
     }
   }
 
-  // Enforce the Common rarity contract structurally: the Common item spreads its
-  // base's inherent stat bonuses verbatim and is generated with zero effect
-  // units, so any candidate base carrying a non-armor stat bonus could violate
-  // "Common has no non-armor stat bonus". Fail closed if any base does.
-  for (const baseId of bases) {
-    if (generatedEquipmentBaseHasNonArmorStatBonus(baseId)) {
-      throw new RewardBundleResolutionError(
-        'illegal-base',
-        `Reward base ${baseId} has an inherent non-armor stat bonus, violating the Common rarity contract`,
-      );
+  // Enforce the Common rarity contract structurally when 'common' is in the
+  // tier's rarity pool: the Common item spreads its base's inherent stat
+  // bonuses verbatim with zero effect units, so any candidate base carrying a
+  // non-armor stat bonus would violate "Common has no non-armor stat bonus".
+  // Tiers that never draw Common (e.g. tier4 — uncommon/rare only) skip this
+  // check since the constraint only applies to Common-rarity items.
+  if (EQUIPMENT_REWARD_TIER_RARITIES[tier].includes('common')) {
+    for (const baseId of bases) {
+      if (generatedEquipmentBaseHasNonArmorStatBonus(baseId)) {
+        throw new RewardBundleResolutionError(
+          'illegal-base',
+          `Reward base ${baseId} has an inherent non-armor stat bonus, violating the Common rarity contract`,
+        );
+      }
     }
   }
 
