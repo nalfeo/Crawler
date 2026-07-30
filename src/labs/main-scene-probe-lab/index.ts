@@ -52,6 +52,10 @@ import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
+import {
+  getQuartermasterOfferViews,
+  purchaseQuartermasterOffer,
+} from '../../core/quartermaster-purchase.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -126,6 +130,7 @@ interface MainSceneInternals {
     claimReward(achievementId: string): void;
   };
   bossChestUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
+  quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
    * The shared reward-opening sequence overlay driven by `AchievementsUI` /
    * `BossChestUI`. Test/automation affordances only (`getPhase`/`getBucket`/
@@ -155,6 +160,7 @@ interface MainSceneInternals {
   achievementsButton?: { visible: boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   bossChestButton?: { visible: boolean; emit(eventName: string): boolean };
+  quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   modalPicker?: {
     isOpen(): boolean;
     close(): void;
@@ -168,6 +174,7 @@ interface MainSceneInternals {
   requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
   requestBossChestsToggle?(): void;
+  requestQuartermasterToggle?(): void;
   resumePendingRewardPresentations?(): void;
   setSimulationPaused(paused: boolean): void;
   advanceSimulationFrames?(frames?: number): void;
@@ -290,6 +297,8 @@ export interface MainSceneState {
   readonly achievementsOpen: boolean;
   /** True when the boss chest panel is open. */
   readonly bossChestOpen: boolean;
+  /** True when the Quartermaster shop panel is open. */
+  readonly quartermasterOpen: boolean;
   /** True while a conversation is active. */
   readonly conversationOpen: boolean;
   /** Active NPC dialogue line index, or null when no conversation is open. */
@@ -300,6 +309,7 @@ export interface MainSceneState {
   readonly achievementsButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
   readonly bossChestButtonVisible: boolean;
+  readonly quartermasterButtonVisible: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
   /** True when safe-room-gated surfaces should be allowed. */
@@ -524,6 +534,8 @@ export interface MainSceneProbeApi {
   requestEquipToggle(): void;
   /** Queue Boss Chests ([C]) through the scene request path. */
   requestBossChestsToggle(): void;
+  /** Queue Quartermaster ([Q]) through the scene request path. */
+  requestQuartermasterToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
   /** Override the live world state machine value for targeted scene-flow probes. */
@@ -532,6 +544,8 @@ export interface MainSceneProbeApi {
   tapAbilitiesButton(): boolean;
   /** Emit a pointer tap on the Chests corner button. Returns false if unavailable/hidden. */
   tapBossChestButton(): boolean;
+  /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
+  tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
   queueAbilitiesAndAchievementsToggle(): void;
   /** Queue the shared interaction request used by touch and repeated E presses. */
@@ -586,6 +600,27 @@ export interface MainSceneProbeApi {
   acknowledgeRewardOpening(): void;
   /** Live `world.elapsedMs` — used to prove the sim is frozen while a reward presents. */
   getWorldElapsedMs(): number | null;
+  /** Current player gold — for asserting purchase outcomes. */
+  getPlayerGold(): number | null;
+  /** Set player gold — for arranging purchase preconditions in tests. */
+  setPlayerGold(amount: number): void;
+  /**
+   * Get a snapshot of the current Quartermaster stock offers (stockId, offerId, quantity,
+   * unitPrice, displayName). Returns an empty array if no stock exists.
+   */
+  getQuartermasterStockSnapshot(): ReadonlyArray<{
+    readonly stockId: string;
+    readonly offerId: string;
+    readonly quantity: number;
+    readonly unitPrice: number;
+    readonly displayName: string | null;
+  }>;
+  /**
+   * Purchase the first purchasable Quartermaster offer via the real purchase
+   * function and return the result. Used to exercise the full purchase path
+   * from an e2e test.
+   */
+  purchaseFirstQuartermasterOffer(): { ok: boolean; reason?: string; goldSpent?: number };
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -700,6 +735,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
       const bossChestOpen = scene?.bossChestUI?.isOpen() ?? false;
+      const quartermasterOpen = scene?.quartermasterUI?.isOpen() ?? false;
       const conversationNpcEid = scene?.conversationNpcEid ?? null;
       const conversationLineIndex =
         conversationNpcEid !== null
@@ -716,6 +752,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipmentOpen,
         achievementsOpen,
         bossChestOpen,
+        quartermasterOpen,
         conversationOpen: conversationNpcEid !== null,
         conversationLineIndex,
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
@@ -723,6 +760,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         bossChestButtonVisible: scene?.bossChestButton?.visible ?? false,
+        quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         primarySurfaceCount: [
           modalOpen,
           abilityLoadoutOpen,
@@ -730,6 +768,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           equipmentOpen,
           achievementsOpen,
           bossChestOpen,
+          quartermasterOpen,
         ].filter(Boolean).length,
         safeContext: (world?.playerInSafeRoom ?? false) || world?.state === 'safe_room',
         simulationPaused: scene?.isSimulationPaused() ?? false,
@@ -984,6 +1023,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.requestBossChestsToggle?.();
     },
 
+    requestQuartermasterToggle: () => {
+      getScene()?.requestQuartermasterToggle?.();
+    },
+
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
     },
@@ -1010,6 +1053,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapBossChestButton: () => {
       const button = getScene()?.bossChestButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
+    },
+
+    tapQuartermasterButton: () => {
+      const button = getScene()?.quartermasterButton;
       if (!button?.visible) {
         return false;
       }
@@ -1275,6 +1327,55 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getWorldElapsedMs: (): number | null => {
       const world = getScene()?.world;
       return world ? world.elapsedMs : null;
+    },
+
+    getPlayerGold: (): number | null => {
+      const world = getScene()?.world;
+      return world ? world.playerGold : null;
+    },
+
+    setPlayerGold: (amount: number): void => {
+      const world = getScene()?.world;
+      if (world) {
+        world.playerGold = amount;
+      }
+    },
+
+    getQuartermasterStockSnapshot: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return [];
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return [];
+      const views = getQuartermasterOfferViews(world, playerEid);
+      return views.map((v) => ({
+        stockId: v.stockId,
+        offerId: v.offerId,
+        quantity: v.quantity,
+        unitPrice: v.unitPrice,
+        displayName: v.displayName,
+      }));
+    },
+
+    purchaseFirstQuartermasterOffer: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return { ok: false, reason: 'no-world' };
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return { ok: false, reason: 'no-player' };
+      const views = getQuartermasterOfferViews(world, playerEid);
+      const purchasable = views.find((v) => v.canPurchase);
+      if (!purchasable) return { ok: false, reason: 'none-purchasable' };
+      const result = purchaseQuartermasterOffer(world, playerEid, {
+        stockId: purchasable.stockId,
+        offerId: purchasable.offerId,
+        quantity: 1,
+      });
+      scene?.quartermasterUI?.refresh(world);
+      if (result.ok) {
+        return { ok: true, goldSpent: result.goldSpent };
+      }
+      return { ok: false, reason: result.reason };
     },
 
     getRewardAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {

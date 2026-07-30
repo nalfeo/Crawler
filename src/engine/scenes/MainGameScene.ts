@@ -81,6 +81,7 @@ import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createBossChestUI } from '../BossChestUI.js';
+import { createQuartermasterUI } from '../QuartermasterUI.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -567,12 +568,15 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyBossChests?: Phaser.Input.Keyboard.Key;
 
+  private keyQuartermaster?: Phaser.Input.Keyboard.Key;
+
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
   private equipmentUI?: ReturnType<typeof createEquipmentUI>;
   private achievementsUI?: ReturnType<typeof createAchievementsUI>;
   /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
   private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
   private bossChestUI?: ReturnType<typeof createBossChestUI>;
+  private quartermasterUI?: ReturnType<typeof createQuartermasterUI>;
   /** Procedural WebAudio synth backing the reward-opening audio cues; safe no-op if unavailable. */
   private rewardAudioEngine?: ReturnType<typeof createAudioCueEngine>;
   private rewardAudioController?: ReturnType<typeof createRewardOpeningAudioController>;
@@ -680,11 +684,17 @@ export class MainGameScene extends Phaser.Scene {
   /** Touch button for the boss chest panel. */
   private bossChestButton?: Phaser.GameObjects.Text;
 
+  /** Touch button for the Quartermaster shop panel. */
+  private quartermasterButton?: Phaser.GameObjects.Text;
+
   /** One-frame latch set by tapping the on-screen achievements button. */
   private queuedAchievementsToggle = false;
 
   /** One-frame latch set by tapping the on-screen boss chest button. */
   private queuedBossChestsToggle = false;
+
+  /** One-frame latch set by tapping the on-screen quartermaster button. */
+  private queuedQuartermasterToggle = false;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -841,6 +851,7 @@ export class MainGameScene extends Phaser.Scene {
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.keyBossChests = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+    this.keyQuartermaster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
@@ -916,6 +927,21 @@ export class MainGameScene extends Phaser.Scene {
       },
       onPresentationQueueDrained: () => {
         this.resumePendingRewardPresentations();
+      },
+    });
+    this.quartermasterUI = createQuartermasterUI(this, {
+      getPlayerEid: () => (this.playerEid >= 0 ? this.playerEid : undefined),
+      onPurchaseResult: (result) => {
+        if (result.ok) {
+          this.hudUi?.sync(this.world, this.playerEid);
+          this.inventoryUI?.refresh(this.world);
+        } else {
+          this.flashHint(
+            result.reason === 'inventory-capacity'
+              ? 'Purchase failed — inventory is full.'
+              : 'Purchase failed — not enough gold.',
+          );
+        }
       },
     });
     this.gameOverUI = createGameOverUI(this, {
@@ -1055,6 +1081,8 @@ export class MainGameScene extends Phaser.Scene {
       this.equipButton = undefined;
       this.bossChestButton?.destroy();
       this.bossChestButton = undefined;
+      this.quartermasterButton?.destroy();
+      this.quartermasterButton = undefined;
       this.offMobileButtonScale?.();
       this.offMobileButtonScale = undefined;
       this.dialogueBox?.destroy();
@@ -1076,6 +1104,8 @@ export class MainGameScene extends Phaser.Scene {
       this.rewardAudioCueLog.length = 0;
       this.bossChestUI?.destroy();
       this.bossChestUI = undefined;
+      this.quartermasterUI?.destroy();
+      this.quartermasterUI = undefined;
       this.achievementsButton?.destroy();
       this.achievementsButton = undefined;
       this.abilitiesButton?.destroy();
@@ -1160,7 +1190,8 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
-      isCornerButtonHit(this.bossChestButton)
+      isCornerButtonHit(this.bossChestButton) ||
+      isCornerButtonHit(this.quartermasterButton)
     ) {
       return;
     }
@@ -1188,6 +1219,7 @@ export class MainGameScene extends Phaser.Scene {
       this.keyAchievements,
       this.keyAbilities,
       this.keyBossChests,
+      this.keyQuartermaster,
       this.keyEsc,
     ]) {
       if (key) {
@@ -1254,6 +1286,12 @@ export class MainGameScene extends Phaser.Scene {
     this.tappedInteraction = false;
     this.queuedInteraction = false;
     this.queuedBossChestsToggle = true;
+  }
+
+  public requestQuartermasterToggle(): void {
+    this.tappedInteraction = false;
+    this.queuedInteraction = false;
+    this.queuedQuartermasterToggle = true;
   }
 
   private resumePendingRewardPresentations(): void {
@@ -1333,6 +1371,7 @@ export class MainGameScene extends Phaser.Scene {
       keepEquipment?: boolean;
       keepAchievements?: boolean;
       keepBossChests?: boolean;
+      keepQuartermaster?: boolean;
     } = {},
   ): void {
     const {
@@ -1340,12 +1379,16 @@ export class MainGameScene extends Phaser.Scene {
       keepEquipment = false,
       keepAchievements = false,
       keepBossChests = false,
+      keepQuartermaster = false,
     } = options;
     if (!keepAchievements && this.achievementsUI?.isOpen()) {
       this.achievementsUI.toggle(this.world);
     }
     if (!keepBossChests && this.bossChestUI?.isOpen()) {
       this.bossChestUI.toggle(this.world);
+    }
+    if (!keepQuartermaster && this.quartermasterUI?.isOpen()) {
+      this.quartermasterUI.toggle(this.world);
     }
     if (!keepEquipment && this.equipmentUI?.isOpen()) {
       this.equipmentUI.toggle(this.world);
@@ -1366,6 +1409,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
       (this.bossChestUI?.isOpen() ?? false) ||
+      (this.quartermasterUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false)
     );
   }
@@ -1657,6 +1701,7 @@ export class MainGameScene extends Phaser.Scene {
     const equipOpen = this.equipmentUI?.isOpen() ?? false;
     const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
     const bossChestsOpen = this.bossChestUI?.isOpen() ?? false;
+    const quartermasterOpen = this.quartermasterUI?.isOpen() ?? false;
     const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
 
     // A "hard blocker" prevents all touch-button navigation (conversation,
@@ -1675,7 +1720,11 @@ export class MainGameScene extends Phaser.Scene {
       !equipOpen &&
       !achievementsOpen &&
       !bossChestsOpen &&
+      !quartermasterOpen &&
       !abilitiesOpen;
+
+    // The Quartermaster button is only available in safe context when stock exists.
+    const hasQuartermasterStock = !!this.world.floorExtendedState?.settlement?.quartermasterStock;
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     // Each button shows when its own panel is open (to allow touch dismiss) OR
@@ -1691,6 +1740,9 @@ export class MainGameScene extends Phaser.Scene {
     this.bossChestButton
       ?.setDepth(bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(this.world.bossChests.size > 0 && (bossChestsOpen || canOpenNew));
+    this.quartermasterButton
+      ?.setDepth(quartermasterOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+      .setVisible(safeCtx && hasQuartermasterStock && (quartermasterOpen || canOpenNew));
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
@@ -1806,6 +1858,23 @@ export class MainGameScene extends Phaser.Scene {
       this.bossChestUI?.toggle(this.world);
     } else if (bossChestsOpen) {
       this.bossChestUI?.refresh(this.world);
+    }
+
+    const quartermasterToggleRequested = Boolean(
+      this.queuedQuartermasterToggle ||
+      (this.keyQuartermaster && Phaser.Input.Keyboard.JustDown(this.keyQuartermaster)),
+    );
+    this.queuedQuartermasterToggle = false;
+    if (safeCtx && hasQuartermasterStock && !isUiLockOpen() && quartermasterToggleRequested) {
+      this.closeMapOverlayIfOpen();
+      this.closeCharacterPanels({ keepQuartermaster: true });
+      this.quartermasterUI?.toggle(this.world);
+    } else if (this.quartermasterUI?.isOpen()) {
+      if (safeCtx) {
+        this.quartermasterUI.refresh(this.world);
+      } else {
+        this.quartermasterUI.toggle(this.world);
+      }
     }
 
     this.processAchievementUnlocks();
@@ -2071,6 +2140,9 @@ export class MainGameScene extends Phaser.Scene {
     this.bossChestButton = makeCornerButton(240, '💎 Chests', () => {
       this.queuedBossChestsToggle = true;
     });
+    this.quartermasterButton = makeCornerButton(296, '🛒 Shop', () => {
+      this.queuedQuartermasterToggle = true;
+    });
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -2078,6 +2150,7 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.bossChestButton?.setScale(buttonScale);
+      this.quartermasterButton?.setScale(buttonScale);
       // Keep buttons clear of each other when scaled.
       const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
       this.equipButton?.setY(16 + bagH);
@@ -2087,6 +2160,8 @@ export class MainGameScene extends Phaser.Scene {
       this.abilitiesButton?.setY(16 + bagH + gearH + awardsH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
       this.bossChestButton?.setY(16 + bagH + gearH + awardsH + skillsH);
+      const chestsH = (this.bossChestButton?.height ?? 44) * buttonScale + 8;
+      this.quartermasterButton?.setY(16 + bagH + gearH + awardsH + skillsH + chestsH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -3347,12 +3422,14 @@ export class MainGameScene extends Phaser.Scene {
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
       (this.bossChestUI?.isOpen() ?? false) ||
+      (this.quartermasterUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
     const bossChestsOpen = this.bossChestUI?.isOpen() ?? false;
+    const quartermasterOpen2 = this.quartermasterUI?.isOpen() ?? false;
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
       this.hudUi?.setVisible(!panelOpen);
@@ -3364,6 +3441,9 @@ export class MainGameScene extends Phaser.Scene {
         this.bossChestButton
           ?.setDepth(bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(bossChestsOpen);
+        this.quartermasterButton
+          ?.setDepth(quartermasterOpen2 ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+          .setVisible(quartermasterOpen2);
         this.abilitiesButton
           ?.setDepth(abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(abilityLoadoutOpen);
@@ -3371,6 +3451,9 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.bossChestButton?.setDepth(
       bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
+    );
+    this.quartermasterButton?.setDepth(
+      quartermasterOpen2 ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
     this.abilitiesButton?.setDepth(
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,

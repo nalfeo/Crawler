@@ -185,7 +185,19 @@ describe('Floor 1 to Floor 2 production transition', () => {
     const floor2Player = spawnPlayer(floor2, 0, 0);
     floor2Options?.configureWorld?.(floor2, floor2Player);
 
-    expect(snapshotGeneratedEquipmentRegistry(floor2)).toEqual(floor1Registry);
+    const floor2Registry = snapshotGeneratedEquipmentRegistry(floor2);
+    expect(floor2Registry.runKey).toBe(floor1Registry.runKey);
+    expect(floor2Registry.generationPolicy).toEqual(floor1Registry.generationPolicy);
+    expect(floor2Registry.generationPolicyFingerprint).toBe(
+      floor1Registry.generationPolicyFingerprint,
+    );
+    const floor2InstancesById = new Map(
+      floor2Registry.instances.map((instance) => [instance.instanceId, instance]),
+    );
+    for (const instance of floor1Registry.instances) {
+      expect(floor2InstancesById.get(instance.instanceId)).toEqual(instance);
+    }
+    expect(floor2Registry.nextOrdinal).toBeGreaterThanOrEqual(floor1Registry.nextOrdinal);
     expect(getEquipmentState(floor2, floor2Player)?.equipped.mainHand).toBe(equipped.instanceId);
     expect(getActiveWeaponSnapshot(floor2)).toEqual(equipped.frozen.activeWeaponSnapshot);
     expect(floor2.abilityStatesByEntity.get(floor2Player)?.equippedActiveAbilityIds).toContain(
