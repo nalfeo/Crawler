@@ -83,16 +83,28 @@ function resolveBaseRef() {
 export function getReasonRestatementViolationsForCurrentBranch() {
   const baseRef = resolveBaseRef();
   if (!baseRef) {
-    throw new Error(
-      'Could not resolve base ref for AUDIT_EXCEPTIONS comparison. Set GITHUB_BASE_SHA or ensure origin/main is accessible.',
-    );
+    if (process.env.GITHUB_BASE_SHA) {
+      // GITHUB_BASE_SHA was explicitly provided (PR context) but could not be
+      // resolved — fail closed so a shallow checkout cannot silently bypass the guard.
+      throw new Error(
+        'GITHUB_BASE_SHA is set but the base ref could not be resolved. ' +
+          'Ensure the repository checkout includes the base commit (fetch-depth: 0).',
+      );
+    }
+    // No base ref available and not in explicit PR context — skip comparison
+    // (e.g. direct push to main, standalone local audit without origin/main).
+    return [];
   }
 
   const previousSource = readFileAtRef(baseRef, AUDIT_SCRIPT_PATH);
   if (previousSource === null) {
-    throw new Error(
-      `Could not read AUDIT_EXCEPTIONS from base ref ${baseRef}. Ensure the repository is not a shallow clone.`,
-    );
+    if (process.env.GITHUB_BASE_SHA) {
+      throw new Error(
+        `Could not read ${AUDIT_SCRIPT_PATH} at base ref ${baseRef}. ` +
+          'Ensure the repository checkout includes the base commit (fetch-depth: 0).',
+      );
+    }
+    return [];
   }
 
   const previousExceptions = extractAuditExceptionsFromSource(previousSource);
