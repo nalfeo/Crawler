@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a1d0296abb1acd30a841b12dba15597df4c27f6c",
+    "commitDate": "2026-07-30T21:42:41Z",
+    "commitSubject": "feat(ai): eager maintenance tick — runner claims rewards and equips bag items outside settlement (#2390)",
+    "capturedAt": "2026-07-30T22:53:32.156Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30585115435",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/a1d0296abb1acd30a841b12dba15597df4c27f6c.json"
+  },
+  {
     "commit": "15aafa665da1c7b9a577560445adba49b4bb78c7",
     "commitDate": "2026-07-30T21:08:11Z",
     "commitSubject": "feat(sprites): default themed sets to unified mirror-pair items (bracers/rings/arm guards) (#2393)",
