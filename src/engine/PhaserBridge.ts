@@ -1281,13 +1281,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               // time), but the reconciled texture DOES have one. An Image can
               // never play a Phaser animation, so recreate it as a Sprite in
               // place (mirrors the `hasWalkAnimation` branch above).
-              const { x: px, y: py } = img;
+              const { x: px, y: py, flipX: savedFlipX } = img;
               img.destroy();
               const sprite =
                 preferred.frame !== undefined
                   ? scene.add.sprite(px, py, preferred.key, preferred.frame)
                   : scene.add.sprite(px, py, preferred.key);
               sprite.setScale(preferred.scale);
+              if (savedFlipX) sprite.setFlipX(true);
               visual = { obj: sprite, type: visualType, baseScale: preferred.scale };
               visuals.set(eid, visual);
               img = sprite;

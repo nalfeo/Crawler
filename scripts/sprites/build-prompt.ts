@@ -488,9 +488,13 @@ function variantExplorationLine(): string {
 function walkCycleSequenceLine(brief: Brief): string {
   const { frameCount } = brief.frameSequence;
   const { rows, cols } = brief.generation.sheet;
+  const rowRanges = Array.from(
+    { length: rows },
+    (_, r) => `row ${r + 1} left-to-right (frames ${r * cols + 1}..${(r + 1) * cols})`,
+  );
   const orderNote =
     rows > 1
-      ? ` Cell order follows the grid's reading order: row 1 left-to-right first (frames 1..${cols}), then row 2 left-to-right (frames ${cols + 1}..${frameCount}), and so on — e.g. for a ${rows}×${cols} grid, top-left is frame 1 and bottom-right is frame ${frameCount}.`
+      ? ` Cell order follows the grid's reading order: ${rowRanges.join(', then ')} — top-left is frame 1 and bottom-right is frame ${frameCount}.`
       : ' Cells read left-to-right as frames 1 through ' + frameCount + '.';
   return [
     `These ${frameCount} cells are NOT independent design alternatives — they are ORDERED FRAMES of a single side-view walk-cycle animation for the exact same character, forming one continuous walking stride.${orderNote}`,

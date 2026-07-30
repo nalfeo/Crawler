@@ -46,7 +46,7 @@ stacked on an unmerged branch.
 - **Gender-based texture resolution** — `src/engine/PhaserBridge.ts`:
   `resolveGeneratedTexture` gained a `variantsByAppearanceKey`-style lookup
   keyed by `world.playerGender` (schema documented in
-  `docs/knowledge/adr/0059-gender-player-walk-cycle-variant-selection.md`).
+  `docs/knowledge/adr/2026-07-29-gender-player-walk-cycle-variant-selection.md`).
   `'player'` remains deliberately absent from `GENERATED_BRIEF_BY_TYPE`, so the
   enemy-registry fast path always misses for the player and the new
   variant-lookup path is reached.

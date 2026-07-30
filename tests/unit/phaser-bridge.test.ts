@@ -838,6 +838,9 @@ describe('createPhaserBridge', () => {
     const savedX = kenneyImage.x;
     const savedY = kenneyImage.y;
 
+    // Simulate the player last facing left (flipX=true) before the walk-cycle loads
+    kenneyImage.setFlipX(true);
+
     // Simulate late-load: walk-cycle PNG finishes loading
     loadedKeys.add('player-walk-cycle-female');
 
@@ -855,6 +858,8 @@ describe('createPhaserBridge', () => {
     // Position must be preserved — no snap-to-origin regression
     expect(walkSprite.x).toBe(savedX);
     expect(walkSprite.y).toBe(savedY);
+    // flipX must be preserved — late-load must not snap facing direction to right
+    expect(walkSprite.flipX).toBe(true);
     // Must be a Sprite (has .anims), not a plain Image
     expect(walkSprite.anims).toBeDefined();
   });
