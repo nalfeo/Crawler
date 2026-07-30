@@ -14,14 +14,8 @@ export const AUDIT_EXCEPTIONS = [
     source: 1124334,
     url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
     expiresOn: '2026-08-13',
-    reason: 'No patched brace-expansion release is available yet.',
-  },
-  {
-    packageName: 'find-my-way',
-    source: 1124273,
-    url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
-    expiresOn: '2026-08-13',
-    reason: 'Microsoft npm proxy does not yet mirror fixed release 9.7.0.',
+    reason:
+      'brace-expansion@5.0.8 is patched upstream; Microsoft npm proxy (ms-feed-12.pkgs.visualstudio.com) does not yet mirror it (re-verified 2026-07-30).',
   },
 ];
 
@@ -43,7 +37,10 @@ function isAtOrAbove(severity, threshold) {
   return SEVERITY_ORDER.indexOf(severity) >= SEVERITY_ORDER.indexOf(threshold);
 }
 
-export function evaluateAudit(report, { auditLevel = 'high', now = new Date() } = {}) {
+export function evaluateAudit(
+  report,
+  { auditLevel = 'high', now = new Date(), exceptions = AUDIT_EXCEPTIONS } = {},
+) {
   if (report?.auditReportVersion !== 2 || typeof report.vulnerabilities !== 'object') {
     throw new Error('Unsupported or invalid npm audit JSON report');
   }
@@ -62,7 +59,7 @@ export function evaluateAudit(report, { auditLevel = 'high', now = new Date() } 
         vulnerability.via.length > 0 &&
         vulnerability.via.every((via) => {
           if (typeof via === 'string') return ignored.has(via);
-          const exception = AUDIT_EXCEPTIONS.find((candidate) =>
+          const exception = exceptions.find((candidate) =>
             matchesException(packageName, via, candidate, now),
           );
           if (exception) {
@@ -85,7 +82,7 @@ export function evaluateAudit(report, { auditLevel = 'high', now = new Date() } 
     if (ignored.has(vulnerability.name)) return false;
     return isAtOrAbove(vulnerability.severity, auditLevel);
   });
-  const matchedExceptions = AUDIT_EXCEPTIONS.filter((exception) =>
+  const matchedExceptions = exceptions.filter((exception) =>
     matchedExceptionKeys.has(exception.url),
   );
   return { blocking, ignored: [...ignored].sort(), matchedExceptions };

@@ -688,66 +688,20 @@ function sliceWithMap(sheetPng: Buffer, options: SliceOptions): BriefSliceResult
 }
 
 /**
- * Fixed-grid slicer for `frameSequence` briefs.
- *
- * The content-aware gutter detector (`computeSliceMap`) is deliberately tuned
- * for independent design-variant galleries, which the prompt instructs to
- * leave separated by flat background gutters. A walk-cycle's ordered frames
- * are the opposite by design: the brief instructs the model to keep the
- * SAME character close together across frames (consistent floor line, no
- * gaps), so there is no reliable background gutter between poses — limbs and
- * silhouettes can legitimately extend close to or across the nominal cell
- * boundary. Running the gutter detector on such a sheet under-segments (in
- * the worst case, to a single 1×1 "cell" spanning the whole row), which then
- * gets scored as if it were one character.
- *
- * `frameSequence` briefs are cross-validated (`brief-schema.ts`) to declare a
- * single row of exactly `frameCount` equal cells — `rows === 1`,
- * `cols === frameCount`, `nativeCanvas` evenly divisible by `cols` — so the
- * layout is already fully known from the brief. This slicer trusts that
- * contract directly: it divides the sheet into `cols` equal-width, full-height
- * columns with no gutter detection at all. Uneven division (should not occur
- * given the schema's divisibility check) distributes any remainder pixels
- * across the first columns rather than silently dropping them.
- */
-function sliceSheetFixedGrid(sheetPng: Buffer, rows: number, cols: number): BriefSliceResult {
-  const sheet = PNG.sync.read(sheetPng);
-  const cellW = Math.floor(sheet.width / cols);
-  const cellH = Math.floor(sheet.height / rows);
-  const cells: Buffer[] = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x0 = c * cellW;
-      const y0 = r * cellH;
-      // Last column/row absorbs any remainder pixels so the whole sheet is
-      // covered even if width/height doesn't divide `cols`/`rows` perfectly.
-      const w = c === cols - 1 ? sheet.width - x0 : cellW;
-      const h = r === rows - 1 ? sheet.height - y0 : cellH;
-      cells.push(extractCell(sheet, x0, y0, w, h));
-    }
-  }
-  return {
-    cells,
-    grid: { rows, cols, emptyCells: [] },
-    variantCount: cells.length,
-  };
-}
-
-/**
  * Convenience wrapper that pulls the grid contract from a brief. `emptyCells` are
  * forwarded, and the brief's declared `rows`/`cols` are passed as the soft
  * `expectedGrid` anchor. Returns the ACTUAL data-driven grid the slicer landed on
  * (which may differ from the commanded grid — a runt edge trimmed or a spurious
  * gutter merged) so the caller persists the real grid/count. See `computeSliceMap`.
  *
- * `frameSequence`-enabled briefs bypass gutter detection entirely and use a
- * fixed uniform grid instead — see `sliceSheetFixedGrid`.
+ * Content-aware slicing is used unconditionally for every brief type including
+ * `frameSequence`-enabled ones. The brief's layout prompt (see `build-prompt.ts`)
+ * requires a visible background gutter between every cell, so the gutter detector
+ * keying off that separator is robust and "fails loud" (returns a different
+ * `variantCount` than expected) when the model omits the required gutter.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): BriefSliceResult {
   const { rows, cols, emptyCells } = brief.generation.sheet;
-  if (brief.frameSequence?.enabled) {
-    return sliceSheetFixedGrid(sheetPng, rows, cols);
-  }
   return sliceWithMap(sheetPng, { emptyCells, expectedGrid: { rows, cols } });
 }
 
@@ -758,12 +712,6 @@ export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): BriefSliceR
  * exactly (identical crops), so re-postprocess re-derives the same row-major
  * per-variant entries; a mismatch signals a corrupt stored grid and is caught by
  * the rerun guard. See `rerun.ts`.
- *
- * Pass `fixedGrid: true` for a run generated from a `frameSequence`-enabled
- * brief so the re-slice uses the same gutter-free fixed grid as the original
- * generation (`sliceSheetFixedGrid`) instead of gutter detection — otherwise a
- * rerun of a tightly-packed frame sequence would hit the same under-segmentation
- * the fixed grid was added to avoid.
  */
 export function sliceSheetWithGrid(
   sheetPng: Buffer,
@@ -772,11 +720,7 @@ export function sliceSheetWithGrid(
     readonly cols: number;
     readonly emptyCells: ReadonlyArray<readonly [number, number]>;
   },
-  options: { readonly fixedGrid?: boolean } = {},
 ): BriefSliceResult {
-  if (options.fixedGrid) {
-    return sliceSheetFixedGrid(sheetPng, grid.rows, grid.cols);
-  }
   return sliceWithMap(sheetPng, {
     emptyCells: grid.emptyCells,
     expectedGrid: { rows: grid.rows, cols: grid.cols },
