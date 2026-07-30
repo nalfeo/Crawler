@@ -1,5 +1,16 @@
 [
   {
+    "commit": "01bb6fbfc772198ecd55d157c481782d6377867d",
+    "commitDate": "2026-07-30T03:34:14Z",
+    "commitSubject": "fix(security): upgrade fast-uri and find-my-way to patched versions; decouple audit test suite from live exceptions (#2344)",
+    "capturedAt": "2026-07-30T04:42:28.633Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30511939447",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/01bb6fbfc772198ecd55d157c481782d6377867d.json"
+  },
+  {
     "commit": "b39212c453c8e5a77151a4ae777064d6ff3bd03c",
     "commitDate": "2026-07-30T02:47:58Z",
     "commitSubject": "feat(achievements): author 30 Floor 2 achievements + 6 run-global achievements (#2339)",
