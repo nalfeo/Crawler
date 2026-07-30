@@ -64,6 +64,23 @@ const PLANS_BRANCH = 'assets/plans';
 const PUBLISH_DEADLINE_MS = 90_000;
 /** Upper bound on any single `gh api` call within the publish budget. */
 const PUBLISH_PER_CALL_MS = 25_000;
+/**
+ * Budget held back from the PUT so the post-PUT verification GET can always run
+ * before the deadline. Without it a PUT that consumes the whole budget would
+ * leave zero time to confirm whether the write actually landed, forcing a
+ * local rollback while the remote copy may already be published.
+ */
+const PUBLISH_VERIFY_RESERVE_MS = 10_000;
+/**
+ * Process-start anchor for the publish deadline. Captured at module load, which
+ * is effectively when the bridge spawns this CLI, so the deadline is measured
+ * from the same instant as the bridge's own command timeout. Anchoring here
+ * (rather than at publisher entry) guarantees the total of any upstream work —
+ * e.g. the two durable-state `store.has()` probes in `savePlan` — plus the
+ * publish stays inside `PUBLISH_DEADLINE_MS`, so a slow probe can never push a
+ * `gh PUT` past the bridge's kill window.
+ */
+const PROCESS_START_MS = Date.now();
 
 /** Input handed to a plan publisher: exactly the bytes written locally. */
 export interface ThemeSetPlanPublishInput {
@@ -579,7 +596,7 @@ export async function savePlan(
   try {
     raced = await deps.store.has(themeEquipmentSetStateKey(plan.id));
   } catch (error) {
-    rollback(target, previous);
+    rollbackIfUnchanged(target, content, previous);
     throw new Error(
       `Could not confirm theme set "${plan.id}" is still uninitialized after writing its plan; ` +
         `the write was rolled back.`,
@@ -587,7 +604,7 @@ export async function savePlan(
     );
   }
   if (raced) {
-    rollback(target, previous);
+    rollbackIfUnchanged(target, content, previous);
     throw new Error(
       `Theme set "${plan.id}" was initialized while this plan was being saved; the write was ` +
         `rolled back because an initialized set's roster is immutable.`,
@@ -644,9 +661,15 @@ function rollback(target: string, previous: string | null): void {
 }
 
 /**
- * Roll back only if the file still holds exactly the bytes we wrote. If a
- * concurrent editor replaced them between our write and this rollback, leave
- * their content in place rather than clobbering it with the pre-save copy.
+ * Best-effort rollback: re-read the file and only restore the pre-save copy if
+ * it still holds exactly the bytes we wrote. If a concurrent editor replaced
+ * them first, leave their content in place. This is a content guard, not a
+ * synchronized operation — the read and the restore are separate filesystem
+ * calls, so a same-file edit landing in the microsecond window between them is
+ * not prevented. That window is negligible for a single-maintainer dev tool
+ * (it needs a human hand-editing the very same plan JSON during a failed
+ * publish rollback); full atomicity would require a lock or staged install and
+ * is deliberately out of scope here.
  */
 function rollbackIfUnchanged(target: string, ourBytes: string, previous: string | null): void {
   let current: string | null;
@@ -792,10 +815,29 @@ export function createThemeEquipmentArtifactReader(options: {
  */
 export function createGhPlanPublisher(
   env: Readonly<Record<string, string | undefined>> = process.env,
+  options: {
+    /** Injectable low-level `gh api` runner (defaults to the real bounded call). */
+    readonly runGh?: (args: readonly string[], deadline: number) => Promise<GhApiResult>;
+    /** Override the publish budget (ms from `now()`); defaults to the process-start anchor. */
+    readonly deadlineMs?: number;
+    /** Clock source, injectable for deterministic tests. */
+    readonly now?: () => number;
+  } = {},
 ): ThemeSetPlanPublisher {
+  const now = options.now ?? Date.now;
+  const runGh =
+    options.runGh ?? ((args: readonly string[], deadline: number) => runGhApi(args, env, deadline));
   return async (input) => {
-    const deadline = Date.now() + PUBLISH_DEADLINE_MS;
-    const gh = (args: readonly string[]) => runGhApi(args, env, deadline);
+    // Anchor the deadline at process start (not here) so time already spent by
+    // the caller — e.g. savePlan's durable-state probes — counts against the
+    // same budget the bridge times out on. When an explicit deadlineMs is given
+    // (tests), measure it from now().
+    const deadline =
+      options.deadlineMs !== undefined
+        ? now() + options.deadlineMs
+        : PROCESS_START_MS + PUBLISH_DEADLINE_MS;
+    const gh = (args: readonly string[], callDeadline: number = deadline) =>
+      runGh(args, callDeadline);
 
     const branchProbe = await gh([`repos/{owner}/{repo}/branches/${PLANS_BRANCH}`]);
     if (branchProbe.status === 404) {
@@ -834,7 +876,10 @@ export function createGhPlanPublisher(
     ];
     if (remoteSha) putArgs.push('-f', `sha=${remoteSha}`);
 
-    const put = await gh(putArgs);
+    // Hold back a verification window: the PUT may not spend the whole budget,
+    // so the post-PUT GET below can always run and confirm whether an ambiguous
+    // PUT actually landed instead of blindly reporting failure and rolling back.
+    const put = await gh(putArgs, deadline - PUBLISH_VERIFY_RESERVE_MS);
     if (put.ok) {
       const parsed = safeJson(put.stdout) as
         | { commit?: { sha?: unknown; html_url?: unknown }; content?: { html_url?: unknown } }
@@ -853,6 +898,8 @@ export function createGhPlanPublisher(
 
     // Ambiguous failure: the PUT may have landed. Verify the remote blob before
     // believing the error, so a slow-but-successful push is reported as success.
+    // The commit sha is not recoverable from a Contents GET, so it is returned
+    // empty and the canvas renders "commit pending".
     const verify = await gh([`${contentsPath}?ref=${PLANS_BRANCH}`]);
     if (verify.ok) {
       const parsed = safeJson(verify.stdout) as { html_url?: unknown } | undefined;

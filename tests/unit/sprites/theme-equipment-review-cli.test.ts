@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createThemeEquipmentArtifactReader,
+  createGhPlanPublisher,
   executeThemeEquipmentReviewCommand,
   presentState,
 } from '../../../scripts/sprites/theme-equipment-review-cli.js';
@@ -453,5 +454,164 @@ describe('createThemeEquipmentArtifactReader', () => {
     } finally {
       rmSync(repoRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe('createGhPlanPublisher', () => {
+  const NOW_MS = 1_000_000;
+  const DEADLINE_MS = 90_000;
+  const VERIFY_RESERVE_MS = 10_000;
+  const nowFn = () => NOW_MS;
+
+  interface GhResult {
+    readonly ok: boolean;
+    readonly status: number | null;
+    readonly stdout: string;
+    readonly errorMessage: string;
+  }
+  const ghOk = (stdout = '{}'): GhResult => ({ ok: true, status: 200, stdout, errorMessage: '' });
+  const ghErr = (status: number | null, errorMessage = 'gh failed'): GhResult => ({
+    ok: false,
+    status,
+    stdout: '',
+    errorMessage,
+  });
+  const isBranchProbe = (args: readonly string[]): boolean =>
+    args.length === 1 && args[0]!.includes('/branches/');
+  const isContentsGet = (args: readonly string[]): boolean =>
+    args.length === 1 && args[0]!.includes('/contents/');
+  const isPut = (args: readonly string[]): boolean => args.includes('PUT');
+
+  const baseInput = {
+    setId: 'scratch',
+    planPath: 'data/theme-equipment-sets/scratch.json',
+    content: 'hello: world\n',
+    displayName: 'Scratch Set',
+    overwrite: false,
+  } as const;
+
+  it('publishes a fresh plan and reserves a verification window on the PUT', async () => {
+    const calls: Array<{ args: readonly string[]; deadline: number }> = [];
+    const runGh = async (args: readonly string[], deadline: number): Promise<GhResult> => {
+      calls.push({ args, deadline });
+      if (isBranchProbe(args)) return ghOk('{"name":"assets/plans"}');
+      if (isContentsGet(args)) return ghErr(404, 'not found'); // file absent → fresh write
+      if (isPut(args))
+        return ghOk(
+          JSON.stringify({
+            commit: { sha: 'deadbeef', html_url: 'https://example/commit' },
+            content: { html_url: 'https://example/blob' },
+          }),
+        );
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    const result = await publish({ ...baseInput });
+
+    expect(result.branch).toBe('assets/plans');
+    expect(result.commit).toBe('deadbeef');
+    expect(result.url).toBe('https://example/blob');
+
+    // The read calls run against the full budget; the PUT holds back a verify
+    // window so a slow-but-successful push can always be confirmed afterwards.
+    const readDeadline = calls.find((c) => isBranchProbe(c.args))!.deadline;
+    const putCall = calls.find((c) => isPut(c.args))!;
+    expect(readDeadline).toBe(NOW_MS + DEADLINE_MS);
+    expect(readDeadline - putCall.deadline).toBe(VERIFY_RESERVE_MS);
+    // A fresh write carries no compare-and-swap sha.
+    expect(putCall.args.some((a) => a.startsWith('sha='))).toBe(false);
+  });
+
+  it('refuses to overwrite an existing remote plan unless overwrite is set', async () => {
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      if (isBranchProbe(args)) return ghOk();
+      if (isContentsGet(args)) return ghOk('{"sha":"abc123"}'); // remote copy exists
+      throw new Error(`PUT must not run when overwrite is refused: ${args.join(' ')}`);
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    await expect(publish({ ...baseInput, overwrite: false })).rejects.toThrow(/already exists/);
+  });
+
+  it('sends the remote blob sha as a compare-and-swap when overwriting', async () => {
+    let putArgs: readonly string[] | null = null;
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      if (isBranchProbe(args)) return ghOk();
+      if (isContentsGet(args)) return ghOk('{"sha":"abc123"}');
+      if (isPut(args)) {
+        putArgs = args;
+        return ghOk('{"commit":{"sha":"c0ffee"}}');
+      }
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    const result = await publish({ ...baseInput, overwrite: true });
+
+    expect(result.commit).toBe('c0ffee');
+    expect(putArgs).not.toBeNull();
+    expect(putArgs!.includes('sha=abc123')).toBe(true);
+  });
+
+  it('confirms a slow-but-successful PUT via the verify GET and returns a pending commit', async () => {
+    let putCount = 0;
+    const encoded = Buffer.from(baseInput.content, 'utf8').toString('base64');
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      if (isBranchProbe(args)) return ghOk();
+      if (isPut(args)) {
+        putCount += 1;
+        return ghErr(null, 'connection reset'); // ambiguous failure — may have landed
+      }
+      if (isContentsGet(args)) {
+        // Pre-PUT probe → absent; post-PUT verify → the written blob.
+        return putCount === 0
+          ? ghErr(404, 'not found')
+          : ghOk(
+              JSON.stringify({
+                content: encoded,
+                encoding: 'base64',
+                html_url: 'https://example/blob',
+              }),
+            );
+      }
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    const result = await publish({ ...baseInput });
+
+    expect(result.branch).toBe('assets/plans');
+    expect(result.commit).toBe(''); // no sha recoverable from a Contents GET → "commit pending"
+    expect(result.url).toBe('https://example/blob');
+  });
+
+  it('throws when an ambiguous PUT cannot be confirmed by the verify GET', async () => {
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      if (isBranchProbe(args)) return ghOk();
+      if (isPut(args)) return ghErr(null, 'connection reset');
+      if (isContentsGet(args)) return ghErr(404, 'not found'); // never landed
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    await expect(publish({ ...baseInput })).rejects.toThrow(/connection reset/);
+  });
+
+  it('seeds assets/plans from the default-branch tip when the branch is missing', async () => {
+    const seen: string[] = [];
+    const runGh = async (args: readonly string[]): Promise<GhResult> => {
+      seen.push(args.join(' '));
+      if (isBranchProbe(args)) return ghErr(404, 'no branch'); // branch does not exist yet
+      if (args[0] === 'repos/{owner}/{repo}') return ghOk('{"default_branch":"main"}');
+      if (args[0]!.includes('/git/ref/heads/main')) return ghOk('{"object":{"sha":"mainsha"}}');
+      if (args.includes('POST') && args.includes('repos/{owner}/{repo}/git/refs'))
+        return ghOk('{}');
+      if (isContentsGet(args)) return ghErr(404, 'not found');
+      if (isPut(args)) return ghOk('{"commit":{"sha":"seeded"}}');
+      throw new Error(`unexpected gh call: ${args.join(' ')}`);
+    };
+    const publish = createGhPlanPublisher({}, { runGh, deadlineMs: DEADLINE_MS, now: nowFn });
+    const result = await publish({ ...baseInput });
+
+    expect(result.commit).toBe('seeded');
+    // The branch-create POST carried the resolved default-branch tip sha.
+    expect(seen.some((s) => s.includes('sha=mainsha'))).toBe(true);
   });
 });

@@ -329,7 +329,7 @@ export function renderHtml(bootstrap) {
             '<label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" data-overwrite> overwrite existing file</label></div>' +
             (draft.saved
               ? (draft.saved.durable
-                  ? '<p class="muted">Pushed <strong>' + esc(draft.saved.planPath) + '</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong> (commit <code>' + esc(String(draft.saved.durable.commit).slice(0, 7)) + '</code>). Open the set and initialize it on GitHub — init reads the plan from ' + esc(draft.saved.durable.branch) + ', so any workspace can run it.</p>'
+                  ? '<p class="muted">Pushed <strong>' + esc(draft.saved.planPath) + '</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong> ' + (draft.saved.durable.commit ? '(commit <code>' + esc(String(draft.saved.durable.commit).slice(0, 7)) + '</code>)' : '(commit pending)') + '. Open the set and initialize it on GitHub — init reads the plan from ' + esc(draft.saved.durable.branch) + ', so any workspace can run it.</p>'
                   : '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong> locally but did <strong>not</strong> publish it to the shared plans branch. It will not be visible to a GitHub init until it is pushed.</p>')
               : '') +
           '</section>'
