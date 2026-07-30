@@ -2388,9 +2388,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }
 
-      // Mob-ability circle avoidance: if the player is inside committed
-      // telegraph OR active persistent-zone circles, flee outward using the same
-      // geometry consumed by renderer and damage resolution.
+      // Mob-ability geometry avoidance: if the player is inside a committed
+      // telegraph / active danger footprint, flee using the same public
+      // geometry the renderer draws — no information advantage over what the
+      // player sees. Runs only when no projectile threat is in the dodge horizon.
       const maybeDodgeCircle = (circle: { x: number; y: number; radiusFt: number }): boolean => {
         const dx = ctx.playerX - circle.x;
         const dy = ctx.playerY - circle.y;
@@ -2408,7 +2409,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         return true;
       };
       for (const cue of ctx.world.mobAbilities.cues) {
-        if (cue.phase !== 'telegraph') continue;
         const { geometry } = cue;
         if (geometry.kind === 'radial-projectiles') {
           const relX = ctx.playerX - geometry.casterX;
@@ -3578,7 +3578,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.farmPullY = 0;
         }
         const preserveMobAbilityDodge =
-          world.mobAbilities.cues.some((cue) => cue.phase === 'telegraph') ||
+          world.mobAbilities.cues.length > 0 ||
           world.mobAbilities.activeZones.some((zone) => {
             const dx = playerX - zone.circle.x;
             const dy = playerY - zone.circle.y;
@@ -3603,6 +3603,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         // so retire the additive travel dodge whenever steering drives the frame.
         // Mob-ability danger cues are different: their committed geometry is not
         // represented in travel steering, so preserve that dodge contribution.
+        // This covers every live cue phase, not just `telegraph` — the Clockwork
+        // Kill-Saw stays lethal through `outbound`/`hold`/`return`, so zeroing the
+        // dodge once the telegraph ends would walk the AI into the moving blade.
         // Slick-zone occupancy: if the player is currently inside an active zone,
         // the zone-branch dodge vector must also be preserved so the AI exits
         // rather than walking through the slick after travel steering takes over.

@@ -278,7 +278,7 @@
       "abilityId": "overseer-fizzwick-clockwork-kill-saw",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "gnome-boss",
         "approvedAssetId": "gnome-boss-var-7",
@@ -287,19 +287,31 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-overseer-fizzwick",
+      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-overseer-fizzwick` via deterministic headless Chromium observation (`tests/e2e/overseer-fizzwick-arena-observation.test.ts`): frame 539 (8983.33ms) shows no cue/banner; frame 540 (9000ms) shows the first hostile-red 6ft lane telegraph with the exact `CLOCKWORK KILL-SAW — Mandatory overtime starts now!` announcement. Frame 619 (10316.67ms) shows the outbound saw on the same committed lane. Frame 650 (10833.33ms) shows the endpoint hold at the committed endpoint. Frame 680 (11333.33ms) shows the return pass retracing that same lane. Frame 700 (11666.67ms) shows the re-catch cleanup with cueCount dropping to 0. Frame 1240 (20666.67ms) shows the second telegraph start; frame 1400 (23333.33ms) shows the second re-catch cleanup and exact recurring cadence. Deterministic cadence-after-return, path lock, per-pass damage, cleanup, and default-off zero-cast coverage are also exercised in `tests/unit/mob-abilities/clockwork-kill-saw.test.ts` and the headless canonical-runtime evidence script `scripts/agent/overseer-fizzwick-arena-evidence.ts`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
-      "implementationIssue": null,
-      "implementationPullRequest": null,
+      "implementationIssue": {
+        "kind": "issue",
+        "number": 1954,
+        "state": "open",
+        "title": "Implement Overseer Fizzwick's CLOCKWORK KILL-SAW ability",
+        "url": "https://github.com/nalfeo/Crawler/issues/1954"
+      },
+      "implementationPullRequest": {
+        "kind": "pull-request",
+        "number": 2010,
+        "state": "open",
+        "title": "Implement Overseer Fizzwick's CLOCKWORK KILL-SAW ability",
+        "url": "https://github.com/nalfeo/Crawler/pull/2010"
+      },
       "blockers": ["floor2-boss-production-enable"]
     },
     {
