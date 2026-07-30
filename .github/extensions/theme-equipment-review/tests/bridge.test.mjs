@@ -135,6 +135,36 @@ test('refuses to initialize when the remote ref cannot be fetched', async () => 
   }
 });
 
+test('returns the freshly fetched remote tip sha so the dispatch can pin an immutable commit', async () => {
+  const remote = mkdtempSync(path.join(tmpdir(), 'theme-review-remote-sha-'));
+  const root = repoWithSets(['classic-fantasy']);
+  const planPath = 'data/theme-equipment-sets/classic-fantasy.json';
+  const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'gitconfig') };
+  const run = (args, cwd = root) =>
+    execFileSync('git', args, { cwd, stdio: 'ignore', env: gitEnv });
+  try {
+    writeFileSync(path.join(root, 'gitconfig'), '[user]\n  name = t\n  email = t@example.com\n');
+    execFileSync('git', ['init', '--quiet', '--bare', remote], { stdio: 'ignore', env: gitEnv });
+    run(['init', '--quiet', '--initial-branch', 'feature-branch']);
+    run(['remote', 'add', 'origin', remote]);
+    run(['add', '.']);
+    run(['commit', '--quiet', '-m', 'seed']);
+    run(['push', '--quiet', 'origin', 'feature-branch']);
+
+    const sha = await assertPlanOnRef(root, 'feature-branch', planPath, gitEnv);
+    const expected = execFileSync('git', ['rev-parse', 'feature-branch'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: gitEnv,
+    }).trim();
+    assert.match(sha, /^[0-9a-f]{40}$/);
+    assert.equal(sha, expected);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
 test('judges the plan against the freshly fetched remote tip, not a stale tracking ref', async () => {
   const remote = mkdtempSync(path.join(tmpdir(), 'theme-review-remote-'));
   const root = repoWithSets(['classic-fantasy']);
@@ -171,7 +201,7 @@ test('judges the plan against the freshly fetched remote tip, not a stale tracki
   }
 });
 
-test('rejects when the working-tree plan differs from the remote blob', async () => {
+test('returns the pinned remote sha when the working-tree plan differs from the durable remote blob', async () => {
   const remote = mkdtempSync(path.join(tmpdir(), 'theme-review-remote-stale-'));
   const root = repoWithSets(['classic-fantasy']);
   const planPath = 'data/theme-equipment-sets/classic-fantasy.json';
@@ -190,12 +220,15 @@ test('rejects when the working-tree plan differs from the remote blob', async ()
     // Overwrite the local working-tree plan without committing or pushing.
     writeFileSync(path.join(root, planPath), `{"id":"classic-fantasy","updated":true}\n`);
 
-    // The remote still has the old content, so the working tree and the
-    // remote blob diverge — initialization must be refused.
-    await assert.rejects(
-      () => assertPlanOnRef(root, 'feature-branch', planPath, gitEnv),
-      /does not match the local working-tree file/,
-    );
+    // The durable remote copy is authoritative for init, even when a stale
+    // local working-tree file differs.
+    const sha = await assertPlanOnRef(root, 'feature-branch', planPath, gitEnv);
+    const expected = execFileSync('git', ['rev-parse', 'feature-branch'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: gitEnv,
+    }).trim();
+    assert.equal(sha, expected);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(remote, { recursive: true, force: true });

@@ -1,0 +1,54 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "durable-save-plan-assets-branch",
+  "task_title": "Theme-equipment review: warm-reader artifact latency fix + durable save-plan auto-push to assets/plans",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Separate-model plan review (gpt-5.6-sol, rubber-duck) of BOTH changes. Change A (warm in-process artifact reader) judged sound as designed; read-only in-process access adds no mutation/CAS risk and child-process fallback preserves availability. Change B (durable save-plan): 3 blocking concerns, all produced concrete plan changes. (1) Mutable plan_ref TOCTOU -> RESOLVED: assertPlanOnRef returns the fetched commit SHA and dispatch pins that immutable SHA, not the branch name. (3) Publisher-termination gap -> RESOLVED: CLI imposes an internal overall deadline shorter than the bridge command timeout and bounds every gh call, reserving time for verify+rollback. (2) save/init cross-store race (git plan vs RunStore state) -> SCOPED DEFERRAL, user-approved: full atomicity needs a shared CAS reservation protocol the maintainer did not request; instead the plan drops the false immutability claim, documents init as the authoritative consumer (concurrent save+init of a brand-new set can drop a save, never corrupt state), and records the source plan commit in state for detectability. resolved_count counts all three as plan-level resolutions; concern 2's resolution is explicitly a bounded, documented limitation, NOT true cross-store atomicity."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Single-model code-review pass (gpt-5.6-sol) over the merge-base diff of both changes: no blockers, 3 Medium findings, all resolved this session. F1 deadline-anchoring: publish budget now anchored at module-load PROCESS_START_MS (approx process spawn) instead of publisher entry, so upstream savePlan store.has() probes count against the same budget the 120s bridge timer kills on; guarantees the publisher yields >=30s before kill. F2 verify-budget + render: PUT deadline reserves PUBLISH_VERIFY_RESERVE_MS (10s) so the post-PUT verify GET always has budget (was: PUT could consume all remaining -> false-failure rollback while remote may be published); renderer shows (commit pending) for the ambiguous-verified path that returns commit:. F3 rollback TOCTOU: the two raced-state rollbacks switched to content-guarded rollbackIfUnchanged and its doc comment made honest (best-effort guard, negligible TOCTOU window for a single-maintainer dev tool, full atomicity out of scope). Added a direct createGhPlanPublisher unit test (injected gh runner) covering fresh publish, overwrite-refuse, CAS sha, ambiguous->verified pending-commit, ambiguous->unconfirmed throw, and branch bootstrap, closing the reviewer coverage gap. At 3 apples multi-model review is not required."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Graceful-degradation change review (keep authored plan + honest pending/retry UI on transient publish failure). 3 findings: (High) canvas Retry forced overwrite:true, so a retry after a pre-landing failure could clobber a different maintainer plan that landed at the same set id (CAS protects GET->PUT, not authorship) -> publisher now treats a byte-identical remote copy as idempotent success and retry re-saves with the maintainer own overwrite choice (default false). (Med) ensurePlansBranch threw plain Error on gh failures, so a 429/5xx/timeout seeding assets/plans reached savePlan as definitive and rolled back the plan -> all bootstrap throws now raise classified PlanPublishError via planPublishFailure, incl. the post-422 create-race recheck. (Med) runGhApi returned status:null for missing-gh/auth/bad-arg local faults which the classifier treated as retryable (stuck pending forever) -> GhApiResult gained a transient flag set only for a timeout-killed child or recognized transport error; isRetryableGhFailure requires it for a null status. All 3 fixed + covered by new unit tests."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Re-review of the round-2 fixes. 1 finding (Med): the transient transport regex only matched libc/Node errno spellings, missing the Go/Windows net diagnostics gh prints on this platform (proxyconnect tcp, connectex, actively refused, no such host, dial tcp) -> a real network blip on Windows was misclassified definitive and rolled back the authored plan, defeating graceful degradation on the maintainer own OS. Fixed: added those signatures to the regex and extracted the null-status decision into an exported pure helper classifyGhFailureTransient with regression tests using the raw observed Windows stderr."
+        },
+        {
+          "round": 4,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final confirmation pass on the round-3 fix commit. Reviewer: Windows/Go transport failures now correctly classified transient, extracted helper semantics identical to the prior inline logic, regression tests directly cover the observed stderr, no false-positive risk on definitive-fault stderr. Loop converged clean."
+        }
+      ]
+    }
+  }
+}

@@ -37,4 +37,10 @@ describe('theme-equipment workflow', () => {
     // no common ancestor (queue-commit.ts). fetch-depth: 0 is required.
     expect(publishCheckout?.with?.['fetch-depth']).toBe(0);
   });
+
+  it('requires init to supply a pinned plan commit sha instead of falling back to the checkout copy', () => {
+    expect(source).toContain("grep -Eq '^[0-9a-f]{40}$'");
+    expect(source).toContain('init requires THEME_PLAN_REF to be a pinned 40-character commit SHA');
+    expect(source).not.toContain('if [ -n "$THEME_PLAN_REF" ]; then');
+  });
 });

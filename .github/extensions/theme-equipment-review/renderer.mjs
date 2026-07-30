@@ -273,6 +273,7 @@ export function renderHtml(bootstrap) {
         '<span class="badge">' + stateBadge(entry) + '</span></div>' +
         (entry.plan.status === 'invalid' ? '<p class="error">Plan invalid: ' + esc(entry.plan.error || '') + '</p>' : '') +
         (entry.plan.status === 'missing' ? '<p class="muted">Durable state exists but no authored plan file is present.</p>' : '') +
+        (entry.plan.status === 'remote-only' ? '<p class="muted">Authoritative plan exists on assets/plans only. Open it to initialize from the durable copy, then sync locally before editing.</p>' : '') +
         (coverage
           ? '<div class="metrics"><span class="pill">' + coverage.itemCount + ' items</span>' +
             '<span class="pill">' + coverage.weaponTypeCount + '/' + MIN_WEAPON_TYPES + '+ weapon types</span>' +
@@ -328,7 +329,12 @@ export function renderHtml(bootstrap) {
             '<div class="controls"><button class="primary" data-save ' + (busy || parseError ? 'disabled' : '') + '>Save plan to repo</button>' +
             '<label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" data-overwrite> overwrite existing file</label></div>' +
             (draft.saved
-              ? '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong>. Commit and push it to this branch, then open the set and initialize it on GitHub — the workflow reads the plan from the pushed ref, not your working tree.</p>'
+              ? (draft.saved.durable
+                  ? (draft.saved.durable.pending
+                      ? '<p class="muted" style="border-left:3px solid var(--true-color-orange,#d29922);padding-left:10px">Saved <strong>' + esc(draft.saved.planPath) + '</strong> to your working tree, but it is <strong>not yet shared</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong>: ' + esc(String(draft.saved.durable.reason || 'a transient publish error')) + '. Nothing was lost — your plan is safe locally. GitHub init reads the plan from ' + esc(draft.saved.durable.branch) + ', so retry the publish before initializing. If the retry reports the shared copy already exists and differs, tick “overwrite existing file” only if you mean to replace it.</p>' +
+                        '<div class="controls"><button class="primary" data-retry-publish ' + (busy ? 'disabled' : '') + '>Retry publish</button></div>'
+                      : '<p class="muted">Pushed <strong>' + esc(draft.saved.planPath) + '</strong> to <strong>' + esc(draft.saved.durable.branch) + '</strong> ' + (draft.saved.durable.commit ? '(commit <code>' + esc(String(draft.saved.durable.commit).slice(0, 7)) + '</code>)' : '(commit pending)') + '. Open the set and initialize it on GitHub — init reads the plan from ' + esc(draft.saved.durable.branch) + ', so any workspace can run it.</p>')
+                  : '<p class="muted">Wrote <strong>' + esc(draft.saved.planPath) + '</strong> locally but did <strong>not</strong> publish it to the shared plans branch. It will not be visible to a GitHub init until it is pushed.</p>')
               : '') +
           '</section>'
           : '') +
@@ -361,7 +367,14 @@ export function renderHtml(bootstrap) {
       });
       planEditor?.addEventListener('change', () => { draft.planText = planEditor.value; renderCreate(); });
       document.querySelector('[data-synth]')?.addEventListener('click', synthRoster);
-      document.querySelector('[data-save]')?.addEventListener('click', savePlan);
+      document.querySelector('[data-save]')?.addEventListener('click', () => savePlan());
+      // Retry after a transient publish outage. It does NOT force overwrite: if
+      // this attempt's bytes already landed, the publisher treats an identical
+      // remote copy as idempotent success; if a *different* plan now occupies
+      // the shared id, the retry is refused unless the maintainer explicitly
+      // ticks "overwrite existing file" — so a retry can never silently clobber
+      // someone else's plan.
+      document.querySelector('[data-retry-publish]')?.addEventListener('click', () => savePlan());
     }
 
     async function synthRoster() {
@@ -426,7 +439,7 @@ export function renderHtml(bootstrap) {
           : '') +
         '<p class="error">' + esc(message) + '</p>' +
         (missing
-          ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(currentSetId) + '.json). The workflow reads the plan from the pushed branch, so commit and push it first.</p>' +
+          ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(currentSetId) + '.json). The workflow reads the pinned authoritative copy from assets/plans, so save the plan there before initializing.</p>' +
             '<div class="controls"><button data-dispatch="init" ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Dispatching…' : 'Initialize set on GitHub') + '</button><button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div>'
           : '<p class="muted">If this set lives in Azure, refresh .env.local with npm run setup:azure:env.</p>' +
             '<div class="controls"><button data-refresh>Refresh</button></div>') +
