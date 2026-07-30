@@ -1,5 +1,16 @@
 [
   {
+    "commit": "85cfcd624d999a62bfe63dffc606c49d21773ff2",
+    "commitDate": "2026-07-30T01:57:50Z",
+    "commitSubject": "fix(sprites): unblock + speed up theme-equipment publish (fetch-depth 0 + parallel blob stage) (#2338)",
+    "capturedAt": "2026-07-30T03:06:45.965Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30507582644",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/85cfcd624d999a62bfe63dffc606c49d21773ff2.json"
+  },
+  {
     "commit": "a33161c5be3713986ff46218b27d6dfb6ee1089f",
     "commitDate": "2026-07-30T00:39:10Z",
     "commitSubject": "feat(labs): deep-linkable terrain-wall-junction inspection scene for the AI-runner lab (#2332)",
