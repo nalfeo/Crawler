@@ -649,7 +649,11 @@ function readAuthoredPlans(repoRoot: string): readonly AuthoredPlanEntry[] {
  * instead; there is deliberately no override flag.
  */
 export async function savePlan(
-  command: { readonly plan: unknown; readonly overwrite?: boolean; readonly retryPublish?: boolean },
+  command: {
+    readonly plan: unknown;
+    readonly overwrite?: boolean;
+    readonly retryPublish?: boolean;
+  },
   deps: Pick<ThemeEquipmentReviewCliDeps, 'store' | 'repoRoot' | 'publishPlan'>,
 ): Promise<Record<string, unknown>> {
   const plan = themeEquipmentSetPlanSchema.parse(command.plan);
