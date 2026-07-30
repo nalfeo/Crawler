@@ -3,6 +3,10 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  PLAYER_ACQUISITION_SOURCES,
+  type PlayerAcquisitionSource,
+} from './helpers/player-acquisition-sources.js';
 
 describe('MainGameScene Floor 2 Quartermaster placement', () => {
   let browser: Browser;
@@ -178,4 +182,107 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     const purchasedOffer = offersAfter.find((o) => o.offerId === offers[0]!.offerId);
     expect(purchasedOffer?.quantity, 'keyboard purchase should mark first offer sold out').toBe(0);
   });
+});
+
+describe('MainGameScene acquisition → observation contract', () => {
+  let browser: Browser;
+  let context: BrowserContext;
+  let page: Page;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+    context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+    page = await context.newPage();
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  async function bootFloor2SafeScene(): Promise<void> {
+    await loadMainSceneProbeLab(page, { floor: 'floor2' });
+    await mainSceneProbe.resolveLoadout(page);
+    await waitForState(page, (s) => s.worldState === 'playing' && s.simulationPaused, {
+      label: 'loadout resolved + simulation paused',
+    });
+    await mainSceneProbe.unlockSafeRoomSurfaces(page);
+    await waitForState(page, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
+  }
+
+  async function ensureInventoryOpen(): Promise<void> {
+    const state = await mainSceneProbe.getState(page);
+    if (!state.inventoryOpen) {
+      await mainSceneProbe.requestInventoryToggle(page);
+    }
+    await waitForState(page, (s) => s.inventoryOpen, { label: 'inventory open' });
+  }
+
+  async function acquireAndObserve(source: PlayerAcquisitionSource): Promise<void> {
+    await bootFloor2SafeScene();
+    await ensureInventoryOpen();
+    const before = await mainSceneProbe.getInventoryVisibleItemIds(page);
+    if (source === 'achievement-reward-claim') {
+      await mainSceneProbe.claimAchievementReward(page, 'floor2-field-kit');
+      const reward = await mainSceneProbe.getRewardOpeningState(page);
+      if (reward.open) {
+        await mainSceneProbe.skipRewardOpening(page);
+        await mainSceneProbe.acknowledgeRewardOpening(page);
+      }
+      await ensureInventoryOpen();
+      const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+      expect(after.length, 'achievement claim should add a rendered inventory entry').toBeGreaterThan(
+        before.length,
+      );
+      return;
+    }
+    if (source === 'quartermaster-purchase') {
+      await mainSceneProbe.setPlayerGold(page, 100_000);
+      const result = await mainSceneProbe.purchaseFirstQuartermasterOffer(page);
+      expect(result.ok, 'quartermaster purchase should succeed').toBe(true);
+      expect(result.itemId, 'quartermaster purchase should resolve an item id').toBeTruthy();
+      await ensureInventoryOpen();
+      const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+      expect(after.length, 'quartermaster purchase should add a rendered inventory entry').toBeGreaterThan(
+        before.length,
+      );
+      expect(after).toContain(result.itemId!);
+      return;
+    }
+    if (source === 'boss-chest') {
+      await mainSceneProbe.seedAvailableBossChest(page);
+      const opened = await mainSceneProbe.openFirstAvailableBossChest(page);
+      expect(opened, 'boss chest should open and acknowledge').toEqual({ ok: true });
+      await ensureInventoryOpen();
+      const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+      expect(after.length, 'boss chest should add a rendered inventory entry').toBeGreaterThan(
+        before.length,
+      );
+      return;
+    }
+    const seededDropItemId = before.includes('iron-breastplate') ? 'merchant-charm' : 'iron-breastplate';
+    const pickedUp = await mainSceneProbe.spawnAndPickupFloorDrop(page, seededDropItemId);
+    expect(pickedUp.ok, `floor drop '${seededDropItemId}' should be picked up`).toBe(true);
+    await ensureInventoryOpen();
+    const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+    expect(after, `floor drop should be rendered in inventory (${seededDropItemId})`).toContain(
+      seededDropItemId,
+    );
+  }
+
+  const runners: Record<PlayerAcquisitionSource, () => Promise<void>> = {
+    'achievement-reward-claim': () => acquireAndObserve('achievement-reward-claim'),
+    'quartermaster-purchase': () => acquireAndObserve('quartermaster-purchase'),
+    'boss-chest': () => acquireAndObserve('boss-chest'),
+    'floor-drop': () => acquireAndObserve('floor-drop'),
+  };
+
+  it('enforces that every registered acquisition source has seam coverage', () => {
+    expect(Object.keys(runners).sort()).toEqual([...PLAYER_ACQUISITION_SOURCES].sort());
+  });
+
+  for (const source of PLAYER_ACQUISITION_SOURCES) {
+    it(`acquireAndObserve(${source}) reaches rendered inventory contents`, async () => {
+      await runners[source]();
+    });
+  }
 });

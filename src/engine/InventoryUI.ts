@@ -10,20 +10,24 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
+import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
-import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
+import type {
+  GeneratedEquipmentInventoryEntry,
+  InventoryBag,
+  InventorySlot,
+  TabPreferences,
+} from '../shared/inventory.js';
 import {
   createTabPreferences,
   filterByEquipmentSlot,
-  filterByTag,
   getVisibleTabs,
-  search,
   sortSlots,
   type SortField,
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
-import { isEquippableItem } from '../shared/equipmentDefs.js';
+import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
@@ -79,7 +83,12 @@ export interface InventoryUIConfig {
    * cell (ARPG idiom; single click/tap still pins the tooltip). The coordinator
    * decides whether the equip is allowed (safe-room gate) and refreshes panes.
    */
-  onEquipItem?: (itemId: string) => void;
+  onEquipItem?: (item: string | GeneratedEquipmentInventoryEntry) => void;
+}
+
+interface RenderInventorySlot {
+  readonly slot: InventorySlot;
+  readonly generatedEntry?: GeneratedEquipmentInventoryEntry;
 }
 
 /** Max ms between two clicks on the same cell to count as an equip double-click. */
@@ -104,6 +113,8 @@ export function createInventoryUI(
    * without assuming a fixed sort position.
    */
   getCellIndexForItem(itemId: string): number | null;
+  /** Test/automation affordance: visible rendered inventory item ids in cell order. */
+  getVisibleItemIds(): string[];
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -141,6 +152,7 @@ export function createInventoryUI(
   let searchQuery = '';
   let externalSlotFilter: EquipmentSlotId | null = null;
   let currentBag: InventoryBag | null = null;
+  let currentWorld: GameWorld | null = null;
   let currentSortBy: SortField = 'rarity';
   const tabPrefs: TabPreferences = createTabPreferences();
   let playerEid = -1;
@@ -487,26 +499,69 @@ export function createInventoryUI(
     }
   }
 
-  function getFilteredSlots(): InventorySlot[] {
+  function getFilteredSlots(): RenderInventorySlot[] {
     if (!currentBag) return [];
 
-    let slots: InventorySlot[] = currentBag.slots;
+    const staticSlots: RenderInventorySlot[] = currentBag.slots.map((slot) => ({ slot }));
+    const generatedSlots: RenderInventorySlot[] = [];
+    for (const generatedEntry of currentBag.generatedEquipment ?? []) {
+      const generated = currentWorld
+        ? getGeneratedEquipmentInstance(currentWorld, generatedEntry.instanceKey)
+        : undefined;
+      const itemId = generated?.def.id;
+      if (!itemId) continue;
+      generatedSlots.push({
+        slot: { itemId, quantity: 1 },
+        generatedEntry,
+      });
+    }
+    let slots: RenderInventorySlot[] = [...staticSlots, ...generatedSlots];
 
     if (externalSlotFilter !== null) {
-      slots = filterByEquipmentSlot(currentBag, externalSlotFilter);
+      const staticFiltered = filterByEquipmentSlot(currentBag, externalSlotFilter).map((slot) => ({
+        slot,
+      }));
+      const generatedFiltered = generatedSlots.filter((candidate) => {
+        const def = getEquipmentDefForItem(candidate.slot.itemId);
+        return def?.slots.includes(externalSlotFilter) === true;
+      });
+      slots = [...staticFiltered, ...generatedFiltered];
     }
-
-    const filteredBag: InventoryBag = { slots };
 
     if (searchQuery) {
-      slots = search(filteredBag, searchQuery);
+      const query = searchQuery.toLowerCase();
+      slots = slots.filter((candidate) => {
+        const def = getItemById(candidate.slot.itemId);
+        if (!def) return false;
+        return (
+          def.name.toLowerCase().includes(query) || (def.description ?? '').toLowerCase().includes(query)
+        );
+      });
     } else if (activeTag) {
-      slots = filterByTag(filteredBag, activeTag);
+      slots = slots.filter((candidate) => {
+        const def = getItemById(candidate.slot.itemId);
+        return def?.tags.includes(activeTag) === true;
+      });
     }
 
-    // Sort
-    const tempBag = { slots };
-    return sortSlots(tempBag, currentSortBy);
+    return [...slots].sort((left, right) => {
+      const leftDef = getItemById(left.slot.itemId);
+      const rightDef = getItemById(right.slot.itemId);
+      if (currentSortBy === 'quantity') {
+        const quantity = right.slot.quantity - left.slot.quantity;
+        return quantity !== 0 ? quantity : left.slot.itemId.localeCompare(right.slot.itemId);
+      }
+      if (currentSortBy === 'name') {
+        const leftName = leftDef?.name ?? left.slot.itemId;
+        const rightName = rightDef?.name ?? right.slot.itemId;
+        const byName = leftName.localeCompare(rightName);
+        return byName !== 0 ? byName : left.slot.itemId.localeCompare(right.slot.itemId);
+      }
+      const raritySorted = sortSlots({ slots: [left.slot, right.slot] }, 'rarity');
+      if (raritySorted[0] === left.slot && raritySorted[1] === right.slot) return -1;
+      if (raritySorted[0] === right.slot && raritySorted[1] === left.slot) return 1;
+      return left.slot.itemId.localeCompare(right.slot.itemId);
+    });
   }
 
   function renderItems(): void {
@@ -525,7 +580,8 @@ export function createInventoryUI(
     const gridLeft = snap(panelX + (panelWidth - gridPixelWidth) / 2);
 
     for (let i = 0; i < Math.min(slots.length, maxVisible); i++) {
-      const slot = slots[i]!;
+      const renderSlot = slots[i]!;
+      const slot = renderSlot.slot;
       const def = getItemById(slot.itemId);
       if (!def) continue;
 
@@ -578,7 +634,7 @@ export function createInventoryUI(
           clearTooltip();
           lastClickItemId = null;
           lastClickTime = Number.NEGATIVE_INFINITY;
-          config.onEquipItem(slot.itemId);
+          config.onEquipItem(renderSlot.generatedEntry ?? slot.itemId);
           return;
         }
 
@@ -705,7 +761,7 @@ export function createInventoryUI(
 
     // Re-show (or drop) the pinned tooltip after rebuilding the grid.
     if (pinned !== null) {
-      const stillPresent = slots.some((s) => s.itemId === pinned!.slot.itemId);
+      const stillPresent = slots.some((candidate) => candidate.slot.itemId === pinned!.slot.itemId);
       if (stillPresent) {
         showTooltip(pinned.def, pinned.slot, pinned.x, pinned.y);
       } else {
@@ -796,6 +852,7 @@ export function createInventoryUI(
   }
 
   function refresh(world: GameWorld): void {
+    currentWorld = world;
     playerEid = findPlayerEid(world);
     currentBag = playerEid >= 0 ? (world.inventories.get(playerEid) ?? null) : null;
     currentWorldSeed = world.seed | 0;
@@ -815,9 +872,10 @@ export function createInventoryUI(
   }
 
   function computeRenderSignature(): string {
-    const slots = currentBag?.slots ?? [];
+    const slots = getFilteredSlots();
     let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}|${externalSlotFilter ?? '*'}`;
-    for (const slot of slots) {
+    for (const candidate of slots) {
+      const slot = candidate.slot;
       // Fold in the *selected* generated icon variant and whether its texture is
       // loaded yet, so the grid re-renders once async sprite warm-loading
       // finishes (the slot contents alone are unchanged, so without this the
@@ -825,7 +883,7 @@ export function createInventoryUI(
       // mutation). Selecting via the same path as the icon keeps them in sync.
       const entry = selectGeneratedEntry(slot.itemId);
       const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
-      signature += `;${slot.itemId}:${slot.quantity}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
+      signature += `;${slot.itemId}:${slot.quantity}:${candidate.generatedEntry?.instanceKey ?? '-'}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
     }
     return signature;
   }
@@ -860,6 +918,7 @@ export function createInventoryUI(
       const i = cellItemIds.indexOf(itemId);
       return i >= 0 ? i : null;
     },
+    getVisibleItemIds: () => [...cellItemIds],
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
     setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {

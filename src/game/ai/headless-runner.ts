@@ -26,6 +26,9 @@ import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
+import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
+import { isAchievementClaimed } from '../../core/systems/achievementRewards.js';
 import {
   FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR2_TIMEOUT_GOAL_ID,
@@ -37,6 +40,7 @@ import {
   type AIInputProvider,
   type AIPathingModeValue,
   type RunStats,
+  type EquipmentPlayabilityMetrics,
   type LevelUpEvent,
 } from './types.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
@@ -89,6 +93,92 @@ export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
   const floor1Timeout = world.floorScenario?.failReason === 'stair_timeout';
   const floor2Timeout = world.goalFlags.get(FLOOR2_TIMEOUT_GOAL_ID) === true;
   return floor1Timeout || floor2Timeout ? 'timeout' : 'death';
+}
+
+interface EquipmentSpendTelemetry {
+  readonly soldOfferKeys: Set<string>;
+  goldSpentOnEquipment: number;
+}
+
+function createEquipmentSpendTelemetry(): EquipmentSpendTelemetry {
+  return {
+    soldOfferKeys: new Set<string>(),
+    goldSpentOnEquipment: 0,
+  };
+}
+
+function updateEquipmentSpendTelemetry(world: GameWorld, telemetry: EquipmentSpendTelemetry): void {
+  const offers = world.floorExtendedState?.settlement?.quartermasterStock?.offers;
+  if (!offers) return;
+  for (const offer of offers) {
+    if (offer.quantity > 0) continue;
+    const key = `${offer.offerId}:${offer.instanceId}`;
+    if (telemetry.soldOfferKeys.has(key)) continue;
+    telemetry.soldOfferKeys.add(key);
+    telemetry.goldSpentOnEquipment += offer.unitPrice;
+  }
+}
+
+export function collectEquipmentPlayabilityMetrics(
+  world: GameWorld,
+  playerEid: number,
+  goldSpentOnEquipment: number,
+): EquipmentPlayabilityMetrics {
+  const bag = world.inventories.get(playerEid);
+  const equipmentState = getEquipmentState(world, playerEid);
+  const baggedEntries = bag?.generatedEquipment ?? [];
+  const equippedInstanceIds = new Set(
+    Object.values(equipmentState?.equipped ?? {}).filter((instanceId): instanceId is string =>
+      typeof instanceId === 'string',
+    ),
+  );
+  const unopenedAchievementRewards = [...world.achievements.unlockedIds].filter(
+    (achievementId) => !isAchievementClaimed(world, achievementId),
+  ).length;
+  const unopenedBossChests = [...world.bossChests.values()].filter(
+    (chest) => chest.state !== 'claimed',
+  ).length;
+  let unequippedWithEmptySlotCount = 0;
+  for (const entry of baggedEntries) {
+    const instance = getGeneratedEquipmentInstance(world, entry.instanceKey);
+    if (!instance) continue;
+    if (
+      instance.frozen.slots.some((slotId) => {
+        const equipped = equipmentState?.equipped[slotId];
+        return equipped === null || equipped === undefined;
+      })
+    ) {
+      unequippedWithEmptySlotCount += 1;
+    }
+  }
+  return {
+    goldSpentOnEquipment,
+    baggedGeneratedCount: baggedEntries.length,
+    equippedGeneratedCount: equippedInstanceIds.size,
+    unopenedRewardBoxes:
+      unopenedAchievementRewards + unopenedBossChests + world.achievements.pendingPresentations.size,
+    unequippedWithEmptySlotCount,
+  };
+}
+
+export function collectEquipmentPlayabilityViolations(
+  metrics: EquipmentPlayabilityMetrics,
+): string[] {
+  const violations: string[] = [];
+  if (metrics.goldSpentOnEquipment > 0 && metrics.baggedGeneratedCount + metrics.equippedGeneratedCount < 1) {
+    violations.push(
+      `Spent ${metrics.goldSpentOnEquipment} gold on equipment but ended with no generated equipment bagged or equipped`,
+    );
+  }
+  if (metrics.unopenedRewardBoxes > 0) {
+    violations.push(`Run ended with ${metrics.unopenedRewardBoxes} unopened reward boxes`);
+  }
+  if (metrics.unequippedWithEmptySlotCount > 0) {
+    violations.push(
+      `${metrics.unequippedWithEmptySlotCount} generated items remained bagged while a matching slot stayed empty`,
+    );
+  }
+  return violations;
 }
 
 // Floor 1 AI-driver auto-actions (NPC talk, boss-reward spell pick, shop
@@ -512,6 +602,7 @@ export async function runHeadless(
   const floor2TrashKillsAtDenUnlock = new Map<string, number>();
   const floor2EncounterStartedMs = new Map<string, number>();
   const floor2EncounterDefeatedMs = new Map<string, number>();
+  const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
 
   // NPC interaction tracking
   let lastNpcInteractionFrame = -1000;
@@ -768,6 +859,7 @@ export async function runHeadless(
       autoFloor2ProgressionSystem(world, playerEid);
       runSettlementMaintenancePlanner(world);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
+      updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
 
       // Check win/loss conditions — read HP before the guard so both early-exit
       // paths can record the final frame's HP delta (otherwise the lethal frame
@@ -1107,6 +1199,17 @@ export async function runHeadless(
       const combatDurationFrames = frameCount - combatStartFrame;
       combatTimeMs += combatDurationFrames * GAME.DELTA_MS;
     }
+
+    const equipmentPlayability = collectEquipmentPlayabilityMetrics(
+      world,
+      playerEid,
+      equipmentSpendTelemetry.goldSpentOnEquipment,
+    );
+    const playabilityViolations =
+      world.floorId === 'floor2' ? collectEquipmentPlayabilityViolations(equipmentPlayability) : [];
+    if (playabilityViolations.length > 0) {
+      throw new Error(`Headless playability invariant failed: ${playabilityViolations.join(' | ')}`);
+    }
   } catch (error) {
     logger.error('Headless run crashed', { error });
 
@@ -1165,6 +1268,11 @@ export async function runHeadless(
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
+      equipmentPlayability: collectEquipmentPlayabilityMetrics(
+        world,
+        playerEid,
+        equipmentSpendTelemetry.goldSpentOnEquipment,
+      ),
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
@@ -1241,6 +1349,11 @@ export async function runHeadless(
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),
+    equipmentPlayability: collectEquipmentPlayabilityMetrics(
+      world,
+      playerEid,
+      equipmentSpendTelemetry.goldSpentOnEquipment,
+    ),
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),

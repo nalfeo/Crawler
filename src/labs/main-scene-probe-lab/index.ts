@@ -34,7 +34,10 @@ import {
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
+import { spawnDroppedItem } from '../../core/helpers.js';
+import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
+import { openBossChest, acknowledgeBossChestReveal } from '../../core/systems/bossChestRewards.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -48,6 +51,7 @@ import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
+import { getItemIndex } from '../../shared/items.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
@@ -122,7 +126,10 @@ interface MainSceneInternals {
       panelVisible: boolean;
     };
   };
-  inventoryUI?: { isOpen(): boolean };
+  inventoryUI?: {
+    isOpen(): boolean;
+    getVisibleItemIds?(): string[];
+  };
   equipmentUI?: { isOpen(): boolean };
   achievementsUI?: {
     isOpen(): boolean;
@@ -620,7 +627,18 @@ export interface MainSceneProbeApi {
    * function and return the result. Used to exercise the full purchase path
    * from an e2e test.
    */
-  purchaseFirstQuartermasterOffer(): { ok: boolean; reason?: string; goldSpent?: number };
+  purchaseFirstQuartermasterOffer(): {
+    ok: boolean;
+    reason?: string;
+    goldSpent?: number;
+    itemId?: string;
+  };
+  /** Visible rendered inventory item ids from the live InventoryUI grid. */
+  getInventoryVisibleItemIds(): readonly string[];
+  /** Open + acknowledge the first available boss chest through core grant APIs. */
+  openFirstAvailableBossChest(): { ok: boolean; reason?: string };
+  /** Spawn a floor drop at the player and advance the real sim enough to pick it up. */
+  spawnAndPickupFloorDrop(itemId: string): { ok: boolean; reason?: string };
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -1373,9 +1391,52 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       });
       scene?.quartermasterUI?.refresh(world);
       if (result.ok) {
-        return { ok: true, goldSpent: result.goldSpent };
+        const purchased = getGeneratedEquipmentInstance(world, result.instanceId);
+        return {
+          ok: true,
+          goldSpent: result.goldSpent,
+          itemId: purchased?.def.id,
+        };
       }
       return { ok: false, reason: result.reason };
+    },
+
+    getInventoryVisibleItemIds: (): readonly string[] => {
+      return getScene()?.inventoryUI?.getVisibleItemIds?.() ?? [];
+    },
+
+    openFirstAvailableBossChest: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return { ok: false, reason: 'no-world' };
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return { ok: false, reason: 'no-player' };
+      const chest = [...world.bossChests.values()]
+        .filter((candidate) => candidate.state === 'available')
+        .sort((left, right) => left.chestId.localeCompare(right.chestId))[0];
+      if (!chest) return { ok: false, reason: 'no-available-chest' };
+      const opened = openBossChest(world, chest.chestId, playerEid);
+      if (!opened.ok) return { ok: false, reason: opened.reason };
+      const acknowledged = acknowledgeBossChestReveal(world, chest.chestId);
+      if (!acknowledged.ok) return { ok: false, reason: acknowledged.reason };
+      scene.bossChestUI?.refresh(world);
+      return { ok: true };
+    },
+
+    spawnAndPickupFloorDrop: (itemId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) return { ok: false, reason: 'no-world' };
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return { ok: false, reason: 'no-player' };
+      const itemIndex = getItemIndex(itemId);
+      if (itemIndex < 0) return { ok: false, reason: 'unknown-item' };
+      const x = world.stores.position.x[playerEid] ?? 0;
+      const y = world.stores.position.y[playerEid] ?? 0;
+      spawnDroppedItem(world, x, y, itemIndex);
+      scene.advanceSimulationFrames?.(2);
+      scene.inventoryUI?.refresh(world);
+      return { ok: true };
     },
 
     getRewardAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {
