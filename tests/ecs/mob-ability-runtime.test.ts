@@ -189,7 +189,7 @@ describe('AI-avoidance cue consistency', () => {
     expect(cue.phase).toBe('telegraph');
     expect(cue.geometry.kind).toBe('circle');
     if (cue.geometry.kind !== 'circle') {
-      throw new Error('expected circle geometry');
+      throw new Error('expected committed circle geometry');
     }
     // Geometry must be locked to the PLAYER'S position at telegraph start.
     expect(typeof cue.geometry.x).toBe('number');

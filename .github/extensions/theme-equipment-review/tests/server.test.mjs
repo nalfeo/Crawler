@@ -147,6 +147,61 @@ test('proxies only artifact identities through the trusted command bridge', asyn
   }
 });
 
+test('serves artifacts from the in-process reader without spawning a command', async () => {
+  const reads = [];
+  const server = await fixture({
+    readArtifact: async (command) => {
+      reads.push(command);
+      return { contentType: 'image/png', base64: Buffer.from('warm').toString('base64') };
+    },
+  });
+  try {
+    const response = await fetch(
+      `${server.url}api/artifact?itemId=iron-sword&artifactId=iron-sword-sheet-r0-raw`,
+      { headers: { 'X-Canvas-Token': server.token } },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'warm');
+    assert.deepEqual(reads.at(-1), {
+      action: 'artifact',
+      setId: 'classic-fantasy',
+      itemId: 'iron-sword',
+      artifactId: 'iron-sword-sheet-r0-raw',
+    });
+    // The warm path must NOT fall through to the child-process command.
+    assert.equal(
+      server.commands.some((command) => command.action === 'artifact'),
+      false,
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test('falls back to the command bridge when the in-process reader fails', async () => {
+  const server = await fixture({
+    readArtifact: async () => {
+      throw new Error('reader boom');
+    },
+  });
+  try {
+    const response = await fetch(
+      `${server.url}api/artifact?itemId=iron-sword&artifactId=iron-sword-sheet-r0-raw`,
+      { headers: { 'X-Canvas-Token': server.token } },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'png');
+    assert.deepEqual(server.commands.at(-1), {
+      action: 'artifact',
+      setId: 'classic-fantasy',
+      itemId: 'iron-sword',
+      artifactId: 'iron-sword-sheet-r0-raw',
+    });
+  } finally {
+    await server.close();
+  }
+});
+
 test('opens with no set selected and refuses state until one is chosen', async () => {
   const server = await fixture({ setId: null });
   const headers = {

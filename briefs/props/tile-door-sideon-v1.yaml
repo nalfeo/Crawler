@@ -1,0 +1,204 @@
+# ORIENTATION NOTE (Asset Forge, 2026-07-29) -- REPLACES THE ROTATE-BY-RENDERER
+# CONTRACT, DOES NOT EXTEND IT
+#
+# `tile-door-side-v1` (still in the repo, still what the renderer currently
+# falls back to via `quarterTurnsCcw: 1`) asked the generator for an ordinary
+# FACE-ON door and relied on the renderer to turn it 90 degrees at draw time.
+# That convention is retired for FUTURE wiring, and this brief is its
+# from-scratch replacement -- a maintainer-mandated rule: "For e/w doors you
+# need totally different sprites. You can't just rotate an existing one."
+#
+# WHY THE OLD CONVENTION IS WRONG, MEASURED: rotating a tall face-on door 90
+# degrees swaps its axes, so the door's 6.5 ft archway HEIGHT becomes a 6.5 ft
+# WIDE shape after the turn -- turned sideways it is far too wide for a 4 ft
+# wall slot and would overhang badly along the corridor (see
+# `door-visuals.ts`'s comment on the branch: "height-authoritative pins the 6.5
+# ft axis along the corridor... about 1.25 ft of overhang onto walkable
+# floor"). A rotated sprite cannot be fixed by prompting -- it is the SAME
+# pixels, just turned -- so the fix has to be a genuinely different, natively
+# composed piece of art, generated at its own target proportions.
+#
+# THIS BRIEF DOES NOT ASK THE GENERATOR TO PRODUCE A "ROTATED" OR "TURNED"
+# LOOK, and that is deliberate: three straight rounds of `tile-door-side-v1`
+# asking for a quarter-turn appearance in increasingly explicit prose produced
+# face-on art every time (the generator does not follow turn/rotation
+# instructions reliably). Instead this brief describes the FINAL on-screen
+# composition directly and plainly, as an ordinary upright door -- exactly the
+# skill the generator already has, proven by `tile-door-v1`/`tile-door-tall-v1`
+# -- just sized to a DIFFERENT, more compact target so the finished piece fits
+# a single 4 ft wall slot in BOTH axes with no overhang in any direction.
+#
+# TARGET GEOMETRY. Opaque box approximately 170 x 205 px in the 256 x 256 cell
+# (width:height aspect ~0.83), clearly SHORTER than `tile-door-tall-v1`'s
+# 155 x 250 (which pins the full cell height) and narrower in absolute
+# footprint once both are scaled to feet. This is what "must fit WITHIN the
+# cell in both axes, must NOT overflow north" means in practice: the drawn
+# subject stops well short of the top of the cell, leaving real transparent
+# headroom, instead of running to the top margin the way the tall door does.
+#
+# `type: prop` (not `tile`): the previous `tile-door-side-v1` family used
+# `type: tile` (full-bleed, edge-to-edge, baked-in flanking wall stone) because
+# it was designed to be rotated into a wall texture. This piece is a
+# free-standing overlay like the front-facing door props, drawn WITHOUT baked
+# wall stone bleeding to the cell edges, bottom-anchored the same way.
+#
+# REVISION 2 (2026-07-30) -- REVISION 1 FAILED, ROOT CAUSE FOUND AND FIXED
+# BEFORE ANY VARIANT WAS APPROVED. Revision 1's description block below this
+# comment used to open with "front elevation, looking STRAIGHT AT THE DOOR
+# dead-on" -- copy-pasted from the face-on `tile-door-tall-v1` brief and never
+# rewritten. Every one of the 16 revision-1 candidates was, unsurprisingly, an
+# ordinary face-on door with a squarer aspect: all sensors and the LLM judge
+# passed (aspect measured 0.79-0.86, matching the numeric target) because
+# nothing in the pipeline measures VIEWING ANGLE, only geometry and style --
+# but a visual check against the running game (required by this session's
+# task before approval) showed the composition itself was still front-on, not
+# side-on, failing the maintainer's actual, primary requirement. Caught and
+# rewritten here; nothing from revision 1 was approved or shipped. This is
+# the exact "genuinely side-on vs. rotated/face-on" trap the task explicitly
+# warned about -- geometry sensors cannot substitute for looking at the art.
+#
+# REVISION 3 (2026-07-30) -- REVISION 2 ALSO FAILED. Revision 2 rewrote the
+# `description:` prose in full, explicit, repeated detail (narrow strip,
+# end-grain not plank faces, edge-on straps, etc.) while leaving the physical
+# generation canvas SQUARE (128x128). All 16 revision-2 candidates were,
+# again, ordinary full-width face-on doors with visible plank faces, full
+# straps and a ring handle -- the model had a square canvas and defaulted to
+# its familiar "door" archetype regardless of how the text asked it to use
+# that space. Prose alone could not overcome the prior. This revision changes
+# the STRUCTURAL lever instead: the brief's `size` is now a genuinely
+# non-square 48x128 canvas, so there is no physical room in the generated
+# image to draw a full-width door face -- the canvas itself enforces the
+# narrow-strip composition that the prose alone failed to produce.
+type: prop
+name: tile-door-sideon-v1
+description: |
+  A SIDE-PROFILE (EDGE-ON) VIEW of a closed dungeon door -- explicitly NOT a
+  front elevation. Do not draw the door's broad face. Modern high-quality
+  pixel art, silhouette readable at 16px.
+
+  THE SCENE: a corridor runs left-to-right past the camera. The doorway sits
+  in a wall that runs vertically, top-to-bottom of the frame, crossing the
+  corridor at a right angle. Because the door's hinge line runs directly away
+  from the camera, its face swings almost directly TOWARD or AWAY from the
+  viewer -- so what is visible is the door's NARROW EDGE and the stone jamb's
+  edge, not the wide timber panel a front-facing door shows. The whole subject
+  reads as a TALL, THIN, MOSTLY VERTICAL STRIP -- at most a THIRD as wide as
+  it is tall, dramatically narrower in proportion than an ordinary front-on
+  door of the same height. If the drawing shows the door's full plank width,
+  its full iron-strap width, or a full round ring handle face-on, it has
+  missed this brief -- that is a front-facing door, not this one.
+
+  WHAT IS VISIBLE, TOP TO BOTTOM, ALL COMPRESSED INTO THAT NARROW STRIP:
+  - the stone jamb's cut edge: a thin vertical band of grey blocky stone,
+    flush with the wall face, no wider than the door edge beside it.
+  - the door's edge itself: a slim vertical strip of aged dark timber. The
+    plank faces run away from the camera into the wall and are NOT visible --
+    only their cut ends show, reading as a tight stack of short, closely
+    spaced horizontal hatch marks (end-grain), never as wide flat panels.
+  - the two iron straps, seen edge-on: each shows only as a short dark
+    horizontal notch or bump wrapping the door's edge -- a rounded lip a few
+    pixels tall, NOT a broad flat strap running across a wide face.
+  - a small edge-on stub of the ring handle's backplate: a short dark lobe
+    protruding slightly from the strip, mostly self-occluded -- NOT a visible
+    ring.
+  - below the strip, a sliver of dark shadow where the door meets the floor,
+    grounding it against the corridor tile.
+
+  REAL-WORLD SIZE. This door fits a wall slot about 4 FEET WIDE and renders
+  about 6.5 FEET TALL overall, so a 5.75 ft person clears it with headroom.
+  The visible edge-on strip is narrow -- around 1 to 1.5 FEET of visible width
+  at most, a thin sliver compared to the ~3 foot WIDE face a front-on door
+  shows -- because you are seeing its thickness, not its width.
+
+  THE CANVAS ITSELF IS NARROW: this cell is only 48 SOURCE PIXELS WIDE by 128
+  SOURCE PIXELS TALL -- a tall thin rectangle, not square. There is NOT enough
+  width in this canvas to draw a full door face, its full plank width, or a
+  full ring handle even if you wanted to -- only the narrow edge-on strip
+  described above physically fits. Use nearly the full width and height of
+  this narrow canvas for the strip itself; do not shrink the subject down
+  further to leave large margins on top of the canvas's own narrowness.
+  - The subject must reach close to the FULL HEIGHT of the cell (matching the
+    wall it's set into) and use most of the cell's own width -- only a thin
+    sliver of transparent margin on each side.
+  - EXACTLY ONE door-edge strip per cell. Never draw a second strip, never
+    draw a wide door alongside it, never draw a doorway you are looking
+    through face-on.
+
+  IT IS NOT: a front-facing door, an open doorway, a portcullis, a gate, a
+  double door, a cupboard, a wardrobe, a bookcase, a crate, a chest, a window,
+  or a shuttered panel. It is ONE narrow vertical strip: the edge of a closed
+  timber door and its stone jamb, seen side-on down a corridor.
+
+  MOOD -- a grimy reality-TV dungeon. Heavy, permanent and unwelcoming: the
+  object that keeps the contestants in. Tired, worn, long shut, never ornate
+  and never fantasy-decorative.
+
+  COLOUR -- the timber is a warm desaturated walnut-brown with 4-5 tone stops
+  so the end-grain hatching separates clearly; the iron banding, rivets and
+  ring stub are a dull dark grey-black metal with tarnished rust-brown
+  streaks. It must NOT be pale, washed out, or low-contrast. Keep a clear dark
+  outline and clear tonal separation between timber and iron. BANNED: neon,
+  pure white, pure black, saturated red, saturated yellow, orange, teal, cyan,
+  blue, green, magenta, purple, gold leaf, gemstones, glowing runes, magical
+  glow, and any ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The left-facing
+  edge of the strip catches the highlight; shadow falls down and to the right.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering for the end-grain hatching -- no mushy
+  gradients, no airbrush, no floating unsupported elements.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils,
+  labels, captions, watermarks or signatures anywhere on the door.
+
+  BACKGROUND: fully transparent OUTSIDE the strip's own silhouette only. Draw
+  ONLY the narrow stone-jamb-edge-plus-door-edge strip. Do NOT paint a masonry
+  wall face, a floor slab, a rectangular backing panel, a border, a vignette,
+  or any cast/contact/drop shadow beyond the small grounding sliver described
+  above. Every other pixel outside the strip's own silhouette must be fully
+  transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the door's colours so
+  it can be keyed out cleanly. No per-cell background variation, no borders,
+  no dividers.
+size:
+  width: 48
+  height: 128
+anchor:
+  x: 24
+  y: 126
+sensors:
+  # REVISION 3: the canvas itself is now a genuinely narrow 48x128 cell (see
+  # REVISION 3 comment above), not a 128x128 square with a narrow target
+  # inside it. A subject that nearly fills this already-narrow canvas will
+  # show a HIGH opaque ratio relative to total cell pixels (most of a 48x128
+  # box is expected to be the strip itself, not background) -- the opposite
+  # direction from revision 2's bounds, which assumed a wide mostly-empty
+  # square canvas. Bounds re-derived for a strip filling most of a narrow
+  # canvas, with room for irregular silhouette/hatching to bring the true
+  # opaque count below 100%.
+  opaqueRatio:
+    min: 0.45
+    max: 0.9
+  # Grounded, center-of-mass anchor: a single narrow vertical strip is a
+  # one-mass subject so `grip` (bottom-row contiguous run) would work here,
+  # but center-of-mass is kept for consistency with the rest of the door
+  # family and because the strip's width still varies slightly by candidate.
+  anchor:
+    derive: true
+    mode: center-of-mass
+    bandRows: 8
+    centerToleranceX: 6
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+  - side-on
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0
