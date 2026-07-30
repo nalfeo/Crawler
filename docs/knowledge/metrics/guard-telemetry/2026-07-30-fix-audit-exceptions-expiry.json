@@ -1,0 +1,27 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "fix-audit-exceptions-expiry",
+  "date": "2026-07-30",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 51,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 51
+    }
+  },
+  "tools": {
+    "create": 2,
+    "edit": 5,
+    "filesystem-write_file": 1,
+    "grep": 6,
+    "powershell": 22,
+    "read_powershell": 6,
+    "rename_branch": 2,
+    "view": 6,
+    "web_search": 1
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
