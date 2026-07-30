@@ -198,6 +198,12 @@ jobs:
       DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the AUDIT_EXCEPTIONS comparison guard resolves the PR
+          # merge-base via GITHUB_BASE_SHA and reads the base file with git show.
+          # A depth-1 shallow clone cannot reach the base commit — the guard
+          # would fail closed rather than passing vacuously.
+          fetch-depth: 0
 
       # Playwright is required by the guard tests: sprite-editor and set-piece-editor
       # extension tests import chromium directly (see .github/extensions/*/tests/).
@@ -359,6 +365,11 @@ jobs:
       - name: Security audit
         if: always() && env.GAMEPLAY_SAFE != 'true'
         continue-on-error: true
+        env:
+          # Provide the PR base SHA so the AUDIT_EXCEPTIONS comparison guard can
+          # compare the branch against its merge base. Empty on direct pushes
+          # (not a PR) — the guard skips gracefully when this is unset.
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: npm run security:audit
 
       # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking

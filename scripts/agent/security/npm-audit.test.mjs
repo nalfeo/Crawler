@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
-import { AUDIT_EXCEPTIONS, evaluateAudit } from './npm-audit.mjs';
+import {
+  AUDIT_EXCEPTIONS,
+  evaluateAudit,
+  extractAuditExceptionsFromSource,
+  findReasonRestatementViolations,
+} from './npm-audit.mjs';
 
 const ACTIVE_DATE = new Date('2026-07-24T00:00:00Z');
 const SCRIPT = fileURLToPath(new URL('./npm-audit.mjs', import.meta.url));
@@ -45,6 +50,125 @@ const BETA_ADVISORY = {
 function report(vulnerabilities) {
   return { auditReportVersion: 2, vulnerabilities };
 }
+
+test('fails when expiresOn changes without a matching reason update', () => {
+  const previous = [{ ...ALPHA_EXCEPTION, expiresOn: '2026-07-01' }];
+  const current = [ALPHA_EXCEPTION];
+
+  assert.deepEqual(findReasonRestatementViolations(previous, current), [
+    {
+      packageName: 'alpha-pkg',
+      previousExpiresOn: '2026-07-01',
+      currentExpiresOn: '2026-07-31',
+    },
+  ]);
+});
+
+test('passes when expiresOn and reason both change', () => {
+  const previous = [
+    {
+      ...ALPHA_EXCEPTION,
+      expiresOn: '2026-07-01',
+      reason: 'Previous investigation text.',
+    },
+  ];
+  const current = [ALPHA_EXCEPTION];
+
+  assert.deepEqual(findReasonRestatementViolations(previous, current), []);
+});
+
+test('does not flag added or removed exception entries', () => {
+  const base = [ALPHA_EXCEPTION];
+  const withAddition = [ALPHA_EXCEPTION, BETA_EXCEPTION];
+
+  assert.deepEqual(findReasonRestatementViolations(base, withAddition), []);
+  assert.deepEqual(findReasonRestatementViolations(withAddition, base), []);
+});
+
+test('passes for unrelated edits when exceptions are unchanged', () => {
+  const sourceWithUnrelatedEdit = `
+const SOME_UNRELATED_VALUE = 'changed';
+export const AUDIT_EXCEPTIONS = ${JSON.stringify(SYNTHETIC_EXCEPTIONS, null, 2)};
+`;
+  const previous = extractAuditExceptionsFromSource(sourceWithUnrelatedEdit);
+
+  assert.deepEqual(findReasonRestatementViolations(previous, SYNTHETIC_EXCEPTIONS), []);
+});
+
+test('extractAuditExceptionsFromSource handles an empty array declaration', () => {
+  const emptySource = `export const AUDIT_EXCEPTIONS = [];`;
+  const result = extractAuditExceptionsFromSource(emptySource);
+  assert.deepEqual(result, []);
+});
+
+test('CLI exits 1 with package-specific error when expiresOn extends without reason update', (t) => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-cli-guard-test-'));
+  t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+
+  const scriptRelPath = path.join('scripts', 'agent', 'security', 'npm-audit.mjs');
+  const scriptDir = path.join(tempDir, 'scripts', 'agent', 'security');
+  mkdirSync(scriptDir, { recursive: true });
+
+  const realSource = readFileSync(SCRIPT, 'utf8');
+  // Replace the AUDIT_EXCEPTIONS block to get a minimal, self-contained base version.
+  const baseSource = realSource.replace(
+    /export const AUDIT_EXCEPTIONS = \[[\s\S]*?\];/,
+    `export const AUDIT_EXCEPTIONS = [
+  {
+    packageName: 'test-pkg',
+    source: 9999,
+    url: 'https://example.test/advisory',
+    expiresOn: '2026-07-01',
+    reason: 'Test reason — unchanged.',
+  },
+];`,
+  );
+  const currentSource = realSource.replace(
+    /export const AUDIT_EXCEPTIONS = \[[\s\S]*?\];/,
+    `export const AUDIT_EXCEPTIONS = [
+  {
+    packageName: 'test-pkg',
+    source: 9999,
+    url: 'https://example.test/advisory',
+    expiresOn: '2026-09-01',
+    reason: 'Test reason — unchanged.',
+  },
+];`,
+  );
+
+  const git = (args) =>
+    spawnSync('git', args, {
+      cwd: tempDir,
+      encoding: 'utf8',
+      env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', HOME: tempDir },
+    });
+
+  git(['init']);
+  git(['config', 'user.email', 'test@example.com']);
+  git(['config', 'user.name', 'Test']);
+
+  writeFileSync(path.join(scriptDir, 'npm-audit.mjs'), baseSource);
+  git(['add', scriptRelPath]);
+  git(['commit', '-m', 'base: old expiry']);
+  const baseSha = git(['rev-parse', 'HEAD']).stdout.trim();
+
+  writeFileSync(path.join(scriptDir, 'npm-audit.mjs'), currentSource);
+  git(['add', scriptRelPath]);
+  git(['commit', '-m', 'bump expiry without updating reason']);
+
+  const scriptInTempRepo = path.join(scriptDir, 'npm-audit.mjs');
+  const result = spawnSync(process.execPath, [scriptInTempRepo], {
+    cwd: tempDir,
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_BASE_SHA: baseSha },
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /AUDIT_EXCEPTIONS extension for "test-pkg"/);
+  assert.match(result.stderr, /2026-07-01 -> 2026-09-01/);
+  assert.match(result.stderr, /restated, current justification/);
+});
+
 
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "audit-exception-reason-guard",
+  "task_title": "Guard reason restatement on AUDIT_EXCEPTIONS expiry extensions",
+  "estimated_apples": 2,
+  "stages": {}
+}
