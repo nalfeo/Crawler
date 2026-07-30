@@ -474,7 +474,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Unit tests with coverage
-        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json-summary --coverage.reporter=text
+        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json --coverage.reporter=json-summary --coverage.reporter=text
 
       - name: Upload coverage summary
         if: always()
