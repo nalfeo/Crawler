@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b20d4bb610e6f1ad2f305dec2f2302c1a74b5ff2",
+    "commitDate": "2026-07-30T05:09:13Z",
+    "commitSubject": "feat: implement 85%/15% Uncommon/Rare boss-chest rarity split (Floor 2) (#2341)",
+    "capturedAt": "2026-07-30T06:18:39.952Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30516318128",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/b20d4bb610e6f1ad2f305dec2f2302c1a74b5ff2.json"
+  },
+  {
     "commit": "f7566625083a1087c6581951af3447cb23473506",
     "commitDate": "2026-07-30T04:38:36Z",
     "commitSubject": "Wire Floor 2 equipment economy (Quartermaster stock + boss chests + AI purchasing) into the real shipped path (#2333)",
