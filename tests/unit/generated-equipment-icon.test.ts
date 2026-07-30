@@ -88,6 +88,7 @@ describe('generated-equipment-icon reward-opening bridge', () => {
     const baseId = FLOOR2_WEAPON_WAVE_A_BASE_IDS[0]!;
     const { spec, instance } = grantAndResolve(baseId);
     expect(spec.artKey).toBe(instance.frozen.artKey);
+    expect(spec.itemName).toBe(instance.frozen.displayName);
     expect(spec.artKey.length).toBeGreaterThan(0);
   });
 
@@ -95,6 +96,7 @@ describe('generated-equipment-icon reward-opening bridge', () => {
     const baseId = FLOOR2_BASIC_LEATHER_WEAPON_IDS[0]!;
     const { spec, instance } = grantAndResolve(baseId);
     expect(spec.artKey).toBe(instance.frozen.artKey);
+    expect(spec.itemName).toBe(instance.frozen.displayName);
     expect(spec.artKey.length).toBeGreaterThan(0);
   });
 

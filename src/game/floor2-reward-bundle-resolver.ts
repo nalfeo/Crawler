@@ -1,4 +1,5 @@
 import {
+  ACHIEVEMENT_EQUIPMENT_REWARD_TIERS,
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES,
   EQUIPMENT_REWARD_TIER_RARITIES,
@@ -127,8 +128,6 @@ function partitionBases(
  * {@link FLOOR2_REWARD_POOL_STABLE_IDS}, so it is deliberately excluded from
  * this authoring check.
  */
-const ACHIEVEMENT_REWARD_TIERS: readonly EquipmentRewardTier[] = ['tier1', 'tier2', 'tier3'];
-
 const BUILD_AFFINITIES: readonly RewardBundleBuildAffinity[] = ['physical', 'magic'];
 
 /** Weapon/non-weapon + affinity composition of a tier/rarity's eligible pool. */
@@ -165,7 +164,7 @@ export function rarityEligibleBaseIds(
 /**
  * Compute, for every achievement-reachable tier × rarity pair, the eligible
  * subset of `bases` (via {@link rarityEligibleBaseIds}) and its weapon/
- * non-weapon/affinity composition (per {@link ACHIEVEMENT_REWARD_TIERS}).
+ * non-weapon/affinity composition (per {@link ACHIEVEMENT_EQUIPMENT_REWARD_TIERS}).
  * `weaponIds` classifies weapon vs non-weapon; every non-weapon base is
  * reported as-is (the current data model has no armor-vs-accessory category
  * — see `equipment-slots.ts`'s `SlotDefinition` — so "non-weapon" is the
@@ -185,7 +184,7 @@ export function computeFloor2RewardPoolTierEligibility(
     EquipmentRewardTier,
     Record<GeneratedEquipmentRarity, Floor2RewardPoolRarityComposition>
   >;
-  for (const tier of ACHIEVEMENT_REWARD_TIERS) {
+  for (const tier of ACHIEVEMENT_EQUIPMENT_REWARD_TIERS) {
     const rarityRow = {} as Record<GeneratedEquipmentRarity, Floor2RewardPoolRarityComposition>;
     for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
       const eligible = rarityEligibleBaseIds(bases, rarity);
@@ -260,7 +259,7 @@ export function validateFloor2RewardPoolTierEligibility(
 ): Floor2RewardPoolTierEligibilityReport {
   const report = computeFloor2RewardPoolTierEligibility(bases, weaponIds);
 
-  for (const tier of ACHIEVEMENT_REWARD_TIERS) {
+  for (const tier of ACHIEVEMENT_EQUIPMENT_REWARD_TIERS) {
     for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
       const eligible = rarityEligibleBaseIds(bases, rarity);
       for (const playerAffinity of BUILD_AFFINITIES) {

@@ -32,7 +32,6 @@ import type {
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentRarity,
 } from '../shared/generated-equipment-types.js';
-import { getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteRegistry,
@@ -87,12 +86,11 @@ export function resolveEquipmentIconSpec(
   if (!instance) {
     return null;
   }
-  const itemDef = getItemById(instance.baseId);
   return {
     instanceKey,
     baseId: instance.baseId,
     artKey: instance.frozen.artKey,
-    itemName: itemDef?.name ?? instance.baseId,
+    itemName: instance.frozen.displayName,
     rarity: instance.rarity,
     rarityColor: GENERATED_EQUIPMENT_RARITY_COLORS[instance.rarity],
   };
