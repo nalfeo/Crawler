@@ -23,7 +23,6 @@
  */
 import { LOOT_BOX_TIERS, type LootBoxTier } from './achievements.js';
 import {
-  EQUIPMENT_REWARD_TIERS,
   type EquipmentRewardTier,
   type GeneratedEquipmentInstanceKey,
   type GeneratedEquipmentRarity,

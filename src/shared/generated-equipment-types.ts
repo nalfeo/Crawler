@@ -53,6 +53,14 @@ export const GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES: readonly GeneratedEquip
 export const EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3', 'tier4'] as const;
 export type EquipmentRewardTier = (typeof EQUIPMENT_REWARD_TIERS)[number];
 
+/**
+ * Achievement-reward tier subset. Excludes `tier4` which is reserved for boss
+ * chests only — authored achievement JSON must never specify tier4 as a reward
+ * tier, and the achievement schema enforces this boundary at parse time.
+ */
+export const ACHIEVEMENT_EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3'] as const;
+export type AchievementEquipmentRewardTier = (typeof ACHIEVEMENT_EQUIPMENT_REWARD_TIERS)[number];
+
 export function isEquipmentRewardTier(value: string): value is EquipmentRewardTier {
   return (EQUIPMENT_REWARD_TIERS as readonly string[]).includes(value);
 }
@@ -80,14 +88,13 @@ export const EQUIPMENT_REWARD_TIER_RARITIES: Readonly<
  * deterministic (single entry, weight unused). `tier2` and `tier3` use a
  * 75/25 split. `tier4` (boss chests) uses 85/15 per PLAN.md §E3-C.
  */
-export const EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS: Readonly<
-  Record<EquipmentRewardTier, number>
-> = Object.freeze({
-  tier1: 1.0, // single-entry pool — weight unused (deterministic)
-  tier2: 0.75, // 75% common, 25% uncommon
-  tier3: 0.75, // 75% uncommon, 25% common
-  tier4: 0.85, // 85% uncommon, 15% rare (PLAN.md §E3-C)
-});
+export const EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS: Readonly<Record<EquipmentRewardTier, number>> =
+  Object.freeze({
+    tier1: 1.0, // single-entry pool — weight unused (deterministic)
+    tier2: 0.75, // 75% common, 25% uncommon
+    tier3: 0.75, // 75% uncommon, 25% common
+    tier4: 0.85, // 85% uncommon, 15% rare (PLAN.md §E3-C)
+  });
 
 export const ENHANCEMENT_MIN = 0 as const;
 export const ENHANCEMENT_MAX = 5 as const;

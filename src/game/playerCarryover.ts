@@ -21,6 +21,7 @@ import {
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
 import {
   ALL_ACHIEVEMENTS,
+  BOSS_CHEST_ID_PREFIX,
   cloneAchievementFactSnapshot,
   getAchievementById,
   mergeAchievementFactSnapshots,
@@ -452,6 +453,45 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     if (!Object.prototype.hasOwnProperty.call(record, key)) return [];
     return partial[key] as unknown[];
   };
+
+  // Migration: v1 snapshots created before `tier4` was introduced used `tier1`
+  // for boss-chest reward bundles and revealedGrant entries. Upgrade them
+  // transparently so existing saved Floor 2 runs continue to load correctly.
+  const migrateBossChestTier = (entries: unknown[]): unknown[] => {
+    if (!Array.isArray(entries)) return entries;
+    return entries.map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return entry;
+      const e = entry as Record<string, unknown>;
+      if (
+        typeof e.revealedGrant === 'object' &&
+        e.revealedGrant !== null &&
+        (e.revealedGrant as Record<string, unknown>).tier === 'tier1'
+      ) {
+        return {
+          ...e,
+          revealedGrant: { ...(e.revealedGrant as object), tier: 'tier4' },
+        };
+      }
+      return entry;
+    });
+  };
+
+  const migrateBundleBossChestTier = (entries: unknown[]): unknown[] => {
+    if (!Array.isArray(entries)) return entries;
+    return entries.map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return entry;
+      const b = entry as Record<string, unknown>;
+      if (
+        typeof b.achievementId === 'string' &&
+        b.achievementId.startsWith(BOSS_CHEST_ID_PREFIX) &&
+        b.tier === 'tier1'
+      ) {
+        return { ...b, tier: 'tier4' };
+      }
+      return entry;
+    });
+  };
+
   const normalized: PlayerCarryoverSnapshot = {
     ...legacy,
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
@@ -461,10 +501,12 @@ function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapsh
     generatedEquippedInstanceKeys: readArrayField(
       'generatedEquippedInstanceKeys',
     ) as PlayerCarryoverSnapshot['generatedEquippedInstanceKeys'],
-    generatedEquipmentRewardBundles: readArrayField(
-      'generatedEquipmentRewardBundles',
+    generatedEquipmentRewardBundles: migrateBundleBossChestTier(
+      readArrayField('generatedEquipmentRewardBundles'),
     ) as PlayerCarryoverSnapshot['generatedEquipmentRewardBundles'],
-    bossChests: readArrayField('bossChests') as PlayerCarryoverSnapshot['bossChests'],
+    bossChests: migrateBossChestTier(
+      readArrayField('bossChests'),
+    ) as PlayerCarryoverSnapshot['bossChests'],
     lootBoxRewardBundles: readArrayField(
       'lootBoxRewardBundles',
     ) as PlayerCarryoverSnapshot['lootBoxRewardBundles'],
