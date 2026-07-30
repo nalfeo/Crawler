@@ -695,6 +695,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** One-frame latch set by tapping the on-screen quartermaster dismiss button. */
   private queuedQuartermasterToggle = false;
+  /** One-frame latch set by interacting with any settlement shop NPC. */
+  private queuedQuartermasterOpenFromNpc = false;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -1305,13 +1307,15 @@ export class MainGameScene extends Phaser.Scene {
     return settlement.shops.some((shop) => shop.npcEid === npcEid);
   }
 
-  private tryOpenSettlementShopFromNpc(npcEid: number): boolean {
+  private tryQueueSettlementShopOpenFromNpc(npcEid: number): boolean {
     if (!this.isSettlementShopNpc(npcEid)) {
       return false;
     }
-    if (!isInSafeContext(this.world) || !this.world.floorExtendedState?.settlement?.quartermasterStock) {
-      return false;
-    }
+    this.queuedQuartermasterOpenFromNpc = true;
+    return true;
+  }
+
+  private openQuartermasterPanel(): void {
     this.closeMapOverlayIfOpen();
     this.closeCharacterPanels({ keepQuartermaster: true });
     if (this.quartermasterUI?.isOpen()) {
@@ -1319,7 +1323,6 @@ export class MainGameScene extends Phaser.Scene {
     } else {
       this.quartermasterUI?.toggle(this.world);
     }
-    return true;
   }
 
   private resumePendingRewardPresentations(): void {
@@ -1889,9 +1892,19 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedQuartermasterToggle ||
       (this.keyQuartermaster && Phaser.Input.Keyboard.JustDown(this.keyQuartermaster)),
     );
+    const quartermasterOpenFromNpcRequested = this.queuedQuartermasterOpenFromNpc;
     this.queuedQuartermasterToggle = false;
+    this.queuedQuartermasterOpenFromNpc = false;
+    const hasQuartermasterStock = !!this.world.floorExtendedState?.settlement?.quartermasterStock;
     if (quartermasterOpen && quartermasterToggleRequested) {
       this.quartermasterUI?.toggle(this.world);
+    } else if (
+      quartermasterOpenFromNpcRequested &&
+      safeCtx &&
+      hasQuartermasterStock &&
+      !isUiLockOpen()
+    ) {
+      this.openQuartermasterPanel();
     } else if (this.quartermasterUI?.isOpen()) {
       if (safeCtx) {
         this.quartermasterUI.refresh(this.world);
@@ -3838,7 +3851,7 @@ export class MainGameScene extends Phaser.Scene {
       this.dialogueBox?.setCloseVisible(false);
 
       if (interactionRequested) {
-        if (this.tryOpenSettlementShopFromNpc(nearNpcEid)) {
+        if (this.tryQueueSettlementShopOpenFromNpc(nearNpcEid)) {
           return;
         }
         const instance = this.world.npcs.get(nearNpcEid);
