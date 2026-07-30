@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a2438d4123a05b4cb0519ec46994a880b27868d0",
+    "commitDate": "2026-07-30T17:57:27Z",
+    "commitSubject": "Theme-equipment review: warm artifact-read latency fix + durable save-plan to assets/plans (#2378)",
+    "capturedAt": "2026-07-30T19:03:30.006Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30569046150",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/a2438d4123a05b4cb0519ec46994a880b27868d0.json"
+  },
+  {
     "commit": "20ae36e93978a5d423dfedde672ec2c1691057bf",
     "commitDate": "2026-07-30T17:43:13Z",
     "commitSubject": "fix(terrain): restore TREE to wall mask; correct ADR/handoff attribution (#2382)",
