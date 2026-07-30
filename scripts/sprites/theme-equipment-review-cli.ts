@@ -1082,6 +1082,37 @@ function planPublishFailure(result: GhApiResult): PlanPublishError {
 }
 
 /** Run one bounded `gh api` call, surfacing the HTTP status rather than throwing. */
+/**
+ * Recognized transport-failure signatures in `gh`/child-process stderr. Covers
+ * both libc/Node errno spellings (ECONNRESET, ETIMEDOUT, …) and the Go/Windows
+ * `net` diagnostics `gh` prints on Windows (`proxyconnect tcp`, `connectex`,
+ * `actively refused`, `no such host`, `dial tcp`). Used to decide whether a
+ * null-HTTP-status `gh` failure is a retryable network blip (kept pending) or a
+ * definitive local fault (rolled back).
+ */
+const GH_TRANSPORT_ERROR_RE =
+  /ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|socket hang up|network is unreachable|i\/o timeout|TLS handshake|connection reset|timed out|proxyconnect tcp|connectex|actively refused|no such host|dial tcp/i;
+
+/**
+ * Classify a failed `gh` invocation as a retryable transient. A transient is a
+ * null-HTTP-status failure that is a genuine transport problem: the child was
+ * killed by our own deadline (`killed`/SIGTERM), or stderr matches a recognized
+ * network-layer error. ENOENT (no `gh` binary), auth-preflight failures, and bad
+ * arguments are definitive local faults and return false.
+ */
+export function classifyGhFailureTransient(fault: {
+  status: number | null;
+  code?: unknown;
+  killed?: unknown;
+  signal?: unknown;
+  stderr?: string;
+}): boolean {
+  if (fault.status !== null) return false;
+  if (fault.killed === true || fault.signal === 'SIGTERM') return true;
+  if (fault.code === 'ENOENT') return false;
+  return GH_TRANSPORT_ERROR_RE.test(fault.stderr ?? '');
+}
+
 async function runGhApi(
   args: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
@@ -1114,21 +1145,13 @@ async function runGhApi(
     const statusMatch = /HTTP (\d{3})/.exec(stderr);
     const status = statusMatch ? Number(statusMatch[1]) : null;
     const message = stderr.trim() || (error instanceof Error ? error.message : String(error));
-    // A null-status failure is only a retryable transient when it is a genuine
-    // transport problem: the child was killed by our timeout, OR `gh` surfaced a
-    // recognized network-layer error. A non-zero exit with no HTTP status that
-    // is none of those — ENOENT (no `gh`), an auth preflight failure, a bad
-    // argument — is a definitive local fault that must roll back rather than sit
-    // pending forever.
-    const killed = (error as { killed?: unknown }).killed === true;
-    const signal = (error as { signal?: unknown }).signal;
-    const code = (error as { code?: unknown }).code;
-    const transportError =
-      code !== 'ENOENT' &&
-      /ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|socket hang up|network is unreachable|i\/o timeout|TLS handshake|connection reset|timed out/i.test(
-        stderr,
-      );
-    const transient = status === null && (killed || signal === 'SIGTERM' || transportError);
+    const transient = classifyGhFailureTransient({
+      status,
+      code: (error as { code?: unknown }).code,
+      killed: (error as { killed?: unknown }).killed,
+      signal: (error as { signal?: unknown }).signal,
+      stderr,
+    });
     return {
       ok: false,
       status,

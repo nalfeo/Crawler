@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   createThemeEquipmentArtifactReader,
   createGhPlanPublisher,
+  classifyGhFailureTransient,
   executeThemeEquipmentReviewCommand,
   isRetryableGhFailure,
   PlanPublishError,
@@ -727,6 +728,48 @@ describe('isRetryableGhFailure', () => {
     expect(isRetryableGhFailure({ status: 422, errorMessage: 'validation failed' })).toBe(false);
     expect(
       isRetryableGhFailure({ status: 403, errorMessage: 'HTTP 403: Resource not accessible' }),
+    ).toBe(false);
+  });
+});
+
+describe('classifyGhFailureTransient', () => {
+  it('flags Windows/Go net diagnostics that gh prints on a network blip as transient', () => {
+    // Raw stderr observed from a forced-connection-failure `gh api` on Windows:
+    // exit code 1, killed:false, no HTTP status. These MUST be kept pending, not
+    // rolled back, or graceful degradation never fires on this platform.
+    const windowsStderrs = [
+      'Post "https://api.github.com/graphql": proxyconnect tcp: dial tcp 127.0.0.1:8888: connectex: No connection could be made because the target machine actively refused it.',
+      'dial tcp: lookup api.github.com: no such host',
+    ];
+    for (const stderr of windowsStderrs) {
+      expect(classifyGhFailureTransient({ status: null, code: 1, killed: false, stderr })).toBe(
+        true,
+      );
+    }
+  });
+
+  it('flags libc/Node errno spellings and our own deadline kill as transient', () => {
+    expect(
+      classifyGhFailureTransient({ status: null, code: 'ECONNRESET', stderr: 'read ECONNRESET' }),
+    ).toBe(true);
+    expect(
+      classifyGhFailureTransient({ status: null, killed: true, signal: 'SIGTERM', stderr: '' }),
+    ).toBe(true);
+  });
+
+  it('treats missing gh, auth, and any HTTP-status failure as definitive', () => {
+    // ENOENT (no gh binary) and an auth-preflight failure are local faults a
+    // blind retry cannot clear.
+    expect(
+      classifyGhFailureTransient({ status: null, code: 'ENOENT', stderr: 'spawn gh ENOENT' }),
+    ).toBe(false);
+    expect(classifyGhFailureTransient({ status: null, code: 1, stderr: 'gh: not logged in' })).toBe(
+      false,
+    );
+    // A parsed HTTP status is never a transport transient — 429/5xx retryability
+    // is decided by isRetryableGhFailure on the status, not here.
+    expect(
+      classifyGhFailureTransient({ status: 500, code: 1, stderr: 'HTTP 500: server error' }),
     ).toBe(false);
   });
 });
