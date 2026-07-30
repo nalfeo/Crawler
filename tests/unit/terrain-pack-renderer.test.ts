@@ -13,7 +13,10 @@
  */
 import type Phaser from 'phaser';
 import { describe, it, expect } from 'vitest';
-import { buildTerrainLayer } from '../../src/engine/terrain-renderer.js';
+import {
+  buildTerrainLayer,
+  PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES,
+} from '../../src/engine/terrain-renderer.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
@@ -377,6 +380,13 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     // read as wall), not the isolated (mask 0, all-sides-inset) frame.
     expect(wallStamps[0]!.frame).toBe(westFrame);
     expect(westFrame).not.toBe(isolatedFrame);
+  });
+
+  it('HARD GATE: includes TREE in the wall-neighbour mask set', () => {
+    // TREE is currently unwritten by generators, so the restoration in
+    // PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES needs a direct deterministic gate:
+    // if TREE is dropped again, verify:fast must fail immediately.
+    expect(PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(TerrainType.TREE)).toBe(true);
   });
 
   it('treats STONE_WALL and CAVE_WALL as connected pack walls for mask selection', () => {
