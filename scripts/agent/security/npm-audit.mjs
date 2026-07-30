@@ -11,14 +11,14 @@ export const AUDIT_EXCEPTIONS = [
     packageName: 'brace-expansion',
     source: 1124334,
     url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
-    expiresOn: '2026-07-31',
+    expiresOn: '2026-08-13',
     reason: 'No patched brace-expansion release is available yet.',
   },
   {
     packageName: 'find-my-way',
     source: 1124273,
     url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
-    expiresOn: '2026-07-31',
+    expiresOn: '2026-08-13',
     reason: 'Microsoft npm proxy does not yet mirror fixed release 9.7.0.',
   },
 ];
