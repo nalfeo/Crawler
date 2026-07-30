@@ -1,0 +1,112 @@
+{
+  "briefId": "classic-fantasy-basic-leather-iron-handaxe-v1",
+  "spriteName": "classic-fantasy-basic-leather-iron-handaxe-v1-var-1",
+  "assetPath": "generated/classic-fantasy-basic-leather-iron-handaxe-v1-var-1.png",
+  "approvedAt": "2026-07-30T00:31:57.106Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-iron-handaxe-v1/2026-07-28T04-10-14-d75cc2a7",
+  "variantIndex": 1,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 28,
+      "y": 24,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=17 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -65.42° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:40:50.689Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The handaxe has a clear identity as a simple, utilitarian weapon with a slightly worn aesthetic. The plain iron head and ash wood handle align with the grounded, practical tone of Floor 1, though it lacks a strong authored contradiction to elevate it further."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, palette depth, shading stops, and production finish. The crisp edges and consistent pixel treatment are in line with the approved sprites."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, palette depth, shading stops, and production finish. The crisp edges and consistent pixel treatment are in line with the approved sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts the described handaxe, including the curved ash wood handle, matte iron head, and reinforcing ring. The chipped edge detail is also present."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette reads clearly at game scale, with no visual integrity defects. The axe is immediately recognizable against the dark floor tile."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The materials and design elements (plain ash wood, matte iron, reinforcing ring) adhere well to the theme design language. However, the sprite could emphasize the utilitarian stitching or fastening details more explicitly to fully embrace the theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3156,
+      "completionTokens": 354,
+      "totalTokens": 3510
+    }
+  },
+  "type": null,
+  "contentHash": "bc82b385edd0b5fbff0f8462f0937faf0b122b00378f338b19ff5bf44c10c62e",
+  "opaqueBounds": {
+    "x": 13,
+    "y": 3,
+    "width": 37,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-handaxe-v1/2026-07-28T04-10-14-d75cc2a7/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-handaxe-v1/2026-07-28T04-10-14-d75cc2a7/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-handaxe-v1/2026-07-28T04-10-14-d75cc2a7/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right"
+}
