@@ -42,7 +42,7 @@ import {
 import type { TerrainPackId, TransformId } from '../../shared/terrain-pack-types.js';
 import {
   resolveDoorRenderMode,
-  ALL_GENERATED_DOOR_TEXTURE_KEYS,
+  GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_SHEET_KEY,
   DOOR_TARGET_HEIGHT_FT,
   DOOR_CLOSED_FRAME,
@@ -2993,7 +2993,9 @@ export class MainGameScene extends Phaser.Scene {
         originY: number;
       }
     >();
-    for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
+    // Use the canonical per-state key map directly so the exported contract is
+    // exercised in runtime code (not tests-only).
+    for (const key of Object.values(GENERATED_DOOR_TEXTURE_KEYS)) {
       if (!this.textures.exists(key)) {
         continue;
       }
