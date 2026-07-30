@@ -178,3 +178,20 @@ architectural surprises; `apples:record` run at handoff).
 
 - #2336 (closed) — remove the fixed-grid slicer, standardize on the
   content-aware slicer as the one way to slice.
+
+## Old shard cleanup
+
+The now-fully-unreferenced `rhea-vale-v1-var-0-walk` shard (the original
+3-frame player walk strip this session replaced) was **deleted**:
+`public/assets/generated/entries/rhea-vale-v1-var-0-walk.json`. It was
+already a dangling shard before this session's cleanup pass — its
+`assetPath` pointed at `generated/rhea-vale-v1-var-0-walk.png`, which a prior
+concurrent PR (`#2322`, "wire real player walk art and lock player/NPC scale
+parity") had already deleted from disk as orphaned, but the JSON shard itself
+was left behind. Removed for real this time; nothing in `src/` or the
+manifest-consuming code referenced it after this session's wiring change.
+
+The **static** `rhea-vale-v1-var-0` entry (a non-animated portrait, the
+`sourceRun` this walk shard was originally `derived-from/`) was **left
+untouched** — confirmed no walk-cycle work in this session modified
+`public/assets/generated/entries/rhea-vale-v1-var-0.json` or its PNG.
