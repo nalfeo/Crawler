@@ -8,20 +8,30 @@ Implements two blocking CI guards addressing issue #2362 (two dead-code blind sp
 
 2. **Knip suppression expiry guard** (`check:knip-suppressions`): Structured `KNIP_SUPPRESSIONS` list with required `reason` + `expiresOn` fields replaces `knip.json`'s raw `ignoreIssues` map. Expired entries fail CI; bumping `expiresOn` without also updating `reason` also fails CI (reason-restatement rule). Pattern follows `AUDIT_EXCEPTIONS` in `scripts/agent/security/npm-audit.mjs`.
 
+### Review/CI recovery follow-up
+
+- Excluded `src/labs/**` from the test-only-exports runner's production candidate/consumer set so lab-only imports never count as runtime wiring evidence.
+- Stopped treating named barrel re-exports as production-use evidence; tests that reach a symbol only through a barrel still count as test-only usage unless some non-test `src/` file imports it.
+- Tightened the reason-restatement rule so it fires only when `expiresOn` moves later; shortening a deadline is allowed without rewriting the reason.
+- Made the base-version parse path fail closed when `KNIP_SUPPRESSIONS` cannot be extracted from the base ref.
+
 ### Dead code fixed
+
 - `listInventoryEntries` deleted from `src/shared/inventory.ts` (zero production callers; unit- and property-tested but never called from engine code). Tests rewritten to use `hasGeneratedEquipmentReference` and direct bag-state assertions.
 
 ### Suppressions triaged (issue #2362 ask)
+
 - 9 reward/equipment file suppressions re-added with explicit `reason` + `expiresOn: 2026-09-30`. The files themselves ARE wired in production, but specific exports within each (constants, type aliases, interface definitions) remain unused. Each suppression entry enumerates the residual dead exports and provides actionable remediation notes.
 - 2 pre-existing suppressions (`sprite-approval-api.ts`, `mob-motion.ts`) carried forward with reason+expiry.
 
 ## Systems touched
 
-`tooling`, `inventory`, `ai`, `shared`
+ci-policy, inventory, ai-behavior-tree, hud-ux, boss-rooms
 
 ## Files touched
 
 ### New files
+
 - `scripts/agent/health/test-only-exports-lib.ts` — pure AST library (collectNamedExports, collectNamedImports, findTestOnlyExports, findDuplicateExportNames)
 - `scripts/agent/health/test-only-exports.ts` — blocking runner script
 - `scripts/agent/health/knip-suppressions.ts` — KNIP_SUPPRESSIONS list + pure validation logic
@@ -31,6 +41,7 @@ Implements two blocking CI guards addressing issue #2362 (two dead-code blind sp
 - `tests/unit/agent/knip-suppressions.test.ts` — unit tests for suppression validation
 
 ### Modified files
+
 - `knip.json` — DELETED (replaced by knip.config.ts)
 - `src/shared/inventory.ts` — deleted `listInventoryEntries` function
 - `tests/unit/inventory.test.ts` — removed 2 test cases for deleted function
@@ -42,15 +53,21 @@ Implements two blocking CI guards addressing issue #2362 (two dead-code blind sp
 
 ## Verification run
 
-- `verify:pr-prereqs` — passes after handoff written
-- `review:ledger validate` — passes (3🍎 ledger with plan_review + code_review)
-- Unit tests could not run locally (private registry inaccessible in sandbox); CI will validate
-- Guard logic verified by manual code trace through all test cases
+- `npm run typecheck` ✅
+- `npm run lint` ✅
+- `npm run check:test-only-exports` ✅
+- `npm run check:knip-suppressions` ✅
+- `npx vitest run tests/unit/agent/test-only-exports.test.ts tests/unit/agent/knip-suppressions.test.ts` ✅
+- `npm run verify:pr-prereqs` ✅
+- `parallel_validation` ✅ (no review findings; CodeQL reported 0 JS/Actions alerts, database-size skip on the broader JS scan)
+- `npm run verify:fast` could not run on this branch because the script currently rejects root-level changed TypeScript files such as `knip.config.ts`; equivalent direct checks above were run instead.
 
 ## Known limitations of test-only-exports guard
 
 Documented in `test-only-exports-lib.ts`:
-- `export * from '...'` barrels not tracked as src consumers (not used in this codebase — all barrels use named re-exports)
+
+- Re-exports do not count as src consumers; only real non-test `src/` imports count as runtime-use evidence
+- `src/labs/**` is intentionally excluded from production evidence in the runner
 - `import type` counts same as value imports (acceptable approximation for value-deadness detection)
 - Name-based (not module-path-based): rare same-name exports across two files can shield one another
 
