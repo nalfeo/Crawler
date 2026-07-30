@@ -41,20 +41,20 @@ Every slice maps to a persona, and every persona has an invocable agent. Route b
 the [persona routing matrix](../../docs/agent-os/personas/README.md), then delegate
 to that persona's agent:
 
-| Slice is mostly…                                     | Agent                                             |
-| ---------------------------------------------------- | ------------------------------------------------- |
-| Core ECS, components, determinism, entity-scale perf | [`systems-engineer`](./systems-engineer.agent.md) |
-| Mechanics, tuning, balance labs                      | [`game-designer`](./game-designer.agent.md)       |
-| Enemy behavior, pathfinding, headless runner         | [`game-ai-engineer`](./game-ai-engineer.agent.md) |
-| Floors, quests, set pieces, lore, Director voice     | [`content-designer`](./content-designer.agent.md) |
-| Sprites, tilesets, palettes, art wiring              | [`asset-forge`](./asset-forge.agent.md)           |
-| HUD, menus, controls, accessibility, audio feedback  | [`ux-designer`](./ux-designer.agent.md)           |
-| Tests, coverage, regression, flakes                  | [`qa-engineer`](./qa-engineer.agent.md)           |
-| CI, verify scripts, guards, tooling                  | [`devops-engineer`](./devops-engineer.agent.md)   |
-| Balance/pacing **evidence** across seeds             | [`playtester`](./playtester.agent.md)             |
-| Reviewing the resulting diff                         | [`reviewer`](./reviewer.agent.md)                 |
-| Gameplay-neutral speed/memory only                   | [`perf-optimizer`](./perf-optimizer.agent.md)     |
-| Driving open PRs to merge                            | [`pr-shepherd`](./pr-shepherd.agent.md)           |
+| Slice is mostly…                                      | Agent                                                    |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| Core ECS, components, determinism, entity-scale perf   | [`systems-engineer`](./systems-engineer.agent.md)        |
+| Mechanics, tuning, balance labs                        | [`game-designer`](./game-designer.agent.md)              |
+| Enemy behavior, pathfinding, headless runner           | [`game-ai-engineer`](./game-ai-engineer.agent.md)        |
+| Floors, quests, set pieces, lore, Director voice       | [`content-designer`](./content-designer.agent.md)        |
+| Sprites, tilesets, palettes, art wiring                | [`asset-forge`](./asset-forge.agent.md)                  |
+| HUD, menus, controls, accessibility, audio feedback    | [`ux-designer`](./ux-designer.agent.md)                  |
+| Tests, coverage, regression, flakes                    | [`qa-engineer`](./qa-engineer.agent.md)                  |
+| CI, verify scripts, guards, tooling                    | [`devops-engineer`](./devops-engineer.agent.md)          |
+| Balance/pacing **evidence** across seeds               | [`playtester`](./playtester.agent.md)                    |
+| Reviewing the resulting diff                           | [`reviewer`](./reviewer.agent.md)                        |
+| Gameplay-neutral speed/memory only                     | [`perf-optimizer`](./perf-optimizer.agent.md)            |
+| Driving open PRs to merge                              | [`pr-shepherd`](./pr-shepherd.agent.md)                  |
 
 ## Definition of done
 

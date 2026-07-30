@@ -12706,7 +12706,8 @@ test('fresh ci-failure copilot first appearing after an initial dispatch does no
       // Include path as reconcile.mjs would when it first builds this blocker
       // from the live GraphQL thread data (path is fingerprint-relevant).
       path: thread.path,
-      summary: 'copilot-pull-request-reviewer: Exemption is keyed only on field+name, not version.',
+      summary:
+        'copilot-pull-request-reviewer: Exemption is keyed only on field+name, not version.',
       url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3649391364`,
     },
   ];
@@ -13002,7 +13003,8 @@ test('ci-failure copilot as the only remaining blocker (all review threads resol
 
   // Stale lock must be released (label deleted).
   const labelDeleteCall = mutatingCalls.find(
-    (call) => call.method === 'DELETE' && call.url.includes(`/labels/${encodeURIComponent(LABEL)}`),
+    (call) =>
+      call.method === 'DELETE' && call.url.includes(`/labels/${encodeURIComponent(LABEL)}`),
   );
   assert.ok(
     labelDeleteCall,

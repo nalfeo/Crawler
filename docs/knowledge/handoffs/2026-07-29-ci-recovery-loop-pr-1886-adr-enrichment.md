@@ -33,13 +33,13 @@ doing any work.
 
 ## Defect Analysis
 
-| Component                                          | Finding                                                                                                         |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **Marker parser** (`extractAddressedMarkerSha`)    | ✓ Correct. All 157 `reconcile.test.mjs` tests pass.                                                             |
-| **Thread-resolution path** (`shouldResolveThread`) | ✓ Correct.                                                                                                      |
-| **Permission grant**                               | ✓ Correct. `CRAWLER_CI_PAT` discovers the Copilot actor and the GraphQL assign mutation succeeds.               |
-| **Mutation sequence**                              | ✓ Correct. Posts task, assigns Copilot, tracks ownership, retries, files loop incident at `attempt >= 2`.       |
-| **Fingerprint churn handling**                     | ✓ Correct (see reconcile.test.mjs lines 12355–12650). URL-excluded fingerprint prevents infinite attempt-reset. |
+| Component                                    | Finding                                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Marker parser** (`extractAddressedMarkerSha`) | ✓ Correct. All 157 `reconcile.test.mjs` tests pass.                                                        |
+| **Thread-resolution path** (`shouldResolveThread`) | ✓ Correct.                                                                                               |
+| **Permission grant**                         | ✓ Correct. `CRAWLER_CI_PAT` discovers the Copilot actor and the GraphQL assign mutation succeeds.             |
+| **Mutation sequence**                         | ✓ Correct. Posts task, assigns Copilot, tracks ownership, retries, files loop incident at `attempt >= 2`.    |
+| **Fingerprint churn handling**               | ✓ Correct (see reconcile.test.mjs lines 12355–12650). URL-excluded fingerprint prevents infinite attempt-reset. |
 
 **No deterministic code defect exists.** The loop is caused entirely by external
 infrastructure: the deprecated `claude-sonnet-4.5` model is resolved from

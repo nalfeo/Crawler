@@ -15,7 +15,6 @@ health-checks, ci
 A recurring silent data-loss pattern: when a PR regenerates an aggregate file (e.g. `manifest.json`, `boss-abilities.floor2.status.json`) from a stale snapshot taken before a concurrent PR merged, it carries old row values that overwrite what main gained. Merge conflicts are the only existing detection — when git doesn't conflict, the revert lands silently.
 
 Three confirmed instances:
-
 - **manifest.json** (PR #1972): `opaqueBounds` stripped from 462/464 entries
 - **boss-abilities.floor2.status.json** (PRs #2010, #2022): `don-paco` rolled back from `verified/verified/verified` to `not-started/planned/blocked`
 - **sprite-catalog.json**: removed from write path in #2248 (excluded from registry)
@@ -26,18 +25,18 @@ A new CI guard that compares three git versions of each registered aggregate fil
 
 ### Files created
 
-| File                                                                                        | Description                                                                                        |
-| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `scripts/agent/health/check-aggregate-row-ownership-lib.ts`                                 | Pure logic: canonicalize, extractManifestRows, extractBossAbilityRows, checkRowOwnership, REGISTRY |
-| `scripts/agent/health/check-aggregate-row-ownership.ts`                                     | CLI entry point (git operations, CI env detection)                                                 |
-| `tests/unit/agent/check-aggregate-row-ownership.test.ts`                                    | Unit tests for all rules and edge cases                                                            |
-| `docs/knowledge/review-ledgers/2026-07-29-aggregate-row-ownership-guard.review-ledger.json` | Review ledger                                                                                      |
+| File | Description |
+|------|-------------|
+| `scripts/agent/health/check-aggregate-row-ownership-lib.ts` | Pure logic: canonicalize, extractManifestRows, extractBossAbilityRows, checkRowOwnership, REGISTRY |
+| `scripts/agent/health/check-aggregate-row-ownership.ts` | CLI entry point (git operations, CI env detection) |
+| `tests/unit/agent/check-aggregate-row-ownership.test.ts` | Unit tests for all rules and edge cases |
+| `docs/knowledge/review-ledgers/2026-07-29-aggregate-row-ownership-guard.review-ledger.json` | Review ledger |
 
 ### Files modified
 
-| File                       | Change                                                   |
-| -------------------------- | -------------------------------------------------------- |
-| `package.json`             | Added `check:aggregate-row-ownership` script             |
+| File | Change |
+|------|--------|
+| `package.json` | Added `check:aggregate-row-ownership` script |
 | `.github/workflows/ci.yml` | Added `check-aggregate-rows` job and wired to merge-gate |
 
 ## Algorithm
@@ -85,7 +84,6 @@ Three violation kinds are detected:
 ## Plan review findings (claude-opus-5)
 
 All 7 findings resolved:
-
 - B1: fetch-depth fix (dedicated job pattern)
 - B2: volatile fields non-issue for these specific files
 - B3: deleted-row and deleted-field rules added

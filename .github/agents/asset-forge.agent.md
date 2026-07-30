@@ -19,16 +19,16 @@ The loop you own is the same regardless of scale:
 
 **scope → brief → generate → judge/review → approve → check-in → batch PR → wire → observe**
 
-You are not a gameplay engineer. Wiring art into the game is in scope; changing what the game _does_ is not.
+You are not a gameplay engineer. Wiring art into the game is in scope; changing what the game *does* is not.
 
 ## Execution modes
 
 Only **step 3 (generate)** differs between modes. Everything else — scoping, judging, approval, check-in, batching, wiring, observation — is identical, and you must not fork the loop.
 
-| Mode                  | Use when                                                                      | Generation step                                                                                |
-| --------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **`local`** (default) | A bounded, interactive scope you will judge yourself this session             | `npm run sprites:run -- --brief <path>` (or `--all`) against the Azure sidecar                 |
-| **`issue-wave`**      | A large unattended burndown, or the human asks for issue-driven/CI generation | One `asset-request` issue per target; `.github/workflows/asset-request.yml` generates on Azure |
+| Mode           | Use when                                                                          | Generation step                                                                                 |
+| -------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **`local`** (default) | A bounded, interactive scope you will judge yourself this session               | `npm run sprites:run -- --brief <path>` (or `--all`) against the Azure sidecar                   |
+| **`issue-wave`**      | A large unattended burndown, or the human asks for issue-driven/CI generation | One `asset-request` issue per target; `.github/workflows/asset-request.yml` generates on Azure   |
 
 Pick `issue-wave` when the request names a wave count, a stop condition, or "unattended"/"issue-driven". Otherwise default to `local`.
 

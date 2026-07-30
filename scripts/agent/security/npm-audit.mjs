@@ -25,9 +25,7 @@ export function findReasonRestatementViolations(previousExceptions, currentExcep
   const previousByPackage = new Map(
     previousExceptions.map((exception) => [exception.packageName, exception]),
   );
-  const currentByPackage = new Map(
-    currentExceptions.map((exception) => [exception.packageName, exception]),
-  );
+  const currentByPackage = new Map(currentExceptions.map((exception) => [exception.packageName, exception]));
   const violations = [];
 
   for (const [packageName, current] of currentByPackage.entries()) {
@@ -48,9 +46,7 @@ export function findReasonRestatementViolations(previousExceptions, currentExcep
 export function extractAuditExceptionsFromSource(source) {
   const match = source.match(/export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/);
   if (!match) {
-    throw new Error(
-      'Could not find AUDIT_EXCEPTIONS declaration in scripts/agent/security/npm-audit.mjs',
-    );
+    throw new Error('Could not find AUDIT_EXCEPTIONS declaration in scripts/agent/security/npm-audit.mjs');
   }
 
   const exceptions = Function(`"use strict"; return (${match[1]});`)();

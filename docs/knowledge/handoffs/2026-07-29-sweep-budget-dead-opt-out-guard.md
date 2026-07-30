@@ -20,7 +20,7 @@ Documented in issue #2284.
 
 Behavior **(b)**: externally-blocked PRs always count as latent CI demand, even when
 `ci-recovery-opt-out` is also present. Rationale: `ci-recovery-opt-out` opts the PR out
-of CI _Recovery slot consumption_, not out of runner usage entirely — the PR's own CI
+of CI *Recovery slot consumption*, not out of runner usage entirely — the PR's own CI
 still consumes a runner whenever it finally runs.
 
 This is the behavior the existing `Set` spread already implemented. The dead loop

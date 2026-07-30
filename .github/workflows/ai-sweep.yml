@@ -544,6 +544,7 @@ jobs:
   # replaces the old flat `search` job's implicit round-0 evaluation with an
   # explicit, independently-timed stage (see header for the timing rationale).
 
+
   # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
   # replaces the old flat `search` job's implicit round-0 evaluation with an
   # explicit, independently-timed stage (see header for the timing rationale).
@@ -1415,15 +1416,7 @@ jobs:
   validate:
     name: Validate ${{ matrix.combo.combo }}
     needs:
-      [
-        preflight,
-        checkpoint-init,
-        round1-select,
-        round2-select,
-        round3-select,
-        validate-budget,
-        resume-import,
-      ]
+      [preflight, checkpoint-init, round1-select, round2-select, round3-select, validate-budget, resume-import]
     if: ${{ !cancelled() }}
     concurrency:
       group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}

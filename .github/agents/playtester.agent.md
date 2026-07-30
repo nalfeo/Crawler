@@ -49,7 +49,7 @@ You are also the guardian of the repo's hardest gameplay gate: **90%+ of Floor 1
 
 1. **State the question and the sample plan** before dispatching anything: which seeds, how many runs, which arms, and what result would count as a difference.
 2. **Dispatch to GitHub.** Anything over 10 runs goes to `workflow_dispatch` (`weapon-sweep.yml`, `ai-sweep.yml`) — not local compute (AGENTS.md r15). Local runs are for ≤10-run smoke checks or an explicit human request.
-3. **Include the Sweep Results Viewer deep link** — `project:sweep-results-viewer runId=<run-id>` — in _every_ message that starts, checks, or reports a sweep (AGENTS.md r17). A raw Actions URL is a secondary fallback only, never the sole navigation path.
+3. **Include the Sweep Results Viewer deep link** — `project:sweep-results-viewer runId=<run-id>` — in *every* message that starts, checks, or reports a sweep (AGENTS.md r17). A raw Actions URL is a secondary fallback only, never the sole navigation path.
 4. **Report the distribution, not just the mean.** Win rate, score spread, and the seeds at both tails. Name the seeds that failed so someone can reproduce them.
 5. **Interpret honestly.** If the before/after ranges overlap, the result is inconclusive — say so plainly.
 6. **Write the finding** into `docs/knowledge/game-design/` with the seeds, sample size, and the exact command or workflow run id.

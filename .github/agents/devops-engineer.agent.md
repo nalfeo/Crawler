@@ -1,6 +1,6 @@
 ---
 name: DevOps Engineer
-description: "Own Crawler's CI, verify scripts, guard extensions, and agent tooling — keeping every gate deterministic, fast, and legible when it fails. Select for work in `.github/workflows/**` or `scripts/agent/**`: a broken or slow CI job, a new deterministic gate, guard/extension work, verify-script changes, or dev/lab server launch failures."
+description: 'Own Crawler''s CI, verify scripts, guard extensions, and agent tooling — keeping every gate deterministic, fast, and legible when it fails. Select for work in `.github/workflows/**` or `scripts/agent/**`: a broken or slow CI job, a new deterministic gate, guard/extension work, verify-script changes, or dev/lab server launch failures.'
 ---
 
 ## User Input

@@ -27,11 +27,9 @@ queue stall on 2026-07-29 (~05:33–07:03 UTC) reported in issue #2305.
 ### Root cause
 
 The `catch` block around the `update-branch` PUT call had:
-
 ```js
 if (err.status !== 422) throw err;
 ```
-
 This means any non-422 error (403 permission denied, 404, 5xx) was rethrown as
 an uncaught exception, crashing the Node process before it could process any
 other PR in the queue.
@@ -50,7 +48,6 @@ log-and-skip behavior.
 
 Added a source-string test in `tests/unit/merge-train-d2-behind-wiring.test.ts`
 asserting:
-
 - `process.stderr.write` appears in the catch block (errors are logged)
 - `throw err` does NOT appear in the catch block (no re-throw)
 

@@ -22,7 +22,6 @@ the required gutter, surfacing the defect rather than silently shipping bled fra
 ## What changed
 
 ### `scripts/sprites/slice-sheet.ts`
-
 - **Deleted** `sliceSheetFixedGrid` (was `function sliceSheetFixedGrid`).
 - **Updated** `sliceSheetFromBrief`: removed the `brief.frameSequence?.enabled` branch that
   routed to fixed-grid slicing; now always calls `sliceWithMap` (content-aware), same as
@@ -32,7 +31,6 @@ the required gutter, surfacing the defect rather than silently shipping bled fra
   per-brief flag through to the rerun path.
 
 ### `scripts/sprites/rerun.ts`
-
 - Removed `fixedGrid: brief.frameSequence?.enabled === true` from the `sliceSheetWithGrid`
   call. Re-slicing a stored frameSequence run now uses the same gutter-aware path as any
   other rerun. Old frameSequence runs generated with the fixed-grid cutter (1×4 layout,
@@ -40,14 +38,12 @@ the required gutter, surfacing the defect rather than silently shipping bled fra
   correct failure mode; those runs must be regenerated with the new gutter-based brief.
 
 ### `scripts/sprites/brief-schema.ts`
-
 - Updated frameSequence cross-validation: replaced `rows === 1` and `cols === frameCount`
   constraints with `rows * cols === frameCount`. Any rectangular layout (1×N, 2×2, 2×3,
   etc.) is now valid, provided all cells together equal `frameCount`. The content-aware
   slicer reads cells in row-major order, which maps naturally to animation frame order.
 
 ### `briefs/characters/player-walk-cycle.yaml`
-
 - Migrated from `rows: 1, cols: 4` to `rows: 2, cols: 2` with `nativeCanvas: 1024`.
   This yields 512×512 cells (a more natural near-square aspect for a standing biped vs
   the old 256×1024 tall cells).
@@ -57,9 +53,8 @@ the required gutter, surfacing the defect rather than silently shipping bled fra
   prompt changes were needed — the gutter instruction is inherited from the type.
 
 ### Tests
-
 - `tests/unit/sprites/slice-sheet.test.ts`: replaced `describe('sliceSheetFromBrief:
-frameSequence bypasses gutter detection', ...)` with a new block demonstrating that
+  frameSequence bypasses gutter detection', ...)` with a new block demonstrating that
   (a) a properly guttered frameSequence sheet slices cleanly via content-aware detection,
   (b) a gutter-free sheet collapses to 1 cell (quality gate — model must leave gutters),
   and (c) frameSequence and non-frameSequence briefs produce identical results on a

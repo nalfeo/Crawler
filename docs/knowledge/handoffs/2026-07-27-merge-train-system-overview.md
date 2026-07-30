@@ -30,13 +30,13 @@ picking up merge-train work.
 The speculative merge train is implemented in `.github/scripts/merge-train/` and
 dispatched via `.github/workflows/merge-train.yml`. The key scripts are:
 
-| File                                | Role                                                                                |
-| ----------------------------------- | ----------------------------------------------------------------------------------- |
-| `reconcile-lib.mjs`                 | Core logic: candidate construction, promotion (squash-merge), proof, landed signals |
-| `reconcile.mjs`                     | Orchestrator: CI recovery admission, review gating, sequential reconcile loop       |
-| `state.mjs`                         | Shared constants: label names, marker strings, check names                          |
-| `.github/workflows/merge-train.yml` | Dispatch target; concurrency is job-level `queue: single`                           |
-| `.github/workflows/ci-recovery.yml` | Review/repair automation; dispatches `merge-train.yml` after admission              |
+| File | Role |
+|------|------|
+| `reconcile-lib.mjs` | Core logic: candidate construction, promotion (squash-merge), proof, landed signals |
+| `reconcile.mjs` | Orchestrator: CI recovery admission, review gating, sequential reconcile loop |
+| `state.mjs` | Shared constants: label names, marker strings, check names |
+| `.github/workflows/merge-train.yml` | Dispatch target; concurrency is job-level `queue: single` |
+| `.github/workflows/ci-recovery.yml` | Review/repair automation; dispatches `merge-train.yml` after admission |
 
 ---
 
@@ -55,7 +55,7 @@ The atomic multi-ref force-push was **replaced** with sequential
   fast on 403/422/5xx.
 - A fail-closed post-merge proof (`landedCommitProofError`) validates:
   `merged:true` + `main==sha` + single parent + `tree(landed)==tree(candidate
-prefix)` + `merged_at`.
+  prefix)` + `merged_at`.
 
 **Source:** `2026-07-15-merge-train-completion-semantics.md`
 
@@ -112,14 +112,14 @@ sha used for dedup) is unchanged.
 
 ## Known Failure Patterns and Mitigations
 
-| Symptom                                                 | Root cause                                       | Fix applied                                                 |
-| ------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------- |
-| `"CI recovery admission evidence is stale"` for all PRs | TOCTOU guard passed stale sha (Vector A, Jul 22) | Pass `pr.head.sha` — merged PR #1800                        |
-| `workflow_dispatch` 403 from wakeup step                | App token instead of GITHUB_TOKEN                | Use `GITHUB_TOKEN` for dispatch                             |
-| Promotion gives `merged:false, merged_at:null`          | Force-push instead of squash-merge               | Replace with `POST /pulls/{n}/merge` — merged PR #1159+     |
-| Reconcile cancels active run                            | Workflow-level `queue: max`                      | Switch to job-level `queue: single`                         |
-| `ERR_MODULE_NOT_FOUND` in test run                      | Stale `node_modules`                             | Run `npm install` before assuming regression                |
-| Doc-parsing tests broken by prose rewrites              | Literal spaces in regex                          | Use `\s+` — see `merge-train-doc-rollback-ordering.test.ts` |
+| Symptom | Root cause | Fix applied |
+|---------|-----------|-------------|
+| `"CI recovery admission evidence is stale"` for all PRs | TOCTOU guard passed stale sha (Vector A, Jul 22) | Pass `pr.head.sha` — merged PR #1800 |
+| `workflow_dispatch` 403 from wakeup step | App token instead of GITHUB_TOKEN | Use `GITHUB_TOKEN` for dispatch |
+| Promotion gives `merged:false, merged_at:null` | Force-push instead of squash-merge | Replace with `POST /pulls/{n}/merge` — merged PR #1159+ |
+| Reconcile cancels active run | Workflow-level `queue: max` | Switch to job-level `queue: single` |
+| `ERR_MODULE_NOT_FOUND` in test run | Stale `node_modules` | Run `npm install` before assuming regression |
+| Doc-parsing tests broken by prose rewrites | Literal spaces in regex | Use `\s+` — see `merge-train-doc-rollback-ordering.test.ts` |
 
 ---
 
@@ -145,20 +145,20 @@ sha used for dedup) is unchanged.
 
 ## Source Handoffs (for full detail)
 
-| Date       | Slug                                                       | Summary                                                          |
-| ---------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
-| 2026-07-11 | `2026-07-11-speculative-merge-train`                       | Initial speculative merge-train design and launch                |
-| 2026-07-14 | `2026-07-14-merge-train-rollout-fix`                       | Rollout issues: badge check, label handling                      |
-| 2026-07-15 | `2026-07-15-merge-train-completion-semantics`              | **Core redesign**: force-push→squash-merge, proof, ADR amendment |
-| 2026-07-15 | `2026-07-15-merge-train-batch-promotion-postcondition-fix` | Postcondition check publishing fix                               |
-| 2026-07-15 | `2026-07-15-merge-train-confirmation-predicate-fix`        | Predicate for confirmation check                                 |
-| 2026-07-15 | `2026-07-15-merge-train-live-cutover-verified`             | Live verification of squash-merge promotion                      |
-| 2026-07-15 | `2026-07-15-merge-train-rollback-status-hydration-fix`     | Rollback status hydration                                        |
-| 2026-07-15 | `2026-07-15-merge-train-ruleset-bypass-fix`                | Ruleset vs. classic protection bypass semantics                  |
-| 2026-07-15 | `2026-07-15-merge-train-wakeups`                           | Explicit dispatch wakeup after check write                       |
-| 2026-07-16 | `2026-07-16-merge-train-scheduling`                        | Job-level `queue: single` for concurrency                        |
-| 2026-07-16 | `2026-07-16-merge-train-wakeup-gaps`                       | Wakeup gap close-out (complement to Jul-15)                      |
-| 2026-07-22 | `2026-07-22-merge-train-admission-deadlock`                | TOCTOU guard deadlock (two independent bugs)                     |
+| Date | Slug | Summary |
+|------|------|---------|
+| 2026-07-11 | `2026-07-11-speculative-merge-train` | Initial speculative merge-train design and launch |
+| 2026-07-14 | `2026-07-14-merge-train-rollout-fix` | Rollout issues: badge check, label handling |
+| 2026-07-15 | `2026-07-15-merge-train-completion-semantics` | **Core redesign**: force-push→squash-merge, proof, ADR amendment |
+| 2026-07-15 | `2026-07-15-merge-train-batch-promotion-postcondition-fix` | Postcondition check publishing fix |
+| 2026-07-15 | `2026-07-15-merge-train-confirmation-predicate-fix` | Predicate for confirmation check |
+| 2026-07-15 | `2026-07-15-merge-train-live-cutover-verified` | Live verification of squash-merge promotion |
+| 2026-07-15 | `2026-07-15-merge-train-rollback-status-hydration-fix` | Rollback status hydration |
+| 2026-07-15 | `2026-07-15-merge-train-ruleset-bypass-fix` | Ruleset vs. classic protection bypass semantics |
+| 2026-07-15 | `2026-07-15-merge-train-wakeups` | Explicit dispatch wakeup after check write |
+| 2026-07-16 | `2026-07-16-merge-train-scheduling` | Job-level `queue: single` for concurrency |
+| 2026-07-16 | `2026-07-16-merge-train-wakeup-gaps` | Wakeup gap close-out (complement to Jul-15) |
+| 2026-07-22 | `2026-07-22-merge-train-admission-deadlock` | TOCTOU guard deadlock (two independent bugs) |
 
 ---
 

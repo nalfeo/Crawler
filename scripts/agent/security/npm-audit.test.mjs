@@ -169,6 +169,7 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
   assert.match(result.stderr, /restated, current justification/);
 });
 
+
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));

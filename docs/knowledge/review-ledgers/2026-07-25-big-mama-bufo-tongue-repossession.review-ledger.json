@@ -20,14 +20,18 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-4.6"],
+          "models": [
+            "claude-sonnet-4.6"
+          ],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": false
         },
         {
           "round": 2,
-          "models": ["claude-sonnet-4.6"],
+          "models": [
+            "claude-sonnet-4.6"
+          ],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": true
@@ -40,7 +44,10 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "models": [
+            "claude-sonnet-4.6",
+            "gpt-5.3-codex"
+          ],
           "concerns_count": 2,
           "valid_count": 1,
           "resolved_count": 1,

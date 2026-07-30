@@ -29,10 +29,10 @@ the spec requiring uncommon/rare.
   `src/shared/generated-equipment-types.ts`
 - Replaced the single scalar `EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT = 0.75` with a
   per-tier `EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS` map (`{tier1:1.0, tier2:0.75, tier3:0.75,
-tier4:0.85}`)
+  tier4:0.85}`)
 - Changed `EQUIPMENT_TIER_WEIGHT` in `src/shared/reward-presentation.ts` from a
   dynamic index-based formula to an explicit map (`{tier1:0, tier2:0.5, tier3:1.0,
-tier4:1.0}`) to preserve existing tier2/tier3 excitement weights
+  tier4:1.0}`) to preserve existing tier2/tier3 excitement weights
 - Updated `rollTierRarity` in `src/game/floor2-reward-bundle-resolver.ts` to use the
   per-tier weight map; conditioned the Common-rarity base check on the tier's pool
 - Changed `BOSS_CHEST_REWARD_TIER` from `'tier1'` → `'tier4'` in `boss-chest-resolver.ts`

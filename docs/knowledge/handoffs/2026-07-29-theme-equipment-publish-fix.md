@@ -75,8 +75,8 @@ dedup/ordering/manifest mutation; the inner blob loop was the dominant cost).
   - "Publish approved theme set" ran ~29 min (vs ~39 min downloads-only in the
     failed run) — parallel download speedup confirmed ✅
   - Failed with a **content conflict** (`CONFLICT (modify/delete):
-public/assets/generated/manifest.json` + `CONFLICT (content):
-src/shared/data/sprite-catalog.json`) — unrelated to the shallow-checkout
+    public/assets/generated/manifest.json` + `CONFLICT (content):
+    src/shared/data/sprite-catalog.json`) — unrelated to the shallow-checkout
     or serial-download fixes; `main` advanced with new sprite catalog changes
     while the queue was stale between the two publish attempts.
 

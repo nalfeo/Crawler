@@ -69,20 +69,20 @@ link back to this section instead of restating it.
 
 ## Routing Matrix
 
-| If your task is mostly…                                                             | Adopt persona         | Agent                | Primary paths                                                    |
-| ----------------------------------------------------------------------------------- | --------------------- | -------------------- | ---------------------------------------------------------------- |
-| Multi-layer, cross-cutting, ambiguous, or needs coordination/sequencing             | **Producer**          | `producer`           | _(orchestrates; spans all paths)_                                |
-| Core ECS: components, systems, queries, performance, determinism                    | **Systems Engineer**  | `systems-engineer`   | `src/core/**`                                                    |
-| Game mechanics: combat, economy, progression pacing, tuning, balance labs           | **Game Designer**     | `game-designer`      | `src/game/**`, `src/labs/**`, `src/shared/data/tuning.json`      |
-| Enemy behavior, pathfinding, target selection, headless runner, AI sweeps           | **Game AI Engineer**  | `game-ai-engineer`   | `src/game/ai/**`                                                 |
-| Floor content, quests, encounters, set pieces, lore, flavor text, Director voice    | **Content Designer**  | `content-designer`   | `src/shared/data/quests.*.json`, lore bible, narrative templates |
-| Sprites, tilesets, VFX, palettes, sprite briefs & approval, art wiring              | **Graphics Designer** | `asset-forge`        | `briefs/**`, `data/palettes/**`, `src/engine/sprites/**`         |
-| Set-piece interiors: room layout, prop dressing, furniture scale/fit                | **Set Designer**      | `set-piece-designer` | `src/shared/data/set-pieces.json`, `scripts/agent/set-piece/**`  |
-| HUD, menus, onboarding, controls, interaction polish, accessibility, audio feedback | **UX Designer**       | `ux-designer`        | `src/engine/Hud*.ts`, controls config, `src/engine/audio/**`     |
-| Tests, coverage, property/invariant tests, regression, mutation                     | **QA Engineer**       | `qa-engineer`        | `tests/**`                                                       |
-| CI, verify scripts, harness, tooling, deployment, gates, agent velocity             | **DevOps Engineer**   | `devops-engineer`    | `.github/workflows/**`, `scripts/agent/**`                       |
-| Balance validation, difficulty curve, pacing & fun-factor across seeds              | **Playtester**        | `playtester`         | `docs/knowledge/game-design/**` (findings), sweep dispatch       |
-| Reviewing a PR / diff for correctness, security, policy compliance                  | **Reviewer**          | `reviewer`           | _(reads diffs; complements automated gates)_                     |
+| If your task is mostly…                                                             | Adopt persona         | Agent              | Primary paths                                                    |
+| ----------------------------------------------------------------------------------- | --------------------- | ------------------ | ---------------------------------------------------------------- |
+| Multi-layer, cross-cutting, ambiguous, or needs coordination/sequencing             | **Producer**          | `producer`         | _(orchestrates; spans all paths)_                                |
+| Core ECS: components, systems, queries, performance, determinism                    | **Systems Engineer**  | `systems-engineer` | `src/core/**`                                                    |
+| Game mechanics: combat, economy, progression pacing, tuning, balance labs           | **Game Designer**     | `game-designer`    | `src/game/**`, `src/labs/**`, `src/shared/data/tuning.json`      |
+| Enemy behavior, pathfinding, target selection, headless runner, AI sweeps           | **Game AI Engineer**  | `game-ai-engineer` | `src/game/ai/**`                                                 |
+| Floor content, quests, encounters, set pieces, lore, flavor text, Director voice    | **Content Designer**  | `content-designer` | `src/shared/data/quests.*.json`, lore bible, narrative templates |
+| Sprites, tilesets, VFX, palettes, sprite briefs & approval, art wiring              | **Graphics Designer** | `asset-forge`      | `briefs/**`, `data/palettes/**`, `src/engine/sprites/**`         |
+| Set-piece interiors: room layout, prop dressing, furniture scale/fit                | **Set Designer**      | `set-piece-designer` | `src/shared/data/set-pieces.json`, `scripts/agent/set-piece/**` |
+| HUD, menus, onboarding, controls, interaction polish, accessibility, audio feedback | **UX Designer**       | `ux-designer`      | `src/engine/Hud*.ts`, controls config, `src/engine/audio/**`     |
+| Tests, coverage, property/invariant tests, regression, mutation                     | **QA Engineer**       | `qa-engineer`      | `tests/**`                                                       |
+| CI, verify scripts, harness, tooling, deployment, gates, agent velocity             | **DevOps Engineer**   | `devops-engineer`  | `.github/workflows/**`, `scripts/agent/**`                       |
+| Balance validation, difficulty curve, pacing & fun-factor across seeds              | **Playtester**        | `playtester`       | `docs/knowledge/game-design/**` (findings), sweep dispatch       |
+| Reviewing a PR / diff for correctness, security, policy compliance                  | **Reviewer**          | `reviewer`         | _(reads diffs; complements automated gates)_                     |
 
 When two rows could apply, prefer the **more specific** persona for the layer you
 are actually editing, and consult adjacent personas via their "Collaborates with"
@@ -151,20 +151,20 @@ adopt:
 
 ## Persona Index
 
-| Persona           | File                   | Agent                                                                       |
-| ----------------- | ---------------------- | --------------------------------------------------------------------------- |
-| Producer          | `producer.md`          | [`producer`](../../../.github/agents/producer.agent.md)                     |
-| Systems Engineer  | `systems-engineer.md`  | [`systems-engineer`](../../../.github/agents/systems-engineer.agent.md)     |
-| Game Designer     | `game-designer.md`     | [`game-designer`](../../../.github/agents/game-designer.agent.md)           |
-| Game AI Engineer  | `game-ai-engineer.md`  | [`game-ai-engineer`](../../../.github/agents/game-ai-engineer.agent.md)     |
-| Content Designer  | `content-designer.md`  | [`content-designer`](../../../.github/agents/content-designer.agent.md)     |
-| Graphics Designer | `graphics-designer.md` | [`asset-forge`](../../../.github/agents/asset-forge.agent.md)               |
+| Persona           | File                   | Agent                                                                   |
+| ----------------- | ---------------------- | ----------------------------------------------------------------------- |
+| Producer          | `producer.md`          | [`producer`](../../../.github/agents/producer.agent.md)                 |
+| Systems Engineer  | `systems-engineer.md`  | [`systems-engineer`](../../../.github/agents/systems-engineer.agent.md) |
+| Game Designer     | `game-designer.md`     | [`game-designer`](../../../.github/agents/game-designer.agent.md)       |
+| Game AI Engineer  | `game-ai-engineer.md`  | [`game-ai-engineer`](../../../.github/agents/game-ai-engineer.agent.md) |
+| Content Designer  | `content-designer.md`  | [`content-designer`](../../../.github/agents/content-designer.agent.md) |
+| Graphics Designer | `graphics-designer.md` | [`asset-forge`](../../../.github/agents/asset-forge.agent.md)           |
 | Set Designer      | `set-designer.md`      | [`set-piece-designer`](../../../.github/agents/set-piece-designer.agent.md) |
-| UX Designer       | `ux-designer.md`       | [`ux-designer`](../../../.github/agents/ux-designer.agent.md)               |
-| QA Engineer       | `qa-engineer.md`       | [`qa-engineer`](../../../.github/agents/qa-engineer.agent.md)               |
-| DevOps Engineer   | `devops-engineer.md`   | [`devops-engineer`](../../../.github/agents/devops-engineer.agent.md)       |
-| Playtester        | `playtester.md`        | [`playtester`](../../../.github/agents/playtester.agent.md)                 |
-| Reviewer          | `reviewer.md`          | [`reviewer`](../../../.github/agents/reviewer.agent.md)                     |
+| UX Designer       | `ux-designer.md`       | [`ux-designer`](../../../.github/agents/ux-designer.agent.md)           |
+| QA Engineer       | `qa-engineer.md`       | [`qa-engineer`](../../../.github/agents/qa-engineer.agent.md)           |
+| DevOps Engineer   | `devops-engineer.md`   | [`devops-engineer`](../../../.github/agents/devops-engineer.agent.md)   |
+| Playtester        | `playtester.md`        | [`playtester`](../../../.github/agents/playtester.agent.md)             |
+| Reviewer          | `reviewer.md`          | [`reviewer`](../../../.github/agents/reviewer.agent.md)                 |
 
 ## Agent Index
 

@@ -23,7 +23,7 @@ with `Model "claude-sonnet-4.5" is not available`. This created a check-run name
 that concluded `failure` on the PR's head SHA.
 
 **Root cause #2 — deterministic defect in `blockerFingerprint` (this PR)**  
-When the self-generated `copilot` check-run appeared as a _new_ `ci-failure copilot` blocker on
+When the self-generated `copilot` check-run appeared as a *new* `ci-failure copilot` blocker on
 the next reconcile sweep, it changed the blocker fingerprint from F₁ (review threads only) to
 F₂ (review threads + copilot failure). `automationStallAction` reads a changed fingerprint as
 `'progressed'` — genuine new progress on the PR. This reset the attempt counter to 1 and gave
@@ -63,7 +63,7 @@ misread as independent external progress.
 ## Tests added
 
 - **`state.test.mjs`**: Unit test verifying that `blockerFingerprint([ci-failure-copilot, RT])
-=== blockerFingerprint([RT])` and that non-copilot ci-failures are still fingerprinted.
+  === blockerFingerprint([RT])` and that non-copilot ci-failures are still fingerprinted.
 - **`reconcile.test.mjs`**: Integration test (end-to-end through reconcile.mjs subprocess)
   for the exact PR #1939 scenario: automation-dispatched state with review-thread blockers,
   attempt=1, stale; current check runs include a fresh `copilot` failure; asserts
