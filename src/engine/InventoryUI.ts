@@ -21,14 +21,17 @@ import type {
 } from '../shared/inventory.js';
 import {
   createTabPreferences,
-  filterByEquipmentSlot,
-  getVisibleTabs,
-  sortSlots,
   type SortField,
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
-import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
+import {
+  ItemRarity,
+  type ItemDef,
+  type ItemTag,
+  RARITY_COLORS,
+  getItemById,
+} from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -53,6 +56,20 @@ const CELL_GAP = 10;
 const COLS = 5;
 const BORDER_WIDTH = 2;
 const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
+const RARITY_SORT_ORDER: Record<string, number> = {
+  Common: 0,
+  Uncommon: 1,
+  Rare: 2,
+  Epic: 3,
+  Legendary: 4,
+};
+const GENERATED_RARITY_TO_ITEM_RARITY: Record<string, ItemRarity> = {
+  common: ItemRarity.Common,
+  uncommon: ItemRarity.Uncommon,
+  rare: ItemRarity.Rare,
+  epic: ItemRarity.Epic,
+  legendary: ItemRarity.Legendary,
+};
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -88,6 +105,7 @@ export interface InventoryUIConfig {
 
 interface RenderInventorySlot {
   readonly slot: InventorySlot;
+  readonly def: ItemDef;
   readonly generatedEntry?: GeneratedEquipmentInventoryEntry;
 }
 
@@ -413,11 +431,72 @@ export function createInventoryUI(
     tooltipObjects.length = 0;
   }
 
+  function getBaseRenderSlots(): RenderInventorySlot[] {
+    if (!currentBag) return [];
+
+    const staticSlots: RenderInventorySlot[] = currentBag.slots
+      .map((slot) => {
+        const def = getItemById(slot.itemId);
+        return def ? { slot, def } : null;
+      })
+      .filter((slot): slot is RenderInventorySlot => slot !== null);
+    const generatedSlots: RenderInventorySlot[] = [];
+    for (const generatedEntry of currentBag.generatedEquipment ?? []) {
+      const generated = currentWorld
+        ? getGeneratedEquipmentInstance(currentWorld, generatedEntry.instanceKey)
+        : undefined;
+      if (!generated?.baseId) continue;
+      generatedSlots.push({
+        slot: { itemId: generated.baseId, quantity: 1 },
+        def: {
+          id: generated.baseId,
+          name: generated.frozen.displayName,
+          description: '',
+          tags: [...generated.frozen.tags] as ItemTag[],
+          rarity: GENERATED_RARITY_TO_ITEM_RARITY[generated.rarity] ?? ItemRarity.Common,
+          maxStack: 1,
+        },
+        generatedEntry,
+      });
+    }
+    return [...staticSlots, ...generatedSlots];
+  }
+
+  function getRenderSlotKey(slot: RenderInventorySlot): string {
+    return slot.generatedEntry?.instanceKey ?? `static:${slot.slot.itemId}:${slot.slot.quantity}`;
+  }
+
+  function getVisibleRenderTabs(): ItemTag[] {
+    const active = new Set<ItemTag>();
+    for (const candidate of getBaseRenderSlots()) {
+      for (const tag of candidate.def.tags) {
+        active.add(tag);
+      }
+    }
+    for (const hidden of tabPrefs.hidden) {
+      active.delete(hidden);
+    }
+    const ordered: ItemTag[] = [];
+    const placed = new Set<ItemTag>();
+    for (const tag of tabPrefs.order) {
+      if (active.has(tag) && !placed.has(tag)) {
+        ordered.push(tag);
+        placed.add(tag);
+      }
+    }
+    for (const tag of [...active].sort()) {
+      if (!placed.has(tag)) {
+        ordered.push(tag);
+      }
+    }
+    return ordered;
+  }
+
   function renderTabs(): void {
     clearTabObjects();
     if (!currentBag) return;
 
-    const tabs = getVisibleTabs(currentBag, tabPrefs);
+    const tabs = getVisibleRenderTabs();
     if (activeTag !== null && !tabs.includes(activeTag)) {
       activeTag = null;
     }
@@ -502,28 +581,18 @@ export function createInventoryUI(
   function getFilteredSlots(): RenderInventorySlot[] {
     if (!currentBag) return [];
 
-    const staticSlots: RenderInventorySlot[] = currentBag.slots.map((slot) => ({ slot }));
-    const generatedSlots: RenderInventorySlot[] = [];
-    for (const generatedEntry of currentBag.generatedEquipment ?? []) {
-      const generated = currentWorld
-        ? getGeneratedEquipmentInstance(currentWorld, generatedEntry.instanceKey)
-        : undefined;
-      const itemId = generated?.def.id;
-      if (!itemId) continue;
-      generatedSlots.push({
-        slot: { itemId, quantity: 1 },
-        generatedEntry,
-      });
-    }
-    let slots: RenderInventorySlot[] = [...staticSlots, ...generatedSlots];
+    const allSlots = getBaseRenderSlots();
+    let slots: RenderInventorySlot[] = allSlots;
 
-    if (externalSlotFilter !== null) {
-      const staticFiltered = filterByEquipmentSlot(currentBag, externalSlotFilter).map((slot) => ({
-        slot,
-      }));
-      const generatedFiltered = generatedSlots.filter((candidate) => {
+    const slotFilter = externalSlotFilter;
+    if (slotFilter !== null) {
+      const staticFiltered = allSlots.filter((candidate) => !candidate.generatedEntry).filter((candidate) => {
         const def = getEquipmentDefForItem(candidate.slot.itemId);
-        return def?.slots.includes(externalSlotFilter) === true;
+        return def?.slots.includes(slotFilter) === true;
+      });
+      const generatedFiltered = allSlots.filter((candidate) => candidate.generatedEntry).filter((candidate) => {
+        const def = getEquipmentDefForItem(candidate.slot.itemId);
+        return def?.slots.includes(slotFilter) === true;
       });
       slots = [...staticFiltered, ...generatedFiltered];
     }
@@ -531,36 +600,34 @@ export function createInventoryUI(
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       slots = slots.filter((candidate) => {
-        const def = getItemById(candidate.slot.itemId);
-        if (!def) return false;
         return (
-          def.name.toLowerCase().includes(query) || (def.description ?? '').toLowerCase().includes(query)
+          candidate.def.name.toLowerCase().includes(query) ||
+          (candidate.def.description ?? '').toLowerCase().includes(query)
         );
       });
     } else if (activeTag) {
-      slots = slots.filter((candidate) => {
-        const def = getItemById(candidate.slot.itemId);
-        return def?.tags.includes(activeTag) === true;
-      });
+      const tagFilter = activeTag;
+      slots = slots.filter((candidate) => candidate.def.tags.includes(tagFilter));
     }
 
     return [...slots].sort((left, right) => {
-      const leftDef = getItemById(left.slot.itemId);
-      const rightDef = getItemById(right.slot.itemId);
       if (currentSortBy === 'quantity') {
         const quantity = right.slot.quantity - left.slot.quantity;
-        return quantity !== 0 ? quantity : left.slot.itemId.localeCompare(right.slot.itemId);
+        if (quantity !== 0) return quantity;
+        const byItemId = left.slot.itemId.localeCompare(right.slot.itemId);
+        return byItemId !== 0 ? byItemId : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
       }
-      if (currentSortBy === 'name') {
-        const leftName = leftDef?.name ?? left.slot.itemId;
-        const rightName = rightDef?.name ?? right.slot.itemId;
-        const byName = leftName.localeCompare(rightName);
-        return byName !== 0 ? byName : left.slot.itemId.localeCompare(right.slot.itemId);
+      const leftName = left.def.name;
+      const rightName = right.def.name;
+      if (currentSortBy === 'rarity') {
+        const rarityDiff =
+          (RARITY_SORT_ORDER[right.def.rarity] ?? 0) - (RARITY_SORT_ORDER[left.def.rarity] ?? 0);
+        if (rarityDiff !== 0) return rarityDiff;
       }
-      const raritySorted = sortSlots({ slots: [left.slot, right.slot] }, 'rarity');
-      if (raritySorted[0] === left.slot && raritySorted[1] === right.slot) return -1;
-      if (raritySorted[0] === right.slot && raritySorted[1] === left.slot) return 1;
-      return left.slot.itemId.localeCompare(right.slot.itemId);
+      const byName = leftName.localeCompare(rightName);
+      if (byName !== 0) return byName;
+      const byItemId = left.slot.itemId.localeCompare(right.slot.itemId);
+      return byItemId !== 0 ? byItemId : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
     });
   }
 
@@ -582,8 +649,7 @@ export function createInventoryUI(
     for (let i = 0; i < Math.min(slots.length, maxVisible); i++) {
       const renderSlot = slots[i]!;
       const slot = renderSlot.slot;
-      const def = getItemById(slot.itemId);
-      if (!def) continue;
+      const def = renderSlot.def;
 
       const col = i % COLS;
       const row = Math.floor(i / COLS);

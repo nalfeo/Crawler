@@ -28,6 +28,7 @@ import type { GameWorld } from '../../core/world.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import type { Floor2SettlementSnapshot } from '../../shared/floor-types.js';
 import {
+  acknowledgeAchievementRewardPresentation,
   isAchievementClaimed,
   claimAchievementReward,
 } from '../../core/systems/achievementRewards.js';
@@ -192,6 +193,7 @@ function attemptAchievementClaim(
 ): { readonly deferred: boolean } {
   const result = claimAchievementReward(world, achievementId);
   if (result.ok) {
+    acknowledgeAchievementRewardPresentation(world, achievementId);
     decisions.push({
       kind: 'claim-achievement',
       detail: isRetry

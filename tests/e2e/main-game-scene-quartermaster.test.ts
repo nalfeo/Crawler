@@ -217,6 +217,23 @@ describe('MainGameScene acquisition → observation contract', () => {
     await waitForState(page, (s) => s.inventoryOpen, { label: 'inventory open' });
   }
 
+  async function waitForInventoryItems(
+    predicate: (ids: readonly string[]) => boolean,
+    label: string,
+  ): Promise<readonly string[]> {
+    const deadline = Date.now() + 8_000;
+    for (;;) {
+      const ids = await mainSceneProbe.getInventoryVisibleItemIds(page);
+      if (predicate(ids)) {
+        return ids;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${label}`);
+      }
+      await page.waitForTimeout(100);
+    }
+  }
+
   async function acquireAndObserve(source: PlayerAcquisitionSource): Promise<void> {
     await bootFloor2SafeScene();
     await ensureInventoryOpen();
@@ -229,7 +246,10 @@ describe('MainGameScene acquisition → observation contract', () => {
         await mainSceneProbe.acknowledgeRewardOpening(page);
       }
       await ensureInventoryOpen();
-      const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+      const after = await waitForInventoryItems(
+        (ids) => ids.length > before.length,
+        'achievement claim inventory render',
+      );
       expect(after.length, 'achievement claim should add a rendered inventory entry').toBeGreaterThan(
         before.length,
       );
@@ -241,7 +261,10 @@ describe('MainGameScene acquisition → observation contract', () => {
       expect(result.ok, 'quartermaster purchase should succeed').toBe(true);
       expect(result.itemId, 'quartermaster purchase should resolve an item id').toBeTruthy();
       await ensureInventoryOpen();
-      const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+      const after = await waitForInventoryItems(
+        (ids) => ids.length > before.length && ids.includes(result.itemId!),
+        'quartermaster purchase inventory render',
+      );
       expect(after.length, 'quartermaster purchase should add a rendered inventory entry').toBeGreaterThan(
         before.length,
       );
@@ -253,7 +276,10 @@ describe('MainGameScene acquisition → observation contract', () => {
       const opened = await mainSceneProbe.openFirstAvailableBossChest(page);
       expect(opened, 'boss chest should open and acknowledge').toEqual({ ok: true });
       await ensureInventoryOpen();
-      const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+      const after = await waitForInventoryItems(
+        (ids) => ids.length > before.length,
+        'boss chest inventory render',
+      );
       expect(after.length, 'boss chest should add a rendered inventory entry').toBeGreaterThan(
         before.length,
       );
@@ -262,8 +288,12 @@ describe('MainGameScene acquisition → observation contract', () => {
     const seededDropItemId = before.includes('iron-breastplate') ? 'merchant-charm' : 'iron-breastplate';
     const pickedUp = await mainSceneProbe.spawnAndPickupFloorDrop(page, seededDropItemId);
     expect(pickedUp.ok, `floor drop '${seededDropItemId}' should be picked up`).toBe(true);
+    await mainSceneProbe.unlockSafeRoomSurfaces(page);
     await ensureInventoryOpen();
-    const after = await mainSceneProbe.getInventoryVisibleItemIds(page);
+    const after = await waitForInventoryItems(
+      (ids) => ids.length > before.length && ids.includes(seededDropItemId),
+      'floor drop inventory render',
+    );
     expect(after, `floor drop should be rendered in inventory (${seededDropItemId})`).toContain(
       seededDropItemId,
     );

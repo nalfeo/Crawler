@@ -36,6 +36,7 @@ import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { spawnDroppedItem } from '../../core/helpers.js';
 import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
+import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
 import { openBossChest, acknowledgeBossChestReveal } from '../../core/systems/bossChestRewards.js';
 import {
@@ -56,6 +57,7 @@ import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
+import { spawnBossChestForDefeatedBoss } from '../../game/boss-chest-resolver.js';
 import {
   getQuartermasterOfferViews,
   purchaseQuartermasterOffer,
@@ -128,6 +130,7 @@ interface MainSceneInternals {
   };
   inventoryUI?: {
     isOpen(): boolean;
+    refresh(world: GameWorld): void;
     getVisibleItemIds?(): string[];
   };
   equipmentUI?: { isOpen(): boolean };
@@ -1301,12 +1304,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) {
         return;
       }
-      world.bossChests.set('boss-chest:ratfolk', {
-        chestId: 'boss-chest:ratfolk',
-        familyId: 'ratfolk',
-        state: 'available',
-        createdAtMs: 0,
-      });
+      world.bossChests.delete('boss-chest:ratfolk');
+      world.generatedEquipmentRewardBundles.delete('boss-chest:ratfolk');
+      spawnBossChestForDefeatedBoss(world, 'ratfolk');
       scene.bossChestUI?.refresh(world);
     },
 
@@ -1395,7 +1395,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         return {
           ok: true,
           goldSpent: result.goldSpent,
-          itemId: purchased?.def.id,
+          itemId: purchased?.baseId,
         };
       }
       return { ok: false, reason: result.reason };
@@ -1433,8 +1433,16 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (itemIndex < 0) return { ok: false, reason: 'unknown-item' };
       const x = world.stores.position.x[playerEid] ?? 0;
       const y = world.stores.position.y[playerEid] ?? 0;
-      spawnDroppedItem(world, x, y, itemIndex);
-      scene.advanceSimulationFrames?.(2);
+      const dropEid = spawnDroppedItem(world, x, y, itemIndex);
+      itemPickupSystem(world, {
+        pairs: [{ a: playerEid, b: dropEid }],
+        grid: {
+          clear() {},
+          insert() {},
+          queryPairs: () => [],
+          queryRadius: () => [],
+        },
+      });
       scene.inventoryUI?.refresh(world);
       return { ok: true };
     },

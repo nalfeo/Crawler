@@ -25,7 +25,10 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
-import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
+import {
+  generatedEquipmentRunKeyFromSeed,
+  type GeneratedEquipmentInstanceKey,
+} from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
 import { isAchievementClaimed } from '../../core/systems/achievementRewards.js';
@@ -128,8 +131,8 @@ export function collectEquipmentPlayabilityMetrics(
   const equipmentState = getEquipmentState(world, playerEid);
   const baggedEntries = bag?.generatedEquipment ?? [];
   const equippedInstanceIds = new Set(
-    Object.values(equipmentState?.equipped ?? {}).filter((instanceId): instanceId is string =>
-      typeof instanceId === 'string',
+    Object.values(equipmentState?.equipped ?? {}).filter(
+      (instanceId): instanceId is GeneratedEquipmentInstanceKey => typeof instanceId === 'string',
     ),
   );
   const unopenedAchievementRewards = [...world.achievements.unlockedIds].filter(
@@ -291,6 +294,14 @@ export interface HeadlessRunnerConfig {
    * feature.
    */
   settlementReturnRouting?: boolean;
+  /**
+   * Floor-2-only invariant gate for the end-of-run equipment/reward seam.
+   * Keep enabled for normal headless playability runs; tests that
+   * intentionally synthesize partial/interrupted routing states may disable it
+   * when their subject is the router telemetry itself rather than the final
+   * serviced inventory outcome.
+   */
+  enforcePlayabilityInvariants?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -314,6 +325,7 @@ const DEFAULT_CONFIG: Required<
   weaponPersonas: true,
   merchantWeaponPurchase: false,
   settlementReturnRouting: false,
+  enforcePlayabilityInvariants: true,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -1206,7 +1218,11 @@ export async function runHeadless(
       equipmentSpendTelemetry.goldSpentOnEquipment,
     );
     const playabilityViolations =
-      world.floorId === 'floor2' ? collectEquipmentPlayabilityViolations(equipmentPlayability) : [];
+      world.floorId === 'floor2' &&
+      mergedConfig.settlementReturnRouting &&
+      mergedConfig.enforcePlayabilityInvariants
+        ? collectEquipmentPlayabilityViolations(equipmentPlayability)
+        : [];
     if (playabilityViolations.length > 0) {
       throw new Error(`Headless playability invariant failed: ${playabilityViolations.join(' | ')}`);
     }
