@@ -2,36 +2,46 @@ import { describe, expect, it } from 'vitest';
 import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_DOOR_TEXTURE_KEYS,
-  ALL_GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_TARGET_HEIGHT_FT,
+  resolveGeneratedDoorContainFit,
 } from '../../src/engine/sprites/door-visuals.js';
 
+const ALL_GENERATED_DOOR_TEXTURE_KEYS = Object.values(GENERATED_DOOR_TEXTURE_KEYS);
+
 /**
- * The door render contract in `MainGameScene.updateDoorOverlay()` is
- * HEIGHT-authoritative and anchored on the sprite's OPAQUE BOX: the texture is
- * scaled by `ftToPx(DOOR_TARGET_HEIGHT_FT) / box.height` and pinned by the box's
- * bottom-centre to the tile's bottom edge, so every door renders at the same
- * real-world height and the WIDTH follows the opaque box's aspect, overhanging
- * onto the neighbouring wall tiles.
+ * The door render contract in `MainGameScene.updateDoorOverlay()` CONTAIN-fits
+ * the sprite's OPAQUE BOX into a one-cell (4 ft) × DOOR_TARGET_HEIGHT_FT (6.5 ft)
+ * box: a single uniform scale
  *
- * That is the reverse of the original rule, and the reversal is the point. While
- * the renderer was width-authoritative (`tileSize / box.width`), rendered height
- * was whatever aspect the generator happened to produce — measured at 4.90 ft for
- * the shipped closed leaf, i.e. a doorway shorter than the 5.75 ft player walking
- * through it. Three brief rounds asking for a ~1:1.75 archway moved the delivered
- * aspect by zero, so the aspect is a generator capability limit and the renderer
- * is the only lever that moves.
+ *   scale = min(tileSize / box.width, doorTargetHeightPx / box.height)
  *
- * This deliberately does NOT require full-bleed art. An earlier revision asserted
- * it, which was wrong: the image model draws into a SQUARE cell and
- * `sizeVariant: tall` is banned (portrait cells slice into stacked-object
- * columns), so a tall door can ONLY ship as a tall subject inside a square canvas
- * with transparent margins. Anchoring on the opaque box makes canvas padding
- * irrelevant instead.
+ * that never exceeds EITHER axis, pinned by the box's bottom-centre to the tile's
+ * bottom edge. Whichever term is smaller binds; the other axis comes in under its
+ * cap.
  *
- * What still matters is the OPAQUE box's aspect, because it now decides how WIDE
- * the door renders — and how far it overhangs. It is invisible in the def, the
- * manifest and every sensor; only decoding the shipped PNG's alpha shows it.
+ * This clamps WIDTH to one cell. The renderer was formerly HEIGHT-authoritative
+ * (`doorTargetHeightPx / box.height` alone): height was pinned at 6.5 ft and width
+ * followed the art's ~1:1.25 aspect, rendering a ~5.2 ft leaf in a 4 ft cell. That
+ * overhang used to land on solid masonry, but once the wall silhouettes were inset
+ * earlier in this series it spilled onto visible floor — the "doors are the wrong
+ * widths" defect. Clamping width to one cell removes the spill.
+ *
+ * The accepted cost, chosen explicitly by the maintainer: the face-on N/S art
+ * (aspect ~0.8) now binds on WIDTH and renders SHORTER than 6.5 ft (4.90 ft closed,
+ * 5.07 ft open) — a shade under the 5.75 ft player. Taller N/S art hit a hard
+ * generator ceiling, so a ~5 ft door that fits its cell was preferred to a 6.5 ft
+ * door that spills onto floor. The side-on E/W art (aspect ~0.47) binds on HEIGHT
+ * instead and renders as a correct narrow ~3.1 ft × 6.5 ft strip.
+ *
+ * The OPAQUE box's aspect is what decides which axis binds and how the door reads.
+ * It is invisible in the def, the manifest and every sensor; only decoding the
+ * shipped PNG's alpha shows it — hence this test measures it directly.
+ *
+ * NON-TAUTOLOGY NOTE: neutralising the fix in the renderer (reverting the scale to
+ * the old height-only `doorTargetHeightPx / box.height`) makes every face-on door
+ * render ~5.3 ft wide, which fails both the "no door wider than one cell" gate and
+ * the "face-on art binds on width" gate below. Mirror any change to the render
+ * rule here.
  */
 
 interface ManifestEntry {
@@ -47,27 +57,40 @@ interface ManifestEntry {
 }
 
 /**
- * The player avatar's height. Any doorway must clear it — a door shorter than the
- * person walking through it was the defect that drove the height-authoritative
- * render rule (see DOOR_TARGET_HEIGHT_FT).
+ * One dungeon cell in feet — the WIDTH cap. Matches `DEFAULT_MAP_CONFIG.tileSizeFt`
+ * (src/shared/map-types.ts), the tile size Floor 1 renders at, which the renderer
+ * reads as `floorMap.config.tileSizeFt`. A door wider than its cell overhangs onto
+ * neighbouring floor — the defect this render rule exists to prevent.
  */
-const PLAYER_HEIGHT_FT = 5.75;
+const TILE_WIDTH_FT = 4;
 /**
- * A doorway narrower than a person, or wider than the room it opens into, is a
- * brief bug. Under the height-authoritative fit the free axis is WIDTH, so this
- * is the axis worth bounding: rendered width = DOOR_TARGET_HEIGHT_FT * aspect.
+ * A doorway narrower than this reads as a slit rather than a passage. The face-on
+ * leaves fill the cell (4 ft); the side-on strip is intentionally thin (~3.1 ft),
+ * so this floor sits just below it.
  */
 const MIN_DOOR_WIDTH_FT = 3;
-const MAX_DOOR_WIDTH_FT = 6.5;
+/** Float slop for equality against a cap (feet). Well below one on-screen pixel. */
+const EPS_FT = 1e-6;
 
-/** Rendered size of a door's opaque box under the height-authoritative fit. */
-function renderedFt(bounds: { width: number; height: number }): {
+/**
+ * Rendered size of a door's opaque box under the CONTAIN-fit. The px→ft factor
+ * (PIXELS_PER_FOOT) is common to both scale terms and to the box dimensions, so it
+ * cancels and the ratio math can be done directly on the opaque-box pixels.
+ */
+function renderedFt(bounds: NonNullable<ManifestEntry['opaqueBounds']>): {
   widthFt: number;
   heightFt: number;
 } {
+  const fit = resolveGeneratedDoorContainFit({
+    bounds,
+    canvasWidth: bounds.canvasWidth,
+    canvasHeight: bounds.canvasHeight,
+    targetWidth: TILE_WIDTH_FT,
+    targetHeight: DOOR_TARGET_HEIGHT_FT,
+  });
   return {
-    heightFt: DOOR_TARGET_HEIGHT_FT,
-    widthFt: DOOR_TARGET_HEIGHT_FT * (bounds.width / bounds.height),
+    widthFt: fit.scale * bounds.width,
+    heightFt: fit.scale * bounds.height,
   };
 }
 
@@ -89,22 +112,62 @@ describe('generated door art contract', () => {
     expect(approved.map((r) => r.key)).toContain(GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal);
   });
 
-  it('open and closed render at the SAME WIDTH (two frames of one door)', () => {
+  it('NO door renders wider than one cell, in EITHER orientation', () => {
+    // The hard gate for the width-clamp fix. Under the old height-authoritative
+    // rule the face-on leaves rendered ~5.3 ft wide in a 4 ft cell and overhung
+    // onto visible floor; contain-fitting caps width at one cell. Asserted for
+    // every approved key (face-on AND side-on) so a regression in either
+    // orientation is caught.
+    for (const { key, entry } of approved) {
+      const { widthFt } = renderedFt(entry.opaqueBounds!);
+      expect(widthFt, `${key} rendered width`).toBeLessThanOrEqual(TILE_WIDTH_FT + EPS_FT);
+    }
+  });
+
+  it('NO door renders taller than DOOR_TARGET_HEIGHT_FT', () => {
+    // The other axis of the contain-fit: height is a maximum, not a target. A
+    // door taller than the cap would overhang the wall above into the room north.
+    for (const { key, entry } of approved) {
+      const { heightFt } = renderedFt(entry.opaqueBounds!);
+      expect(heightFt, `${key} rendered height`).toBeLessThanOrEqual(
+        DOOR_TARGET_HEIGHT_FT + EPS_FT,
+      );
+    }
+  });
+
+  it('face-on N/S art binds on WIDTH; side-on E/W art binds on HEIGHT', () => {
+    // The two door families are shaped differently on purpose, and the contain-fit
+    // must respect that. A face-on leaf (aspect ~0.8) is meant to fill the 4 ft
+    // cell and come in short — it binds on WIDTH. The side-on leaf (aspect ~0.47)
+    // is viewed edge-on and should render as a narrow tall strip — it binds on
+    // HEIGHT and reaches the full 6.5 ft. If the side-on key ever regressed to
+    // face-on art (the bug PR #2375 fixed), it would bind on width instead and
+    // this fails.
+    const closedH = manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal]?.opaqueBounds;
+    const openH = manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.openHorizontal]?.opaqueBounds;
+    const closedV = manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedVertical]?.opaqueBounds;
+    expect(closedH).toBeDefined();
+    expect(openH).toBeDefined();
+    expect(closedV, 'side-on E/W art must be shipped and wired').toBeDefined();
+
+    // Face-on leaves width-bind: they fill the cell while staying under max height.
+    expect(Math.abs(renderedFt(closedH!).widthFt - TILE_WIDTH_FT)).toBeLessThanOrEqual(0.01);
+    expect(Math.abs(renderedFt(openH!).widthFt - TILE_WIDTH_FT)).toBeLessThanOrEqual(0.01);
+    expect(renderedFt(closedV!).widthFt).toBeLessThan(TILE_WIDTH_FT);
+    // Side-on strip height-binds: it reaches max height while staying under width cap.
+    expect(Math.abs(renderedFt(closedV!).heightFt - DOOR_TARGET_HEIGHT_FT)).toBeLessThanOrEqual(
+      0.01,
+    );
+    expect(renderedFt(closedH!).heightFt).toBeLessThan(DOOR_TARGET_HEIGHT_FT);
+  });
+
+  it('open and closed FACE-ON leaves render at the SAME WIDTH (two frames of one door)', () => {
     // A doorway is a fixed hole in the wall: swinging the leaf must not resize it.
-    // Two independently-sampled states silently disagree about size, and nothing
-    // else in the stack can see it — both PNGs are valid, both pass every sensor
-    // and the VLM judge, and each is individually plausible. The defect exists
-    // only in the RELATIONSHIP between the two. The first approved pair rendered
-    // 5.92 ft closed and 4.47 ft open, so a door SHRANK 24% when it opened.
-    //
-    // This assertion is on WIDTH, and that axis choice is the whole point. The
-    // original version asserted HEIGHT parity, which was correct while the
-    // renderer was width-authoritative (width pinned to the tile, height free to
-    // follow the art's aspect). The renderer is now height-authoritative, so
-    // height is pinned to DOOR_TARGET_HEIGHT_FT for every door by construction
-    // and a height assertion could no longer fail for any input — it would be a
-    // window, not a test. Width is now the free axis, so width is what must be
-    // checked. Same defect, moved axis.
+    // Both face-on leaves bind on width and fill the cell, so their rendered widths
+    // must agree. Two independently-sampled states can silently disagree about
+    // size, and nothing else in the stack can see it — both PNGs are valid, both
+    // pass every sensor and the VLM judge. The defect exists only in the
+    // RELATIONSHIP between the two.
     const closed = manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal]?.opaqueBounds;
     const open = manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.openHorizontal]?.opaqueBounds;
     expect(closed).toBeDefined();
@@ -117,34 +180,29 @@ describe('generated door art contract', () => {
     expect(Math.abs(closedWidthFt - openWidthFt)).toBeLessThanOrEqual(0.5);
   });
 
-  it('every door renders taller than the player', () => {
-    // The requirement this whole render rule exists to satisfy, asserted directly
-    // rather than inferred from the constant. Kept as a real check (not a tautology
-    // on DOOR_TARGET_HEIGHT_FT alone) because lowering that constant below the
-    // avatar's height is precisely the silent regression worth catching.
-    expect(DOOR_TARGET_HEIGHT_FT).toBeGreaterThan(PLAYER_HEIGHT_FT);
-    for (const { entry } of approved) {
-      expect(renderedFt(entry.opaqueBounds!).heightFt).toBeGreaterThan(PLAYER_HEIGHT_FT);
-    }
-  });
-
   it('both HORIZONTAL door keys name art that actually exists', () => {
     // The wired key is a hand-typed variant index, and `sprites:approve` writes
     // whichever index won review — so the two are free to drift apart silently.
     // When they do, the renderer's fallback chain hides it perfectly: the door
     // simply keeps rendering Kenney placeholder art and nothing fails. That is
     // exactly how `welcome-room-door-var-2` sat approved with zero consumers.
-    // Vertical keys are deliberately exempt: their art is not generated yet, and
-    // falling back is the intended behaviour until it is.
     expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal]).toBeDefined();
     expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.openHorizontal]).toBeDefined();
+  });
+
+  it('the side-on (closed E/W) key names art that actually exists', () => {
+    // PR #2375 shipped genuine side-on art for the closed E/W door and this PR
+    // wired it. Unlike the still-missing OPEN E/W key, the closed side-on key must
+    // resolve to a real entry or the renderer silently falls back to the face-on
+    // leaf and the edge-on read is lost with nothing failing.
+    expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedVertical]).toBeDefined();
   });
 
   for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
     const entry = manifest.entries[key];
     if (!entry) {
-      // Not yet generated. The renderer's fallback chain covers it; nothing to
-      // assert until the art lands.
+      // Not yet generated (e.g. the OPEN E/W door failed generation). The
+      // renderer's fallback chain covers it; nothing to assert until the art lands.
       continue;
     }
 
@@ -162,15 +220,14 @@ describe('generated door art contract', () => {
         expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(bounds!.canvasHeight);
       });
 
-      it('renders to a plausible doorway WIDTH once height-fitted', () => {
+      it('renders to a plausible doorway WIDTH once contain-fitted', () => {
         // Measured on the OPAQUE box, not the canvas: transparent margins are
-        // scaled away by the same factor, so they cannot change the result.
-        // Width is the free axis under the height-authoritative fit — an arch
-        // this wide overhangs onto the neighbouring wall tiles, which is
-        // accepted, but only up to a point.
+        // scaled away by the same factor, so they cannot change the result. The
+        // contain-fit caps width at one cell; the floor keeps a side-on strip from
+        // collapsing to a slit.
         const { widthFt } = renderedFt(bounds!);
         expect(widthFt).toBeGreaterThanOrEqual(MIN_DOOR_WIDTH_FT);
-        expect(widthFt).toBeLessThanOrEqual(MAX_DOOR_WIDTH_FT);
+        expect(widthFt).toBeLessThanOrEqual(TILE_WIDTH_FT + EPS_FT);
       });
     });
   }

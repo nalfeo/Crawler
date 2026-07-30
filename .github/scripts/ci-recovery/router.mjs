@@ -202,8 +202,35 @@ export function parseRateLimitResetMilliseconds(error) {
   return waitMs > 0 ? waitMs : null;
 }
 
+// A *primary* rate-limit exhaustion (`x-ratelimit-remaining: 0`) is not a
+// transient blip: the budget only refills at `x-ratelimit-reset`, which can be
+// up to a full hour away. Because `CRAWLER_CI_PAT` is a classic user PAT, that
+// budget is shared across every token belonging to the owner, so exhaustion is
+// account-wide and no amount of local backoff can clear it.
+//
+// Incident 2026-07-30: this was retried like any other 403. Each call burned
+// DEFAULT_RETRY_MAX_ATTEMPTS requests against an already-empty budget, capped at
+// DEFAULT_RETRY_MAX_DELAY_MS (30s) — so the retries could never outlast a 60m
+// reset, and instead deepened the exhaustion they were waiting on. Detect the
+// condition and fail fast so the caller surfaces it to the liveness alarm
+// instead of silently grinding.
+export function isPrimaryRateLimitExhausted(error) {
+  const status = Number(error?.status || 0);
+  if (status !== 403 && status !== 429) {
+    return false;
+  }
+  const remaining = error?.headers?.get?.('x-ratelimit-remaining');
+  if (remaining === undefined || remaining === null || remaining === '') {
+    return false;
+  }
+  return Number.parseInt(remaining, 10) === 0;
+}
+
 export function isRetryableError(error) {
   const status = Number(error?.status || 0);
+  if (status === 429 && isPrimaryRateLimitExhausted(error)) {
+    return false;
+  }
   if (status === 429) {
     return true;
   }
@@ -212,7 +239,15 @@ export function isRetryableError(error) {
   }
   if (status === 403) {
     const message = String(error?.data?.message || error?.message || '').toLowerCase();
-    return message.includes('rate limit') || message.includes('secondary rate limit');
+    // Secondary rate limits are short-lived and carry `retry-after`, so they
+    // stay retryable even though the budget header may read zero.
+    if (message.includes('secondary rate limit')) {
+      return true;
+    }
+    if (isPrimaryRateLimitExhausted(error)) {
+      return false;
+    }
+    return message.includes('rate limit');
   }
   return false;
 }

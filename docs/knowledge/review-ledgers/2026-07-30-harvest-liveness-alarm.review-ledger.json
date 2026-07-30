@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "harvest-liveness-alarm",
+  "task_title": "Stale-session harvest liveness alarm",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Reviewer flagged one remaining policy gap (ledger still at 2🍎 with empty stages). Resolved by reclassifying to 3🍎 and recording required plan/code review stages."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-5"
+          ],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix review across router rate-limit handling, harvest liveness sampling, incident command rendering, workflow wiring, and regression tests found no remaining concerns."
+        }
+      ]
+    }
+  }
+}
