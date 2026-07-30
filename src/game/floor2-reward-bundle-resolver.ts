@@ -7,6 +7,7 @@ import {
   RARITY_EFFECT_BUDGET,
   type EquipmentRewardTier,
   type GeneratedEquipmentRarity,
+  type GeneratedEquipmentInstanceV1,
   type GeneratedEquipmentRewardBundleV1,
 } from '../shared/generated-equipment-types.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
@@ -69,6 +70,18 @@ export class RewardBundleResolutionError extends Error {
   ) {
     super(message);
     this.name = 'RewardBundleResolutionError';
+  }
+}
+
+export function assertGeneratedRewardInstanceLegal(
+  instance: GeneratedEquipmentInstanceV1,
+  rarity: GeneratedEquipmentRarity,
+): void {
+  if (rarity === 'common' && generatedEquipmentInstanceHasNonArmorStatBonus(instance)) {
+    throw new RewardBundleResolutionError(
+      'illegal-base',
+      `Generated Common instance for base ${instance.baseId} has a non-armor stat bonus, violating the Common rarity contract`,
+    );
   }
 }
 
@@ -444,12 +457,7 @@ export function resolveEquipmentRewardBundle(
   // filter silently — a future data change (e.g. a base's `statBonuses`
   // changing) should fail loudly here instead of shipping an illegal Common
   // item.
-  if (rarity === 'common' && generatedEquipmentInstanceHasNonArmorStatBonus(instance)) {
-    throw new RewardBundleResolutionError(
-      'illegal-base',
-      `Generated Common instance for base ${baseId} has a non-armor stat bonus, violating the Common rarity contract`,
-    );
-  }
+  assertGeneratedRewardInstanceLegal(instance, rarity);
 
   // Generated successfully — publish the registry state, then record the
   // bundle. Both are no-throw so the pair is effectively atomic.

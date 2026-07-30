@@ -16,12 +16,14 @@ import {
   validateFloor2RewardPoolTierEligibility,
   rarityEligibleBaseIds,
   Floor2RewardPoolAuthoringError,
+  assertGeneratedRewardInstanceLegal,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   getGeneratedEquipmentBaseAffinity,
   generatedEquipmentBaseHasNonArmorStatBonus,
   GeneratedEquipmentGeneratorError,
+  generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
 import {
   FLOOR2_REWARD_POOL_STABLE_IDS,
@@ -39,7 +41,10 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
-import { DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1 } from '../../src/core/generated-equipment-registry.js';
+import {
+  DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
+  createGeneratedEquipmentRegistryTransaction,
+} from '../../src/core/generated-equipment-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // Two physical + two magic weapon bases so aligned/non-aligned pools are both
@@ -135,6 +140,31 @@ describe('resolvePlayerBuildAffinity', () => {
   it('defaults to physical when no weapon is active', () => {
     const world = makeWorld();
     expect(resolvePlayerBuildAffinity(world)).toBe('physical');
+  });
+
+  describe('post-generation Common contract', () => {
+    it('throws illegal-base without publishing a generated instance when the output has a non-armor bonus', () => {
+      const illegalBaseId = FLOOR2_REWARD_POOL_STABLE_IDS.find(
+        generatedEquipmentBaseHasNonArmorStatBonus,
+      );
+      if (illegalBaseId === undefined) {
+        throw new Error('expected at least one Floor 2 base with an inherent non-armor bonus');
+      }
+      const world = makeWorld('post-generation-common-guard');
+      const transaction = createGeneratedEquipmentRegistryTransaction(world);
+      const effectsRng = new SeededRandom(42);
+      const instance = generateEquipmentInstance(
+        { generatedEquipmentRegistry: transaction.registry, rng: effectsRng },
+        { baseId: illegalBaseId, itemLevel: 1, rarity: 'common' },
+        { rng: effectsRng, allowedEffectKinds: ['stat'] },
+      );
+
+      expect(() => assertGeneratedRewardInstanceLegal(instance, 'common')).toThrow(
+        expect.objectContaining({ code: 'illegal-base' }),
+      );
+      expect(listGeneratedEquipmentInstances(world)).toHaveLength(0);
+      expect(world.generatedEquipmentRewardBundles.size).toBe(0);
+    });
   });
 
   it('is magic when a magic weapon is active', () => {

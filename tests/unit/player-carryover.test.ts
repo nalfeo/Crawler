@@ -538,6 +538,71 @@ describe('player floor carryover', () => {
     expect(destination.inventories.get(destinationPlayer)).toEqual(source.inventories.get(player));
   });
 
+  it.each(['floor2-family-annihilator', 'floor2-floor-cleared', 'floor2-scorched-earth'] as const)(
+    'restores the legacy tier4 reward bundle for %s',
+    (achievementId) => {
+      const runKey = `legacy-tier4-${achievementId}`;
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const bundled = createGeneratedEquipmentInstance(
+        source,
+        generatedEquipmentInput({
+          baseId: `legacy.${achievementId}`,
+          slots: ['feet'],
+          rarity: 'rare',
+        }),
+      );
+      source.achievements.unlockedIds.add(achievementId);
+      source.generatedEquipmentRewardBundles.set(achievementId, {
+        schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+        achievementId,
+        tier: 'tier4',
+        instanceKeys: [bundled.instanceId],
+      });
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(
+        destination,
+        destinationPlayer,
+        JSON.parse(JSON.stringify(capturePlayerCarryover(source, player))),
+      );
+
+      expect(destination.generatedEquipmentRewardBundles.get(achievementId)?.tier).toBe('tier4');
+    },
+  );
+
+  it('still fails closed for a tier4 bundle on an achievement outside the legacy allowlist', () => {
+    const runKey = 'invalid-tier4-nonlegacy';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const bundled = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'legacy.non-allowlisted',
+        slots: ['feet'],
+        rarity: 'rare',
+      }),
+    );
+    source.achievements.unlockedIds.add('floor2-field-kit');
+    source.generatedEquipmentRewardBundles.set('floor2-field-kit', {
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId: 'floor2-field-kit',
+      tier: 'tier4',
+      instanceKeys: [bundled.instanceId],
+    });
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    expect(() =>
+      restorePlayerCarryover(
+        destination,
+        destinationPlayer,
+        JSON.parse(JSON.stringify(capturePlayerCarryover(source, player))),
+      ),
+    ).toThrow(/tier tier4 does not match achievement tier tier1/);
+  });
+
   it('round-trips exact generated ownership, bundles, grants, and frozen weapon behavior', () => {
     const runKey = 'carryover-generated-run';
     const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });

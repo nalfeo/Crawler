@@ -408,6 +408,7 @@ export function createEquipmentUI(
   const bagObjects: Phaser.GameObjects.GameObject[] = [];
   let bagCellBounds: (ScreenBounds | null)[] = [];
   let bagItemIds: string[] = [];
+  let bagStaticEntryIndices: number[] = [];
   let bagScrollRow = 0;
   let bagMaxScroll = 0;
   let previewEntryIdentity: string | null = null;
@@ -1297,17 +1298,17 @@ export function createEquipmentUI(
     clearPool(bagObjects);
     bagCellBounds = [];
     bagItemIds = [];
+    bagStaticEntryIndices = [];
     if (!currentBag) return;
 
     const entries: InventoryBagEntry[] = selectedSlotFilter
       ? filterByEquipmentSlot(currentBag, selectedSlotFilter, generatedBagMetadata)
       : filterEquippable(currentBag, generatedBagMetadata);
-    bagItemIds = entries
-      .filter(
-        (entry): entry is Extract<InventoryBagEntry, { kind: 'stackable-static-item' }> =>
-          entry.kind === 'stackable-static-item',
-      )
-      .map((entry) => entry.itemId);
+    entries.forEach((entry, index) => {
+      if (entry.kind !== 'stackable-static-item') return;
+      bagItemIds.push(entry.itemId);
+      bagStaticEntryIndices.push(index);
+    });
     bagCellBounds = new Array(entries.length).fill(null);
 
     // Header row.
@@ -1644,7 +1645,10 @@ export function createEquipmentUI(
       );
       return index < 0 ? null : (bagCellBounds[index] ?? null);
     },
-    getBagCellScreenBounds: (index: number) => bagCellBounds[index] ?? null,
+    getBagCellScreenBounds: (index: number) => {
+      const entryIndex = bagStaticEntryIndices[index];
+      return entryIndex === undefined ? null : (bagCellBounds[entryIndex] ?? null);
+    },
     getBagColumnScreenBounds: (): ScreenBounds => {
       const b = bagBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
@@ -1666,6 +1670,7 @@ export function createEquipmentUI(
       slotIconBounds.clear();
       bagCellBounds = [];
       bagItemIds = [];
+      bagStaticEntryIndices = [];
       container.destroy();
     },
   };

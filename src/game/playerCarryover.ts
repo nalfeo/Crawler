@@ -59,6 +59,13 @@ import { clearActiveWeaponDef } from '../core/active-weapon.js';
 import { createBossChestId, type BossChestState } from '../core/systems/bossChestRewards.js';
 
 const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
+// These achievements shipped briefly as tier4 before the authored tier model
+// collapsed to tier1-tier3. Preserve their already-generated exact instances.
+const LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS = new Set([
+  'floor2-family-annihilator',
+  'floor2-floor-cleared',
+  'floor2-scorched-earth',
+]);
 
 class PlayerCarryoverSnapshotError extends Error {
   constructor(message: string) {
@@ -1340,7 +1347,9 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       // `EquipmentRewardTier` keyspace (defense in depth against a
       // tampered/stale snapshot re-tiering a bundle).
       const expectedTier = FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[bundleAchievement.reward.tier];
-      if (expectedTier !== bundle.tier) {
+      const isLegacyTier4Bundle =
+        bundle.tier === 'tier4' && LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS.has(bundle.achievementId);
+      if (expectedTier !== bundle.tier && !isLegacyTier4Bundle) {
         throw new PlayerCarryoverSnapshotError(
           `Reward bundle ${bundle.achievementId} tier ${bundle.tier} does not match achievement tier ${expectedTier}`,
         );
