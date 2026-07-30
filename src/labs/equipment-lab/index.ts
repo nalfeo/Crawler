@@ -28,7 +28,12 @@ import {
   ENCUMBRANCE_BAND_LABELS,
   ENCUMBRANCE_HEAVY_FACTOR,
 } from '../../shared/encumbrance.js';
-import { addItem, createInventoryBag, listStaticInventorySlots, type InventoryBag } from '../../shared/inventory.js';
+import {
+  addItem,
+  createInventoryBag,
+  listStaticInventorySlots,
+  type InventoryBag,
+} from '../../shared/inventory.js';
 import { getItemById } from '../../shared/items.js';
 import { pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';

@@ -87,7 +87,9 @@ export function listInventoryEntries(bag: InventoryBag): readonly InventoryBagEn
 /** Canonical static-lane view for consumers that only handle stackable item ids. */
 export function listStaticInventorySlots(bag: InventoryBag): readonly InventorySlot[] {
   return listInventoryEntries(bag)
-    .filter((entry): entry is StackableStaticInventoryEntry => entry.kind === 'stackable-static-item')
+    .filter(
+      (entry): entry is StackableStaticInventoryEntry => entry.kind === 'stackable-static-item',
+    )
     .map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity }));
 }
 
