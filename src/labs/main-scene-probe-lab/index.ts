@@ -34,7 +34,14 @@ import {
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
+import { spawnDroppedItem } from '../../core/helpers.js';
+import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
+import {
+  openBossChest,
+  acknowledgeBossChestReveal,
+  createBossChestRecord,
+} from '../../core/systems/bossChestRewards.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -48,12 +55,14 @@ import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
-import { getItemById } from '../../shared/items.js';
-import { getEquipmentDefForWeaponId } from '../../shared/equipmentDefs.js';
+import { getItemById, getItemIndex } from '../../shared/items.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
+import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
+import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -120,7 +129,11 @@ interface MainSceneInternals {
       panelVisible: boolean;
     };
   };
-  inventoryUI?: { isOpen(): boolean };
+  inventoryUI?: {
+    isOpen(): boolean;
+    refresh(world: GameWorld): void;
+    getVisibleItemIds?(): string[];
+  };
   equipmentUI?: { isOpen(): boolean };
   achievementsUI?: {
     isOpen(): boolean;
@@ -630,7 +643,18 @@ export interface MainSceneProbeApi {
    * panel is currently targeting. Used to exercise the full purchase path from
    * an e2e test.
    */
-  purchaseFirstQuartermasterOffer(): { ok: boolean; reason?: string; goldSpent?: number };
+  purchaseFirstQuartermasterOffer(): {
+    ok: boolean;
+    reason?: string;
+    goldSpent?: number;
+    itemId?: string;
+  };
+  /** Visible rendered inventory item ids from the live InventoryUI grid. */
+  getInventoryVisibleItemIds(): readonly string[];
+  /** Open + acknowledge the first available boss chest through core grant APIs. */
+  openFirstAvailableBossChest(): { ok: boolean; reason?: string };
+  /** Spawn a floor drop at the player and advance the real sim enough to pick it up. */
+  spawnAndPickupFloorDrop(itemId: string): { ok: boolean; reason?: string };
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -1258,6 +1282,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // the achievements panel to be visibly open first.
       achievementsUI.refresh(world);
       achievementsUI.claimReward(achievementId);
+      scene.inventoryUI?.refresh(world);
     },
 
     seedPendingRewardResumeScenario: () => {
@@ -1293,12 +1318,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) {
         return;
       }
-      world.bossChests.set('boss-chest:ratfolk', {
-        chestId: 'boss-chest:ratfolk',
-        familyId: 'ratfolk',
-        state: 'available',
-        createdAtMs: 0,
-      });
+      const chestId = 'boss-chest:ratfolk';
+      world.bossChests.delete(chestId);
+      world.generatedEquipmentRewardBundles.delete(chestId);
+      resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS, 'tier4');
+      const created = createBossChestRecord(world, chestId, 'ratfolk');
+      if (!created.ok) {
+        throw new Error(`probe boss chest setup failed: missing bundle for ${chestId}`);
+      }
       scene.bossChestUI?.refresh(world);
     },
 
@@ -1375,6 +1402,53 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return scene?.purchaseFirstSettlementShopOffer?.() ?? { ok: false, reason: 'no-scene' };
     },
 
+    getInventoryVisibleItemIds: (): readonly string[] => {
+      return getScene()?.inventoryUI?.getVisibleItemIds?.() ?? [];
+    },
+
+    openFirstAvailableBossChest: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return { ok: false, reason: 'no-world' };
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return { ok: false, reason: 'no-player' };
+      const chest = [...world.bossChests.values()]
+        .filter((candidate) => candidate.state === 'available')
+        .sort((left, right) => left.chestId.localeCompare(right.chestId))[0];
+      if (!chest) return { ok: false, reason: 'no-available-chest' };
+      const opened = openBossChest(world, chest.chestId, playerEid);
+      if (!opened.ok) return { ok: false, reason: opened.reason };
+      const acknowledged = acknowledgeBossChestReveal(world, chest.chestId);
+      if (!acknowledged.ok) return { ok: false, reason: acknowledged.reason };
+      scene.bossChestUI?.refresh(world);
+      scene.inventoryUI?.refresh(world);
+      return { ok: true };
+    },
+
+    spawnAndPickupFloorDrop: (itemId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) return { ok: false, reason: 'no-world' };
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return { ok: false, reason: 'no-player' };
+      const itemIndex = getItemIndex(itemId);
+      if (itemIndex < 0) return { ok: false, reason: 'unknown-item' };
+      const x = world.stores.position.x[playerEid] ?? 0;
+      const y = world.stores.position.y[playerEid] ?? 0;
+      const dropEid = spawnDroppedItem(world, x, y, itemIndex);
+      itemPickupSystem(world, {
+        pairs: [{ a: playerEid, b: dropEid }],
+        grid: {
+          clear() {},
+          insert() {},
+          queryPairs: () => [],
+          queryRadius: () => [],
+        },
+      });
+      scene.inventoryUI?.refresh(world);
+      return { ok: true };
+    },
+
     getRewardAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {
       return getScene()?.rewardAudioCueLog ?? [];
     },
@@ -1406,5 +1480,5 @@ registerLab(LAB_ID, {
   create: createMainSceneProbeLab,
 });
 function displayNameForSettlementShopItem(itemId: string): string | null {
-  return getItemById(itemId)?.name ?? getEquipmentDefForWeaponId(itemId)?.name ?? null;
+  return getItemById(itemId)?.name ?? getWeaponDef(itemId)?.name ?? null;
 }

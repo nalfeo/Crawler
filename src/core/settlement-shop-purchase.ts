@@ -2,7 +2,9 @@ import type { GameWorld } from './world.js';
 import { addItem, type InventoryBag } from '../shared/inventory.js';
 import type { Floor2ShopInstance, Floor2ShopInventoryItem } from '../shared/floor-types.js';
 import { getItemById } from '../shared/items.js';
-import { getEquipmentDefForWeaponId } from '../shared/equipmentDefs.js';
+import type { EquipmentItemDef } from '../shared/equipment-types.js';
+import { getWeaponDef } from '../shared/weaponDefs.js';
+import { getEquipmentDefForItem, getEquippableItemIds } from '../shared/equipmentDefs.js';
 
 export type SettlementShopPurchaseFailureCode =
   | 'insufficient-funds'
@@ -72,16 +74,35 @@ function resolveShop(world: GameWorld, shopNpcEid: number): Floor2ShopInstance |
   return world.floorExtendedState?.settlement?.shops.find((shop) => shop.npcEid === shopNpcEid);
 }
 
+function resolveEquipmentDefForWeaponId(weaponId: string): EquipmentItemDef | undefined {
+  for (const itemId of getEquippableItemIds()) {
+    const def = getEquipmentDefForItem(itemId);
+    if (def?.weaponId === weaponId) {
+      return def;
+    }
+  }
+  return undefined;
+}
+
 function resolveCatalogItem(itemId: string): { itemId: string; displayName: string } | null {
   const catalogItem = getItemById(itemId);
   if (catalogItem) {
     return { itemId: catalogItem.id, displayName: catalogItem.name };
   }
-  const equipmentDef = getEquipmentDefForWeaponId(itemId);
+  const equipmentDef = resolveEquipmentDefForWeaponId(itemId);
   if (equipmentDef) {
     return { itemId: equipmentDef.id, displayName: equipmentDef.name };
   }
   return null;
+}
+
+function resolveDisplayName(itemId: string): string | null {
+  return (
+    getItemById(itemId)?.name ??
+    resolveEquipmentDefForWeaponId(itemId)?.name ??
+    getWeaponDef(itemId)?.name ??
+    null
+  );
 }
 
 function preparePurchase(
@@ -140,11 +161,10 @@ export function getSettlementShopOfferViews(
         itemId: lineItem.itemId,
         quantity: 1,
       });
-      const catalogItem = resolveCatalogItem(lineItem.itemId);
       return Object.freeze({
         offerId: lineItem.itemId,
         itemId: lineItem.itemId,
-        displayName: catalogItem?.displayName ?? null,
+        displayName: resolveDisplayName(lineItem.itemId),
         unitPrice: lineItem.unitPrice,
         quantity: lineItem.stock,
         affordable: world.playerGold >= lineItem.unitPrice,

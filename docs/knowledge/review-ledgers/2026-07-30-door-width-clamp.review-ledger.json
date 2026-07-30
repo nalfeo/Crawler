@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "door-width-clamp",
+  "task_title": "Retire dead door rotation, wire side-on E/W art, contain-fit generated-door fallback",
+  "estimated_apples": 2,
+  "stages": {}
+}
