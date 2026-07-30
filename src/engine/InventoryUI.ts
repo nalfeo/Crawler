@@ -19,10 +19,7 @@ import type {
   InventorySlot,
   TabPreferences,
 } from '../shared/inventory.js';
-import {
-  createTabPreferences,
-  type SortField,
-} from '../shared/inventory.js';
+import { createTabPreferences, type SortField } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
 import {
@@ -586,14 +583,18 @@ export function createInventoryUI(
 
     const slotFilter = externalSlotFilter;
     if (slotFilter !== null) {
-      const staticFiltered = allSlots.filter((candidate) => !candidate.generatedEntry).filter((candidate) => {
-        const def = getEquipmentDefForItem(candidate.slot.itemId);
-        return def?.slots.includes(slotFilter) === true;
-      });
-      const generatedFiltered = allSlots.filter((candidate) => candidate.generatedEntry).filter((candidate) => {
-        const def = getEquipmentDefForItem(candidate.slot.itemId);
-        return def?.slots.includes(slotFilter) === true;
-      });
+      const staticFiltered = allSlots
+        .filter((candidate) => !candidate.generatedEntry)
+        .filter((candidate) => {
+          const def = getEquipmentDefForItem(candidate.slot.itemId);
+          return def?.slots.includes(slotFilter) === true;
+        });
+      const generatedFiltered = allSlots
+        .filter((candidate) => candidate.generatedEntry)
+        .filter((candidate) => {
+          const def = getEquipmentDefForItem(candidate.slot.itemId);
+          return def?.slots.includes(slotFilter) === true;
+        });
       slots = [...staticFiltered, ...generatedFiltered];
     }
 
@@ -615,7 +616,9 @@ export function createInventoryUI(
         const quantity = right.slot.quantity - left.slot.quantity;
         if (quantity !== 0) return quantity;
         const byItemId = left.slot.itemId.localeCompare(right.slot.itemId);
-        return byItemId !== 0 ? byItemId : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
+        return byItemId !== 0
+          ? byItemId
+          : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
       }
       const leftName = left.def.name;
       const rightName = right.def.name;
@@ -627,7 +630,9 @@ export function createInventoryUI(
       const byName = leftName.localeCompare(rightName);
       if (byName !== 0) return byName;
       const byItemId = left.slot.itemId.localeCompare(right.slot.itemId);
-      return byItemId !== 0 ? byItemId : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
+      return byItemId !== 0
+        ? byItemId
+        : getRenderSlotKey(left).localeCompare(getRenderSlotKey(right));
     });
   }
 

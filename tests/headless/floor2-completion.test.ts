@@ -21,7 +21,11 @@ import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-
 import { AIState } from '../../src/game/ai/types.js';
 import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
 import { runSettlementMaintenancePlanner } from '../../src/game/ai/settlement-maintenance-planner.js';
-import { FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
+import type { Floor2QuartermasterStockState } from '../../src/shared/floor-types.js';
+import {
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  type GeneratedEquipmentInstanceKey,
+} from '../../src/shared/generated-equipment-types.js';
 
 const PLAYABILITY_TEST_UNIT_PRICE = 123;
 const PLAYABILITY_TEST_STOCK_ID = 'playability-test-stock';
@@ -51,29 +55,33 @@ function createPlayabilityTestInstance(
   });
 }
 
-function replaceQuartermasterStockWithSoldOffer(world: GameWorld, instanceId: string): void {
+function replaceQuartermasterStockWithSoldOffer(
+  world: GameWorld,
+  instanceId: GeneratedEquipmentInstanceKey,
+): void {
   const settlement = world.floorExtendedState?.settlement;
   if (!settlement) {
     throw new Error('Test requires a Floor 2 settlement snapshot');
   }
+  const quartermasterStock: Floor2QuartermasterStockState = {
+    stockId: PLAYABILITY_TEST_STOCK_ID,
+    restockEpoch: 0,
+    offers: [
+      {
+        offerId: PLAYABILITY_TEST_OFFER_ID,
+        instanceId,
+        rarity: 'common',
+        unitPrice: PLAYABILITY_TEST_UNIT_PRICE,
+        quantity: 0,
+      },
+    ],
+    retiredInstanceIds: [],
+  };
   world.floorExtendedState = {
     ...world.floorExtendedState,
     settlement: {
       ...settlement,
-      quartermasterStock: {
-        stockId: PLAYABILITY_TEST_STOCK_ID,
-        restockEpoch: 0,
-        offers: [
-          {
-            offerId: PLAYABILITY_TEST_OFFER_ID,
-            instanceId,
-            rarity: 'common',
-            unitPrice: PLAYABILITY_TEST_UNIT_PRICE,
-            quantity: 0,
-          },
-        ],
-        retiredInstanceIds: [],
-      },
+      quartermasterStock,
     },
   };
 }
@@ -82,6 +90,19 @@ function clearPlayabilityRewardState(world: GameWorld): void {
   world.achievements.unlockedIds.clear();
   world.achievements.pendingPresentations.clear();
   world.bossChests.clear();
+}
+
+function formatEquipFailureReason(reason: { readonly type: string }): string {
+  if ('message' in reason && typeof reason.message === 'string') {
+    return reason.message;
+  }
+  if ('instanceKey' in reason && typeof reason.instanceKey === 'string') {
+    return `${reason.type}: ${reason.instanceKey}`;
+  }
+  if ('slotId' in reason && typeof reason.slotId === 'string') {
+    return `${reason.type}: ${reason.slotId}`;
+  }
+  return reason.type;
 }
 
 describe('Floor 2 headless completion', () => {
@@ -410,7 +431,9 @@ describe('Floor 2 headless completion', () => {
             const generated = createPlayabilityTestInstance(world);
             const result = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
             if (!result.ok) {
-              throw new Error(`Failed to seed generated gear: ${result.reason.message}`);
+              throw new Error(
+                `Failed to seed generated gear: ${formatEquipFailureReason(result.reason)}`,
+              );
             }
           },
         ],
@@ -473,7 +496,9 @@ describe('Floor 2 headless completion', () => {
             replaceQuartermasterStockWithSoldOffer(world, generated.instanceId);
             const addResult = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
             if (!addResult.ok) {
-              throw new Error(`Failed to seed generated gear: ${addResult.reason.message}`);
+              throw new Error(
+                `Failed to seed generated gear: ${formatEquipFailureReason(addResult.reason)}`,
+              );
             }
             const equipResult = equipFromBag(
               world,
@@ -483,9 +508,7 @@ describe('Floor 2 headless completion', () => {
             );
             if (!equipResult.ok) {
               throw new Error(
-                `Failed to equip generated gear: ${equipResult.reasons
-                  .map((reason) => reason.message)
-                  .join(', ')}`,
+                `Failed to equip generated gear: ${equipResult.reasons.map(formatEquipFailureReason).join(', ')}`,
               );
             }
           },

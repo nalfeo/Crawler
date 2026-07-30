@@ -250,9 +250,10 @@ describe('MainGameScene acquisition → observation contract', () => {
         (ids) => ids.length > before.length,
         'achievement claim inventory render',
       );
-      expect(after.length, 'achievement claim should add a rendered inventory entry').toBeGreaterThan(
-        before.length,
-      );
+      expect(
+        after.length,
+        'achievement claim should add a rendered inventory entry',
+      ).toBeGreaterThan(before.length);
       return;
     }
     if (source === 'quartermaster-purchase') {
@@ -265,9 +266,10 @@ describe('MainGameScene acquisition → observation contract', () => {
         (ids) => ids.length > before.length && ids.includes(result.itemId!),
         'quartermaster purchase inventory render',
       );
-      expect(after.length, 'quartermaster purchase should add a rendered inventory entry').toBeGreaterThan(
-        before.length,
-      );
+      expect(
+        after.length,
+        'quartermaster purchase should add a rendered inventory entry',
+      ).toBeGreaterThan(before.length);
       expect(after).toContain(result.itemId!);
       return;
     }
@@ -285,7 +287,9 @@ describe('MainGameScene acquisition → observation contract', () => {
       );
       return;
     }
-    const seededDropItemId = before.includes('iron-breastplate') ? 'merchant-charm' : 'iron-breastplate';
+    const seededDropItemId = before.includes('iron-breastplate')
+      ? 'merchant-charm'
+      : 'iron-breastplate';
     const pickedUp = await mainSceneProbe.spawnAndPickupFloorDrop(page, seededDropItemId);
     expect(pickedUp.ok, `floor drop '${seededDropItemId}' should be picked up`).toBe(true);
     await mainSceneProbe.unlockSafeRoomSurfaces(page);

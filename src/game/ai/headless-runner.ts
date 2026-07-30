@@ -159,7 +159,9 @@ export function collectEquipmentPlayabilityMetrics(
     baggedGeneratedCount: baggedEntries.length,
     equippedGeneratedCount: equippedInstanceIds.size,
     unopenedRewardBoxes:
-      unopenedAchievementRewards + unopenedBossChests + world.achievements.pendingPresentations.size,
+      unopenedAchievementRewards +
+      unopenedBossChests +
+      world.achievements.pendingPresentations.size,
     unequippedWithEmptySlotCount,
   };
 }
@@ -168,7 +170,10 @@ export function collectEquipmentPlayabilityViolations(
   metrics: EquipmentPlayabilityMetrics,
 ): string[] {
   const violations: string[] = [];
-  if (metrics.goldSpentOnEquipment > 0 && metrics.baggedGeneratedCount + metrics.equippedGeneratedCount < 1) {
+  if (
+    metrics.goldSpentOnEquipment > 0 &&
+    metrics.baggedGeneratedCount + metrics.equippedGeneratedCount < 1
+  ) {
     violations.push(
       `Spent ${metrics.goldSpentOnEquipment} gold on equipment but ended with no generated equipment bagged or equipped`,
     );
@@ -1224,7 +1229,9 @@ export async function runHeadless(
         ? collectEquipmentPlayabilityViolations(equipmentPlayability)
         : [];
     if (playabilityViolations.length > 0) {
-      throw new Error(`Headless playability invariant failed: ${playabilityViolations.join(' | ')}`);
+      throw new Error(
+        `Headless playability invariant failed: ${playabilityViolations.join(' | ')}`,
+      );
     }
   } catch (error) {
     logger.error('Headless run crashed', { error });
