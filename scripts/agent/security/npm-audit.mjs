@@ -6,6 +6,8 @@ import { pathToFileURL } from 'node:url';
 
 const SEVERITY_ORDER = ['info', 'low', 'moderate', 'high', 'critical'];
 
+// fast-uri (GHSA-v2hh-gcrm-f6hx) is intentionally absent: fast-uri was upgraded
+// to 3.1.4 in this repo, which patches the advisory. No exception is needed.
 export const AUDIT_EXCEPTIONS = [
   {
     packageName: 'brace-expansion',
