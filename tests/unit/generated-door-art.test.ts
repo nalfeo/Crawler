@@ -98,10 +98,11 @@ const manifest = loadShippedManifest() as unknown as {
   entries: Record<string, ManifestEntry>;
 };
 
-const approved = ALL_GENERATED_DOOR_TEXTURE_KEYS.map((key) => ({
-  key,
-  entry: manifest.entries[key],
-})).filter((row): row is { key: string; entry: ManifestEntry } => row.entry !== undefined);
+const approved: Array<{ key: string; entry: ManifestEntry }> =
+  ALL_GENERATED_DOOR_TEXTURE_KEYS.flatMap((key) => {
+    const entry = manifest.entries[key];
+    return entry === undefined ? [] : [{ key, entry }];
+  });
 
 describe('generated door art contract', () => {
   it('at least one generated door variant is approved and wired', () => {

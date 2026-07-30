@@ -28,6 +28,7 @@ import type { GameWorld } from '../../core/world.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import type { Floor2SettlementSnapshot } from '../../shared/floor-types.js';
 import {
+  acknowledgeAchievementRewardPresentation,
   isAchievementClaimed,
   claimAchievementReward,
 } from '../../core/systems/achievementRewards.js';
@@ -52,6 +53,11 @@ import type { GeneratedEquipmentInventoryEntry } from '../../shared/inventory.js
 import type { GeneratedEquipmentInstanceV1 } from '../../shared/generated-equipment-types.js';
 import type { EquipFailureReason } from '../../shared/equipment-types.js';
 import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
+import type {
+  SettlementMaintenanceDecision,
+  SettlementMaintenanceResult,
+  SettlementMaintenanceTerminationReason,
+} from './settlement-maintenance-types.js';
 import {
   evaluateEquipmentLoadoutCandidates,
   type EquipmentEncounterFixture,
@@ -86,37 +92,6 @@ const CANONICAL_ENCOUNTER_FIXTURE: EquipmentEncounterFixture = Object.freeze({
   lowHealthUptime: 0.1,
   skillTriggerRatePerSecond: 1,
 });
-
-export type SettlementMaintenanceDecisionKind =
-  | 'claim-achievement'
-  | 'open-boss-chest'
-  | 'acknowledge-boss-chest'
-  | 'purchase-equipment'
-  | 'equip-instance'
-  | 'configure-ability'
-  | 'skip';
-
-export interface SettlementMaintenanceDecision {
-  readonly kind: SettlementMaintenanceDecisionKind;
-  readonly detail: string;
-  /** Present for scored equipment decisions — the evaluator's swap score. */
-  readonly utility?: number;
-  /** Present for purchase decisions — gold spent. */
-  readonly cost?: number;
-}
-
-export type SettlementMaintenanceTerminationReason =
-  | 'no-opportunity'
-  | 'already-processed'
-  | 'action-cap-equipment'
-  | 'exhausted';
-
-export interface SettlementMaintenanceResult {
-  /** True only when the planner actually ran its decision loops this call. */
-  readonly ran: boolean;
-  readonly terminationReason: SettlementMaintenanceTerminationReason;
-  readonly decisions: readonly SettlementMaintenanceDecision[];
-}
 
 interface SettlementVisitLatch {
   wasInSettlement: boolean;
@@ -192,6 +167,7 @@ function attemptAchievementClaim(
 ): { readonly deferred: boolean } {
   const result = claimAchievementReward(world, achievementId);
   if (result.ok) {
+    acknowledgeAchievementRewardPresentation(world, achievementId);
     decisions.push({
       kind: 'claim-achievement',
       detail: isRetry

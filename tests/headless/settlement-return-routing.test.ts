@@ -110,6 +110,7 @@ describe('settlement return routing (headless integration)', () => {
       maxFrames: 8000,
       questStallFrames: 0,
       settlementReturnRouting: true,
+      enforcePlayabilityInvariants: false,
       recordEvent: (event) => events.push(event),
       simulationOptions: {
         postSystems: [
@@ -180,6 +181,7 @@ describe('settlement return routing (headless integration)', () => {
         maxFrames: 4000,
         questStallFrames: 0,
         settlementReturnRouting: true,
+        enforcePlayabilityInvariants: false,
         recordEvent: (event) => events.push(event),
         simulationOptions: {
           postSystems: [
@@ -212,6 +214,7 @@ describe('settlement return routing (headless integration)', () => {
       maxFrames: 800,
       questStallFrames: 0,
       settlementReturnRouting: true,
+      enforcePlayabilityInvariants: false,
       simulationOptions: {
         preSystems: [
           (world) => {
@@ -291,6 +294,7 @@ describe('settlement return routing (headless integration)', () => {
       maxFrames: 4000,
       questStallFrames: 0,
       settlementReturnRouting: true,
+      enforcePlayabilityInvariants: false,
       recordEvent: (event) => events.push(event),
       simulationOptions: {
         postSystems: [
@@ -338,6 +342,7 @@ describe('settlement return routing (headless integration)', () => {
       maxFrames: 4000,
       questStallFrames: 0,
       settlementReturnRouting: true,
+      enforcePlayabilityInvariants: false,
       recordEvent: (event) => events.push(event),
       simulationOptions: {
         postSystems: [
@@ -384,6 +389,7 @@ describe('settlement return routing (headless integration)', () => {
       maxFrames: 2500,
       questStallFrames: 0,
       settlementReturnRouting: true,
+      enforcePlayabilityInvariants: false,
       simulationOptions: {
         postSystems: [
           (world) => {

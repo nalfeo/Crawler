@@ -67,16 +67,17 @@ design) during settlement visits.
 
 ## Files changed
 
-| File | Change |
-|---|---|
-| `src/game/ai/settlement-maintenance-planner.ts` | Added `runEagerMaintenanceTick` (exported); added `EquipmentLoopRunOptions` to parameterise `runEquipmentLoop`; `runBagOnlyEquipmentLoop` is now a thin wrapper over the shared loop |
-| `src/game/ai/headless-runner.ts` | Import + call `runEagerMaintenanceTick` every tick; removed dead `classifyGameOverOutcome` export |
-| `src/labs/ai-runner-lab/index.ts` | Import + call `runEagerMaintenanceTick` every tick |
-| `tests/game/settlement-maintenance-planner.test.ts` | 9 new tests for `runEagerMaintenanceTick` |
+| File                                                | Change                                                                                                                                                                               |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/game/ai/settlement-maintenance-planner.ts`     | Added `runEagerMaintenanceTick` (exported); added `EquipmentLoopRunOptions` to parameterise `runEquipmentLoop`; `runBagOnlyEquipmentLoop` is now a thin wrapper over the shared loop |
+| `src/game/ai/headless-runner.ts`                    | Import + call `runEagerMaintenanceTick` every tick; removed dead `classifyGameOverOutcome` export                                                                                    |
+| `src/labs/ai-runner-lab/index.ts`                   | Import + call `runEagerMaintenanceTick` every tick                                                                                                                                   |
+| `tests/game/settlement-maintenance-planner.test.ts` | 9 new tests for `runEagerMaintenanceTick`                                                                                                                                            |
 
 ## Tests
 
 9 new unit tests in `tests/game/settlement-maintenance-planner.test.ts`:
+
 - Floor 1 lootBox claiming without settlement room
 - Multi-achievement claiming in one tick
 - Idempotency (double-call no-ops)
@@ -101,7 +102,7 @@ remain valid — cleanup deferred to a follow-on PR per their `expiresOn: 2026-0
 - [x] Persona preference applied after empty-slot fill
 - [x] Runner reads both inventory lanes (`bag.slots` + `bag.generatedEquipment`)
 - [x] Win-rate unmoved — all 176 headless tests pass on this branch (27 test files, including
-  `floor1-completion`, `floor1-legacy-death-regressions`, `floor1-staircase-boss-lockin-seed8`,
-  and `boss-chest-lifecycle`). A full AI sweep can be dispatched post-merge via
-  `ai-sweep.yml` for a broader leaderboard read, but the required 90%+ Floor 1 gate is
-  covered by the headless suite above.
+      `floor1-completion`, `floor1-legacy-death-regressions`, `floor1-staircase-boss-lockin-seed8`,
+      and `boss-chest-lifecycle`). A full AI sweep can be dispatched post-merge via
+      `ai-sweep.yml` for a broader leaderboard read, but the required 90%+ Floor 1 gate is
+      covered by the headless suite above.

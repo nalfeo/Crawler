@@ -5,8 +5,8 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
-  type SettlementMaintenanceResult,
 } from '../../src/game/ai/settlement-maintenance-planner.js';
+import type { SettlementMaintenanceResult } from '../../src/game/ai/settlement-maintenance-types.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
 import { isAchievementClaimed } from '../../src/core/systems/achievementRewards.js';
 import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';

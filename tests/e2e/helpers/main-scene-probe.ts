@@ -183,8 +183,17 @@ export const mainSceneProbe = {
   > => page.evaluate(() => window.__mainSceneProbe!.getQuartermasterStockSnapshot()),
   purchaseFirstQuartermasterOffer: (
     page: Page,
-  ): Promise<{ ok: boolean; reason?: string; goldSpent?: number }> =>
+  ): Promise<{ ok: boolean; reason?: string; goldSpent?: number; itemId?: string }> =>
     page.evaluate(() => window.__mainSceneProbe!.purchaseFirstQuartermasterOffer()),
+  getInventoryVisibleItemIds: (page: Page): Promise<readonly string[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getInventoryVisibleItemIds()),
+  openFirstAvailableBossChest: (page: Page): Promise<{ ok: boolean; reason?: string }> =>
+    page.evaluate(() => window.__mainSceneProbe!.openFirstAvailableBossChest()),
+  spawnAndPickupFloorDrop: (
+    page: Page,
+    itemId: string,
+  ): Promise<{ ok: boolean; reason?: string }> =>
+    page.evaluate((id) => window.__mainSceneProbe!.spawnAndPickupFloorDrop(id), itemId),
   getRewardAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>

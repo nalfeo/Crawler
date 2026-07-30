@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "pr2368-inventory-refresh-ci-recovery",
+  "task_title": "PR #2368 inventory refresh CI recovery",
+  "estimated_apples": 2,
+  "stages": {}
+}

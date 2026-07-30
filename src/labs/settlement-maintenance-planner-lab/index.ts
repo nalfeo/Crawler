@@ -16,10 +16,8 @@ import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { spawnBossChestForDefeatedBoss } from '../../game/boss-chest-resolver.js';
 import { createInitialFloor2QuartermasterStock } from '../../game/quartermaster-stock.js';
 import type { Floor2SettlementSnapshot } from '../../shared/floor-types.js';
-import {
-  runSettlementMaintenancePlanner,
-  type SettlementMaintenanceResult,
-} from '../../game/ai/settlement-maintenance-planner.js';
+import { runSettlementMaintenancePlanner } from '../../game/ai/settlement-maintenance-planner.js';
+import type { SettlementMaintenanceResult } from '../../game/ai/settlement-maintenance-types.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_SEED = 77;
