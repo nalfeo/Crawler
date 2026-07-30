@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b39212c453c8e5a77151a4ae777064d6ff3bd03c",
+    "commitDate": "2026-07-30T02:47:58Z",
+    "commitSubject": "feat(achievements): author 30 Floor 2 achievements + 6 run-global achievements (#2339)",
+    "capturedAt": "2026-07-30T03:59:15.555Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30509841890",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/b39212c453c8e5a77151a4ae777064d6ff3bd03c.json"
+  },
+  {
     "commit": "b66148f38249630f92b8e53226d0e621bb7c0315",
     "commitDate": "2026-07-30T02:25:35Z",
     "commitSubject": "sprites: remove fixed-grid frameSequence slicer — one content-aware path for all briefs (#2337)",
