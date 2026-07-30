@@ -187,7 +187,8 @@ export type AchievementReward =
        * for any player build (the resolver fails closed otherwise). `tier`
        * gates the resolvable rarity pool — see
        * {@link EQUIPMENT_REWARD_TIER_RARITIES} in generated-equipment-types.ts;
-       * NO tier defined here may ever resolve a Rare item.
+       * achievement tiers (tier1–tier3) never resolve a Rare item — only `tier4`
+       * (reserved for boss chests) may draw Rare.
        */
       readonly type: 'equipment';
       readonly bases: readonly string[];

@@ -1117,16 +1117,16 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         `bossChests[${chest.chestId}].revealedGrant`,
       );
       // Boss chests only ever grant a single generated-equipment instance
-      // (tier1, ADR 0070) — never a lootBox bundle — so a persisted
+      // (tier4, PLAN.md §E3-C) — never a lootBox bundle — so a persisted
       // `revealedGrant` of the wrong kind is definitely tampered/corrupt data.
       if (chest.revealedGrant.kind !== 'equipment') {
         throw new PlayerCarryoverSnapshotError(
           `Boss chest ${chest.chestId} revealedGrant must be kind "equipment", got "${chest.revealedGrant.kind}"`,
         );
       }
-      if (chest.revealedGrant.tier !== 'tier1') {
+      if (chest.revealedGrant.tier !== 'tier4') {
         throw new PlayerCarryoverSnapshotError(
-          `Boss chest ${chest.chestId} revealedGrant must have tier "tier1", got "${chest.revealedGrant.tier}"`,
+          `Boss chest ${chest.chestId} revealedGrant must have tier "tier4", got "${chest.revealedGrant.tier}"`,
         );
       }
       if (chest.revealedGrant.instanceKeys.length !== 1) {
@@ -1202,12 +1202,11 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       }
       // Tier guard (fail-closed): boss-chest bundles have no backing
       // achievement to cross-check tier against, so hardcode the expected
-      // tier instead — boss chests always resolve at 'tier1' (100%
-      // deterministic common draw), matching the resolver's documented
-      // "Common-rarity contract" (see boss-chest-resolver.ts, ADR 0070).
-      if (bundle.tier !== 'tier1') {
+      // tier instead — boss chests resolve at 'tier4' (85% Uncommon / 15%
+      // Rare per PLAN.md §E3-C; see boss-chest-resolver.ts).
+      if (bundle.tier !== 'tier4') {
         throw new PlayerCarryoverSnapshotError(
-          `Boss chest reward bundle ${bundle.achievementId} has tier ${bundle.tier}, expected tier1`,
+          `Boss chest reward bundle ${bundle.achievementId} has tier ${bundle.tier}, expected tier4`,
         );
       }
     } else {

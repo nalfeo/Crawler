@@ -17,6 +17,7 @@ import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   EQUIPMENT_REWARD_TIERS,
   EQUIPMENT_REWARD_TIER_RARITIES,
+  EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS,
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
 } from '../../src/shared/generated-equipment-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
@@ -84,10 +85,32 @@ describe('rollTierRarity — per-tier rarity pool contract', () => {
     }
   });
 
-  it('no tier ever resolves rare', () => {
-    for (const tier of EQUIPMENT_REWARD_TIERS) {
+  it('achievement tiers (tier1–tier3) never resolve rare; tier4 pool includes both uncommon and rare', () => {
+    for (const tier of ['tier1', 'tier2', 'tier3'] as const) {
       expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).not.toContain('rare');
     }
+    expect(EQUIPMENT_REWARD_TIER_RARITIES.tier4).toContain('uncommon');
+    expect(EQUIPMENT_REWARD_TIER_RARITIES.tier4).toContain('rare');
+  });
+
+  it('tier4 respects 85/15 uncommon/rare split via the per-tier weight', () => {
+    // Deterministic threshold test: at exactly 0.85 the roll is NOT the primary
+    // (uncommon), just below it IS. This mirrors the `< weight` contract in
+    // rollTierRarity, analogous to the alignmentFromRoll threshold tests.
+    expect(EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS.tier4).toBe(0.85);
+    const pool = EQUIPMENT_REWARD_TIER_RARITIES.tier4;
+    // Roll just below threshold → primary rarity (uncommon, index 0).
+    const rollBelow = rollTierRarity(
+      { next: () => EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS.tier4 - 1e-9 } as unknown as SeededRandom,
+      'tier4',
+    );
+    // Roll at exactly threshold → secondary rarity (rare, index 1).
+    const rollAtThreshold = rollTierRarity(
+      { next: () => EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS.tier4 } as unknown as SeededRandom,
+      'tier4',
+    );
+    expect(rollBelow).toBe(pool[0]); // uncommon (< 0.85 → primary)
+    expect(rollAtThreshold).toBe(pool[1]); // rare (>= 0.85 → secondary)
   });
 });
 
@@ -132,7 +155,10 @@ describe('resolveEquipmentRewardBundle — structure and tier rarity bounds', ()
       const bundle = resolveEquipmentRewardBundle(world, 'ach', MIXED_BASES, tier);
       const rarity = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!.rarity;
       expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).toContain(rarity);
-      expect(rarity).not.toBe('rare');
+      // Achievement tiers (tier1–tier3) never produce rare; tier4 (boss chests) may.
+      if (tier !== 'tier4') {
+        expect(rarity).not.toBe('rare');
+      }
     }
   });
 
