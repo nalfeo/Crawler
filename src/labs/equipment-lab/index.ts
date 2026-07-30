@@ -20,7 +20,7 @@ import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
-import { getCatalogEquippableItemIds } from '../../shared/equipmentDefs.js';
+import equipmentDefsTestSeams from '../../shared/equipmentDefs.test-seams.js';
 import {
   computeEquippedWeightLb,
   getCarryThresholdLb,
@@ -91,7 +91,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   root.append(gameHost, hud);
   canvasHost.append(root);
 
-  const equippableIds = getCatalogEquippableItemIds();
+  const equippableIds = equipmentDefsTestSeams.getCatalogEquippableItemIds();
   const initialItemId = equippableIds[0] ?? 'merchants-stained-charm';
   const settings: EquipmentLabSettings = {
     selectedItemId: initialItemId,

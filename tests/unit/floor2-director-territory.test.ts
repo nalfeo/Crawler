@@ -10,13 +10,9 @@ import {
   FLOOR2_TIMEOUT_GOAL_ID,
   FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE,
   FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE,
-  floor2EnemyDirectorSystem,
   floor2ObjectiveTick,
-  getQuadrantForPosition,
-  getQuadrantSpawnWeights,
-  resolveAmbientFamilyIndex,
-  resolveFloor2TrashSpawnWeights,
 } from '../../src/game/floor2Scenario.js';
+import floor2ScenarioTestSeams from '../../src/game/floor2Scenario.test-seams.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -89,14 +85,22 @@ describe('Floor 2 quadrant helpers', () => {
     const centerX = (world.floorMap!.width * tileSize) / 2;
     const centerY = (world.floorMap!.height * tileSize) / 2;
 
-    expect(getQuadrantForPosition(world, centerX - 1, centerY - 1)).toBe('N');
-    expect(getQuadrantForPosition(world, centerX - 1, centerY + 1)).toBe('S');
-    expect(getQuadrantForPosition(world, centerX + 1, centerY - 1)).toBe('E');
-    expect(getQuadrantForPosition(world, centerX + 1, centerY + 1)).toBe('W');
+    expect(floor2ScenarioTestSeams.getQuadrantForPosition(world, centerX - 1, centerY - 1)).toBe(
+      'N',
+    );
+    expect(floor2ScenarioTestSeams.getQuadrantForPosition(world, centerX - 1, centerY + 1)).toBe(
+      'S',
+    );
+    expect(floor2ScenarioTestSeams.getQuadrantForPosition(world, centerX + 1, centerY - 1)).toBe(
+      'E',
+    );
+    expect(floor2ScenarioTestSeams.getQuadrantForPosition(world, centerX + 1, centerY + 1)).toBe(
+      'W',
+    );
   });
 
   it('uses 50/20/20/10 weighting for the player quadrant and neighbors', () => {
-    const east = getQuadrantSpawnWeights('E');
+    const east = floor2ScenarioTestSeams.getQuadrantSpawnWeights('E');
     expect(east.get('E')).toBe(0.5);
     expect(east.get('N')).toBe(0.2);
     expect(east.get('W')).toBe(0.2);
@@ -107,10 +111,12 @@ describe('Floor 2 quadrant helpers', () => {
 describe('Floor 2 director/runtime behavior', () => {
   it('maps ambient family archetypes to present-family indices', () => {
     const { world } = createFloor2World(87);
-    expect(resolveAmbientFamilyIndex(world, 'goblin-grunt')).toBe(0);
-    expect(resolveAmbientFamilyIndex(world, 'llama-spitter')).toBe(1);
-    expect(resolveAmbientFamilyIndex(world, 'cave-slime')).toBe(-1);
-    expect(resolveAmbientFamilyIndex(world, 'not-a-real-archetype')).toBe(-1);
+    expect(floor2ScenarioTestSeams.resolveAmbientFamilyIndex(world, 'goblin-grunt')).toBe(0);
+    expect(floor2ScenarioTestSeams.resolveAmbientFamilyIndex(world, 'llama-spitter')).toBe(1);
+    expect(floor2ScenarioTestSeams.resolveAmbientFamilyIndex(world, 'cave-slime')).toBe(-1);
+    expect(floor2ScenarioTestSeams.resolveAmbientFamilyIndex(world, 'not-a-real-archetype')).toBe(
+      -1,
+    );
   });
 
   it('spawns and tracks ambient enemies when floorScenario is null', () => {
@@ -125,7 +131,7 @@ describe('Floor 2 director/runtime behavior', () => {
     let tracked = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
     for (let i = 0; i < 8 && tracked === 0; i += 1) {
       world.elapsedMs += 1000;
-      floor2EnemyDirectorSystem(world);
+      floor2ScenarioTestSeams.floor2EnemyDirectorSystem(world);
       tracked = world.floorExtendedState?.ambientEnemyArchetypes?.size ?? 0;
     }
 
@@ -151,12 +157,16 @@ describe('Floor 2 director/runtime behavior', () => {
       { familyIndex: 1, centerX: center.x, centerY: center.y, radius: 30 },
     ];
     const position = floorMap.tileToWorld(center.x, center.y);
-    const weights = resolveFloor2TrashSpawnWeights(world, position.x, position.y);
+    const weights = floor2ScenarioTestSeams.resolveFloor2TrashSpawnWeights(
+      world,
+      position.x,
+      position.y,
+    );
     let familyMass = 0;
     let neutralMass = 0;
     const familyMassByIndex = new Map<number, number>();
     for (const [archetypeId, probability] of weights) {
-      const familyIndex = resolveAmbientFamilyIndex(world, archetypeId);
+      const familyIndex = floor2ScenarioTestSeams.resolveAmbientFamilyIndex(world, archetypeId);
       if (familyIndex < 0) {
         neutralMass += probability;
       } else {
@@ -181,7 +191,7 @@ describe('Floor 2 director/runtime behavior', () => {
     const seenNeutral = new Set<string>();
     const originalSet = ambient.set.bind(ambient);
     ambient.set = ((eid: number, archetypeId: string) => {
-      if (resolveAmbientFamilyIndex(world, archetypeId) < 0) {
+      if (floor2ScenarioTestSeams.resolveAmbientFamilyIndex(world, archetypeId) < 0) {
         seenNeutral.add(archetypeId);
       }
       return originalSet(eid, archetypeId);
@@ -203,7 +213,7 @@ describe('Floor 2 director/runtime behavior', () => {
       world.stores.position.x[playerEid] = x;
       world.stores.position.y[playerEid] = y;
       world.elapsedMs += 1000;
-      floor2EnemyDirectorSystem(world);
+      floor2ScenarioTestSeams.floor2EnemyDirectorSystem(world);
     }
 
     const territories = world.floorExtendedState?.trashTerritories;

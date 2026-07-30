@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  computeNormalizedWeaponAnchor,
-  DEFAULT_GENERATED_FRAME_SIZE_PX,
-  resolveWeaponAnchorWorldPos,
-  type GeneratedSpriteEntry,
-} from '../../src/shared/generated-assets.js';
+import { type GeneratedSpriteEntry } from '../../src/shared/generated-assets.js';
+import generatedAssetsTestSeams from '../../src/shared/generated-assets.test-seams.js';
 
 /** Build a minimal GeneratedSpriteEntry for testing. */
 function makeEntry(overrides: Partial<GeneratedSpriteEntry> = {}): GeneratedSpriteEntry {
@@ -25,7 +21,7 @@ function makeEntry(overrides: Partial<GeneratedSpriteEntry> = {}): GeneratedSpri
   };
 }
 
-describe('resolveWeaponAnchorWorldPos', () => {
+describe('generatedAssetsTestSeams.resolveWeaponAnchorWorldPos', () => {
   const ENTITY_X = 10;
   const ENTITY_Y = 20;
   const SPRITE_W_FT = 2; // sprite is 2 feet wide
@@ -34,7 +30,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
   const FRAME_H = 64;
 
   it('returns entity pivot when entry is null', () => {
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       null,
       ENTITY_X,
       ENTITY_Y,
@@ -49,7 +45,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
 
   it('returns entity pivot when entry has no weaponAnchor', () => {
     const entry = makeEntry(); // no weaponAnchor field
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -69,7 +65,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 32 },
     });
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -92,7 +88,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
       weaponAnchor: { x: 40, y: 32 },
       facingDirection: 'right',
     });
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -114,7 +110,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
       weaponAnchor: { x: 40, y: 32 },
       facingDirection: 'left',
     });
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -136,7 +132,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
       weaponAnchor: { x: 40, y: 32 },
       facingDirection: 'left',
     });
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -157,7 +153,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 32, y: 20 },
     });
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -172,7 +168,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
   });
 
   it('returns entity pivot when entry is undefined', () => {
-    const result = resolveWeaponAnchorWorldPos(
+    const result = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       undefined,
       ENTITY_X,
       ENTITY_Y,
@@ -186,14 +182,14 @@ describe('resolveWeaponAnchorWorldPos', () => {
   });
 
   it('calling with entity position (0,0) yields the canonical right-facing offset', () => {
-    // Game-layer consumers call resolveWeaponAnchorWorldPos with entity=(0,0) to get
+    // Game-layer consumers call generatedAssetsTestSeams.resolveWeaponAnchorWorldPos with entity=(0,0) to get
     // the pure offset, then apply facingRight/mirror at usage time.
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 28 },
     });
     // relX = 8, relY = -4; offsetX = 8/64*2 = 0.25; offsetY = -4/64*2 = -0.125
-    const offset = resolveWeaponAnchorWorldPos(
+    const offset = generatedAssetsTestSeams.resolveWeaponAnchorWorldPos(
       entry,
       0,
       0,
@@ -208,10 +204,10 @@ describe('resolveWeaponAnchorWorldPos', () => {
   });
 });
 
-describe('computeNormalizedWeaponAnchor', () => {
+describe('generatedAssetsTestSeams.computeNormalizedWeaponAnchor', () => {
   it('returns null when entry has no weaponAnchor', () => {
     const entry = makeEntry();
-    expect(computeNormalizedWeaponAnchor(entry)).toBeNull();
+    expect(generatedAssetsTestSeams.computeNormalizedWeaponAnchor(entry)).toBeNull();
   });
 
   it('computes correct normalized offsets', () => {
@@ -222,7 +218,7 @@ describe('computeNormalizedWeaponAnchor', () => {
       weaponAnchor: { x: 40, y: 28 },
       facingDirection: 'right',
     });
-    const result = computeNormalizedWeaponAnchor(entry, 64, 64);
+    const result = generatedAssetsTestSeams.computeNormalizedWeaponAnchor(entry, 64, 64);
     expect(result).not.toBeNull();
     expect(result!.relX).toBeCloseTo(0.125);
     expect(result!.relY).toBeCloseTo(-0.0625);
@@ -235,23 +231,23 @@ describe('computeNormalizedWeaponAnchor', () => {
       weaponAnchor: { x: 24, y: 32 },
       facingDirection: 'left',
     });
-    const result = computeNormalizedWeaponAnchor(entry, 64, 64);
+    const result = generatedAssetsTestSeams.computeNormalizedWeaponAnchor(entry, 64, 64);
     expect(result!.artFacing).toBe('left');
     expect(result!.relX).toBeCloseTo(-0.125); // weapon left of COG
   });
 
-  it('uses DEFAULT_GENERATED_FRAME_SIZE_PX when no frame size provided', () => {
-    // COG at (32,32), weapon at (40,28). Default frame = DEFAULT_GENERATED_FRAME_SIZE_PX (64).
+  it('uses generatedAssetsTestSeams.DEFAULT_GENERATED_FRAME_SIZE_PX when no frame size provided', () => {
+    // COG at (32,32), weapon at (40,28). Default frame = generatedAssetsTestSeams.DEFAULT_GENERATED_FRAME_SIZE_PX (64).
     // Same calc as explicit 64x64.
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 28 },
     });
-    const withDefault = computeNormalizedWeaponAnchor(entry);
-    const withExplicit = computeNormalizedWeaponAnchor(
+    const withDefault = generatedAssetsTestSeams.computeNormalizedWeaponAnchor(entry);
+    const withExplicit = generatedAssetsTestSeams.computeNormalizedWeaponAnchor(
       entry,
-      DEFAULT_GENERATED_FRAME_SIZE_PX,
-      DEFAULT_GENERATED_FRAME_SIZE_PX,
+      generatedAssetsTestSeams.DEFAULT_GENERATED_FRAME_SIZE_PX,
+      generatedAssetsTestSeams.DEFAULT_GENERATED_FRAME_SIZE_PX,
     );
     expect(withDefault).toEqual(withExplicit);
   });

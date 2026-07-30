@@ -313,9 +313,8 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
 
 /**
  * Item slugs of every placeholder wearable gear def, in slot-registry-ish
- * order. Exported so labs/tests can seed a bag with gear for every non-weapon
- * slot without re-deriving the list. Weapons and the charm are intentionally
- * excluded (weapons occupy hand slots the paper-doll fills separately).
+ * order. Weapons and the charm are intentionally excluded (weapons occupy hand
+ * slots the paper-doll fills separately).
  */
 export const GEAR_ITEM_IDS: readonly string[] = GEAR_EQUIPMENT_DEFS.filter(
   (definition) => !definition.tags?.includes('wave-b'),
@@ -413,21 +412,6 @@ export function _clearEquipmentDefsForTest(): void {
 /** Equipment definition for an inventory item slug, or undefined if not equippable. */
 export function getEquipmentDefForItem(itemId: string): EquipmentItemDef | undefined {
   return TEST_EQUIPMENT_OVERRIDES.get(itemId) ?? EQUIPMENT_BY_ITEM_ID.get(itemId);
-}
-
-/** Equipment definition for a weapon id slug, or undefined if it has no inventory item mapping. */
-export function getEquipmentDefForWeaponId(weaponId: string): EquipmentItemDef | undefined {
-  for (const def of TEST_EQUIPMENT_OVERRIDES.values()) {
-    if (def.weaponId === weaponId) {
-      return def;
-    }
-  }
-  for (const def of EQUIPMENT_BY_ITEM_ID.values()) {
-    if (def.weaponId === weaponId) {
-      return def;
-    }
-  }
-  return undefined;
 }
 
 /** True when the given inventory item slug maps to a piece of equipment. */
