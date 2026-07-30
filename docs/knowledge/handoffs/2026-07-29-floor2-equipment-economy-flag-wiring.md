@@ -362,3 +362,31 @@ way — building the UI does not require flipping this flag, and flipping it
 today would have no effect since nothing reads it. If #2334 wants this flag
 to mean something, it will need to both flip it in the real path and add
 the enforcement check itself.
+
+## Merge-conflict resolution: `fast-uri` audit exception vs. main's re-dated exceptions
+
+Commit `13c250f40` on this branch upgraded `fast-uri` to 3.1.4 and removed its
+now-unnecessary `AUDIT_EXCEPTIONS` entry in
+`scripts/agent/security/npm-audit.mjs` (the fix, not a re-date). Independently,
+`main` picked up commit `a33161c5b` (via unrelated PR #2332, a terrain-lab
+feature) about ten minutes later that re-dated all three `AUDIT_EXCEPTIONS`
+expiry dates to `2026-08-13`, including the same `fast-uri` entry this branch
+deletes — a genuine (non-textual) rebase conflict.
+
+Resolved per explicit instruction from the reviewing session: kept this
+branch's `fast-uri` deletion (the real fix), and took `main`'s `2026-08-13`
+dates as-is for `brace-expansion` and `find-my-way` without touching their
+logic or the audit test's structure — that pair is owned by a separate,
+concurrently-running "Expired audit exceptions" session, which has been
+pointed at this branch's `13c250f40` commit to build on top of it rather than
+duplicate it. Reconciled `npm-audit.test.mjs`'s hardcoded advisory/expiry
+assertions by hand (not just `verify:fast`) and ran
+`node scripts/agent/security/npm-audit.test.mjs` directly post-rebase — all 13
+assertions pass and confirm the `fast-uri` assertions reflect deletion, not a
+re-dated exception.
+
+**Traceability note:** `13c250f40`'s `fast-uri` upgrade originated on this
+branch (PR #2333) and is being generalized/built upon by the separate
+"Expired audit exceptions" session for `brace-expansion`/`find-my-way` — if a
+later reader wonders why two PRs touched `npm-audit.mjs`/`npm-audit.test.mjs`
+the same evening, this is why.
