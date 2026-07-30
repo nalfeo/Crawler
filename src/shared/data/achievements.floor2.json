@@ -352,12 +352,12 @@
     "popupText": "New achievement: Family Annihilator!",
     "unlockCriteria": "Defeat three or more family bosses.",
     "details": "Unlock when you defeat three or more Floor 2 family bosses in the same run.",
-    "directorFlavor": "Three family bosses, and counting. There is no territory board left to redraw — you redrew it with a body count, and the remaining survivors have stopped sending patrols and started sending prayers instead. Our legal team wants it on record that this was not the intended difficulty curve for this floor; the balance team insists it absolutely was, and neither side is backing down. Whatever families are technically still present are keeping their heads down and their territory claims quiet. The audience numbers for this segment are the best we've had all season, and the sponsors are already asking whether you'll do it again next week. You won't. Nobody does this twice, and honestly, nobody should have to. The floor's own systems are running internal audits trying to figure out what a 'balanced' encounter even looks like with this many variables removed from it.",
+    "directorFlavor": "Three family bosses, and counting. There is no territory board left to redraw — you redrew it with a body count, and the remaining survivors have stopped sending patrols and started sending prayers instead. Our legal team wants it on record that this was not the intended difficulty curve for this floor; the balance team insists it absolutely was, and neither side is backing down. Whatever families are technically still present are keeping their heads down and their territory claims quiet. The audience numbers for this segment are the best we've had all season, and the sponsors are already asking whether you'll do it again next week. You won't. Nobody does this twice, and honestly, nobody should have to. The floor's own systems are running internal audits trying to figure out what a 'balanced' encounter even looks like with this many variables removed from it. The settlement rumor board has transitioned from 'contested holdings' to 'remaining exits,' which is not a subtle change in tone. Our continuity team is stitching together a map graphic that now has more X marks than territory labels, and it still might undersell what happened. The commentators have stopped saying your name with concern and started saying it like a weather warning. Every surviving family leader just requested the same emergency agenda item: how to survive one contestant with momentum. That's your legacy now, and the season still isn't over.",
     "iconId": "achv-floor2-family-annihilator-placeholder",
-    "difficulty": "hard",
+    "difficulty": "brutal",
     "reward": {
       "type": "equipment",
-      "tier": "tier3",
+      "tier": "tier4",
       "bases": [
         "weapon.iron-cleaver",
         "weapon.ashwood-bow",
@@ -464,12 +464,12 @@
     "popupText": "New achievement: Off This Floor!",
     "unlockCriteria": "Complete the quest to leave Floor 2 and descend the staircase.",
     "details": "Unlock by completing the leave-floor quest and confirming descent past Floor 2.",
-    "directorFlavor": "You did it — diplomacy, decapitation, or a healthy mix of both, and you're still standing at the bottom of the stairs looking up. The family politics reset behind you like nothing ever happened, which is either merciful or deeply insulting depending on how much blood you spilled to get here. Whatever alliances you built, whatever grudges you earned, none of it follows you up the staircase — the ledger closes the moment you confirm the descent. The production team has already started scouting Floor 3 for hazards; you get maybe one commercial break to enjoy this before the next set of problems introduces itself. The reunion special will absolutely bring up whichever family you betrayed, on camera, in detail. It always does — that's what reunion specials are for. Enjoy the descent while it lasts; it's the quietest this run gets. The staircase was the goal; whatever you did to deserve access to it is already becoming someone else's season-three cold open.",
+    "directorFlavor": "You did it — diplomacy, decapitation, or a healthy mix of both, and you're still standing at the bottom of the stairs looking up. The family politics reset behind you like nothing ever happened, which is either merciful or deeply insulting depending on how much blood you spilled to get here. Whatever alliances you built, whatever grudges you earned, none of it follows you up the staircase — the ledger closes the moment you confirm the descent. The production team has already started scouting Floor 3 for hazards; you get maybe one commercial break to enjoy this before the next set of problems introduces itself. The reunion special will absolutely bring up whichever family you betrayed, on camera, in detail. It always does — that's what reunion specials are for. Enjoy the descent while it lasts; it's the quietest this run gets. The staircase was the goal; whatever you did to deserve access to it is already becoming someone else's season-three cold open. The post-floor analytics pass has flagged your route as 'high volatility, high spectacle, inexplicably successful.' The audience poll currently has your run split between 'masterclass' and 'reckless luck,' and both camps are yelling in all caps. Our floor directors just archived your boss-den footage under required viewing for new hires. The safe-room staff already started a pool on how long Floor 3 stays quiet once you arrive. Congratulations on leaving Floor 2; condolences to whichever floor has you next.",
     "iconId": "achv-floor2-floor-cleared-placeholder",
-    "difficulty": "hard",
+    "difficulty": "brutal",
     "reward": {
       "type": "equipment",
-      "tier": "tier3",
+      "tier": "tier4",
       "bases": [
         "weapon.iron-cleaver",
         "weapon.ashwood-bow",
@@ -556,12 +556,12 @@
     "popupText": "New achievement: Scorched Earth!",
     "unlockCriteria": "Fight trash mobs from every family present on Floor 2.",
     "details": "Unlock once you've landed player-attributed trash kills against every family present on the floor — three or four, whatever the roster dealt you, all of it.",
-    "directorFlavor": "Every family present on the floor has trash-mob blood on the ledger with your name attached — three or four, whatever the roster dealt you, all of it. There is no faction left to make peace with, no territory left uncontested, no patrol route left that doesn't have you flagged as an active threat. The relationship system's tuning docs did not model a contestant hostile to literally everyone present at once — we checked, twice. The audience adores this kind of scorched-earth run precisely because it's unsustainable; someone always has to actually win the floor eventually, and right now that someone is doing it the hard way. The territory board has stopped drawing lines entirely, because every line currently points at you. Whatever alliances existed before you arrived, they don't anymore. That's not a compliment, exactly, but it's not not one either. The achievement tracker logged it under 'impressive,' but the production team's private notes use a different word entirely.",
+    "directorFlavor": "Every family present on the floor has trash-mob blood on the ledger with your name attached — three or four, whatever the roster dealt you, all of it. There is no faction left to make peace with, no territory left uncontested, no patrol route left that doesn't have you flagged as an active threat. The relationship system's tuning docs did not model a contestant hostile to literally everyone present at once — we checked, twice. The audience adores this kind of scorched-earth run precisely because it's unsustainable; someone always has to actually win the floor eventually, and right now that someone is doing it the hard way. The territory board has stopped drawing lines entirely, because every line currently points at you. Whatever alliances existed before you arrived, they don't anymore. That's not a compliment, exactly, but it's not not one either. The achievement tracker logged it under 'impressive,' but the production team's private notes use a different word entirely. The scheduling team just inserted an unscripted emergency segment labeled 'all fronts active' and put your portrait on the slate. Family spokespeople keep asking for mediation windows, then remembering you're the reason they need one. The map-overlay artist has run out of neutral colors and is now using hazard stripes for every district you touched. Even the settlement gossip loop has converged on one conclusion: everyone is mad, and everyone has the same target. If this is your version of diplomacy, it has excellent ratings and catastrophic follow-up paperwork.",
     "iconId": "achv-floor2-scorched-earth-placeholder",
-    "difficulty": "hard",
+    "difficulty": "brutal",
     "reward": {
       "type": "equipment",
-      "tier": "tier3",
+      "tier": "tier4",
       "bases": [
         "weapon.iron-cleaver",
         "weapon.ashwood-bow",
@@ -663,14 +663,42 @@
     ]
   },
   {
-    "id": "floor2-comfortable",
+    "id": "floor2-staircase-spotted",
     "floor": 2,
-    "title": "Comfortable",
-    "popupText": "New achievement: Comfortable!",
-    "unlockCriteria": "Carry 300 gold.",
-    "details": "Unlock once your gold balance reaches 300.",
-    "directorFlavor": "300 gold and no immediate plans to spend it. The finance department is impressed; the writers are bored — hoarding doesn't make good television, but the sponsors love a contestant with liquidity regardless of what the ratings say. Keep it up and the Quartermaster might start recognizing you by name instead of by threat level, which is the closest thing to respect that stall gets to offer. Somewhere a production accountant is quietly filing this under 'fiscally responsible contestant,' a category that did not exist before this season. Don't let it go to your head; the gold doesn't fight for you.",
-    "iconId": "achv-floor2-comfortable-placeholder",
+    "title": "Staircase Spotted",
+    "popupText": "New achievement: Staircase Spotted!",
+    "unlockCriteria": "Discover the Floor 2 exit staircase.",
+    "details": "Unlock the moment you locate the Floor 2 exit staircase, before it's unlocked or contested.",
+    "directorFlavor": "There it is — the way out, or at least the promise of one, sitting at the end of a sightline nobody guaranteed you'd reach. Finding it isn't the same as using it; there's a whole contested-territory situation between you and an actual descent, and the production has no intention of making that part easy. But the map's been updated, the marker's live, and for the first time this floor has a visible finish line instead of just more corridor. Enjoy the view.",
+    "iconId": "achv-floor2-staircase-spotted-placeholder",
+    "difficulty": "basic",
+    "reward": {
+      "type": "equipment",
+      "tier": "tier1",
+      "bases": [
+        "weapon.iron-cleaver",
+        "weapon.ashwood-bow",
+        "weapon.ember-wand",
+        "weapon.frost-crook"
+      ]
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "staircaseSpawned",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "floor2-breach-the-gate",
+    "floor": 2,
+    "title": "Breach the Gate",
+    "popupText": "New achievement: Breach the Gate!",
+    "unlockCriteria": "Start the contested battle for the Floor 2 exit staircase.",
+    "details": "Unlock the moment the staircase's contested battle begins.",
+    "directorFlavor": "The staircase isn't just going to hand itself over — whoever's holding that ground now knows you're coming, and the fight for it just started whether you were ready or not. This is the one skirmish on the floor that's explicitly about territory and nothing else: no reputation angle, no diplomacy option, just who ends up controlling the exit. The camera crew's been briefed to treat this as the floor's real climax, whatever else happened upstream. Win it and the way out is yours. Lose it and you'll be back here having this exact conversation again.",
+    "iconId": "achv-floor2-breach-the-gate-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "equipment",
@@ -684,39 +712,9 @@
     },
     "unlockRules": [
       {
-        "type": "numberCompare",
-        "fact": "playerGold",
-        "op": ">=",
-        "value": 300
-      }
-    ]
-  },
-  {
-    "id": "floor2-deep-pockets",
-    "floor": 2,
-    "title": "Deep Pockets",
-    "popupText": "New achievement: Deep Pockets!",
-    "unlockCriteria": "Carry 500 gold.",
-    "details": "Unlock once your gold balance reaches 500.",
-    "directorFlavor": "500 gold in reserve, sitting there unspent while the Quartermaster's stock rotates past you like a store you can't be bothered to enter. Somewhere a production accountant is quietly furious that a contestant is out-saving the actual sponsors on their own show. We'd call this fiscal responsibility if we thought for one second you planned it that way, but the ledger doesn't ask motive, just balance. Either way, the number's real, the gold is yours, and the audience loves watching a hoard get bigger even when nothing happens with it. The Quartermaster has started quoting you prices nobody else gets, on the theory that you can clearly afford them. You still haven't bought anything. That, more than the number itself, is the achievement. At 500 gold unspent, you're not playing the economy anymore — you are the economy, and the Quartermaster is starting to resent the power imbalance.",
-    "iconId": "achv-floor2-deep-pockets-placeholder",
-    "difficulty": "hard",
-    "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
-    },
-    "unlockRules": [
-      {
-        "type": "numberCompare",
-        "fact": "playerGold",
-        "op": ">=",
-        "value": 500
+        "type": "booleanIs",
+        "fact": "staircaseBattleStarted",
+        "value": true
       }
     ]
   },
@@ -750,14 +748,14 @@
     ]
   },
   {
-    "id": "floor2-growing-arsenal",
+    "id": "floor2-braved-the-dens",
     "floor": 2,
-    "title": "Growing Arsenal",
-    "popupText": "New achievement: Growing Arsenal!",
-    "unlockCriteria": "Unlock 3 abilities.",
-    "details": "Unlock once you've unlocked 3 passive abilities.",
-    "directorFlavor": "Three abilities deep now, and the fight choreography team has officially run out of excuses to call your kit 'basic.' Sponsors are asking whether the next one comes with a cooldown timer they can put on a billboard. Probably, knowing this production. The build is starting to look intentional instead of accidental, which the writers find suspicious in a good way. Keep unlocking; the highlight reel has opinions about variety.",
-    "iconId": "achv-floor2-growing-arsenal-placeholder",
+    "title": "Braved the Dens",
+    "popupText": "New achievement: Braved the Dens!",
+    "unlockCriteria": "Enter two or more family boss dens.",
+    "details": "Unlock once you've entered two or more distinct family boss dens on Floor 2, win or lose.",
+    "directorFlavor": "Two dens breached, whatever happened once you were inside them. Walking into a family boss's den is a statement on its own, before a single hit lands — the family AI treats an entered den as a declared intention, not just a fight in progress. The production loves this shot regardless of outcome: contestant, doorway, no retreat. Two down, and the remaining dens on this floor know exactly what kind of visitor to expect next.",
+    "iconId": "achv-floor2-braved-the-dens-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "equipment",
@@ -772,21 +770,21 @@
     "unlockRules": [
       {
         "type": "numberCompare",
-        "fact": "unlockedAbilityCount",
+        "fact": "familyBossEncounterCount",
         "op": ">=",
-        "value": 3
+        "value": 2
       }
     ]
   },
   {
-    "id": "floor2-loaded-toolkit",
+    "id": "floor2-no-den-unbraved",
     "floor": 2,
-    "title": "Loaded Toolkit",
-    "popupText": "New achievement: Loaded Toolkit!",
-    "unlockCriteria": "Unlock 5 abilities.",
-    "details": "Unlock once you've unlocked 5 passive abilities.",
-    "directorFlavor": "Five abilities unlocked, which is roughly four more than the balance team was comfortable with when they first sketched this floor. The kit's genuinely versatile now — there's a build-of-the-week segment forming in the edit bay whether you asked for one or not. The families have started adjusting their tactics around whatever you've been doing, which is either flattering or a very bad sign depending on how the next den goes. Territory patrols that used to engage on sight are starting to hesitate, and hesitation is not a trait this floor's AI was designed to have. Either way, the production loves a contestant who can no longer be summarized in one sentence. Five abilities is the point where 'contestant' starts sounding like 'threat' in the writers' notes. Wear it well. Five abilities is the loadout they write patch notes about — the question is whether you'll have unlocked the sixth before those notes go live.",
-    "iconId": "achv-floor2-loaded-toolkit-placeholder",
+    "title": "No Den Unbraved",
+    "popupText": "New achievement: No Den Unbraved!",
+    "unlockCriteria": "Enter every family boss den present on Floor 2.",
+    "details": "Unlock once you've entered every family boss den present on the floor — three or four, whatever the roster dealt you — regardless of whether you won each fight.",
+    "directorFlavor": "Every family boss den on this floor has had you standing in the doorway at least once — three or four of them, however many the roster generated, all visited, none skipped. This isn't the same achievement as clearing them; you can walk out of a den missing a fight and still earn this one, because the production cares more about nerve than about the scoreboard. No boss on this floor gets to say you never showed up. Whether you won every one of those fights is a separate, considerably bloodier conversation. The camera crews have now filmed you entering enough hostile rooms that they're assigning routes by your footstep timing. The den wardens are filing matching complaints that all read 'contestant refuses to respect boundaries.' Even the families you didn't finish are revising their threat briefings from 'possible incursion' to 'inevitable visitation.' This is a tour of intimidation, not a sweep of victory screens, and the audience understands the distinction. You've made presence itself a weapon. Next time you cross a threshold, somebody is going to panic before you even draw steel.",
+    "iconId": "achv-floor2-no-den-unbraved-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "equipment",
@@ -800,10 +798,9 @@
     },
     "unlockRules": [
       {
-        "type": "numberCompare",
-        "fact": "unlockedAbilityCount",
-        "op": ">=",
-        "value": 5
+        "type": "booleanIs",
+        "fact": "allPresentFamilyBossesEngaged",
+        "value": true
       }
     ]
   },
