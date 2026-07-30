@@ -8,7 +8,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGeneratedSpriteRegistry,
-  DEFAULT_GENERATED_ANCHOR,
   emptyGeneratedSpriteRegistry,
   loadGeneratedManifest,
   parseGeneratedManifest,
@@ -99,7 +98,7 @@ describe('loadGeneratedManifest', () => {
     expect(registry.has('not-a-thing')).toBe(false);
   });
 
-  it('falls back to DEFAULT_GENERATED_ANCHOR when the entry anchor is null', () => {
+  it('falls back to { x: 8, y: 8 } (DEFAULT_GENERATED_ANCHOR) when the entry anchor is null', () => {
     const registry = loadGeneratedManifest({
       version: GENERATED_MANIFEST_VERSION,
       entries: {
@@ -107,7 +106,7 @@ describe('loadGeneratedManifest', () => {
       },
     });
     const found = registry.lookup('throwing-star');
-    expect(found?.anchor).toEqual(DEFAULT_GENERATED_ANCHOR);
+    expect(found?.anchor).toEqual({ x: 8, y: 8 });
     expect(found?.anchorIsDefault).toBe(true);
   });
 
