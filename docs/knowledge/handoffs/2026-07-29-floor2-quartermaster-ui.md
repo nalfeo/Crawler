@@ -18,7 +18,7 @@ engine-ui, floor-2-economy, settlement
 
 ## What Was Done
 
-Implemented the Floor 2 Quartermaster purchase UI — epic slice F3 from `docs/knowledge/epics/floor-2-equipment/PLAN.md`. This closes the human-player gap: stock was already generated (PRs #2333 / #1750) and the AI consumer was live, but no interactive surface existed for human players.
+Implemented the Floor 2 Quartermaster purchase UI — epic slice F3 from `docs/knowledge/epics/floor-2-equipment/PLAN.md`. This closes the human-player gap: the AI consumer was live, but no interactive surface existed for human players.
 
 **New file:** `src/engine/QuartermasterUI.ts` (285 lines) — a Phaser container panel following the BossChestUI.ts pattern: `toggle(world)/refresh(world)/isOpen()/destroy()` API, per-offer Buy buttons, sold-out state, signature-based dirty checking, responsive layout via `scene.scale.on('resize')`.
 
@@ -26,7 +26,16 @@ Implemented the Floor 2 Quartermaster purchase UI — epic slice F3 from `docs/k
 
 **Tests:** `tests/e2e/main-game-scene-quartermaster.test.ts` expanded from 1 to 5 tests covering button visibility, toggle, exclusivity, stock snapshot, and purchase (gold deducted + offer marked sold-out). Probe lab extended with `getPlayerGold`, `setPlayerGold`, `getQuartermasterStockSnapshot`, `purchaseFirstQuartermasterOffer`.
 
-**Observed in the probe lab:** stock snapshot, purchase, and gold-deduction APIs wired correctly through `purchaseQuartermasterOffer` from `core/quartermaster-purchase.ts`.
+## Runtime Evidence (deterministic)
+
+- **Before fix (CI run 30499453846):** `tests/e2e/main-game-scene-quartermaster.test.ts` failed 5 assertions because `quartermasterStock` was absent at Floor 2 bootstrap, so the Shop button stayed hidden and purchase-path assertions had no offers.
+- **After fix (real scene via probe lab):** `npm run test:e2e -- tests/e2e/main-game-scene-quartermaster.test.ts` passed with **7/7** tests in the `main-scene-probe-lab` real MainGameScene bootstrap path, including:
+  - Shop button visible in safe context with stock
+  - Q-toggle open/close
+  - panel exclusivity with inventory
+  - stock snapshot populated
+  - full purchase cycle (gold deducted + sold out)
+  - keyboard purchase via Enter on focused Buy control
 
 ## Key Decisions Made
 
@@ -40,7 +49,6 @@ Implemented the Floor 2 Quartermaster purchase UI — epic slice F3 from `docs/k
 ## What's Next / Blockers
 
 - Epic tracker `docs/knowledge/epics/floor-2-equipment/epic-state.json` is stale (last updated 2026-07-19) — the F3 slice can now be marked complete.
-- Visual validation in the running game (`npm run dev` on a Floor 2 scenario) would close the "observe before done" loop for the human player path.
 - Consider adding a `QuartermasterUI` lab (`src/labs/quartermaster-ui-lab/`) for isolated development and visual regression testing.
 - `tests/e2e/main-game-scene-quartermaster.test.ts` uses `bootFloor2SafeScene()` which depends on the probe lab booting a real Floor 2 scenario with economy enabled — if the economy gate changes, these tests need updating.
 

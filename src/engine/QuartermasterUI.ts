@@ -47,7 +47,9 @@ const COLORS = {
   goldColor: 0xfbbf24,
   btnBg: 0x1e4620,
   btnHover: 0x276c2b,
+  btnFocus: 0x2f7d35,
   btnDisabledBg: 0x2a2a3a,
+  btnDisabledFocus: 0x3a3a4f,
   rarityCommon: 0x9e9e9e,
   rarityUncommon: 0x4caf50,
   rarityRare: 0x2196f3,
@@ -82,8 +84,7 @@ function rarityColor(rarity: GeneratedEquipmentRarity): number {
 function offerSignature(offers: readonly QuartermasterOfferView[]): string {
   return offers
     .map(
-      (o) =>
-        `${o.offerId}:${o.quantity}:${o.affordable}:${o.capacityAvailable}:${o.canPurchase}`,
+      (o) => `${o.offerId}:${o.quantity}:${o.affordable}:${o.capacityAvailable}:${o.canPurchase}`,
     )
     .join('|');
 }
@@ -102,6 +103,7 @@ export interface QuartermasterUIConfig {
    * other dependent UI (inventory, equipment panel, HUD gold display, etc.).
    */
   onPurchaseResult?: (result: { ok: boolean; reason?: string; goldSpent?: number }) => void;
+  onPanelClosed?: () => void;
 }
 
 export interface QuartermasterUIApi {
@@ -135,8 +137,8 @@ export function createQuartermasterUI(
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
   let visible = false;
-  let lastWorld: GameWorld | null = null;
   let lastSignature: string | null = null;
+  let focusedOfferId: string | null = null;
 
   const container = scene.add.container(0, 0).setDepth(1000).setVisible(false);
 
@@ -154,7 +156,7 @@ export function createQuartermasterUI(
   });
   container.add(title);
 
-  const hint = crispText(0, 0, '[Q] to close', {
+  const hint = crispText(0, 0, '[Q] Close  ↑↓ Select  Enter Buy', {
     fontFamily: FONT_FAMILY,
     fontSize: '12px',
     color: hex(COLORS.textSecondary),
@@ -170,15 +172,44 @@ export function createQuartermasterUI(
   container.add(goldLabel);
 
   const rowObjects: Phaser.GameObjects.GameObject[] = [];
+  interface BuyRowControl {
+    offerId: string;
+    canBuy: boolean;
+    button: Phaser.GameObjects.Text;
+    activate: () => void;
+  }
+  const buyRowControls: BuyRowControl[] = [];
+  let focusedBuyRowIndex = -1;
 
   function clearRows(): void {
     for (const obj of rowObjects) obj.destroy();
     rowObjects.length = 0;
+    buyRowControls.length = 0;
+    focusedBuyRowIndex = -1;
   }
 
   function computeSignature(world: GameWorld, playerEid: number): string {
     const offers = getQuartermasterOfferViews(world, playerEid);
     return `${offerSignature(offers)}::${goldSignature(world)}`;
+  }
+
+  function applyBuyFocusVisual(control: BuyRowControl, focused: boolean): void {
+    if (control.canBuy) {
+      control.button.setBackgroundColor(hex(focused ? COLORS.btnFocus : COLORS.btnBg));
+    } else {
+      control.button.setBackgroundColor(
+        hex(focused ? COLORS.btnDisabledFocus : COLORS.btnDisabledBg),
+      );
+    }
+  }
+
+  function refreshBuyFocusVisuals(): void {
+    for (let i = 0; i < buyRowControls.length; i += 1) {
+      const control = buyRowControls[i];
+      if (control) {
+        applyBuyFocusVisual(control, i === focusedBuyRowIndex);
+      }
+    }
   }
 
   function makeRow(
@@ -210,16 +241,11 @@ export function createQuartermasterUI(
     container.add(nameText);
     rowObjects.push(nameText);
 
-    const rarityText = crispText(
-      x + 12 + (nameText.width + 8),
-      y + 10,
-      rarityLabel(rarity),
-      {
-        fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        color: soldOut ? hex(COLORS.textDisabled) : hex(rarityColor(rarity)),
-      },
-    );
+    const rarityText = crispText(x + 12 + (nameText.width + 8), y + 10, rarityLabel(rarity), {
+      fontFamily: FONT_FAMILY,
+      fontSize: '12px',
+      color: soldOut ? hex(COLORS.textDisabled) : hex(rarityColor(rarity)),
+    });
     container.add(rarityText);
     rowObjects.push(rarityText);
 
@@ -256,10 +282,27 @@ export function createQuartermasterUI(
     container.add(priceText);
     rowObjects.push(priceText);
 
+    const purchaseOffer = (): void => {
+      const result = purchaseQuartermasterOffer(world, playerEid, {
+        stockId: offer.stockId,
+        offerId: offer.offerId,
+        quantity: 1,
+      });
+      lastSignature = null;
+      refresh(world);
+      if (result.ok) {
+        config.onPurchaseResult?.({
+          ok: true,
+          goldSpent: result.goldSpent,
+        });
+      } else {
+        config.onPurchaseResult?.({ ok: false, reason: result.reason });
+      }
+    };
+
     // Buy button
     if (!soldOut) {
       const canBuy = offer.canPurchase;
-      const btnColor = canBuy ? COLORS.btnBg : COLORS.btnDisabledBg;
       const btnTextColor = canBuy ? COLORS.textPrimary : COLORS.textDisabled;
       const btnLabel = canBuy ? 'Buy' : unavailableLabel(offer);
       const btn = crispText(x + w - 12, y + ROW_HEIGHT / 2, btnLabel, {
@@ -267,32 +310,32 @@ export function createQuartermasterUI(
         fontSize: '13px',
         fontStyle: 'bold',
         color: hex(btnTextColor),
-        backgroundColor: hex(btnColor),
+        backgroundColor: hex(canBuy ? COLORS.btnBg : COLORS.btnDisabledBg),
         padding: { x: 10, y: 6 },
       });
       btn.setOrigin(1, 0.5);
+      const control: BuyRowControl = {
+        offerId: offer.offerId,
+        canBuy,
+        button: btn,
+        activate: purchaseOffer,
+      };
+      buyRowControls.push(control);
+      applyBuyFocusVisual(control, false);
+      btn.setInteractive({ useHandCursor: canBuy });
+      btn.on('pointerover', () => {
+        const hoveredIndex = buyRowControls.indexOf(control);
+        if (hoveredIndex >= 0) {
+          focusedBuyRowIndex = hoveredIndex;
+          focusedOfferId = control.offerId;
+          refreshBuyFocusVisuals();
+        }
+      });
+      btn.on('pointerout', () => {
+        refreshBuyFocusVisuals();
+      });
       if (canBuy) {
-        btn
-          .setInteractive({ useHandCursor: true })
-          .on('pointerover', () => btn.setBackgroundColor(hex(COLORS.btnHover)))
-          .on('pointerout', () => btn.setBackgroundColor(hex(btnColor)))
-          .on('pointerdown', () => {
-            const result = purchaseQuartermasterOffer(world, playerEid, {
-              stockId: offer.stockId,
-              offerId: offer.offerId,
-              quantity: 1,
-            });
-            lastSignature = null;
-            refresh(world);
-            if (result.ok) {
-              config.onPurchaseResult?.({
-                ok: true,
-                goldSpent: result.goldSpent,
-              });
-            } else {
-              config.onPurchaseResult?.({ ok: false, reason: result.reason });
-            }
-          });
+        btn.on('pointerdown', purchaseOffer);
       }
       container.add(btn);
       rowObjects.push(btn);
@@ -332,11 +375,16 @@ export function createQuartermasterUI(
     const w = panelWidth - PANEL_PADDING * 2;
 
     if (offers.length === 0) {
-      const empty = crispText(x, panelY + PANEL_PADDING + HEADER_HEIGHT + 12, 'No items in stock.', {
-        fontFamily: FONT_FAMILY,
-        fontSize: '14px',
-        color: hex(COLORS.textSecondary),
-      });
+      const empty = crispText(
+        x,
+        panelY + PANEL_PADDING + HEADER_HEIGHT + 12,
+        'No items in stock.',
+        {
+          fontFamily: FONT_FAMILY,
+          fontSize: '14px',
+          color: hex(COLORS.textSecondary),
+        },
+      );
       container.add(empty);
       rowObjects.push(empty);
       return;
@@ -346,6 +394,15 @@ export function createQuartermasterUI(
     for (const offer of offers) {
       makeRow(world, playerEid, offer, x, currentY, w);
       currentY += ROW_HEIGHT + ROW_GAP;
+    }
+    if (buyRowControls.length > 0) {
+      const restoredIndex =
+        focusedOfferId === null
+          ? 0
+          : buyRowControls.findIndex((control) => control.offerId === focusedOfferId);
+      focusedBuyRowIndex = restoredIndex >= 0 ? restoredIndex : 0;
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? null;
+      refreshBuyFocusVisuals();
     }
   }
 
@@ -365,7 +422,6 @@ export function createQuartermasterUI(
   }
 
   function refresh(world: GameWorld): void {
-    lastWorld = world;
     if (!visible) return;
     const playerEid = config.getPlayerEid();
     if (playerEid === undefined || playerEid < 0) return;
@@ -383,10 +439,36 @@ export function createQuartermasterUI(
       applyLayout();
       lastSignature = null;
       refresh(world);
+    } else {
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? focusedOfferId;
+      config.onPanelClosed?.();
     }
   }
 
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (!visible || buyRowControls.length === 0) return;
+    if (event.code === 'ArrowDown' || event.code === 'KeyS') {
+      event.preventDefault();
+      focusedBuyRowIndex = (focusedBuyRowIndex + 1 + buyRowControls.length) % buyRowControls.length;
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? null;
+    } else if (event.code === 'ArrowUp' || event.code === 'KeyW') {
+      event.preventDefault();
+      focusedBuyRowIndex = (focusedBuyRowIndex - 1 + buyRowControls.length) % buyRowControls.length;
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? null;
+    } else if (event.code === 'Enter' || event.code === 'Space') {
+      event.preventDefault();
+      const focused = buyRowControls[focusedBuyRowIndex];
+      if (focused?.canBuy) {
+        focused.activate();
+      }
+    } else {
+      return;
+    }
+    refreshBuyFocusVisuals();
+  };
+
   scene.scale.on('resize', applyLayout);
+  scene.input.keyboard?.on('keydown', onKeyDown);
 
   return {
     toggle,
@@ -394,6 +476,7 @@ export function createQuartermasterUI(
     isOpen: () => visible,
     destroy() {
       scene.scale.off('resize', applyLayout);
+      scene.input.keyboard?.off('keydown', onKeyDown);
       clearRows();
       container.destroy();
     },

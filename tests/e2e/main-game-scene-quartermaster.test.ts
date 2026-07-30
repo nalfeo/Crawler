@@ -152,4 +152,30 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     const purchasedOffer = offersAfter.find((o) => o.offerId === offers[0]!.offerId);
     expect(purchasedOffer?.quantity, 'purchased offer must show quantity = 0').toBe(0);
   });
+
+  it('supports keyboard purchase with Enter on the focused Buy control', async () => {
+    await bootFloor2SafeScene();
+
+    const offers = await mainSceneProbe.getQuartermasterStockSnapshot(page);
+    expect(offers.length, 'need at least one offer to test keyboard purchase').toBeGreaterThan(0);
+
+    await mainSceneProbe.setPlayerGold(page, 100_000);
+    await mainSceneProbe.requestQuartermasterToggle(page);
+    await waitForState(page, (s) => s.quartermasterOpen, { label: 'Quartermaster opened' });
+
+    const goldBefore = await mainSceneProbe.getPlayerGold(page);
+    await page.keyboard.press('Enter');
+    let goldAfter = goldBefore;
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+      goldAfter = await mainSceneProbe.getPlayerGold(page);
+      if ((goldAfter ?? 0) < (goldBefore ?? 0)) break;
+      await page.waitForTimeout(100);
+    }
+    expect(goldAfter, 'gold should decrease after keyboard purchase').toBeLessThan(goldBefore ?? 0);
+
+    const offersAfter = await mainSceneProbe.getQuartermasterStockSnapshot(page);
+    const purchasedOffer = offersAfter.find((o) => o.offerId === offers[0]!.offerId);
+    expect(purchasedOffer?.quantity, 'keyboard purchase should mark first offer sold out').toBe(0);
+  });
 });

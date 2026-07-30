@@ -945,6 +945,7 @@ export function initializeFloor2Scenario(
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+  world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);
     initializePlayerWeaponSkills(world, playerEid);

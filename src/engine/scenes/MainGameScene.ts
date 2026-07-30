@@ -1724,8 +1724,7 @@ export class MainGameScene extends Phaser.Scene {
       !abilitiesOpen;
 
     // The Quartermaster button is only available in safe context when stock exists.
-    const hasQuartermasterStock =
-      !!this.world.floorExtendedState?.settlement?.quartermasterStock;
+    const hasQuartermasterStock = !!this.world.floorExtendedState?.settlement?.quartermasterStock;
 
     // Toggle the on-screen touch buttons in step with the key affordances.
     // Each button shows when its own panel is open (to allow touch dismiss) OR

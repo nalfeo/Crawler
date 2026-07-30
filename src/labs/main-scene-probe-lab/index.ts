@@ -130,7 +130,7 @@ interface MainSceneInternals {
     claimReward(achievementId: string): void;
   };
   bossChestUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
-  quartermasterUI?: { isOpen(): boolean };
+  quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
    * The shared reward-opening sequence overlay driven by `AchievementsUI` /
    * `BossChestUI`. Test/automation affordances only (`getPhase`/`getBucket`/
