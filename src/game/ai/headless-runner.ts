@@ -51,6 +51,7 @@ import {
   autoNpcInteractionSystem,
 } from './auto-progression.js';
 import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
+import { restockFloor2Quartermaster } from '../quartermaster-stock.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
@@ -62,6 +63,13 @@ import {
 import { countEngagingEnemies } from '../floorScenario.js';
 
 const logger = createLogger('game:headless-runner');
+
+/**
+ * Tracks whether the player was in a safe room on the previous frame, keyed
+ * by world instance. Used to detect safe-room entry edges so the Quartermaster
+ * restock fires exactly once per new visit.
+ */
+const quartermasterRestockLatches = new WeakMap<GameWorld, boolean>();
 
 /**
  * Reads `world.state` outside the run loop's control-flow narrowing.
@@ -766,6 +774,21 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      // On each new safe-room entry, advance the Quartermaster restock epoch so
+      // sold items are retired and fresh offers are generated. The call is
+      // unconditional: `restockFloor2Quartermaster` guards against a disabled
+      // economy, missing settlement, and backwards/skipped epoch requests and
+      // returns a typed error result rather than throwing, so this is safe on
+      // Floor 1 runs and on every frame after the initial entry-edge.
+      const isNowInSafeRoom = world.playerInSafeRoom === true;
+      const wasInSafeRoom = quartermasterRestockLatches.get(world) ?? false;
+      if (isNowInSafeRoom && !wasInSafeRoom) {
+        const qmStock = world.floorExtendedState?.settlement?.quartermasterStock;
+        if (qmStock) {
+          restockFloor2Quartermaster(world, qmStock.restockEpoch + 1);
+        }
+      }
+      quartermasterRestockLatches.set(world, isNowInSafeRoom);
       runSettlementMaintenancePlanner(world);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
