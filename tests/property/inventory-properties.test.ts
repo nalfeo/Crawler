@@ -5,7 +5,7 @@ import {
   addGeneratedEquipmentReference,
   addItem,
   hasGeneratedEquipmentReference,
-  listInventoryEntries,
+  listGeneratedEquipmentReferences,
   listStaticInventorySlots,
   removeItem,
   removeGeneratedEquipmentReference,
@@ -185,11 +185,9 @@ describe('inventory invariants (property-based)', () => {
           expect(removeGeneratedEquipmentReference(bag, removedKey) !== undefined).toBe(existed);
 
           const expected = keys.filter((key) => key !== removedKey);
-          expect(
-            listInventoryEntries(bag)
-              .filter((entry) => entry.kind === 'generated-instance')
-              .map((entry) => entry.instanceKey),
-          ).toEqual(expected);
+          expect(listGeneratedEquipmentReferences(bag).map((entry) => entry.instanceKey)).toEqual(
+            expected,
+          );
         },
       ),
     );
@@ -205,9 +203,7 @@ describe('inventory invariants (property-based)', () => {
         expect(() => addGeneratedEquipmentReference(bag, key)).toThrow();
         expect(hasGeneratedEquipmentReference(bag, key)).toBe(true);
         expect(
-          listInventoryEntries(bag).filter(
-            (entry) => entry.kind === 'generated-instance' && entry.instanceKey === key,
-          ),
+          listGeneratedEquipmentReferences(bag).filter((entry) => entry.instanceKey === key),
         ).toHaveLength(1);
       }),
     );

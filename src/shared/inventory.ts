@@ -417,4 +417,3 @@ export function getVisibleTabs(
 
   return result;
 }
-

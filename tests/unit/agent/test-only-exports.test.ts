@@ -296,9 +296,7 @@ describe('findNewlyTestOnlyExports', () => {
       ),
     ];
 
-    expect(
-      findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests),
-    ).toEqual([
+    expect(findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests)).toEqual([
       {
         name: 'listStaticInventorySlots',
         file: 'src/shared/inventory.ts',
@@ -312,7 +310,9 @@ describe('findNewlyTestOnlyExports', () => {
       src('src/shared/foo.ts', 'export function foo() {}'),
       src('src/game/bar.ts', "import { foo } from '../shared/foo.js';"),
     ];
-    const baseTests = [src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';")];
+    const baseTests = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
     const currentSrc = [
       src('src/shared/foo.ts', 'export function foo() {}'),
       src('src/game/bar.ts', 'export function bar() {}'),
@@ -321,9 +321,7 @@ describe('findNewlyTestOnlyExports', () => {
       src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
     ];
 
-    expect(
-      findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests),
-    ).toEqual([
+    expect(findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests)).toEqual([
       {
         name: 'foo',
         file: 'src/shared/foo.ts',
