@@ -42,19 +42,15 @@ import {
 import type { TerrainPackId, TransformId } from '../../shared/terrain-pack-types.js';
 import {
   resolveDoorRenderMode,
-  ALL_GENERATED_DOOR_TEXTURE_KEYS,
+  GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_SHEET_KEY,
   DOOR_TARGET_HEIGHT_FT,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
+  resolveGeneratedDoorContainFit,
 } from '../sprites/door-visuals.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from '../generatedAssets/index.js';
-import {
-  resolveOpaqueBox,
-  resolveOpaqueFit,
-  type GeneratedSpriteRegistry,
-  type OpaqueBounds,
-} from '../../shared/generated-assets.js';
+import { type GeneratedSpriteRegistry, type OpaqueBounds } from '../../shared/generated-assets.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
@@ -2949,27 +2945,33 @@ export class MainGameScene extends Phaser.Scene {
 
     // Derive each generated door texture's scale ONCE from its ACTUAL loaded
     // opaque box (mirrors terrain-renderer's resolveGeneratedScale). Doors are
-    // HEIGHT-authoritative: `doorTargetHeightPx / box.height` pins every door to
-    // the same real-world height regardless of what aspect the generator handed
-    // us, and the WIDTH then follows the art's aspect and overhangs onto the
-    // neighbouring wall tiles.
+    // CONTAIN-fitted into a one-cell (tileSize) × DOOR_TARGET_HEIGHT_FT box: a
+    // single uniform scale = min(tileSize / box.width, doorHeightPx / box.height)
+    // that never exceeds EITHER axis. Whichever term is smaller binds; the other
+    // comes in under its cap. See DOOR_TARGET_HEIGHT_FT.
     //
-    // This reverses the original width-authoritative rule, which is worth stating
-    // plainly because the old rule's own comment argued the opposite. Under
-    // `tileSize / box.width` the door exactly filled its doorway horizontally and
-    // rendered "however tall the art happens to be" — measured at 4.90 ft against
-    // a 5.75 ft player, i.e. a doorway shorter than the person walking through it.
-    // The premise that failed was that the generator would deliver a ~1:1.75
-    // archway if asked; three rounds of asking moved the delivered aspect by zero.
-    // Height is the axis the player actually reads, so height is what gets pinned.
+    // This clamps WIDTH to one cell. Under the previous HEIGHT-authoritative rule
+    // (`doorHeightPx / box.height` alone) width followed the art's ~1:1.25 aspect
+    // and rendered ~5.2 ft in a 4 ft cell, overhanging the doorway. The width cap
+    // removes that. The cost — face-on N/S art now binds on width and renders
+    // ~4.9–5.1 ft tall rather than 6.5 ft — was accepted explicitly (a generator
+    // ceiling blocks taller art). Side-on E/W art (aspect ~0.47) binds on HEIGHT
+    // instead and renders as a correct narrow tall strip.
     //
-    // The art contract this relies on: door textures must be bottom-aligned, so
-    // the opaque box's bottom edge is the floor line. Full-bleed horizontally is
-    // no longer required — width is now free. Pinned deterministically by
-    // tests/unit/generated-door-art.test.ts.
+    // PATH REALITY: both shipped floors declare terrain packs whose doorSet wins
+    // precedence below, so this generated-door fit renders ZERO times on them today
+    // (floor1-default = 84 pack doors, 0 generated, verified live). It is fallback
+    // hardening for a pack-less floor / a pack missing an orientation, NOT a change
+    // to the doors the player currently sees on Floor 1.
     //
-    // Degrades safely: an entry with no/mismatched bounds falls back to the
-    // whole canvas, which still yields a correctly-height-fitted door.
+    // The art contract this relies on: door textures are bottom-aligned, so the
+    // opaque box's bottom edge is the floor line (anchorBase origins pin the box
+    // bottom to the tile's bottom edge) and any excess height extends NORTH. No
+    // rotation is applied — the vertical key is genuinely side-on art. Pinned
+    // deterministically by tests/unit/generated-door-art.test.ts.
+    //
+    // Degrades safely: an entry with no/mismatched bounds falls back to the whole
+    // canvas, which still yields a correctly contain-fitted door.
     const rawDoorRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
       | GeneratedSpriteRegistry
       | undefined;
@@ -2989,11 +2991,11 @@ export class MainGameScene extends Phaser.Scene {
         scale: number;
         originX: number;
         originY: number;
-        centerOriginX: number;
-        centerOriginY: number;
       }
     >();
-    for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
+    // Use the canonical per-state key map directly so the exported contract is
+    // exercised in runtime code (not tests-only).
+    for (const key of Object.values(GENERATED_DOOR_TEXTURE_KEYS)) {
       if (!this.textures.exists(key)) {
         continue;
       }
@@ -3007,41 +3009,19 @@ export class MainGameScene extends Phaser.Scene {
         continue;
       }
       const bounds = generatedDoorBounds.get(key);
-      const box = resolveOpaqueBox(bounds, canvasWidth, canvasHeight);
-      const fit = resolveOpaqueFit({
+      // Shared with tests/unit/generated-door-art.test.ts to prevent the
+      // production fit wiring and regression gates from drifting apart.
+      const fit = resolveGeneratedDoorContainFit({
         bounds,
         canvasWidth,
         canvasHeight,
-        // Only the ORIGINS are taken from resolveOpaqueFit; the scale below is
-        // computed separately because resolveOpaqueFit is height-authoritative
-        // and doors are width-authoritative. These targets are therefore inert.
-        targetWidthPx: tileSize,
-        targetHeightPx: tileSize,
-        anchorBase: true,
-        floorPlane: false,
+        targetWidth: tileSize,
+        targetHeight: doorTargetHeightPx,
       });
       generatedDoorFits.set(key, {
-        // HEIGHT-authoritative, not width-authoritative. See DOOR_TARGET_HEIGHT_FT:
-        // fitting the opaque box to the tile WIDTH let the generator's aspect decide
-        // rendered height, which produced a 4.90 ft doorway for a 5.75 ft player.
-        //
-        // This is correct for the quarter-turned (vertical) branch too, and for the
-        // same reason the old width rule was. Rotation swaps the axes: for turned art
-        // the opaque box's HEIGHT becomes the on-screen HORIZONTAL extent, so dividing
-        // by box.height still pins the door's own long axis — the axis a player reads
-        // as "how tall is this doorway" — to the same DOOR_TARGET_HEIGHT_FT in both
-        // orientations. A vertical door therefore reaches the same distance into the
-        // room that a horizontal door reaches up the wall.
-        scale: doorTargetHeightPx / box.height,
+        scale: fit.scale,
         originX: fit.originX,
         originY: fit.originY,
-        // Origins of the OPAQUE BOX centre, in canvas-normalised coords, used
-        // only by the quarter-turned (vertical) branch. Rotation pivots on the
-        // origin, so pivoting on the box centre — rather than the canvas centre —
-        // keeps the door centred in its tile even when the art sits off-centre in
-        // its canvas.
-        centerOriginX: (box.x + box.width / 2) / canvasWidth,
-        centerOriginY: (box.y + box.height / 2) / canvasHeight,
       });
     }
     const availableGeneratedKeys: ReadonlySet<string> = new Set(generatedDoorFits.keys());
@@ -3072,16 +3052,12 @@ export class MainGameScene extends Phaser.Scene {
       scale: number,
       originX = 0.5,
       originY = 1,
-      angleDeg = 0,
     ): void => {
       const img = this.add
         .image(px, tileBottomY, key, frame)
         .setOrigin(originX, originY)
         .setDepth(-19)
         .setScale(scale);
-      if (angleDeg !== 0) {
-        img.setAngle(angleDeg);
-      }
       this.uiCamera?.ignore(img);
       this.doorImages.push(img);
     };
@@ -3153,51 +3129,22 @@ export class MainGameScene extends Phaser.Scene {
             // availableGeneratedKeys, which is built from generatedDoorFits, so
             // the lookup always hits (the ?? branch is unreachable but keeps the
             // type checker happy without a non-null assertion).
+            //
+            // No rotation: the vertical (E/W) key is genuinely side-on art, and
+            // both N/S and E/W art are contain-fitted and bottom-anchored the same
+            // way. The old quarter-turn branch existed only because the previous
+            // "side" keys were face-on art needing a 90° turn; those keys had no
+            // approved art and the branch was provably dead, so it was removed.
             const fit = generatedDoorFits.get(mode.textureKey);
-            if (mode.quarterTurnsCcw === 1) {
-              // Vertical doorway wearing face-on art: turn it 90° CCW, matching
-              // the terrain packs' own measured convention. Rotation swaps which
-              // screen axis each art axis lands on: the art's HEIGHT becomes the
-              // on-screen X extent (along the corridor) and its WIDTH becomes the
-              // on-screen Y extent (across the gap in the north↕south wall run).
-              //
-              // Stated plainly because the height-authoritative rule is a worse
-              // fit here than on the horizontal branch, and the comment this
-              // replaced claimed the opposite: `doorTargetHeightPx / box.height`
-              // pins the 6.5 ft axis along the CORRIDOR, so a turned door
-              // overhangs ~1.25 ft onto the walkable floor either side, while the
-              // free width axis is what spans the 4 ft doorway gap. On the
-              // horizontal branch the free axis overhangs onto WALL tiles, which
-              // is why the trade was accepted there.
-              //
-              // This branch is unreachable today — `quarterTurnsCcw` is only ever
-              // 1 for the two vertical keys, and neither has approved art, so
-              // every vertical doorway currently falls back to unrotated face-on
-              // horizontal art. Revisit the axis choice when the side pair ships;
-              // do not assume the horizontal rule transfers.
-              //
-              // Pivot and position on the opaque-box centre.
-              addDoorImage(
-                cx,
-                y * tileSize + tileSize / 2,
-                mode.textureKey,
-                undefined,
-                fit?.scale ?? 1,
-                fit?.centerOriginX ?? 0.5,
-                fit?.centerOriginY ?? 0.5,
-                -90,
-              );
-            } else {
-              addDoorImage(
-                cx,
-                tileBottomY,
-                mode.textureKey,
-                undefined,
-                fit?.scale ?? 1,
-                fit?.originX ?? 0.5,
-                fit?.originY ?? 1,
-              );
-            }
+            addDoorImage(
+              cx,
+              tileBottomY,
+              mode.textureKey,
+              undefined,
+              fit?.scale ?? 1,
+              fit?.originX ?? 0.5,
+              fit?.originY ?? 1,
+            );
             if (isOpen) {
               openGeneratedCount += 1;
             } else {

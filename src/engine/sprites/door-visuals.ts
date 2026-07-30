@@ -1,3 +1,5 @@
+import { resolveOpaqueFit, type OpaqueBounds } from '../../shared/generated-assets.js';
+
 /**
  * door-visuals — pure precedence logic for which art a dungeon door tile renders.
  *
@@ -32,25 +34,84 @@
 export type DoorOrientation = 'horizontal' | 'vertical';
 
 /**
- * How tall a dungeon doorway renders, in FEET, measured on the art's opaque box.
+ * The MAXIMUM height a dungeon doorway renders, in FEET, measured on the art's
+ * opaque box. It is one term of a CONTAIN-fit, not a target the door is stretched
+ * to reach.
  *
- * Doors are fitted HEIGHT-authoritatively, not width-authoritatively, and that is
- * a deliberate reversal. Fitting the art's opaque box to the 4 ft tile WIDTH made
- * rendered height a function of whatever aspect the generator happened to produce
- * — measured at 4.90 ft for the closed leaf against a 5.75 ft player, i.e. a
- * doorway shorter than the person walking through it. Three separate brief rounds
- * asking the generator for a ~1:1.75 archway moved the delivered aspect by zero
- * (it lands near 1:1.25 every time), so the aspect is a generator capability
- * limit, not a prompt defect, and the renderer is the only lever that actually
- * moves.
+ * The renderer fits each door's opaque box inside a `tileSize` (one cell, 4 ft) ×
+ * `DOOR_TARGET_HEIGHT_FT` (6.5 ft) box with a single uniform scale that never
+ * exceeds EITHER axis:
  *
- * 6.5 ft clears the 5.75 ft player with visible headroom. The cost, accepted
- * knowingly: at ~1:1.25 art aspect the arch renders ~5.2 ft wide and so overhangs
- * roughly 0.6 ft onto each neighbouring WALL tile. That is cosmetically fine —
- * the overhang lands on masonry, never on walkable floor — and it does not touch
- * collision, which is driven by the tile map, not by this sprite.
+ *   scale = min(tileSize / box.width, doorTargetHeightPx / box.height)
+ *
+ * Whichever term is smaller binds; the other axis then comes in under its cap.
+ * The art is NOT distorted to fill the box — a shorter door is accepted over a
+ * stretched one.
+ *
+ * Why the WIDTH cap exists: fitted HEIGHT-authoritatively (`doorTargetHeightPx /
+ * box.height` alone), height pins at 6.5 ft and the art's ~1:1.25 aspect decides
+ * width — a ~5.2 ft leaf in a 4 ft cell that overhangs the doorway onto adjacent
+ * floor. The width cap keeps a generated door inside its cell in either
+ * orientation.
+ *
+ * PATH REALITY — this governs the generated-door FALLBACK only, NOT the doors the
+ * player currently sees. Both shipped floors (Floor 1 and Floor 2) declare terrain
+ * packs whose `doorSet` art wins precedence in {@link resolveDoorRenderMode}, so
+ * every door they render is a pack door already sized to exactly one cell. The
+ * generated keys below render ZERO times in the shipped game today — verified live:
+ * `floor1-default` renders 84 pack doors and 0 generated doors. This contain-fit is
+ * correct hardening for any pack-less floor, or a pack missing an orientation; it
+ * does not change Floor 1's pack doors. (The original "wrong widths" complaint was
+ * about Floor 1, i.e. pack doors — a separate lever from this generated path.)
+ *
+ * The accepted cost, chosen explicitly by the maintainer for the generated path:
+ * the face-on N/S art (aspect ~0.8) binds on WIDTH and so renders SHORTER than
+ * 6.5 ft — 4.90 ft closed, 5.07 ft open. Taller N/S art was pursued and hit a hard
+ * generator ceiling (six attempts), so the renderer is the only lever; a ~5 ft door
+ * that fits its cell was preferred to a 6.5 ft door that spills. Revisit only if a
+ * pack-less floor ever renders these and it reads badly.
+ *
+ * The side-on E/W art (aspect ~0.47) binds on HEIGHT instead and renders as a
+ * narrow ~3.1 ft × 6.5 ft strip — which is CORRECT: viewed edge-on a door should
+ * read as a thin tall slab, not a 4 ft face.
+ *
+ * The art contract this relies on: door textures are bottom-aligned, so the
+ * opaque box's bottom edge is the floor line and any excess height extends NORTH.
+ * Pinned deterministically by tests/unit/generated-door-art.test.ts.
  */
 export const DOOR_TARGET_HEIGHT_FT = 6.5;
+
+/**
+ * Inputs for {@link resolveGeneratedDoorContainFit}.
+ *
+ * Units are ratio-only and may be pixels (runtime) or feet (tests), as long as
+ * `canvas*`, `targetWidth`, and `targetHeight` use the same unit family.
+ */
+export interface GeneratedDoorContainFitInput {
+  readonly bounds: OpaqueBounds | undefined;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  readonly targetWidth: number;
+  readonly targetHeight: number;
+}
+
+/**
+ * Shared generated-door fit contract used by both runtime and regression tests:
+ * contain-fit into one-cell width × max doorway height, anchored on the art's
+ * base. Centralizing this prevents drift between `MainGameScene` wiring and test
+ * assertions.
+ */
+export function resolveGeneratedDoorContainFit(input: GeneratedDoorContainFitInput) {
+  return resolveOpaqueFit({
+    bounds: input.bounds,
+    canvasWidth: input.canvasWidth,
+    canvasHeight: input.canvasHeight,
+    targetWidthPx: input.targetWidth,
+    targetHeightPx: input.targetHeight,
+    anchorBase: true,
+    floorPlane: true,
+  });
+}
 
 /**
  * Approved generated door texture keys, by open state × orientation. Each is
@@ -60,15 +121,18 @@ export const DOOR_TARGET_HEIGHT_FT = 6.5;
  */
 export const GENERATED_DOOR_TEXTURE_KEYS = {
   closedHorizontal: 'tile-door-v1-var-9',
-  closedVertical: 'tile-door-side-v1-var-0',
+  // Genuinely side-on E/W art (shipped by PR #2375): drawn edge-on, not a rotated
+  // face-on door, so the renderer applies NO rotation. Contain-fitting makes it
+  // bind on height and render as a narrow tall strip, which is the correct edge-on
+  // read.
+  closedVertical: 'tile-door-sideon-v1-var-0',
   openHorizontal: 'tile-door-open-v1-var-0',
+  // KNOWN GAP: the E/W *open* door failed generation (same generator ceiling as
+  // the taller N/S art), so no `tile-door-open-side-v1-var-0` art exists. Vertical
+  // OPEN doorways therefore fall back to the face-on horizontal open leaf via
+  // `generatedKeysFor`. Accepted; do not attempt to regenerate here.
   openVertical: 'tile-door-open-side-v1-var-0',
 } as const satisfies Record<string, string>;
-
-/** Every generated door texture key, for the renderer to probe at load time. */
-export const ALL_GENERATED_DOOR_TEXTURE_KEYS: readonly string[] = Object.values(
-  GENERATED_DOOR_TEXTURE_KEYS,
-);
 
 /** Kenney Tiny Dungeon spritesheet key (placeholder fallback art). */
 export const DOOR_SHEET_KEY = 'kenney-tiny-dungeon';
@@ -89,39 +153,10 @@ export type DoorRenderMode =
   | {
       readonly kind: 'generated';
       readonly textureKey: string;
-      /**
-       * Quarter-turns COUNTER-clockwise the renderer must apply to this texture.
-       *
-       * The two vertical door assets are authored as ordinary FACE-ON art and are
-       * turned by the renderer rather than drawn pre-rotated. That is a measured
-       * decision, not a shortcut: diffing the shipped terrain packs showed their
-       * vertical door cell is their horizontal cell rotated exactly 90° CCW
-       * (`H.top` vs `V.left` reversed = 0.0 mean per-channel difference, i.e.
-       * byte-identical, on both packs; the identity mapping scores 20.8). So the
-       * turn is the packs' own convention, and applying it here is exact where
-       * three rounds of asking a generator to draw the quarter-turn produced
-       * face-on art every time.
-       *
-       * Only ever 1 for a key chosen for the EXACT vertical orientation. When a
-       * vertical doorway falls back to horizontal art this stays 0, so the
-       * fallback path is byte-identical to its pre-rotation behaviour.
-       */
-      readonly quarterTurnsCcw: 0 | 1;
     }
   | { readonly kind: 'kenney-closed' }
   | { readonly kind: 'kenney-open' }
   | { readonly kind: 'color'; readonly open: boolean };
-
-/**
- * The generated door keys authored face-on but DRAWN quarter-turned, because the
- * wall run they sit in is vertical. Membership is a property of the asset, so it
- * is derived from the key table rather than from the requested orientation —
- * that is what keeps the fallback path unrotated.
- */
-const QUARTER_TURNED_DOOR_KEYS: ReadonlySet<string> = new Set([
-  GENERATED_DOOR_TEXTURE_KEYS.closedVertical,
-  GENERATED_DOOR_TEXTURE_KEYS.openVertical,
-]);
 
 /** The generated texture keys for one open/closed state, most-preferred first. */
 function generatedKeysFor(isOpen: boolean, orientation: DoorOrientation): readonly string[] {
@@ -167,7 +202,6 @@ export function resolveDoorRenderMode(
       return {
         kind: 'generated',
         textureKey: key,
-        quarterTurnsCcw: QUARTER_TURNED_DOOR_KEYS.has(key) ? 1 : 0,
       };
     }
   }
