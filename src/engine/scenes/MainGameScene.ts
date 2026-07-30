@@ -47,13 +47,10 @@ import {
   DOOR_TARGET_HEIGHT_FT,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
+  resolveGeneratedDoorContainFit,
 } from '../sprites/door-visuals.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from '../generatedAssets/index.js';
-import {
-  resolveOpaqueFit,
-  type GeneratedSpriteRegistry,
-  type OpaqueBounds,
-} from '../../shared/generated-assets.js';
+import { type GeneratedSpriteRegistry, type OpaqueBounds } from '../../shared/generated-assets.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
@@ -3010,20 +3007,14 @@ export class MainGameScene extends Phaser.Scene {
         continue;
       }
       const bounds = generatedDoorBounds.get(key);
-      // CONTAIN-fit the opaque box into one cell (tileSize) × DOOR_TARGET_HEIGHT_FT:
-      // `floorPlane: true` makes resolveOpaqueFit return
-      // scale = min(targetWidthPx / box.width, targetHeightPx / box.height), the
-      // clamp that keeps every door within one cell wide and 6.5 ft tall. The
-      // anchorBase origins pin the opaque box's bottom-centre to the tile's bottom
-      // edge, so any excess height extends north. See DOOR_TARGET_HEIGHT_FT.
-      const fit = resolveOpaqueFit({
+      // Shared with tests/unit/generated-door-art.test.ts to prevent the
+      // production fit wiring and regression gates from drifting apart.
+      const fit = resolveGeneratedDoorContainFit({
         bounds,
         canvasWidth,
         canvasHeight,
-        targetWidthPx: tileSize,
-        targetHeightPx: doorTargetHeightPx,
-        anchorBase: true,
-        floorPlane: true,
+        targetWidth: tileSize,
+        targetHeight: doorTargetHeightPx,
       });
       generatedDoorFits.set(key, {
         scale: fit.scale,

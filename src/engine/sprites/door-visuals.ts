@@ -1,3 +1,5 @@
+import { resolveOpaqueFit, type OpaqueBounds } from '../../shared/generated-assets.js';
+
 /**
  * door-visuals — pure precedence logic for which art a dungeon door tile renders.
  *
@@ -78,6 +80,38 @@ export type DoorOrientation = 'horizontal' | 'vertical';
  * Pinned deterministically by tests/unit/generated-door-art.test.ts.
  */
 export const DOOR_TARGET_HEIGHT_FT = 6.5;
+
+/**
+ * Inputs for {@link resolveGeneratedDoorContainFit}.
+ *
+ * Units are ratio-only and may be pixels (runtime) or feet (tests), as long as
+ * `canvas*`, `targetWidth`, and `targetHeight` use the same unit family.
+ */
+export interface GeneratedDoorContainFitInput {
+  readonly bounds: OpaqueBounds | undefined;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+  readonly targetWidth: number;
+  readonly targetHeight: number;
+}
+
+/**
+ * Shared generated-door fit contract used by both runtime and regression tests:
+ * contain-fit into one-cell width × max doorway height, anchored on the art's
+ * base. Centralizing this prevents drift between `MainGameScene` wiring and test
+ * assertions.
+ */
+export function resolveGeneratedDoorContainFit(input: GeneratedDoorContainFitInput) {
+  return resolveOpaqueFit({
+    bounds: input.bounds,
+    canvasWidth: input.canvasWidth,
+    canvasHeight: input.canvasHeight,
+    targetWidthPx: input.targetWidth,
+    targetHeightPx: input.targetHeight,
+    anchorBase: true,
+    floorPlane: true,
+  });
+}
 
 /**
  * Approved generated door texture keys, by open state × orientation. Each is

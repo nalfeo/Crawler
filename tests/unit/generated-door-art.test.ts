@@ -4,6 +4,7 @@ import {
   GENERATED_DOOR_TEXTURE_KEYS,
   ALL_GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_TARGET_HEIGHT_FT,
+  resolveGeneratedDoorContainFit,
 } from '../../src/engine/sprites/door-visuals.js';
 
 /**
@@ -75,18 +76,20 @@ const EPS_FT = 1e-6;
  * (PIXELS_PER_FOOT) is common to both scale terms and to the box dimensions, so it
  * cancels and the ratio math can be done directly on the opaque-box pixels.
  */
-function renderedFt(bounds: { width: number; height: number }): {
+function renderedFt(bounds: NonNullable<ManifestEntry['opaqueBounds']>): {
   widthFt: number;
   heightFt: number;
-  binds: 'width' | 'height';
 } {
-  const widthTerm = TILE_WIDTH_FT / bounds.width;
-  const heightTerm = DOOR_TARGET_HEIGHT_FT / bounds.height;
-  const scale = Math.min(widthTerm, heightTerm);
+  const fit = resolveGeneratedDoorContainFit({
+    bounds,
+    canvasWidth: bounds.canvasWidth,
+    canvasHeight: bounds.canvasHeight,
+    targetWidth: TILE_WIDTH_FT,
+    targetHeight: DOOR_TARGET_HEIGHT_FT,
+  });
   return {
-    widthFt: scale * bounds.width,
-    heightFt: scale * bounds.height,
-    binds: widthTerm <= heightTerm ? 'width' : 'height',
+    widthFt: fit.scale * bounds.width,
+    heightFt: fit.scale * bounds.height,
   };
 }
 
@@ -146,14 +149,11 @@ describe('generated door art contract', () => {
     expect(openH).toBeDefined();
     expect(closedV, 'side-on E/W art must be shipped and wired').toBeDefined();
 
-    expect(renderedFt(closedH!).binds).toBe('width');
-    expect(renderedFt(openH!).binds).toBe('width');
-    expect(renderedFt(closedV!).binds).toBe('height');
-
-    // The face-on leaves fill the cell to within slop; the side-on strip does not.
+    // Face-on leaves width-bind: they fill the cell while staying under max height.
     expect(Math.abs(renderedFt(closedH!).widthFt - TILE_WIDTH_FT)).toBeLessThanOrEqual(0.01);
+    expect(Math.abs(renderedFt(openH!).widthFt - TILE_WIDTH_FT)).toBeLessThanOrEqual(0.01);
     expect(renderedFt(closedV!).widthFt).toBeLessThan(TILE_WIDTH_FT);
-    // The side-on strip reaches the full height cap; the face-on leaves do not.
+    // Side-on strip height-binds: it reaches max height while staying under width cap.
     expect(Math.abs(renderedFt(closedV!).heightFt - DOOR_TARGET_HEIGHT_FT)).toBeLessThanOrEqual(
       0.01,
     );
