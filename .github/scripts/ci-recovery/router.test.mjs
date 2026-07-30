@@ -29,6 +29,7 @@ import {
   isRepairWakeEligible,
   isRepairWindowSweepEvent,
   isRetryableError,
+  isPrimaryRateLimitExhausted,
   listRecentOutstandingRunIds,
   MAX_DISPATCH_BUDGET_TRAIN_BUSY,
   MAX_DISPATCH_BUDGET_TRAIN_IDLE,
@@ -1974,6 +1975,60 @@ test('isRetryableError only retries relevant HTTP errors', () => {
   assert.equal(isRetryableError(makeError(403, 'API rate limit exceeded for user')), true);
   assert.equal(isRetryableError(makeError(403, 'Forbidden')), false);
   assert.equal(isRetryableError(makeError(404, 'Not Found')), false);
+});
+
+// Incident 2026-07-30: `CRAWLER_CI_PAT` is a classic user PAT whose 5,000 req/hr
+// core budget is shared across every token owned by that user. Once exhausted,
+// the budget only refills at `x-ratelimit-reset` — up to an hour later. Retrying
+// it 6 times with a 30s cap can never succeed and burns 6 requests per call
+// against an already-empty budget, deepening the outage it is waiting on.
+test('isRetryableError does not retry a primary rate-limit exhaustion', () => {
+  const exhausted = makeError(403, 'API rate limit exceeded for user ID 14006787', {
+    'x-ratelimit-remaining': '0',
+    'x-ratelimit-limit': '5000',
+  });
+  assert.equal(isPrimaryRateLimitExhausted(exhausted), true);
+  assert.equal(isRetryableError(exhausted), false);
+});
+
+test('isRetryableError does not retry a 429 primary rate-limit exhaustion', () => {
+  const exhausted = makeError(429, 'API rate limit exceeded for user ID 14006787', {
+    'x-ratelimit-remaining': '0',
+    'x-ratelimit-limit': '5000',
+  });
+  assert.equal(isPrimaryRateLimitExhausted(exhausted), true);
+  assert.equal(isRetryableError(exhausted), false);
+});
+
+test('isRetryableError still retries a rate-limit 403 that has budget remaining', () => {
+  // Budget left but still 403 => not primary exhaustion; treat as transient.
+  const transient = makeError(403, 'API rate limit exceeded', {
+    'x-ratelimit-remaining': '17',
+  });
+  assert.equal(isPrimaryRateLimitExhausted(transient), false);
+  assert.equal(isRetryableError(transient), true);
+});
+
+test('isRetryableError still retries secondary rate limits even at zero budget', () => {
+  // Secondary limits are short-lived and carry retry-after, so backoff works.
+  const secondary = makeError(403, 'You have exceeded a secondary rate limit', {
+    'x-ratelimit-remaining': '0',
+    'retry-after': '60',
+  });
+  assert.equal(isRetryableError(secondary), true);
+});
+
+test('isPrimaryRateLimitExhausted detects exhausted budget only on 403/429', () => {
+  assert.equal(
+    isPrimaryRateLimitExhausted(makeError(429, 'Too Many Requests', { 'x-ratelimit-remaining': '0' })),
+    true,
+  );
+  assert.equal(isPrimaryRateLimitExhausted(makeError(404, 'Not Found')), false);
+  assert.equal(isPrimaryRateLimitExhausted(makeError(403, 'Forbidden')), false);
+  assert.equal(
+    isPrimaryRateLimitExhausted(makeError(500, 'Server Error', { 'x-ratelimit-remaining': '0' })),
+    false,
+  );
 });
 
 test('computeBackoffDelayMs honors Retry-After and caps delay', () => {
