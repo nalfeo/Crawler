@@ -121,7 +121,7 @@ function preparePurchase(
 
 export function getSettlementShopOfferViews(
   world: GameWorld,
-  playerEid: number,
+  _playerEid: number,
   shopNpcEid: number,
 ): readonly SettlementShopOfferView[] {
   const shop = resolveShop(world, shopNpcEid);
