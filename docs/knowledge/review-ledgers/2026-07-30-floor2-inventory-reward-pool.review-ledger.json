@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "floor2-inventory-reward-pool",
+  "task_title": "Unify Floor 2 generated equipment inventory and loot-box rewards",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Rejected ambiguous lootBox overloading and incomplete two-read-site migration. Revised to an explicit lootTable discriminator with ADR updates, one identity-preserving inventory query model, Common output normalization plus validation, instance-key UI state, and aligned/opposite/neutral pool tests. The explicit discriminator preserves the user-mandated loot-box concept while structurally separating Floor 1 materials from Floor 2 generated equipment."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

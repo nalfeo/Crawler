@@ -25,11 +25,21 @@ import {
   resolveEquipmentInstance,
   type EquipDeltaPreview,
 } from '../core/systems/equipmentSystem.js';
+import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../shared/stats.js';
 import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
-import { addItem, filterByEquipmentSlot, filterEquippable } from '../shared/inventory.js';
-import type { InventoryBag, InventorySlot } from '../shared/inventory.js';
+import {
+  addItem,
+  filterByEquipmentSlot,
+  filterEquippable,
+  inventoryEntryIdentity,
+} from '../shared/inventory.js';
+import type {
+  GeneratedInventoryEntryResolver,
+  InventoryBag,
+  InventoryBagEntry,
+} from '../shared/inventory.js';
 import { getItemById, ItemRarity, RARITY_COLORS, type ItemDef } from '../shared/items.js';
 import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import {
@@ -76,6 +86,21 @@ const COLORS = {
   statBuff: 0x49d06f,
   statNerf: 0xe8695b,
 } as const;
+
+function generatedRarityColor(rarity: string): number {
+  switch (rarity) {
+    case 'common':
+      return RARITY_COLORS[ItemRarity.Common];
+    case 'uncommon':
+      return RARITY_COLORS[ItemRarity.Uncommon];
+    case 'rare':
+      return RARITY_COLORS[ItemRarity.Rare];
+    case 'epic':
+      return RARITY_COLORS[ItemRarity.Epic];
+    default:
+      return RARITY_COLORS[ItemRarity.Legendary];
+  }
+}
 
 function formatStatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
@@ -129,6 +154,8 @@ export function createEquipmentUI(
   isTooltipVisible(): boolean;
   isTooltipTopmost(): boolean;
   getBagItemIds(): string[];
+  /** Render-order cell for one exact generated inventory instance. */
+  getGeneratedBagCellScreenBounds(instanceKey: string): ScreenBounds | null;
   getBagCellScreenBounds(index: number): ScreenBounds | null;
   getBagColumnScreenBounds(): ScreenBounds;
   scrollBag(rows: number): boolean;
@@ -383,7 +410,7 @@ export function createEquipmentUI(
   let bagItemIds: string[] = [];
   let bagScrollRow = 0;
   let bagMaxScroll = 0;
-  let previewItemId: string | null = null;
+  let previewEntryIdentity: string | null = null;
   let tooltipBounds: ScreenBounds | null = null;
   const getPanelScreenBounds = (): ScreenBounds => ({
     x: panelX,
@@ -513,6 +540,22 @@ export function createEquipmentUI(
     });
     fallback.setOrigin(0.5, 0.5);
     return fallback;
+  }
+
+  function createGeneratedItemIcon(
+    artKey: string,
+    displayName: string,
+    x: number,
+    y: number,
+    boxSize: number,
+  ): Phaser.GameObjects.GameObject {
+    if (scene.textures?.exists(artKey) === true) {
+      const image = scene.add.image(snap(x), snap(y), artKey);
+      image.setOrigin(0.5, 0.5);
+      image.setScale(fitScaleForBox(image.width, image.height, boxSize));
+      return image;
+    }
+    return createItemIcon(artKey, { name: displayName }, x, y, boxSize);
   }
 
   function createSlotPlaceholder(
@@ -785,12 +828,66 @@ export function createEquipmentUI(
 
   // Deterministic hover surface for the bag grid (also driven by probes/e2e):
   // renders the equip-delta preview for a bag item, or clears it when null.
-  function previewBagItem(itemId: string | null): void {
-    previewItemId = itemId;
-    if (itemId === null || !lastWorld || playerEid < 0) {
+  const generatedBagMetadata: GeneratedInventoryEntryResolver = (entry) => {
+    if (!lastWorld) return undefined;
+    const instance = getGeneratedEquipmentInstance(lastWorld, entry.instanceKey);
+    if (!instance) return undefined;
+    return {
+      name: instance.frozen.displayName,
+      description: '',
+      tags: [],
+      rarity: instance.rarity,
+      slots: instance.frozen.slots,
+    };
+  };
+
+  function showGeneratedBagPreview(
+    entry: Extract<InventoryBagEntry, { kind: 'generated-instance' }>,
+  ): void {
+    if (!lastWorld) return;
+    const instance = getGeneratedEquipmentInstance(lastWorld, entry.instanceKey);
+    if (!instance) {
       clearTooltip();
       return;
     }
+    const bonuses = Object.entries(instance.frozen.statBonuses)
+      .filter(([, value]) => value !== 0)
+      .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`)
+      .join('  ');
+    renderInspector([
+      {
+        text: truncateToWidth(instance.frozen.displayName, 9),
+        color: generatedRarityColor(instance.rarity),
+        size: 9,
+      },
+      {
+        text: truncateToWidth(
+          instance.frozen.slots.map((slot) => slot.toUpperCase()).join(' / '),
+          8,
+        ),
+        color: COLORS.textSecondary,
+        size: 8,
+      },
+      {
+        text: truncateToWidth(bonuses || 'NO STAT BONUS', 8),
+        color: bonuses ? COLORS.statBuff : COLORS.textSecondary,
+        size: 8,
+      },
+      { text: 'CLICK TO EQUIP', color: COLORS.accent, size: 8 },
+    ]);
+  }
+
+  function previewBagEntry(entry: InventoryBagEntry | null): void {
+    previewEntryIdentity = entry ? inventoryEntryIdentity(entry) : null;
+    if (entry === null || !lastWorld || playerEid < 0) {
+      clearTooltip();
+      return;
+    }
+    if (entry.kind === 'generated-instance') {
+      showGeneratedBagPreview(entry);
+      return;
+    }
+    const itemId = entry.itemId;
     const def = getItemById(itemId);
     const preview = previewEquipDelta(lastWorld, playerEid, itemId);
     if (!def || !preview) {
@@ -800,19 +897,32 @@ export function createEquipmentUI(
     showEquipPreview(def, preview);
   }
 
+  function previewBagItem(itemId: string | null): void {
+    previewBagEntry(
+      itemId === null ? null : { kind: 'stackable-static-item', itemId, quantity: 1 },
+    );
+  }
+
   // Equip an item straight from the integrated bag (atomic Diablo-style swap in
   // the core). Real play is safe-context-gated by equipFromBag; the lab/e2e
   // force it. Refreshes this panel and notifies the scene to sync any separate
   // inventory panel.
-  function equipBagItem(itemId: string): boolean {
+  function equipBagEntry(entry: InventoryBagEntry): boolean {
     if (!currentBag || playerEid < 0 || !lastWorld) return false;
-    const result = equipFromBag(lastWorld, playerEid, itemId);
+    const result =
+      entry.kind === 'generated-instance'
+        ? equipFromBag(lastWorld, playerEid, entry)
+        : equipFromBag(lastWorld, playerEid, entry.itemId);
     if (result.ok) {
-      previewItemId = null;
+      previewEntryIdentity = null;
       invalidate();
       config.onInventoryChanged?.();
     }
     return result.ok;
+  }
+
+  function equipBagItem(itemId: string): boolean {
+    return equipBagEntry({ kind: 'stackable-static-item', itemId, quantity: 1 });
   }
 
   // ---------------------------------------------------------------------------
@@ -846,6 +956,8 @@ export function createEquipmentUI(
         instId !== null && state
           ? (resolveEquipmentInstance(lastWorld, state, instId) ?? null)
           : null;
+      const generatedInstance =
+        typeof instId === 'string' ? getGeneratedEquipmentInstance(lastWorld, instId) : undefined;
       const slotBorderColor = instance ? COLORS.panelBorder : COLORS.slotEmptyBorder;
       const itemDef = instance ? getItemById(instance.def.id) : undefined;
 
@@ -940,9 +1052,17 @@ export function createEquipmentUI(
         0x1f2d48,
         0.95,
       );
-      const iconObject = instance
-        ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 4)
-        : createSlotPlaceholder(slot.id, cx, cy + 2);
+      const iconObject = generatedInstance
+        ? createGeneratedItemIcon(
+            generatedInstance.frozen.artKey,
+            generatedInstance.frozen.displayName,
+            cx,
+            cy,
+            boxH - 4,
+          )
+        : instance
+          ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 4)
+          : createSlotPlaceholder(slot.id, cx, cy + 2);
       const occupiedFill =
         instance !== null
           ? scene.add.rectangle(
@@ -1179,11 +1299,16 @@ export function createEquipmentUI(
     bagItemIds = [];
     if (!currentBag) return;
 
-    const rawSlots: InventorySlot[] = selectedSlotFilter
-      ? filterByEquipmentSlot(currentBag, selectedSlotFilter)
-      : filterEquippable(currentBag);
-    bagItemIds = rawSlots.map((slot) => slot.itemId);
-    bagCellBounds = new Array(rawSlots.length).fill(null);
+    const entries: InventoryBagEntry[] = selectedSlotFilter
+      ? filterByEquipmentSlot(currentBag, selectedSlotFilter, generatedBagMetadata)
+      : filterEquippable(currentBag, generatedBagMetadata);
+    bagItemIds = entries
+      .filter(
+        (entry): entry is Extract<InventoryBagEntry, { kind: 'stackable-static-item' }> =>
+          entry.kind === 'stackable-static-item',
+      )
+      .map((entry) => entry.itemId);
+    bagCellBounds = new Array(entries.length).fill(null);
 
     // Header row.
     const heading = crispText(bagX + 12, dollY + 26, 'BAG', {
@@ -1208,7 +1333,7 @@ export function createEquipmentUI(
     const subHeading = crispText(
       bagX + bagW - 12,
       dollY + 26,
-      `${filterLabel} · ${rawSlots.length}`,
+      `${filterLabel} · ${entries.length}`,
       {
         fontFamily: FONT_FAMILY,
         fontSize: '8px',
@@ -1230,13 +1355,13 @@ export function createEquipmentUI(
     const gridTop = bagY + headerH;
     const availH = bagH - headerH - 10;
     const rowsVisible = Math.max(1, Math.floor((availH + gap) / (cell + gap)));
-    const totalRows = Math.ceil(rawSlots.length / cols);
+    const totalRows = Math.ceil(entries.length / cols);
     const maxScroll = Math.max(0, totalRows - rowsVisible);
     if (bagScrollRow > maxScroll) bagScrollRow = maxScroll;
     if (bagScrollRow < 0) bagScrollRow = 0;
     bagMaxScroll = maxScroll;
 
-    if (rawSlots.length === 0) {
+    if (entries.length === 0) {
       const empty = crispText(
         bagX + bagW / 2,
         gridTop + 40,
@@ -1250,20 +1375,26 @@ export function createEquipmentUI(
     }
 
     const startIndex = bagScrollRow * cols;
-    const endIndex = Math.min(rawSlots.length, startIndex + rowsVisible * cols);
+    const endIndex = Math.min(entries.length, startIndex + rowsVisible * cols);
     for (let index = startIndex; index < endIndex; index += 1) {
-      const slot = rawSlots[index];
-      if (!slot) continue;
-      const itemId = slot.itemId;
-      const def = getItemById(itemId);
+      const entry = entries[index];
+      if (!entry) continue;
+      const generated =
+        entry.kind === 'generated-instance' && lastWorld
+          ? getGeneratedEquipmentInstance(lastWorld, entry.instanceKey)
+          : undefined;
+      const itemId = entry.kind === 'stackable-static-item' ? entry.itemId : entry.instanceKey;
+      const def = entry.kind === 'stackable-static-item' ? getItemById(itemId) : undefined;
       const local = index - startIndex;
       const col = local % cols;
       const row = Math.floor(local / cols);
       const cx = gridX + col * (cell + gap) + cell / 2;
       const cy = gridTop + row * (cell + gap) + cell / 2;
-      const rarityColor = def
-        ? (RARITY_COLORS[def.rarity] ?? COLORS.panelBorder)
-        : COLORS.panelBorder;
+      const rarityColor = generated
+        ? generatedRarityColor(generated.rarity)
+        : def
+          ? (RARITY_COLORS[def.rarity] ?? COLORS.panelBorder)
+          : COLORS.panelBorder;
 
       const box = scene.add.rectangle(snap(cx), snap(cy), cell, cell, COLORS.slotBg, 0.95);
       box.setStrokeStyle(2, rarityColor);
@@ -1272,27 +1403,35 @@ export function createEquipmentUI(
       bagCellBounds[index] = { x: b.x, y: b.y, width: b.width, height: b.height };
       const inset = scene.add.rectangle(snap(cx), snap(cy + 1), cell - 6, cell - 8, 0x2e4167, 0.98);
       inset.setStrokeStyle(1, 0x5b76aa, 0.8);
-      const icon = def
-        ? createItemIcon(itemId, def, cx, cy, cell - 12)
-        : crispText(snap(cx), snap(cy), '?', {
-            fontFamily: FONT_FAMILY,
-            fontSize: '12px',
-            color: '#9ca3af',
-          });
+      const icon = generated
+        ? createGeneratedItemIcon(
+            generated.frozen.artKey,
+            generated.frozen.displayName,
+            cx,
+            cy,
+            cell - 12,
+          )
+        : def
+          ? createItemIcon(itemId, def, cx, cy, cell - 12)
+          : crispText(snap(cx), snap(cy), '?', {
+              fontFamily: FONT_FAMILY,
+              fontSize: '12px',
+              color: '#9ca3af',
+            });
       if (!def && 'setOrigin' in icon) {
         (icon as Phaser.GameObjects.Text).setOrigin(0.5, 0.5);
       }
 
       box.on('pointerover', () => {
         box.setFillStyle(COLORS.slotHover);
-        previewBagItem(itemId);
+        previewBagEntry(entry);
       });
       box.on('pointerout', () => {
         box.setFillStyle(COLORS.slotBg);
-        if (previewItemId === itemId) previewBagItem(null);
+        if (previewEntryIdentity === inventoryEntryIdentity(entry)) previewBagEntry(null);
       });
       box.on('pointerdown', () => {
-        equipBagItem(itemId);
+        equipBagEntry(entry);
       });
 
       container.add(box);
@@ -1300,11 +1439,11 @@ export function createEquipmentUI(
       container.add(icon);
       bagObjects.push(box, inset, icon);
 
-      if (slot.quantity > 1) {
+      if (entry.kind === 'stackable-static-item' && entry.quantity > 1) {
         const qty = crispText(
           snap(cx + cell / 2 - 4),
           snap(cy + cell / 2 - 4),
-          `x${slot.quantity}`,
+          `x${entry.quantity}`,
           {
             fontFamily: FONT_FAMILY,
             fontSize: '8px',
@@ -1328,18 +1467,34 @@ export function createEquipmentUI(
         const inst =
           instId !== null ? resolveEquipmentInstance(lastWorld, state, instId) : undefined;
         const itemId = inst?.def.id ?? '';
-        const entry = itemId ? selectGeneratedEntry(itemId) : null;
-        const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
-        signature += `${slot.id}:${inst ? inst.def.id : '-'}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}|`;
+        const generated =
+          typeof instId === 'string' ? getGeneratedEquipmentInstance(lastWorld, instId) : undefined;
+        const entry = generated ? null : itemId ? selectGeneratedEntry(itemId) : null;
+        const artKey = generated?.frozen.artKey ?? entry?.textureKey ?? '';
+        const iconReady = artKey !== '' && scene.textures?.exists(artKey) === true;
+        signature += `${slot.id}:${inst ? inst.def.id : '-'}:${artKey}:${iconReady ? 1 : 0}|`;
       }
     }
     signature += `slot:${selectedSlotFilter ?? '-'}|`;
     const bag = currentBag;
     if (bag) {
-      const equippable = selectedSlotFilter
-        ? filterByEquipmentSlot(bag, selectedSlotFilter)
-        : filterEquippable(bag);
-      signature += `bag:${equippable.map((slot) => `${slot.itemId}x${slot.quantity}`).join(',')}|`;
+      const world = lastWorld;
+      const equippable: InventoryBagEntry[] = selectedSlotFilter
+        ? filterByEquipmentSlot(bag, selectedSlotFilter, generatedBagMetadata)
+        : filterEquippable(bag, generatedBagMetadata);
+      signature += `bag:${equippable
+        .map((entry) => {
+          if (entry.kind === 'stackable-static-item') {
+            const sprite = selectGeneratedEntry(entry.itemId);
+            const iconReady = sprite !== null && scene.textures?.exists(sprite.textureKey) === true;
+            return `${inventoryEntryIdentity(entry)}x${entry.quantity}:${sprite?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
+          }
+          const artKey =
+            getGeneratedEquipmentInstance(world, entry.instanceKey)?.frozen.artKey ?? '';
+          const iconReady = artKey !== '' && scene.textures?.exists(artKey) === true;
+          return `${inventoryEntryIdentity(entry)}:${artKey}:${iconReady ? 1 : 0}`;
+        })
+        .join(',')}|`;
       signature += `scroll:${bagScrollRow}|`;
     }
     return signature;
@@ -1479,6 +1634,16 @@ export function createEquipmentUI(
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipTopmost,
     getBagItemIds: () => [...bagItemIds],
+    getGeneratedBagCellScreenBounds: (instanceKey: string) => {
+      if (!currentBag) return null;
+      const entries: InventoryBagEntry[] = selectedSlotFilter
+        ? filterByEquipmentSlot(currentBag, selectedSlotFilter, generatedBagMetadata)
+        : filterEquippable(currentBag, generatedBagMetadata);
+      const index = entries.findIndex(
+        (entry) => entry.kind === 'generated-instance' && entry.instanceKey === instanceKey,
+      );
+      return index < 0 ? null : (bagCellBounds[index] ?? null);
+    },
     getBagCellScreenBounds: (index: number) => bagCellBounds[index] ?? null,
     getBagColumnScreenBounds: (): ScreenBounds => {
       const b = bagBg.getBounds();

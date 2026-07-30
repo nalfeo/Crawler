@@ -22,6 +22,7 @@ import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../src/shared/data/floor2-e
 import * as floor2EquipmentArtModule from '../../src/shared/data/floor2-equipment-art.js';
 import * as floor2EquipmentWaveBModule from '../../src/shared/data/floor2-equipment-wave-b.js';
 import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../../src/shared/data/floor2-weapon-bases.js';
+import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from '../../src/shared/data/floor2-basic-leather-bases.js';
 import { createWeaponDef, WEAPON_DEF_DEFAULTS } from '../../src/shared/weapon-def-defaults.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -30,20 +31,31 @@ const LEGAL_RARITIES = ['common', 'uncommon', 'rare'] as const;
 
 describe('Floor 2 equipment Wave B', () => {
   it('complements the coordinated Wave A roster in deterministic manifest order', () => {
-    expect(FLOOR2_EQUIPMENT_ART_DEFINITIONS).toHaveLength(70);
+    // The full art manifest now also carries the 18 Classic Fantasy [Basic
+    // Leather] entries (see floor2-basic-leather-bases.ts / floor2-reward-pool.ts)
+    // alongside Wave A (25) + Wave B (45) = 70, for 88 total. This test's
+    // invariant is scoped to "Wave A + Wave B fully account for the
+    // non-Basic-Leather manifest entries" — Basic Leather coverage is
+    // asserted separately (see floor2-reward-pool.test.ts).
+    expect(FLOOR2_EQUIPMENT_ART_DEFINITIONS).toHaveLength(88);
+    const basicLeatherIds = new Set<string>(FLOOR2_BASIC_LEATHER_STABLE_IDS);
+    const waveAAndBManifest = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter(
+      (entry) => !basicLeatherIds.has(entry.stableId),
+    );
+    expect(waveAAndBManifest).toHaveLength(70);
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS).toHaveLength(25);
     expect(FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS).toHaveLength(20);
-    const manifestWeaponIds = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter(
-      (entry) => entry.category === 'weapon',
-    ).map((entry) => entry.stableId);
+    const manifestWeaponIds = waveAAndBManifest
+      .filter((entry) => entry.category === 'weapon')
+      .map((entry) => entry.stableId);
     const waveAIds = new Set<string>(FLOOR2_WEAPON_WAVE_A_BASE_IDS);
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS).toEqual(
       manifestWeaponIds.filter((stableId) => !waveAIds.has(stableId)),
     );
     expect(FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_IDS).toEqual(
-      FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter((entry) => entry.category !== 'weapon').map(
-        (entry) => entry.stableId,
-      ),
+      waveAAndBManifest
+        .filter((entry) => entry.category !== 'weapon')
+        .map((entry) => entry.stableId),
     );
     expect(FLOOR2_EQUIPMENT_WAVE_B_WEAPON_IDS.filter((stableId) => waveAIds.has(stableId))).toEqual(
       [],

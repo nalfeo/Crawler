@@ -12,8 +12,25 @@ import {
   resolvePlayerBuildAffinity,
   rollAffinityAlignment,
   rollTierRarity,
+  computeFloor2RewardPoolTierEligibility,
+  validateFloor2RewardPoolTierEligibility,
+  rarityEligibleBaseIds,
+  Floor2RewardPoolAuthoringError,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
+import {
+  getGeneratedEquipmentBaseAffinity,
+  generatedEquipmentBaseHasNonArmorStatBonus,
+  GeneratedEquipmentGeneratorError,
+} from '../../src/game/generated-equipment-generator.js';
+import {
+  FLOOR2_REWARD_POOL_STABLE_IDS,
+  FLOOR2_REWARD_POOL_WEAPON_IDS,
+  FLOOR2_REWARD_POOL_NON_WEAPON_IDS,
+  FLOOR2_ARMOR_SLOT_IDS,
+} from '../../src/shared/data/floor2-reward-pool.js';
+import { FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS } from '../../src/shared/data/floor2-equipment-wave-b.js';
+import { FLOOR2_BASIC_LEATHER_NON_WEAPON_BASES } from '../../src/shared/data/floor2-basic-leather-bases.js';
 import {
   EQUIPMENT_REWARD_TIERS,
   EQUIPMENT_REWARD_TIER_RARITIES,
@@ -133,6 +150,69 @@ describe('resolvePlayerBuildAffinity', () => {
   });
 });
 
+describe('affinity partitioning — physical/magic/neutral candidates', () => {
+  // A neutral (non-weapon/armor) base must count as non-aligned for BOTH a
+  // physical and a magic player build (see `partitionBases` in
+  // floor2-reward-bundle-resolver.ts: "Opposite affinity OR neutral bases
+  // both count as non-aligned."). This proves the aligned/non-aligned split
+  // stays legal (both pools non-empty, no empty-pool error) for a physical
+  // player, a magic player, and — separately — confirms the neutral base is
+  // actually reachable from the non-aligned pool for either build.
+  const NEUTRAL_ARMOR_BASE = 'travelers-cloak';
+  const THREE_WAY_BASES = [PHYSICAL_BASE_A, MAGIC_BASE_A, NEUTRAL_ARMOR_BASE] as const;
+
+  it('getGeneratedEquipmentBaseAffinity classifies weapon bases as physical/magic and armor as neutral', () => {
+    expect(getGeneratedEquipmentBaseAffinity(PHYSICAL_BASE_A)).toBe('physical');
+    expect(getGeneratedEquipmentBaseAffinity(MAGIC_BASE_A)).toBe('magic');
+    expect(getGeneratedEquipmentBaseAffinity(NEUTRAL_ARMOR_BASE)).toBe('neutral');
+  });
+
+  it.each(['physical', 'magic'] as const)(
+    'resolves without an empty-pool error for a %s player build against a physical+magic+neutral base set',
+    (playerAffinity) => {
+      const activeWeaponId = playerAffinity === 'physical' ? 'iron-cleaver' : 'ember-wand';
+      const sawNeutralInNonAligned = { value: false };
+      const sawOppositeInNonAligned = { value: false };
+      for (let seed = 0; seed < 40; seed += 1) {
+        const world = createTestWorld({
+          seed,
+          floor: 2,
+          generatedEquipmentRunKey: `neutral-affinity-${playerAffinity}-${seed}`,
+        });
+        setActiveWeapon(world, getWeaponDef(activeWeaponId)!);
+        expect(resolvePlayerBuildAffinity(world)).toBe(playerAffinity);
+        // Must not throw empty-aligned-pool or empty-nonaligned-pool: the
+        // single same-affinity base keeps `aligned` non-empty, and the
+        // opposite-affinity base plus the neutral base keep `nonAligned`
+        // non-empty, regardless of which affinity the player has.
+        const bundle = resolveEquipmentRewardBundle(world, `ach-${seed}`, THREE_WAY_BASES, 'tier2');
+        const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+        if (instance.baseId === NEUTRAL_ARMOR_BASE) sawNeutralInNonAligned.value = true;
+        const oppositeBase = playerAffinity === 'physical' ? MAGIC_BASE_A : PHYSICAL_BASE_A;
+        if (instance.baseId === oppositeBase) sawOppositeInNonAligned.value = true;
+      }
+      // Not vacuous: across 40 seeds the non-aligned pool (opposite + neutral)
+      // must actually have been drawn at least once, and the neutral base
+      // specifically must have surfaced as a legal draw.
+      expect(sawNeutralInNonAligned.value || sawOppositeInNonAligned.value).toBe(true);
+      expect(sawNeutralInNonAligned.value).toBe(true);
+    },
+  );
+
+  it('fails closed with empty-nonaligned-pool when the only candidates are the player-aligned base and no opposite/neutral base exists', () => {
+    const world = makeWorld();
+    setActiveWeapon(world, getWeaponDef('iron-cleaver')!); // physical
+    let err: unknown;
+    try {
+      resolveEquipmentRewardBundle(world, 'ach', [PHYSICAL_BASE_A], 'tier1');
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(RewardBundleResolutionError);
+    expect((err as RewardBundleResolutionError).code).toBe('empty-nonaligned-pool');
+  });
+});
+
 describe('resolveEquipmentRewardBundle — structure and tier rarity bounds', () => {
   it('resolves exactly one instance, tagged with its tier', () => {
     const world = makeWorld();
@@ -237,22 +317,93 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });
 
-  it('fails closed with illegal-base when a base carries an inherent non-armor stat bonus (Common contract)', () => {
-    const world = makeWorld();
-    // `travelers-cloak` is a resolvable accessory with moveSpeed + dodgeChance
-    // stat bonuses (both non-armor), so the guard fires as 'illegal-base'
-    // rather than 'unknown-base'. The MIXED_BASES supply aligned + non-aligned
-    // pools so the partition check never fires first.
-    let err: unknown;
-    try {
-      resolveEquipmentRewardBundle(world, 'ach', [...MIXED_BASES, 'travelers-cloak'], 'tier1');
-    } catch (caught) {
-      err = caught;
+  it('excludes a candidate base with an inherent non-armor stat bonus from Common draws (tier1 is 100% Common) — never drawn, even though it is in the candidate set', () => {
+    // `travelers-cloak` carries moveSpeed + dodgeChance (both non-armor). At
+    // tier1 (100% Common) it must never be selected: the resolver rolls
+    // rarity FIRST, then excludes non-armor-bonus bases from Common
+    // candidacy specifically (see `resolveEquipmentRewardBundle`'s Common
+    // rarity contract comment) — it does NOT generate the item and then
+    // strip its stats (that would make the same base's stats depend on
+    // acquisition source, which is forbidden). Loop several seeds/achievement
+    // ids so the assertion is not vacuous, and confirm resolution still
+    // succeeds (the other neutral/opposite-affinity weapon bases keep the
+    // non-aligned pool non-empty).
+    const bases = [...MIXED_BASES, 'travelers-cloak'] as const;
+    for (let seed = 0; seed < 24; seed += 1) {
+      const world = createTestWorld({
+        seed,
+        floor: 2,
+        generatedEquipmentRunKey: `common-eligibility-${seed}`,
+      });
+      const bundle = resolveEquipmentRewardBundle(world, 'ach', bases, 'tier1');
+      const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+      expect(instance.rarity).toBe('common');
+      expect(instance.baseId).not.toBe('travelers-cloak');
+      const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
+        ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+      );
+      expect(nonArmor).toHaveLength(0);
     }
-    expect(err).toBeInstanceOf(RewardBundleResolutionError);
-    expect((err as RewardBundleResolutionError).code).toBe('illegal-base');
-    expect(world.generatedEquipmentRewardBundles.size).toBe(0);
-    expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+  });
+
+  it('the same non-armor-bonus base remains eligible — bonus intact — for an Uncommon draw (tier2 rarity pool is common/uncommon)', () => {
+    // Same base, same candidate set as above, but tier2 (common/uncommon
+    // pool) can roll Uncommon, which never filters this base out: this
+    // proves the exclusion is rarity-scoped, not a whole-tier/whole-pool
+    // ban, and that a drawn instance's stats are identical to the base's
+    // catalog-defined stats (source-independent). (Rare is intentionally
+    // avoided here — `travelers-cloak`'s effect catalog has no legal 2-unit
+    // combination, an unrelated, pre-existing generator limitation for this
+    // specific base that is out of scope for this correction.)
+    const bases = [...MIXED_BASES, 'travelers-cloak'] as const;
+    let sawTravelersCloakUncommon = false;
+    for (let seed = 0; seed < 60; seed += 1) {
+      const world = createTestWorld({
+        seed,
+        floor: 2,
+        generatedEquipmentRunKey: `common-eligibility-tier2-${seed}`,
+      });
+      const bundle = resolveEquipmentRewardBundle(world, 'ach', bases, 'tier2');
+      const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+      if (instance.baseId === 'travelers-cloak') {
+        expect(instance.rarity).toBe('uncommon');
+        sawTravelersCloakUncommon = true;
+        const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
+          ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+        );
+        expect(nonArmor.length).toBeGreaterThan(0);
+      }
+    }
+    expect(sawTravelersCloakUncommon).toBe(true);
+  });
+
+  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity and every player build', () => {
+    // The direct, deterministic proof the user's correction requires: filter
+    // the actual pool used by all 36 Floor 2 achievements down to what a
+    // Common draw can legally select, and confirm both the aligned and
+    // non-aligned partitions stay non-empty for a physical AND a magic
+    // player build. (Uncommon/Rare are a strict superset of the Common
+    // candidate set here, so if Common passes, they trivially pass too.)
+    const commonEligible = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
+      (baseId) => !generatedEquipmentBaseHasNonArmorStatBonus(baseId),
+    );
+    expect(commonEligible.length).toBeGreaterThan(0);
+    for (const playerAffinity of ['physical', 'magic'] as const) {
+      const aligned = commonEligible.filter(
+        (baseId) => getGeneratedEquipmentBaseAffinity(baseId) === playerAffinity,
+      );
+      const nonAligned = commonEligible.filter(
+        (baseId) => getGeneratedEquipmentBaseAffinity(baseId) !== playerAffinity,
+      );
+      expect(
+        aligned.length,
+        `${playerAffinity}-aligned Common-eligible pool must be non-empty`,
+      ).toBeGreaterThan(0);
+      expect(
+        nonAligned.length,
+        `non-${playerAffinity} Common-eligible pool must be non-empty`,
+      ).toBeGreaterThan(0);
+    }
   });
 
   it('fails closed with empty-aligned-pool when no base matches the player affinity', () => {
@@ -309,5 +460,215 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect((err as RewardBundleResolutionError).code).toBe('illegal-effect-budget');
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+  });
+});
+
+describe('Floor 2 reward pool tier eligibility — authoring validation (mechanism 1) and exhaustive selection-time coverage (mechanism 2)', () => {
+  const weaponIdSet = new Set(FLOOR2_REWARD_POOL_WEAPON_IDS);
+
+  // Slot lookup for every non-weapon base in the pool, used to prove Common
+  // non-weapon coverage spans many distinct armor slots rather than one
+  // narrow category (the exact concern the user's refinement raised).
+  const nonWeaponSlotsById = new Map<string, readonly string[]>();
+  for (const def of FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS) {
+    nonWeaponSlotsById.set(def.id, def.slots);
+  }
+  for (const base of FLOOR2_BASIC_LEATHER_NON_WEAPON_BASES) {
+    nonWeaponSlotsById.set(base.id, base.slots);
+  }
+
+  it('validates the real 88-base pool without throwing at module load (already proven by this test file importing successfully) and returns the exact composition report', () => {
+    const report = validateFloor2RewardPoolTierEligibility();
+    expect(report).toEqual(
+      computeFloor2RewardPoolTierEligibility(FLOOR2_REWARD_POOL_STABLE_IDS, weaponIdSet),
+    );
+  });
+
+  it('computes the EXACT per-tier/per-rarity composition over the real 88-base pool (deterministic, not sampled)', () => {
+    // Ground truth, computed directly from the real catalogs (see the report
+    // this same test also cross-checks below): 88 total = 56 weapons + 32
+    // non-weapons. Common excludes every base carrying an inherent non-armor
+    // stat bonus — 0 weapons, 22 of 32 non-weapons — leaving 66 Common-eligible
+    // (56 weapons + 10 non-weapons). Uncommon excludes nothing (all 88).
+    const report = computeFloor2RewardPoolTierEligibility(
+      FLOOR2_REWARD_POOL_STABLE_IDS,
+      weaponIdSet,
+    );
+
+    const commonComposition = {
+      total: 66,
+      weapons: 56,
+      nonWeapons: 10,
+      physicalAligned: 51,
+      magicAligned: 5,
+      neutral: 10,
+    };
+    const uncommonComposition = {
+      total: 88,
+      weapons: 56,
+      nonWeapons: 32,
+      physicalAligned: 51,
+      magicAligned: 5,
+      neutral: 32,
+    };
+
+    expect(report.tier1.common).toEqual(commonComposition);
+    expect(report.tier2.common).toEqual(commonComposition);
+    expect(report.tier2.uncommon).toEqual(uncommonComposition);
+    expect(report.tier3.uncommon).toEqual(uncommonComposition);
+    expect(report.tier3.common).toEqual(commonComposition);
+
+    // Sanity cross-checks against the pool's own published totals.
+    expect(FLOOR2_REWARD_POOL_STABLE_IDS.length).toBe(88);
+    expect(FLOOR2_REWARD_POOL_WEAPON_IDS.length).toBe(56);
+    expect(FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length).toBe(32);
+  });
+
+  it('tier1 (Common-only) is NOT narrow / one-category-only — reports the exact counts rather than masking behind the aggregate 88', () => {
+    // This is the direct answer to the user's explicit concern: does
+    // excluding non-armor-bonus bases from Common recreate the historical
+    // "repeated four weapons" defect in disguise? The exact counts prove no:
+    //
+    //   - ALL 56 weapons remain Common-eligible (0 excluded) — weapon variety
+    //     at tier1 is exactly as broad as the full pool.
+    //   - 10 of 32 non-weapons remain Common-eligible (22 excluded, ALL of
+    //     which carry an inherent non-armor stat bonus by design — that is
+    //     literally what distinguishes an "accessory" from a plain armor
+    //     piece in this data model).
+    //   - Those 10 non-weapon bases span 12 of the 16 armor slots (all
+    //     except neck/belt/ringLeft/ringRight — the 4 slots whose only pool
+    //     occupants are accessory-style items that ALWAYS carry a bonus).
+    //     tier1 achievements can therefore never grant a neck/belt/ring
+    //     reward; tier2/tier3 (which can roll Uncommon) cover them. The
+    //     pool-wide "all 16 armor slots reachable" invariant (validated by
+    //     `validateRewardPool()` in floor2-reward-pool.ts) is about the whole
+    //     88-base pool across every rarity, not the Common-only subset — this
+    //     is a narrower, real, and DELIBERATE consequence of the Common
+    //     rarity contract, not an authoring accident, and is reported here
+    //     explicitly rather than being glossed over.
+    const commonEligible = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
+      (baseId) => !generatedEquipmentBaseHasNonArmorStatBonus(baseId),
+    );
+    const commonEligibleWeapons = commonEligible.filter((id) => weaponIdSet.has(id));
+    const commonEligibleNonWeapons = commonEligible.filter((id) => !weaponIdSet.has(id));
+
+    expect(commonEligibleWeapons).toHaveLength(56); // ALL weapons — no narrowing.
+    expect(commonEligibleNonWeapons).toHaveLength(10); // Not 0, not 1, not "four".
+
+    const coveredSlots = new Set<string>();
+    for (const id of commonEligibleNonWeapons) {
+      for (const slot of nonWeaponSlotsById.get(id) ?? []) coveredSlots.add(slot);
+    }
+    const uncoveredArmorSlots = FLOOR2_ARMOR_SLOT_IDS.filter((slot) => !coveredSlots.has(slot));
+
+    expect([...coveredSlots].sort()).toEqual([
+      'back',
+      'chest',
+      'face',
+      'feet',
+      'gloves',
+      'head',
+      'leftArm',
+      'leftWrist',
+      'legs',
+      'rightArm',
+      'rightWrist',
+      'shoulders',
+    ]);
+    expect(uncoveredArmorSlots.sort()).toEqual(['belt', 'neck', 'ringLeft', 'ringRight']);
+  });
+
+  it('every base in the pool is legal for at least one achievement rarity/tier — uncommon never excludes, so the union is exhaustive', () => {
+    const uncommonEligible = rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'uncommon');
+    expect(uncommonEligible).toHaveLength(FLOOR2_REWARD_POOL_STABLE_IDS.length);
+    expect(new Set(uncommonEligible)).toEqual(new Set(FLOOR2_REWARD_POOL_STABLE_IDS));
+  });
+
+  it('EXHAUSTIVELY (not sampled) proves every achievement-reachable tier × rarity × player-build partition is non-empty on both sides', () => {
+    for (const tier of ['tier1', 'tier2', 'tier3'] as const) {
+      for (const rarity of tier === 'tier1'
+        ? (['common'] as const)
+        : (['common', 'uncommon'] as const)) {
+        const eligible = rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, rarity);
+        for (const playerAffinity of ['physical', 'magic'] as const) {
+          const aligned = eligible.filter(
+            (id) => getGeneratedEquipmentBaseAffinity(id) === playerAffinity,
+          );
+          const nonAligned = eligible.filter(
+            (id) => getGeneratedEquipmentBaseAffinity(id) !== playerAffinity,
+          );
+          expect(
+            aligned.length,
+            `tier ${tier} rarity ${rarity} ${playerAffinity}-aligned pool must be non-empty`,
+          ).toBeGreaterThan(0);
+          expect(
+            nonAligned.length,
+            `tier ${tier} rarity ${rarity} non-${playerAffinity} pool must be non-empty`,
+          ).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it('fails loudly (does not silently narrow or return an empty result) for an unresolvable/unknown base', () => {
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(['not-a-real-base-id'], new Set());
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(GeneratedEquipmentGeneratorError);
+    expect((err as GeneratedEquipmentGeneratorError).code).toBe('unknown-base');
+  });
+
+  it('throws Floor2RewardPoolAuthoringError (not a silent/permissive filter) when a tier/rarity/build combination has no aligned candidate', () => {
+    // Only physical weapon bases in the supplied pool → tier1's Common draw
+    // has zero magic-aligned candidates. The check must throw explicitly,
+    // never silently narrow to an empty-but-still-"valid" result.
+    const physicalOnly = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
+      (id) => getGeneratedEquipmentBaseAffinity(id) === 'physical',
+    );
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(physicalOnly, weaponIdSet);
+    } catch (caught) {
+      err = caught;
+    }
+    // BUILD_AFFINITIES is checked physical-first: a physical-only pool has a
+    // non-empty physical-aligned side but an empty non-physical (magic) side.
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(/no non-physical candidate/);
+  });
+
+  it('throws Floor2RewardPoolAuthoringError when every candidate matches the player build (empty aligned pool for the opposite build)', () => {
+    const magicOnly = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
+      (id) => getGeneratedEquipmentBaseAffinity(id) === 'magic',
+    );
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(magicOnly, weaponIdSet);
+    } catch (caught) {
+      err = caught;
+    }
+    // Checked physical-first: a magic-only pool has zero physical-aligned
+    // candidates, so the "aligned" branch fires before "non-aligned" ever
+    // would for the magic build.
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(/no physical-aligned candidate/);
+  });
+
+  it('rarityEligibleBaseIds is the exact same filter resolveEquipmentRewardBundle applies at selection time (no second, drifting copy of the rule)', () => {
+    const excludedCount = FLOOR2_REWARD_POOL_STABLE_IDS.filter((id) =>
+      generatedEquipmentBaseHasNonArmorStatBonus(id),
+    ).length;
+    expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'common')).toHaveLength(
+      FLOOR2_REWARD_POOL_STABLE_IDS.length - excludedCount,
+    );
+    expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'uncommon')).toHaveLength(
+      FLOOR2_REWARD_POOL_STABLE_IDS.length,
+    );
+    expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'rare')).toHaveLength(
+      FLOOR2_REWARD_POOL_STABLE_IDS.length,
+    );
   });
 });

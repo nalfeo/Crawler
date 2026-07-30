@@ -5,16 +5,25 @@
  * generated-equipment instance by instance key alone.
  *
  * No engine file previously rendered a generated-equipment instance by
- * instance key — `EquipmentUI.ts` only ever renders by base item id (the
- * player's equipped/bagged items reference `itemId`, not an instance key
- * directly). This module bridges that gap by resolving the instance's
- * `baseId` via the generated-equipment registry, then reusing the exact same
- * `resolveItemSprite`-via-`baseId` + text-abbreviation-fallback pattern
- * `EquipmentUI.ts` already uses (`selectGeneratedEntry`/`createItemIcon`), so
- * both panels render identically for the same base item.
+ * instance key — `EquipmentUI.ts`/`InventoryUI.ts` only ever render by base
+ * item id (the player's equipped/bagged items reference `itemId`, not an
+ * instance key directly). This module bridges that gap by resolving the
+ * instance from the generated-equipment registry.
  *
- * Only reads placeholder/already-approved sprite keys from the existing
- * generated-sprite registry — never generates or requests new art.
+ * Icon resolution mirrors the canonical pattern `EquipmentUI.ts` and
+ * `InventoryUI.ts` use for generated-equipment instances: prefer the
+ * instance's own `frozen.artKey` as a direct Phaser texture key (real art is
+ * preloaded under that literal key once approved/checked in) and render it
+ * verbatim when the texture is loaded. `frozen.artKey` is a dotted
+ * `equipment/<stableId path>` string derived once at generation time from the
+ * base's art definition (see `generated-equipment-generator.ts`), so every
+ * instance of the same base always resolves the same key.
+ *
+ * Only falls back to the legacy `resolveItemSprite`-via-`baseId` registry
+ * match (kept for any generated-equipment base that predates the
+ * `frozen.artKey` convention or whose art hasn't landed yet), and finally to
+ * a two-letter text-abbreviation icon when neither texture is loaded. Never
+ * generates or requests new art itself.
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
@@ -51,6 +60,13 @@ export const GENERATED_EQUIPMENT_RARITY_COLORS: Readonly<Record<GeneratedEquipme
 export interface ResolvedEquipmentIconSpec {
   readonly instanceKey: GeneratedEquipmentInstanceKey;
   readonly baseId: string;
+  /**
+   * The instance's frozen art key (`equipment/<stableId path>`), preloaded as
+   * a literal Phaser texture key once its art is approved and checked in.
+   * Preferred over the legacy `resolveItemSprite`-via-`baseId` registry
+   * match — see the module doc comment.
+   */
+  readonly artKey: string;
   readonly itemName: string;
   readonly rarity: GeneratedEquipmentRarity;
   readonly rarityColor: number;
@@ -75,6 +91,7 @@ export function resolveEquipmentIconSpec(
   return {
     instanceKey,
     baseId: instance.baseId,
+    artKey: instance.frozen.artKey,
     itemName: itemDef?.name ?? instance.baseId,
     rarity: instance.rarity,
     rarityColor: GENERATED_EQUIPMENT_RARITY_COLORS[instance.rarity],
@@ -90,10 +107,11 @@ function getGeneratedRegistry(scene: Phaser.Scene): GeneratedSpriteRegistry {
 
 /**
  * Create a Phaser game object rendering `spec`'s icon at `(x, y)`, sized to
- * fit within a `boxSize`-square box. Prefers the real/placeholder generated
- * sprite (deterministic per `worldSeed`, mirroring `EquipmentUI.ts`); falls
- * back to a two-letter text abbreviation of the item name when no texture is
- * loaded for the resolved sprite key.
+ * fit within a `boxSize`-square box. Prefers `spec.artKey` as a direct,
+ * preloaded texture key (mirroring `EquipmentUI.ts`/`InventoryUI.ts`); falls
+ * back to the legacy registry-matched sprite (deterministic per `worldSeed`)
+ * when `artKey` has no loaded texture, and finally to a two-letter text
+ * abbreviation of the item name when neither texture is loaded.
  */
 export function createGeneratedEquipmentIcon(
   scene: Phaser.Scene,
@@ -103,6 +121,12 @@ export function createGeneratedEquipmentIcon(
   y: number,
   boxSize: number,
 ): Phaser.GameObjects.GameObject {
+  if (spec.artKey !== '' && scene.textures?.exists(spec.artKey) === true) {
+    const image = scene.add.image(Math.round(x), Math.round(y), spec.artKey);
+    image.setOrigin(0.5, 0.5);
+    image.setScale(fitScaleForBox(image.width, image.height, boxSize));
+    return image;
+  }
   const registry = getGeneratedRegistry(scene);
   const seed = (hashStringToSeed(spec.baseId) ^ (world.seed | 0)) | 0;
   const entry = resolveItemSprite(registry, spec.baseId, seed);

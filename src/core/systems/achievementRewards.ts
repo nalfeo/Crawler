@@ -1,15 +1,18 @@
 /**
- * Achievement reward claiming (reveal-only for non-lootBox rewards).
+ * Achievement reward claiming (reveal-only for `directorMessage`/`item`/`none`
+ * rewards).
  *
  * Lives in core so both the engine panel and game systems can drive claims
  * without crossing layer boundaries. Opening a reward marks it claimed and
- * surfaces the reward def for display. `equipment` and `lootBox` rewards
- * additionally transfer a pre-resolved bundle's contents (equipment
- * instances, or gold + common crafting materials, respectively) into the
- * player's bag/gold — both bundles were resolved ONCE at unlock time (see
- * `resolveEquipmentRewardBundle` / `resolveLootBoxRewardBundle`). Claiming
- * NEVER rolls any RNG itself — generation happens only at unlock (resolution),
- * never at claim, load, or presentation.
+ * surfaces the reward def for display. `lootBox` rewards additionally
+ * transfer a pre-resolved bundle's contents into the player's bag/gold — for
+ * Floor 2's `floor2-generated-equipment` loot table, one generated-equipment
+ * instance (via `claimGeneratedEquipmentRewardBundle`); for Floor 1's
+ * `floor1-materials` loot table, gold + common crafting materials — both
+ * bundles were resolved ONCE at unlock time (see `resolveEquipmentRewardBundle`
+ * / `resolveLootBoxRewardBundle`). Claiming NEVER rolls any RNG itself —
+ * generation happens only at unlock (resolution), never at claim, load, or
+ * presentation.
  */
 import { query } from 'bitecs';
 import { Player } from '../components.js';
@@ -19,6 +22,7 @@ import {
   LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
   FLOOR1_COMMON_CRAFTING_MATERIALS,
+  FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
   type AchievementCatalogRegistry,
   type AchievementReward,
 } from '../../shared/achievements.js';
@@ -57,15 +61,17 @@ export function isAchievementClaimed(world: GameWorld, achievementId: string): b
  * Open the reward for an unlocked achievement.
  *
  * For `directorMessage`/`item`/`none` rewards this is reveal-only: it marks the
- * achievement claimed and returns the reward def for display. For `equipment`
- * rewards it additionally transfers the pre-resolved reward bundle's instances
- * into the player's bag via {@link claimGeneratedEquipmentRewardBundle} — it
- * NEVER invokes the generator (the bundle was resolved once at unlock time).
- * For `lootBox` rewards (Floor 1 only) it reads the pre-resolved bundle from
- * `world.lootBoxRewardBundles` and applies its exact gold (scaled by tier)
- * plus common crafting materials — structurally NEVER equipment, since the
- * `lootBox` reward variant carries no equipment fields, and never re-rolled
- * (the bundle was resolved once at unlock time, mirroring equipment).
+ * achievement claimed and returns the reward def for display. For `lootBox`
+ * rewards whose `lootTable` is `floor2-generated-equipment` it additionally
+ * transfers the pre-resolved reward bundle's instance into the player's bag
+ * via {@link claimGeneratedEquipmentRewardBundle} — it NEVER invokes the
+ * generator (the bundle was resolved once at unlock time). For `lootBox`
+ * rewards whose `lootTable` is `floor1-materials` it reads the pre-resolved
+ * bundle from `world.lootBoxRewardBundles` and applies its exact gold (scaled
+ * by tier) plus common crafting materials — structurally NEVER equipment,
+ * since the `floor1-materials` variant carries no equipment fields, and never
+ * re-rolled (the bundle was resolved once at unlock time, mirroring the
+ * equipment path).
  *
  * All grants are validated fail-closed BEFORE any mutation: if a grant cannot
  * complete atomically the achievement is not marked claimed (`grantFailed`),
@@ -90,16 +96,26 @@ export function claimAchievementReward(
     return { ok: false, reason: 'alreadyClaimed' };
   }
 
-  if (achievement.reward.type === 'equipment') {
+  if (
+    achievement.reward.type === 'lootBox' &&
+    achievement.reward.lootTable === 'floor2-generated-equipment'
+  ) {
     const playerEid = query(world.ecs, [Player])[0];
     if (playerEid === undefined) {
       return { ok: false, reason: 'grantFailed' };
     }
+    // Floor 2's `lootBox` reward carries the player/content-facing
+    // common/uncommon/rare tier vocabulary — translate to the resolver's
+    // internal tier1-tier3 EquipmentRewardTier keyspace before calling into
+    // the equipment claim path, which is unaware of the achievement-facing
+    // vocabulary (ADR 0069 amendment; the resolver/claim boundary itself is
+    // unchanged, see ADR 0068).
+    const equipmentRewardTier = FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier];
     const grant = claimGeneratedEquipmentRewardBundle(
       world,
       playerEid,
       achievementId,
-      achievement.reward.tier,
+      equipmentRewardTier,
     );
     if (!grant.ok) {
       return { ok: false, reason: 'grantFailed' };
@@ -107,13 +123,16 @@ export function claimAchievementReward(
     world.achievements.claimedIds.add(achievementId);
     world.achievements.pendingPresentations.set(achievementId, {
       kind: 'equipment',
-      tier: achievement.reward.tier,
+      tier: equipmentRewardTier,
       instanceKeys: grant.granted.map((entry) => entry.instanceKey),
     });
     return { ok: true, reward: achievement.reward, grantedEquipment: grant.granted };
   }
 
-  if (achievement.reward.type === 'lootBox') {
+  if (
+    achievement.reward.type === 'lootBox' &&
+    achievement.reward.lootTable === 'floor1-materials'
+  ) {
     const playerEid = query(world.ecs, [Player])[0];
     if (playerEid === undefined) {
       return { ok: false, reason: 'grantFailed' };

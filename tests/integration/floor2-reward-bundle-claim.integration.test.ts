@@ -626,13 +626,34 @@ describe('Floor 1 lootBox reward bundle — stale/malformed carryover fails clos
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/already-claimed/);
   });
 
-  it('rejects a lootBox bundle for a non-lootBox achievement', () => {
+  it('rejects a lootBox bundle for a non-floor1-materials (Floor 2 generated-equipment) achievement', () => {
     const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
     const tampered = mutableClone(snapshot);
+    // Re-point the bundle at a real `lootBox` achievement that uses the Floor
+    // 2 `floor2-generated-equipment` table rather than `floor1-materials` —
+    // this is the discriminator-aware failure mode now that both Floor 1 and
+    // Floor 2 rewards share the `lootBox` reward type.
     tampered.lootBoxRewardBundles[0]!.achievementId = TIER1_ACHIEVEMENT_ID;
     tampered.achievements.unlockedIds = [
       ...tampered.achievements.unlockedIds,
       TIER1_ACHIEVEMENT_ID,
+    ];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /non-floor1-materials/,
+    );
+  });
+
+  it('rejects a lootBox bundle for a genuinely non-lootBox achievement', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    // `safe-room-breather` is a real Floor 1 achievement with a
+    // `directorMessage` reward (no lootBox at all) — the true "wrong reward
+    // type entirely" case, distinct from the "wrong lootTable" case above.
+    const NON_LOOT_BOX_ACHIEVEMENT_ID = 'safe-room-breather';
+    tampered.lootBoxRewardBundles[0]!.achievementId = NON_LOOT_BOX_ACHIEVEMENT_ID;
+    tampered.achievements.unlockedIds = [
+      ...tampered.achievements.unlockedIds,
+      NON_LOOT_BOX_ACHIEVEMENT_ID,
     ];
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/non-lootBox/);
   });

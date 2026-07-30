@@ -11,6 +11,11 @@ const FLOOR2_WEAPON_FAMILIES = [
   'magic-focus',
   'beam',
   'trap',
+  // Classic Fantasy [Basic Leather] theme-equipment-forge roster (6 weapons).
+  // A dedicated 11th family rather than folding into an existing 5-slot family
+  // so the pre-existing 10 families keep their validated 5-per-family shape;
+  // see EXPECTED_WEAPON_FAMILY_COUNTS below for this family's 6-member count.
+  'basic-leather',
 ] as const;
 
 type Floor2WeaponFamily = (typeof FLOOR2_WEAPON_FAMILIES)[number];
@@ -95,6 +100,27 @@ const FLOOR2_EQUIPMENT_STABLE_IDS = [
   'accessory.gearwork-locket',
   'accessory.warding-bell',
   'accessory.surveyor-map',
+  // Classic Fantasy [Basic Leather] theme-equipment-forge roster — see
+  // data/theme-equipment-sets/classic-fantasy-basic-leather.json (source of
+  // truth for slugs/slots) and floor2-basic-leather-bases.ts (catalog defs).
+  'weapon.iron-dagger',
+  'weapon.iron-shortsword',
+  'weapon.wooden-bow',
+  'weapon.iron-spear',
+  'weapon.iron-handaxe',
+  'weapon.wooden-club',
+  'head.leather-cap',
+  'accessory.leather-collar',
+  'torso.cloth-cloak',
+  'torso.leather-shoulder-pads',
+  'hands.leather-arm-wraps',
+  'hands.leather-bracers',
+  'torso.leather-tunic',
+  'hands.leather-gloves',
+  'accessory.leather-belt',
+  'feet.leather-pants',
+  'feet.leather-boots',
+  'accessory.iron-ring',
 ] as const;
 
 export type Floor2EquipmentStableId = (typeof FLOOR2_EQUIPMENT_STABLE_IDS)[number];
@@ -173,6 +199,14 @@ const WEAPON_IDS_BY_FAMILY: Readonly<Record<Floor2WeaponFamily, readonly Floor2W
       'weapon.powder-keg',
       'weapon.meteor-hammer',
     ],
+    'basic-leather': [
+      'weapon.iron-dagger',
+      'weapon.iron-shortsword',
+      'weapon.wooden-bow',
+      'weapon.iron-spear',
+      'weapon.iron-handaxe',
+      'weapon.wooden-club',
+    ],
   };
 
 interface NonWeaponGroup {
@@ -192,6 +226,7 @@ const NON_WEAPON_GROUPS: readonly NonWeaponGroup[] = [
       'head.quartermaster-cap',
       'head.batfolk-hood',
       'head.alchemist-goggles',
+      'head.leather-cap',
     ],
   },
   {
@@ -203,19 +238,35 @@ const NON_WEAPON_GROUPS: readonly NonWeaponGroup[] = [
       'torso.velvet-coat',
       'torso.scavenger-harness',
       'torso.runed-cuirass',
+      'torso.cloth-cloak',
+      'torso.leather-shoulder-pads',
+      'torso.leather-tunic',
     ],
   },
   {
     slot: 'hands',
     category: 'armor',
     family: 'handwear',
-    ids: ['hands.duelist-gloves', 'hands.thorn-gauntlets', 'hands.tinker-grips'],
+    ids: [
+      'hands.duelist-gloves',
+      'hands.thorn-gauntlets',
+      'hands.tinker-grips',
+      'hands.leather-arm-wraps',
+      'hands.leather-bracers',
+      'hands.leather-gloves',
+    ],
   },
   {
     slot: 'feet',
     category: 'armor',
     family: 'footwear',
-    ids: ['feet.iron-greaves', 'feet.shadow-boots', 'feet.merchant-sandals'],
+    ids: [
+      'feet.iron-greaves',
+      'feet.shadow-boots',
+      'feet.merchant-sandals',
+      'feet.leather-pants',
+      'feet.leather-boots',
+    ],
   },
   {
     slot: 'accessory',
@@ -228,6 +279,9 @@ const NON_WEAPON_GROUPS: readonly NonWeaponGroup[] = [
       'accessory.gearwork-locket',
       'accessory.warding-bell',
       'accessory.surveyor-map',
+      'accessory.leather-collar',
+      'accessory.leather-belt',
+      'accessory.iron-ring',
     ],
   },
 ];
@@ -336,9 +390,9 @@ function buildDefinitions(): readonly Floor2EquipmentArtDefinition[] {
 }
 
 function validateDefinitions(definitions: readonly Floor2EquipmentArtDefinition[]): void {
-  if (definitions.length !== 70) {
+  if (definitions.length !== 88) {
     throw new Error(
-      `Expected 70 Floor 2 equipment art definitions, received ${definitions.length}`,
+      `Expected 88 Floor 2 equipment art definitions, received ${definitions.length}`,
     );
   }
   const unique = (values: readonly string[], label: string): void => {
@@ -359,16 +413,33 @@ function validateDefinitions(definitions: readonly Floor2EquipmentArtDefinition[
     'placeholder path',
   );
   const weapons = definitions.filter((entry) => entry.category === 'weapon');
-  if (weapons.length !== 50 || definitions.length - weapons.length !== 20) {
+  if (weapons.length !== 56 || definitions.length - weapons.length !== 32) {
     throw new Error(
-      'Floor 2 equipment art definitions must contain exactly 50 weapons and 20 others',
+      'Floor 2 equipment art definitions must contain exactly 56 weapons and 32 others',
     );
   }
+  // Every legacy (Wave A + Wave B) family stays fixed at 5 bases; the Classic
+  // Fantasy [Basic Leather] roster is a dedicated 11th family with 6 bases so
+  // it does not have to dilute (or be diluted by) the thematic families.
+  const expectedWeaponFamilyCounts: Readonly<Record<Floor2WeaponFamily, number>> = {
+    blade: 5,
+    axe: 5,
+    bludgeon: 5,
+    polearm: 5,
+    bow: 5,
+    firearm: 5,
+    thrown: 5,
+    'magic-focus': 5,
+    beam: 5,
+    trap: 5,
+    'basic-leather': 6,
+  };
   for (const family of FLOOR2_WEAPON_FAMILIES) {
     const count = weapons.filter((entry) => entry.family === family).length;
-    if (count !== 5) {
+    const expected = expectedWeaponFamilyCounts[family];
+    if (count !== expected) {
       throw new Error(
-        `Floor 2 weapon family ${family} must contain exactly 5 bases; received ${count}`,
+        `Floor 2 weapon family ${family} must contain exactly ${expected} bases; received ${count}`,
       );
     }
   }

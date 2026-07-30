@@ -6,11 +6,12 @@
     "popupText": "New achievement: First Bonk!",
     "unlockCriteria": "Defeat your first enemy on Floor 1.",
     "details": "Unlock when you defeat your first enemy on Floor 1.",
-    "directorFlavor": "Congratulations on defeating a thing. The studio executives are thrilled\u2014no wait, they're checking their phones. Moving on. We filed this under 'baseline functionality' because there's no category lower. The focus group feedback was literally just '...okay?' in twelve different variations.",
+    "directorFlavor": "Congratulations on defeating a thing. The studio executives are thrilled—no wait, they're checking their phones. Moving on. We filed this under 'baseline functionality' because there's no category lower. The focus group feedback was literally just '...okay?' in twelve different variations.",
     "iconId": "achv-first-bonk-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": [
@@ -34,6 +35,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": [
@@ -57,6 +59,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": [
@@ -80,6 +83,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -91,11 +95,12 @@
     "popupText": "New achievement: Five-Alarm Combo!",
     "unlockCriteria": "Defeat 5 enemies within 4 seconds.",
     "details": "Unlock when you defeat 5 enemies within 4 seconds.",
-    "directorFlavor": "Five enemy defeats in four seconds. Now *that's* a clip we can repurpose for the opening credits. The pacing, the carnage, the sheer contempt you have for spawn windows\u2014*executive wants to know your location*. The sponsor integration team couldn't find a single frame worth branding. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Five enemy defeats in four seconds. Now *that's* a clip we can repurpose for the opening credits. The pacing, the carnage, the sheer contempt you have for spawn windows—*executive wants to know your location*. The sponsor integration team couldn't find a single frame worth branding. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-five-chain-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -112,6 +117,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -123,11 +129,12 @@
     "popupText": "New achievement: Door Camper!",
     "unlockCriteria": "Defeat 5 enemies near a doorway.",
     "details": "Unlock when you defeat 5 enemies near a doorway.",
-    "directorFlavor": "Ah, the doorway strategy\u2014trapping enemies against architecture like you're herding cattle. Effective. Not beautiful, but effective. The engagement dashboard didn't even flicker. This is the kind of achievement we usually edit out entirely.",
+    "directorFlavor": "Ah, the doorway strategy—trapping enemies against architecture like you're herding cattle. Effective. Not beautiful, but effective. The engagement dashboard didn't even flicker. This is the kind of achievement we usually edit out entirely.",
     "iconId": "achv-door-camper-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": []
@@ -144,6 +151,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -155,11 +163,12 @@
     "popupText": "New achievement: Room Sweeper!",
     "unlockCriteria": "Defeat 20 enemies in one room before leaving it.",
     "details": "Unlock when you defeat 20 enemies in one room before leaving it.",
-    "directorFlavor": "Twenty enemies defeated in one room without leaving\u2014you've transformed a single space into a literal throne of corpses. The pacing is *immaculate*, each kill flowing into the next like some dark, terrible waltz. You've basically turned room economics inside out, proving that area control and sheer stubborn lethality are the real endgame. Production is already greenlit your sequel. Calm down. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Twenty enemies defeated in one room without leaving—you've transformed a single space into a literal throne of corpses. The pacing is *immaculate*, each kill flowing into the next like some dark, terrible waltz. You've basically turned room economics inside out, proving that area control and sheer stubborn lethality are the real endgame. Production is already greenlit your sequel. Calm down. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-room-sweeper-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -171,11 +180,12 @@
     "popupText": "New achievement: No Scope-ish!",
     "unlockCriteria": "Defeat an enemy at maximum weapon range.",
     "details": "Unlock when you defeat an enemy at maximum weapon range.",
-    "directorFlavor": "Maximum weapon range defeat\u2014you managed to hit something far away without completely whiffing it. A master of distance and probability. Marketing refused to use any of this footage. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Maximum weapon range defeat—you managed to hit something far away without completely whiffing it. A master of distance and probability. Marketing refused to use any of this footage. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-no-scope-ish-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -192,6 +202,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": []
@@ -208,6 +219,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -219,11 +231,12 @@
     "popupText": "New achievement: Lucky Bounce!",
     "unlockCriteria": "Defeat an enemy with a ricochet hit.",
     "details": "Unlock when you defeat an enemy with a ricochet hit.",
-    "directorFlavor": "A ricochet kill\u2014the projectile bounced off the geometry and caught an enemy square. That's either remarkable aim or physics bending toward comedy. Either way, the effect looks *beautiful* on camera. The slow-mo replay potential alone is worth marketing. Luck doesn't exist. You're just the production's favorite child this episode. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "A ricochet kill—the projectile bounced off the geometry and caught an enemy square. That's either remarkable aim or physics bending toward comedy. Either way, the effect looks *beautiful* on camera. The slow-mo replay potential alone is worth marketing. Luck doesn't exist. You're just the production's favorite child this episode. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-lucky-bounce-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -240,6 +253,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -251,11 +265,12 @@
     "popupText": "New achievement: Crowd Control!",
     "unlockCriteria": "Defeat 30 total enemies before the Floor 1 boss appears.",
     "details": "Unlock when you defeat 30 total enemies before the Floor 1 boss appears.",
-    "directorFlavor": "Thirty enemies before the boss appeared\u2014you're basically a filter between the chaff and the actual entertainment. Appreciated. The sponsor integration team couldn't find a single frame worth branding. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Thirty enemies before the boss appeared—you're basically a filter between the chaff and the actual entertainment. Appreciated. The sponsor integration team couldn't find a single frame worth branding. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-crowd-control-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -284,6 +299,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -302,11 +318,12 @@
     "popupText": "New achievement: Ratings Climbing!",
     "unlockCriteria": "Defeat 100 total enemies on Floor 1.",
     "details": "Unlock when you defeat 100 total enemies on Floor 1.",
-    "directorFlavor": "One hundred enemies defeated on Floor 1. You're not a player anymore, you're a *killstreak generator*, a mobile monument to systematic destruction on a scale that borders on the impossible. The body count is reaching apocalyptic proportions\u2014we're talking about enemy waves that barely have time to spawn before they're already corpses on the metaphorical studio floor. The engagement metrics are *screaming* into the void, each kill spiking the trending algorithms like you've personally weaponized the player base. The production is honestly debating whether to nerf the encounter or just let you carry the entire viewership single-handedly. You're literally the show now. We're just documenting your rampage. The footage is so absolutely *stacked* that marketing doesn't even know where to cut for trailers anymore\u2014it's all premium content. You've transcended gameplay. You're pure spectacle made flesh. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "One hundred enemies defeated on Floor 1. You're not a player anymore, you're a *killstreak generator*, a mobile monument to systematic destruction on a scale that borders on the impossible. The body count is reaching apocalyptic proportions—we're talking about enemy waves that barely have time to spawn before they're already corpses on the metaphorical studio floor. The engagement metrics are *screaming* into the void, each kill spiking the trending algorithms like you've personally weaponized the player base. The production is honestly debating whether to nerf the encounter or just let you carry the entire viewership single-handedly. You're literally the show now. We're just documenting your rampage. The footage is so absolutely *stacked* that marketing doesn't even know where to cut for trailers anymore—it's all premium content. You've transcended gameplay. You're pure spectacle made flesh. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-ratings-climbing-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -330,6 +347,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -346,6 +364,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": []
@@ -362,6 +381,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -378,6 +398,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -401,6 +422,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -419,11 +441,12 @@
     "popupText": "New achievement: Double Digits!",
     "unlockCriteria": "Reach skill level 10 on any skill.",
     "details": "Unlock when you reach skill level 10 on any skill.",
-    "directorFlavor": "A skill at level ten already. You've committed to specialization hard enough that we're already seeing legendary-tier synergies forming. The footage of your scaled-up abilities is generating *serious* interest from the upper echelon producers. You're building something here\u2014whether it saves you is another matter entirely. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "A skill at level ten already. You've committed to specialization hard enough that we're already seeing legendary-tier synergies forming. The footage of your scaled-up abilities is generating *serious* interest from the upper echelon producers. You're building something here—whether it saves you is another matter entirely. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-skill-ten-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -447,6 +470,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -465,11 +489,12 @@
     "popupText": "New achievement: Cap Curious!",
     "unlockCriteria": "Reach skill level 20 on any skill.",
     "details": "Unlock when you reach skill level 20 on any skill.",
-    "directorFlavor": "Level twenty on a single skill\u2014you're not just specialized anymore, you're *obsessed*, having pushed a single ability tree into territories the designers never actually tested. The scaling is becoming theoretically impossible, the multipliers stacking into numbers that make the code itself nervous. Each incremental level is giving you exponentially more power, and you're basically speedrunning toward one-shotting entire encounter zones. The production notes are filling with warnings in all caps about 'POSSIBLE BALANCE ISSUES', but honestly, we're just taking notes on how far you can push it. You've achieved Legendary+ status in a single tree, which wasn't supposed to be possible in Floor 1. The community forums are already starting speedrun guides based entirely on your methodology. You're not playing the game anymore\u2014you're *defining* it. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Level twenty on a single skill—you're not just specialized anymore, you're *obsessed*, having pushed a single ability tree into territories the designers never actually tested. The scaling is becoming theoretically impossible, the multipliers stacking into numbers that make the code itself nervous. Each incremental level is giving you exponentially more power, and you're basically speedrunning toward one-shotting entire encounter zones. The production notes are filling with warnings in all caps about 'POSSIBLE BALANCE ISSUES', but honestly, we're just taking notes on how far you can push it. You've achieved Legendary+ status in a single tree, which wasn't supposed to be possible in Floor 1. The community forums are already starting speedrun guides based entirely on your methodology. You're not playing the game anymore—you're *defining* it. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-skill-twenty-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -488,11 +513,12 @@
     "popupText": "New achievement: Sword Club 5!",
     "unlockCriteria": "Reach level 5 with a blade skill.",
     "details": "Unlock when you reach level 5 with a blade skill.",
-    "directorFlavor": "Blade skill at five. All that sword training is finally paying dividends\u2014well, not literally, but thematically speaking. The sponsor integration team couldn't find a single frame worth branding. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Blade skill at five. All that sword training is finally paying dividends—well, not literally, but thematically speaking. The sponsor integration team couldn't find a single frame worth branding. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-sword-five-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -509,6 +535,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -525,6 +552,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -541,6 +569,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -552,11 +581,12 @@
     "popupText": "New achievement: Quality of Life!",
     "unlockCriteria": "Reach level 5 with a utility skill.",
     "details": "Unlock when you reach level 5 with a utility skill.",
-    "directorFlavor": "Level 5 utility skill\u2014you're really committed to *not* dying horribly. Refreshingly pragmatic of you. The production metrics barely registered your existence. This is the kind of achievement we usually edit out entirely.",
+    "directorFlavor": "Level 5 utility skill—you're really committed to *not* dying horribly. Refreshingly pragmatic of you. The production metrics barely registered your existence. This is the kind of achievement we usually edit out entirely.",
     "iconId": "achv-utility-five-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -568,11 +598,12 @@
     "popupText": "New achievement: Dual Specialist!",
     "unlockCriteria": "Get two different skills to level 10 in one Floor 1 run.",
     "details": "Unlock when you get two different skills to level 10 in one Floor 1 run.",
-    "directorFlavor": "Two different skills at level ten in one Floor 1 run\u2014you're managing to commit to *multiple* specializations simultaneously. That's either genius resource allocation or maniacal juggling. The stat distributions are becoming deliciously complex. The build-crafting meta you're establishing has the designers frantically taking notes. You're building narrative architecture here. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Two different skills at level ten in one Floor 1 run—you're managing to commit to *multiple* specializations simultaneously. That's either genius resource allocation or maniacal juggling. The stat distributions are becoming deliciously complex. The build-crafting meta you're establishing has the designers frantically taking notes. You're building narrative architecture here. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-dual-specialist-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -584,11 +615,12 @@
     "popupText": "New achievement: Triple Specialist!",
     "unlockCriteria": "Get three different skills to level 10 in one Floor 1 run.",
     "details": "Unlock when you get three different skills to level 10 in one Floor 1 run.",
-    "directorFlavor": "Three different skills at level ten\u2014you're a *polymath of destruction*, mastering multiple combat disciplines simultaneously with an ambition that borders on the delusional. You've managed to allocate your limited experience across three entirely different progression trees, each hitting that legendary milestone independently, and somehow you've maintained synergy across all three. The build complexity is reaching *fractal* levels\u2014every ability interacts with every other ability in ways that even the designers are scrambling to understand. You're not building a character, you're building an *ecosystem* of intersecting powers. The production is genuinely concerned that you've achieved some kind of optimization exploit\u2014or you're just terrifyingly talented at resource management. Either way, the math doesn't add up, and that's somehow *better* for engagement. You're basically a walking argument for multiclassing being viable. We're rewriting the entire balance patch around your performance. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Three different skills at level ten—you're a *polymath of destruction*, mastering multiple combat disciplines simultaneously with an ambition that borders on the delusional. You've managed to allocate your limited experience across three entirely different progression trees, each hitting that legendary milestone independently, and somehow you've maintained synergy across all three. The build complexity is reaching *fractal* levels—every ability interacts with every other ability in ways that even the designers are scrambling to understand. You're not building a character, you're building an *ecosystem* of intersecting powers. The production is genuinely concerned that you've achieved some kind of optimization exploit—or you're just terrifyingly talented at resource management. Either way, the math doesn't add up, and that's somehow *better* for engagement. You're basically a walking argument for multiclassing being viable. We're rewriting the entire balance patch around your performance. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-triple-specialist-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -600,11 +632,12 @@
     "popupText": "New achievement: Milestone Hunter!",
     "unlockCriteria": "Trigger 4 skill milestones in one Floor 1 run.",
     "details": "Unlock when you trigger 4 skill milestones in one Floor 1 run.",
-    "directorFlavor": "Four skill milestones triggered in one run. You're hitting those narrative breakpoints like you're speedrunning a skill tree. Each milestone is a little plot beat, and you're manufacturing them at an industrial pace. The progression is *crystallizing* before our eyes\u2014this isn't random farming, this is deliberate optimization. The production loves a speedrunner. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Four skill milestones triggered in one run. You're hitting those narrative breakpoints like you're speedrunning a skill tree. Each milestone is a little plot beat, and you're manufacturing them at an industrial pace. The progression is *crystallizing* before our eyes—this isn't random farming, this is deliberate optimization. The production loves a speedrunner. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-milestone-hunter-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -621,6 +654,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -632,11 +666,12 @@
     "popupText": "New achievement: Button-Masher Buildcraft!",
     "unlockCriteria": "Change your abilities bar 3 times in a run.",
     "details": "Unlock when you change your abilities bar 3 times in a run.",
-    "directorFlavor": "Three ability bar reconfigures in one run\u2014still searching for the perfect setup? The indecision is *riveting*. The engagement curve is flatter than the production budget allows us to admit. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Three ability bar reconfigures in one run—still searching for the perfect setup? The indecision is *riveting*. The engagement curve is flatter than the production budget allows us to admit. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-respec-ritual-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -653,6 +688,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -669,6 +705,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -680,11 +717,12 @@
     "popupText": "New achievement: Weapon Scholar!",
     "unlockCriteria": "Land hits with 3 different weapon classes in one run.",
     "details": "Unlock when you land hits with 3 different weapon classes in one run.",
-    "directorFlavor": "Three different weapon classes landed in one run\u2014you're a generalist *and* an opportunist. The combat tape shows you fluidly transitioning between fighting styles, adapting to dropped loot like a true professional. The editors are going to have a field day cutting between these footage segments. Genre-spanning spectacle\u2014exactly what the algorithm orders. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Three different weapon classes landed in one run—you're a generalist *and* an opportunist. The combat tape shows you fluidly transitioning between fighting styles, adapting to dropped loot like a true professional. The editors are going to have a field day cutting between these footage segments. Genre-spanning spectacle—exactly what the algorithm orders. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-weapon-scholar-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -701,6 +739,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": [
@@ -724,6 +763,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -740,6 +780,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -751,11 +792,12 @@
     "popupText": "New achievement: Untouchable TV!",
     "unlockCriteria": "Finish Floor 1 without taking damage.",
     "details": "Unlock when you finish Floor 1 without taking damage.",
-    "directorFlavor": "Floor 1 completed without taking a single point of damage. You're literally *untouchable*, a phantom that walked through Floor 1 like you're intangible, like you exist on a different plane of reality from the dungeon's hostile environment. Every enemy swing was a near-miss, every trap trigger was perfectly anticipated, every environmental hazard was threaded with pixel-perfect precision. That's not skill anymore, that's *prescience*\u2014you're playing like you've seen the future or memorized every frame of every encounter. The production is genuinely confused about what we just witnessed. The footage is so perfectly executed it's almost suspicious. You didn't take a single scratch across the entire floor, which means you either have mechanical reflexes that shouldn't exist or you've found some kind of exploit. Either way, the viewers are going to be absolutely *unhinged*. The perfect run. The speedrunners are going to obsess over this footage for *years*. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Floor 1 completed without taking a single point of damage. You're literally *untouchable*, a phantom that walked through Floor 1 like you're intangible, like you exist on a different plane of reality from the dungeon's hostile environment. Every enemy swing was a near-miss, every trap trigger was perfectly anticipated, every environmental hazard was threaded with pixel-perfect precision. That's not skill anymore, that's *prescience*—you're playing like you've seen the future or memorized every frame of every encounter. The production is genuinely confused about what we just witnessed. The footage is so perfectly executed it's almost suspicious. You didn't take a single scratch across the entire floor, which means you either have mechanical reflexes that shouldn't exist or you've found some kind of exploit. Either way, the viewers are going to be absolutely *unhinged*. The perfect run. The speedrunners are going to obsess over this footage for *years*. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-no-hit-floor1-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -767,11 +809,12 @@
     "popupText": "New achievement: One-Digit Ending!",
     "unlockCriteria": "Take the stairs with under 10 HP.",
     "details": "Unlock when you take the stairs with under 10 HP.",
-    "directorFlavor": "Stairs reached with under 10 HP remaining\u2014you're basically held together by spite and production contracts. That's not a victory lap, that's a *close call* being marketed as confidence. The audience is screaming. You're operating on fumes and sheer will. Barely escaped with your life, which somehow makes it *better* television. We're taking that footage straight to the highlights reel. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Stairs reached with under 10 HP remaining—you're basically held together by spite and production contracts. That's not a victory lap, that's a *close call* being marketed as confidence. The audience is screaming. You're operating on fumes and sheer will. Barely escaped with your life, which somehow makes it *better* television. We're taking that footage straight to the highlights reel. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-ten-hp-ending-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -783,11 +826,12 @@
     "popupText": "New achievement: Heartbeat Finale!",
     "unlockCriteria": "Take the stairs with under 5 HP.",
     "details": "Unlock when you take the stairs with under 5 HP.",
-    "directorFlavor": "Stairs reached with under 5 HP remaining\u2014you're basically held together by prayer and pure spite, a single thread away from total collapse. You're not winning, you're *barely escaping*, limping toward the exit like you just survived a war that the production only partially documented. That's operating at the ragged edge of obliteration, every step a negotiation with death itself. Five health points between you and game over, and somehow you *made it*. The stress response from the viewers is going to be *apocalyptic*\u2014this isn't victory, this is *resurrection*, pulled back from the literal brink by the thinnest margin possible. You're running on fumes and pure adrenaline. The highlight reel practically edits itself\u2014pure, undiluted tension compressed into a single, impossible moment. This is the content that breaks the internet. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Stairs reached with under 5 HP remaining—you're basically held together by prayer and pure spite, a single thread away from total collapse. You're not winning, you're *barely escaping*, limping toward the exit like you just survived a war that the production only partially documented. That's operating at the ragged edge of obliteration, every step a negotiation with death itself. Five health points between you and game over, and somehow you *made it*. The stress response from the viewers is going to be *apocalyptic*—this isn't victory, this is *resurrection*, pulled back from the literal brink by the thinnest margin possible. You're running on fumes and pure adrenaline. The highlight reel practically edits itself—pure, undiluted tension compressed into a single, impossible moment. This is the content that breaks the internet. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-five-hp-ending-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -804,6 +848,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -815,11 +860,12 @@
     "popupText": "New achievement: Nervous Pace!",
     "unlockCriteria": "Enter and leave a safe room in under 5 seconds.",
     "details": "Unlock when you enter and leave a safe room in under 5 seconds.",
-    "directorFlavor": "In and out of the safe room in five seconds\u2014clearly you trust the production's mercy runs. That's either bold or stupid. Marketing refused to use any of this footage. We've seen tutorial bots with more personality.",
+    "directorFlavor": "In and out of the safe room in five seconds—clearly you trust the production's mercy runs. That's either bold or stupid. Marketing refused to use any of this footage. We've seen tutorial bots with more personality.",
     "iconId": "achv-safe-room-sprinter-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": []
@@ -847,11 +893,12 @@
     "popupText": "New achievement: Buzzer Beater!",
     "unlockCriteria": "Take the stairs with less than 5 seconds left.",
     "details": "Unlock when you take the stairs with less than 5 seconds left.",
-    "directorFlavor": "Stairs reached with less than 5 seconds remaining on the timer. You're basically *sprinting through the void*, hitting the exit on the absolute precipice of time expiration, barely slipping through the metaphorical doorway as the clock swallows the last second. That's not caution, that's *terror*\u2014you were cutting it so close we had to fact-check the timestamp. The pacing is absolutely *insane*, every second of this run compressed into pure, distilled action. You gambled with the timer and won by the smallest possible margin. The editors are already crafting the slo-mo replay because that final second is going to be *cinematic gold*. This isn't a victory lap, it's a *near-death experience* marketed as gameplay. The production is honestly shocked you made it. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Stairs reached with less than 5 seconds remaining on the timer. You're basically *sprinting through the void*, hitting the exit on the absolute precipice of time expiration, barely slipping through the metaphorical doorway as the clock swallows the last second. That's not caution, that's *terror*—you were cutting it so close we had to fact-check the timestamp. The pacing is absolutely *insane*, every second of this run compressed into pure, distilled action. You gambled with the timer and won by the smallest possible margin. The editors are already crafting the slo-mo replay because that final second is going to be *cinematic gold*. This isn't a victory lap, it's a *near-death experience* marketed as gameplay. The production is honestly shocked you made it. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-late-stairs-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -859,15 +906,16 @@
   {
     "id": "just-in-time",
     "floor": 1,
-    "title": "Just In Time\u2122",
-    "popupText": "New achievement: Just In Time\u2122!",
+    "title": "Just In Time™",
+    "popupText": "New achievement: Just In Time™!",
     "unlockCriteria": "Take the stairs with less than 15 seconds left.",
     "details": "Unlock when you take the stairs with less than 15 seconds left.",
-    "directorFlavor": "Less than 15 seconds left and you're hitting the stairs\u2014you basically speedran Floor 1 against a ticking clock. The pacing is *manic*, every second counting, every move deliberate and desperate. It's not a calm descent, it's a *sprint*. The horror of barely making the time limit is perfect drama. The production is honestly in awe of the stress you can generate. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Less than 15 seconds left and you're hitting the stairs—you basically speedran Floor 1 against a ticking clock. The pacing is *manic*, every second counting, every move deliberate and desperate. It's not a calm descent, it's a *sprint*. The horror of barely making the time limit is perfect drama. The production is honestly in awe of the stress you can generate. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-just-in-time-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -884,6 +932,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -900,6 +949,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -911,11 +961,12 @@
     "popupText": "New achievement: Panic Dodge!",
     "unlockCriteria": "Avoid lethal damage by dodging within 1 second of impact.",
     "details": "Unlock when you avoid lethal damage by dodging within 1 second of impact.",
-    "directorFlavor": "Lethal damage avoided by a frame-perfect dodge\u2014you're literally dodging *death itself* by the thinnest margin. That's not luck, that's *reflexes*, muscle memory pushed to breaking point. The slow-motion replay is going to be absolutely *gorgeous*. You're fighting like you're powered by pure adrenaline and spite. The engagement metrics on that single dodge are going to be astronomical. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Lethal damage avoided by a frame-perfect dodge—you're literally dodging *death itself* by the thinnest margin. That's not luck, that's *reflexes*, muscle memory pushed to breaking point. The slow-motion replay is going to be absolutely *gorgeous*. You're fighting like you're powered by pure adrenaline and spite. The engagement metrics on that single dodge are going to be astronomical. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-panic-dodge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -927,11 +978,12 @@
     "popupText": "New achievement: Crowd Surfing!",
     "unlockCriteria": "Move through 20 nearby enemies without dying.",
     "details": "Unlock when you move through 20 nearby enemies without dying.",
-    "directorFlavor": "Twenty nearby enemies navigated without dying\u2014you're basically wading through an ocean of hostility like it's a crowd at a concert. The navigation through dense spawn is poetry in motion, or at least *competent* survival. You're threading needles at speed. The tactical awareness being displayed is honestly surprising. We didn't expect you to have this much spatial reasoning. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Twenty nearby enemies navigated without dying—you're basically wading through an ocean of hostility like it's a crowd at a concert. The navigation through dense spawn is poetry in motion, or at least *competent* survival. You're threading needles at speed. The tactical awareness being displayed is honestly surprising. We didn't expect you to have this much spatial reasoning. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-crowd-surfing-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -943,11 +995,12 @@
     "popupText": "New achievement: Doorframe Duelist!",
     "unlockCriteria": "Defeat an elite while never leaving one doorway area.",
     "details": "Unlock when you defeat an elite while never leaving one doorway area.",
-    "directorFlavor": "An elite enemy defeated without leaving one doorway\u2014you're basically using architecture as a weapon, keeping the fight in a single frame for maximum impact. The doorway becomes your stage, your duel a contained spectacle of focused brutality. You're understanding geometry like a true professional. The cinematography writes itself. Locked, focused, devastating. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "An elite enemy defeated without leaving one doorway—you're basically using architecture as a weapon, keeping the fight in a single frame for maximum impact. The doorway becomes your stage, your duel a contained spectacle of focused brutality. You're understanding geometry like a true professional. The cinematography writes itself. Locked, focused, devastating. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-doorframe-duelist-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -964,6 +1017,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -980,6 +1034,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -991,11 +1046,12 @@
     "popupText": "New achievement: Loot Vacuum!",
     "unlockCriteria": "Collect 30 pickups before the Floor 1 boss fight.",
     "details": "Unlock when you collect 30 pickups before the Floor 1 boss fight.",
-    "directorFlavor": "Thirty pickups before the boss\u2014you've basically speed-vacuumed the production's item placement. Nothing's slipping past you. We're editing you out of the highlight reel to save runtime. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Thirty pickups before the boss—you've basically speed-vacuumed the production's item placement. Nothing's slipping past you. We're editing you out of the highlight reel to save runtime. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-loot-vacuum-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -1012,6 +1068,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1028,6 +1085,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -1075,6 +1133,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -1091,6 +1150,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -1102,11 +1162,12 @@
     "popupText": "New achievement: Grace Under Ratings!",
     "unlockCriteria": "Survive 30 seconds in boss fight without taking damage.",
     "details": "Unlock when you survive 30 seconds in boss fight without taking damage.",
-    "directorFlavor": "Thirty seconds without taking damage in the boss fight. You're basically *untouchable* in direct combat, a phantom dancer who keeps the boss swinging at air. The evasion patterns are becoming art form. Half a minute of perfect defense\u2014that's not luck, that's *execution*. The slow-motion replays are going to be beautiful. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Thirty seconds without taking damage in the boss fight. You're basically *untouchable* in direct combat, a phantom dancer who keeps the boss swinging at air. The evasion patterns are becoming art form. Half a minute of perfect defense—that's not luck, that's *execution*. The slow-motion replays are going to be beautiful. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-boss-no-hit-30-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1118,11 +1179,12 @@
     "popupText": "New achievement: Fast Programming!",
     "unlockCriteria": "Defeat the Floor 1 boss in under 10 seconds.",
     "details": "Unlock when you defeat the Floor 1 boss in under 10 seconds.",
-    "directorFlavor": "Floor 1 boss defeated in under 10 seconds\u2014that's not a boss fight, that's a *power fantasy execution*, the entire climactic encounter compressed into this frenetic, almost incomprehensible burst of pure destruction. The encounter barely has time to register before it's already ending, the boss going from full health to defeated in what feels like a single frame. You're speedrunning the narrative climax, skipping past all the dramatic beats and just going *straight for the throat*. The production is scrambling to understand what just happened\u2014did we even get enough footage for the highlight reel? Yes, but it happened so *fast* that it barely registers as a fight. You've basically weaponized efficiency into an art form. The boss was never in this. Nobody was ever in this. You're just casually executing encounters that are supposed to be *dangerous*. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Floor 1 boss defeated in under 10 seconds—that's not a boss fight, that's a *power fantasy execution*, the entire climactic encounter compressed into this frenetic, almost incomprehensible burst of pure destruction. The encounter barely has time to register before it's already ending, the boss going from full health to defeated in what feels like a single frame. You're speedrunning the narrative climax, skipping past all the dramatic beats and just going *straight for the throat*. The production is scrambling to understand what just happened—did we even get enough footage for the highlight reel? Yes, but it happened so *fast* that it barely registers as a fight. You've basically weaponized efficiency into an art form. The boss was never in this. Nobody was ever in this. You're just casually executing encounters that are supposed to be *dangerous*. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-boss-ten-seconds-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1134,11 +1196,12 @@
     "popupText": "New achievement: Quick Episode!",
     "unlockCriteria": "Defeat the Floor 1 boss in under 30 seconds.",
     "details": "Unlock when you defeat the Floor 1 boss in under 30 seconds.",
-    "directorFlavor": "Boss defeated in under 30 seconds. You're *speedrunning* the climax. The entire encounter is compressed into this frenetic, compressed highlight\u2014pure damage, perfect pacing, no padding. That's not a boss fight, that's a *statement*. The production is actually scrambling to figure out what happened. You basically skipped the entire second act. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Boss defeated in under 30 seconds. You're *speedrunning* the climax. The entire encounter is compressed into this frenetic, compressed highlight—pure damage, perfect pacing, no padding. That's not a boss fight, that's a *statement*. The production is actually scrambling to figure out what happened. You basically skipped the entire second act. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-boss-thirty-seconds-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1150,11 +1213,12 @@
     "popupText": "New achievement: Finale at 1 HP!",
     "unlockCriteria": "Defeat the Floor 1 boss while below 10 HP.",
     "details": "Unlock when you defeat the Floor 1 boss while below 10 HP.",
-    "directorFlavor": "Boss defeated while you were below 10 HP\u2014you defeated the climactic encounter while already on death's doorstep, fought the final battle from the *edge of obliteration*, and turned around and won. That's not bravery, that's *insanity*\u2014you took the last thing you should have taken on and won anyway, using pure determination and spite. Every attack is a negotiation with the void, every moment another second closer to falling over dead. You're basically a ghost that achieved victory before collapsing, fighting through sheer force of will. The production is honestly stunned that you managed to win from that position\u2014it shouldn't have been *possible*. That's the kind of underdog narrative that breaks viewership records. You're not a player anymore, you're a *legend*. (Also please visit the medical tent afterward.) The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Boss defeated while you were below 10 HP—you defeated the climactic encounter while already on death's doorstep, fought the final battle from the *edge of obliteration*, and turned around and won. That's not bravery, that's *insanity*—you took the last thing you should have taken on and won anyway, using pure determination and spite. Every attack is a negotiation with the void, every moment another second closer to falling over dead. You're basically a ghost that achieved victory before collapsing, fighting through sheer force of will. The production is honestly stunned that you managed to win from that position—it shouldn't have been *possible*. That's the kind of underdog narrative that breaks viewership records. You're not a player anymore, you're a *legend*. (Also please visit the medical tent afterward.) The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-boss-finisher-lowhp-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1166,11 +1230,12 @@
     "popupText": "New achievement: No Notes!",
     "unlockCriteria": "Defeat the Floor 1 boss without taking damage.",
     "details": "Unlock when you defeat the Floor 1 boss without taking damage.",
-    "directorFlavor": "Boss defeated without taking a single scratch during the encounter\u2014you basically *danced* through the climactic fight untouchable and perfect, every dodge frame-perfect, every position optimized, every attack a calculated strike. You didn't just win, you *dominated*, treating the boss like an opponent you were miles ahead of strategically and mechanically. The entire battle is a masterclass in pattern recognition and positioning, a tournament-level display of pure skill married to perfect execution. The footage from this fight is going to be *legendary*, the kind of content that becomes required viewing for aspiring players. You're not just winning, you're *performing*, turning the final encounter into an almost balletic display of superiority. The production is genuinely in awe. This is what perfection looks like when it's actually achieved. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Boss defeated without taking a single scratch during the encounter—you basically *danced* through the climactic fight untouchable and perfect, every dodge frame-perfect, every position optimized, every attack a calculated strike. You didn't just win, you *dominated*, treating the boss like an opponent you were miles ahead of strategically and mechanically. The entire battle is a masterclass in pattern recognition and positioning, a tournament-level display of pure skill married to perfect execution. The footage from this fight is going to be *legendary*, the kind of content that becomes required viewing for aspiring players. You're not just winning, you're *performing*, turning the final encounter into an almost balletic display of superiority. The production is genuinely in awe. This is what perfection looks like when it's actually achieved. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-boss-clean-fight-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1187,6 +1252,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1198,11 +1264,12 @@
     "popupText": "New achievement: Style Bonus!",
     "unlockCriteria": "Defeat the boss after triggering at least 3 abilities.",
     "details": "Unlock when you defeat the boss after triggering at least 3 abilities.",
-    "directorFlavor": "Boss defeated after triggering at least three abilities\u2014you're not rushing, you're *performing*. The encounter becomes a choreographed dance of abilities and precision timing. You're giving the production exactly what it wants: technical excellence married to brutal efficiency. Three different ability triggers, all landing perfectly. *That's* showmanship. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Boss defeated after triggering at least three abilities—you're not rushing, you're *performing*. The encounter becomes a choreographed dance of abilities and precision timing. You're giving the production exactly what it wants: technical excellence married to brutal efficiency. Three different ability triggers, all landing perfectly. *That's* showmanship. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-boss-with-style-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1214,11 +1281,12 @@
     "popupText": "New achievement: Budget Boss Kill!",
     "unlockCriteria": "Defeat the boss with only common gear equipped.",
     "details": "Unlock when you defeat the boss with only common gear equipped.",
-    "directorFlavor": "Boss defeated wearing only common rarity gear. No fancy equipment, no stat-farming, no min-maxing\u2014just pure *skill* carrying you through the hardest encounter. You're a walking argument against item-dependence. The production respects the clean victory. No excuses, no crutches, just raw mechanical perfection. That's the kind of content that *matters*. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Boss defeated wearing only common rarity gear. No fancy equipment, no stat-farming, no min-maxing—just pure *skill* carrying you through the hardest encounter. You're a walking argument against item-dependence. The production respects the clean victory. No excuses, no crutches, just raw mechanical perfection. That's the kind of content that *matters*. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-boss-with-basic-gear-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1235,6 +1303,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -1257,6 +1326,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -1280,6 +1350,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": [
@@ -1303,6 +1374,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -1326,6 +1398,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -1355,6 +1428,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": [
@@ -1377,6 +1451,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -1393,6 +1468,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -1415,6 +1491,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1426,11 +1503,12 @@
     "popupText": "New achievement: Roll Credits (Floor 1)!",
     "unlockCriteria": "Clear Floor 1 and take the stairs alive.",
     "details": "Unlock when you clear Floor 1 and take the stairs alive.",
-    "directorFlavor": "Floor 1 cleared and stairs alive\u2014a complete production arc! Sure, you'll probably die horribly on Floor 2, but *that's* content! We filed this under 'baseline functionality' because there's no category lower. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Floor 1 cleared and stairs alive—a complete production arc! Sure, you'll probably die horribly on Floor 2, but *that's* content! We filed this under 'baseline functionality' because there's no category lower. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-floor1-clear-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
@@ -1454,6 +1532,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -1470,6 +1549,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -1486,6 +1566,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -1497,11 +1578,12 @@
     "popupText": "New achievement: Bait Technician!",
     "unlockCriteria": "Lure 5 enemies through traps in one run.",
     "details": "Unlock when you lure 5 enemies through traps in one run.",
-    "directorFlavor": "Five enemies lured through traps in one run. You've weaponized the dungeon's own architecture, using deadly environmental hazards as your personal damage dealers. The tactical manipulation is *brilliant*\u2014each trap placement a calculated trap within a trap. You're thinking like a level designer now. We're honestly considering promoting you to puzzle creation. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Five enemies lured through traps in one run. You've weaponized the dungeon's own architecture, using deadly environmental hazards as your personal damage dealers. The tactical manipulation is *brilliant*—each trap placement a calculated trap within a trap. You're thinking like a level designer now. We're honestly considering promoting you to puzzle creation. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-trap-bait-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1518,6 +1600,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": []
@@ -1534,6 +1617,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -1545,11 +1629,12 @@
     "popupText": "New achievement: No Brake Pedal!",
     "unlockCriteria": "Go 60 seconds without stopping movement during combat.",
     "details": "Unlock when you go 60 seconds without stopping movement during combat.",
-    "directorFlavor": "Sixty seconds of continuous movement during combat. You're basically a *blur*, never pausing, never standing still, just perpetual motion and calculated chaos. The footage is almost dizzying to watch\u2014you're redlining the movement meter. That kind of stamina and spatial awareness is what separates amateurs from people we actually want on camera. Exhausting to watch. Perfect. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Sixty seconds of continuous movement during combat. You're basically a *blur*, never pausing, never standing still, just perpetual motion and calculated chaos. The footage is almost dizzying to watch—you're redlining the movement meter. That kind of stamina and spatial awareness is what separates amateurs from people we actually want on camera. Exhausting to watch. Perfect. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-never-stop-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1561,11 +1646,12 @@
     "popupText": "New achievement: Door Dancer!",
     "unlockCriteria": "Cross the same doorway 10 times during one fight.",
     "details": "Unlock when you cross the same doorway 10 times during one fight.",
-    "directorFlavor": "Same doorway crossed ten times during combat\u2014you're playing geometry chicken with architecture. Weird flex, but it worked. The engagement dashboard didn't even flicker. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Same doorway crossed ten times during combat—you're playing geometry chicken with architecture. Weird flex, but it worked. The engagement dashboard didn't even flicker. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
     "iconId": "achv-door-dancer-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": []
@@ -1582,6 +1668,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1598,6 +1685,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1614,6 +1702,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1630,6 +1719,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": []
@@ -1641,11 +1731,12 @@
     "popupText": "New achievement: Wardrobe Change!",
     "unlockCriteria": "Open equipment for the first time in a safe room.",
     "details": "Unlock when you open equipment for the first time in a safe room.",
-    "directorFlavor": "You accessed your equipment screen. Stunning\u2014you actually know where your stuff is. Truly, the bar has never been lower. This is going straight into the 'tutorial completion' archive nobody watches. Production couldn't find a single frame worth highlighting.",
+    "directorFlavor": "You accessed your equipment screen. Stunning—you actually know where your stuff is. Truly, the bar has never been lower. This is going straight into the 'tutorial completion' archive nobody watches. Production couldn't find a single frame worth highlighting.",
     "iconId": "achv-gear-tour-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "trash"
     },
     "unlockRules": []
@@ -1662,6 +1753,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": []
@@ -1678,6 +1770,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1689,11 +1782,12 @@
     "popupText": "New achievement: One-Track Mind!",
     "unlockCriteria": "Clear Floor 1 while leveling only one skill tree.",
     "details": "Unlock when you clear Floor 1 while leveling only one skill tree.",
-    "directorFlavor": "Floor 1 cleared while investing in only one skill tree. Total specialization\u2014you're monomaniacal in your focus, grinding a single ability path to perfection. The vertical progression is *crystallizing*, creating synergies that make the designers nervous. You've basically broken the balance by refusing to diversify. Somehow, it's working perfectly. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Floor 1 cleared while investing in only one skill tree. Total specialization—you're monomaniacal in your focus, grinding a single ability path to perfection. The vertical progression is *crystallizing*, creating synergies that make the designers nervous. You've basically broken the balance by refusing to diversify. Somehow, it's working perfectly. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-single-skill-run-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1705,11 +1799,12 @@
     "popupText": "New achievement: Glass Cannon TV!",
     "unlockCriteria": "Clear Floor 1 with zero defense upgrades.",
     "details": "Unlock when you clear Floor 1 with zero defense upgrades.",
-    "directorFlavor": "Floor 1 cleared with zero defense upgrades invested\u2014you're basically a *walking lightning rod*, pure offense with absolutely no defensive infrastructure, a one-hit-point-away-from-disaster that somehow *survived*. You doubled down on damage and absolutely nothing else, committing to an aggression so extreme that it becomes almost suicidal. And then... you didn't die. You out-damaged every threat so efficiently that enemy retaliation was irrelevant. The production is honestly concerned about your pain tolerance, your strategic planning, or possibly your capacity for self-preservation. You proved that sometimes the best defense is *not existing long enough for the enemy to hit back*. That's high-risk, high-reward planning taken to extremes. The statistics are almost incomprehensible. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Floor 1 cleared with zero defense upgrades invested—you're basically a *walking lightning rod*, pure offense with absolutely no defensive infrastructure, a one-hit-point-away-from-disaster that somehow *survived*. You doubled down on damage and absolutely nothing else, committing to an aggression so extreme that it becomes almost suicidal. And then... you didn't die. You out-damaged every threat so efficiently that enemy retaliation was irrelevant. The production is honestly concerned about your pain tolerance, your strategic planning, or possibly your capacity for self-preservation. You proved that sometimes the best defense is *not existing long enough for the enemy to hit back*. That's high-risk, high-reward planning taken to extremes. The statistics are almost incomprehensible. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-glass-cannon-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1737,11 +1832,12 @@
     "popupText": "New achievement: Showboater!",
     "unlockCriteria": "Trigger 5 different achievement categories in one run.",
     "details": "Unlock when you trigger 5 different achievement categories in one run.",
-    "directorFlavor": "Five different achievement categories triggered in one run. You're basically designing your own narrative, hitting multiple checkpoints across different achievement types. The breadth of your accomplishment is *staggering*\u2014you're not specializing, you're *demonstrating*. Every category is a different highlight reel. You're basically the highlight reel. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
+    "directorFlavor": "Five different achievement categories triggered in one run. You're basically designing your own narrative, hitting multiple checkpoints across different achievement types. The breadth of your accomplishment is *staggering*—you're not specializing, you're *demonstrating*. Every category is a different highlight reel. You're basically the highlight reel. The production analytics team just flagged you as 'statistically interesting' because you're performing above the predicted survival curve. The highlight reel is getting actual budget allocated now instead of stock-footage treatment. You're generating the kind of gameplay that makes the design team nervous and the marketing team excited, which is a tension we usually only see in Season finales. The forum threads are already reverse-engineering your approach, and the speedrun community added you to their 'watch list' for optimization breakthroughs.",
     "iconId": "achv-showboater-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1753,11 +1849,12 @@
     "popupText": "New achievement: Floor 1 Grand Tour!",
     "unlockCriteria": "Unlock 25 different achievements in a single Floor 1 run.",
     "details": "Unlock when you unlock 25 different achievements in a single Floor 1 run.",
-    "directorFlavor": "Twenty-five different achievement categories unlocked in a single Floor 1 run\u2014you've basically created a *highlight reel compilation* all by yourself, hitting narrative checkpoints across the entire achievement spectrum like you're speedrunning a checklist in real-time. Every possible achievement category is represented, every corner of the game's progression systems visited and conquered. You're not playing Floor 1, you're *documenting* it, a walking achievement-hunting algorithm that optimized for maximum variety while maintaining actual competence. The production is honestly baffled by the breadth of your performance\u2014you managed to be simultaneously a specialist *and* a generalist, hitting multiple peak moments across different categories. This isn't a run, this is a *tour*, a complete traversal of everything Floor 1 has to offer. The viewers are going to rewatch this footage constantly looking for optimization strats. You've basically written the speedrun guide all by yourself. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models \u2014 you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
+    "directorFlavor": "Twenty-five different achievement categories unlocked in a single Floor 1 run—you've basically created a *highlight reel compilation* all by yourself, hitting narrative checkpoints across the entire achievement spectrum like you're speedrunning a checklist in real-time. Every possible achievement category is represented, every corner of the game's progression systems visited and conquered. You're not playing Floor 1, you're *documenting* it, a walking achievement-hunting algorithm that optimized for maximum variety while maintaining actual competence. The production is honestly baffled by the breadth of your performance—you managed to be simultaneously a specialist *and* a generalist, hitting multiple peak moments across different categories. This isn't a run, this is a *tour*, a complete traversal of everything Floor 1 has to offer. The viewers are going to rewatch this footage constantly looking for optimization strats. You've basically written the speedrun guide all by yourself. The production war room convened an emergency meeting because this level of performance wasn't in any of our statistical models — you're rewriting what we thought Floor 1 ceilings looked like, and the development team is already drafting balance patches specifically targeting whatever you just demonstrated. The engagement metrics are spiking across every dashboard simultaneously, which has never happened before, and the marketing department just fast-tracked you into the Season 2 promotional materials because this is the kind of content that defines entire franchise arcs. You're not playing the game, you're *redefining* it, frame by frame, and every future contestant is going to be measured against this footage for years. The highlight reel budget just tripled because every second of this run is premium-tier content that the editing team refuses to compress.",
     "iconId": "achv-floor1-grand-tour-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": []
@@ -1774,6 +1871,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -1797,6 +1895,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -1820,6 +1919,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
+      "lootTable": "floor1-materials",
       "tier": "rare"
     },
     "unlockRules": [
