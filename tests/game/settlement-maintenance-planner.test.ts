@@ -719,10 +719,16 @@ describe('runEagerMaintenanceTick', () => {
     moveOutsideSettlement();
     world.playerInSafeRoom = false; // force:true bypasses safe-room gate
 
+    // Equip a static charm into the neck slot so the locket candidate is
+    // contested (the evaluator requires a stat improvement to displace a
+    // statically-equipped item, while the breastplate fills an empty slot).
+    const staticEquip = equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
+    expect(staticEquip.ok).toBe(true);
+
     // Add two candidates: one for an empty slot, one competing with the
-    // charm that `createSettlementWorld` → `equip(MERCHANTS_CHARM_DEF)` puts
-    // in the neck slot. The evaluator scores an empty-slot fill positive
-    // regardless of stats, while a contested slot requires a stat improvement.
+    // charm that now occupies the neck slot. The evaluator scores an empty-slot
+    // fill positive regardless of stats, while a contested slot requires a stat
+    // improvement — and a static item protects the neck slot from being displaced.
     const emptySlotId = addBagEquipment(world, playerEid, 'iron-breastplate', 'common');
     const contestedSlotId = addBagEquipment(
       world,
@@ -737,8 +743,8 @@ describe('runEagerMaintenanceTick', () => {
     const equippedValues = Object.values(equipped ?? {});
     // The empty-slot item (breastplate) must be equipped.
     expect(equippedValues).toContain(emptySlotId);
-    // The neck slot must still be held by either the static charm or the new
-    // locket — it was not displaced to "nothing".
+    // The neck slot must still be held by either the static charm (number eid)
+    // or the new locket — it was not displaced to "nothing".
     expect(equippedValues.some((v) => v === contestedSlotId || typeof v === 'number')).toBe(true);
   });
 
@@ -784,6 +790,8 @@ describe('runEagerMaintenanceTick', () => {
     const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
     moveOutsideSettlement();
     world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+    // floor2-field-kit is an equipment-reward achievement gated on this flag.
+    world.floor2EquipmentFlags.floor2EquipmentRewards = true;
 
     // Fill the bag to capacity with a single item that is a clear upgrade for
     // an empty slot (so runBagOnlyEquipmentLoop will equip it).

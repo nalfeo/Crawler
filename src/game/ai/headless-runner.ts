@@ -61,6 +61,7 @@ import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
+  isSettlementReturnRoutingEnabled,
 } from './settlement-return-router.js';
 import { countEngagingEnemies } from '../floorScenario.js';
 
@@ -769,7 +770,14 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      runEagerMaintenanceTick(world, playerEid);
+      runEagerMaintenanceTick(world, playerEid, {
+        // When settlement-return routing is active, the router uses unclaimed
+        // achievements as its navigation signal (utility ∝ unclaimedAchievements).
+        // Claiming them eagerly here would drop utility to zero on the next frame,
+        // causing the router to defer its trip before the player reaches the
+        // settlement. The settlement planner handles claiming on arrival instead.
+        skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
+      });
       runSettlementMaintenancePlanner(world);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 

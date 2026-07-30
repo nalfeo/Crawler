@@ -106,7 +106,10 @@ export interface SettlementMaintenanceDecision {
 }
 
 export type SettlementMaintenanceTerminationReason =
-  'no-opportunity' | 'already-processed' | 'action-cap-equipment' | 'exhausted';
+  | 'no-opportunity'
+  | 'already-processed'
+  | 'action-cap-equipment'
+  | 'exhausted';
 
 export interface SettlementMaintenanceResult {
   /** True only when the planner actually ran its decision loops this call. */
@@ -730,6 +733,19 @@ function fillRemainingOwnedAbilities(
   }
 }
 
+export interface EagerMaintenanceTickOptions {
+  /**
+   * When `true`, skips achievement-reward claiming and the deferred-claim
+   * retry.  Pass `true` when the settlement-return router is enabled so the
+   * router's navigation signal (unclaimed achievements → positive utility) is
+   * preserved: claiming eagerly would reduce utility to zero on the very next
+   * frame, causing the router to defer its return trip before the player ever
+   * reaches the settlement.  In that mode the settlement planner handles
+   * achievement claiming once the player arrives.
+   */
+  readonly skipAchievementClaims?: boolean;
+}
+
 /**
  * Eager per-tick maintenance: claims all unlocked-but-unclaimed achievement
  * rewards, opens boss chests, and equips any generated-equipment bag items
@@ -746,12 +762,26 @@ function fillRemainingOwnedAbilities(
  *
  * Also fills any open active-ability slots with already-owned abilities,
  * matching the settlement planner's post-equipment step.
+ *
+ * @param options.skipAchievementClaims — Set to `true` when
+ *   settlement-return routing is active so the router's unclaimed-achievement
+ *   signal is not consumed before the player reaches the settlement.
  */
-export function runEagerMaintenanceTick(world: GameWorld, playerEid: number): void {
+export function runEagerMaintenanceTick(
+  world: GameWorld,
+  playerEid: number,
+  options?: EagerMaintenanceTickOptions,
+): void {
   const decisions: SettlementMaintenanceDecision[] = [];
 
-  // 1. Claim achievement rewards (any floor, any location).
-  const deferredAchievementIds = planAchievementClaims(world, decisions);
+  // 1. Claim achievement rewards — skipped when the settlement-return router
+  //    is enabled (the router uses unclaimed achievements as its navigation
+  //    signal; claiming them here would drop utility to zero and cause the
+  //    router to defer before the player reaches the settlement).
+  let deferredAchievementIds: readonly string[] = [];
+  if (!options?.skipAchievementClaims) {
+    deferredAchievementIds = planAchievementClaims(world, decisions);
+  }
 
   // 2. Open boss chests (any location).
   const deferredChestIds = planBossChestActions(world, playerEid, decisions);
@@ -762,7 +792,9 @@ export function runEagerMaintenanceTick(world: GameWorld, playerEid: number): vo
   runBagOnlyEquipmentLoop(world, playerEid, decisions);
 
   // 4. Retry bag-full deferred claims now that equipping may have freed space.
-  retryDeferredAchievementClaims(world, decisions, deferredAchievementIds);
+  if (!options?.skipAchievementClaims) {
+    retryDeferredAchievementClaims(world, decisions, deferredAchievementIds);
+  }
   retryDeferredBossChestActions(world, playerEid, decisions, deferredChestIds);
 
   // 5. Fill any still-open active-ability slots with already-owned abilities.
