@@ -107,17 +107,19 @@ jobs:
           SPRITES_ALLOW_CI_THEME_PIPELINE: 'true'
         run: |
           if [ "$THEME_ACTION" = "init" ]; then
-            if [ -n "$THEME_PLAN_REF" ]; then
-              # Pull the plan from the pinned assets/plans commit rather than
-              # trusting whatever copy is on the checked-out (default) branch.
-              # actions/checkout persists credentials, and GitHub permits
-              # fetching any reachable commit SHA, so this works with the
-              # read-only default token.
-              echo "Fetching plan $THEME_PLAN_PATH from pinned commit $THEME_PLAN_REF"
-              git fetch --depth=1 origin "$THEME_PLAN_REF"
-              mkdir -p "$(dirname "$THEME_PLAN_PATH")"
-              git show "$THEME_PLAN_REF:$THEME_PLAN_PATH" > "$THEME_PLAN_PATH"
+            if ! printf '%s' "$THEME_PLAN_REF" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "ERROR: init requires THEME_PLAN_REF to be a pinned 40-character commit SHA on assets/plans." >&2
+              exit 1
             fi
+            # Pull the plan from the pinned assets/plans commit rather than
+            # trusting whatever copy is on the checked-out (default) branch.
+            # actions/checkout persists credentials, and GitHub permits
+            # fetching any reachable commit SHA, so this works with the
+            # read-only default token.
+            echo "Fetching plan $THEME_PLAN_PATH from pinned commit $THEME_PLAN_REF"
+            git fetch --depth=1 origin "$THEME_PLAN_REF"
+            mkdir -p "$(dirname "$THEME_PLAN_PATH")"
+            git show "$THEME_PLAN_REF:$THEME_PLAN_PATH" > "$THEME_PLAN_PATH"
             PLAN_ID=$(node -e "const fs=require('fs');try{const p=JSON.parse(fs.readFileSync(process.env.THEME_PLAN_PATH,'utf8'));process.stdout.write(String(p.id??''))}catch(e){process.stdout.write('')}")
             if [ "$PLAN_ID" != "$THEME_SET_ID" ]; then
               echo "ERROR: plan id '$PLAN_ID' does not match workflow set_id '$THEME_SET_ID'. Update the set_id input or choose the correct plan." >&2

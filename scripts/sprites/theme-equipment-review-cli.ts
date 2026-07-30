@@ -195,6 +195,12 @@ export interface ThemeEquipmentReviewCliDeps {
    * CLI entry point wires the real `gh`-backed publisher in `main()`.
    */
   readonly publishPlan?: ThemeSetPlanPublisher;
+  /**
+   * Lists plan ids published to the durable `assets/plans` branch. Optional so
+   * hermetic tests can inject a fake; the CLI entry point falls back to a real
+   * `git fetch` + `git ls-tree` probe when omitted.
+   */
+  readonly listPublishedPlanIds?: () => Promise<readonly string[]>;
 }
 
 export async function executeThemeEquipmentReviewCommand(
@@ -397,9 +403,12 @@ export function presentState(state: ThemeEquipmentSetState): Record<string, unkn
  * remote set look uninitialized and invite a destructive re-init.
  */
 export async function listThemeSets(
-  deps: Pick<ThemeEquipmentReviewCliDeps, 'store' | 'repoRoot'>,
+  deps: Pick<ThemeEquipmentReviewCliDeps, 'store' | 'repoRoot' | 'listPublishedPlanIds'>,
 ): Promise<Record<string, unknown>> {
   const plans = readAuthoredPlans(deps.repoRoot);
+  const publishedPlanIds = new Set(
+    await (deps.listPublishedPlanIds?.() ?? listPublishedThemeSetIds(deps.repoRoot)).catch(() => []),
+  );
 
   let statefulIds: ReadonlySet<string> | null = null;
   let storeError: string | null = null;
@@ -416,7 +425,11 @@ export async function listThemeSets(
   }
 
   const knownIds = [
-    ...new Set([...plans.map((entry) => entry.id), ...(statefulIds ?? new Set<string>())]),
+    ...new Set([
+      ...plans.map((entry) => entry.id),
+      ...publishedPlanIds,
+      ...(statefulIds ?? new Set<string>()),
+    ]),
   ].sort();
 
   const states = new Map<string, ThemeEquipmentSetState | { error: string }>();
@@ -444,7 +457,9 @@ export async function listThemeSets(
       displayName: plan?.plan?.displayName ?? id,
       plan: plan
         ? { status: plan.error ? 'invalid' : 'ok', ...(plan.error ? { error: plan.error } : {}) }
-        : { status: 'missing' },
+        : publishedPlanIds.has(id)
+          ? { status: 'remote-only' }
+          : { status: 'missing' },
       ...(plan?.plan
         ? {
             planCoverage: {
@@ -464,6 +479,31 @@ export async function listThemeSets(
     ...(storeError ? { storeError } : {}),
     planDir: THEME_SET_PLAN_DIR.split(path.sep).join('/'),
   };
+}
+
+export async function listPublishedThemeSetIds(
+  repoRoot: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<readonly string[]> {
+  const options = { cwd: repoRoot, env: { ...env }, encoding: 'utf8' as const, windowsHide: true, timeout: 30_000 };
+  const scratch = `refs/theme-equipment-plans/${randomUUID()}`;
+  try {
+    await execFileAsync('git', ['fetch', '--quiet', 'origin', `+${PLANS_BRANCH}:${scratch}`], options);
+    const { stdout } = await execFileAsync(
+      'git',
+      ['ls-tree', '-r', '--name-only', scratch, '--', THEME_SET_PLAN_DIR.split(path.sep).join('/')],
+      options,
+    );
+    return stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith(`${THEME_SET_PLAN_DIR.split(path.sep).join('/')}/`) && line.endsWith('.json'))
+      .map((line) => path.posix.basename(line, '.json'))
+      .filter((id) => SET_ID_PATTERN.test(id))
+      .sort();
+  } finally {
+    await execFileAsync('git', ['update-ref', '-d', scratch], options).catch(() => {});
+  }
 }
 
 function describeStateStatus(

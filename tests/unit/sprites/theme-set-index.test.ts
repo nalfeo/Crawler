@@ -149,6 +149,22 @@ describe('theme set index', () => {
     expect(result.sets.map((entry) => entry.id)).toEqual(['broken', 'classic-fantasy']);
     expect(result.sets[0]?.plan.status).toBe('invalid');
   });
+
+  it('lists remote-only durable plans so another workspace can select and initialize them', async () => {
+    const root = tempRepo();
+
+    const result = (await executeThemeEquipmentReviewCommand(
+      { action: 'list' },
+      {
+        store: memoryStore(),
+        repoRoot: root,
+        now: NOW,
+        listPublishedPlanIds: async () => ['classic-fantasy'],
+      },
+    )) as unknown as { sets: Array<{ id: string; plan: { status: string } }> };
+
+    expect(result.sets).toEqual([{ id: 'classic-fantasy', displayName: 'classic-fantasy', plan: { status: 'remote-only' }, state: { status: 'none' } }]);
+  });
 });
 
 describe('theme set plan saving', () => {

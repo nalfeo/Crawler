@@ -273,6 +273,7 @@ export function renderHtml(bootstrap) {
         '<span class="badge">' + stateBadge(entry) + '</span></div>' +
         (entry.plan.status === 'invalid' ? '<p class="error">Plan invalid: ' + esc(entry.plan.error || '') + '</p>' : '') +
         (entry.plan.status === 'missing' ? '<p class="muted">Durable state exists but no authored plan file is present.</p>' : '') +
+        (entry.plan.status === 'remote-only' ? '<p class="muted">Authoritative plan exists on assets/plans only. Open it to initialize from the durable copy, then sync locally before editing.</p>' : '') +
         (coverage
           ? '<div class="metrics"><span class="pill">' + coverage.itemCount + ' items</span>' +
             '<span class="pill">' + coverage.weaponTypeCount + '/' + MIN_WEAPON_TYPES + '+ weapon types</span>' +
@@ -428,7 +429,7 @@ export function renderHtml(bootstrap) {
           : '') +
         '<p class="error">' + esc(message) + '</p>' +
         (missing
-          ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(currentSetId) + '.json). The workflow reads the plan from the pushed branch, so commit and push it first.</p>' +
+          ? '<p class="muted">Initialize the durable set from its authored plan (data/theme-equipment-sets/' + esc(currentSetId) + '.json). The workflow reads the pinned authoritative copy from assets/plans, so save the plan there before initializing.</p>' +
             '<div class="controls"><button data-dispatch="init" ' + (busy ? 'disabled' : '') + '>' + (busy ? 'Dispatching…' : 'Initialize set on GitHub') + '</button><button data-refresh ' + (busy ? 'disabled' : '') + '>Refresh</button></div>'
           : '<p class="muted">If this set lives in Azure, refresh .env.local with npm run setup:azure:env.</p>' +
             '<div class="controls"><button data-refresh>Refresh</button></div>') +

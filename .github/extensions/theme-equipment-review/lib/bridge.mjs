@@ -181,12 +181,10 @@ export async function resolveDefaultBranch(repoRoot, env = loadRepoEnv(repoRoot)
  * `FETCH_HEAD` or `origin/<ref>`, both of which are shared per repository
  * and can be overwritten by a concurrent git process mid-check.
  *
- * Beyond existence, when a local copy exists it is compared byte-for-byte
- * with the remote blob. An overwritten-but-not-pushed plan would pass an
- * existence-only check while the workflow initializes a stale roster; plan
- * immutability then locks in the drift. When no local copy exists (a plan
- * authored on another machine), the remote copy is authoritative and used
- * as-is.
+ * The durable `assets/plans` blob is authoritative. A local copy may be
+ * missing (another machine authored the plan) or stale (another machine
+ * overwrote it on the durable branch). In either case `init` must still use
+ * the pinned remote bytes because that is what the workflow will fetch.
  */
 export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv(repoRoot)) {
   const options = { cwd: repoRoot, env, encoding: 'utf8', windowsHide: true, timeout: 30_000 };
@@ -210,33 +208,12 @@ export async function assertPlanOnRef(repoRoot, ref, planPath, env = loadRepoEnv
       throw new Error(`Could not resolve the tip commit of origin/${ref}.`, { cause: error });
     }
     if (!sha) throw new Error(`Could not resolve the tip commit of origin/${ref}.`);
-    let remoteContent;
     try {
-      const { stdout } = await execFileAsync(
-        'git',
-        ['cat-file', '-p', `${scratch}:${planPath}`],
-        options,
-      );
-      remoteContent = stdout;
+      await execFileAsync('git', ['cat-file', '-p', `${scratch}:${planPath}`], options);
     } catch {
       throw new Error(
         `${planPath} was not found on origin/${ref}. Commit the plan and push this branch, ` +
           `then initialize — the workflow reads the plan from the ref it runs on.`,
-      );
-    }
-    const localPath = path.join(repoRoot, planPath);
-    let localContent;
-    try {
-      localContent = readFileSync(localPath, 'utf8');
-    } catch {
-      // No local file — nothing to compare; the remote copy is what will run.
-      return sha;
-    }
-    if (remoteContent !== localContent) {
-      throw new Error(
-        `${planPath} on origin/${ref} does not match the local working-tree file. ` +
-          `Push the latest version of this plan before initializing — the workflow reads the ` +
-          `plan from the remote ref, and plan immutability will lock in any drift.`,
       );
     }
     return sha;
