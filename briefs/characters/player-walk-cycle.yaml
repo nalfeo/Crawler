@@ -2,9 +2,10 @@
 #
 # This brief opts into `frameSequence` (Slice B): the sheet's cells are NOT
 # independent design alternatives — they are ORDERED FRAMES of one side-view
-# walk cycle for the SAME contestant, packed into a single horizontal strip
-# and played back in the engine (Slice A consumes the `animation` manifest
-# descriptor this produces).
+# walk cycle for the SAME contestant, stored in a 2×2 row-major source grid
+# (top-left → top-right → bottom-left → bottom-right). Approval packs those
+# four frames into a single horizontal strip that the engine plays back
+# frame-by-frame (Slice A consumes the `animation` manifest descriptor).
 #
 # ART STYLE matches the rest of the cast (see welcome-goon-v3.yaml): cartoon
 # EarthBound / Chrono Trigger / Undertale bobblehead proportions, flat cel
@@ -70,23 +71,24 @@ description: |
   Do not alternate cell backgrounds and do not draw any panel, border, or
   frame behind the subject.
 frameSequence:
-  # 4 frames, not the originally-targeted 3: Azure's images/edits endpoint
-  # only accepts square 1024x1024 or the fixed rectangles 1024x1536/1536x1024
-  # (see azure-openai.ts), and frameSequence requires nativeCanvas evenly
-  # divisible by frameCount with a single SQUARE nativeCanvas. 1024 has no
-  # factor of 3, so an exact 3-frame square sheet isn't requestable without
-  # extending the provider to support Azure's non-square rectangles (a much
-  # larger, riskier change to already-tested square-canvas infra). 4 divides
-  # 1024 cleanly (256px cells) and ships on today's infra; the brief's own
-  # tiebreakers rank "frame count beyond 3" lowest priority, i.e. tolerable.
+  # 4 frames arranged in a 2×2 grid (rows: 2, cols: 2) with background gutters
+  # between every cell, read in row-major order (top-left → top-right →
+  # bottom-left → bottom-right). A 2×2 layout on a 1024×1024 canvas yields
+  # 512×512 cells — a natural near-square aspect for a standing biped.
+  #
+  # Why 4 frames: Azure's images/edits endpoint only accepts square 1024×1024
+  # or fixed rectangles 1024×1536/1536×1024. 4 divides 1024 cleanly (256px
+  # on the old 1×4 layout; 512px square per cell on the 2×2 layout) and ships
+  # on today's infra; the brief's own tiebreakers rank "frame count beyond 3"
+  # lowest priority, i.e. tolerable.
   enabled: true
   frameCount: 4
   frameRate: 8
   loop: true
 generation:
   sheet:
-    rows: 1
-    cols: 4
+    rows: 2
+    cols: 2
     emptyCells: []
     nativeCanvas: 1024
 sensors:
