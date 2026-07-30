@@ -1,0 +1,24 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "overseer-fizzwick-clockwork-kill-saw",
+  "date": "2026-07-30",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 164,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 164
+    }
+  },
+  "tools": {
+    "edit": 49,
+    "powershell": 72,
+    "read_powershell": 1,
+    "skill": 1,
+    "sql": 1,
+    "view": 40
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
