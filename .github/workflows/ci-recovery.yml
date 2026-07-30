@@ -64,8 +64,25 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      # Read traffic runs on the GitHub App installation token, which has its own
+      # rate-limit bucket. CRAWLER_CI_PAT is a classic user PAT: every classic PAT
+      # for the same user shares ONE 5,000 req/hour core bucket, and this workflow
+      # is dispatched per PR, per CI completion, and by the 10-minute liveness
+      # sweep. Reading through the PAT exhausted that shared bucket and 403'd every
+      # other owner-scoped automation (thread reconciliation, update-branch, train
+      # admission), which deadlocked the merge train for hours. Owner-scoped
+      # mutations still use CRAWLER_CI_PAT; only reads move.
+      - name: Generate repository app token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Reconcile PR or update shepherd lease
         env:
+          CI_RECOVERY_READ_TOKEN: ${{ steps.app-token.outputs.token }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RECOVERY_MODE: ${{ vars.CI_RECOVERY_MODE || 'dry-run' }}
