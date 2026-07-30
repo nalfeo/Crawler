@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f7566625083a1087c6581951af3447cb23473506",
+    "commitDate": "2026-07-30T04:38:36Z",
+    "commitSubject": "Wire Floor 2 equipment economy (Quartermaster stock + boss chests + AI purchasing) into the real shipped path (#2333)",
+    "capturedAt": "2026-07-30T05:48:16.043Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30514870886",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/f7566625083a1087c6581951af3447cb23473506.json"
+  },
+  {
     "commit": "53d2995167c5bfcb091e3d92e45ba134a49135b7",
     "commitDate": "2026-07-30T04:04:39Z",
     "commitSubject": "feat: Floor 2 Quartermaster purchase UI (epic slice F3) (#2335)",
