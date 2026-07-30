@@ -19,6 +19,100 @@ export const AUDIT_EXCEPTIONS = [
   },
 ];
 
+const AUDIT_SCRIPT_PATH = 'scripts/agent/security/npm-audit.mjs';
+
+export function findReasonRestatementViolations(previousExceptions, currentExceptions) {
+  const previousByPackage = new Map(
+    previousExceptions.map((exception) => [exception.packageName, exception]),
+  );
+  const currentByPackage = new Map(currentExceptions.map((exception) => [exception.packageName, exception]));
+  const violations = [];
+
+  for (const [packageName, current] of currentByPackage.entries()) {
+    const previous = previousByPackage.get(packageName);
+    if (!previous) continue;
+    if (previous.expiresOn !== current.expiresOn && previous.reason === current.reason) {
+      violations.push({
+        packageName,
+        previousExpiresOn: previous.expiresOn,
+        currentExpiresOn: current.expiresOn,
+      });
+    }
+  }
+
+  return violations;
+}
+
+export function extractAuditExceptionsFromSource(source) {
+  const match = source.match(/export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/);
+  if (!match) {
+    throw new Error('Could not find AUDIT_EXCEPTIONS declaration in scripts/agent/security/npm-audit.mjs');
+  }
+
+  const exceptions = Function(`"use strict"; return (${match[1]});`)();
+  if (!Array.isArray(exceptions)) {
+    throw new Error('AUDIT_EXCEPTIONS declaration is not an array');
+  }
+
+  return exceptions;
+}
+
+function readFileAtRef(ref, relativePath) {
+  const result = spawnSync('git', ['show', `${ref}:${relativePath}`], {
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0) return null;
+  return result.stdout;
+}
+
+function resolveBaseRef() {
+  if (process.env.GITHUB_BASE_SHA) return process.env.GITHUB_BASE_SHA;
+
+  for (const candidate of ['origin/main', 'main']) {
+    const mergeBaseResult = spawnSync('git', ['merge-base', 'HEAD', candidate], {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    });
+    if (mergeBaseResult.status === 0) {
+      return mergeBaseResult.stdout.trim();
+    }
+  }
+
+  return null;
+}
+
+export function getReasonRestatementViolationsForCurrentBranch() {
+  const baseRef = resolveBaseRef();
+  if (!baseRef) {
+    if (process.env.GITHUB_BASE_SHA) {
+      // GITHUB_BASE_SHA was explicitly provided (PR context) but could not be
+      // resolved — fail closed so a shallow checkout cannot silently bypass the guard.
+      throw new Error(
+        'GITHUB_BASE_SHA is set but the base ref could not be resolved. ' +
+          'Ensure the repository checkout includes the base commit (fetch-depth: 0).',
+      );
+    }
+    // No base ref available and not in explicit PR context — skip comparison
+    // (e.g. direct push to main, standalone local audit without origin/main).
+    return [];
+  }
+
+  const previousSource = readFileAtRef(baseRef, AUDIT_SCRIPT_PATH);
+  if (previousSource === null) {
+    if (process.env.GITHUB_BASE_SHA) {
+      throw new Error(
+        `Could not read ${AUDIT_SCRIPT_PATH} at base ref ${baseRef}. ` +
+          'Ensure the repository checkout includes the base commit (fetch-depth: 0).',
+      );
+    }
+    return [];
+  }
+
+  const previousExceptions = extractAuditExceptionsFromSource(previousSource);
+  return findReasonRestatementViolations(previousExceptions, AUDIT_EXCEPTIONS);
+}
+
 function isActive(exception, now) {
   const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
   return now <= expiresAt;
@@ -96,6 +190,20 @@ function parseAuditLevel(args) {
 }
 
 function main() {
+  const reasonViolations = getReasonRestatementViolationsForCurrentBranch();
+  if (reasonViolations.length > 0) {
+    process.stderr.write(
+      `${reasonViolations
+        .map(
+          (violation) =>
+            `AUDIT_EXCEPTIONS extension for "${violation.packageName}" changed expiresOn (${violation.previousExpiresOn} -> ${violation.currentExpiresOn}) without changing reason. Extending an exception requires a restated, current justification.`,
+        )
+        .join('\n')}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const auditLevel = parseAuditLevel(process.argv.slice(2));
   const npmCli = process.env.npm_execpath;
   const command = npmCli ? process.execPath : 'npm';
