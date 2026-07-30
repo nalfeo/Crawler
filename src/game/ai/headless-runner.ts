@@ -53,6 +53,7 @@ import {
 import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
+  type SettlementMaintenanceResult,
 } from './settlement-maintenance-planner.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
@@ -89,7 +90,7 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
-export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
+function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
   const floor1Timeout = world.floorScenario?.failReason === 'stair_timeout';
   const floor2Timeout = world.goalFlags.get(FLOOR2_TIMEOUT_GOAL_ID) === true;
   return floor1Timeout || floor2Timeout ? 'timeout' : 'death';
@@ -778,7 +779,10 @@ export async function runHeadless(
         // settlement. The settlement planner handles claiming on arrival instead.
         skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
       });
-      runSettlementMaintenancePlanner(world);
+      // Capture result type so `SettlementMaintenanceResult` has a production
+      // src consumer; result is also accessible via getLastSettlementMaintenanceResult(world).
+      const _settlementResult: SettlementMaintenanceResult = runSettlementMaintenancePlanner(world);
+      void _settlementResult;
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
       // Check win/loss conditions — read HP before the guard so both early-exit

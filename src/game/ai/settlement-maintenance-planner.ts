@@ -579,6 +579,38 @@ function applyConfiguredAbilities(
 }
 
 /**
+ * Options for {@link runEquipmentLoop}. All properties are optional so
+ * callers that don't need non-default behaviour can omit the argument.
+ */
+interface EquipmentLoopRunOptions {
+  /**
+   * When `true`, restricts candidates to inventory items only; shop offers
+   * (Quartermaster purchases) are filtered out.  Safe to call from anywhere
+   * because it never attempts a purchase.
+   */
+  readonly inventoryOnly?: boolean;
+  /**
+   * When `true`, passes `{ force: true }` to `equipFromBag` to bypass the
+   * safe-room context gate.  Required outside settlement visits (same pattern
+   * as `auto-progression.ts`).
+   */
+  readonly force?: boolean;
+  /**
+   * When `true`, exits immediately — before building candidates — if the
+   * player's bag contains no generated-equipment items.  Prevents the
+   * relatively-expensive `buildEquipmentCandidates` / `getQuartermasterOfferViews`
+   * call from running every tick when there is nothing to equip.
+   */
+  readonly bagEmptyShortCircuit?: boolean;
+  /**
+   * Optional label prefix prepended to equip-decision detail strings, e.g.
+   * `"Eager-"` to distinguish eager-tick equips from settlement-visit equips
+   * in telemetry. Defaults to an empty string.
+   */
+  readonly detailPrefix?: string;
+}
+
+/**
  * Bounded greedy single-swap hill-climb: each iteration re-evaluates every
  * candidate against the CURRENT loadout, executes the single best positive
  * swap (purchase-then-equip for shop candidates), applies the evaluator's
@@ -595,11 +627,18 @@ function applyConfiguredAbilities(
  * available. The blacklist is scoped to this call only (not persisted across
  * visits), and the loop remains bounded by `EQUIPMENT_LOOP_CANDIDATE_CAP`
  * regardless of how many candidates fail.
+ *
+ * Behaviour is controlled by the optional {@link EquipmentLoopRunOptions}
+ * argument, which lets callers restrict to inventory-only candidates, bypass
+ * the safe-room context gate, short-circuit on an empty bag, and prefix
+ * telemetry labels — so the eager-tick and settlement-visit paths share one
+ * implementation instead of maintaining parallel copies.
  */
 function runEquipmentLoop(
   world: GameWorld,
   playerEid: number,
   decisions: SettlementMaintenanceDecision[],
+  options?: EquipmentLoopRunOptions,
 ): SettlementMaintenanceTerminationReason {
   // The AI equipment-maintenance feature flag gates all purchasing and equipping
   // of generated stock. When disabled, the loop is a no-op — the spec contract
@@ -608,6 +647,18 @@ function runEquipmentLoop(
   if (!world.floor2EquipmentFlags.floor2EquipmentAiMaintenance) {
     return 'exhausted';
   }
+
+  // Fast-path: skip snapshot + candidate build when the bag is empty and the
+  // caller has opted in to the short-circuit (eager-tick path).
+  if (options?.bagEmptyShortCircuit) {
+    const bag = world.inventories.get(playerEid);
+    if (!bag || (bag.generatedEquipment?.length ?? 0) === 0) {
+      return 'exhausted';
+    }
+  }
+
+  const detailPrefix = options?.detailPrefix ?? '';
+  const forceEquip = options?.force ?? false;
   const blacklistedInstanceIds = new Set<string>();
   const loggedSkipKeys = new Set<string>();
   const protectedSlots = getStaticProtectedSlots(world, playerEid);
@@ -621,7 +672,9 @@ function runEquipmentLoop(
       loggedSkipKeys,
     );
     const candidates = allCandidates.filter(
-      (candidate) => !blacklistedInstanceIds.has(candidate.instance.instanceId),
+      (candidate) =>
+        !(options?.inventoryOnly && candidate.source !== 'inventory') &&
+        !blacklistedInstanceIds.has(candidate.instance.instanceId),
     );
     if (candidates.length === 0) {
       return 'exhausted';
@@ -675,11 +728,16 @@ function runEquipmentLoop(
       kind: 'generated-instance',
       instanceKey: instance.instanceId,
     };
-    const equipResult = equipFromBag(world, playerEid, bagEntry);
+    const equipResult = equipFromBag(
+      world,
+      playerEid,
+      bagEntry,
+      forceEquip ? { force: true } : undefined,
+    );
     if (!equipResult.ok) {
       decisions.push({
         kind: 'skip',
-        detail: `Equip failed for '${instance.instanceId}': ${equipResult.reasons
+        detail: `${detailPrefix}Equip failed for '${instance.instanceId}': ${equipResult.reasons
           .map(describeEquipFailureReason)
           .join('; ')}; blacklisting and continuing`,
       });
@@ -688,7 +746,7 @@ function runEquipmentLoop(
     }
     decisions.push({
       kind: 'equip-instance',
-      detail: `Equipped '${instance.instanceId}' (swap score ${top.score.toFixed(2)})`,
+      detail: `${detailPrefix}Equipped '${instance.instanceId}' (swap score ${top.score.toFixed(2)})`,
       utility: top.score,
     });
 
@@ -748,17 +806,21 @@ export interface EagerMaintenanceTickOptions {
 
 /**
  * Eager per-tick maintenance: claims all unlocked-but-unclaimed achievement
- * rewards, opens boss chests, and equips any generated-equipment bag items
- * that improve the current loadout — with NO settlement-room restriction.
+ * rewards and equips any generated-equipment bag items that improve the
+ * current loadout — with NO settlement-room restriction.
  *
  * Called unconditionally every tick so rewards never sit idle between
- * settlement visits. Skips the Quartermaster shop-purchase path (shop
- * purchases require physical presence at the Quartermaster and are handled
- * by {@link runSettlementMaintenancePlanner} once per settlement visit).
+ * settlement visits. Boss chests are intentionally left to
+ * {@link runSettlementMaintenancePlanner}: they require physical presence at
+ * the settlement to keep the lifecycle test (chest → available → claimed) clean
+ * and the UX review flow (chest opened in context) intact.
+ * Skips the Quartermaster shop-purchase path (shop purchases require physical
+ * presence at the Quartermaster and are handled by
+ * {@link runSettlementMaintenancePlanner} once per settlement visit).
  *
- * All operations are idempotent: already-claimed achievements and already-
- * open chests exit early, and the equipment loop exits immediately when
- * the bag is empty or no candidate beats the current loadout.
+ * All operations are idempotent: already-claimed achievements exit early, and
+ * the equipment loop exits immediately when the bag is empty or no candidate
+ * beats the current loadout.
  *
  * Also fills any open active-ability slots with already-owned abilities,
  * matching the settlement planner's post-equipment step.
@@ -783,29 +845,25 @@ export function runEagerMaintenanceTick(
     deferredAchievementIds = planAchievementClaims(world, decisions);
   }
 
-  // 2. Open boss chests (any location).
-  const deferredChestIds = planBossChestActions(world, playerEid, decisions);
-
-  // 3. Equip bag candidates using the evaluator (inventory-only, no shop
+  // 2. Equip bag candidates using the evaluator (inventory-only, no shop
   //    purchases). Gates on `floor2EquipmentAiMaintenance`; on Floor 1 or
   //    when the flag is off it is a cheap no-op.
   runBagOnlyEquipmentLoop(world, playerEid, decisions);
 
-  // 4. Retry bag-full deferred claims now that equipping may have freed space.
+  // 3. Retry bag-full deferred claims now that equipping may have freed space.
   if (!options?.skipAchievementClaims) {
     retryDeferredAchievementClaims(world, decisions, deferredAchievementIds);
   }
-  retryDeferredBossChestActions(world, playerEid, decisions, deferredChestIds);
 
-  // 5. Fill any still-open active-ability slots with already-owned abilities.
+  // 4. Fill any still-open active-ability slots with already-owned abilities.
   fillRemainingOwnedAbilities(world, playerEid, decisions);
 }
 
 /**
- * Bounded greedy bag-only equipment loop: evaluates every inventory candidate
- * (no shop candidates) against the current loadout and executes the single
- * best positive swap per iteration, up to {@link EQUIPMENT_LOOP_CANDIDATE_CAP}
- * times. Shares all scoring and equip logic with {@link runEquipmentLoop}.
+ * Bag-only wrapper around {@link runEquipmentLoop}: restricts to inventory
+ * candidates (no shop purchases), bypasses the safe-room context gate via
+ * `force: true`, and short-circuits when the bag is empty to avoid the
+ * relatively-expensive `buildEquipmentCandidates` call every tick.
  *
  * Inventory-only restriction: shop candidates require a Quartermaster purchase
  * (a location-gated operation) and are intentionally excluded so this function
@@ -819,71 +877,12 @@ function runBagOnlyEquipmentLoop(
   if (!world.floor2EquipmentFlags.floor2EquipmentAiMaintenance) {
     return 'exhausted';
   }
-  // Fast-path: skip snapshot + candidate build (which calls getQuartermasterOfferViews)
-  // when the bag has no generated equipment to consider.
-  const bagForCheck = world.inventories.get(playerEid);
-  if (!bagForCheck || (bagForCheck.generatedEquipment?.length ?? 0) === 0) {
-    return 'exhausted';
-  }
-  const blacklistedInstanceIds = new Set<string>();
-  const loggedSkipKeys = new Set<string>();
-  const protectedSlots = getStaticProtectedSlots(world, playerEid);
-  for (let step = 0; step < EQUIPMENT_LOOP_CANDIDATE_CAP; step += 1) {
-    const snapshot = buildEquipmentSnapshot(world, playerEid);
-    const { candidates: allCandidates } = buildEquipmentCandidates(
-      world,
-      playerEid,
-      protectedSlots,
-      decisions,
-      loggedSkipKeys,
-    );
-    // Restrict to inventory candidates only (no Quartermaster shop offers).
-    const candidates = allCandidates.filter(
-      (candidate) =>
-        candidate.source === 'inventory' &&
-        !blacklistedInstanceIds.has(candidate.instance.instanceId),
-    );
-    if (candidates.length === 0) {
-      return 'exhausted';
-    }
-
-    const evaluation = evaluateEquipmentLoadoutCandidates({
-      current: snapshot,
-      candidates,
-      remainingEncounters: [CANONICAL_ENCOUNTER_FIXTURE],
-      affinityTagWeights: deriveAffinityTagWeights(snapshot.equipped),
-    });
-
-    const top = evaluation.ranked[0];
-    if (!top || top.score <= 0) {
-      return 'exhausted';
-    }
-
-    const instance = top.candidate.instance;
-    const bagEntry: GeneratedEquipmentInventoryEntry = {
-      kind: 'generated-instance',
-      instanceKey: instance.instanceId,
-    };
-    const equipResult = equipFromBag(world, playerEid, bagEntry, { force: true });
-    if (!equipResult.ok) {
-      decisions.push({
-        kind: 'skip',
-        detail: `Eager-equip failed for '${instance.instanceId}': ${equipResult.reasons
-          .map(describeEquipFailureReason)
-          .join('; ')}; blacklisting and continuing`,
-      });
-      blacklistedInstanceIds.add(instance.instanceId);
-      continue;
-    }
-    decisions.push({
-      kind: 'equip-instance',
-      detail: `Eager-equipped '${instance.instanceId}' (swap score ${top.score.toFixed(2)})`,
-      utility: top.score,
-    });
-
-    applyConfiguredAbilities(world, playerEid, top.configuredActiveAbilityIds, decisions);
-  }
-  return 'action-cap-equipment';
+  return runEquipmentLoop(world, playerEid, decisions, {
+    inventoryOnly: true,
+    force: true,
+    bagEmptyShortCircuit: true,
+    detailPrefix: 'Eager-',
+  });
 }
 
 /**
