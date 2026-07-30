@@ -49,6 +49,38 @@ One combined 3🍎 tooling PR bundling two independent theme-equipment review im
 - `node --check .github/extensions/theme-equipment-review/renderer.mjs` → EXIT 0.
 - `npm run typecheck` → EXIT 0.
 - `npx vitest run --project sprites theme-equipment-review-cli` → 17 passed (incl. 6 new publisher tests). NOTE: `tests/unit/sprites/**` is excluded from the `unit` vitest project — must use `--project sprites`.
+
+## Follow-up: graceful degradation on transient publish failure (same branch, later commits)
+
+Dogfooding the durable "Save plan" flow hit the exact clunk the design left open: a
+**transient GitHub rate-limit** rolled back the local write and threw a
+data-loss-looking error. Fixed on this branch (UX hardening, still 3🍎):
+
+- On a **retryable** publish failure (rate-limit / 5xx / recognized transport fault
+  / our own deadline) the authored plan is **kept locally** and the canvas shows an
+  honest **"pending — retry"** affordance; only **definitive** faults (auth, bad
+  args, missing `gh`, validation) roll back.
+- Retry re-saves with the maintainer's own overwrite choice (never a silent
+  force-overwrite); a byte-identical remote copy is idempotent success, so retrying
+  a partially-landed publish can't clobber a different maintainer's plan.
+- `runGhApi` failures carry a `transient` flag; the null-status decision is an
+  exported pure helper `classifyGhFailureTransient`, unit-tested with raw Windows
+  `gh` stderr (`proxyconnect tcp` / `connectex` / `actively refused` / `no such
+host` / `dial tcp`) so a real network blip on **Windows** is kept pending, not
+  rolled back.
+
+Code-review loop converged clean over rounds 2→4 (see the review ledger). 30 CLI
+sprites tests + `verify:fast` green.
+
+**E2E cloth publish (deferred, not a code blocker):** authoring a **Classic Fantasy
+[Basic Cloth]** set E2E through the canvas is blocked only on a user-wide GitHub
+rate limit for user 14006787 (both tokens map to it; `gh api rate_limit` shows
+misleadingly-high `core.remaining` but every real call 403s). The validated 21-item
+roster is preserved in `files/cloth-plan.json`; no authored work is lost. Resume by
+retrying **Save plan** in the canvas once the limit resets, then `init` → roster
+review (`approve_remaining` + `review_collection` + `advance_phase`) → dispatch
+`run-phase` for briefs.
+
 - `npm run verify:fast` → passed (rerun clean after `sync:main --reason pre-publish` rebased onto origin/main).
 - `npm run review:ledger -- validate <path>` → valid 3-apple ledger.
 - `npm run verify:pr-prereqs` → ledger ✅; handoff + guard-telemetry now added.
