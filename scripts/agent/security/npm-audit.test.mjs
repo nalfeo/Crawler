@@ -15,6 +15,13 @@ const BRACE_EXPANSION_ADVISORY = {
   url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
   severity: 'high',
 };
+// GHSA-v2hh-gcrm-f6hx: fast-uri advisory (exception removed 2026-07-30 after 3.1.4 landed).
+// Still used in tests that verify fail-closed behaviour for packages with no active exception.
+const ADVISORY = {
+  source: 1124064,
+  url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
+  severity: 'high',
+};
 const FIND_MY_WAY_ADVISORY = {
   source: 1124273,
   url: 'https://github.com/advisories/GHSA-c96f-x56v-gq3h',
@@ -111,6 +118,21 @@ test('fails closed after the brace-expansion exception expires', () => {
     result.blocking.map((item) => item.name),
     ['brace-expansion'],
   );
+});
+
+test('blocks fast-uri advisory with no active exception', () => {
+  const result = evaluateAudit(
+    report({
+      'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] },
+      ajv: { name: 'ajv', severity: 'high', via: ['fast-uri'] },
+      fastify: { name: 'fastify', severity: 'high', via: ['ajv'] },
+    }),
+    { now: ACTIVE_DATE },
+  );
+
+  assert.deepEqual(result.ignored, []);
+  assert.deepEqual(result.matchedExceptions, []);
+  assert.deepEqual(result.blocking.map((item) => item.name).sort(), ['ajv', 'fast-uri', 'fastify']);
 });
 
 test('fails closed for a mixed dependency chain', () => {
@@ -276,13 +298,8 @@ test('fails closed when severity is missing (undefined)', () => {
 test('blocks fast-uri — no exception after package upgrade to 3.1.4', () => {
   // fast-uri was upgraded to 3.1.4 in this repo; the advisory is patched and
   // no exception should suppress it if it reappears.
-  const fastUriAdvisory = {
-    source: 1124064,
-    url: 'https://github.com/advisories/GHSA-v2hh-gcrm-f6hx',
-    severity: 'high',
-  };
   const result = evaluateAudit(
-    report({ 'fast-uri': { name: 'fast-uri', severity: 'high', via: [fastUriAdvisory] } }),
+    report({ 'fast-uri': { name: 'fast-uri', severity: 'high', via: [ADVISORY] } }),
     { now: ACTIVE_DATE },
   );
 
