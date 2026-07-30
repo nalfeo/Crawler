@@ -28,7 +28,6 @@ import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weap
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import {
   FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
-  FLOOR2_TIMEOUT_GOAL_ID,
   denUnlockGoalId,
 } from '../floor2Scenario.js';
 import {
@@ -52,6 +51,7 @@ import {
 } from './auto-progression.js';
 import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
 import { restockFloor2Quartermaster } from '../quartermaster-stock.js';
+import { classifyGameOverOutcome } from './game-over-classifier.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
@@ -91,12 +91,6 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
     world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status === 'complete' ||
     readRunState(world) === 'safe_room'
   );
-}
-
-export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
-  const floor1Timeout = world.floorScenario?.failReason === 'stair_timeout';
-  const floor2Timeout = world.goalFlags.get(FLOOR2_TIMEOUT_GOAL_ID) === true;
-  return floor1Timeout || floor2Timeout ? 'timeout' : 'death';
 }
 
 // Floor 1 AI-driver auto-actions (NPC talk, boss-reward spell pick, shop
