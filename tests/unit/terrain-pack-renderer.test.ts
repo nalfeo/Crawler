@@ -431,6 +431,13 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(westFrame).not.toBe(isolatedFrame);
   });
 
+  it('HARD GATE: includes TREE in the wall-neighbour mask set', () => {
+    // TREE is currently unwritten by generators, so the restoration in
+    // PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES needs a direct deterministic gate:
+    // if TREE is dropped again, verify:fast must fail immediately.
+    expect(PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(TerrainType.TREE)).toBe(true);
+  });
+
   it('treats STONE_WALL and CAVE_WALL as connected pack walls for mask selection', () => {
     const { scene, rt } = createPackScene(allPackKeys);
     // 4x3 grid: middle row is [FLOOR, STONE_WALL, CAVE_WALL, FLOOR], flanked
