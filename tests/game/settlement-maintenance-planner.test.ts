@@ -4,6 +4,7 @@ import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
   runSettlementMaintenancePlanner,
+  runEagerMaintenanceTick,
   type SettlementMaintenanceResult,
 } from '../../src/game/ai/settlement-maintenance-planner.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
@@ -622,5 +623,197 @@ describe('runSettlementMaintenancePlanner', () => {
     expect(offerSkips[0]?.detail).toContain('insufficient-funds');
     expect(result.decisions.some((d) => d.kind === 'purchase-equipment')).toBe(false);
     expect(world.playerGold).toBe(10);
+  });
+});
+
+describe('runEagerMaintenanceTick', () => {
+  // ──────────────────────────────────────────────────────────────────
+  // Achievement claiming — anywhere, any floor
+  // ──────────────────────────────────────────────────────────────────
+
+  it('claims a Floor 1 lootBox achievement reward without requiring a settlement room', () => {
+    // No settlement wired: plain Floor 1 world outside any safe room.
+    const world = createTestWorld({ seed: 42, floor: 1 });
+    const playerEid = spawnPlayer(world, 400, 400);
+    world.playerInSafeRoom = false;
+
+    unlockAchievement(world, 'first-bonk');
+    expect(isAchievementClaimed(world, 'first-bonk')).toBe(false);
+    const goldBefore = world.playerGold;
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    expect(isAchievementClaimed(world, 'first-bonk')).toBe(true);
+    expect(world.playerGold).toBeGreaterThan(goldBefore);
+  });
+
+  it('claims multiple unlocked but unclaimed lootBox achievements in one tick', () => {
+    const world = createTestWorld({ seed: 42, floor: 1 });
+    const playerEid = spawnPlayer(world, 400, 400);
+
+    unlockAchievement(world, 'first-bonk');
+    unlockAchievement(world, 'slime-no-more');
+    unlockAchievement(world, 'rat-retired');
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    expect(isAchievementClaimed(world, 'first-bonk')).toBe(true);
+    expect(isAchievementClaimed(world, 'slime-no-more')).toBe(true);
+    expect(isAchievementClaimed(world, 'rat-retired')).toBe(true);
+  });
+
+  it('is idempotent: repeated calls do not double-claim or throw', () => {
+    const world = createTestWorld({ seed: 42, floor: 1 });
+    const playerEid = spawnPlayer(world, 400, 400);
+    unlockAchievement(world, 'first-bonk');
+
+    runEagerMaintenanceTick(world, playerEid);
+    const goldAfterFirst = world.playerGold;
+
+    // Second call: already claimed — should be a no-op.
+    runEagerMaintenanceTick(world, playerEid);
+    expect(world.playerGold).toBe(goldAfterFirst);
+  });
+
+  it('claims Floor 2 equipment achievement rewards without being in the settlement room', () => {
+    // Floor 2 world with all equipment flags but player NOT in the settlement room.
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+    world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+    world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+    world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+    world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
+    const playerEid = spawnPlayer(world, 400, 400);
+    world.playerLevel.level = 5;
+    world.playerInSafeRoom = false; // explicitly outside settlement
+
+    unlockAchievement(world, 'floor2-field-kit');
+    expect(isAchievementClaimed(world, 'floor2-field-kit')).toBe(false);
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    expect(isAchievementClaimed(world, 'floor2-field-kit')).toBe(true);
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Generated-equipment equipping — outside settlement, from bag
+  // ──────────────────────────────────────────────────────────────────
+
+  it('equips a generated-equipment bag item outside the settlement room without safe-room context', () => {
+    const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
+    // Move the player OUT of the settlement so the settlement planner would
+    // no-op. Also clear safe-room context to confirm force-equip works.
+    moveOutsideSettlement();
+    world.playerInSafeRoom = false; // eager path uses force:true — no safe room needed
+
+    const instanceId = addBagEquipment(world, playerEid, 'iron-breastplate', 'common');
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    expect(Object.values(equipped ?? {})).toContain(instanceId);
+  });
+
+  it('prefers filling empty slots over contested ones (empty-slot-first priority)', () => {
+    const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
+    moveOutsideSettlement();
+    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+
+    // Equip a static charm into the neck slot so the locket candidate is
+    // contested (the evaluator requires a stat improvement to displace a
+    // statically-equipped item, while the breastplate fills an empty slot).
+    const staticEquip = equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
+    expect(staticEquip.ok).toBe(true);
+
+    // Add two candidates: one for an empty slot, one competing with the
+    // charm that now occupies the neck slot. The evaluator scores an empty-slot
+    // fill positive regardless of stats, while a contested slot requires a stat
+    // improvement — and a static item protects the neck slot from being displaced.
+    const emptySlotId = addBagEquipment(world, playerEid, 'iron-breastplate', 'common');
+    const contestedSlotId = addBagEquipment(
+      world,
+      playerEid,
+      'accessory.gearwork-locket',
+      'common',
+    );
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    const equippedValues = Object.values(equipped ?? {});
+    // The empty-slot item (breastplate) must be equipped.
+    expect(equippedValues).toContain(emptySlotId);
+    // The neck slot must still be held by either the static charm (number eid)
+    // or the new locket — it was not displaced to "nothing".
+    expect(equippedValues.some((v) => v === contestedSlotId || typeof v === 'number')).toBe(true);
+  });
+
+  it('does NOT purchase from the Quartermaster shop (inventory-only path)', () => {
+    const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
+    moveOutsideSettlement();
+    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+    world.playerGold = 100_000; // enough to buy anything
+
+    // Attach a shop offer that would be a clear upgrade for an empty slot.
+    attachSingleOfferStock(world, 'iron-breastplate', 10);
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    // No gold spent: the eager path must never buy from the shop.
+    expect(world.playerGold).toBe(100_000);
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    // The breastplate (shop-only) must NOT be equipped.
+    expect(Object.values(equipped ?? {}).every((v) => typeof v === 'number')).toBe(true);
+  });
+
+  it('equips multiple bag items that each fill a different empty slot', () => {
+    const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
+    moveOutsideSettlement();
+    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+
+    const helmId = addBagEquipment(world, playerEid, 'iron-helm', 'common');
+    const bootsId = addBagEquipment(world, playerEid, 'leather-boots', 'common');
+
+    runEagerMaintenanceTick(world, playerEid);
+
+    const equipped = getEquipmentState(world, playerEid)?.equipped;
+    const equippedValues = Object.values(equipped ?? {});
+    expect(equippedValues).toContain(helmId);
+    expect(equippedValues).toContain(bootsId);
+  });
+
+  it('retries a deferred claim once equipping frees bag capacity', () => {
+    // Scenario: bag is at capacity (1 slot, 1 item). A second achievement
+    // unlocks — its claim is deferred because the bag is full. The eager
+    // equipment loop equips the existing bag item (freeing the slot), then
+    // the retry pass claims the previously-deferred achievement.
+    const { world, playerEid, moveOutsideSettlement } = createSettlementWorld();
+    moveOutsideSettlement();
+    world.playerInSafeRoom = false; // force:true bypasses safe-room gate
+    // floor2-field-kit is an equipment-reward achievement gated on this flag.
+    world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+
+    // Fill the bag to capacity with a single item that is a clear upgrade for
+    // an empty slot (so runBagOnlyEquipmentLoop will equip it).
+    addBagEquipment(world, playerEid, 'iron-breastplate', 'common');
+    const bag = world.inventories.get(playerEid);
+    if (!bag) throw new Error('Expected bag');
+    // Clamp capacity to 1 so the bag is now exactly full.
+    world.inventories.set(playerEid, { ...bag, generatedEquipmentCapacity: 1 });
+
+    // Unlock an equipment achievement whose reward would go into the bag.
+    // With capacity=1 and 1 item already there, claimAchievementReward will
+    // defer (grantFailed) on the first pass.
+    const ok = unlockAchievement(world, 'floor2-field-kit');
+    expect(ok).toBe(true); // sanity: unlock succeeded (bundle stored, not in bag)
+    expect(isAchievementClaimed(world, 'floor2-field-kit')).toBe(false);
+
+    // The eager tick must:
+    //   1. attempt claim → deferred (bag full)
+    //   2. equip iron-breastplate from bag → bag now has 0 items
+    //   3. retry deferred claim → succeeds (capacity freed)
+    runEagerMaintenanceTick(world, playerEid);
+
+    expect(isAchievementClaimed(world, 'floor2-field-kit')).toBe(true);
   });
 });
