@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fe35dd95fe5949b4c0bb669af7a42d7a9baaf907",
+    "commitDate": "2026-07-31T09:48:49Z",
+    "commitSubject": "CI recovery router: suppress repeated no-op dispatches and reserve stale-PR fairness lane (#2435)",
+    "capturedAt": "2026-07-31T10:57:12.649Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30621759840",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/fe35dd95fe5949b4c0bb669af7a42d7a9baaf907.json"
+  },
+  {
     "commit": "3e0aa6f4a37457a3c7a69cb9504ffaf1148d0d96",
     "commitDate": "2026-07-31T08:45:56Z",
     "commitSubject": "CI recovery: add periodic full-inventory dormant PR reconciliation (#2436)",
