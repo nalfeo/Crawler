@@ -71,16 +71,25 @@ function replaceQuartermasterStockWithSoldOffer(
   if (!quartermasterStock) {
     throw new Error('Test requires generated Quartermaster stock');
   }
-  // Mutate the live stock object in place so later shallow settlement snapshots
-  // taken elsewhere in the frame preserve the synthetic "already sold" offer.
-  quartermasterStock.offers.splice(0, quartermasterStock.offers.length, {
-    offerId: PLAYABILITY_TEST_OFFER_ID,
-    instanceId,
-    rarity: 'common',
-    unitPrice: PLAYABILITY_TEST_UNIT_PRICE,
-    quantity: 0,
+  // Preserve the live settlement object identity so later shallow snapshots taken
+  // elsewhere in the frame still observe the synthetic "already sold" stock.
+  (
+    settlement as {
+      quartermasterStock?: Floor2QuartermasterStockState;
+    }
+  ).quartermasterStock = Object.freeze({
+    ...quartermasterStock,
+    offers: Object.freeze([
+      Object.freeze({
+        offerId: PLAYABILITY_TEST_OFFER_ID,
+        instanceId,
+        rarity: 'common',
+        unitPrice: PLAYABILITY_TEST_UNIT_PRICE,
+        quantity: 0,
+      }),
+    ]),
+    retiredInstanceIds: Object.freeze([]),
   });
-  quartermasterStock.retiredInstanceIds.splice(0, quartermasterStock.retiredInstanceIds.length);
 }
 
 function clearPlayabilityRewardState(world: GameWorld): void {
