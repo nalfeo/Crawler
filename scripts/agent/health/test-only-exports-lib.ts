@@ -97,6 +97,166 @@ export interface SourceFile {
  */
 const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
   {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_REWARD_BUNDLE_RARITIES',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_REWARD_BUNDLE_AFFINITY_PROB',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_assertGeneratedRewardInstanceLegal',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_alignmentFromRoll',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rollAffinityAlignment',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_resolvePlayerBuildAffinity',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rarityEligibleBaseIds',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_computeFloor2RewardPoolTierEligibility',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_Floor2RewardPoolAuthoringError',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_validateFloor2RewardPoolTierEligibility',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rollTierRarity',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_GeneratedEquipmentGeneratorError',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_GenerateEquipmentInstanceRequest',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_getGeneratedEquipmentBaseV1',
+  },
+  {
+    file: 'src/game/systems/achievementSystem.ts',
+    name: 'unlockAchievement',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_LOOT_TIERS',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'ACHIEVEMENT_SCOPES',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'parseAchievementCatalog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'createAchievementCatalog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'createAchievementCatalogRegistry',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_CATALOG',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENTS',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'getAchievementCatalogForFloor',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'getCurrentRunGlobalAchievements',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'buildAchievementArtBacklog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR1_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/data/floor2-equipment-wave-b.ts',
+    name: 'FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS',
+  },
+  {
+    file: 'src/shared/data/floor2-reward-pool.ts',
+    name: 'FLOOR2_ARMOR_SLOT_IDS',
+  },
+  {
+    file: 'src/shared/data/floor2-reward-pool.ts',
+    name: 'FLOOR2_REWARD_POOL_NON_WEAPON_IDS',
+  },
+  {
+    file: 'src/shared/generated-equipment-types.ts',
+    name: 'EQUIPMENT_REWARD_TIERS',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'search',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'filterByTag',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'getActiveTags',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'reorderTab',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'hideTab',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'showTab',
+  },
+  {
+    file: 'src/shared/items.ts',
+    name: '_customTag',
+  },
+  {
+    file: 'src/shared/weaponDefs.ts',
+    name: 'WEAPON_DEFS',
+  },
+  {
     file: 'src/shared/generated-assets.ts',
     name: 'computeNormalizedWeaponAnchor',
   },
@@ -107,6 +267,62 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
   {
     file: 'src/shared/generated-assets.ts',
     name: 'buildGeneratedSpriteRegistry',
+  },
+  // Door art contract string used as assertion messages in unit tests that
+  // verify the projection/framing contract on shipped door PNGs.
+  {
+    file: 'src/engine/sprites/door-visuals.ts',
+    name: 'DOOR_ART_CONTRACT_NOTE',
+  },
+  // terrain-pack-visuals: pure helper + interface used only in unit tests
+  // that verify preload-entry generation without loading Phaser.
+  {
+    file: 'src/engine/sprites/terrain-pack-visuals.ts',
+    name: 'TerrainPackLoaderLike',
+  },
+  {
+    file: 'src/engine/sprites/terrain-pack-visuals.ts',
+    name: 'collectTerrainPackPreloadEntries',
+  },
+  // terrain-pack-types: zod sub-schemas and constants exposed so unit tests
+  // can validate schema fragments independently of the top-level pack schema.
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'terrainPackIdSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'provenanceSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'transformIdSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'WALL_ACCENT_COUNT',
+  },
+  // terrain-pack-variants: internal variance helpers tested in isolation so
+  // that seed-based determinism and pool-weight contracts are unit-verifiable.
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'deriveTileVariantSeed',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'pickPoolVariant',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'buildWeightedCombos',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'WALL_ACCENT_DENSITY',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'GROUND_DECAL_DENSITY',
   },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 

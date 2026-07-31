@@ -1,0 +1,9 @@
+{
+  "date": "2026-07-31",
+  "session": "floor2-inventory-reward-pool",
+  "estimated_apples": 4,
+  "actual_apples": 5,
+  "delta": 1,
+  "verdict": "under",
+  "hello_kitties": 1
+}

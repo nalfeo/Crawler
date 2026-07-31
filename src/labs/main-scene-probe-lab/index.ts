@@ -67,6 +67,8 @@ import {
   getQuartermasterOfferViews,
   purchaseQuartermasterOffer,
 } from '../../core/quartermaster-purchase.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
+import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -136,9 +138,19 @@ interface MainSceneInternals {
   inventoryUI?: {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
-    getVisibleItemIds?(): string[];
+    getVisibleItemIds?(): readonly string[];
+    getCellScreenBounds(index: number): ScreenBounds | null;
+    getCellIndexForEntry(entry: {
+      readonly kind: 'generated-instance';
+      readonly instanceKey: GeneratedEquipmentInstanceKey;
+    }): number | null;
   };
-  equipmentUI?: { isOpen(): boolean };
+  equipmentUI?: {
+    isOpen(): boolean;
+    getGeneratedBagCellScreenBounds(
+      instanceKey: GeneratedEquipmentInstanceKey,
+    ): ScreenBounds | null;
+  };
   achievementsUI?: {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
@@ -223,14 +235,13 @@ interface MainSceneInternals {
     packLineworkHubs: readonly { tx: number; ty: number }[];
   };
   getDoorRenderSummary(): {
-    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
-    openPackCount: number;
     openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
+    crossOrientationCount: number;
     renderableClosedCount: number;
     renderableOpenCount: number;
   };
@@ -460,30 +471,32 @@ export interface TerrainRenderSummary {
  * Door-render provenance counts from the last `updateDoorOverlay()` pass in the
  * REAL booted scene. Doors are drawn per-frame as overlay Images (not baked into
  * the terrain RenderTexture); this summary (read from the scene's stored counts)
- * is the observe seam proving CLOSED doors stamp the approved generated texture
- * (`closedPackCount === renderableClosedCount` on a pack-using floor) rather
- * than generated/Kenney/color fallbacks. Buckets are mutually exclusive.
+ * is the observe seam proving doors stamp the approved GENERATED texture
+ * (`closedGeneratedCount === renderableClosedCount`) rather than Kenney/color
+ * fallbacks. Buckets are mutually exclusive.
  */
 export interface DoorRenderSummary {
-  /** Closed doors rendered from a terrain-pack doorSet texture. */
-  readonly closedPackCount: number;
   /** Closed doors rendered from the approved GENERATED texture. */
   readonly closedGeneratedCount: number;
   /** Closed doors rendered from the Kenney closed frame (fallback). */
   readonly closedKenneyCount: number;
   /** Closed doors drawn as a solid-color fill (no art at all). */
   readonly closedColorCount: number;
-  /** Open doors rendered from a terrain-pack doorSet texture. */
-  readonly openPackCount: number;
   /** Open doors rendered from an approved GENERATED open-door texture. */
   readonly openGeneratedCount: number;
   /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
+  /**
+   * Doors whose art came from the OTHER orientation's key (e.g. an E/W doorway
+   * falling back to face-on art because no side-on variant exists). Zero is the
+   * healthy state; a non-zero count names a real art gap.
+   */
+  readonly crossOrientationCount: number;
+  /** Sum of the CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
-  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  /** Sum of the OPEN buckets — total open doors actually rendered. */
   readonly renderableOpenCount: number;
 }
 
@@ -587,9 +600,9 @@ export interface MainSceneProbeApi {
   getTerrainRenderSummary(): TerrainRenderSummary;
   /**
    * Door-render provenance counts from the last `updateDoorOverlay()` pass. Used
-   * by the generated-door-overlay e2e to prove — in the REAL booted scene — that
-   * closed dungeon doors stamp the approved generated texture
-   * (`renderableClosedCount > 0 && closedGeneratedCount === renderableClosedCount`).
+   * by the unified-door-overlay e2e to prove — in the REAL booted scene — that
+   * every door stamps approved generated art at its own orientation
+   * (`generated === renderable`, zero Kenney/colour, `crossOrientationCount === 0`).
    */
   getDoorRenderSummary(): DoorRenderSummary;
   /**
@@ -598,7 +611,7 @@ export interface MainSceneProbeApi {
    * `RewardOpeningUI.open()` call a player's "Open reward" click drives. A
    * no-op unlock if the achievement is already unlocked/claimed (idempotent).
    */
-  claimAchievementReward(achievementId: string): void;
+  claimAchievementReward(achievementId: string): readonly GeneratedEquipmentInstanceKey[];
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
@@ -640,6 +653,7 @@ export interface MainSceneProbeApi {
     reason?: string;
     goldSpent?: number;
     itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
   };
   /** Visible rendered inventory item ids from the live InventoryUI grid. */
   getInventoryVisibleItemIds(): readonly string[];
@@ -647,6 +661,14 @@ export interface MainSceneProbeApi {
   openFirstAvailableBossChest(): { ok: boolean; reason?: string };
   /** Spawn a floor drop at the player and advance the real sim enough to pick it up. */
   spawnAndPickupFloorDrop(itemId: string): { ok: boolean; reason?: string };
+  /** Bounds for an exact generated instance's rendered inventory cell. */
+  getGeneratedInventoryCellBounds(instanceKey: GeneratedEquipmentInstanceKey): ScreenBounds | null;
+  /** Bounds for an exact generated instance's rendered Gear-panel bag cell. */
+  getGeneratedEquipmentBagCellBounds(
+    instanceKey: GeneratedEquipmentInstanceKey,
+  ): ScreenBounds | null;
+  /** Exact generated instance keys currently equipped by the player. */
+  getEquippedGeneratedInstanceKeys(): readonly GeneratedEquipmentInstanceKey[];
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -1240,14 +1262,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getDoorRenderSummary: (): DoorRenderSummary => {
       const summary = getScene()?.getDoorRenderSummary();
       return {
-        closedPackCount: summary?.closedPackCount ?? 0,
         closedGeneratedCount: summary?.closedGeneratedCount ?? 0,
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
-        openPackCount: summary?.openPackCount ?? 0,
         openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
+        crossOrientationCount: summary?.crossOrientationCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
         renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };
@@ -1258,8 +1279,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const world = scene?.world;
       const achievementsUI = scene?.achievementsUI;
       if (!world || !achievementsUI) {
-        return;
+        return [];
       }
+      const playerEid = playerEidOf(scene);
+      const before = new Set(
+        world.inventories.get(playerEid)?.generatedEquipment?.map((entry) => entry.instanceKey) ??
+          [],
+      );
       // Use the REAL unlock path (`unlockAchievement`) rather than mutating
       // `unlockedIds` directly — for `lootBox`/`equipment` rewards, unlocking
       // is what resolves the immutable reward bundle into
@@ -1275,6 +1301,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       achievementsUI.refresh(world);
       achievementsUI.claimReward(achievementId);
       scene.inventoryUI?.refresh(world);
+      return (
+        world.inventories
+          .get(playerEid)
+          ?.generatedEquipment?.map((entry) => entry.instanceKey)
+          .filter((instanceKey) => !before.has(instanceKey)) ?? []
+      );
     },
 
     seedPendingRewardResumeScenario: () => {
@@ -1408,9 +1440,29 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           ok: true,
           goldSpent: result.goldSpent,
           itemId: purchased?.baseId,
+          instanceId: result.instanceId,
         };
       }
       return { ok: false, reason: result.reason };
+    },
+    getGeneratedInventoryCellBounds: (instanceKey: GeneratedEquipmentInstanceKey) => {
+      const inventory = getScene()?.inventoryUI;
+      if (!inventory?.isOpen()) return null;
+      const index = inventory.getCellIndexForEntry({ kind: 'generated-instance', instanceKey });
+      return index === null ? null : inventory.getCellScreenBounds(index);
+    },
+    getGeneratedEquipmentBagCellBounds: (instanceKey: GeneratedEquipmentInstanceKey) => {
+      const equipment = getScene()?.equipmentUI;
+      return equipment?.isOpen() ? equipment.getGeneratedBagCellScreenBounds(instanceKey) : null;
+    },
+    getEquippedGeneratedInstanceKeys: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      if (!world || playerEid < 0) return [];
+      return Object.values(getEquipmentState(world, playerEid)?.equipped ?? {}).filter(
+        (instanceId): instanceId is GeneratedEquipmentInstanceKey => typeof instanceId === 'string',
+      );
     },
 
     getInventoryVisibleItemIds: (): readonly string[] => {

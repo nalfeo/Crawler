@@ -247,24 +247,6 @@
       "textureKey": "terrain-pack-floor1-dungeon-corridor-3"
     }
   ],
-  "doorSet": {
-    "openHorizontal": {
-      "imagePath": "assets/terrain-packs/floor1-dungeon/door-open-horizontal.png",
-      "textureKey": "terrain-pack-floor1-dungeon-door-open-horizontal"
-    },
-    "openVertical": {
-      "imagePath": "assets/terrain-packs/floor1-dungeon/door-open-vertical.png",
-      "textureKey": "terrain-pack-floor1-dungeon-door-open-vertical"
-    },
-    "closedHorizontal": {
-      "imagePath": "assets/terrain-packs/floor1-dungeon/door-closed-horizontal.png",
-      "textureKey": "terrain-pack-floor1-dungeon-door-closed-horizontal"
-    },
-    "closedVertical": {
-      "imagePath": "assets/terrain-packs/floor1-dungeon/door-closed-vertical.png",
-      "textureKey": "terrain-pack-floor1-dungeon-door-closed-vertical"
-    }
-  },
   "specialFloorPools": {
     "welcome": [
       {

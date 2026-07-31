@@ -11,10 +11,11 @@ import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_SEED = 7;
 
-// Both `lootBox` (Floor 1) and `equipment` (Floor 2) reward bundles resolve
-// ONLY at unlock time and require a stable `generatedEquipmentRunKey` on the
-// world's equipment registry — mirroring how every real entry point
-// (MainGameScene, the headless runner) derives one from its world seed.
+// Both Floor 1's `floor1-materials` and Floor 2's `floor2-generated-equipment`
+// `lootBox` reward tables resolve ONLY at unlock time and require a stable
+// `generatedEquipmentRunKey` on the world's equipment registry — mirroring how
+// every real entry point (MainGameScene, the headless runner) derives one from
+// its world seed.
 function createLabWorld(): GameWorld {
   const world = createGameWorld({
     seed: LAB_SEED,
@@ -40,13 +41,13 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 function rewardText(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
-      return `${reward.tier} box`;
+      return reward.lootTable === 'floor2-generated-equipment'
+        ? `${reward.tier} loot box`
+        : `${reward.tier} box`;
     case 'item':
       return reward.itemId;
     case 'directorMessage':
       return 'message';
-    case 'equipment':
-      return 'equipment bundle';
     case 'none':
       return 'no reward';
   }

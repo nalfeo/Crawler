@@ -319,24 +319,6 @@
       "weight": 1
     }
   ],
-  "doorSet": {
-    "openHorizontal": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-open-horizontal.png",
-      "textureKey": "terrain-pack-industrial-cave-door-open-horizontal"
-    },
-    "openVertical": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-open-vertical.png",
-      "textureKey": "terrain-pack-industrial-cave-door-open-vertical"
-    },
-    "closedHorizontal": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-closed-horizontal.png",
-      "textureKey": "terrain-pack-industrial-cave-door-closed-horizontal"
-    },
-    "closedVertical": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-closed-vertical.png",
-      "textureKey": "terrain-pack-industrial-cave-door-closed-vertical"
-    }
-  },
   "groundDecals": [
     {
       "imagePath": "assets/terrain-packs/industrial-cave/ground-decals-long.png",
