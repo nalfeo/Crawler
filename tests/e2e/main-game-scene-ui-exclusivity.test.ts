@@ -148,6 +148,29 @@ describe('MainGameScene UI exclusivity', () => {
     ).toBe(true);
   });
 
+  it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
+    await bootPlayingSafeScene();
+    await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 100);
+    await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 9_999);
+    await mainSceneProbe.advanceSimulationFrames(page, 2);
+
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    const state = await waitForState(page, (s) => s.abilityLoadoutOpen, {
+      label: 'abilities loadout opened for passive projection check',
+    });
+
+    const combatFlow = state.abilityLoadoutVisibleEntries.find((entry) => entry.id === 'combat-flow');
+    expect(combatFlow, 'combat-flow should be visible in the rendered loadout list').toBeDefined();
+    expect(combatFlow?.details).toContain('PASSIVE');
+    expect(combatFlow?.details).toContain('ACTIVE');
+    expect(combatFlow?.details).toContain('Damage +5%');
+
+    const shadowblade = state.abilityLoadoutVisibleEntries.find((entry) => entry.id === 'shadowblade');
+    expect(shadowblade, 'shadowblade should be visible in the rendered loadout list').toBeDefined();
+    expect(shadowblade?.details).toContain('INACTIVE');
+    expect(shadowblade?.details).toContain('requires a dagger');
+  });
+
   it('does not open inventory after pressing I inside the abilities loadout', async () => {
     await bootPlayingSafeScene();
 
