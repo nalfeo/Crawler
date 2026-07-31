@@ -11,7 +11,6 @@ const BRIEF_DIRECTORY_BY_TYPE: Readonly<Record<SpriteType, string>> = {
   tile: 'tiles',
   vfx: 'vfx',
   character: 'characters',
-  icon: 'icons',
 };
 
 export function isSpriteType(value: string): value is SpriteType {

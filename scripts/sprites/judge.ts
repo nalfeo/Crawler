@@ -188,13 +188,6 @@ export interface JudgeVariantOptions {
    * path derived from `variantIndex`.
    */
   readonly variantPath?: string;
-  /**
-   * When set, overrides `brief.prompt` as the brief-match instructions passed
-   * to the judge and included in the cache key. Used by icon-batch judging to
-   * supply each cell's specific concept/description rather than the generic
-   * sheet prompt.
-   */
-  readonly briefMatchInstructions?: string;
 }
 
 /** Zod schema for the model's structured response. Single source of truth. */
@@ -442,7 +435,6 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
   // composition work. The orchestrator only calls judgeVariant when
   // `brief.judge.enabled === true`, so the cache will never be
   // queried for a judge-disabled brief.
-  const briefMatchInstructions = options.briefMatchInstructions ?? options.brief.prompt;
   const cacheKey = options.cache
     ? options.cache.computeKey({
         modelDeployment: options.provider.modelDeployment,
@@ -451,7 +443,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
         referencePngs: options.referencePngs,
         systemInstructions,
         userPrompt,
-        briefMatchInstructions,
+        briefMatchInstructions: options.brief.prompt,
         floor: options.brief.floor,
         designLanguageAddenda: designLanguageAddendaBlock(designLanguageAddenda),
       })

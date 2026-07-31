@@ -16,16 +16,13 @@
  */
 
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   approveFrameSequence,
-  approveIconBatch,
   approveVariant,
   ApproveError,
   loadApprovedEntry,
   loadApprovedFrameSequenceEntry,
-  type IconBatchEntry,
   type ManifestEntry,
 } from './approve.js';
 import { runQueueCommit } from './queue-commit.js';
@@ -33,18 +30,13 @@ import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 
 interface ParsedArgs {
   readonly runDir: string;
-  /** Absent when `--sequence` or `--icon-batch` is set. */
+  /** Absent when `--sequence` is set — a frame-sequence run approves as one unit. */
   readonly variantIndex?: number;
   /**
    * Approve the run as a Slice B frame-sequence (walk-cycle) instead of a
-   * single design-candidate variant. Mutually exclusive with `--variant` and `--icon-batch`.
+   * single design-candidate variant. Mutually exclusive with `--variant`.
    */
   readonly sequence: boolean;
-  /**
-   * Approve the run as an icon batch — maps each cell index to its declared icon id.
-   * Mutually exclusive with `--variant` and `--sequence`.
-   */
-  readonly iconBatch: boolean;
   readonly allowHardBlocked: boolean;
 }
 
@@ -53,13 +45,10 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
     throw new Error(
       'Usage: npm run sprites:approve -- <runDir> --variant N\n' +
         '   or: npm run sprites:approve -- <runDir> --sequence\n' +
-        '   or: npm run sprites:approve -- <runDir> --icon-batch\n' +
         '  <runDir>              Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
         '  --variant N           Variant index (0-based) to approve as a standalone sprite\n' +
         '  --sequence            Approve every ordered frame of a frameSequence run as one\n' +
         '                        walk-cycle animation sheet (mutually exclusive with --variant)\n' +
-        '  --icon-batch          Approve all cells of an icon batch run (mutually exclusive with\n' +
-        '                        --variant and --sequence)\n' +
         '  --allow-hard-blocked  Override the judge hard-block veto (use consciously)',
     );
   }
@@ -68,14 +57,11 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   let variantIndex: number | undefined;
   let allowHardBlocked = false;
   let sequence = false;
-  let iconBatch = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === '--sequence') {
       sequence = true;
-    } else if (arg === '--icon-batch') {
-      iconBatch = true;
     } else if (arg === '--variant' || arg === '-v') {
       const next = argv[++i];
       if (next === undefined) {
@@ -111,19 +97,11 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   if (sequence && variantIndex !== undefined) {
     throw new Error('--sequence and --variant are mutually exclusive');
   }
-  if (iconBatch && variantIndex !== undefined) {
-    throw new Error('--icon-batch and --variant are mutually exclusive');
-  }
-  if (iconBatch && sequence) {
-    throw new Error('--icon-batch and --sequence are mutually exclusive');
-  }
-  if (!sequence && !iconBatch && variantIndex === undefined) {
-    throw new Error(
-      'Missing required --variant N (or pass --sequence for a frame-sequence run, or --icon-batch for an icon batch run)',
-    );
+  if (!sequence && variantIndex === undefined) {
+    throw new Error('Missing required --variant N (or pass --sequence for a frame-sequence run)');
   }
 
-  return { runDir, variantIndex, allowHardBlocked, sequence, iconBatch };
+  return { runDir, variantIndex, allowHardBlocked, sequence };
 }
 
 function exitCodeForError(kind: ApproveError['kind']): number {
@@ -167,94 +145,6 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
     : path.join(repoRoot, parsed.runDir);
 
   try {
-    // ── Icon-batch path ──────────────────────────────────────────────────────
-    if (parsed.iconBatch) {
-      // Load the brief to find the iconBatch array. The run's summary.json
-      // carries briefPath so we can read the brief YAML and extract the array.
-      const summaryPath = path.join(runDir, 'summary.json');
-      let briefPath: string | undefined;
-      try {
-        const summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as {
-          briefPath?: string;
-        };
-        briefPath = summary.briefPath;
-      } catch {
-        process.stderr.write(`approve failed: could not read summary.json at ${summaryPath}\n`);
-        return 3;
-      }
-      if (!briefPath) {
-        process.stderr.write(
-          `approve failed: summary.json has no briefPath (needed for --icon-batch)\n`,
-        );
-        return 3;
-      }
-      const briefAbsPath = path.isAbsolute(briefPath) ? briefPath : path.join(repoRoot, briefPath);
-      let iconBatchEntries: IconBatchEntry[] | undefined;
-      try {
-        const briefRaw = readFileSync(briefAbsPath, 'utf8');
-        // Fast YAML extraction: parse iconBatch array from brief YAML.
-        // We use a dynamic import of js-yaml which is already a dep of the pipeline.
-        const { parse } = await import('yaml');
-        const brief = parse(briefRaw) as Record<string, unknown>;
-        const raw = brief['iconBatch'];
-        if (!Array.isArray(raw) || raw.length === 0) {
-          process.stderr.write(`approve failed: brief at ${briefAbsPath} has no iconBatch array\n`);
-          return 3;
-        }
-        iconBatchEntries = raw as IconBatchEntry[];
-      } catch (err) {
-        process.stderr.write(
-          `approve failed: could not read brief at ${briefAbsPath}: ${err instanceof Error ? err.message : String(err)}\n`,
-        );
-        return 3;
-      }
-
-      const entries = approveIconBatch({
-        runDir,
-        iconBatch: iconBatchEntries,
-        manifestPath,
-        publicAssetsDir,
-        repoRoot,
-      });
-
-      if (entries.length === 0) {
-        process.stdout.write(`No icons approved (all cells missing or already up-to-date).\n`);
-        return 0;
-      }
-
-      process.stdout.write(`Approved ${entries.length} icon(s):\n`);
-      for (const e of entries) {
-        process.stdout.write(`  ${e.spriteName} → ${e.assetPath}\n`);
-      }
-
-      // Queue-commit all approved icons as a batch.
-      if (process.env.CI === undefined) {
-        try {
-          const result = await runQueueCommit(
-            repoRoot,
-            entries.map((e) => ({
-              assetPath: e.assetPath,
-              manifestKey: e.spriteName,
-              briefId: e.briefId,
-              variantIndex: e.variantIndex,
-            })),
-            createDefaultQueueCommitDeps(repoRoot),
-            { message: `chore(assets): approve icon batch (${entries.length} icons)` },
-          );
-          process.stdout.write(
-            result.status === 'committed'
-              ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
-              : `  queued: no-op (${result.branch} already up to date)\n`,
-          );
-        } catch (err) {
-          process.stderr.write(
-            `⚠ queue-commit failed — approvals are LOCAL-ONLY. Re-run to retry: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-        }
-      }
-      return 0;
-    }
-
     let entry: ManifestEntry;
     let alreadyApproved = false;
     if (parsed.sequence) {

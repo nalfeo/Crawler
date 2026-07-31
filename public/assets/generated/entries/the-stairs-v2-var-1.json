@@ -25,7 +25,7 @@
   "sensorScore": "6/7",
   "judgeScore": "4",
   "type": "tile",
-  "contentHash": "f0bffaae2be0f73f78d3c9e2d38c10ec408a02ea19b7837e70bb123d72f27947",
+  "contentHash": "cecede3067a39d4041dbad4b048398502c4eaef9e4ae7663dd25cccf3e837a98",
   "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",

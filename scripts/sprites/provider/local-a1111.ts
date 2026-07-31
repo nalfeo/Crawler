@@ -398,7 +398,6 @@ const LOCAL_A1111_SUPPORTED_TYPES: ReadonlySet<SpriteType> = new Set([
   'prop',
   'tile',
   'vfx',
-  'icon',
 ]);
 
 function fillPng(png: PNG, r: number, g: number, b: number, a: number): void {

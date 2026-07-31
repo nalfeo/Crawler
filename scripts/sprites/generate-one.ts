@@ -43,12 +43,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
-import {
-  buildPrompt,
-  buildSheetPrompt,
-  buildIconBatchSheetPrompt,
-  loadStyleGuide,
-} from './build-prompt.js';
+import { buildPrompt, buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
 import { expandVariations } from './expand-variations.js';
 import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
@@ -290,9 +285,7 @@ export async function generateSheetCore(
   const effectiveBrief = { ...brief, variations: [...expansion.variations] };
 
   const styleGuide = loadStyleGuide(repoRoot);
-  const prompt = brief.iconBatch
-    ? buildIconBatchSheetPrompt(effectiveBrief, styleGuide)
-    : buildSheetPrompt(effectiveBrief, styleGuide);
+  const prompt = buildSheetPrompt(effectiveBrief, styleGuide);
   const singleVariantPrompt = buildPrompt(effectiveBrief, styleGuide);
 
   // References are OUR own highest-quality approved sprites, chosen
@@ -350,37 +343,26 @@ export async function generateSheetCore(
       dislikedSpriteNames: loadDislikedReferenceNames(),
     });
     if (selection.selected.length === 0) {
-      if (presentCandidates.length === 0 && brief.type === 'icon') {
-        // Bootstrap case: no approved icon sprites exist in the manifest yet.
-        // Icons are a new sprite type bootstrapped without pre-existing references;
-        // proceed without reference images rather than aborting.
-        options.warn?.(
-          `generateSheetCore: no reference sprites exist in pool for brief "${brief.name}" ` +
-            `(type="${brief.type}") — proceeding without references (bootstrapping new type).`,
-        );
-      } else {
-        throw new Error(
-          `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
-            `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
-            `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
-            `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
-        );
-      }
-    } else {
-      referencePngs = selection.selected.map((entry) => {
-        const absolutePath = resolveAssetPath(entry.assetPath);
-        assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
-        return readReference(absolutePath);
-      });
-      referenceSprites = {
-        selectorVersion: SELECTOR_VERSION,
-        seed: selection.seed,
-        requestedCount: selection.requestedCount,
-        eligibleCount: selection.eligibleCount,
-        sameTypeCount: selection.sameTypeCount,
-        selected: selection.selected.map(toReferenceSpriteRef),
-      };
+      throw new Error(
+        `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
+          `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
+          `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
+          `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
+      );
     }
+    referencePngs = selection.selected.map((entry) => {
+      const absolutePath = resolveAssetPath(entry.assetPath);
+      assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
+      return readReference(absolutePath);
+    });
+    referenceSprites = {
+      selectorVersion: SELECTOR_VERSION,
+      seed: selection.seed,
+      requestedCount: selection.requestedCount,
+      eligibleCount: selection.eligibleCount,
+      sameTypeCount: selection.sameTypeCount,
+      selected: selection.selected.map(toReferenceSpriteRef),
+    };
   }
 
   const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
