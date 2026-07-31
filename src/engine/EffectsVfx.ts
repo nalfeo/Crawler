@@ -51,7 +51,7 @@ const COLOR_FIREBALL_RING = 0xff5522;
 const COLOR_PULSE_SHIELD_INNER = 0xe0f7ff;
 const COLOR_PULSE_SHIELD_RING = 0x38bdf8;
 const COLOR_HEAL_GLOW = 0x86efac;
-const COLOR_WEAPON_ABILITY = 0xc084fc;
+const COLOR_ABILITY_UNLOCK = 0xc084fc;
 const COLOR_ARCANE_BOLT = 0xc084fc;
 const COLOR_FROST_NOVA = 0x93c5fd;
 const COLOR_BUFF_AURA = 0xfef3c7;
@@ -381,12 +381,12 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
-  function weaponAbilityActivate(x: number, y: number): void {
+  function abilityUnlockFlash(x: number, y: number): void {
     const depth = WORLD_VFX_DEPTH.levelUpBurst;
     spawnRing(x, y, 0xffffff, 6, 1.6, depth, SPARK_LIFETIME_MS, 0.6);
-    spawnRing(x, y, COLOR_WEAPON_ABILITY, 8, 2.8, depth, SPELL_CAST_LIFETIME_MS, 0.45);
+    spawnRing(x, y, COLOR_ABILITY_UNLOCK, 8, 2.8, depth, SPELL_CAST_LIFETIME_MS, 0.45);
     for (let i = 0; i < 5; i += 1) {
-      spawnRisingMote(x, y, COLOR_WEAPON_ABILITY, depth);
+      spawnRisingMote(x, y, COLOR_ABILITY_UNLOCK, depth);
     }
   }
 
@@ -503,8 +503,8 @@ export function createEffectsVfx(scene: Phaser.Scene): {
       case 'healGlow':
         healGlow(x, y);
         break;
-      case 'weaponAbilityActivate':
-        weaponAbilityActivate(x, y);
+      case 'abilityUnlockFlash':
+        abilityUnlockFlash(x, y);
         break;
       case 'arcaneBoltImpact':
         arcaneBoltImpact(x, y, event.color ?? COLOR_ARCANE_BOLT);
