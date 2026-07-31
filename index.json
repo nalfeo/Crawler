@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3752c722e3bc6c644c0e611605b997755e5f7006",
+    "commitDate": "2026-07-31T14:36:22Z",
+    "commitSubject": "Rename VFX kind `weaponAbilityActivate` → `abilityUnlockFlash` (#2471)",
+    "capturedAt": "2026-07-31T15:27:47.544Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30640116192",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/3752c722e3bc6c644c0e611605b997755e5f7006.json"
+  },
+  {
     "commit": "994be474d0e7d7522298f5f2b51dfc6f90c9626c",
     "commitDate": "2026-07-31T14:00:44Z",
     "commitSubject": "fix(ci-recovery): re-arm auto-merge after automation-driven head advance + unarmed-PR watchdog (#2454)",
