@@ -808,6 +808,55 @@ describe('player floor carryover', () => {
     );
   });
 
+  it('fails closed when a persisted available boss chest stores only one spawn coordinate', () => {
+    const runKey = 'carryover-bad-bosschest-spawn-pair-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: 0,
+        spawnX: 17,
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /must persist spawnX and spawnY together/,
+    );
+  });
+
+  it('fails closed when a persisted available boss chest stores a non-finite spawn coordinate', () => {
+    const runKey = 'carryover-bad-bosschest-spawn-value-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: 0,
+        spawnX: 'bad',
+        spawnY: 29,
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /has an invalid spawn position/,
+    );
+  });
+
   it.each(['revealed', 'claimed'] as const)(
     'fails closed when a persisted boss chest is "%s" but has no revealedGrant',
     (state) => {

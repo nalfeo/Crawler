@@ -176,7 +176,7 @@ export const PHYSICS_BODIES = {
   /** Door. Sprite 1×1 ft. */
   door: box(0.5, 0.5, 500),
   /**
-   * Physical boss chest world-object. A 2×2 ft box dropped at boss death.
+   * Physical boss chest world-object. A 2 ft diameter circle dropped at boss death.
    * Immovable (weight > IMMOVABLE_THRESHOLD): we never want the chest to be
    * knocked away by a stray AoE. The proximity trigger radius is
    * BOSS_CHEST_RANGE_FT (from bossChestPickupSystem), not this Size value.

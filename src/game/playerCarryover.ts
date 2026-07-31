@@ -1218,6 +1218,21 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         `Boss chest id ${chest.chestId} does not match family ${chest.familyId}`,
       );
     }
+    const hasSpawnX = chest.spawnX !== undefined;
+    const hasSpawnY = chest.spawnY !== undefined;
+    if (hasSpawnX !== hasSpawnY) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} must persist spawnX and spawnY together`,
+      );
+    }
+    if (
+      (hasSpawnX && (typeof chest.spawnX !== 'number' || !Number.isFinite(chest.spawnX))) ||
+      (hasSpawnY && (typeof chest.spawnY !== 'number' || !Number.isFinite(chest.spawnY)))
+    ) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} has an invalid spawn position`,
+      );
+    }
     if (chest.revealedGrant !== undefined) {
       assertResolvedRewardPresentation(
         chest.revealedGrant,

@@ -25,7 +25,7 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { query } from 'bitecs';
+import { query, removeEntity } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
@@ -34,7 +34,7 @@ import {
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
-import { spawnDroppedItem } from '../../core/helpers.js';
+import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import {
   acknowledgeBossChestReveal,
@@ -1380,6 +1380,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const chestId = 'boss-chest:ratfolk';
       const existingEid = world.bossChestEids.get(chestId);
       if (existingEid !== undefined) {
+        clearEntityStores(world, existingEid);
+        removeEntity(world.ecs, existingEid);
         world.bossChestEids.delete(chestId);
       }
       world.bossChests.delete(chestId);

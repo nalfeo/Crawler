@@ -93,6 +93,17 @@ describe('HUD panel UX consistency', () => {
     expect(source).toContain('this.abilitiesButton = undefined;');
   });
 
+  it('scene shutdown destroys the remaining HUD panels and reward audio engine', () => {
+    expect(source).toContain('this.dialogueBox?.destroy();');
+    expect(source).toContain('this.hudUi?.destroy();');
+    expect(source).toContain('this.inventoryUI?.destroy();');
+    expect(source).toContain('this.equipmentUI?.destroy();');
+    expect(source).toContain('this.achievementsUI?.destroy();');
+    expect(source).toContain('this.rewardOpeningUI?.destroy();');
+    expect(source).toContain('this.quartermasterUI?.destroy();');
+    expect(source).toContain('this.rewardAudioEngine?.dispose();');
+  });
+
   it('reward-opening visibility changes clear queued keyboard latches', () => {
     expect(source).toContain('onVisibilityChange: (open) => {');
     expect(source).toContain('this.clearPendingInteractionInput();');
