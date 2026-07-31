@@ -58,6 +58,7 @@ import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
+import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
@@ -178,7 +179,15 @@ interface MainSceneInternals {
    * by the probe so each e2e scenario starts clean.
    */
   rewardAudioCueLog?: RewardAudioCueLogEntryProbe[];
-  abilityLoadoutUI?: { isOpen(): boolean; close(): void };
+  abilityLoadoutUI?: {
+    isOpen(): boolean;
+    close(): void;
+    getVisibleEntries?(): ReadonlyArray<{
+      id: string;
+      details: string;
+      canToggle?: boolean;
+    }>;
+  };
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
@@ -312,6 +321,12 @@ export interface NpcRenderInfo {
   readonly distancePx: number;
 }
 
+export interface AbilityLoadoutVisibleEntryProbe {
+  readonly id: string;
+  readonly details: string;
+  readonly canToggle: boolean;
+}
+
 /** Boot-time facts + live readings exposed for characterization assertions. */
 export interface MainSceneState {
   /** ECS world state machine value (e.g. 'loadout' | 'playing'). */
@@ -326,6 +341,10 @@ export interface MainSceneState {
   readonly modalOpen: boolean;
   /** True while the dedicated abilities management surface is open. */
   readonly abilityLoadoutOpen: boolean;
+  /** Rendered loadout rows currently visible in the list viewport. */
+  readonly abilityLoadoutVisibleEntries: readonly AbilityLoadoutVisibleEntryProbe[];
+  /** Active abilities currently equipped to the auto bar. */
+  readonly equippedActiveAbilityIds: readonly string[];
   /** True when inventory is open. */
   readonly inventoryOpen: boolean;
   /** True when equipment is open. */
@@ -577,6 +596,8 @@ export interface MainSceneProbeApi {
   requestQuartermasterToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
+  /** Inject one skill-usage event into the real simulation input queue. */
+  queueSkillUsage(skillId: string, metric: UsageMetric, amount: number): void;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
@@ -794,6 +815,17 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         position && eid >= 0 ? { x: position.x[eid] ?? 0, y: position.y[eid] ?? 0 } : null;
       const modalOpen = scene?.modalPicker?.isOpen() ?? false;
       const abilityLoadoutOpen = scene?.abilityLoadoutUI?.isOpen() ?? false;
+      const abilityLoadoutVisibleEntries = (
+        scene?.abilityLoadoutUI?.getVisibleEntries?.() ?? []
+      ).map((entry) => ({
+        id: entry.id,
+        details: entry.details,
+        canToggle: entry.canToggle !== false,
+      }));
+      const equippedActiveAbilityIds =
+        eid >= 0
+          ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
+          : [];
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
@@ -811,6 +843,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         bridgePresent: scene?.bridge != null,
         modalOpen,
         abilityLoadoutOpen,
+        abilityLoadoutVisibleEntries,
+        equippedActiveAbilityIds,
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
@@ -1103,6 +1137,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene) {
         scene.queuedAbilitiesToggle = true;
       }
+    },
+
+    queueSkillUsage: (skillId: string, metric: UsageMetric, amount: number) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!world || holderEid < 0) return;
+      world.skillUsageEvents.push({ holderEid, skillId, metric, amount });
     },
 
     tapAbilitiesButton: () => {

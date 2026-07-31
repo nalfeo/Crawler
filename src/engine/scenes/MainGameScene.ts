@@ -23,7 +23,7 @@ import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-dep
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
-import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, createEmptyAbilityState } from '../../shared/abilities.js';
 import {
   generatedEquipmentRunKeyFromSeed,
   type GeneratedEquipmentInstanceKey,
@@ -3013,32 +3013,24 @@ export class MainGameScene extends Phaser.Scene {
     }
     const existingState = this.world.abilityStatesByEntity.get(this.playerEid);
     if (!existingState) {
-      const fresh: AbilityState = {
-        learnedSpellIds: [],
-        equippedActiveAbilityIds: [],
-        ownedActiveAbilityIds: [],
-        passiveAbilityIds: [],
-        cooldownByAbilityId: new Map(),
-        cooldownFramesByAbilityId: new Map(),
-        appliedPassiveAbilityIds: new Set(),
-      };
-      this.world.abilityStatesByEntity.set(this.playerEid, fresh);
+      this.world.abilityStatesByEntity.set(this.playerEid, createEmptyAbilityState());
     }
     const state = this.world.abilityStatesByEntity.get(this.playerEid)!;
-    const availableIds = [
+    const activeIds = [
       ...new Set([
         ...state.equippedActiveAbilityIds,
         ...state.learnedSpellIds,
         ...(state.ownedActiveAbilityIds ?? []),
       ]),
     ];
-    if (availableIds.length === 0) {
+    const passiveIds = [...new Set(state.passiveAbilityIds)];
+    if (activeIds.length === 0 && passiveIds.length === 0) {
       this.flashHint('No learned spells yet. Defeat the Slime Rat and claim a spellbook first.');
       return;
     }
 
-    const buildEntries = (): AbilityLoadoutEntry[] =>
-      availableIds.map((abilityId) => {
+    const buildEntries = (): AbilityLoadoutEntry[] => {
+      const activeEntries = activeIds.map((abilityId) => {
         const presentation = getAbilityPresentation(abilityId);
         const cooldownSeconds = presentation?.cooldownFrames ? presentation.cooldownFrames / 60 : 0;
         return {
@@ -3051,6 +3043,25 @@ export class MainGameScene extends Phaser.Scene {
           equipped: state.equippedActiveAbilityIds.includes(abilityId),
         };
       });
+      const passiveEntries = passiveIds.map((abilityId) => {
+        const presentation = getAbilityPresentation(abilityId);
+        const active = state.appliedPassiveAbilityIds.has(abilityId);
+        const requirement = presentation?.passiveRequirementSummary;
+        const requirementText =
+          !active && requirement ? ` • Inactive: requires ${requirement}` : '';
+        return {
+          id: abilityId,
+          name: presentation?.name ?? abilityId,
+          shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
+          description: presentation?.description ?? 'Passive skill bonus.',
+          category: presentation?.category ?? 'utility',
+          details: `PASSIVE • ${active ? 'ACTIVE' : 'INACTIVE'} • ${presentation?.passiveEffectSummary ?? 'Effect bonus'}${requirementText}`,
+          equipped: false,
+          canToggle: false,
+        };
+      });
+      return [...activeEntries, ...passiveEntries];
+    };
 
     this.abilitiesModalOpen = true;
     this.clearPendingInteractionInput();
