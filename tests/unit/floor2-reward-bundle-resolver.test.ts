@@ -237,22 +237,15 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });
 
-  it('fails closed with illegal-base when a base carries an inherent non-armor stat bonus (Common contract)', () => {
+  it('allows non-armor base riders and still resolves a Common item with no non-armor bonus', () => {
     const world = makeWorld();
-    // `travelers-cloak` is a resolvable accessory with moveSpeed + dodgeChance
-    // stat bonuses (both non-armor), so the guard fires as 'illegal-base'
-    // rather than 'unknown-base'. The MIXED_BASES supply aligned + non-aligned
-    // pools so the partition check never fires first.
-    let err: unknown;
-    try {
-      resolveEquipmentRewardBundle(world, 'ach', [...MIXED_BASES, 'travelers-cloak'], 'tier1');
-    } catch (caught) {
-      err = caught;
-    }
-    expect(err).toBeInstanceOf(RewardBundleResolutionError);
-    expect((err as RewardBundleResolutionError).code).toBe('illegal-base');
-    expect(world.generatedEquipmentRewardBundles.size).toBe(0);
-    expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+    const bundle = resolveEquipmentRewardBundle(world, 'ach', [...MIXED_BASES, 'travelers-cloak'], 'tier1');
+    const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+    const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
+      ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+    );
+    expect(instance.rarity).toBe('common');
+    expect(nonArmor).toHaveLength(0);
   });
 
   it('fails closed with empty-aligned-pool when no base matches the player affinity', () => {

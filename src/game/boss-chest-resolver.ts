@@ -24,19 +24,11 @@ import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../shared/data/floor2-weapon-base
 
 /**
  * Candidate base pool for boss chest reward bundles. Reuses the Floor 2
- * "wave A" weapon bases — the same stat-bonus-free generation base catalog
- * `floor2-field-kit` draws from — rather than
- * `FLOOR2_QUARTERMASTER_GENERATED_BASE_IDS` (the Quartermaster's *sellable
- * item* catalog). Quartermaster items carry their own inherent non-armor
- * stat bonuses (crit, dodge, move speed, ...) and fail
- * `resolveEquipmentRewardBundle`'s Common-rarity contract ("no non-armor
- * stat bonus") for all but one entry — verified empirically while writing
- * this module's tests. `FLOOR2_WEAPON_WAVE_A_BASE_IDS` is validated at
- * module load (`validateWaveABases`) to have zero inherent stat bonuses on
- * every base, so it satisfies the contract by construction and contains
- * both physical- and magic-affinity weapons (23 physical, 2 magic), keeping
- * both the aligned and non-aligned pools non-empty for either player
- * affinity.
+ * "wave A" weapon bases — the same deterministic catalog
+ * `floor2-field-kit` draws from — rather than the Quartermaster's sellable
+ * wearable-gear catalog. The weapon pool is already balanced for both physical
+ * and magic affinities (23 physical, 2 magic), keeping aligned and non-aligned
+ * partitions non-empty for either player affinity.
  */
 export const BOSS_CHEST_REWARD_BASE_IDS: readonly string[] = FLOOR2_WEAPON_WAVE_A_BASE_IDS;
 

@@ -304,20 +304,6 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
   return resolved.weaponDef.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
 }
 
-/**
- * Whether a base carries any inherent NON-armor stat bonus. The reward-bundle
- * resolver asserts this is `false` for every candidate base so the Common item
- * (which spreads the base's inherent stat bonuses verbatim and is generated with
- * zero effect units) satisfies the Common rarity contract: no non-armor stat
- * bonus. Pure and registry-free.
- */
-export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
-  const resolved = resolveGeneratedEquipmentBase(baseId);
-  return Object.entries(resolved.equipmentDef.statBonuses).some(
-    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
-  );
-}
-
 function effectsAreCompatible(
   left: GeneratedEquipmentEffectDefinition,
   right: GeneratedEquipmentEffectDefinition,
@@ -465,9 +451,7 @@ export function generateEquipmentInstance(
     options.allowedEffectKinds,
   );
   const resolvedEffects = materializeEffects(effectDefinitions);
-  const statBonuses: Partial<Record<StatId, number>> = {
-    ...resolvedBase.equipmentDef.statBonuses,
-  };
+  const statBonuses: Partial<Record<StatId, number>> = {};
   if (resolvedBase.targetKind === 'armor') {
     statBonuses.armor = resolvedInherent;
   }

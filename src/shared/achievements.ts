@@ -515,8 +515,9 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * systems (see `collectCurrentFloorAchievementFacts` in
  * `src/game/systems/achievementSystem.ts`). Reward `bases` span magic
  * (`ember-wand`, `frost-crook`) and physical (`iron-cleaver`, `ashwood-bow`)
- * Floor 2 weapon bases — all have empty inherent stat bonuses, so the Common
- * item carries no non-armor stat bonus (rarity contract). Reward rarity spans
+ * Floor 2 weapon bases. Generated non-armor power is now affix-driven, so the
+ * Common rarity contract ("no non-armor stat bonus") is enforced by generation
+ * behavior rather than by base pre-filtering. Reward rarity spans
  * Common/Uncommon/Rare (via `tier1`-`tier4`); Unique is intentionally never
  * used (deferred from this epic). Only `tier4` (used by the 3 `brutal`-difficulty
  * achievements: `floor2-family-annihilator`, `floor2-floor-cleared`,

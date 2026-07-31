@@ -212,3 +212,11 @@ generatedEquipmentRewardBundles`,
    RNG-isolation guarantees under a second, divergence-prone implementation
    for no functional gain, since the existing primitives are already generic
    over their key.
+
+### Amendment (2026-07-31): base-pool rationale after non-armor decoupling
+
+ADR 0069 now enforces the Common non-armor contract by generation behavior
+rather than base prefiltering. Boss chests continue to use
+`FLOOR2_WEAPON_WAVE_A_BASE_IDS` as their deterministic authored pool, but no
+longer rely on a "stat-bonus-free base" precondition to satisfy Common
+eligibility.
