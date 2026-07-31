@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { spawnBossChestEntity } from '../../src/core/spawners/world-objects.js';
 import { bossChestPickupSystem } from '../../src/core/systems/bossChestPickupSystem.js';
-import { createBossChestId, createBossChestRecord } from '../../src/core/systems/bossChestRewards.js';
+import {
+  createBossChestId,
+  createBossChestRecord,
+} from '../../src/core/systems/bossChestRewards.js';
 import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
