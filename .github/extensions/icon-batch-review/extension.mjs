@@ -118,16 +118,16 @@ function makeRoutes() {
         handler: ({ url }) => {
           const m = url.pathname.match(/^\/icon\/(.+)$/);
           if (!m)
-            return { status: 404, buffer: Buffer.from('not found'), contentType: 'text/plain' };
+            return { status: 404, headers: { 'Content-Type': 'text/plain' }, body: Buffer.from('not found') };
           const iconId = decodeURIComponent(m[1]);
           // Basic sanitization: only allow safe filename chars.
           if (!/^[a-z0-9][a-z0-9-]*$/.test(iconId)) {
-            return { status: 400, buffer: Buffer.from('invalid id'), contentType: 'text/plain' };
+            return { status: 400, headers: { 'Content-Type': 'text/plain' }, body: Buffer.from('invalid id') };
           }
           const buf = bridge.getIconPng(iconId);
           if (!buf)
-            return { status: 404, buffer: Buffer.from('not found'), contentType: 'text/plain' };
-          return { buffer: buf, contentType: 'image/png' };
+            return { status: 404, headers: { 'Content-Type': 'text/plain' }, body: Buffer.from('not found') };
+          return { status: 200, headers: { 'Content-Type': 'image/png' }, body: buf };
         },
       },
     ],

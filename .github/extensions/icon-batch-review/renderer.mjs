@@ -31,7 +31,7 @@ export function renderHtml({ batches, baseUrl }) {
 
       const iconCells = b.entries
         .map((e) => {
-          const imgSrc = e.isApproved ? `${baseUrl}/icon/${encodeURIComponent(e.id)}` : '';
+          const imgSrc = e.isApproved ? `${baseUrl}icon/${encodeURIComponent(e.id)}` : '';
           const inner = e.isApproved
             ? `<img src="${imgSrc}" alt="${escHtml(e.concept)}" title="${escHtml(e.id)}" />`
             : `<div class="icon-placeholder" title="${escHtml(e.id)}">${escHtml(e.concept.slice(0, 8))}</div>`;

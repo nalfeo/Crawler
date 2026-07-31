@@ -350,10 +350,10 @@ export async function generateSheetCore(
       dislikedSpriteNames: loadDislikedReferenceNames(),
     });
     if (selection.selected.length === 0) {
-      if (presentCandidates.length === 0) {
-        // Bootstrap case: no approved sprites exist in the manifest yet
-        // (e.g. generating the first batch of a brand-new sprite type like 'icon').
-        // Proceed without reference images rather than aborting.
+      if (presentCandidates.length === 0 && brief.type === 'icon') {
+        // Bootstrap case: no approved icon sprites exist in the manifest yet.
+        // Icons are a new sprite type bootstrapped without pre-existing references;
+        // proceed without reference images rather than aborting.
         options.warn?.(
           `generateSheetCore: no reference sprites exist in pool for brief "${brief.name}" ` +
             `(type="${brief.type}") — proceeding without references (bootstrapping new type).`,
