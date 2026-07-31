@@ -33,6 +33,8 @@ sensors:
   edge:
     allowMainTouch: true
     allowDetachedEdgeComponents: false
+  interiorHoles:
+    maxPixels: 512
 
 judge:
   enabled: true
@@ -40,8 +42,8 @@ judge:
 
 variations:
   - Kingpin Molt with massive bolted-iron crusher claws, carapace war-plating, corroded brass monocle-eyestalk, anchor-chain chest decoration
-  - Kingpin Molt wide-dominant silhouette: enormous claw span filling horizontal frame, heavy shell dome, iron scrap-plate trophies bolted to carapace
+  - 'Kingpin Molt wide-dominant silhouette: enormous claw span filling horizontal frame, heavy shell dome, iron scrap-plate trophies bolted to carapace'
   - Kingpin Molt in Tidewrack Mob authority — iron crown ridge on shell, tarnished chain, one raised pincer-signal, deep charcoal-slate boss presence
-  - Kingpin Molt three-quarter view: both great claws visible and wide, bolted iron-plate armor over chitin, crustacean boss mass at maximum menace
+  - 'Kingpin Molt three-quarter view: both great claws visible and wide, bolted iron-plate armor over chitin, crustacean boss mass at maximum menace'
 
 minVariations: 4

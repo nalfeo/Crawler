@@ -1,0 +1,126 @@
+{
+  "briefId": "molefolk-boss",
+  "spriteName": "molefolk-boss-var-0",
+  "assetPath": "generated/molefolk-boss-var-0.png",
+  "approvedAt": "2026-07-31T20:30:53.766Z",
+  "sourceRun": "generated/runs/molefolk-boss/2026-07-31T20-19-54-bf2e72c0",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 292,
+    "y": 291,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 292,
+      "y": 291,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 292,
+      "y": 291,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 292,
+        "y": 291
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T20:20:59.649Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The design effectively combines the molefolk concept with the foreman theme, creating a unique and memorable character. The oversized claws and wide body provide a strong silhouette, and the mining gear and chain badge reinforce the union boss identity."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of color and texture is consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of color and texture is consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a molefolk boss with the described features, including the wide body, large claws, foreman coat, hard hat, and mining chain badge."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct, with the wide body and large claws creating a strong horizontal presence. The sprite is easily readable at game scale on a dark floor tile."
+    },
+    "bossPresence": {
+      "score": 5,
+      "rationale": "The sprite has a dominant and imposing presence, with its wide and low-slung body and massive claws. It clearly reads as a boss character."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The sprite is a complete full-body figure with all major elements visible, including the head, torso, and feet."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the mining gear, foreman coat, iron hard hat, and chain badge. The colors and materials align with the dark, industrial aesthetic of Floor 2."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4299,
+      "completionTokens": 455,
+      "totalTokens": 4754
+    }
+  },
+  "type": "enemy",
+  "contentHash": "3775c1082288491cee61fff9cbd053466b8d9d31993e0c1595cdbffe07e44d6e",
+  "opaqueBounds": {
+    "x": 31,
+    "y": 31,
+    "width": 520,
+    "height": 450,
+    "canvasWidth": 582,
+    "canvasHeight": 512
+  },
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\molefolk-boss\\2026-07-31T20-19-54-bf2e72c0\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\molefolk-boss\\2026-07-31T20-19-54-bf2e72c0\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\molefolk-boss\\2026-07-31T20-19-54-bf2e72c0\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
