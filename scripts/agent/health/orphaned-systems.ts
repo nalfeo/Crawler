@@ -2,8 +2,8 @@
 /**
  * health/orphaned-systems.ts — Deterministic guard against "orphaned" ECS
  * systems: a `*System` exported from `src/core/**` or `src/game/**` that is
- * never referenced by a REAL runtime pipeline entry point (and is not on the
- * documented allowlist).
+ * never referenced by a sim-side/shared runtime pipeline entry point (and is
+ * not on the documented allowlist).
  *
  * This is the process backstop for the class of bug where `spawnerSystem`
  * shipped fully inert because it was only ever force-called by its lab
@@ -29,14 +29,64 @@ import {
   MIN_EXPECTED_SYSTEMS,
   SYSTEM_SOURCE_ROOTS,
   WIRING_SITES,
+  collectOpenRequiredTrackedIssues,
   collectExportedSystems,
   collectWiredRefs,
+  findClosedTrackedIssueEntries,
+  findInvalidAllowlistPolicyEntries,
   findDuplicateSystemDeclarations,
   findMalformedAllowlistEntries,
   findOrphanedSystems,
   findStaleAllowlistEntries,
   type SourceFile,
 } from './orphaned-systems-lib.js';
+
+function resolveRepo(): { owner: string; repo: string } {
+  const slug = process.env.GITHUB_REPOSITORY?.trim();
+  if (slug) {
+    const [owner, repo] = slug.split('/');
+    if (owner && repo) return { owner, repo };
+  }
+  return { owner: 'nalfeo', repo: 'Crawler' };
+}
+
+async function loadTrackedIssueStates(
+  entries: ReadonlyArray<{ issueNumber: number }>,
+): Promise<Map<number, 'open' | 'closed'>> {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) {
+    throw new Error('GITHUB_TOKEN is not set');
+  }
+
+  const { owner, repo } = resolveRepo();
+  const states = new Map<number, 'open' | 'closed'>();
+  await Promise.all(
+    entries.map(async ({ issueNumber }) => {
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
+        {
+          headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: ['Bearer', token].join(' '),
+            'User-Agent': 'crawler-orphaned-systems-guard',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`GitHub returned ${response.status} for issue #${issueNumber}`);
+      }
+      const payload = (await response.json()) as { state?: unknown };
+      if (payload.state !== 'open' && payload.state !== 'closed') {
+        throw new Error(
+          `Issue #${issueNumber} returned unexpected state: ${String(payload.state)}`,
+        );
+      }
+      states.set(issueNumber, payload.state);
+    }),
+  );
+  return states;
+}
 
 /** Recursively collect `.ts` files under a directory (skipping declaration files). */
 function walkTsFiles(absDir: string): string[] {
@@ -75,7 +125,7 @@ function loadSystemSourceFiles(): SourceFile[] {
   return files;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const report = new Report('health-orphaned-systems');
 
   const sourceFiles = loadSystemSourceFiles();
@@ -128,26 +178,41 @@ function main(): void {
   const orphans = findOrphanedSystems({ systems, wiredRefs, allowlist: ALLOWLIST });
   for (const orphan of orphans) {
     report.error(
-      `Orphaned system "${orphan.name}" is defined but never referenced by any real pipeline.`,
+      `Orphaned system "${orphan.name}" is defined but never referenced by any sim-side/shared pipeline.`,
       {
         file: orphan.file,
         remediation:
-          `Wire ${orphan.name} into a real pipeline entry point (one of: ` +
-          `${WIRING_SITES.join(', ')}) — a lab that force-calls it does NOT count. ` +
+          `Wire ${orphan.name} into a sim-side/shared pipeline entry point (one of: ` +
+          `${WIRING_SITES.join(', ')}) — visual-scene-only and lab references do NOT count. ` +
           `If it is intentionally not wired, add a structured entry to ALLOWLIST in ` +
-          `scripts/agent/health/orphaned-systems-lib.ts (reason + trackedIssue + owner).`,
+          `scripts/agent/health/orphaned-systems-lib.ts ` +
+          `(reason + trackedIssue + trackedIssuePolicy + owner).`,
       },
     );
   }
 
   // The allowlist is a tracked-debt list, not a mute button: every entry must
-  // carry reason + trackedIssue + owner, or the guard fails (rule #12).
+  // carry reason + trackedIssue + trackedIssuePolicy + owner, or the guard
+  // fails (rule #12).
   for (const bad of findMalformedAllowlistEntries(ALLOWLIST)) {
     report.error(
       `ALLOWLIST entry "${bad.name}" is missing required field(s): ${bad.missing.join(', ')}.`,
       {
         file: 'scripts/agent/health/orphaned-systems-lib.ts',
         remediation: `Add ${bad.missing.join(' + ')} to the "${bad.name}" allowlist entry.`,
+      },
+    );
+  }
+
+  for (const bad of findInvalidAllowlistPolicyEntries(ALLOWLIST)) {
+    report.error(
+      `ALLOWLIST entry "${bad.name}" has invalid tracking metadata: ${bad.invalid.join(', ')}.`,
+      {
+        file: 'scripts/agent/health/orphaned-systems-lib.ts',
+        remediation:
+          `Use trackedIssuePolicy="reference-only" for provenance refs, or ` +
+          `trackedIssuePolicy="open-required" with a repo-local "#123" issue ref ` +
+          `for live allowlist debt.`,
       },
     );
   }
@@ -160,7 +225,7 @@ function main(): void {
       });
     } else {
       report.error(
-        `Redundant ALLOWLIST entry "${stale.name}" — it is now wired into a real pipeline.`,
+        `Redundant ALLOWLIST entry "${stale.name}" — it is now wired into a sim-side/shared pipeline.`,
         {
           file: 'scripts/agent/health/orphaned-systems-lib.ts',
           remediation: `Remove "${stale.name}" from ALLOWLIST; it no longer needs an exemption.`,
@@ -169,9 +234,33 @@ function main(): void {
     }
   }
 
+  const openRequiredIssues = collectOpenRequiredTrackedIssues(ALLOWLIST);
+  if (openRequiredIssues.length > 0) {
+    if (!process.env.GITHUB_TOKEN?.trim()) {
+      report.info(
+        `Skipping allowlist tracking-issue state audit for ${openRequiredIssues.length} open-required entr` +
+          `${openRequiredIssues.length === 1 ? 'y' : 'ies'} (no GITHUB_TOKEN in environment).`,
+      );
+    } else {
+      const issueStates = await loadTrackedIssueStates(openRequiredIssues);
+      for (const closed of findClosedTrackedIssueEntries(openRequiredIssues, issueStates)) {
+        report.error(
+          `ALLOWLIST entry "${closed.name}" still remains, but its tracking issue ${closed.trackedIssue} is closed.`,
+          {
+            file: 'scripts/agent/health/orphaned-systems-lib.ts',
+            remediation:
+              `Remove "${closed.name}" from ALLOWLIST, reopen/file a fresh tracking issue, ` +
+              `or reclassify the entry as trackedIssuePolicy="reference-only" if the ref is ` +
+              `provenance rather than live debt.`,
+          },
+        );
+      }
+    }
+  }
+
   if (orphans.length === 0) {
     report.info(
-      `${systems.length} system(s) checked; all wired into a real pipeline or documented on the allowlist.`,
+      `${systems.length} system(s) checked; all wired into a sim-side/shared pipeline or documented on the allowlist.`,
     );
   }
 
@@ -179,7 +268,7 @@ function main(): void {
 }
 
 try {
-  main();
+  await main();
 } catch (err) {
   process.stderr.write(
     `orphaned-systems crashed: ${err instanceof Error ? err.stack : String(err)}\n`,
