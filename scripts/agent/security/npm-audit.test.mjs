@@ -8,7 +8,6 @@ import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
 import {
   AUDIT_EXCEPTIONS,
-  TEMP_DEPENDENCY_EXCEPTIONS,
   evaluateAudit,
   evaluateTemporaryDependencyExceptions,
   extractAuditExceptionsFromSource,
@@ -409,7 +408,32 @@ test('fails closed after temporary dependency exception expiry', () => {
   assert.equal(result.expired.length, 1);
 });
 
-test('rejects malformed temporary dependency exception expiry dates', () => {
+test('rejects temporary dependency exceptions with malformed expiresOn', () => {
+  const packageManifest = {
+    overrides: {
+      postcss: '8.5.22',
+    },
+  };
+
+  assert.throws(
+    () =>
+      evaluateTemporaryDependencyExceptions(packageManifest, {
+        now: new Date('2026-08-01T00:00:00Z'),
+        exceptions: [
+          {
+            packageName: 'postcss',
+            field: 'overrides',
+            version: '8.5.22',
+            expiresOn: '2026/08/06',
+            reason: 'Temporary rollback for feed availability.',
+          },
+        ],
+      }),
+    /expiresOn must be YYYY-MM-DD/,
+  );
+});
+
+test('rejects temporary dependency exceptions with impossible expiresOn date', () => {
   const packageManifest = {
     overrides: {
       postcss: '8.5.22',
@@ -430,7 +454,7 @@ test('rejects malformed temporary dependency exception expiry dates', () => {
           },
         ],
       }),
-    /Invalid expiresOn '2026-02-31' for postcss/,
+    /is not a real calendar date/,
   );
 });
 
@@ -475,28 +499,6 @@ test('no real audit exception is already expired', () => {
     'One or more audit exceptions have expired. Fix the underlying vulnerability ' +
       '(upgrade to a patched version) rather than extending the expiry date.',
   );
-});
-
-test('every real temporary dependency exception has a well-formed expiresOn date', () => {
-  for (const exception of TEMP_DEPENDENCY_EXCEPTIONS) {
-    assert.match(
-      exception.expiresOn,
-      /^\d{4}-\d{2}-\d{2}$/,
-      `${exception.packageName} expiresOn must be YYYY-MM-DD`,
-    );
-    const parsed = new Date(`${exception.expiresOn}T23:59:59.999Z`);
-    assert.equal(
-      Number.isNaN(parsed.getTime()),
-      false,
-      `${exception.packageName} expiresOn must parse as a valid date`,
-    );
-    const roundTripped = parsed.toISOString().slice(0, 10);
-    assert.equal(
-      roundTripped,
-      exception.expiresOn,
-      `${exception.packageName} expiresOn '${exception.expiresOn}' is not a real calendar date (normalises to ${roundTripped})`,
-    );
-  }
 });
 
 test('blocks fast-uri — no exception after package upgrade to 3.1.4', () => {

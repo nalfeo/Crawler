@@ -130,21 +130,26 @@ export function getReasonRestatementViolationsForCurrentBranch() {
 }
 
 function isActive(exception, now) {
-  const expiresAt = parseStrictExpiryDate(exception);
+  const expiresAt = parseExpiresOnDate(exception);
   return now <= expiresAt;
 }
 
-function parseStrictExpiryDate(exception) {
-  const raw = String(exception?.expiresOn ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+function parseExpiresOnDate(exception) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(exception.expiresOn)) {
     throw new Error(
-      `Invalid expiresOn '${raw}' for ${exception?.packageName ?? exception?.url ?? 'exception'}: expected YYYY-MM-DD`,
+      `${exception.packageName} expiresOn must be YYYY-MM-DD (received '${exception.expiresOn}')`,
     );
   }
-  const expiresAt = new Date(`${raw}T23:59:59.999Z`);
-  if (Number.isNaN(expiresAt.getTime()) || expiresAt.toISOString().slice(0, 10) !== raw) {
+  const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+  if (Number.isNaN(expiresAt.getTime())) {
     throw new Error(
-      `Invalid expiresOn '${raw}' for ${exception?.packageName ?? exception?.url ?? 'exception'}: not a real calendar date`,
+      `${exception.packageName} expiresOn must parse as a valid date (received '${exception.expiresOn}')`,
+    );
+  }
+  const roundTripped = expiresAt.toISOString().slice(0, 10);
+  if (roundTripped !== exception.expiresOn) {
+    throw new Error(
+      `${exception.packageName} expiresOn '${exception.expiresOn}' is not a real calendar date (normalizes to ${roundTripped})`,
     );
   }
   return expiresAt;
@@ -225,7 +230,7 @@ export function evaluateTemporaryDependencyExceptions(
     const pinnedVersion =
       fieldValue && typeof fieldValue === 'object' ? fieldValue[exception.packageName] : undefined;
     if (pinnedVersion !== exception.version) continue;
-    const expiresAt = parseStrictExpiryDate(exception);
+    const expiresAt = parseExpiresOnDate(exception);
     if (now > expiresAt) {
       expired.push(exception);
     } else {
