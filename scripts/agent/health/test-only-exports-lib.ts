@@ -122,9 +122,7 @@ export function buildTestScaffoldAllowlist(
 }
 
 /** Default path-scoped allowlist used by the guard wrapper. */
-export const TEST_SCAFFOLD_ALLOWLIST = buildTestScaffoldAllowlist(
-  TEST_SCAFFOLD_ALLOWLIST_ENTRIES,
-);
+export const TEST_SCAFFOLD_ALLOWLIST = buildTestScaffoldAllowlist(TEST_SCAFFOLD_ALLOWLIST_ENTRIES);
 
 /** Check whether an export is allowlisted as intentional test scaffold. */
 export function isTestScaffoldAllowlisted(
