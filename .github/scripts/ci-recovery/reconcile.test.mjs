@@ -12328,9 +12328,14 @@ test('lease-reaper stale retry refreshes progressAt and carries the attempt coun
   assert.ok(finalPatch, 'a final dispatched state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(finalState?.attempt, 2, 'attempt must carry forward (1 -> 2)');
+  const parsedProgressAt = Date.parse(finalState?.progressAt ?? '');
   assert.ok(
-    Date.parse(finalState?.progressAt ?? '') > Date.parse(frozenProgressAt),
-    'lease-reaper retry must refresh progressAt for the newly dispatched attempt',
+    Number.isFinite(parsedProgressAt),
+    'progressAt must be a valid ISO timestamp',
+  );
+  assert.ok(
+    Math.abs(parsedProgressAt - Date.now()) < 10_000,
+    'lease-reaper retry must set progressAt within 10s of now (fresh liveness window)',
   );
 });
 
