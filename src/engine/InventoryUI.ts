@@ -26,7 +26,7 @@ import {
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
-import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
+import { ItemRarity, type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -94,6 +94,14 @@ const GENERATED_RARITY_ORDER: Readonly<Record<'common' | 'uncommon' | 'rare', nu
   rare: 2,
 };
 
+const GENERATED_RARITY_TO_ITEM_RARITY: Readonly<
+  Record<'common' | 'uncommon' | 'rare', ItemRarity>
+> = {
+  common: ItemRarity.Common,
+  uncommon: ItemRarity.Uncommon,
+  rare: ItemRarity.Rare,
+};
+
 const ITEM_RARITY_ORDER: Readonly<Record<ItemDef['rarity'], number>> = {
   Common: 0,
   Uncommon: 1,
@@ -132,6 +140,8 @@ export function createInventoryUI(
    * without assuming a fixed sort position.
    */
   getCellIndexForItem(itemId: string): number | null;
+  /** Test/automation affordance: visible rendered item ids in grid order. */
+  getVisibleItemIds(): string[];
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -531,8 +541,16 @@ export function createInventoryUI(
         if (!currentWorld) continue;
         const instance = getGeneratedEquipmentInstance(currentWorld, bagEntry.instanceKey);
         if (!instance) continue;
-        const def = getItemById(instance.baseId);
-        if (!def) continue;
+        const def =
+          getItemById(instance.baseId) ??
+          ({
+            id: instance.baseId,
+            name: instance.frozen.displayName,
+            description: '',
+            tags: [...instance.frozen.tags] as ItemTag[],
+            rarity: GENERATED_RARITY_TO_ITEM_RARITY[instance.rarity],
+            maxStack: 1,
+          } satisfies ItemDef);
         entries.push({
           renderKey: `generated:${bagEntry.instanceKey}`,
           itemId: def.id,
@@ -957,6 +975,7 @@ export function createInventoryUI(
       const i = cellItemIds.indexOf(itemId);
       return i >= 0 ? i : null;
     },
+    getVisibleItemIds: () => [...cellItemIds],
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
     setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {

@@ -52,7 +52,8 @@ const SLOT_BY_ID: ReadonlyMap<string, SlotDefinition> = new Map(
 );
 
 /** Set of valid slot IDs for O(1) lookup. */
-export const VALID_SLOT_IDS: ReadonlySet<string> = new Set(SLOT_REGISTRY.map((s) => s.id));
+const VALID_SLOT_IDS: ReadonlySet<string> = new Set(SLOT_REGISTRY.map((s) => s.id));
+export const _VALID_SLOT_IDS_FOR_TESTS = VALID_SLOT_IDS;
 
 /** Equipment slot identifier — validated against SLOT_REGISTRY at runtime. */
 export type EquipmentSlotId = string;
@@ -80,11 +81,12 @@ export function getSlotLabel(slotId: EquipmentSlotId): string {
  * tooling can enforce "one unified item per mirror pair" from a single source
  * of truth colocated with `SLOT_REGISTRY`, and every id is guaranteed valid.
  */
-export const MIRROR_SLOT_PAIRS: readonly (readonly [EquipmentSlotId, EquipmentSlotId])[] = [
+const MIRROR_SLOT_PAIRS: readonly (readonly [EquipmentSlotId, EquipmentSlotId])[] = [
   ['leftArm', 'rightArm'],
   ['leftWrist', 'rightWrist'],
   ['ringLeft', 'ringRight'],
 ] as const;
+export const _MIRROR_SLOT_PAIRS_FOR_TESTS = MIRROR_SLOT_PAIRS;
 
 // Fail fast at module load if a pair ever names a slot that is not in the
 // registry — keeps this table honest against SLOT_REGISTRY edits.
@@ -99,12 +101,15 @@ const MIRROR_PARTNER_BY_ID: ReadonlyMap<EquipmentSlotId, EquipmentSlotId> = new 
 );
 
 /** Set of every slot id that participates in a mirror pair, for O(1) lookup. */
-export const MIRROR_SLOT_IDS: ReadonlySet<EquipmentSlotId> = new Set(MIRROR_PARTNER_BY_ID.keys());
+const MIRROR_SLOT_IDS: ReadonlySet<EquipmentSlotId> = new Set(MIRROR_PARTNER_BY_ID.keys());
+export const _MIRROR_SLOT_IDS_FOR_TESTS = MIRROR_SLOT_IDS;
 
 /**
  * The mirror partner of `slotId` (e.g. `getMirrorSlot('ringLeft') === 'ringRight'`),
  * or `undefined` when the slot is not part of a mirror pair.
  */
-export function getMirrorSlot(slotId: EquipmentSlotId): EquipmentSlotId | undefined {
+function getMirrorSlot(slotId: EquipmentSlotId): EquipmentSlotId | undefined {
   return MIRROR_PARTNER_BY_ID.get(slotId);
 }
+
+export const _getMirrorSlotForTests = getMirrorSlot;

@@ -82,6 +82,16 @@ export interface SourceFile {
   readonly content: string;
 }
 
+function isProductionConsumerPath(path: string): boolean {
+  return (
+    (path.startsWith('src/') && !path.startsWith('src/labs/')) || path.startsWith('scripts/')
+  );
+}
+
+function isExplicitTestScaffoldingExport(name: string): boolean {
+  return name.startsWith('_');
+}
+
 // ---------------------------------------------------------------------------
 // Export collection
 // ---------------------------------------------------------------------------
@@ -238,9 +248,13 @@ export function findTestOnlyExports(
   const result: TestOnlyExport[] = [];
 
   for (const exp of exports) {
+    if (isExplicitTestScaffoldingExport(exp.name)) continue;
+
     // Consumers in src/ other than the exporting file itself.
     const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
-    const outsideSrcConsumers = [...srcConsumers].filter((f) => f !== exp.file);
+    const outsideSrcConsumers = [...srcConsumers].filter(
+      (f) => f !== exp.file && isProductionConsumerPath(f),
+    );
 
     if (outsideSrcConsumers.length > 0) continue; // production-used — skip
 
