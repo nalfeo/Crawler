@@ -24,6 +24,7 @@ const COPILOT_REVIEWER_LOGINS = new Set([
 const COPILOT_NO_FILES_REVIEW =
   /^copilot wasn['’]t able to review any files in this pull request\.\s*$/i;
 const SUBMITTED_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED']);
+const ASSET_PROMOTE_BRANCH = 'assets/promote';
 
 function isSubstantiveReviewText(value) {
   const body = String(value || '').trim();
@@ -46,6 +47,28 @@ export function isSubstantiveCopilotReview(review) {
 
 export function hasSubstantiveCopilotReview(reviews) {
   return (reviews || []).some(isSubstantiveCopilotReview);
+}
+
+function normalizedChangedPath(file) {
+  const path = String(file?.filename ?? file?.path ?? file ?? '').trim().replace(/^\/+/, '');
+  return path;
+}
+
+function isApprovedArtOnlyPath(path) {
+  return (
+    path.startsWith('public/assets/generated/') ||
+    path === 'src/shared/data/sprite-catalog.json' ||
+    path.startsWith('docs/')
+  );
+}
+
+export function isApprovedArtOnlyDiff(changedFiles) {
+  const paths = (changedFiles || []).map(normalizedChangedPath).filter(Boolean);
+  return paths.length > 0 && paths.every(isApprovedArtOnlyPath);
+}
+
+export function shouldSkipSubstantiveReview(pr, changedFiles) {
+  return String(pr?.head?.ref || '').trim() === ASSET_PROMOTE_BRANCH && isApprovedArtOnlyDiff(changedFiles);
 }
 
 export function admissionWaitReasons(

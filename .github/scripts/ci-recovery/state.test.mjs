@@ -11,6 +11,7 @@ import {
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   hasSubstantiveCopilotReview,
+  isApprovedArtOnlyDiff,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
   isHealthyRecoveryOwner,
@@ -27,6 +28,7 @@ import {
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
+  shouldSkipSubstantiveReview,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
   shouldDispatchMergeTrainFill,
@@ -124,6 +126,48 @@ test('skipSubstantiveReview suppresses the substantive-copilot-review wait reaso
   assert.deepEqual(admissionWaitReasons([], [noFilesReview], { skipSubstantiveReview: true }), []);
   // With skip and no reviews at all: still empty
   assert.deepEqual(admissionWaitReasons([], [], { skipSubstantiveReview: true }), []);
+});
+
+test('isApprovedArtOnlyDiff accepts art+docs paths and rejects mixed code paths', () => {
+  assert.equal(
+    isApprovedArtOnlyDiff([
+      { filename: 'public/assets/generated/entries/equipment/weapon/bone-saw.json' },
+      { filename: 'public/assets/generated/sprites/bone-saw.png' },
+      { filename: 'src/shared/data/sprite-catalog.json' },
+      { filename: 'docs/knowledge/handoffs/2026-07-31-assets.md' },
+    ]),
+    true,
+  );
+  assert.equal(
+    isApprovedArtOnlyDiff([
+      { filename: 'public/assets/generated/sprites/bone-saw.png' },
+      { filename: 'src/game/systems/spawnerSystem.ts' },
+    ]),
+    false,
+  );
+  assert.equal(isApprovedArtOnlyDiff([]), false);
+});
+
+test('shouldSkipSubstantiveReview requires assets/promote branch and approved art-only diff', () => {
+  const approvedFiles = [
+    { filename: 'public/assets/generated/sprites/bone-saw.png' },
+    { filename: 'docs/knowledge/handoffs/2026-07-31-assets.md' },
+  ];
+  assert.equal(
+    shouldSkipSubstantiveReview({ head: { ref: 'assets/promote' } }, approvedFiles),
+    true,
+  );
+  assert.equal(
+    shouldSkipSubstantiveReview({ head: { ref: 'assets/promote' } }, [
+      ...approvedFiles,
+      { filename: 'src/game/systems/spawnerSystem.ts' },
+    ]),
+    false,
+  );
+  assert.equal(
+    shouldSkipSubstantiveReview({ head: { ref: 'feature/safe-art' } }, approvedFiles),
+    false,
+  );
 });
 
 test('normalizes blocker order before fingerprinting', () => {
