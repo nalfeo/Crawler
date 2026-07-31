@@ -1241,15 +1241,19 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
   const processedDir = path.join(options.runDir, 'processed');
   const candidatesByIndex = new Map((summary.candidates ?? []).map((c) => [c.index, c]));
 
-  // Safety: if the run produced MORE processed cells than expected iconBatch
-  // entries the index mapping would silently assign wrong icons to wrong ids.
-  // Fail loud rather than silently misidentify icons.
+  // Safety: the processed-cell count MUST exactly match the iconBatch entry
+  // count. A short run (model/slicer dropped a row or cell) renumbers the
+  // surviving processed files contiguously, so a count < length is just as
+  // dangerous as count > length — both map later concepts to wrong icon IDs.
+  // Require an exact match before any writes; missing individual PNG files
+  // (per-cell gaps after the guard passes) are still handled non-fatally below.
   const processedCount = (summary.candidates ?? []).length;
-  if (processedCount > options.iconBatch.length) {
+  if (processedCount !== options.iconBatch.length) {
     throw new ApproveError(
       'icon-batch-count-mismatch',
       `Run produced ${processedCount} processed cells but iconBatch has ${options.iconBatch.length} entries. ` +
-        `Re-run with the correct brief or use skipIndices to exclude the extra cells.`,
+        `Counts must match exactly — a short or over-run risks mapping icons to the wrong IDs. ` +
+        `Re-run with the correct brief or use skipIndices to exclude unwanted cells.`,
     );
   }
 

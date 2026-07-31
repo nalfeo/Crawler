@@ -2,8 +2,9 @@
 /**
  * gen-ability-icon-briefs.ts
  *
- * Scans ABILITY_PRESENTATION_BY_ID for entries that lack an `iconBriefId` and
- * emits icon-batch YAML briefs to `briefs/icons/abilities/`.
+ * Scans the canonical ability registry (getAllAbilityDefinitions) for entries
+ * that lack an `iconBriefId` and emits icon-batch YAML briefs to
+ * `briefs/icons/abilities/`.
  *
  * Abilities that already have an `iconBriefId` are skipped — their brief is
  * already authored (or in progress) and should not be regenerated.
@@ -15,10 +16,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  ABILITY_PRESENTATION_BY_ID,
-  type AbilityPresentation,
-} from '../../src/shared/ability-presentation.js';
+import { getAllAbilityDefinitions } from '../../src/game/abilities/registry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..', '..');
@@ -86,9 +84,7 @@ function buildBriefYaml(
 }
 
 function run(): void {
-  const needsBrief = (Object.values(ABILITY_PRESENTATION_BY_ID) as AbilityPresentation[]).filter(
-    (a) => a.iconBriefId === undefined,
-  );
+  const needsBrief = getAllAbilityDefinitions().filter((a) => a.iconBriefId === undefined);
 
   if (needsBrief.length === 0) {
     process.stdout.write(

@@ -16,7 +16,7 @@ sprites-pipeline, canvas-extensions, ci-workflows
 
 - **`iconBatch` field on `briefSchema`**: each entry carries `{id, concept, description}`. Length must equal `rows × cols − emptyCells.length`. Max 16.
 - **`buildIconBatchSheetPrompt()`**: builds the sheet prompt from `iconBatch` entries; instructs the LLM to place one distinct symbol per cell with NO baked-in frame/border.
-- **`approveIconBatch()`**: maps cell index N → `iconBatch[N].id` as manifest key. Count guard rejects runs where more cells than expected were produced (prevents silent index misalignment). Partial batches (cells missing) are non-fatal.
+- **`approveIconBatch()`**: maps cell index N → `iconBatch[N].id` as manifest key. Count guard requires exact match (both too few and too many cells are rejected) to prevent silent index misalignment. Hard-block gate mirrors `approveVariant` — throws `hard-blocked` for any `judgeScorecard.hardBlocked === true` cell unless `allowHardBlocked: true`. Partial batches (individual PNG missing after guard passes) are non-fatal.
 - **`icon.json`** type defaults: 128×128, 4×4 grid, `minVariations: 0` (no variant expansion), `opaqueRatio` sensor only.
 
 ## Trigger channels
@@ -52,15 +52,17 @@ sprites-pipeline, canvas-extensions, ci-workflows
 
 ## Known gaps (follow-on work)
 
-- **Quality gates in `approveIconBatch`**: per-cell sensor/judge checks are not wired. The count guard is in place. Vision judge runs per-cell via the standard pipeline, but hard-block signals from the judge are not yet checked in `approveIconBatch`. Follow-on: check `summary.candidates[N].judgeHardBlock` before approving each cell.
 - **Runtime lookup model**: the `AbilityPresentation.iconBriefId` field currently points to a brief (not an icon ID). For batch-generated ability icons, the manifest key is the icon ID (e.g. `ability-icon-battle-focus`). A separate wiring PR should add an `iconId` field (or rename `iconBriefId` → `iconId`) and wire consumers to look up by manifest key.
 - **Brief generation for partial final batches**: `gen-achievement-icon-briefs.ts` and `gen-ability-icon-briefs.ts` now correctly emit `generation.sheet.emptyCells` for partial batches. Verify after initial run that the last batch parses correctly.
+- **Per-cell judge quality checks**: The hard-block gate is wired (`approveIconBatch` throws `hard-blocked` for any `judgeScorecard.hardBlocked === true` cell). Per-cell sensor threshold checks (opaqueRatio minimum) are not yet enforced; follow-on PR should add sensor-score checks matching `approveVariant`.
 
 ## Verification
 
-- `npm run verify:fast` — green (234 tests, typecheck, lint)
+- `npm run verify:fast` — green (242 tests, typecheck, lint)
 - `tests/unit/sprites/icon-batch.test.ts` — 7/7 pass (briefSchema validation + buildIconBatchSheetPrompt)
-- Review ledger: `docs/knowledge/review-ledgers/2026-07-31-icon-batch-pipeline.review-ledger.json` (3🍎, plan_review + code_review)
+- `tests/unit/sprites/approve.test.ts` — 8 new `approveIconBatch` tests added: exact count mismatch (too few and too many), missing individual PNG skip, reapproval skip, allowReapprove override, hard-block throw, allowHardBlocked override
+- Review ledger: `docs/knowledge/review-ledgers/2026-07-31-icon-batch-pipeline.review-ledger.json` (3🍎, plan_review + code_review round 2)
+- Canvas observation: canvas extension follows the established `canvas-harness` pattern (renderer.mjs + extension.mjs). Icon URL double-slash bug fixed (leading `/` removed from path). Binary response format aligned to `{ status, headers, body }` as required by `relayPlainBinary`. Canvas launch verified via harness pattern; visual before/after not captured (canvas is tooling-only, no shipped game surface).
 
 ## Recommended next steps
 

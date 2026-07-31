@@ -94,10 +94,27 @@ jobs:
         if: |
           (github.event_name == 'workflow_dispatch' && inputs.action == 'generate-briefs') ||
           (github.event_name == 'issues' && steps.parse_issue.outputs.action == 'generate-briefs')
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
         run: |
           npm run sprites:gen-achievement-icon-briefs
           npm run sprites:gen-ability-icon-briefs
-          echo "generate-briefs: done" >> "$GITHUB_STEP_SUMMARY"
+          # Persist the generated briefs by committing and pushing to the branch.
+          # Without this, later run/run-all dispatches start from a fresh checkout
+          # with no briefs and fail. The push uses CRAWLER_CI_PAT so GitHub Actions
+          # schedules subsequent CI runs correctly.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add briefs/icons/
+          if git diff --cached --quiet; then
+            echo "generate-briefs: no new briefs generated (all already present)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            BRIEF_COUNT=$(git diff --cached --name-only | grep '\.yaml$' | wc -l | tr -d ' ')
+            git commit -m "chore(icons): generate icon batch briefs (${BRIEF_COUNT} files)"
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+            git push origin HEAD:"${{ github.ref_name }}"
+            echo "generate-briefs: committed and pushed ${BRIEF_COUNT} brief file(s)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # ── Status ───────────────────────────────────────────────────────────────
       - name: Status
@@ -122,29 +139,42 @@ jobs:
           SPRITES_TEXT_PROVIDER: azure-openai
           SPRITES_VISION_PROVIDER: azure-openai
           SPRITES_ALLOW_CI_PIPELINE: 'true'
+          SPRITES_ALLOW_CI_ICON_BATCH_PUBLISH: 'true'
           GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
           AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
           SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          # All user-controlled values are passed through env (never interpolated
+          # into the shell script) to eliminate shell-injection risk.
+          WF_BATCH_IDS: ${{ inputs.batch_ids }}
+          ISSUE_BATCH_IDS: ${{ steps.parse_issue.outputs.batch_ids }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # batch_ids: workflow_dispatch input takes precedence; fall back to
-          # parsed issue output (never raw issue body interpolation).
-          BATCH_IDS="${{ inputs.batch_ids }}"
-          if [ -z "$BATCH_IDS" ] && [ "${{ github.event_name }}" = "issues" ]; then
-            BATCH_IDS="${{ steps.parse_issue.outputs.batch_ids }}"
+          # parsed issue output. Both arrive as env vars — never interpolated
+          # into the script body — so they cannot break out of this string context.
+          BATCH_IDS="$WF_BATCH_IDS"
+          if [ -z "$BATCH_IDS" ] && [ "$EVENT_NAME" = "issues" ]; then
+            BATCH_IDS="$ISSUE_BATCH_IDS"
           fi
           if [ -z "$BATCH_IDS" ]; then
             echo "ERROR: action=run requires batch_ids (workflow_dispatch input or Batch IDs field in issue body)" >&2
             exit 1
           fi
 
+          # Validate each batch ID: must be a kebab-case slug (letters, digits,
+          # hyphens only). Rejects any value that could escape the find pattern.
           BRIEF_ARGS=""
           for BATCH_ID in $BATCH_IDS; do
+            if ! echo "$BATCH_ID" | grep -qE '^[a-z0-9][a-z0-9-]*[a-z0-9]$'; then
+              echo "ERROR: invalid batch_id '${BATCH_ID}' — must be kebab-case (letters, digits, hyphens)" >&2
+              exit 1
+            fi
             BRIEF=$(find briefs/icons -name "${BATCH_ID}.yaml" 2>/dev/null | head -1)
             if [ -z "$BRIEF" ]; then
               echo "WARNING: brief not found for batch_id=${BATCH_ID} — skipping" >&2
@@ -176,6 +206,7 @@ jobs:
           SPRITES_TEXT_PROVIDER: azure-openai
           SPRITES_VISION_PROVIDER: azure-openai
           SPRITES_ALLOW_CI_PIPELINE: 'true'
+          SPRITES_ALLOW_CI_ICON_BATCH_PUBLISH: 'true'
           GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}

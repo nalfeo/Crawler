@@ -102,6 +102,17 @@ async function readIconBatch(briefPath: string): Promise<IconBatchEntry[]> {
   return batch as IconBatchEntry[];
 }
 
+/** Returns true if every icon in the brief already has an approved shard on disk. */
+function isBriefFullyApproved(iconBatch: IconBatchEntry[]): boolean {
+  const shardsDir = path.join(GENERATED_DIR, 'entries');
+  if (!existsSync(shardsDir)) return false;
+  for (const entry of iconBatch) {
+    const shardFile = path.join(shardsDir, `${entry.id}.json`);
+    if (!existsSync(shardFile)) return false;
+  }
+  return true;
+}
+
 /** Run one brief through generate → approve → queue-commit. */
 async function runBrief(briefPath: string): Promise<void> {
   const briefId = path.basename(briefPath, '.yaml');
@@ -157,6 +168,7 @@ async function runBrief(briefPath: string): Promise<void> {
   }
 
   // 3. Queue-commit (always, even in CI — this script is the CI entry point).
+  const inCI = process.env.CI !== undefined;
   try {
     const result = await runQueueCommit(
       REPO_ROOT,
@@ -167,7 +179,10 @@ async function runBrief(briefPath: string): Promise<void> {
         variantIndex: e.variantIndex,
       })),
       createDefaultQueueCommitDeps(REPO_ROOT),
-      { message: `chore(assets): approve icon batch ${briefId} (${entries.length} icons)` },
+      {
+        message: `chore(assets): approve icon batch ${briefId} (${entries.length} icons)`,
+        ciAuthorization: { caller: 'icon-batch-publisher' },
+      },
     );
     process.stdout.write(
       result.status === 'committed'
@@ -175,12 +190,17 @@ async function runBrief(briefPath: string): Promise<void> {
         : `icon-batch: queued: no-op (${result.branch} already up to date)\n`,
     );
   } catch (err) {
-    process.stderr.write(
+    const msg =
       `icon-batch: ⚠ queue-commit failed — approvals are LOCAL-ONLY. ` +
-        `Retry with: npm run sprites:approve -- ${runDir} --icon-batch\n` +
-        `  Error: ${err instanceof Error ? err.message : String(err)}\n`,
-    );
-    // Non-fatal: the approved files are on disk; queue-commit can be retried.
+      `Retry with: npm run sprites:approve -- ${runDir} --icon-batch\n` +
+      `  Error: ${err instanceof Error ? err.message : String(err)}\n`;
+    process.stderr.write(msg);
+    // In CI, queue persistence is the only durable output — rethrow so the
+    // job fails and can be retried rather than silently discarding approvals.
+    if (inCI) {
+      throw err;
+    }
+    // Local: non-fatal; the approved files are on disk and can be committed manually.
   }
 }
 
@@ -267,8 +287,27 @@ async function main(): Promise<void> {
           );
           process.exit(1);
         }
-        process.stdout.write(`icon-batch run-all: ${briefs.length} brief(s)\n`);
+        // Skip briefs where every icon already has an approved shard — re-running
+        // them wastes provider credits and produces duplicate content.
+        const pending: string[] = [];
         for (const brief of briefs) {
+          let batch: IconBatchEntry[];
+          try {
+            batch = await readIconBatch(brief);
+          } catch {
+            pending.push(brief); // unreadable brief — let runBrief surface the error
+            continue;
+          }
+          if (isBriefFullyApproved(batch)) {
+            process.stdout.write(
+              `icon-batch run-all: skipping ${path.basename(brief, '.yaml')} (fully approved)\n`,
+            );
+          } else {
+            pending.push(brief);
+          }
+        }
+        process.stdout.write(`icon-batch run-all: ${pending.length}/${briefs.length} brief(s) pending\n`);
+        for (const brief of pending) {
           await runBrief(brief);
         }
         break;
