@@ -790,19 +790,35 @@ function pickByRgbDistance(
  * visual description.
  */
 export function buildIconBatchSheetPrompt(brief: Brief, styleGuide: string): string {
-  const { rows, cols } = brief.generation.sheet;
+  const { rows, cols, emptyCells } = brief.generation.sheet;
   const { cellW, cellH } = cellDims(brief);
   const count = brief.iconBatch!.length;
   const bg = pickContrastingBackgroundColor(brief);
+  const emptyCellKey = new Set(emptyCells.map(([r, c]) => `${r},${c}`));
+  const filledCells: Array<readonly [number, number]> = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      if (!emptyCellKey.has(`${row},${col}`)) {
+        filledCells.push([row, col]);
+      }
+    }
+  }
 
   const cellListLines: string[] = ['## Cell assignments (left-to-right, top-to-bottom)'];
   for (let i = 0; i < count; i++) {
-    const row = Math.floor(i / cols) + 1;
-    const col = (i % cols) + 1;
+    const [rowZero, colZero] = filledCells[i] ?? [Math.floor(i / cols), i % cols];
+    const row = rowZero + 1;
+    const col = colZero + 1;
     const entry = brief.iconBatch![i]!;
     const desc = entry.description ? ` — ${entry.description}` : '';
     cellListLines.push(`- Cell ${i + 1} (row ${row}, col ${col}): **${entry.concept}**${desc}`);
   }
+  const emptyCellLine =
+    emptyCells.length === 0
+      ? 'Every cell must contain exactly one icon — no empty cells.'
+      : `Leave these cells fully empty (transparent/background only, no icon): ${emptyCells
+          .map(([r, c]) => `(row ${r + 1}, col ${c + 1})`)
+          .join(', ')}.`;
 
   return [
     styleGuide,
@@ -820,7 +836,7 @@ export function buildIconBatchSheetPrompt(brief: Brief, styleGuide: string): str
     `Generate exactly ${count} distinct icons on a single sheet, arranged in a ${rows}×${cols} grid (${rows} rows, ${cols} columns).`,
     `Each grid cell must be the same size (${cellW}×${cellH} source pixels) and icons must be laid out left-to-right, top-to-bottom in reading order.`,
     'Separate every adjacent row and column with a uniform, flat, background-only gutter — a consistent strip of the sheet background running the full width/height between cells so no two cells touch.',
-    'Every cell must contain exactly one icon — no empty cells.',
+    emptyCellLine,
     '',
     ...cellListLines,
     '',

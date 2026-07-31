@@ -1,0 +1,36 @@
+name: 'ability-icons-batch-01c'
+description: >-
+  Ability icon batch 01c: pixel-art symbols for SPELL and PASSIVE abilities (part 3 of 4).
+  Pixel-art symbols on transparent background; frames are composited separately.
+type: icon
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells:
+      - [1, 0]
+      - [1, 1]
+      - [1, 2]
+      - [1, 3]
+      - [2, 0]
+      - [2, 1]
+      - [2, 2]
+      - [2, 3]
+      - [3, 0]
+      - [3, 1]
+      - [3, 2]
+      - [3, 3]
+    nativeCanvas: 1024
+iconBatch:
+  - id: ability-icon-haste
+    concept: 'Haste'
+    description: 'SPELL ability — Flood your limbs with quicksilver speed after a strong damage spike. Symbol: a lightning bolt through a running figure, or speed-streak lines, fast and electric.'
+  - id: ability-icon-combat-flow
+    concept: 'Combat Flow'
+    description: 'PASSIVE ability — Sustained combat discipline yields permanent damage and attack-speed improvements. Symbol: a looping rhythm arc or flowing battle energy streak, continuous and dynamic.'
+  - id: ability-icon-stalwart-resolve
+    concept: 'Stalwart Resolve'
+    description: 'PASSIVE ability — Battle scars calcify into permanent armor and max HP. Symbol: a scarred shield or reinforced chest-plate, weathered and strong.'
+  - id: ability-icon-ever-vigilant
+    concept: 'Ever Vigilant'
+    description: 'PASSIVE ability — Constant evasion sharpens reflexes into a permanent speed advantage. Symbol: a sidestep silhouette with motion trail, or a dodge-arc, agile and sharp.'

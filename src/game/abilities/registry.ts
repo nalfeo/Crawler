@@ -47,13 +47,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'magic-missile',
-    name: 'Magic Missile',
-    shortLabel: 'MISSILE',
-    description: 'Launch a precise arcane bolt into the nearest enemy.',
-    category: 'combat',
-    kind: 'spell',
-    cooldownFrames: 180,
+    ...ABILITY_PRESENTATION_BY_ID['magic-missile'],
     trigger: { kind: 'enemy_cluster', minEnemies: 1, withinFeet: 10 },
     effects: [
       {
@@ -64,13 +58,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'frost-nova',
-    name: 'Frost Nova',
-    shortLabel: 'FROST',
-    description: 'Burst freezing magic around you, damaging and slowing nearby foes.',
-    category: 'combat',
-    kind: 'spell',
-    cooldownFrames: 900,
+    ...ABILITY_PRESENTATION_BY_ID['frost-nova'],
     trigger: { kind: 'enemy_cluster', minEnemies: 3, withinFeet: 5 },
     effects: [
       {
@@ -83,13 +71,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'bless',
-    name: 'Bless',
-    shortLabel: 'BLESS',
-    description: 'Call down a brief blessing that sharpens your strikes and footwork.',
-    category: 'utility',
-    kind: 'spell',
-    cooldownFrames: 1_200,
+    ...ABILITY_PRESENTATION_BY_ID.bless,
     trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
@@ -105,13 +87,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'stoneskin',
-    name: 'Stoneskin',
-    shortLabel: 'STONE',
-    description: 'Harden your flesh into living granite for a few desperate moments.',
-    category: 'defense',
-    kind: 'spell',
-    cooldownFrames: 1_500,
+    ...ABILITY_PRESENTATION_BY_ID.stoneskin,
     trigger: { kind: 'low_health', healthBelowRatio: 0.75 },
     effects: [
       {
@@ -125,13 +101,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'curse',
-    name: 'Curse',
-    shortLabel: 'CURSE',
-    description: 'Blight a cluster of enemies, dragging their movement into a crawl.',
-    category: 'utility',
-    kind: 'spell',
-    cooldownFrames: 840,
+    ...ABILITY_PRESENTATION_BY_ID.curse,
     trigger: { kind: 'enemy_cluster', minEnemies: 4, withinFeet: 8 },
     effects: [
       {
@@ -144,13 +114,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'vampiric-touch',
-    name: 'Vampiric Touch',
-    shortLabel: 'VAMP',
-    description: 'Rip vitality from the nearest foe and pour it back into yourself.',
-    category: 'combat',
-    kind: 'spell',
-    cooldownFrames: 720,
+    ...ABILITY_PRESENTATION_BY_ID['vampiric-touch'],
     trigger: {
       kind: 'low_health_crowded',
       healthBelowRatio: 0.7,
@@ -170,13 +134,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'haste',
-    name: 'Haste',
-    shortLabel: 'HASTE',
-    description: 'Flood your limbs with quicksilver speed after a strong damage spike.',
-    category: 'utility',
-    kind: 'spell',
-    cooldownFrames: 1_080,
+    ...ABILITY_PRESENTATION_BY_ID.haste,
     trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
@@ -200,13 +158,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   // ---------------------------------------------------------------------------
 
   {
-    id: 'combat-flow',
-    name: 'Combat Flow',
-    shortLabel: 'C.FLOW',
-    description:
-      'Sustained combat discipline yields permanent damage and attack-speed improvements.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['combat-flow'],
     flavorText:
       '"Muscle memory is the cheapest upgrade. The dungeon always offers more." — The Director',
     effects: [
@@ -215,12 +167,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'stalwart-resolve',
-    name: 'Stalwart Resolve',
-    shortLabel: 'STALWRT',
-    description: 'Battle scars calcify into permanent armor and max HP.',
-    category: 'defense',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['stalwart-resolve'],
     flavorText:
       '"The ratings love a survivor. The dungeon loves a meal. You\'re both." — The Director',
     effects: [
@@ -229,12 +176,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'ever-vigilant',
-    name: 'Ever Vigilant',
-    shortLabel: 'VIGILANT',
-    description: 'Constant evasion sharpens reflexes into a permanent speed advantage.',
-    category: 'utility',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['ever-vigilant'],
     flavorText: '"Dodge. Roll. Repeat. The audience thinks it\'s choreography." — The Director',
     effects: [{ type: 'stat_multiply', stat: 'moveSpeed', value: 0.15 }],
   },
@@ -244,13 +186,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   // ---------------------------------------------------------------------------
 
   {
-    id: 'blade-mastery',
-    name: 'Blade Mastery',
-    shortLabel: 'BLADE',
-    description:
-      'Slashing technique reaches its peak — bonus damage and accuracy while a slashing weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['blade-mastery'],
     weaponPrerequisite: 'slashing',
     flavorText: '"The Slashing arts are elegant, if you ignore all the blood." — The Director',
     effects: [
@@ -259,25 +195,13 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'vital-targeting',
-    name: 'Vital Targeting',
-    shortLabel: 'VITAL',
-    description:
-      'Expert stabbing technique exploits gaps in armor — bonus damage while a stabbing weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['vital-targeting'],
     weaponPrerequisite: 'stabbing',
     flavorText: '"The gap between ribs is a six-point rating bump." — The Director',
     effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
   },
   {
-    id: 'brute-force',
-    name: 'Brute Force',
-    shortLabel: 'BRUTE',
-    description:
-      'Relentless smashing builds momentum — bonus damage and armor while a smashing weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['brute-force'],
     weaponPrerequisite: 'smashing',
     flavorText: '"Subtlety is for people who lack upper-body strength." — The Director',
     effects: [
@@ -286,13 +210,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'marksmans-eye',
-    name: "Marksman's Eye",
-    shortLabel: 'MARKS',
-    description:
-      'Long hours at range train your aim — bonus accuracy while a ranged weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['marksmans-eye'],
     weaponPrerequisite: 'ranged',
     flavorText: '"The camera loves a player who never misses." — The Director',
     effects: [

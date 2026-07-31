@@ -127,4 +127,30 @@ describe('buildIconBatchSheetPrompt', () => {
     // Should describe a grid layout.
     expect(prompt).toMatch(/grid|cell|row|col/i);
   });
+
+  it('maps iconBatch cells to non-empty coordinates and instructs empty cells explicitly', () => {
+    const fakeBrief = {
+      ...iconBase,
+      generation: {
+        sheet: {
+          rows: 2,
+          cols: 2,
+          emptyCells: [[0, 0]] as ReadonlyArray<readonly [number, number]>,
+          nativeCanvas: 256,
+        },
+      },
+      iconBatch: [
+        { id: 'a', concept: 'Alpha' },
+        { id: 'b', concept: 'Beta' },
+        { id: 'c', concept: 'Gamma' },
+      ],
+    } as unknown as Parameters<typeof buildIconBatchSheetPrompt>[0];
+
+    const prompt = buildIconBatchSheetPrompt(fakeBrief, '');
+    expect(prompt).toContain('Leave these cells fully empty');
+    expect(prompt).toContain('(row 1, col 1)');
+    expect(prompt).toContain('Cell 1 (row 1, col 2): **Alpha**');
+    expect(prompt).toContain('Cell 2 (row 2, col 1): **Beta**');
+    expect(prompt).toContain('Cell 3 (row 2, col 2): **Gamma**');
+  });
 });

@@ -37,6 +37,8 @@ export interface ActiveAbilityDefinition extends AbilityDefinitionBase {
 export interface PassiveAbilityDefinition extends AbilityDefinitionBase {
   kind: 'passive';
   effects: CatalogEffect[];
+  passiveEffectSummary?: string;
+  passiveRequirementSummary?: string;
   /**
    * Optional weapon skill prerequisite. When set, the passive's stat bonuses
    * are only applied while the player has a weapon of the given class or type
@@ -273,6 +275,8 @@ const passiveAbilitySchema = baseAbilitySchema
     kind: z.literal('passive'),
     effects: z.array(effectSchema).min(1),
     weaponPrerequisite: z.enum(WEAPON_PREREQ_IDS).optional(),
+    passiveEffectSummary: z.string().trim().min(1).optional(),
+    passiveRequirementSummary: z.string().trim().min(1).optional(),
   })
   .strict();
 
