@@ -25,7 +25,9 @@ export function classifyParkedRun({
   latestRun,
   repository: expectedRepository = repository,
 }) {
-  if (run?.conclusion !== 'action_required') return 'run-not-action-required';
+  if (!['action_required', 'cancelled'].includes(String(run?.conclusion || ''))) {
+    return 'run-not-retriggerable';
+  }
   if (run?.event !== 'pull_request') return `event=${run?.event}`;
   if (!REQUIRED_WORKFLOW_PATHS.has(normalize(run?.path))) return 'workflow-not-required';
   if (!pull || pull.state !== 'open') return 'pr-not-open';

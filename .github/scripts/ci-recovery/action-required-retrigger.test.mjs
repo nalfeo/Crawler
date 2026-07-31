@@ -37,6 +37,18 @@ describe('action-required retrigger classification', () => {
     );
   });
 
+  it('accepts latest cancelled required same-repo PR workflow runs', () => {
+    assert.equal(
+      classifyParkedRun({
+        run: { ...baseRun, conclusion: 'cancelled' },
+        pull: basePull,
+        latestRun: { ...baseRun, conclusion: 'cancelled' },
+        repository: 'nalfeo/Crawler',
+      }),
+      null,
+    );
+  });
+
   it('rejects stale parked runs after a newer run exists', () => {
     assert.equal(
       classifyParkedRun({
