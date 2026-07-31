@@ -61,8 +61,12 @@ ai-behavior-tree
     `floor2EnemyDirectorSystem`.
   - `weaponEntitySystem`: shipped inert. Neither the system nor its sole producer
     `spawnWeapon` has a production caller; the live player path uses singleton
-    `weaponSystem`. It remains tracked by #666 and was deliberately not wired in
-    this PR.
+    `weaponSystem`. Issue #666 was closed while the condition persisted; the
+    replacement tracking issue is #2442. It was deliberately not wired in this
+    PR.
+- The allowlist is the guard's weak edge: each entry is a promise to revisit an
+  intentionally unwired system, but a closed tracking issue can silently void
+  that promise while the inert system continues to pass the guard.
 - The guard still covers only exported names matching `*System`. Plain functions
   remain structurally invisible, including known producer/consumer defect
   examples `listInventoryEntries` and `passiveAbilityIds`; this is an accepted
@@ -70,7 +74,7 @@ ai-behavior-tree
 
 ## What's Next / Blockers
 
-- Follow up separately on shipped-inert `weaponEntitySystem` / #666; do not fold
+- Follow up separately on shipped-inert `weaponEntitySystem` / #2442; do not fold
   that runtime/product decision into this tooling PR.
 - A future guard may target plain-function producer/consumer contracts, but it
   should be designed separately rather than broadening this naming-convention

@@ -163,7 +163,7 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
   // ordering relative to victory/timer evaluation.
   floor2EnemyDirectorSystem: {
     reason:
-      'Intentionally called from floor2ObjectiveTick (world.floorObjectiveTick) so Floor 2 objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
+      'Intentionally called from floor2ObjectiveTick, which Floor 2 assigns to world.floorObjectiveTick and floorObjectiveSystem invokes each frame, so objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
     trackedIssue: '#816',
     owner: 'enemies/floor2',
     removeWhen:
