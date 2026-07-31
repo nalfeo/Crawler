@@ -1,5 +1,16 @@
 [
   {
+    "commit": "730565212b8b9c83406f47a5d10703adc3d6fcd0",
+    "commitDate": "2026-07-31T13:33:57Z",
+    "commitSubject": "test: witness that general-passive VFX does not burst across carryover restore (#2476)",
+    "capturedAt": "2026-07-31T14:44:44.335Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30635874528",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/730565212b8b9c83406f47a5d10703adc3d6fcd0.json"
+  },
+  {
     "commit": "cba1e86f273a244df27ad841aa47ac21b925a614",
     "commitDate": "2026-07-31T13:13:53Z",
     "commitSubject": "docs(handoff): add e2e consumer-boundary revert witness for #2469 VFX/announcement hunk (#2474)",
