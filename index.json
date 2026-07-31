@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c23abf1cc80639449ef2988b2d37c1b7ed98641a",
+    "commitDate": "2026-07-31T18:21:14Z",
+    "commitSubject": "fix: exempt asset PRs from substantive-copilot-review gate and allow docs/* in art_only (#2485)",
+    "capturedAt": "2026-07-31T19:28:18.899Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30655523062",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/c23abf1cc80639449ef2988b2d37c1b7ed98641a.json"
+  },
+  {
     "commit": "3752c722e3bc6c644c0e611605b997755e5f7006",
     "commitDate": "2026-07-31T14:36:22Z",
     "commitSubject": "Rename VFX kind `weaponAbilityActivate` → `abilityUnlockFlash` (#2471)",
