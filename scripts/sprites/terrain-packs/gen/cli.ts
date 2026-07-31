@@ -164,14 +164,12 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   console.log(`\n[${spec.id}] building${options.fromSource ? ' (from committed source)' : ''}`);
 
   let wallTile: RgbaImage;
-  let woodTile: RgbaImage;
   let floorVariants: readonly RgbaImage[];
   let corridorVariants: readonly RgbaImage[];
   const specialFloorPools: SpecialFloorPoolInput[] = [];
 
   if (options.fromSource) {
     wallTile = readPackAsset(spec.id, 'wall-material.png');
-    woodTile = readPackAsset(spec.id, 'door-material.png');
     floorVariants = readPackPool(spec.id, 'floor');
     corridorVariants = readPackPool(spec.id, 'corridor');
     if (spec.includeSpecialFloorPools) {
@@ -189,16 +187,14 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
     const wallRaw = await loadMaterial(spec.wall, options);
     const floorRaw = await loadMaterial(spec.floor, options);
     const corridorRaw = await loadMaterial(spec.corridor, options);
-    const woodRaw = await loadMaterial(spec.doorSlab, options);
 
     wallTile = toMaterialTile(wallRaw, spec.wall.tile);
-    woodTile = toMaterialTile(woodRaw, spec.doorSlab.tile);
     floorVariants = deriveVariantTiles(floorRaw, spec.floor.tile);
     corridorVariants = deriveVariantTiles(corridorRaw, spec.corridor.tile);
 
-    // Special-room floors ride along with the pack that owns the walls + doors
-    // they are rendered next to, so they land in that pack's manifest rather than
-    // as loose, unreferenced PNGs.
+    // Special-room floors ride along with the pack that owns the walls they are
+    // rendered next to, so they land in that pack's manifest rather than as loose,
+    // unreferenced PNGs.
     if (spec.includeSpecialFloorPools) {
       for (const special of FLOOR1_SPECIAL_FLOOR_SPECS) {
         const raw = await loadMaterial(special.material, options);
@@ -225,7 +221,6 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
     wallTile,
     floorVariants,
     corridorVariants,
-    woodTile,
     specialFloorPools,
   });
 
