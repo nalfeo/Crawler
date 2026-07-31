@@ -25,6 +25,8 @@ sensors:
   enemy:
     facing: three-quarter
     toleranceDeg: 40
+  interiorHoles:
+    maxPixels: 16
 judge:
   enabled: true
   maxVariants: 8
