@@ -287,7 +287,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'combat',
     kind: 'spell',
     iconBriefId: 'ability-icon-frost-nova',
-    cooldownFrames: 600,
+    cooldownFrames: 900,
   },
   bless: {
     id: 'bless',
@@ -297,7 +297,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'utility',
     kind: 'spell',
     iconBriefId: 'ability-icon-bless',
-    cooldownFrames: 900,
+    cooldownFrames: 1200,
   },
   stoneskin: {
     id: 'stoneskin',
@@ -307,7 +307,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'defense',
     kind: 'spell',
     iconBriefId: 'ability-icon-stoneskin',
-    cooldownFrames: 900,
+    cooldownFrames: 1500,
   },
   curse: {
     id: 'curse',
@@ -317,7 +317,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'combat',
     kind: 'spell',
     iconBriefId: 'ability-icon-curse',
-    cooldownFrames: 480,
+    cooldownFrames: 840,
   },
   'vampiric-touch': {
     id: 'vampiric-touch',
@@ -327,7 +327,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'defense',
     kind: 'spell',
     iconBriefId: 'ability-icon-vampiric-touch',
-    cooldownFrames: 360,
+    cooldownFrames: 720,
   },
   haste: {
     id: 'haste',
@@ -337,7 +337,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'utility',
     kind: 'spell',
     iconBriefId: 'ability-icon-haste',
-    cooldownFrames: 420,
+    cooldownFrames: 1080,
   },
 } as const satisfies Readonly<Record<string, AbilityPresentation>>;
 
