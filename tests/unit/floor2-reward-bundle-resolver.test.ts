@@ -21,7 +21,6 @@ import {
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   getGeneratedEquipmentBaseAffinity,
-  generatedEquipmentBaseHasNonArmorStatBonus,
   generatedEquipmentBaseExceedsCommonStatLimit,
   _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
@@ -418,7 +417,7 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     // player build. (Uncommon/Rare are a strict superset of the Common
     // candidate set here, so if Common passes, they trivially pass too.)
     const commonEligible = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-      (baseId) => !generatedEquipmentBaseHasNonArmorStatBonus(baseId),
+      (baseId) => !generatedEquipmentBaseExceedsCommonStatLimit(baseId),
     );
     expect(commonEligible.length).toBeGreaterThan(0);
     for (const playerAffinity of ['physical', 'magic'] as const) {
@@ -563,35 +562,31 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
   });
 
   it('tier1 (Common-only) is NOT narrow / one-category-only — reports the exact counts rather than masking behind the aggregate 88', () => {
-    // This is the direct answer to the user's explicit concern: does
-    // excluding non-armor-bonus bases from Common recreate the historical
-    // "repeated four weapons" defect in disguise? The exact counts prove no:
+    // The exact counts with the modest-stat Common limit
+    // (generatedEquipmentBaseExceedsCommonStatLimit):
     //
     //   - ALL 56 weapons remain Common-eligible (0 excluded) — weapon variety
     //     at tier1 is exactly as broad as the full pool.
-    //   - 10 of 32 non-weapons remain Common-eligible (22 excluded, ALL of
-    //     which carry an inherent non-armor stat bonus by design — that is
-    //     literally what distinguishes an "accessory" from a plain armor
-    //     piece in this data model).
-    //   - Those 10 non-weapon bases span 12 of the 16 armor slots (all
-    //     except neck/belt/ringLeft/ringRight — the 4 slots whose only pool
-    //     occupants are accessory-style items that ALWAYS carry a bonus).
-    //     tier1 achievements can therefore never grant a neck/belt/ring
-    //     reward; tier2/tier3 (which can roll Uncommon) cover them. The
-    //     pool-wide "all 16 armor slots reachable" invariant (validated by
-    //     `validateRewardPool()` in floor2-reward-pool.ts) is about the whole
-    //     88-base pool across every rarity, not the Common-only subset — this
-    //     is a narrower, real, and DELIBERATE consequence of the Common
-    //     rarity contract, not an authoring accident, and is reported here
-    //     explicitly rather than being glossed over.
+    //   - 28 of 32 non-weapons remain Common-eligible (4 excluded: bases whose
+    //     inherent non-armor bonuses exceed the cap — too many stat bonuses, or
+    //     a single bonus above its COMMON_REWARD_SINGLE_STAT_CAPS cap):
+    //     feet.shadow-boots (moveSpeed 0.05 > cap 0.03),
+    //     feet.merchant-sandals (2 non-armor stats),
+    //     accessory.blood-vial (2 non-armor stats),
+    //     accessory.lucky-feather (luck 2 > cap 1).
+    //   - Modest single-stat accessories (e.g. accessory.compass-charm,
+    //     accessory.leather-collar) ARE included — this is the key improvement
+    //     over the prior strict "any non-armor bonus → excluded" rule.
+    //   - All 16 armor slots are covered by the 28 Common-eligible non-weapons,
+    //     including neck/belt/ring slots via the now-included modest accessories.
     const commonEligible = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-      (baseId) => !generatedEquipmentBaseHasNonArmorStatBonus(baseId),
+      (baseId) => !generatedEquipmentBaseExceedsCommonStatLimit(baseId),
     );
     const commonEligibleWeapons = commonEligible.filter((id) => weaponIdSet.has(id));
     const commonEligibleNonWeapons = commonEligible.filter((id) => !weaponIdSet.has(id));
 
     expect(commonEligibleWeapons).toHaveLength(56); // ALL weapons — no narrowing.
-    expect(commonEligibleNonWeapons).toHaveLength(10); // Not 0, not 1, not "four".
+    expect(commonEligibleNonWeapons).toHaveLength(28); // Includes modest accessories.
 
     const coveredSlots = new Set<string>();
     for (const id of commonEligibleNonWeapons) {
@@ -599,21 +594,10 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     }
     const uncoveredArmorSlots = FLOOR2_ARMOR_SLOT_IDS.filter((slot) => !coveredSlots.has(slot));
 
-    expect([...coveredSlots].sort()).toEqual([
-      'back',
-      'chest',
-      'face',
-      'feet',
-      'gloves',
-      'head',
-      'leftArm',
-      'leftWrist',
-      'legs',
-      'rightArm',
-      'rightWrist',
-      'shoulders',
-    ]);
-    expect(uncoveredArmorSlots.sort()).toEqual(['belt', 'neck', 'ringLeft', 'ringRight']);
+    expect([...coveredSlots].sort()).toEqual(
+      expect.arrayContaining(FLOOR2_ARMOR_SLOT_IDS.slice().sort()),
+    );
+    expect(uncoveredArmorSlots).toHaveLength(0); // All 16 armor slots reachable at Common.
   });
 
   it('every base in the pool is legal for at least one achievement rarity/tier — uncommon never excludes, so the union is exhaustive', () => {

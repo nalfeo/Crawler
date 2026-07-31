@@ -331,7 +331,7 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
  * bases such as accessory.lucky-feather (luck: 2 > cap 1) or
  * feet.shadow-boots (moveSpeed: 0.05 > cap 0.03).
  */
-export const COMMON_REWARD_SINGLE_STAT_CAPS: Readonly<Partial<Record<StatId, number>>> =
+const COMMON_REWARD_SINGLE_STAT_CAPS: Readonly<Partial<Record<StatId, number>>> =
   Object.freeze({
     strength: 1,
     dexterity: 1,
@@ -348,19 +348,6 @@ export const COMMON_REWARD_SINGLE_STAT_CAPS: Readonly<Partial<Record<StatId, num
     xpBonus: 0.03,
     cooldownReduction: 0.03,
   });
-
-/**
- * Pure predicate: does this stat-bonus map carry any non-zero, non-armor
- * entry? Extracted so both the base-level check
- * ({@link generatedEquipmentBaseHasNonArmorStatBonus}) and the instance-level
- * check ({@link generatedEquipmentInstanceHasNonArmorStatBonus}) share one
- * definition of "non-armor stat bonus".
- */
-function hasNonArmorStatBonus(statBonuses: Partial<Record<StatId, number>>): boolean {
-  return Object.entries(statBonuses).some(
-    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
-  );
-}
 
 /**
  * Whether a stat-bonus map exceeds the Common-rarity modest-stat limit:
@@ -381,26 +368,6 @@ function statBonusesExceedCommonLimit(statBonuses: Partial<Record<StatId, number
 }
 
 /**
- * Whether a base carries any inherent NON-armor stat bonus. Pure and
- * registry-free. A base's inherent stat bonuses never change based on who is
- * generating an instance from it — the SAME base always produces the SAME
- * `statBonuses` at a given rarity, regardless of caller (reward resolver,
- * Quartermaster, or anything else). This predicate exists so a caller that
- * needs Common-rarity output to carry no non-armor bonus (Common contributes
- * zero rarity-effect units, see {@link RARITY_EFFECT_BUDGET}`.common === 0`,
- * so a base's inherent bonus is the only possible non-armor source at Common)
- * can filter such bases out of *candidacy* before generation, rather than
- * generating and then mutating the output. The reward-bundle resolver is the
- * only current caller that does this, and only for a Common draw specifically
- * — the base remains fully eligible (with its bonus intact) for Uncommon/Rare
- * draws, and for any other caller (e.g. Quartermaster) at any rarity.
- */
-export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
-  const resolved = resolveGeneratedEquipmentBase(baseId);
-  return hasNonArmorStatBonus(resolved.equipmentDef.statBonuses);
-}
-
-/**
  * Whether a base's inherent stat bonuses exceed the Common-rarity modest-stat
  * limit. Returns `true` if the base has ≥2 non-armor bonuses, or exactly one
  * non-armor bonus whose value exceeds its {@link COMMON_REWARD_SINGLE_STAT_CAPS}
@@ -418,22 +385,6 @@ export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): bool
 export function generatedEquipmentBaseExceedsCommonStatLimit(baseId: string): boolean {
   const resolved = resolveGeneratedEquipmentBase(baseId);
   return statBonusesExceedCommonLimit(resolved.equipmentDef.statBonuses);
-}
-
-/**
- * Whether a *generated instance's* final, frozen stat-bonus map carries any
- * non-armor entry. Unlike {@link generatedEquipmentBaseHasNonArmorStatBonus}
- * (which inspects a base's inherent bonuses before generation), this checks
- * the actual output — used as a defense-in-depth, post-generation tripwire by
- * callers that pre-filtered candidacy (see above) so a future data-authoring
- * mistake (a base's `statBonuses` changing after the candidate list was
- * built, or a rarity-effect budget misconfiguration) still fails loudly
- * instead of silently shipping a Common item with a non-armor bonus.
- */
-export function generatedEquipmentInstanceHasNonArmorStatBonus(
-  instance: GeneratedEquipmentInstanceV1,
-): boolean {
-  return hasNonArmorStatBonus(instance.frozen.statBonuses);
 }
 
 /**
@@ -598,10 +549,10 @@ export function generateEquipmentInstance(
   const resolvedEffects = materializeEffects(effectDefinitions);
   // The base's inherent stat bonuses are spread verbatim, identically for
   // every caller and every rarity — a base's own stats never depend on who is
-  // generating an instance from it (see
-  // {@link generatedEquipmentBaseHasNonArmorStatBonus}'s doc comment). Callers
-  // that need a Common draw to carry no non-armor bonus must filter such
-  // bases out of candidacy *before* calling this function; this function
+  // generating an instance from it. Callers that need a Common draw to carry
+  // no non-armor bonus exceeding the modest-stat limit must filter such bases
+  // out of candidacy *before* calling this function (see
+  // {@link generatedEquipmentBaseExceedsCommonStatLimit}); this function
   // itself never mutates a base's stats based on rarity or caller.
   const statBonuses: Partial<Record<StatId, number>> = {
     ...resolvedBase.equipmentDef.statBonuses,
