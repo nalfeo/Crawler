@@ -519,9 +519,26 @@ for (const ability of ABILITY_DEFINITIONS) {
 }
 
 export function getAbilityDefinition(id: string): AbilityDefinition | undefined {
-  return registry.get(id);
+  const base = registry.get(id);
+  if (!base) return undefined;
+  const pres = (ABILITY_PRESENTATION_BY_ID as Readonly<Record<string, Partial<AbilityDefinition>>>)[id];
+  if (base.iconBriefId === undefined && pres?.iconBriefId !== undefined) {
+    return Object.freeze({ ...base, iconBriefId: pres.iconBriefId });
+  }
+  return base;
 }
 
 export function getAllAbilityDefinitions(): readonly AbilityDefinition[] {
-  return ABILITY_DEFINITIONS;
+  // Return definitions augmented with any missing presentation fields (iconBriefId)
+  // from the canonical ABILITY_PRESENTATION_BY_ID source to avoid drift between
+  // the presentation source and the parsed registry entries.
+  return ABILITY_DEFINITIONS.map((def) => {
+    const pres = (ABILITY_PRESENTATION_BY_ID as Readonly<Record<string, Partial<AbilityDefinition>>>)[
+      def.id
+    ];
+    if (def.iconBriefId === undefined && pres?.iconBriefId !== undefined) {
+      return Object.freeze({ ...def, iconBriefId: pres.iconBriefId });
+    }
+    return def;
+  }) as readonly AbilityDefinition[];
 }
