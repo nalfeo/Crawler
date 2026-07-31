@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7a932d8de065f2b2075de6cabe310fb019c08f3c",
+    "commitDate": "2026-07-31T05:00:52Z",
+    "commitSubject": "fix(sprites): checkpoint accepted work when a theme-equipment phase item fails (#2418)",
+    "capturedAt": "2026-07-31T06:10:50.519Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30606141220",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/7a932d8de065f2b2075de6cabe310fb019c08f3c.json"
+  },
+  {
     "commit": "13b173c2da43df7ab88f0d6657d880f2e6b68409",
     "commitDate": "2026-07-31T04:39:43Z",
     "commitSubject": "feat(sprites): add approved tile-door-open-side-v1 asset (checkin-20260731-015341-e3a009) (#2413)",
