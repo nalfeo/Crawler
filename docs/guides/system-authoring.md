@@ -66,10 +66,10 @@ Wire the system into the execution path that owns it (typically the engine scene
 `src/core/**` or `src/game/**` to be referenced by a real runtime wiring site:
 
 - `src/bootstrap/floor-main-scene-options.ts`
+- `src/core/simulation-core-step.ts`
 - `src/engine/sim/simulation-step.ts`
 - `src/game/ai/simulation-step.ts`
 - `src/game/ai/headless-runner.ts`
-- `src/engine/scenes/MainGameScene.ts`
 
 …or explicitly allowlisted in `scripts/agent/health/orphaned-systems-lib.ts`
 with a reason (only for systems intentionally not-yet-wired — never to silence

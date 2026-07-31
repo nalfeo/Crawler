@@ -92,4 +92,4 @@ trigger/description copy lives in `src/engine/scenes/MainGameScene.ts`.
 - Targeting logic: `src/game/systems/progressionEffects.ts` (`castFireball`)
 - UI copy: `src/engine/scenes/MainGameScene.ts`
 - Tests: `tests/game/ability-system.test.ts`
-- Handoff: `docs/knowledge/handoffs/2026-06-25-fireball-target-any-enemy.md`
+- Handoff: `docs/knowledge/handoffs/archive/2026-06-25-fireball-target-any-enemy.md`

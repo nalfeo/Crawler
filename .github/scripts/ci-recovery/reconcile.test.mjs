@@ -12350,16 +12350,14 @@ test('live reconcile advances an attached automation fence past an outdated-mark
 });
 
 // ---------------------------------------------------------------------------
-// Fix #1 (review thread PRRT_kwDOSvo2Ms6TCmv9): on the lease-reaper GC trigger,
-// the stale-automation retry path must CARRY the attempt count forward and
-// FREEZE progressAt at its persisted value instead of refreshing it to `now`.
-// Refreshing slid the staleness window forward on every reap so a dead lock
-// survived many TTLs; freezing it makes the window monotonic, so the existing
-// attempt>=2 ceiling becomes a true wall-clock bound. NO run-inference liveness
-// signal is used (adversarial plan review, 2026-07-22).
+// Regression (PR #2365 loop incident): on lease-reaper stale-retry redispatch,
+// the retry path must CARRY the attempt count forward but refresh progressAt.
+// If progressAt stays frozen at an older stale timestamp, the next sweep can
+// immediately trip stale-automation-exhausted and release the fresh dispatch
+// before it gets any liveness window.
 // ---------------------------------------------------------------------------
 
-test('lease-reaper stale retry freezes progressAt and carries the attempt count', async (t) => {
+test('lease-reaper stale retry refreshes progressAt and carries the attempt count', async (t) => {
   const blockers = [
     {
       kind: 'ci-failure',
@@ -12465,15 +12463,19 @@ test('lease-reaper stale retry freezes progressAt and carries the attempt count'
   );
   assert.ok(releasePatch, 'lease-reaper retry must release via stale-automation-retry');
 
-  // Final dispatched state: attempt carried+incremented to 2, progressAt FROZEN.
+  // Final dispatched state: attempt carried+incremented to 2, progressAt refreshed.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final dispatched state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(finalState?.attempt, 2, 'attempt must carry forward (1 -> 2)');
-  assert.equal(
-    finalState?.progressAt,
-    frozenProgressAt,
-    'lease-reaper retry must FREEZE progressAt at its persisted value, not refresh it to now',
+  const parsedProgressAt = Date.parse(finalState?.progressAt ?? '');
+  assert.ok(
+    Number.isFinite(parsedProgressAt),
+    'progressAt must be a valid ISO timestamp',
+  );
+  assert.ok(
+    Math.abs(parsedProgressAt - Date.now()) < 10_000,
+    'lease-reaper retry must set progressAt within 10s of now (fresh liveness window)',
   );
 });
 

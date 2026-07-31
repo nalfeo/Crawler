@@ -20,10 +20,17 @@
  * @module workflow/workflow-model
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { z } from 'zod';
-import { parse as parseYaml } from 'yaml';
+import { fileURLToPath } from 'node:url';
+import { createRepoRequire } from '../../shared/node-modules-resolver.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// This file lives at .github/extensions/workflow/lib/ — 4 levels up is the repo root.
+const _repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+const _require = createRepoRequire(_repoRoot, import.meta.url);
+const { z } = _require('zod');
+const { parse: parseYaml } = _require('yaml');
 
 import { listArtPlans, listBriefs } from './yaml-reader.mjs';
 

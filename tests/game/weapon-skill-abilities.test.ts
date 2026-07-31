@@ -368,6 +368,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
 
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.appliedPassiveAbilityIds.has(abilityId)).toBe(true);
+    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(true);
   });
 });
 

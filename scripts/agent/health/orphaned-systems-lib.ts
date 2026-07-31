@@ -32,10 +32,12 @@
  * ## What this guard asserts
  *
  * Every `*System` function exported from `src/core/**` or `src/game/**` must be
- * referenced by at least one REAL pipeline entry point (see `WIRING_SITES`) — as
- * a call expression `fooSystem(world)` or as an element of a pipeline array
- * (`preSystems: [fooSystem, …]`) — OR appear on the documented `ALLOWLIST`.
- * Lab and test references, imports, strings, and comments do NOT count.
+ * referenced by at least one sim-side/shared pipeline entry point (see
+ * `WIRING_SITES`) — as a call expression `fooSystem(world)` (including an
+ * invoked nullish fallback such as `(override ?? fooSystem)(world)`) or as an
+ * element of a pipeline array (`preSystems: [fooSystem, …]`) — OR appear on the
+ * documented `ALLOWLIST`. Visual-scene-only, lab, and test references, imports,
+ * strings, comments, and bare assignments do NOT count.
  */
 
 import ts from 'typescript';
@@ -78,11 +80,12 @@ export const SYSTEM_SOURCE_ROOTS: ReadonlyArray<string> = ['src/core', 'src/game
 export const MIN_EXPECTED_SYSTEMS = 10;
 
 /**
- * The REAL runtime pipeline entry points. A system referenced from any of these
- * is considered wired into the shipped game and/or the headless win-rate gate.
+ * The trusted sim-side/shared runtime pipeline entry points. A system referenced
+ * from any of these is considered reachable below the visual scene boundary.
  *
- * - `src/bootstrap/floor-main-scene-options.ts` — defines the visual game's
- *   Floor 1 `preSystems`/`postSystems` arrays (fed to the engine sim step).
+ * - `src/bootstrap/floor-main-scene-options.ts` — canonical floor
+ *   `preSystems`/`postSystems` arrays consumed by BOTH the visual scene and
+ *   `headless-runner.ts`.
  * - `src/core/simulation-core-step.ts` — shared deterministic core ECS step used
  *   by both visual and headless wrappers.
  * - `src/engine/sim/simulation-step.ts` — visual wrapper around the shared core
@@ -91,11 +94,11 @@ export const MIN_EXPECTED_SYSTEMS = 10;
  *   step used by the Floor 1 win-rate gate + headless runner.
  * - `src/game/ai/headless-runner.ts` — the headless AI driver (auto-progression
  *   / auto-NPC systems live here, not in the sim steps).
- * - `src/engine/scenes/MainGameScene.ts` — the scene itself; a few systems are
- *   invoked here directly (e.g. `fovSystem`).
  *
- * Deliberately EXCLUDES `src/labs/**` and `tests/**`: a lab or test that
- * force-calls a system proves nothing about whether the real game calls it.
+ * Deliberately EXCLUDES `src/engine/scenes/MainGameScene.ts`, `src/labs/**`, and
+ * `tests/**`: a scene-only reference does not prove the AI/headless simulation
+ * reaches a system, while a lab or test force-call proves nothing about runtime
+ * wiring.
  *
  * NOTE: the guard only follows two structural wiring forms — a direct call
  * (`fooSystem(world)`) and a pipeline-array element (`[…, fooSystem, …]`). If a
@@ -109,7 +112,6 @@ export const WIRING_SITES: ReadonlyArray<string> = [
   'src/engine/sim/simulation-step.ts',
   'src/game/ai/simulation-step.ts',
   'src/game/ai/headless-runner.ts',
-  'src/engine/scenes/MainGameScene.ts',
 ];
 
 /**
@@ -123,6 +125,13 @@ export interface AllowlistEntry {
   readonly reason: string;
   /** Issue/ADR/PR reference that tracks the exemption (e.g. `#666`, `ADR 0039`). Required. */
   readonly trackedIssue: string;
+  /**
+   * How the tracked reference should behave while the allowlist entry remains:
+   * - `reference-only` → provenance / explanatory reference; it may be closed.
+   * - `open-required` → live debt tracker; a closed ref means the exemption no
+   *   longer has an actionable owner and should be reported by the guard.
+   */
+  readonly trackedIssuePolicy: 'reference-only' | 'open-required';
   /** Who owns resolving or maintaining this exemption. Required. */
   readonly owner: string;
   /** Optional condition under which this entry should be removed. */
@@ -133,6 +142,7 @@ export interface AllowlistEntry {
 export const REQUIRED_ALLOWLIST_FIELDS: ReadonlyArray<keyof AllowlistEntry> = [
   'reason',
   'trackedIssue',
+  'trackedIssuePolicy',
   'owner',
 ];
 
@@ -151,6 +161,7 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
     reason:
       'Lab/test-only enemy-wave helper (takes a SpawnerConfig arg, not a (world)=>void pipeline system); production floors use floor1EnemyDirectorSystem + enemyAISystem.',
     trackedIssue: 'ADR 0039',
+    trackedIssuePolicy: 'reference-only',
     owner: 'labs (abilities-lab, weapon-lab)',
     removeWhen:
       'the labs stop using it, or it is refactored into a lab-only helper module outside src/game.',
@@ -161,26 +172,21 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
   // ordering relative to victory/timer evaluation.
   floor2EnemyDirectorSystem: {
     reason:
-      'Intentionally called from floor2ObjectiveTick (world.floorObjectiveTick) so Floor 2 objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
+      'Intentionally called from floor2ObjectiveTick, which Floor 2 assigns to world.floorObjectiveTick and floorObjectiveSystem invokes each frame, so objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
     trackedIssue: '#816',
+    trackedIssuePolicy: 'reference-only',
     owner: 'enemies/floor2',
     removeWhen:
       'Floor 2 objective/director ordering is refactored into explicit pipeline stages in both visual and headless runners.',
   },
-  // Latent, never-wired multi-weapon feature (same failure class as
-  // spawnerSystem, not yet fixed). weaponEntitySystem processes [Weapon, Owner]
-  // entities, but spawnWeapon (the only producer) and the system itself are
-  // called ONLY in tests — nothing in runtime spawns weapon entities. Tracked
-  // in #666 for a wire-or-delete product decision; do NOT treat as permanent.
-  weaponEntitySystem: {
-    reason:
-      'Latent multi-weapon-entity feature: processes [Weapon, Owner] entities, but its only producer (spawnWeapon) and the system are called only in tests — nothing wires it into a real pipeline. Player weapon uses the singleton weaponSystem.',
-    trackedIssue: '#666',
-    owner: 'weapons',
-    removeWhen:
-      'the feature is wired into a real pipeline (visual + headless) or removed as YAGNI per #666.',
-  },
 };
+
+const VALID_TRACKED_ISSUE_POLICIES = new Set<AllowlistEntry['trackedIssuePolicy']>([
+  'open-required',
+  'reference-only',
+]);
+
+const GITHUB_ISSUE_REF_RE = /^#(\d+)$/;
 
 /** True if `name` looks like an ECS system identifier (`*System`). */
 function isSystemName(name: string): boolean {
@@ -289,7 +295,7 @@ export function extractSystemDefs(file: SourceFile): SystemDef[] {
 /**
  * Extract the set of `*System` identifiers *wired* in one file via AST. A name
  * counts only when used as one of two structural forms:
- *   1. a direct call:            `fooSystem(world)`
+ *   1. a direct call:            `fooSystem(world)` or `(hook ?? fooSystem)(world)`
  *   2. a pipeline-array element: `preSystems: [fooSystem, …]`
  * Identifiers inside imports, strings, comments, type positions, or bare
  * assignments do NOT count — matching how systems are actually wired and
@@ -312,10 +318,25 @@ export function extractReferencedSystems(file: SourceFile): Set<string> {
   const sf = parse(file);
   const refs = new Set<string>();
 
+  const collectInvokedCalleeSystems = (expression: ts.Expression): void => {
+    if (ts.isParenthesizedExpression(expression)) {
+      collectInvokedCalleeSystems(expression.expression);
+    } else if (ts.isIdentifier(expression)) {
+      if (isSystemName(expression.text)) refs.add(expression.text);
+    } else if (
+      ts.isBinaryExpression(expression) &&
+      expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+    ) {
+      collectInvokedCalleeSystems(expression.left);
+      collectInvokedCalleeSystems(expression.right);
+    }
+  };
+
   const visit = (node: ts.Node): void => {
-    // Form 1: direct call expression with an identifier callee.
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      if (isSystemName(node.expression.text)) refs.add(node.expression.text);
+    // Form 1: direct call expression. Nullish fallback callees count because the
+    // selected branch is invoked; the same expression as a value/argument does not.
+    if (ts.isCallExpression(node)) {
+      collectInvokedCalleeSystems(node.expression);
     }
     // Form 2: identifier used as an array-literal element (pipeline arrays).
     if (ts.isArrayLiteralExpression(node)) {
@@ -470,6 +491,23 @@ export interface MalformedAllowlistFinding {
   readonly missing: string[];
 }
 
+/** An allowlist entry whose tracking-reference policy is invalid. */
+export interface InvalidAllowlistPolicyFinding {
+  readonly name: string;
+  readonly invalid: string[];
+}
+
+export interface OpenRequiredTrackedIssue {
+  readonly name: string;
+  readonly trackedIssue: string;
+  readonly issueNumber: number;
+}
+
+export interface ClosedTrackedIssueFinding {
+  readonly name: string;
+  readonly trackedIssue: string;
+}
+
 /**
  * Find allowlist entries missing a required field (reason / trackedIssue /
  * owner). A blank or whitespace-only value counts as missing. This makes the
@@ -485,6 +523,68 @@ export function findMalformedAllowlistEntries(
       return typeof value !== 'string' || value.trim().length === 0;
     });
     if (missing.length > 0) findings.push({ name, missing });
+  }
+  return findings.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Parse a repo-local `#123` tracking issue reference into its numeric id. */
+export function parseTrackedIssueNumber(ref: string): number | null {
+  const match = GITHUB_ISSUE_REF_RE.exec(ref.trim());
+  if (!match) return null;
+  return Number.parseInt(match[1]!, 10);
+}
+
+/**
+ * Find allowlist entries with invalid tracking metadata. `open-required`
+ * entries MUST point at a repo-local `#123` issue reference so the wrapper can
+ * audit its open/closed state against GitHub.
+ */
+export function findInvalidAllowlistPolicyEntries(
+  allowlist: Readonly<Record<string, AllowlistEntry>> = ALLOWLIST,
+): InvalidAllowlistPolicyFinding[] {
+  const findings: InvalidAllowlistPolicyFinding[] = [];
+  for (const [name, entry] of Object.entries(allowlist)) {
+    const invalid: string[] = [];
+    if (!VALID_TRACKED_ISSUE_POLICIES.has(entry.trackedIssuePolicy)) {
+      invalid.push('trackedIssuePolicy');
+    } else if (
+      entry.trackedIssuePolicy === 'open-required' &&
+      parseTrackedIssueNumber(entry.trackedIssue) === null
+    ) {
+      invalid.push('trackedIssue');
+    }
+    if (invalid.length > 0) findings.push({ name, invalid });
+  }
+  return findings.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Collect the allowlist entries whose tracking issues must stay open. */
+export function collectOpenRequiredTrackedIssues(
+  allowlist: Readonly<Record<string, AllowlistEntry>> = ALLOWLIST,
+): OpenRequiredTrackedIssue[] {
+  const findings: OpenRequiredTrackedIssue[] = [];
+  for (const [name, entry] of Object.entries(allowlist)) {
+    if (entry.trackedIssuePolicy !== 'open-required') continue;
+    const issueNumber = parseTrackedIssueNumber(entry.trackedIssue);
+    if (issueNumber === null) continue;
+    findings.push({ name, trackedIssue: entry.trackedIssue, issueNumber });
+  }
+  return findings.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Given the observed state of repo-local tracking issues, find allowlist
+ * entries whose live debt tracker has already been closed.
+ */
+export function findClosedTrackedIssueEntries(
+  entries: ReadonlyArray<OpenRequiredTrackedIssue>,
+  issueStates: ReadonlyMap<number, 'open' | 'closed'>,
+): ClosedTrackedIssueFinding[] {
+  const findings: ClosedTrackedIssueFinding[] = [];
+  for (const entry of entries) {
+    if (issueStates.get(entry.issueNumber) === 'closed') {
+      findings.push({ name: entry.name, trackedIssue: entry.trackedIssue });
+    }
   }
   return findings.sort((a, b) => a.name.localeCompare(b.name));
 }

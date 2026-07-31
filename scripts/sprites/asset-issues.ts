@@ -44,6 +44,16 @@ function isAssetCheckinPayload(value: unknown): value is AssetCheckinPayload {
   if (v.filedAt !== undefined && typeof v.filedAt !== 'string') return false;
   if (typeof v.branch !== 'string' || typeof v.baseBranch !== 'string') return false;
   if (!Array.isArray(v.assets)) return false;
+  if (v.assetRequestIssueNumbers !== undefined) {
+    if (!Array.isArray(v.assetRequestIssueNumbers)) return false;
+    if (
+      !v.assetRequestIssueNumbers.every(
+        (n) => typeof n === 'number' && Number.isInteger(n) && n > 0,
+      )
+    ) {
+      return false;
+    }
+  }
   return v.assets.every(isCheckinAsset);
 }
 

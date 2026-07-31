@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildRunPlanCacheKey,
   canFarmOptionalMerchantPurchase,
   estimateFloor1RunPlan,
+  planFloor1ObjectiveRoute,
   type Floor1RunPlannerSnapshot,
   type RunPlannerParams,
 } from '../../src/game/ai/run-planner.js';
@@ -134,6 +136,22 @@ describe('estimateFloor1RunPlan', () => {
     expect(late.remainingMs).toBeLessThan(early.remainingMs);
     expect(late.slackMs).toBeLessThan(early.slackMs);
     expect(late.urgency).toBeGreaterThan(early.urgency);
+  });
+
+  it('recomputes timing and segment travel from the live snapshot when reusing a cached route', () => {
+    const initialSnapshot = snapshot({ nowMs: 0, player: { x: 0, y: 0 } });
+    const cachedRoute = planFloor1ObjectiveRoute(initialSnapshot, PARAMS);
+    const movedSnapshot = snapshot({ nowMs: 45_000, player: { x: 15, y: 0 } });
+
+    const reused = estimateFloor1RunPlan(movedSnapshot, PARAMS, cachedRoute);
+    const fresh = estimateFloor1RunPlan(movedSnapshot, PARAMS);
+    const stale = estimateFloor1RunPlan(initialSnapshot, PARAMS, cachedRoute);
+
+    expect(reused).toEqual(fresh);
+    expect(reused.remainingMs).toBe(555_000);
+    expect(reused.remainingMs).not.toBe(stale.remainingMs);
+    expect(reused.estimatedTravelMs).not.toBe(stale.estimatedTravelMs);
+    expect(reused.segments[0]?.from).toEqual({ x: 15, y: 0 });
   });
 
   it('models a committed quest-giver detour as the current first leg', () => {
@@ -461,5 +479,129 @@ describe('estimateFloor1RunPlan', () => {
 
     const killSegment = plan.segments.find((segment) => segment.id === 'complete-goon-kills');
     expect(killSegment?.workMs).toBe(3 * PARAMS.questKillMs);
+  });
+});
+
+describe('buildRunPlanCacheKey', () => {
+  it('produces the same key for identical snapshots and params', () => {
+    const snap = snapshot();
+    const key1 = buildRunPlanCacheKey(snap, PARAMS);
+    const key2 = buildRunPlanCacheKey(snap, PARAMS);
+    expect(key1).toBe(key2);
+  });
+
+  it('produces a different key when questCompleted changes', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ questCompleted: false }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ questCompleted: true }), PARAMS);
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces a different key when playerGold changes', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ playerGold: 0 }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ playerGold: 5 }), PARAMS);
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces a different key when ratsKilled changes', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ ratsKilled: 0 }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ ratsKilled: 1 }), PARAMS);
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces a different key when bossBattleAccepted changes', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ bossBattleAccepted: false }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ bossBattleAccepted: true }), PARAMS);
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces a different key when merchantWeaponIntent status changes', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ merchantWeaponIntent: null }), PARAMS);
+    const key2 = buildRunPlanCacheKey(
+      snapshot({ merchantWeaponIntent: { status: 'farming', cost: 20 } }),
+      PARAMS,
+    );
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces the same key when only nowMs changes within a budget bucket', () => {
+    // 10s difference within the same 30-second bucket should not invalidate
+    const key1 = buildRunPlanCacheKey(snapshot({ nowMs: 0, deadlineMs: 600_000 }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ nowMs: 10_000, deadlineMs: 600_000 }), PARAMS);
+    expect(key1).toBe(key2);
+  });
+
+  it('produces a different key when budget crosses a 30-second bucket boundary', () => {
+    // 30001ms difference straddles the boundary
+    const key1 = buildRunPlanCacheKey(snapshot({ nowMs: 0, deadlineMs: 600_000 }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ nowMs: 30_001, deadlineMs: 600_000 }), PARAMS);
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces a different key when activeQuestGiverDetour changes', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ activeQuestGiverDetour: false }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ activeQuestGiverDetour: true }), PARAMS);
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces the same key for snapshots that share the same quest state regardless of time within a bucket', () => {
+    // Prove the key is stable across many frames in the same quest state
+    const keys = Array.from({ length: 5 }, (_, i) =>
+      buildRunPlanCacheKey(snapshot({ nowMs: i * 100, deadlineMs: 600_000 }), PARAMS),
+    );
+    const unique = new Set(keys);
+    expect(unique.size).toBe(1);
+  });
+});
+
+describe('buildRunPlanCacheKey — cache-key arithmetic and sentinel correctness', () => {
+  // Arithmetic mutant kills: verify the budget bucket formula
+  // uses (deadlineMs - nowMs - safetyBufferMs), not signed variants.
+  // With PARAMS.safetyBufferMs=20000, deadlineMs=600000:
+  //   nowMs=19999 → rawBudget=560001 → bucket 18
+  //   nowMs=20001 → rawBudget=559999 → bucket 18 (same bucket → same key)
+  // The mutant "- safetyBuffer → + safetyBuffer" would give buckets 20 and 19 (different keys).
+  it('produces the same key for two nowMs within the same 30-second bucket (mutation1 guard)', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ nowMs: 19_999, deadlineMs: 600_000 }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ nowMs: 20_001, deadlineMs: 600_000 }), PARAMS);
+    expect(key1).toBe(key2);
+  });
+
+  // Arithmetic mutant kill for "deadlineMs + nowMs" variant:
+  //   nowMs=29999 → rawBudget=550001 → bucket 18
+  //   nowMs=30001 → rawBudget=549999 → bucket 18 (same bucket → same key)
+  // The mutant "deadlineMs + nowMs" would give buckets 20 and 21 (different keys).
+  it('produces the same key for another pair of nowMs within the same bucket (mutation2 guard)', () => {
+    const key1 = buildRunPlanCacheKey(snapshot({ nowMs: 29_999, deadlineMs: 600_000 }), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot({ nowMs: 30_001, deadlineMs: 600_000 }), PARAMS);
+    expect(key1).toBe(key2);
+  });
+
+  // Speed key arithmetic: * 1000 vs / 1000
+  it('produces different keys for different move speeds', () => {
+    const key1 = buildRunPlanCacheKey(snapshot(), PARAMS);
+    const key2 = buildRunPlanCacheKey(snapshot(), { ...PARAMS, moveSpeedFtPerMs: 0.24 });
+    expect(key1).not.toBe(key2);
+  });
+
+  // Null-coalescing sentinel: ?? 'none' must produce 'none', not undefined/null/''.
+  it('uses the string "none" as sentinel for absent committedGoalId', () => {
+    const key = buildRunPlanCacheKey(snapshot({ currentTarget: null }), PARAMS);
+    const parts = key.split('|');
+    // committedGoalId is at index 22 (0-indexed from tutorialAccepted)
+    expect(parts[22]).toBe('none');
+  });
+
+  it('uses the string "none" as sentinel for absent merchantWeaponIntent status', () => {
+    const key = buildRunPlanCacheKey(snapshot({ merchantWeaponIntent: null }), PARAMS);
+    const parts = key.split('|');
+    // merchantWeaponIntent.status at index 23
+    expect(parts[23]).toBe('none');
+  });
+
+  it('uses "0" as sentinel for absent merchantWeaponIntent cost', () => {
+    const key = buildRunPlanCacheKey(snapshot({ merchantWeaponIntent: null }), PARAMS);
+    const parts = key.split('|');
+    // merchantWeaponIntent.cost at index 24
+    expect(parts[24]).toBe('0');
   });
 });

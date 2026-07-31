@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "ai-reachability-wiring-ratchet",
+  "task_title": "Require sim-side system wiring witnesses",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "R1: clarified five-file contract as sim-side/shared witnesses (either sim wrapper remains valid per explicit human requirement), added exact witness membership + real-tree zero-orphan assertions, and aligned Systems Engineer prompt. R2 after direct measurement correction: retained narrow invoked nullish-callee support for `(options.runFovSystem ?? fovSystem)(world)`, corrected baseline to 49/46/3/0, and added negative property-value/call-argument cases plus a real-tree fovSystem witness assertion. No UI-observability requirement and no allowlist changes."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

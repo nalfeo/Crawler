@@ -9,14 +9,18 @@ import {
   REQUIRED_ALLOWLIST_FIELDS,
   SYSTEM_SOURCE_ROOTS,
   WIRING_SITES,
+  collectOpenRequiredTrackedIssues,
   collectExportedSystems,
   collectWiredRefs,
   extractReferencedSystems,
   extractSystemDefs,
+  findClosedTrackedIssueEntries,
+  findInvalidAllowlistPolicyEntries,
   findDuplicateSystemDeclarations,
   findMalformedAllowlistEntries,
   findOrphanedSystems,
   findStaleAllowlistEntries,
+  parseTrackedIssueNumber,
   type AllowlistEntry,
   type SourceFile,
 } from '../../scripts/agent/health/orphaned-systems-lib.js';
@@ -242,6 +246,26 @@ describe('extractReferencedSystems (AST)', () => {
     expect(extractReferencedSystems(file).has('spawnerSystem')).toBe(true);
   });
 
+  it('counts an invoked *System nullish fallback callee', () => {
+    const file: SourceFile = {
+      path: 'src/core/simulation-core-step.ts',
+      content: '(options.runFovSystem ?? fovSystem)(world);',
+    };
+    expect([...extractReferencedSystems(file)]).toEqual(['fovSystem']);
+  });
+
+  it('does not count nullish fallbacks used as values or arguments', () => {
+    const file: SourceFile = {
+      path: 'src/engine/sim/simulation-step.ts',
+      content: [
+        'const hooks = { runFovSystem: options.runFovSystem ?? fovSystem };',
+        'helper(options.runFovSystem ?? fovSystem);',
+      ].join('\n'),
+    };
+    expect(extractReferencedSystems(file).has('fovSystem')).toBe(false);
+    expect(extractReferencedSystems(file).has('runFovSystem')).toBe(false);
+  });
+
   it('counts systems referenced as bare identifiers in a pipeline array', () => {
     const file: SourceFile = {
       path: 'src/bootstrap/floor-main-scene-options.ts',
@@ -370,6 +394,7 @@ describe('findOrphanedSystems', () => {
   const entry: AllowlistEntry = {
     reason: 'lab/test-only helper',
     trackedIssue: 'ADR 0039',
+    trackedIssuePolicy: 'reference-only' as const,
     owner: 'labs',
   };
   const allowlist = { enemySpawnerSystem: entry };
@@ -378,6 +403,75 @@ describe('findOrphanedSystems', () => {
     const wiredRefs = new Set(['movementSystem']); // spawnerSystem NOT wired
     const orphans = findOrphanedSystems({ systems, wiredRefs, allowlist });
     expect(orphans.map((o) => o.name)).toEqual(['spawnerSystem']);
+  });
+
+  describe('sim-side/shared wiring witness contract', () => {
+    const system = {
+      name: 'sceneOnlySystem',
+      file: 'src/game/sceneOnlySystem.ts',
+      kind: 'declaration' as const,
+    };
+
+    function refsFromTrustedSites(files: SourceFile[]): Set<string> {
+      return collectWiredRefs(files.filter((file) => WIRING_SITES.includes(file.path)));
+    }
+
+    it('excludes MainGameScene and includes the shared core + both sim steps', () => {
+      expect(WIRING_SITES).toEqual([
+        'src/bootstrap/floor-main-scene-options.ts',
+        'src/core/simulation-core-step.ts',
+        'src/engine/sim/simulation-step.ts',
+        'src/game/ai/simulation-step.ts',
+        'src/game/ai/headless-runner.ts',
+      ]);
+      expect(WIRING_SITES).not.toContain('src/engine/scenes/MainGameScene.ts');
+    });
+
+    it('FAILS a system referenced only by the visual scene', () => {
+      const wiredRefs = refsFromTrustedSites([
+        {
+          path: 'src/engine/scenes/MainGameScene.ts',
+          content: 'sceneOnlySystem(world);',
+        },
+      ]);
+      expect(findOrphanedSystems({ systems: [system], wiredRefs })).toEqual([
+        { name: 'sceneOnlySystem', file: 'src/game/sceneOnlySystem.ts' },
+      ]);
+    });
+
+    it('PASSES a system wired through the shared bootstrap options', () => {
+      const wiredRefs = refsFromTrustedSites([
+        {
+          path: 'src/bootstrap/floor-main-scene-options.ts',
+          content: 'const preSystems = [sceneOnlySystem];',
+        },
+      ]);
+      expect(findOrphanedSystems({ systems: [system], wiredRefs })).toEqual([]);
+    });
+
+    it.each(['src/engine/sim/simulation-step.ts', 'src/game/ai/simulation-step.ts'])(
+      'PASSES a system wired through %s',
+      (site) => {
+        const wiredRefs = refsFromTrustedSites([
+          { path: site, content: 'sceneOnlySystem(world);' },
+        ]);
+        expect(findOrphanedSystems({ systems: [system], wiredRefs })).toEqual([]);
+      },
+    );
+
+    it('PASSES an allowlisted system without a sim-side reference', () => {
+      const allowlist: Readonly<Record<string, AllowlistEntry>> = {
+        sceneOnlySystem: {
+          reason: 'intentionally not wired',
+          trackedIssue: '#1',
+          trackedIssuePolicy: 'reference-only',
+          owner: 'tests',
+        },
+      };
+      expect(findOrphanedSystems({ systems: [system], wiredRefs: new Set(), allowlist })).toEqual(
+        [],
+      );
+    });
   });
 
   it('PASSES once the system is wired into a real pipeline (models the #665 fix)', () => {
@@ -402,15 +496,102 @@ describe('findOrphanedSystems', () => {
 describe('findMalformedAllowlistEntries', () => {
   it('flags entries missing required fields (blank counts as missing)', () => {
     const allowlist: Record<string, AllowlistEntry> = {
-      good: { reason: 'x', trackedIssue: '#1', owner: 'me' },
+      good: {
+        reason: 'x',
+        trackedIssue: '#1',
+        trackedIssuePolicy: 'reference-only',
+        owner: 'me',
+      },
       // @ts-expect-error deliberately missing owner for the test
-      noOwner: { reason: 'x', trackedIssue: '#1' },
-      blankReason: { reason: '   ', trackedIssue: '#1', owner: 'me' },
+      noOwner: { reason: 'x', trackedIssue: '#1', trackedIssuePolicy: 'reference-only' },
+      // @ts-expect-error deliberately missing trackedIssuePolicy for the test
+      noPolicy: { reason: 'x', trackedIssue: '#1', owner: 'me' },
+      blankReason: {
+        reason: '   ',
+        trackedIssue: '#1',
+        trackedIssuePolicy: 'reference-only',
+        owner: 'me',
+      },
     };
     const bad = findMalformedAllowlistEntries(allowlist);
-    expect(bad.map((b) => b.name)).toEqual(['blankReason', 'noOwner']);
+    expect(bad.map((b) => b.name)).toEqual(['blankReason', 'noOwner', 'noPolicy']);
     expect(bad.find((b) => b.name === 'noOwner')?.missing).toContain('owner');
+    expect(bad.find((b) => b.name === 'noPolicy')?.missing).toContain('trackedIssuePolicy');
     expect(bad.find((b) => b.name === 'blankReason')?.missing).toContain('reason');
+  });
+});
+
+describe('tracked issue metadata', () => {
+  it('parses repo-local #123 tracking refs and rejects non-issue provenance refs', () => {
+    expect(parseTrackedIssueNumber('#2442')).toBe(2442);
+    expect(parseTrackedIssueNumber(' #17 ')).toBe(17);
+    expect(parseTrackedIssueNumber('ADR 0039')).toBeNull();
+    expect(parseTrackedIssueNumber('https://github.com/nalfeo/Crawler/issues/1')).toBeNull();
+  });
+
+  it('flags invalid trackedIssuePolicy values and open-required entries without a repo-local issue ref', () => {
+    const allowlist = {
+      good: {
+        reason: 'wire or remove pending follow-up',
+        trackedIssue: '#2442',
+        trackedIssuePolicy: 'open-required',
+        owner: 'weapons',
+      },
+      badPolicy: {
+        reason: 'invalid policy',
+        trackedIssue: '#2',
+        trackedIssuePolicy: 'forever' as AllowlistEntry['trackedIssuePolicy'],
+        owner: 'tests',
+      },
+      badRef: {
+        reason: 'open-required refs must be repo-local issues',
+        trackedIssue: 'ADR 0039',
+        trackedIssuePolicy: 'open-required' as const,
+        owner: 'tests',
+      },
+    } satisfies Record<string, AllowlistEntry>;
+
+    expect(findInvalidAllowlistPolicyEntries(allowlist)).toEqual([
+      { name: 'badPolicy', invalid: ['trackedIssuePolicy'] },
+      { name: 'badRef', invalid: ['trackedIssue'] },
+    ]);
+  });
+
+  it('collects open-required allowlist entries and reports the ones whose issue is closed', () => {
+    const allowlist = {
+      keepOpen: {
+        reason: 'temporary allowlist debt',
+        trackedIssue: '#11',
+        trackedIssuePolicy: 'open-required' as const,
+        owner: 'guards',
+      },
+      provenanceOnly: {
+        reason: 'documented indirection',
+        trackedIssue: '#816',
+        trackedIssuePolicy: 'reference-only' as const,
+        owner: 'floor2',
+      },
+      another: {
+        reason: 'second live debt item',
+        trackedIssue: '#12',
+        trackedIssuePolicy: 'open-required' as const,
+        owner: 'guards',
+      },
+    } satisfies Record<string, AllowlistEntry>;
+
+    const tracked = collectOpenRequiredTrackedIssues(allowlist);
+    expect(tracked).toEqual([
+      { name: 'another', trackedIssue: '#12', issueNumber: 12 },
+      { name: 'keepOpen', trackedIssue: '#11', issueNumber: 11 },
+    ]);
+
+    const states = new Map<number, 'open' | 'closed'>([
+      [11, 'open'],
+      [12, 'closed'],
+    ]);
+    expect(findClosedTrackedIssueEntries(tracked, states)).toEqual([
+      { name: 'another', trackedIssue: '#12' },
+    ]);
   });
 });
 
@@ -427,7 +608,12 @@ describe('findStaleAllowlistEntries', () => {
       kind: 'declaration' as const,
     },
   ];
-  const entry: AllowlistEntry = { reason: 'r', trackedIssue: '#1', owner: 'o' };
+  const entry: AllowlistEntry = {
+    reason: 'r',
+    trackedIssue: '#1',
+    trackedIssuePolicy: 'reference-only',
+    owner: 'o',
+  };
 
   it('flags a "missing" entry when the system no longer exists', () => {
     const allowlist = { goneSystem: entry };
@@ -453,6 +639,7 @@ describe('ALLOWLIST honesty invariants (against the real source tree)', () => {
 
   it('every allowlist entry carries all required fields', () => {
     expect(findMalformedAllowlistEntries(ALLOWLIST)).toEqual([]);
+    expect(findInvalidAllowlistPolicyEntries(ALLOWLIST)).toEqual([]);
     // Belt-and-braces: assert each required key is a non-empty string.
     for (const [name, e] of Object.entries(ALLOWLIST)) {
       for (const field of REQUIRED_ALLOWLIST_FIELDS) {
@@ -462,11 +649,19 @@ describe('ALLOWLIST honesty invariants (against the real source tree)', () => {
           `ALLOWLIST["${name}"].${field} must be a non-empty string`,
         ).toBe(true);
       }
+      expect(
+        e.trackedIssuePolicy === 'reference-only' || e.trackedIssuePolicy === 'open-required',
+        `ALLOWLIST["${name}"].trackedIssuePolicy must classify the reference as provenance-only or live debt`,
+      ).toBe(true);
     }
   });
 
   it('no allowlist entry is stale (system gone) or redundant (now wired)', () => {
     expect(findStaleAllowlistEntries(realSystems, realWiredRefs, ALLOWLIST)).toEqual([]);
+  });
+
+  it('the real shared-core fallback is recognized without a scene witness', () => {
+    expect(realWiredRefs.has('fovSystem')).toBe(true);
   });
 
   it('the real tree exports the systems the guard is meant to check', () => {

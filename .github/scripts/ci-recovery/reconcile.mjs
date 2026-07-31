@@ -2676,24 +2676,11 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
     stopIfReleaseConvergedElsewhere(await release('blocker-progressed'));
   } else {
     dispatchAttemptBase = state?.attempt || 0;
-    // Lease-reaper GC pass: carry the attempt count forward AND freeze
-    // progressAt at its persisted value instead of refreshing it to `now`.
-    // The default (line above) refreshes progressAt on every dispatch, which
-    // slides the staleness window forward on each reap so a dead automation
-    // lock could survive many TTLs before the attempt>=2 ceiling releases it
-    // (Bug X). Freezing progressAt makes the window monotonic: the reaper
-    // keeps finding the lock stale on each sweep, the attempt count climbs to
-    // the existing exhaustion ceiling (see automationStallAction), and the
-    // lock is released within a bounded number of sweeps -- turning the TTL
-    // into a true wall-clock bound. Liveness is deliberately NOT inferred
-    // from head-SHA workflow runs: unrelated CI / merge-train / sweep runs
-    // (and the reaper's own reconcile run) share the PR head SHA and would
-    // produce false-live signals that make a dead lock immortal,
-    // re-introducing the very deadlock this fix targets (adversarial plan
-    // review, 2026-07-22).
-    if (trigger === 'lease-reaper') {
-      dispatchProgressAt = state?.progressAt || state?.updatedAt || dispatchProgressAt;
-    }
+    // Carry the attempt count forward on stale retries, but refresh
+    // progressAt to `now` for the fresh dispatch that follows this release.
+    // Keeping a stale timestamp here can instantly re-exhaust a newly
+    // dispatched recovery attempt (before it has any liveness window),
+    // causing repeated "no progress" loops on otherwise actionable PRs.
     stopIfReleaseConvergedElsewhere(await release('stale-automation-retry'));
   }
 }

@@ -25,6 +25,7 @@ import type {
   DoorRenderSummary,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
+import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
 
 declare global {
@@ -118,6 +119,17 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestEquipToggle()),
   queueAbilitiesToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesToggle()),
+  queueSkillUsage: (
+    page: Page,
+    skillId: string,
+    metric: UsageMetric,
+    amount: number,
+  ): Promise<void> =>
+    page.evaluate(
+      ({ id, usageMetric, usageAmount }) =>
+        window.__mainSceneProbe!.queueSkillUsage(id, usageMetric, usageAmount),
+      { id: skillId, usageMetric: metric, usageAmount: amount },
+    ),
   setWorldState: (page: Page, state: MainSceneState['worldState']): Promise<void> =>
     page.evaluate(
       (value) =>

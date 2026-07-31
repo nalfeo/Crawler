@@ -1,19 +1,7 @@
 import { addComponent, set } from 'bitecs';
-import {
-  DroppedItem,
-  Gold,
-  Owner,
-  Position,
-  Size,
-  Sprite,
-  Team,
-  Weapon,
-  Weight,
-  XpGem,
-} from '../components.js';
+import { DroppedItem, Gold, Position, Size, Sprite, Weight, XpGem } from '../components.js';
 import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
-import type { WeaponTypeValue } from '../../shared/constants.js';
 import { createEntity } from './entity-core.js';
 
 export function spawnXpGem(
@@ -95,34 +83,5 @@ export function spawnDroppedItem(
   );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
-  return eid;
-}
-
-/** Spawn a weapon entity attached to an owner. */
-export function spawnWeapon(
-  world: GameWorld,
-  ownerEid: number,
-  weaponType: WeaponTypeValue,
-  baseDamage: number,
-  cooldownMs: number,
-  range: number,
-  projectileSpeed: number,
-  teamId: number,
-): number {
-  const eid = createEntity(world);
-  addComponent(
-    world.ecs,
-    eid,
-    set(Weapon, {
-      weaponType,
-      baseDamage,
-      cooldownMs,
-      lastFireMs: -cooldownMs,
-      range,
-      projectileSpeed,
-    }),
-  );
-  addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
-  addComponent(world.ecs, eid, set(Team, { id: teamId }));
   return eid;
 }
