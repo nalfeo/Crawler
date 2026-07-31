@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'Workflow run ID of the parked action_required run to retrigger'
+        description: 'Workflow run ID of the parked action_required/cancelled run to retrigger'
         required: true
 
 permissions:
@@ -19,7 +19,7 @@ jobs:
   retrigger:
     if: >-
       ${{
-        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'action_required') ||
+        (github.event_name == 'workflow_run' && contains(fromJson('[\"action_required\",\"cancelled\"]'), github.event.workflow_run.conclusion)) ||
         github.event_name == 'workflow_dispatch'
       }}
     runs-on: ubuntu-latest

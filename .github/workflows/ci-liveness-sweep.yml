@@ -51,49 +51,81 @@ jobs:
             });
             core.notice(`dispatched ci-conflict-coordinator.yml ref=${ref}`);
 
-      - name: Scan for parked action_required checks
+      - name: Scan for parked action_required/cancelled checks
         uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo } = context.repo;
             const ref = context.payload.repository?.default_branch || 'main';
             const workflowsToCheck = ['ci.yml', 'security-review.yml'];
+            const scanModes = [
+              { label: 'action_required', status: 'action_required' },
+              { label: 'cancelled', status: 'completed' },
+            ];
             // Bound per sweep to prevent burst-dispatching when many runs are parked.
             const cap = 3;
             let dispatched = 0;
             for (const workflowId of workflowsToCheck) {
               if (dispatched >= cap) break;
-              let runs;
-              try {
-                runs = await github.rest.actions.listWorkflowRuns({
-                  owner,
-                  repo,
-                  workflow_id: workflowId,
-                  status: 'action_required',
-                  per_page: 10,
-                });
-              } catch (error) {
-                core.notice(`skip action_required scan workflow=${workflowId}: ${error.message}`);
-                continue;
-              }
-              for (const run of runs.data.workflow_runs) {
+              for (const scanMode of scanModes) {
                 if (dispatched >= cap) break;
+                let runs;
                 try {
-                  await github.rest.actions.createWorkflowDispatch({
+                  runs = await github.rest.actions.listWorkflowRuns({
                     owner,
                     repo,
-                    workflow_id: 'action-required-retrigger.yml',
-                    ref,
-                    inputs: { run_id: String(run.id) },
+                    workflow_id: workflowId,
+                    status: scanMode.status,
+                    per_page: 20,
                   });
-                  dispatched += 1;
-                  core.notice(`dispatched action-required-retrigger run=${run.id} workflow=${workflowId}`);
                 } catch (error) {
-                  core.notice(`skip action-required-retrigger run=${run.id}: ${error.message}`);
+                  core.notice(`skip ${scanMode.label} scan workflow=${workflowId}: ${error.message}`);
+                  continue;
+                }
+                for (const run of runs.data.workflow_runs) {
+                  if (dispatched >= cap) break;
+                  if (scanMode.label === 'cancelled' && run.conclusion !== 'cancelled') continue;
+                  const linkedPrNumber = run.pull_requests?.[0]?.number;
+                  if (!linkedPrNumber) {
+                    core.notice(`skip ${scanMode.label} run=${run.id}: no-linked-pr`);
+                    continue;
+                  }
+                  let pull;
+                  try {
+                    pull = await github.rest.pulls.get({
+                      owner,
+                      repo,
+                      pull_number: linkedPrNumber,
+                    });
+                  } catch (error) {
+                    core.notice(`skip ${scanMode.label} run=${run.id}: pr-load-failed (${error.message})`);
+                    continue;
+                  }
+                  if (pull.data.state !== 'open' || pull.data.draft) {
+                    core.notice(
+                      `skip ${scanMode.label} run=${run.id}: pr-not-open-non-draft (#${linkedPrNumber})`,
+                    );
+                    continue;
+                  }
+                  try {
+                    await github.rest.actions.createWorkflowDispatch({
+                      owner,
+                      repo,
+                      workflow_id: 'action-required-retrigger.yml',
+                      ref,
+                      inputs: { run_id: String(run.id) },
+                    });
+                    dispatched += 1;
+                    core.notice(
+                      `dispatched action-required-retrigger run=${run.id} workflow=${workflowId} mode=${scanMode.label}`,
+                    );
+                  } catch (error) {
+                    core.notice(`skip action-required-retrigger run=${run.id}: ${error.message}`);
+                  }
                 }
               }
             }
-            core.info(`action-required backstop sweep complete dispatched=${dispatched} cap=${cap}`);
+            core.info(`action-required/cancelled backstop sweep complete dispatched=${dispatched} cap=${cap}`);
 
       - name: Trigger disposition detection
         uses: actions/github-script@v7
