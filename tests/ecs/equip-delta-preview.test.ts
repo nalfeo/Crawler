@@ -14,11 +14,8 @@ import {
   previewEquipDelta,
 } from '../../src/core/systems/equipmentSystem.js';
 import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
-import {
-  getEquipmentDefForItem,
-  _registerEquipmentDefForTest,
-  _clearEquipmentDefsForTest,
-} from '../../src/shared/equipmentDefs.js';
+import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
+import equipmentDefsTestSeams from '../../src/shared/equipmentDefs.test-seams.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
@@ -138,7 +135,7 @@ describe('previewEquipDelta', () => {
   });
 
   afterEach(() => {
-    _clearEquipmentDefsForTest();
+    equipmentDefsTestSeams._clearEquipmentDefsForTest();
   });
 
   it('returns null for a non-equippable item id', () => {
@@ -238,7 +235,7 @@ describe('previewEquipDelta', () => {
       rarity: 'common',
     };
     expect(equip(world, entity, band, { force: true }).ok).toBe(true);
-    _registerEquipmentDefForTest({
+    equipmentDefsTestSeams._registerEquipmentDefForTest({
       id: 'heavy-signet',
       name: 'Heavy Signet',
       slots: ['ringLeft'],
@@ -268,7 +265,7 @@ describe('previewEquipDelta', () => {
       rarity: 'common',
     };
     expect(equip(world, entity, band, { force: true }).ok).toBe(true);
-    _registerEquipmentDefForTest({
+    equipmentDefsTestSeams._registerEquipmentDefForTest({
       id: 'light-signet',
       name: 'Light Signet',
       slots: ['ringLeft'],

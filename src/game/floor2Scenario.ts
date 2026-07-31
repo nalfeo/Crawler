@@ -959,9 +959,8 @@ export function initializeFloor2Scenario(
   // (purchase + equip via `runSettlementMaintenancePlanner`). Without this,
   // the economy would be generated but have zero real consumer that ever
   // acts on it — the same "shipped inert" failure class this flag closure
-  // exists to eliminate. There is no interactive-game equivalent consumer
-  // yet (no Quartermaster purchase UI — see issue #2334); this only affects
-  // AI-controlled runs (headless completion tests, win-rate sweeps).
+  // exists to eliminate. Interactive gameplay consumes the same economy
+  // through MainGameScene's settlement shop interaction flow.
   world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);

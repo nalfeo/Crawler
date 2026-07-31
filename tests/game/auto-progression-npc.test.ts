@@ -15,11 +15,8 @@ import {
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
-import {
-  _clearEquipmentDefsForTest,
-  _registerEquipmentDefForTest,
-  getEquipmentDefForItem,
-} from '../../src/shared/equipmentDefs.js';
+import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
+import equipmentDefsTestSeams from '../../src/shared/equipmentDefs.test-seams.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { _customTag as customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
@@ -389,7 +386,7 @@ describe('autoAllocateStatPoints', () => {
 
 describe('autoFloor1ProgressionSystem', () => {
   afterEach(() => {
-    _clearEquipmentDefsForTest();
+    equipmentDefsTestSeams._clearEquipmentDefsForTest();
   });
 
   it('is a no-op when floor1 is null', () => {
@@ -556,7 +553,7 @@ describe('autoFloor1ProgressionSystem', () => {
       weightLb: 0,
       rarity: 'rare',
     };
-    _registerEquipmentDefForTest(circlet);
+    equipmentDefsTestSeams._registerEquipmentDefForTest(circlet);
 
     expect(equip(world, player, getEquipmentDefForItem('iron-helm')!, { force: true }).ok).toBe(
       true,
