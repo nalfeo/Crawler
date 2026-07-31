@@ -861,13 +861,7 @@ export function synchronizeAbilityPassives(
       const alreadyApplied = state.appliedPassiveAbilityIds.has(passiveId);
 
       if (prereqMet && !alreadyApplied) {
-        applyPassive(
-          world,
-          holderEid,
-          passiveId,
-          state,
-          options?.suppressActivationVfx === true,
-        );
+        applyPassive(world, holderEid, passiveId, state, options?.suppressActivationVfx === true);
       } else if (!prereqMet && alreadyApplied) {
         revokePassive(world, holderEid, passiveId, state);
       }
