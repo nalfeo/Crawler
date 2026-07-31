@@ -61,9 +61,9 @@ ai-behavior-tree
     `floor2EnemyDirectorSystem`.
   - `weaponEntitySystem`: shipped inert. Neither the system nor its sole producer
     `spawnWeapon` has a production caller; the live player path uses singleton
-    `weaponSystem`. The prior tracking issue was closed while the condition
-    persisted; replacement issue #2442 now tracks it. It was deliberately not
-    wired in this PR.
+    `weaponSystem`. It was left unchanged and remains tracked separately in
+    #2442 (its prior tracking issue #666 was closed as COMPLETED on 2026-07-11
+    while the system remained inert).
 - The allowlist is the guard's weak edge: each entry is a promise to revisit an
   intentionally unwired system, but a closed tracking issue can silently void
   that promise while the inert system continues to pass the guard.
