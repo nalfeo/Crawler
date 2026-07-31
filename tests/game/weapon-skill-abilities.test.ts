@@ -383,7 +383,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
-    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(false);
+    expect(world.vfxEvents.some((event) => event.kind === 'abilityActivateFlash')).toBe(false);
   });
 
   it('DOES push activation VFX for a weapon-prerequisite passive applied via applyPassive', () => {
@@ -395,7 +395,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
-    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(true);
+    expect(world.vfxEvents.some((event) => event.kind === 'abilityActivateFlash')).toBe(true);
   });
 });
 
@@ -415,7 +415,7 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     skillSystem(world);
 
     const vfxCount = world.vfxEvents.filter(
-      (event) => event.kind === 'weaponAbilityActivate',
+      (event) => event.kind === 'abilityActivateFlash',
     ).length;
     expect(vfxCount).toBe(1);
 
@@ -437,7 +437,7 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     fireSkillUsageEvents(world, player, 'sword', 'weapon_fired', threshold);
     skillSystem(world);
 
-    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(false);
+    expect(world.vfxEvents.some((event) => event.kind === 'abilityActivateFlash')).toBe(false);
 
     const announcement = world.announcements.find((event) => event.kind === 'skillPassiveUnlocked');
     expect(announcement).toBeDefined();
@@ -462,7 +462,7 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     abilitySystem(world); // applies the now-eligible passive, may push its own VFX
 
     const vfxCount = world.vfxEvents.filter(
-      (event) => event.kind === 'weaponAbilityActivate',
+      (event) => event.kind === 'abilityActivateFlash',
     ).length;
     expect(vfxCount).toBe(1);
 
@@ -497,7 +497,7 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sprint')!;
     expect(abilityState?.passiveAbilityIds).toContain(expectedAbilityId);
     // ...but no player-facing HUD feedback is produced for a non-Player holder.
-    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(false);
+    expect(world.vfxEvents.some((event) => event.kind === 'abilityActivateFlash')).toBe(false);
     expect(world.announcements.some((event) => event.kind === 'skillPassiveUnlocked')).toBe(false);
   });
 });
