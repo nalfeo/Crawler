@@ -330,6 +330,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
       true,
     );
+    expect(world.vfxEvents.filter((event) => event.kind === 'abilityActivateFlash')).toHaveLength(1);
 
     // Revoke with pistol.
     setActiveWeaponDef(world, pistol);
@@ -337,6 +338,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
       false,
     );
+    expect(world.vfxEvents.filter((event) => event.kind === 'abilityActivateFlash')).toHaveLength(1);
 
     // Re-apply with sword.
     setActiveWeaponDef(world, swordWeapon);
@@ -344,6 +346,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
       true,
     );
+    expect(world.vfxEvents.filter((event) => event.kind === 'abilityActivateFlash')).toHaveLength(2);
   });
 
   it('applies unconditional passives regardless of equipped weapon', () => {

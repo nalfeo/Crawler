@@ -1862,7 +1862,7 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
       playerEid,
       restoreAbilityState(snapshot.abilityState, world.frameCount, persistedPassiveAbilityIds),
     );
-    synchronizeAbilityPassives(world, playerEid);
+    synchronizeAbilityPassives(world, playerEid, { suppressActivationVfx: true });
   } else {
     world.abilityStatesByEntity.delete(playerEid);
   }
