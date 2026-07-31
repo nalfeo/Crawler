@@ -1,0 +1,41 @@
+name: achv-icons-batch-07
+type: icon
+description: 'Achievement icon batch 7: pixel-art symbols for dungeon achievements on Floor 1.'
+floor: 1
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells:
+      - [1, 3]
+      - [2, 0]
+      - [2, 1]
+      - [2, 2]
+      - [2, 3]
+      - [3, 0]
+      - [3, 1]
+      - [3, 2]
+      - [3, 3]
+    nativeCanvas: 1024
+iconBatch:
+  - id: achv-glass-cannon
+    concept: 'Glass Cannon TV'
+    description: 'Icon for the "Glass Cannon TV" achievement (Clear Floor 1 with zero defense upgrades.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-pacifist-ish
+    concept: 'Pacifist-ish'
+    description: 'Icon for the "Pacifist-ish" achievement (Reach the boss room with under 20 enemy defeats.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-showboater
+    concept: 'Showboater'
+    description: 'Icon for the "Showboater" achievement (Trigger 5 different achievement categories in one run.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor1-grand-tour
+    concept: 'Floor 1 Grand Tour'
+    description: 'Icon for the "Floor 1 Grand Tour" achievement (Unlock 25 different achievements in a single Floor 1 run.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-ability-awakening
+    concept: 'Ability Awakening'
+    description: 'Icon for the "Ability Awakening" achievement (Unlock your first passive ability by reaching level 5 in any skill.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-arsenal-builder
+    concept: 'Arsenal Builder'
+    description: 'Icon for the "Arsenal Builder" achievement (Unlock 5 passive abilities by leveling up skills.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-walking-arsenal
+    concept: 'Walking Arsenal'
+    description: 'Icon for the "Walking Arsenal" achievement (Unlock 10 passive abilities by leveling up skills.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

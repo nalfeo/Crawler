@@ -1,0 +1,53 @@
+name: achv-icons-batch-05
+type: icon
+description: 'Achievement icon batch 5: pixel-art symbols for dungeon achievements on Floor 1.'
+floor: 1
+iconBatch:
+  - id: achv-boss-thirty-seconds
+    concept: 'Quick Episode'
+    description: 'Icon for the "Quick Episode" achievement (Defeat the Floor 1 boss in under 30 seconds.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-finisher-lowhp
+    concept: 'Finale at 1 HP'
+    description: 'Icon for the "Finale at 1 HP" achievement (Defeat the Floor 1 boss while below 10 HP.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-clean-fight
+    concept: 'No Notes'
+    description: 'Icon for the "No Notes" achievement (Defeat the Floor 1 boss without taking damage.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-overkill
+    concept: 'Overproduction'
+    description: 'Icon for the "Overproduction" achievement (Deal 3x boss max HP total damage during the encounter.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-with-style
+    concept: 'Style Bonus'
+    description: 'Icon for the "Style Bonus" achievement (Defeat the boss after triggering at least 3 abilities.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-with-basic-gear
+    concept: 'Budget Boss Kill'
+    description: 'Icon for the "Budget Boss Kill" achievement (Defeat the boss with only common gear equipped.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-stairs-unlocked
+    concept: 'Exit Strategy'
+    description: 'Icon for the "Exit Strategy" achievement (Unlock the stairs objective on Floor 1.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-stairs-discovered
+    concept: 'There It Is'
+    description: 'Icon for the "There It Is" achievement (Discover the stairs location.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-quest-accepted
+    concept: 'Paperwork Enjoyer'
+    description: 'Icon for the "Paperwork Enjoyer" achievement (Accept your first quest.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-quest-completed
+    concept: 'Task Manager'
+    description: 'Icon for the "Task Manager" achievement (Complete your first quest.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-all-floor1-quests
+    concept: 'Completionist-ish'
+    description: 'Icon for the "Completionist-ish" achievement (Complete all Floor 1 quests in one run.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-safe-room-discovered
+    concept: 'HR Approved'
+    description: 'Icon for the "HR Approved" achievement (Discover the safe room.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-npc-social
+    concept: 'Social Build'
+    description: 'Icon for the "Social Build" achievement (Talk to all Floor 1 key NPCs.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-merchant-customer
+    concept: 'Loyal Customer'
+    description: 'Icon for the "Loyal Customer" achievement (Buy your first piece of gear.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-fully-equipped
+    concept: 'Dressed for Ratings'
+    description: 'Icon for the "Dressed for Ratings" achievement (Equip all major gear slots once.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor1-clear
+    concept: 'Roll Credits (Floor 1)'
+    description: 'Icon for the "Roll Credits (Floor 1)" achievement (Clear Floor 1 and take the stairs alive.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

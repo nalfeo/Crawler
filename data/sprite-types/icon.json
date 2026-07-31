@@ -1,0 +1,15 @@
+{
+  "$comment": "Default brief settings for UI icons (achievement icons, ability icons). Each brief is a batch of up to 16 distinct icons on one 4x4 sheet. Icons are clean pixel-art symbols with a transparent background and NO frame/border baked in — frames are composited deterministically in the engine.",
+  "size": { "width": 128, "height": 128 },
+  "palette": { "id": "kenney-roguelike" },
+  "anchor": { "x": 64, "y": 64 },
+  "tags": ["icon", "ui"],
+  "generation": {
+    "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
+  },
+  "sensors": {
+    "opaqueRatio": { "min": 0.05 }
+  },
+  "minVariations": 0,
+  "judge": { "enabled": true, "maxVariants": 16 }
+}
