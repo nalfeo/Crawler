@@ -143,6 +143,34 @@ export function createBridge(repoRoot, opts = {}) {
     },
 
     /**
+     * List active (queued / in-progress) workflow runs for icon-batch.yml.
+     * @returns {Promise<{ databaseId: number, status: string, displayTitle: string, createdAt: string }[]>}
+     */
+    async listActiveRuns() {
+      try {
+        const { stdout } = await execFileAsync(
+          'gh',
+          [
+            'run',
+            'list',
+            '--workflow',
+            'icon-batch.yml',
+            '--limit',
+            '10',
+            '--json',
+            'databaseId,status,displayTitle,createdAt',
+          ],
+          { cwd: repoRoot },
+        );
+        const all = JSON.parse(stdout || '[]');
+        return all.filter((r) => ['in_progress', 'queued', 'waiting'].includes(r.status));
+      } catch (err) {
+        log(`listActiveRuns failed: ${err?.message ?? err}`);
+        return [];
+      }
+    },
+
+    /**
      * Dispatch a GitHub Actions workflow run.
      * @param {'generate-briefs' | 'run' | 'run-all' | 'status'} action
      * @param {string} [batchIds]
