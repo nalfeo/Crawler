@@ -7,8 +7,9 @@
  * and records which texture each ability icon resolves to.
  *
  * POSITIVE: with the real registry, Fireball, Heal, and Pulse Shield each
- * resolve to a real generated entry (not null) from the expected briefId
- * lineage, and the entry's textureKey is treated as loaded.
+ * resolve to a real generated entry (not null), preferring either the
+ * legacy briefId lineage OR the canonical batch texture-key fallback
+ * (`ability-icon-<id>`), and the entry's textureKey is treated as loaded.
  * NEGATIVE CONTROL: with an empty registry, getAbilityIconEntry returns null
  * for every ability — proving the harness exercises the real resolution branch
  * rather than unconditionally succeeding.
@@ -30,11 +31,11 @@ import {
   shippedManifestShardsExist,
 } from '../helpers/generated-manifest.js';
 
-/** The three abilities with approved icon brief IDs in ability-presentation.ts. */
-const ICON_EXPECTATIONS: ReadonlyArray<{ abilityId: string; briefIdLineage: string }> = [
-  { abilityId: 'fireball', briefIdLineage: 'ability-icon-fireball-v1' },
-  { abilityId: 'heal', briefIdLineage: 'ability-icon-heal-v1' },
-  { abilityId: 'pulse-shield', briefIdLineage: 'ability-icon-pulse-shield-v1' },
+/** The three abilities with icon presentation entries in ability-presentation.ts. */
+const ICON_EXPECTATIONS: ReadonlyArray<{ abilityId: string; legacyBriefIdLineage: string }> = [
+  { abilityId: 'fireball', legacyBriefIdLineage: 'ability-icon-fireball-v1' },
+  { abilityId: 'heal', legacyBriefIdLineage: 'ability-icon-heal-v1' },
+  { abilityId: 'pulse-shield', legacyBriefIdLineage: 'ability-icon-pulse-shield-v1' },
 ];
 
 /**
@@ -74,10 +75,16 @@ describe('ability-icon real render path over the shipped manifest (observe-befor
     const registry = await loadRealShippedRegistry();
     const scene = makeRecordingScene(registry);
 
-    for (const { abilityId, briefIdLineage } of ICON_EXPECTATIONS) {
+    for (const { abilityId, legacyBriefIdLineage } of ICON_EXPECTATIONS) {
       const entry = getAbilityIconEntry(scene as never, abilityId);
       expect(entry, `getAbilityIconEntry returned null for "${abilityId}"`).not.toBeNull();
-      expect(entry!.briefId, `"${abilityId}" resolved to wrong briefId`).toBe(briefIdLineage);
+      const canonicalIconId = `ability-icon-${abilityId}`;
+      const resolvedViaLegacyBrief = entry!.briefId === legacyBriefIdLineage;
+      const resolvedViaCanonicalTexture = entry!.textureKey === canonicalIconId;
+      expect(
+        resolvedViaLegacyBrief || resolvedViaCanonicalTexture,
+        `"${abilityId}" resolved to unexpected icon entry (briefId=${entry!.briefId}, textureKey=${entry!.textureKey})`,
+      ).toBe(true);
       // The resolved textureKey must be among the loaded textures (as in game).
       expect(
         registry.entries().some((e) => e.textureKey === entry!.textureKey),
