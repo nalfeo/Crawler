@@ -3,6 +3,7 @@
 **Date:** 2026-07-31
 **Branch:** `theme-set-classic-fantasy-basic-cloth`
 **Apple estimate:** 3🍎 (asset-pipeline tooling cap per AGENTS.md)
+**Apple actual:** 3🍎 — exact (calibration: `docs/knowledge/metrics/apples/2026-07-31-theme-equipment-phase-partial-persist.json`)
 
 ## Systems touched
 

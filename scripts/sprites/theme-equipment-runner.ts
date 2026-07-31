@@ -120,8 +120,8 @@ export interface ThemeEquipmentRunnerDeps {
 
 /**
  * Build the driver-facing message for a partial phase pass: what was
- * checkpointed, what failed and why, and the exact command to re-run so ONLY
- * the unresolved items regenerate (approved/failed items persist).
+ * checkpointed, what failed and why, and the workflow command to re-run so
+ * only up-reviewed/frozen items are skipped (every other item regenerates).
  */
 function formatPartialMessage(setId: string, result: ThemeEquipmentSetPhaseRunResult): string {
   const parts: string[] = [];
@@ -140,8 +140,8 @@ function formatPartialMessage(setId: string, result: ThemeEquipmentSetPhaseRunRe
     parts.push(`Collection judge did not run: ${result.collectionJudgeError}.`);
   }
   parts.push(
-    `Re-run with: run-phase --set-id ${setId} ` +
-      `(approved/failed items persist; only unresolved items regenerate).`,
+    `Re-run: gh workflow run theme-equipment.yml -f action=run-phase -f set_id=${setId} ` +
+      `(up-reviewed/frozen items are skipped; every other item regenerates).`,
   );
   return parts.join(' ');
 }
@@ -235,29 +235,28 @@ export class ThemeEquipmentRunner {
       );
     }
     const expectedRevision = loaded.stateRevision;
-    let revisable = loaded;
-    for (const item of loaded.items) {
-      if (
-        item.phases[loaded.phase].review.verdict !== 'down' ||
-        item.frozenPhases.includes(loaded.phase)
-      ) {
-        continue;
-      }
-      const revision = reviseRejectedThemeSetItem(revisable, item.id);
-      if (!revision.ok) {
-        throw new ThemeEquipmentRunnerError(
-          `Cannot revise rejected item "${item.id}": ${JSON.stringify(revision.reasons)}`,
-        );
-      }
-      revisable = revision.state;
-    }
     const runResult = await runThemeEquipmentSetPhase(
-      revisable,
+      loaded,
       (item, state) => this.executeItem(state, item),
       (state) => this.judgePhaseCollection(state),
+      // Lazy per-item revision: revise a down-reviewed item immediately before
+      // its own execution so a fatal error on item N never clears the artifacts
+      // or bumps the revision of items N+1…M that were never attempted.
+      (state, itemId) => {
+        if (!isReviewPhase(state.phase)) return null;
+        const item = state.items.find((c) => c.id === itemId);
+        if (
+          !item ||
+          item.phases[state.phase].review.verdict !== 'down' ||
+          item.frozenPhases.includes(state.phase)
+        ) {
+          return null;
+        }
+        return reviseRejectedThemeSetItem(state, itemId);
+      },
     );
-    // Persist only if something actually changed since we loaded (rejected-item
-    // pre-revisions already bump the revision, so any real work — or a failure
+    // Persist only if something actually changed since we loaded (lazy
+    // per-item revisions bump the revision, so any real work — or a failure
     // marker — makes this true). A truly no-op pass avoids a needless
     // same-revision write that would only churn the store.
     const mutated = runResult.state.stateRevision !== expectedRevision;

@@ -510,6 +510,79 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
     expect(revisedItem.phases.roster.artifacts[0]?.id).toContain(`${rejectedId}-roster-r1`);
   });
 
+  it('fatal error on first rejected item does not clear second rejected item', async () => {
+    // Regression: with an eager pre-loop that revises ALL rejected items before
+    // execution begins, a fatal throw on item 1 would persist item 2 after its
+    // artifacts/feedback were already cleared and its revision bumped — even
+    // though item 2 was never attempted. With lazy per-item revision, item 2
+    // must be preserved exactly as it was when the phase started.
+    const store = memoryStore();
+    const { runner: subject } = runner(store);
+    const initialized = await subject.init('data/theme-equipment-sets/classic-fantasy.json');
+
+    const firstId = initialized.items[0]!.id;
+    const secondId = initialized.items[1]!.id;
+
+    // Reject both items so both would need revision on the next run.
+    const afterFirst = applyThemeSetItemReview(initialized, firstId, {
+      verdict: 'down',
+      feedback: 'Redo the silhouette.',
+    });
+    if (!afterFirst.ok) throw new Error('setup rejection 1 rejected');
+    const afterSecond = applyThemeSetItemReview(afterFirst.state, secondId, {
+      verdict: 'down',
+      feedback: 'Colors are wrong.',
+    });
+    if (!afterSecond.ok) throw new Error('setup rejection 2 rejected');
+
+    // Capture the second item's state before the re-run so we can assert it
+    // remains untouched after a fatal failure on the first item.
+    const secondItemBefore = afterSecond.state.items.find((i) => i.id === secondId)!;
+
+    store.mem.set(
+      themeEquipmentSetStateKey(initialized.id),
+      Buffer.from(`${JSON.stringify(afterSecond.state)}\n`),
+    );
+    store.puts = 0;
+
+    // Make the first item's execution fatal.
+    const sentinel = new Error('fatal on first item');
+    const executeSpy = vi
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- exercise the private per-item executor seam
+      .spyOn(ThemeEquipmentRunner.prototype as any, 'executeItem')
+      .mockRejectedValueOnce(sentinel);
+    try {
+      const error = await subject.runPhase(initialized.id).then(
+        () => {
+          throw new Error('expected runPhase to reject');
+        },
+        (rejection: unknown) => rejection,
+      );
+
+      expect(error).toBe(sentinel);
+
+      // The checkpoint was persisted (first item's failure marker was written).
+      expect(store.puts).toBe(1);
+      const saved = parseThemeEquipmentSetState(
+        JSON.parse(store.mem.get(themeEquipmentSetStateKey(initialized.id))!.toString()),
+      );
+
+      // First item: failure-marked (fatal error checkpointed intent).
+      const firstItem = saved.items.find((i) => i.id === firstId)!;
+      expect(firstItem.phases.roster.generationError?.message).toBe('fatal on first item');
+
+      // Second item: must be UNTOUCHED — same revision, same verdict, same
+      // artifacts as before the re-run.  With the old eager pre-loop this
+      // would have revision 1 and empty artifacts.
+      const secondItem = saved.items.find((i) => i.id === secondId)!;
+      expect(secondItem.revision).toBe(secondItemBefore.revision);
+      expect(secondItem.phases.roster.review.verdict).toBe('down');
+      expect(secondItem.phases.roster.artifacts).toEqual(secondItemBefore.phases.roster.artifacts);
+    } finally {
+      executeSpy.mockRestore();
+    }
+  });
+
   it('checkpoints the accepted roster work even when its collection judge fails', async () => {
     const store = memoryStore();
     const { runner: subject } = runner(

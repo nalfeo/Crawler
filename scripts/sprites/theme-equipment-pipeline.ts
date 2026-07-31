@@ -53,6 +53,7 @@ import {
   type ThemeEquipmentCollectionJudgeResult,
   type ThemeEquipmentSetItem,
   type ThemeEquipmentSetState,
+  type ThemeSetMutationResult,
 } from './theme-equipment-set.js';
 
 /**
@@ -165,12 +166,32 @@ export type ThemeEquipmentCollectionJudgeFn = (
 ) => Promise<ThemeEquipmentCollectionJudgeResult>;
 
 /**
+ * Optional per-item pre-mutation hook. Called immediately before each
+ * unresolved item's executor, with the current accumulated state and the
+ * item id. Return `null` for no-op (item needs no pre-mutation). Return a
+ * `ThemeSetMutationResult`: `{ ok: true, state }` replaces `current` and
+ * re-fetches the live item before calling `executeItem`; `{ ok: false }` is
+ * treated as a fatal mutation-rejected error and aborts the pass.
+ *
+ * Used by the runner to revise down-reviewed items lazily — one at a time,
+ * immediately before execution — so a fatal error on item N never clears
+ * the artifacts or bumps the revision of items N+1…M that were never
+ * attempted.
+ */
+export type ThemeEquipmentItemPreMutator = (
+  state: ThemeEquipmentSetState,
+  itemId: string,
+) => ThemeSetMutationResult | null;
+
+/**
  * Run one graceful phase pass over `state`:
  *
  *   1. For every item NOT already resolved for `state.phase` (see
  *      `isThemeSetItemResolvedForPhase` — up-reviewed or frozen items are
- *      skipped, never re-executed or clobbered), call `executeItem` and
- *      record its result via `recordThemeSetItemPhaseArtifacts`.
+ *      skipped, never re-executed or clobbered), optionally apply
+ *      `preItemMutate` (e.g. a lazy revision bump for down-reviewed items),
+ *      then call `executeItem` and record its result via
+ *      `recordThemeSetItemPhaseArtifacts`.
  *   2. Call `judgeCollection` exactly once against the resulting state — but
  *      ONLY if the pass was fully clean (no item failures, no fatal), so a
  *      collection score is never computed over a knowingly-incomplete set.
@@ -193,6 +214,7 @@ export async function runThemeEquipmentSetPhase(
   state: ThemeEquipmentSetState,
   executeItem: ThemeEquipmentItemExecutor,
   judgeCollection: ThemeEquipmentCollectionJudgeFn,
+  preItemMutate?: ThemeEquipmentItemPreMutator,
 ): Promise<ThemeEquipmentSetPhaseRunResult> {
   if (!isReviewPhase(state.phase)) {
     throw new ThemeEquipmentPipelineError(
@@ -240,7 +262,7 @@ export async function runThemeEquipmentSetPhase(
     // Re-fetch the item from the running state: an earlier iteration in
     // this same loop cannot change ANOTHER item's resolved-ness, but this
     // keeps the executor input honest if that ever changes.
-    const live = current.items.find((candidate) => candidate.id === original.id);
+    let live = current.items.find((candidate) => candidate.id === original.id);
     if (!live) {
       // Items are never added/removed by any mutation this runner drives;
       // this can only happen if the caller handed us a state whose item
@@ -250,6 +272,31 @@ export async function runThemeEquipmentSetPhase(
     }
     if (isThemeSetItemResolvedForPhase(live, phase)) {
       continue;
+    }
+
+    // Apply the optional per-item pre-mutation (e.g. lazy revision bump for
+    // down-reviewed items) immediately before execution, so a fatal error on
+    // this item never clears the artifacts or bumps the revision of items
+    // that follow and are never attempted.
+    if (preItemMutate) {
+      const preMutation = preItemMutate(current, live.id);
+      if (preMutation !== null) {
+        if (!preMutation.ok) {
+          fatalError = {
+            itemId: live.id,
+            error: new ThemeEquipmentPipelineError(
+              'mutation-rejected',
+              `Pre-item mutation for "${live.id}" was rejected: ` +
+                preMutation.reasons.map((reason) => reason.message).join('; '),
+            ),
+          };
+          break;
+        }
+        current = preMutation.state;
+        const updatedLive = current.items.find((c) => c.id === original.id);
+        if (!updatedLive) continue;
+        live = updatedLive;
+      }
     }
 
     let result: ThemeEquipmentItemExecutionResult;
