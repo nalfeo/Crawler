@@ -1,0 +1,55 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "gender-player-walk-cycles",
+  "task_title": "Gender-matched player walk-cycle sheets",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "convergent",
+      "notes": "Adversarial plan review (gpt-5.4, high effort) enumerated 3 alternatives: (1) reuse enemy appearanceKey variant-roll registry, (2) separate render kind per gender, (3) dedicated player-appearance registry or fully generic appearance-source system. Confirmed alts 1-2 already soundly rejected in the ADR. Judged alt 3 (the genuinely different architecture) NOT warranted to ship this feature -> convergent (design unchanged). Verdict: approved_with_changes with 5 non-blocking concerns, all resolved: (1) warnGeneratedTextureUnresolved logged the top-level default descriptor instead of the effective/resolved variant descriptor on a broken variant -- fixed in PhaserBridge.ts (commit 6e9bbd455), now logs both effective and top-level keys; (2) variantsByAppearanceKey is schema-generic but not behavior-generic (only player/gender wired) -- documented as an intentional scope choice in ADR addendum; (3) resolution precedence (enemy registry > per-appearanceKey variant > top-level default) was undocumented at the decision site -- added inline code comment plus ADR addendum; (4) pinnedTextureKey is not fail-closed on a miss -- accepted as pre-existing behavior unchanged by this feature, now observable via the concern-1 warning-log fix; (5) player generated block has a duplicate/dual source of truth for the female default -- accepted as documented drift risk, covered by entity-sprite-mapping-art-wiring.test.ts. Cross-sheet proportion consistency (soft, ungated) risk reconfirmed and left as documented in ADR Risks section per reviewer guidance not to add a blocking sensor for this feature."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 0,
+          "clean": false,
+          "notes": "Fanned out claude-sonnet-4.6 (code-review), gpt-5.3-codex (code-review), gpt-5.4 (security-review) against git diff nalfeo-bookish-eureka...HEAD. gemini-3.1-pro-preview also launched but produced no response (tooling failure, treated as no data, not counted as a model). codex and security: clean. sonnet: 1 valid finding -- new player Image-to-Sprite late-load reconcile block in PhaserBridge.ts (~lines 1257-1294) had zero test coverage for that exact upgrade path. Adjudicated valid by gpt-5.4 (xhigh) with concrete remedy: add a regression test exercising Kenney Image creation, simulated late-load, and reconcile to Sprite."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Fix delegated and applied in commit b5aa970bc (new test in tests/unit/phaser-bridge.test.ts). Re-ran sonnet + codex against the updated diff: both confirmed the new test genuinely exercises the Image-to-Sprite reconcile path (traced mock call sequence) and found no other issues across the full diff. Clean."
+        }
+      ]
+    }
+  }
+}
