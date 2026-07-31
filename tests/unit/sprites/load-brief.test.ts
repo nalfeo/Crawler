@@ -561,6 +561,46 @@ describe('loadBriefFromYaml', () => {
       }),
     ).toThrow(/failed validation/);
   });
+
+  it('defaults character/enemy/prop/equipment briefs to 256x256 from type defaults', () => {
+    const typeCases = ['character', 'enemy', 'prop', 'equipment'] as const;
+    for (const type of typeCases) {
+      const brief = loadBriefFromYaml(
+        [`type: ${type}`, `name: ${type}-default-size`, 'description: "default size check"'].join(
+          '\n',
+        ),
+        {
+          projectRoot: process.cwd(),
+          loadPalette: () => [
+            [0, 0, 0],
+            [255, 255, 255],
+          ],
+        },
+      );
+      expect(brief.size).toEqual({ width: 256, height: 256 });
+    }
+  });
+
+  it('keeps explicit per-brief size overrides for enemy defaults', () => {
+    const brief = loadBriefFromYaml(
+      [
+        'type: enemy',
+        'name: enemy-size-override',
+        'description: "override size check"',
+        'size: { width: 96, height: 80 }',
+        'anchor: { x: 48, y: 79 }',
+      ].join('\n'),
+      {
+        projectRoot: process.cwd(),
+        loadPalette: () => [
+          [0, 0, 0],
+          [255, 255, 255],
+        ],
+      },
+    );
+    expect(brief.size).toEqual({ width: 96, height: 80 });
+    expect(brief.anchor).toEqual({ x: 48, y: 79 });
+  });
 });
 
 describe('validateBriefYaml', () => {
