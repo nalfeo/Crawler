@@ -119,7 +119,12 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestEquipToggle()),
   queueAbilitiesToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesToggle()),
-  queueSkillUsage: (page: Page, skillId: string, metric: UsageMetric, amount: number): Promise<void> =>
+  queueSkillUsage: (
+    page: Page,
+    skillId: string,
+    metric: UsageMetric,
+    amount: number,
+  ): Promise<void> =>
     page.evaluate(
       ({ id, usageMetric, usageAmount }) =>
         window.__mainSceneProbe!.queueSkillUsage(id, usageMetric, usageAmount),

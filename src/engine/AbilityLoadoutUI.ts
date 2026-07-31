@@ -347,11 +347,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
           rowY + 32,
           actionWidth,
           38,
-          canToggle
-            ? entry.equipped
-              ? COLORS.equippedDark
-              : COLORS.sectionHeader
-            : COLORS.rowBg,
+          canToggle ? (entry.equipped ? COLORS.equippedDark : COLORS.sectionHeader) : COLORS.rowBg,
           1,
         )
         .setOrigin(0, 0)
