@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildTestScaffoldAllowlist,
   collectNamedExports,
   collectNamedImports,
   findDuplicateExportNames,
   findNewlyTestOnlyExports,
   findTestOnlyExports,
+  isTestScaffoldAllowlisted,
   type SourceFile,
 } from '../../../scripts/agent/health/test-only-exports-lib.js';
 
@@ -418,5 +420,29 @@ describe('findDuplicateExportNames', () => {
   it('does not report a name that appears once', () => {
     const exports = [{ name: 'uniqueName', file: 'src/x.ts' }];
     expect(findDuplicateExportNames(exports)).toHaveLength(0);
+  });
+});
+
+describe('isTestScaffoldAllowlisted', () => {
+  it('matches only the exact file + symbol pair', () => {
+    expect(
+      isTestScaffoldAllowlisted({
+        file: 'src/shared/generated-assets.ts',
+        name: 'buildGeneratedSpriteRegistry',
+      }),
+    ).toBe(true);
+
+    expect(
+      isTestScaffoldAllowlisted({
+        file: 'src/shared/another-registry.ts',
+        name: 'buildGeneratedSpriteRegistry',
+      }),
+    ).toBe(false);
+  });
+
+  it('supports custom path-scoped allowlists', () => {
+    const allowlist = buildTestScaffoldAllowlist([{ file: 'src/a.ts', name: 'foo' }]);
+    expect(isTestScaffoldAllowlisted({ file: 'src/a.ts', name: 'foo' }, allowlist)).toBe(true);
+    expect(isTestScaffoldAllowlisted({ file: 'src/b.ts', name: 'foo' }, allowlist)).toBe(false);
   });
 });

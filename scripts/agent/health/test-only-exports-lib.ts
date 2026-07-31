@@ -65,6 +65,14 @@ export interface ExportDef {
   readonly file: string;
 }
 
+/** Path-scoped allowlist entry for intentional test-scaffold exports. */
+export interface TestScaffoldAllowlistEntry {
+  /** Repo-relative POSIX path of the defining file. */
+  readonly file: string;
+  /** Exported identifier name. */
+  readonly name: string;
+}
+
 /** An export flagged as test-only. */
 export interface TestOnlyExport {
   /** The exported identifier name. */
@@ -88,6 +96,48 @@ function isProductionConsumerPath(path: string): boolean {
 
 function isExplicitTestScaffoldingExport(name: string): boolean {
   return name.startsWith('_');
+}
+
+/**
+ * Export names intentionally exposed for unit testing but without a standalone
+ * production caller outside their defining file. This is keyed by both file and
+ * symbol to avoid cross-file false negatives when names collide.
+ */
+const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
+  {
+    file: 'src/shared/generated-assets.ts',
+    name: 'computeNormalizedWeaponAnchor',
+  },
+  {
+    file: 'src/shared/generated-assets.ts',
+    name: 'resolveWeaponAnchorWorldPos',
+  },
+  {
+    file: 'src/shared/generated-assets.ts',
+    name: 'buildGeneratedSpriteRegistry',
+  },
+] as const satisfies readonly TestScaffoldAllowlistEntry[];
+
+function toAllowlistKey(file: string, name: string): string {
+  return `${file}#${name}`;
+}
+
+/** Build a path-scoped allowlist set from explicit file + symbol entries. */
+export function buildTestScaffoldAllowlist(
+  entries: readonly TestScaffoldAllowlistEntry[],
+): ReadonlySet<string> {
+  return new Set(entries.map((entry) => toAllowlistKey(entry.file, entry.name)));
+}
+
+/** Default path-scoped allowlist used by the guard wrapper. */
+export const TEST_SCAFFOLD_ALLOWLIST = buildTestScaffoldAllowlist(TEST_SCAFFOLD_ALLOWLIST_ENTRIES);
+
+/** Check whether an export is allowlisted as intentional test scaffold. */
+export function isTestScaffoldAllowlisted(
+  exp: ExportDef,
+  allowlist: ReadonlySet<string> = TEST_SCAFFOLD_ALLOWLIST,
+): boolean {
+  return allowlist.has(toAllowlistKey(exp.file, exp.name));
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +297,7 @@ export function findTestOnlyExports(
 
   for (const exp of exports) {
     if (isExplicitTestScaffoldingExport(exp.name)) continue;
+    if (isTestScaffoldAllowlisted(exp)) continue;
 
     // Consumers in src/ other than the exporting file itself.
     const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
