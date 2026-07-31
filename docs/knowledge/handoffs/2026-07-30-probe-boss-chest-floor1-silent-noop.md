@@ -39,6 +39,7 @@ economy gate).
 
 Restored the floor-agnostic direct-set pattern for `seedAvailableBossChest()`.
 Added:
+
 - Idempotent cleanup (delete before set)
 - An explicit `// Do NOT replace` comment explaining the Floor 2-only trap
 - Uses `world.elapsedMs` instead of hardcoded `0`
