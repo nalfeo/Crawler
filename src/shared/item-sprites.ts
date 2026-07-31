@@ -93,10 +93,16 @@ function matchConcept(
 }
 
 /**
- * Lazy map from item slug (e.g. `'iron-cleaver'`) to its Floor 2 equipment
- * `runtimeKey` (e.g. `'equipment/weapon/iron-cleaver'`). Used by
- * `itemSpriteConcepts` so the resolver can match wiring entries whose `briefId`
- * is the full `equipment/{category}/{slug}` path rather than the bare slug.
+ * Lazy map from item identifier to its Floor 2 equipment `runtimeKey`
+ * (e.g. `'equipment/weapon/iron-cleaver'`). Indexed by BOTH the bare slug
+ * (e.g. `'iron-cleaver'`) AND the full stableId (e.g. `'weapon.iron-cleaver'`)
+ * so that all three production ID shapes resolve correctly:
+ *
+ *  - Wave A: `id = 'weapon.iron-cleaver'`; Wave A equipment defs are NOT
+ *    registered in `getEquipmentDefForItem`, so resolution relies on the
+ *    stableId → runtimeKey entry here.
+ *  - Wave B: `id = weaponId = 'weapon.moon-scythe'`; same stableId path.
+ *  - Non-weapon: `id = 'torso.chain-hauberk'`, no weaponId; stableId path.
  */
 let floor2SlugToRuntimeKey: ReadonlyMap<string, string> | null = null;
 
@@ -109,6 +115,10 @@ function getFloor2SlugToRuntimeKey(): ReadonlyMap<string, string> {
     const dot = def.stableId.indexOf('.');
     const slug = def.stableId.slice(dot + 1);
     map.set(slug, def.runtimeKey);
+    // Also index by the full stableId so Wave B items (whose EquipmentItemDef.id
+    // IS the stableId, e.g. `weapon.moon-scythe`) and non-weapon gear (e.g.
+    // `torso.chain-hauberk`) resolve their runtimeKey from the itemId path.
+    map.set(def.stableId, def.runtimeKey);
   }
   floor2SlugToRuntimeKey = map;
   return map;
@@ -116,13 +126,21 @@ function getFloor2SlugToRuntimeKey(): ReadonlyMap<string, string> {
 
 /**
  * Candidate concepts for an item, in preference order:
- *  1. The item id itself.
+ *  1. The item id itself (e.g. `weapon.moon-scythe` for a Wave B weapon,
+ *     `torso.chain-hauberk` for non-weapon gear).
  *  2. Its equipment `weaponId` alias (e.g. `bone-club` → `baseball-bat`) when
  *     it differs from the item id.
- *  3. The Floor 2 equipment `runtimeKey` for any of the above concepts that
- *     map to a Floor 2 base (e.g. `iron-cleaver` → `equipment/weapon/iron-cleaver`).
- *     This lets the resolver match "wiring entries" whose `briefId` carries the
- *     full `equipment/{category}/{slug}` path instead of the bare slug.
+ *  3. For any concept that maps to a Floor 2 base, the bare slug derived from
+ *     the runtimeKey (e.g. `moon-scythe` from `equipment/weapon/moon-scythe`)
+ *     so that legacy versioned entries keyed by slug (e.g. `moon-scythe-v2`)
+ *     are still found.
+ *  4. The Floor 2 `runtimeKey` itself (e.g. `equipment/weapon/moon-scythe`) so
+ *     wiring entries whose `briefId` is the full path are matched. These are
+ *     bare-real (TIER_BARE_REAL) and outrank any slug-keyed versioned entry in
+ *     the same pool, so priority remains correct without needing a special order.
+ *
+ * Duplicates are suppressed so slug and stableId both resolving the same key
+ * don't produce two identical concepts.
  */
 export function itemSpriteConcepts(itemId: string): readonly string[] {
   const weaponId = getEquipmentDefForItem(itemId)?.weaponId;
@@ -131,10 +149,21 @@ export function itemSpriteConcepts(itemId: string): readonly string[] {
 
   const f2 = getFloor2SlugToRuntimeKey();
   const extra: string[] = [];
+  const seen = new Set<string>(base);
   for (const concept of base) {
     const runtimeKey = f2.get(concept);
     if (runtimeKey !== undefined) {
-      extra.push(runtimeKey);
+      // Also push the bare slug (last path segment of runtimeKey) so legacy
+      // versioned entries are still found (e.g. `chain-hauberk` for `chain-hauberk-v3`).
+      const slug = runtimeKey.slice(runtimeKey.lastIndexOf('/') + 1);
+      if (!seen.has(slug)) {
+        extra.push(slug);
+        seen.add(slug);
+      }
+      if (!seen.has(runtimeKey)) {
+        extra.push(runtimeKey);
+        seen.add(runtimeKey);
+      }
     }
   }
   return extra.length > 0 ? [...base, ...extra] : base;
