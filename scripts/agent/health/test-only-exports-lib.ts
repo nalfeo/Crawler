@@ -280,6 +280,12 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     file: 'src/shared/generated-assets.ts',
     name: 'buildGeneratedSpriteRegistry',
   },
+  // PhaserBridge: numeric tint-mode constant re-exported so integration tests
+  // can assert flash-overlay tintMode values without embedding magic numbers.
+  {
+    file: 'src/engine/PhaserBridge.ts',
+    name: 'PHASER_TINT_MODE_FILL',
+  },
   // Door art contract string used as assertion messages in unit tests that
   // verify the projection/framing contract on shipped door PNGs.
   {

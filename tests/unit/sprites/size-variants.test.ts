@@ -42,6 +42,16 @@ describe('SIZE_VARIANTS / multipliers', () => {
       expect(resizeSpriteStrategy('tile', 256, 256)).toBe('stretch');
       expect(resizeSpriteStrategy('tile', 256, 128)).toBe('stretch');
     });
+
+    it('selects fit for frame-sequence briefs regardless of shape, overriding the cover branch', () => {
+      // A 256×256 frame-sequence cell: without the override this would be 'cover'
+      // (width === height && width >= 128), producing oversized output (the 256×434 defect).
+      expect(resizeSpriteStrategy('enemy', 256, 256, true)).toBe('fit');
+      expect(resizeSpriteStrategy('enemy', 512, 512, true)).toBe('fit');
+      // Confirm the override actually matters — same size without frameSequence is 'cover'
+      expect(resizeSpriteStrategy('enemy', 256, 256, false)).toBe('cover');
+      expect(resizeSpriteStrategy('enemy', 256, 256)).toBe('cover');
+    });
   });
 
   it('maps each variant to the documented width/height multipliers', () => {

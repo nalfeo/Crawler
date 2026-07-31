@@ -44,16 +44,22 @@ const GRID_SIZE_FT = 6;
 const ENEMY_COUNT = 10;
 const ENEMY_MARGIN_FT = 4;
 const LAB_ID = 'movement-lab';
-const PLAYER_WALK_TEXTURE_KEY = 'player-walk-cycle';
+// Points at the real, currently-shipped `female` gender walk-cycle texture
+// (public/assets/generated/entries/player-walk-cycle-female.json) so the lab
+// renders actual production art instead of a stale placeholder key that no
+// longer matches anything the real game loads. This registry entry must be
+// kept in sync with that shard's `animation` descriptor — see
+// docs/knowledge/handoffs/2026-07-30-gender-player-walk-cycles.md.
+const PLAYER_WALK_TEXTURE_KEY = 'player-walk-cycle-female';
 
 function buildMovementLabSpriteRegistry() {
   return buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
       [PLAYER_WALK_TEXTURE_KEY]: {
-        briefId: PLAYER_WALK_TEXTURE_KEY,
+        briefId: 'player-walk-cycle-female',
         spriteName: PLAYER_WALK_TEXTURE_KEY,
-        assetPath: 'generated/player-walk-cycle.png',
+        assetPath: 'generated/player-walk-cycle-female.png',
         approvedAt: '2026-08-01T00:00:00.000Z',
         sourceRun: 'movement-lab',
         variantIndex: 0,
@@ -61,8 +67,8 @@ function buildMovementLabSpriteRegistry() {
         sensorScore: 'n/a',
         judgeScore: null,
         animation: {
-          frameWidth: 64,
-          frameHeight: 64,
+          frameWidth: 256,
+          frameHeight: 256,
           frameCount: 4,
           frameRate: 8,
           loop: true,

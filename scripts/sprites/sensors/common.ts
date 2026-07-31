@@ -57,7 +57,12 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
   if (brief.postprocessing?.trimAndFit) {
     return ok(sensor);
   }
-  const strategy = resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height);
+  const strategy = resizeSpriteStrategy(
+    brief.type,
+    brief.size.width,
+    brief.size.height,
+    brief.frameSequence?.enabled,
+  );
   if (strategy === 'width') {
     if (image.width !== brief.size.width) {
       return fail(
