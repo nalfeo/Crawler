@@ -6,10 +6,16 @@
   "estimated_apples": 2,
   "stages": {
     "code_review": {
-      "completed": true,
-      "reviewer_model": "parallel_validation",
-      "concerns_count": 0,
-      "resolved_count": 0,
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["parallel_validation"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
       "notes": "Code review via parallel_validation. 0 findings. Scope: floor2-reward-bundle-resolver.ts (Common-tier eligibility: COMMON_REWARD_SINGLE_STAT_CAPS + modest-stat filter), generated-equipment-generator.ts (remove dead exports: generatedEquipmentBaseHasNonArmorStatBonus, generatedEquipmentInstanceHasNonArmorStatBonus, COMMON_REWARD_SINGLE_STAT_CAPS export), delete src/shared/generated-assets.test-seams.ts, update floor2 resolver and pool tests. Unrelated files (theme-equipment tooling, docs from other sessions) were accidentally dropped during an earlier merge conflict resolution and have been restored to match main — they are no longer in scope."
     }
   }

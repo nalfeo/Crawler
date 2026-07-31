@@ -5502,13 +5502,13 @@ test('reconcile escalates required-check action-required runs as ci-retrigger bl
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(
     stdout,
-    new RegExp(`escalate action_required run=${ciRunId} .* reason=required-check-parked`),
+    new RegExp(`escalate action_required run=${ciRunId} .* reason=required-check-action_required`),
   );
   // commit-lint was removed in PR #1109; its workflow path is no longer in
-  // REQUIRED_CHECK_WORKFLOW_PATHS and must not produce a required-check-parked escalation.
+  // REQUIRED_CHECK_WORKFLOW_PATHS and must not produce a required-check escalation.
   assert.doesNotMatch(
     stdout,
-    new RegExp(`escalate action_required run=${lintRunId} .* reason=required-check-parked`),
+    new RegExp(`escalate action_required run=${lintRunId} .* reason=required-check-action_required`),
   );
   // Must NOT attempt approval or produce an un-actionable wait-only exit
   assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
@@ -5584,6 +5584,54 @@ test('reconcile ignores stale action-required run when a newer run of the same w
   );
   assert.doesNotMatch(stdout, /ci-retrigger/, 'no ci-retrigger blocker expected');
   assert.deepEqual(mutatingCalls, [], 'no mutating calls expected');
+});
+
+test('reconcile escalates required-check cancelled runs as ci-retrigger blockers with cancelled wording', async (t) => {
+  const cancelledRunId = 29220010242;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          {
+            id: cancelledRunId,
+            name: 'CI',
+            path: '.github/workflows/ci.yml',
+            event: 'pull_request',
+            conclusion: 'cancelled',
+            pull_requests: [{ number: PR_NUM }],
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${cancelledRunId}`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({ body: [] }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`escalate cancelled run=${cancelledRunId} .* reason=required-check-cancelled`),
+  );
+  assert.match(stdout, /cancelled \(not failed\)/);
+  assert.doesNotMatch(stdout, /concluded failure/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue mutating API calls');
 });
 
 // ---------------------------------------------------------------------------
