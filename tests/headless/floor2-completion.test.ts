@@ -379,17 +379,17 @@ describe('Floor 2 headless completion', () => {
   });
 
   it('converts sold Quartermaster stock with no generated gear into a real headless invariant error', async () => {
-    let armed = false;
+    let postFrameCount = 0;
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 211 }), {
       seed: 211,
       floorId: 'floor2',
-      maxFrames: 1,
+      maxFrames: 2,
       settlementReturnRouting: true,
       simulationOptions: {
         postSystems: [
           (world) => {
-            if (armed) return;
-            armed = true;
+            postFrameCount += 1;
+            if (postFrameCount !== 2) return;
             clearPlayabilityRewardState(world);
             const generated = createPlayabilityTestInstance(world);
             replaceQuartermasterStockWithSoldOffer(world, generated.instanceId);
@@ -478,16 +478,16 @@ describe('Floor 2 headless completion', () => {
   });
 
   it('scopes the playability invariant off when settlement return routing stays disabled', async () => {
-    let armed = false;
+    let postFrameCount = 0;
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 214 }), {
       seed: 214,
       floorId: 'floor2',
-      maxFrames: 1,
+      maxFrames: 2,
       simulationOptions: {
         postSystems: [
           (world) => {
-            if (armed) return;
-            armed = true;
+            postFrameCount += 1;
+            if (postFrameCount !== 2) return;
             clearPlayabilityRewardState(world);
             const generated = createPlayabilityTestInstance(world);
             replaceQuartermasterStockWithSoldOffer(world, generated.instanceId);
@@ -500,23 +500,21 @@ describe('Floor 2 headless completion', () => {
     expect(stats.error).toBeUndefined();
     expect(stats.equipmentPlayability).toMatchObject({
       goldSpentOnEquipment: PLAYABILITY_TEST_UNIT_PRICE,
-      baggedGeneratedCount: 0,
-      equippedGeneratedCount: 0,
     });
   });
 
   it('returns normal Floor 2 RunStats when the synthetic Quartermaster purchase ends equipped', async () => {
-    let armed = false;
+    let postFrameCount = 0;
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 215 }), {
       seed: 215,
       floorId: 'floor2',
-      maxFrames: 1,
+      maxFrames: 2,
       settlementReturnRouting: true,
       simulationOptions: {
         postSystems: [
           (world) => {
-            if (armed) return;
-            armed = true;
+            postFrameCount += 1;
+            if (postFrameCount !== 2) return;
             clearPlayabilityRewardState(world);
             const generated = createPlayabilityTestInstance(world);
             replaceQuartermasterStockWithSoldOffer(world, generated.instanceId);

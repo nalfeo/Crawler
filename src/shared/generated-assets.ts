@@ -24,7 +24,7 @@ import { SPRITE_TYPES } from './sprite-types.js';
  * `sprite-anchor.ts` (bottom-center). This default is the safer fallback
  * for arbitrary item icons.
  */
-const DEFAULT_GENERATED_ANCHOR: { readonly x: number; readonly y: number } = Object.freeze({
+export const DEFAULT_GENERATED_ANCHOR: { readonly x: number; readonly y: number } = Object.freeze({
   x: 8,
   y: 8,
 });
@@ -405,7 +405,7 @@ export function pickGeneratedVariant(
  * asset pipeline. Used when deriving normalized weapon-anchor offsets without
  * an actual loaded texture reference (e.g. in headless simulation or tests).
  */
-const DEFAULT_GENERATED_FRAME_SIZE_PX = 64;
+export const DEFAULT_GENERATED_FRAME_SIZE_PX = 64;
 
 /** Inputs for {@link resolveOpaqueFit}. */
 export interface OpaqueFitInput {
