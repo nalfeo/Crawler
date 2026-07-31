@@ -443,3 +443,10 @@ explicitly rather than silently re-editing the prior amendment's prose away:
    claim time, matching Floor 2's `resolveEquipmentRewardBundle` /
    `claimGeneratedEquipmentRewardBundle` split precisely. This is the design
    actually shipped; see Decision §2.
+
+### Amendment (2026-07-31): generated non-armor power is affix-driven
+
+Floor 2 generated equipment now derives non-armor power from rarity-driven
+affixes instead of inheriting non-armor base stat bonuses. Tier rarity behavior
+from this ADR is unchanged; the amendment narrows where non-armor power enters
+the generated instance.

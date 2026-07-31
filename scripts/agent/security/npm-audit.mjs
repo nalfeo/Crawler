@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
@@ -19,13 +20,26 @@ export const AUDIT_EXCEPTIONS = [
   },
 ];
 
+export const TEMP_DEPENDENCY_EXCEPTIONS = [
+  {
+    packageName: 'postcss',
+    field: 'overrides',
+    version: '8.5.22',
+    expiresOn: '2026-08-06',
+    reason:
+      'Emergency rollback: Microsoft npm proxy does not mirror postcss@8.5.25 yet; keep 8.5.22 only as a short-lived unblock.',
+  },
+];
+
 const AUDIT_SCRIPT_PATH = 'scripts/agent/security/npm-audit.mjs';
 
 export function findReasonRestatementViolations(previousExceptions, currentExceptions) {
   const previousByPackage = new Map(
     previousExceptions.map((exception) => [exception.packageName, exception]),
   );
-  const currentByPackage = new Map(currentExceptions.map((exception) => [exception.packageName, exception]));
+  const currentByPackage = new Map(
+    currentExceptions.map((exception) => [exception.packageName, exception]),
+  );
   const violations = [];
 
   for (const [packageName, current] of currentByPackage.entries()) {
@@ -46,7 +60,9 @@ export function findReasonRestatementViolations(previousExceptions, currentExcep
 export function extractAuditExceptionsFromSource(source) {
   const match = source.match(/export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/);
   if (!match) {
-    throw new Error('Could not find AUDIT_EXCEPTIONS declaration in scripts/agent/security/npm-audit.mjs');
+    throw new Error(
+      'Could not find AUDIT_EXCEPTIONS declaration in scripts/agent/security/npm-audit.mjs',
+    );
   }
 
   const exceptions = Function(`"use strict"; return (${match[1]});`)();
@@ -182,6 +198,37 @@ export function evaluateAudit(
   return { blocking, ignored: [...ignored].sort(), matchedExceptions };
 }
 
+export function evaluateTemporaryDependencyExceptions(
+  packageManifest,
+  { now = new Date(), exceptions = TEMP_DEPENDENCY_EXCEPTIONS } = {},
+) {
+  const active = [];
+  const expired = [];
+  for (const exception of exceptions) {
+    const fieldValue = packageManifest?.[exception.field];
+    const pinnedVersion =
+      fieldValue && typeof fieldValue === 'object' ? fieldValue[exception.packageName] : undefined;
+    if (pinnedVersion !== exception.version) continue;
+    const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+    if (now > expiresAt) {
+      expired.push(exception);
+    } else {
+      active.push(exception);
+    }
+  }
+
+  return { active, expired };
+}
+
+function readPackageManifest() {
+  try {
+    return JSON.parse(readFileSync('package.json', 'utf8'));
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 function parseAuditLevel(args) {
   const prefixed = args.find((arg) => arg.startsWith('--audit-level='));
   if (prefixed) return prefixed.slice('--audit-level='.length);
@@ -205,6 +252,33 @@ function main() {
   }
 
   const auditLevel = parseAuditLevel(process.argv.slice(2));
+  const packageManifest = readPackageManifest();
+  if (packageManifest) {
+    const { active, expired } = evaluateTemporaryDependencyExceptions(packageManifest);
+    if (active.length > 0) {
+      process.stderr.write(
+        `${active
+          .map(
+            (exception) =>
+              `Temporary dependency exception through ${exception.expiresOn}: ${exception.packageName}@${exception.version} (${exception.reason})`,
+          )
+          .join('\n')}\n`,
+      );
+    }
+    if (expired.length > 0) {
+      process.stderr.write(
+        `${expired
+          .map(
+            (exception) =>
+              `Dependency exception expired for ${exception.packageName}@${exception.version} on ${exception.expiresOn}. Upgrade to a mirrored newer version and remove the exception.`,
+          )
+          .join('\n')}\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   const npmCli = process.env.npm_execpath;
   const command = npmCli ? process.execPath : 'npm';
   const args = npmCli ? [npmCli, 'audit', '--json'] : ['audit', '--json'];
