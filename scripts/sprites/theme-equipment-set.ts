@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { SLOT_REGISTRY, getMirrorSlot } from '../../src/shared/equipment-slots.js';
+import { SLOT_REGISTRY, _getMirrorSlotForTests } from '../../src/shared/equipment-slots.js';
 import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from './store/types.js';
 
 export const THEME_EQUIPMENT_SET_SCHEMA_VERSION = 1;
@@ -1502,8 +1502,9 @@ const themeEquipmentSetPlanEquipmentSchema = z
  *
  * Pure and side-effect free; returns one reason per offending slot so callers
  * (and the roster-synth repair loop) get an actionable, per-slot message. The
- * canonical pair list is `MIRROR_SLOT_PAIRS` in `equipment-slots.ts`, consulted
- * here via `getMirrorSlot` so this rule can never drift from the slot registry.
+ * canonical pair list is `_MIRROR_SLOT_PAIRS_FOR_TESTS` in `equipment-slots.ts`,
+ * consulted here via `_getMirrorSlotForTests` so this rule can never drift from
+ * the slot registry.
  */
 export function validateThemeSetPlanMirrorSlots(
   equipment: readonly { readonly id: string; readonly slots: readonly string[] }[],
@@ -1512,7 +1513,7 @@ export function validateThemeSetPlanMirrorSlots(
   equipment.forEach((item, index) => {
     const slotSet = new Set(item.slots);
     for (const slot of item.slots) {
-      const partner = getMirrorSlot(slot);
+      const partner = _getMirrorSlotForTests(slot);
       if (partner !== undefined && !slotSet.has(partner)) {
         reasons.push({
           code: 'mirror-slot-unpaired',

@@ -42,7 +42,7 @@ import {
   type ConditionalWriteConditions,
   type RunStore,
 } from '../../../scripts/sprites/store/types.js';
-import { getMirrorSlot } from '../../../src/shared/equipment-slots.js';
+import { _getMirrorSlotForTests } from '../../../src/shared/equipment-slots.js';
 import { CachingRunStore } from '../../../scripts/sprites/store/caching-store.js';
 import { SharedResourceCache } from '../../../scripts/sprites/store/shared-cache.js';
 
@@ -1083,7 +1083,7 @@ describe('buildThemeEquipmentSetStateFromPlan', () => {
       const items: Array<{ id: string; displayName: string; slots: string[] }> = [];
       for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
         if (covered.has(slot)) continue;
-        const partner = getMirrorSlot(slot);
+        const partner = _getMirrorSlotForTests(slot);
         const slots = partner ? [slot, partner] : [slot];
         for (const s of slots) covered.add(s);
         items.push({
@@ -1133,7 +1133,7 @@ describe('mirror-pair unified-slot authoring rule', () => {
     const equipment: Array<{ id: string; displayName: string; slots: string[] }> = [];
     for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
       if (covered.has(slot)) continue;
-      const partner = getMirrorSlot(slot);
+      const partner = _getMirrorSlotForTests(slot);
       const slots = partner ? [slot, partner] : [slot];
       for (const s of slots) covered.add(s);
       equipment.push({
@@ -1217,7 +1217,7 @@ describe('mirror-pair unified-slot authoring rule', () => {
       (item) =>
         item.kind === 'equipment' &&
         item.slots.length === 1 &&
-        getMirrorSlot(item.slots[0]!) !== undefined,
+        _getMirrorSlotForTests(item.slots[0]!) !== undefined,
     );
     expect(splitItem).toBeDefined();
     expect(() => cloneState(state)).not.toThrow();

@@ -43,6 +43,7 @@ import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { purchaseQuartermasterOffer } from '../../src/core/quartermaster-purchase.js';
 import { getGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
+import { listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 
 const WIDTH = 120;
 const HEIGHT = 90;
@@ -138,9 +139,10 @@ describe('Floor 2 settlement · initialization', () => {
       goldSpent: generatedOffer.unitPrice,
       remainingGold: 0,
     });
-    expect(world.inventories.get(playerEid)?.generatedEquipment).toEqual([
-      { kind: 'generated-instance', instanceKey: generatedOffer.instanceId },
-    ]);
+    const bagAfterPurchase = world.inventories.get(playerEid);
+    expect(
+      bagAfterPurchase ? listGeneratedEquipmentReferences(bagAfterPurchase) : undefined,
+    ).toEqual([{ kind: 'generated-instance', instanceKey: generatedOffer.instanceId }]);
     expect(getGeneratedEquipmentInstance(world, generatedOffer.instanceId)).toBe(generatedInstance);
 
     // Non-Quartermaster shops (1–2 seeded).

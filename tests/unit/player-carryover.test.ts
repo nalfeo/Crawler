@@ -39,6 +39,7 @@ import {
   snapshotGeneratedEquipmentRegistry,
 } from '../../src/core/generated-equipment-registry.js';
 import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
+import { addItem, listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
@@ -60,10 +61,7 @@ describe('player floor carryover', () => {
     source.stores.coreStatPoints.constitution[sourcePlayer] = 5;
     source.stores.health.current[sourcePlayer] = 137;
     source.stores.health.max[sourcePlayer] = 260;
-    source.inventories.get(sourcePlayer)!.slots.push({
-      itemId: 'throwing-knife',
-      quantity: 3,
-    });
+    addItem(source.inventories.get(sourcePlayer)!, 'throwing-knife', 3);
     source.playerSkills.set('weapon-class-slashing', {
       level: 3,
       usage: 12,
@@ -421,7 +419,8 @@ describe('player floor carryover', () => {
     ).not.toThrow();
     expect(destination.generatedEquipmentRewardBundles.size).toBe(0);
     expect(destination.lootBoxRewardBundles.size).toBe(0);
-    expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+    const restoredBag = destination.inventories.get(destinationPlayer);
+    expect(restoredBag ? listGeneratedEquipmentReferences(restoredBag) : undefined).toEqual([]);
   });
 
   it('rejects unsupported ownership snapshot versions explicitly', () => {
@@ -659,9 +658,10 @@ describe('player floor carryover', () => {
     expect(snapshotGeneratedEquipmentRegistry(destination)).toEqual(
       snapshotGeneratedEquipmentRegistry(source),
     );
-    expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toEqual([
-      { kind: 'generated-instance', instanceKey: bagged.instanceId },
-    ]);
+    const restoredGeneratedBag = destination.inventories.get(destinationPlayer);
+    expect(
+      restoredGeneratedBag ? listGeneratedEquipmentReferences(restoredGeneratedBag) : undefined,
+    ).toEqual([{ kind: 'generated-instance', instanceKey: bagged.instanceId }]);
     expect(getEquipmentState(destination, destinationPlayer)?.equipped.mainHand).toBe(
       equipped.instanceId,
     );
@@ -1299,7 +1299,10 @@ describe('player floor carryover', () => {
 
       expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow();
       expect(destination.playerName).toBe('Unchanged');
-      expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+      const restoredInvalidBag = destination.inventories.get(destinationPlayer);
+      expect(
+        restoredInvalidBag ? listGeneratedEquipmentReferences(restoredInvalidBag) : undefined,
+      ).toEqual([]);
     }
   });
 
@@ -1392,7 +1395,12 @@ describe('player floor carryover', () => {
 
       expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow();
       expect(destination.playerName).toBe('Unchanged');
-      expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+      const restoredInvalidGrantBag = destination.inventories.get(destinationPlayer);
+      expect(
+        restoredInvalidGrantBag
+          ? listGeneratedEquipmentReferences(restoredInvalidGrantBag)
+          : undefined,
+      ).toEqual([]);
     }
   });
 
