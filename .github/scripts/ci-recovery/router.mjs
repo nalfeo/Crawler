@@ -128,6 +128,7 @@ const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
 // are intentionally NOT counted against computeDispatchBudget, so GC can
 // never be budget-starved to zero (Fix A / issue #1783).
 export const REAPER_LANE_CAP = 2;
+export const RECONCILIATION_LANE_CAP = 1;
 // Sweep rotation window used by selectReaperBatch to cycle eligible reapable
 // PRs across windows so none starve past the lane cap.
 const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
@@ -385,6 +386,37 @@ export function isExternallyBlocked(pullRequest) {
   return (pullRequest.labels || []).some((label) => EXTERNALLY_BLOCKED_LABEL_NAMES.has(label.name));
 }
 
+function isFlagOffDispatchEligibleByBlockState(pullRequest) {
+  if (!pullRequest || !isDispatchBlocked(pullRequest)) return true;
+  const labels = pullRequest.labels || [];
+  const isWaiting = labels.some((label) => label.name === WAITING_LABEL);
+  if (!isWaiting) return false;
+  const hasOwner = labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX));
+  const hasTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
+  return hasOwner || hasTransition || isRepairWakeEligible(pullRequest);
+}
+
+function isKnownNoopDirectDispatch(pullRequest) {
+  const labels = pullRequest?.labels || [];
+  return labels.some((label) => label.name === QUEUE_LABEL || label.name === 'ci-conflict-order-wait');
+}
+
+function stalenessScore(pullRequest, now = new Date()) {
+  const nowMs = Number.isFinite(now.getTime()) ? now.getTime() : 0;
+  const stateProgressMs = Date.parse(
+    pullRequest?.recoveryState?.progressAt || pullRequest?.recoveryState?.updatedAt || '',
+  );
+  const updatedMs = Date.parse(pullRequest?.updated_at || pullRequest?.created_at || '');
+  const progressAge = Number.isFinite(stateProgressMs)
+    ? Math.max(nowMs - stateProgressMs, 0)
+    : Number.MAX_SAFE_INTEGER;
+  const updateAge = Number.isFinite(updatedMs) ? Math.max(nowMs - updatedMs, 0) : Number.MAX_SAFE_INTEGER;
+  const blockerSeverity = Array.isArray(pullRequest?.recoveryState?.blockers)
+    ? pullRequest.recoveryState.blockers.length
+    : 0;
+  return { progressAge, updateAge, blockerSeverity };
+}
+
 export function collectPrNumbers({
   payload,
   eventName,
@@ -465,16 +497,9 @@ export function collectPrNumbers({
   // a just-opened PR not yet returned by the list API), pullsByNumber.get()
   // returns undefined and the filter passes it through as unblocked — safe
   // fallback behaviour that preserves the previous pass-through semantics.
-  const unblocked = eligible.filter((number) => {
-    const pr = pullsByNumber.get(number);
-    if (!pr || !isDispatchBlocked(pr)) return true;
-    const labels = pr.labels || [];
-    const isWaiting = labels.some((l) => l.name === WAITING_LABEL);
-    if (!isWaiting) return false;
-    const hasOwner = labels.some((l) => String(l.name || '').startsWith(OWNER_LABEL_PREFIX));
-    const hasTransition = labels.some((l) => l.name === WAITING_TRANSITION_LABEL);
-    return hasOwner || hasTransition || isRepairWakeEligible(pr);
-  });
+  const unblocked = eligible.filter((number) =>
+    isFlagOffDispatchEligibleByBlockState(pullsByNumber.get(number)),
+  );
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     // Sort helper — oldest created_at first, PR number as stable
@@ -508,7 +533,30 @@ export function collectPrNumbers({
     ];
     return ordered.slice(0, maxDispatchPerRun);
   }
-  return unblocked;
+  const directTier = unblocked.filter((number) => {
+    if (!directNumbers.has(number)) return false;
+    return !isKnownNoopDirectDispatch(pullsByNumber.get(number));
+  });
+  const staleLane = [...pullsByNumber.values()]
+    .filter((pullRequest) => {
+      const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
+      if (!Number.isInteger(number) || number <= 0 || directNumbers.has(number)) return false;
+      if (!isFlagOffDispatchEligibleByBlockState(pullRequest)) return false;
+      return !hasHealthyOwnerForSweep(pullRequest, now);
+    })
+    .sort((left, right) => {
+      const scoreA = stalenessScore(left, now);
+      const scoreB = stalenessScore(right, now);
+      return (
+        scoreB.blockerSeverity - scoreA.blockerSeverity ||
+        scoreB.progressAge - scoreA.progressAge ||
+        scoreB.updateAge - scoreA.updateAge ||
+        left.number - right.number
+      );
+    })
+    .slice(0, RECONCILIATION_LANE_CAP)
+    .map((pullRequest) => pullRequest.number);
+  return [...staleLane, ...directTier];
 }
 
 export function eligibleTrainRecoveryPulls({

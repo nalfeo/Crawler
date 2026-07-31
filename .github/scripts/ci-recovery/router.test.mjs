@@ -351,6 +351,72 @@ test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside t
   assert.ok(numbers.includes(1), 'the train-labeled PR must survive the cap');
 });
 
+test('flag-off non-sweep suppresses known no-op direct dispatches and backfills stale lane', () => {
+  const scheduledPulls = [
+    {
+      number: 2421,
+      draft: false,
+      labels: [{ name: 'merge-train' }],
+      created_at: '2026-07-31T05:55:00Z',
+      updated_at: '2026-07-31T06:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2401,
+      draft: false,
+      labels: [],
+      created_at: '2026-07-31T02:00:00Z',
+      updated_at: '2026-07-31T02:10:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  const selected = collectPrNumbers({
+    payload: { issue: { number: 2421, pull_request: {} } },
+    eventName: 'issue_comment',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    trainEnabled: false,
+    now: new Date('2026-07-31T06:05:00Z'),
+  });
+
+  assert.deepEqual(selected, [2401]);
+});
+
+test('flag-off non-sweep reserves a stale lane so event storms cannot starve stale PRs', () => {
+  const scheduledPulls = [
+    {
+      number: 2421,
+      draft: false,
+      labels: [],
+      created_at: '2026-07-31T05:55:00Z',
+      updated_at: '2026-07-31T06:00:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2401,
+      draft: false,
+      labels: [],
+      created_at: '2026-07-30T02:00:00Z',
+      updated_at: '2026-07-30T02:10:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  const ordered = collectPrNumbers({
+    payload: { issue: { number: 2421, pull_request: {} } },
+    eventName: 'issue_comment',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    trainEnabled: false,
+    now: new Date('2026-07-31T06:05:00Z'),
+  });
+
+  const { dispatchable } = partitionDispatchable(ordered, 1);
+  assert.deepEqual(dispatchable, [2401]);
+  assert.deepEqual(ordered, [2401, 2421]);
+});
+
 test('flag-off sweeps order PRs oldest-first (global FIFO) across sweeps', () => {
   // 5 PRs with distinct creation timestamps, submitted in newest-first API order.
   // Each sweep with budget=2 should pick the two oldest *remaining unowned* PRs.
