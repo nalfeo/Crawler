@@ -23,6 +23,8 @@
  */
 
 import { hashStringToSeed } from '../../src/shared/random.js';
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../src/shared/data/floor2-equipment-art.js';
+import { ASSET_REQUEST_LABEL, parseAssetRequestIssueBody } from './asset-request.js';
 
 /**
  * The art surface a check-in WRITES (repo-relative, POSIX separators).
@@ -90,6 +92,8 @@ export interface AssetCheckinPayload {
   readonly branch: string;
   readonly baseBranch: string;
   readonly assets: readonly CheckinAsset[];
+  /** Source asset-request issues covered by this check-in (if any). */
+  readonly assetRequestIssueNumbers?: readonly number[];
 }
 
 export interface AssetCheckinPlan {
@@ -100,6 +104,8 @@ export interface AssetCheckinPlan {
   readonly issueBody: string;
   readonly labels: readonly string[];
   readonly assets: readonly CheckinAsset[];
+  /** Source asset-request issues covered by this check-in (if any). */
+  readonly assetRequestIssueNumbers: readonly number[];
   /** Repo-relative paths to stage in the dedicated branch. */
   readonly paths: readonly string[];
 }
@@ -137,6 +143,8 @@ export interface PlanAssetCheckinInput {
   readonly baseBranch?: string;
   /** Override the generated slug (tests). Defaults to a timestamp + hash slug. */
   readonly slug?: string;
+  /** Source asset-request issue numbers covered by this check-in (optional). */
+  readonly assetRequestIssueNumbers?: readonly number[];
 }
 
 /**
@@ -153,6 +161,7 @@ export function planAssetCheckin(input: PlanAssetCheckinInput): AssetCheckinPlan
   const commitMessage = `feat(sprites): check in ${count} approved ${noun}`;
   const issueTitle = `Asset check-in: ${count} approved ${noun} (${slug})`;
 
+  const assetRequestIssueNumbers = normalizeIssueNumbers(input.assetRequestIssueNumbers ?? []);
   const payload: AssetCheckinPayload = {
     version: 1,
     state: 'checked-in',
@@ -160,6 +169,7 @@ export function planAssetCheckin(input: PlanAssetCheckinInput): AssetCheckinPlan
     branch,
     baseBranch,
     assets,
+    ...(assetRequestIssueNumbers.length > 0 ? { assetRequestIssueNumbers } : {}),
   };
   const issueBody = renderIssueBody(branch, baseBranch, assets, payload);
 
@@ -171,6 +181,7 @@ export function planAssetCheckin(input: PlanAssetCheckinInput): AssetCheckinPlan
     issueBody,
     labels: [ASSET_CHECKIN_LABEL],
     assets,
+    assetRequestIssueNumbers,
     paths: [...ASSET_SURFACE_PATHS],
   };
 }
@@ -212,6 +223,14 @@ function renderIssueBody(
     const brief = asset.briefId ? ` — brief \`${asset.briefId}\`` : '';
     const variant = asset.variantIndex !== null ? ` (variant ${asset.variantIndex})` : '';
     lines.push(`- \`${asset.assetPath}\`${brief}${variant}`);
+  }
+  const sourceIssues = payload.assetRequestIssueNumbers ?? [];
+  if (sourceIssues.length > 0) {
+    lines.push('');
+    lines.push(`### Source asset requests (${sourceIssues.length})`);
+    for (const issueNumber of sourceIssues) {
+      lines.push(`- #${issueNumber}`);
+    }
   }
   lines.push('');
   lines.push(
@@ -480,9 +499,25 @@ export async function runAssetCheckin(
   options: RunAssetCheckinOptions = {},
 ): Promise<AssetCheckinResult> {
   const remote = options.remote ?? 'origin';
+  const now = deps.now ?? (() => new Date());
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
   return withLock(async () => {
-    const { plan } = await prepareAssetCheckin(repoRoot, deps, options);
+    const { plan: preparedPlan } = await prepareAssetCheckin(repoRoot, deps, options);
+    const sourceAssetRequestIssueNumbers = await discoverLinkedAssetRequestIssueNumbers(
+      deps.exec,
+      repoRoot,
+      preparedPlan.assets,
+    );
+    const plan =
+      sourceAssetRequestIssueNumbers.length > 0
+        ? planAssetCheckin({
+            assets: preparedPlan.assets,
+            now: now(),
+            baseBranch: preparedPlan.baseBranch,
+            slug: branchSlug(preparedPlan.branch),
+            assetRequestIssueNumbers: sourceAssetRequestIssueNumbers,
+          })
+        : preparedPlan;
 
     const worktree = await deps.makeTempDir();
     try {
@@ -521,6 +556,94 @@ export async function runAssetCheckin(
       await deps.removeDir(worktree).catch(() => {});
     }
   });
+}
+
+function branchSlug(branch: string): string {
+  return branch.startsWith('assets/') ? branch.slice('assets/'.length) : branch;
+}
+
+function normalizeIssueNumbers(numbers: readonly number[]): number[] {
+  return [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+}
+
+interface RawIssueRequestItem {
+  readonly number?: unknown;
+  readonly body?: unknown;
+}
+
+const FLOOR2_RUNTIME_BRIEF_IDS = new Set(
+  FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) =>
+    entry.stableId.slice(entry.stableId.indexOf('.') + 1),
+  ),
+);
+
+async function discoverLinkedAssetRequestIssueNumbers(
+  exec: Exec,
+  repoRoot: string,
+  assets: readonly CheckinAsset[],
+): Promise<number[]> {
+  // Conservative runtime-reachability gate: only close source asset-request
+  // issues for Floor 2 equipment concepts that are actually wired in the art
+  // map (`FLOOR2_EQUIPMENT_ART_DEFINITIONS`), not for file-only presence.
+  const closableBriefIds = new Set(
+    assets
+      .map((asset) => asset.briefId)
+      .filter((briefId): briefId is string => typeof briefId === 'string' && briefId.length > 0)
+      .filter((briefId) => FLOOR2_RUNTIME_BRIEF_IDS.has(briefId)),
+  );
+  if (closableBriefIds.size === 0) return [];
+
+  const listed = await exec(
+    'gh',
+    [
+      'issue',
+      'list',
+      '--label',
+      ASSET_REQUEST_LABEL,
+      '--state',
+      'open',
+      '--json',
+      'number,body',
+      '--limit',
+      '200',
+    ],
+    { cwd: repoRoot },
+  );
+  if (listed.code !== 0) {
+    const detail = listed.stderr.trim() || `gh issue list exited with code ${listed.code}`;
+    throw new CheckinError(
+      'gh-failed',
+      `Failed to list open ${ASSET_REQUEST_LABEL} issues: ${detail}`,
+    );
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(listed.stdout);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'invalid JSON';
+    throw new CheckinError(
+      'gh-failed',
+      `Failed to parse open ${ASSET_REQUEST_LABEL} issues from gh output: ${detail}`,
+    );
+  }
+  if (!Array.isArray(raw)) {
+    throw new CheckinError(
+      'gh-failed',
+      `Failed to parse open ${ASSET_REQUEST_LABEL} issues from gh output: expected an array.`,
+    );
+  }
+
+  const matches: number[] = [];
+  for (const item of raw as RawIssueRequestItem[]) {
+    if (typeof item.number !== 'number' || typeof item.body !== 'string') continue;
+    const parsed = parseAssetRequestIssueBody(item.body);
+    if (parsed === null) continue;
+    if (closableBriefIds.has(parsed.name)) {
+      matches.push(item.number);
+    }
+  }
+  return normalizeIssueNumbers(matches);
 }
 
 /**

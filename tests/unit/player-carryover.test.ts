@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { addEntity } from 'bitecs';
+import { addEntity, entityExists } from 'bitecs';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBossChestEntity } from '../../src/core/spawners/world-objects.js';
+import { createBossChestRecord } from '../../src/core/systems/bossChestRewards.js';
 import {
   addGeneratedEquipmentToBag,
   equip,
@@ -11,6 +13,7 @@ import {
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
+import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { memorizeSpell } from '../../src/game/systems/abilitySystem.js';
 import { createEmptyAchievementFactSnapshot } from '../../src/shared/achievements.js';
 import {
@@ -39,6 +42,7 @@ import {
   snapshotGeneratedEquipmentRegistry,
 } from '../../src/core/generated-equipment-registry.js';
 import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
+import { addItem, listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
@@ -60,10 +64,7 @@ describe('player floor carryover', () => {
     source.stores.coreStatPoints.constitution[sourcePlayer] = 5;
     source.stores.health.current[sourcePlayer] = 137;
     source.stores.health.max[sourcePlayer] = 260;
-    source.inventories.get(sourcePlayer)!.slots.push({
-      itemId: 'throwing-knife',
-      quantity: 3,
-    });
+    addItem(source.inventories.get(sourcePlayer)!, 'throwing-knife', 3);
     source.playerSkills.set('weapon-class-slashing', {
       level: 3,
       usage: 12,
@@ -421,7 +422,8 @@ describe('player floor carryover', () => {
     ).not.toThrow();
     expect(destination.generatedEquipmentRewardBundles.size).toBe(0);
     expect(destination.lootBoxRewardBundles.size).toBe(0);
-    expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+    const restoredBag = destination.inventories.get(destinationPlayer);
+    expect(restoredBag ? listGeneratedEquipmentReferences(restoredBag) : undefined).toEqual([]);
   });
 
   it('rejects unsupported ownership snapshot versions explicitly', () => {
@@ -659,9 +661,10 @@ describe('player floor carryover', () => {
     expect(snapshotGeneratedEquipmentRegistry(destination)).toEqual(
       snapshotGeneratedEquipmentRegistry(source),
     );
-    expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toEqual([
-      { kind: 'generated-instance', instanceKey: bagged.instanceId },
-    ]);
+    const restoredGeneratedBag = destination.inventories.get(destinationPlayer);
+    expect(
+      restoredGeneratedBag ? listGeneratedEquipmentReferences(restoredGeneratedBag) : undefined,
+    ).toEqual([{ kind: 'generated-instance', instanceKey: bagged.instanceId }]);
     expect(getEquipmentState(destination, destinationPlayer)?.equipped.mainHand).toBe(
       equipped.instanceId,
     );
@@ -802,6 +805,55 @@ describe('player floor carryover', () => {
 
     expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
       /invalid createdAtMs/,
+    );
+  });
+
+  it('fails closed when a persisted available boss chest stores only one spawn coordinate', () => {
+    const runKey = 'carryover-bad-bosschest-spawn-pair-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: 0,
+        spawnX: 17,
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /must persist spawnX and spawnY together/,
+    );
+  });
+
+  it('fails closed when a persisted available boss chest stores a non-finite spawn coordinate', () => {
+    const runKey = 'carryover-bad-bosschest-spawn-value-run';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const snapshot = capturePlayerCarryover(source, player);
+    const serialized = JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>;
+    serialized.bossChests = [
+      {
+        chestId: 'boss-chest:goblin-warband',
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: 0,
+        spawnX: 'bad',
+        spawnY: 29,
+      },
+    ];
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, serialized)).toThrow(
+      /has an invalid spawn position/,
     );
   });
 
@@ -1299,7 +1351,10 @@ describe('player floor carryover', () => {
 
       expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow();
       expect(destination.playerName).toBe('Unchanged');
-      expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+      const restoredInvalidBag = destination.inventories.get(destinationPlayer);
+      expect(
+        restoredInvalidBag ? listGeneratedEquipmentReferences(restoredInvalidBag) : undefined,
+      ).toEqual([]);
     }
   });
 
@@ -1392,7 +1447,12 @@ describe('player floor carryover', () => {
 
       expect(() => restorePlayerCarryover(destination, destinationPlayer, invalid)).toThrow();
       expect(destination.playerName).toBe('Unchanged');
-      expect(destination.inventories.get(destinationPlayer)?.generatedEquipment).toBeUndefined();
+      const restoredInvalidGrantBag = destination.inventories.get(destinationPlayer);
+      expect(
+        restoredInvalidGrantBag
+          ? listGeneratedEquipmentReferences(restoredInvalidGrantBag)
+          : undefined,
+      ).toEqual([]);
     }
   });
 
@@ -1435,6 +1495,55 @@ describe('player floor carryover', () => {
         sourceId: `combat-flow:passive:${player}:0`,
       }),
     );
+  });
+
+  it('does not re-emit abilityActivateFlash VFX for a general passive across a floor carryover round trip', () => {
+    // Regression guard for a hypothesis raised in review: does restoring
+    // carryover reset appliedPassiveAbilityIds (it does — persistentStatModifiers
+    // deliberately excludes passive-ability modifiers, see the test above) in a
+    // way that causes applyPassive() to re-fire VFX for every owned general
+    // passive on every floor transition? It must not, because applyPassive()
+    // only emits abilityActivateFlash for weapon-gated passives
+    // (def.weaponPrerequisite !== undefined) — general passives get their
+    // one-time unlock VFX from the level-5 skill milestone site instead.
+    const source = createTestWorld({ seed: 4242 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+
+    grantPassiveAbility(source, sourcePlayer, 'combat-flow');
+    abilitySystem(source);
+    expect(
+      source.abilityStatesByEntity.get(sourcePlayer)?.appliedPassiveAbilityIds.has('combat-flow'),
+    ).toBe(true);
+    // First application (via abilitySystem's synchronizeAbilityPassives pass)
+    // must not have emitted VFX for this no-prerequisite passive.
+    expect(source.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(0);
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    // Confirmed exclusion: combat-flow's stat modifier is never carried as a
+    // persistentStatModifier, so appliedPassiveAbilityIds is reset on restore.
+    expect(snapshot.persistentStatModifiers).not.toContainEqual(
+      expect.objectContaining({ sourceId: `combat-flow:passive:${sourcePlayer}:0` }),
+    );
+
+    const destination = createTestWorld({ seed: 4242, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, snapshot);
+    // restorePlayerCarryover already runs one synchronizeAbilityPassives pass
+    // internally; run the full system once more (mirroring a real floor tick)
+    // to make sure no delayed/second-pass VFX slips through either.
+    abilitySystem(destination);
+
+    expect(
+      destination.abilityStatesByEntity
+        .get(destinationPlayer)
+        ?.appliedPassiveAbilityIds.has('combat-flow'),
+    ).toBe(true);
+    expect(
+      destination.statModifiers.filter((modifier) =>
+        modifier.sourceId.startsWith(`combat-flow:passive:${destinationPlayer}:`),
+      ),
+    ).toHaveLength(2);
+    expect(destination.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(0);
   });
 
   it('fails closed with PlayerCarryoverSnapshotError on malformed array-typed fields', () => {
@@ -1771,6 +1880,52 @@ describe('player floor carryover', () => {
         tier: 'tier4',
         instanceKeys,
       });
+    });
+
+    it('round-trips an available boss chest physical spawn position through carryover restore', () => {
+      const runKey = 'carryover-bosschest-position-run';
+      const chestId = 'boss-chest:goblin-warband';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const chestEid = spawnBossChestEntity(source, 17, 29, chestId);
+      resolveEquipmentRewardBundle(
+        source,
+        chestId,
+        ['weapon.iron-cleaver', 'weapon.ember-wand'],
+        'tier4',
+      );
+      const created = createBossChestRecord(source, chestId, 'goblin-warband');
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      source.bossChests.set(chestId, { ...created.chest, createdAtMs: 123 });
+
+      const snapshot = capturePlayerCarryover(source, player);
+      expect(snapshot.bossChests).toContainEqual({
+        chestId,
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: 123,
+        spawnX: 17,
+        spawnY: 29,
+      });
+      expect(source.bossChestEids.get(chestId)).toBe(chestEid);
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(
+        destination,
+        destinationPlayer,
+        JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>,
+      );
+
+      const restoredChest = destination.bossChests.get(chestId);
+      const restoredEid = destination.bossChestEids.get(chestId);
+      expect(restoredChest?.state).toBe('available');
+      expect(restoredEid).toBeDefined();
+      if (restoredEid === undefined) return;
+      expect(entityExists(destination.ecs, restoredEid)).toBe(true);
+      expect(destination.stores.position.x[restoredEid]).toBe(17);
+      expect(destination.stores.position.y[restoredEid]).toBe(29);
     });
 
     it('restores a "player-carryover/v1" snapshot missing achievements.pendingPresentations (pre-existing field)', () => {

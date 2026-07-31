@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "ci-recovery-dispatch-liveness-merge-sync",
+  "task_title": "Resolve merge conflict for PR #2437",
+  "estimated_apples": 2,
+  "stages": {}
+}

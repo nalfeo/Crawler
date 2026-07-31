@@ -74,31 +74,69 @@ describe('entity-sprite-mappings generated art wiring', () => {
         expect(fileHash).toBe(declaredHash);
       },
     );
+
+    const variants = Object.entries(generated.variantsByAppearanceKey ?? {});
+    for (const [appearanceKey, variant] of variants) {
+      it.runIf(registry !== null)(
+        `${kindName}: variantsByAppearanceKey["${appearanceKey}"] briefId "${variant.briefId}" has approved shipped art`,
+        () => {
+          expect(registry?.variants(variant.briefId).length ?? 0).toBeGreaterThan(0);
+        },
+      );
+
+      it.runIf(registry !== null)(
+        `${kindName}: variantsByAppearanceKey["${appearanceKey}"] pinnedTextureKey "${variant.pinnedTextureKey}" is a shipped manifest key`,
+        () => {
+          const keys = (registry?.entries() ?? []).map((entry) => entry.textureKey);
+          expect(keys).toContain(variant.pinnedTextureKey);
+        },
+      );
+    }
   }
 
+  const PLAYER_GENDERS = ['female', 'male', 'other'] as const;
+
   it.runIf(registry !== null)(
-    'keeps the player on the generated walk-cycle art, not Kenney',
+    'keeps every player gender on its own gender-matched walk-cycle art, not Kenney',
     () => {
-      // Regression pin for the #2296/#2302 wiring fix: the player must resolve to
-      // generated walk-cycle art. A miss here is exactly the bug that shipped the
-      // Kenney knight into the running game.
+      // Regression pin for the #2296 revert (single Rhea Vale pin) generalized
+      // to three genders: every `world.playerGender` value must resolve to its
+      // OWN generated walk-cycle sheet. A miss here is exactly the bug class
+      // that shipped the Kenney knight into the running game.
       const player = MAPPINGS.renderKinds.player?.generated;
       expect(player).toBeDefined();
-      expect(player?.pinnedTextureKey).toBe('player-walk-cycle');
-      const entry = (registry?.entries() ?? []).find(
-        (candidate) => candidate.textureKey === player?.pinnedTextureKey,
-      );
-      expect(entry).toBeDefined();
-      // The pinned player art is a walk strip: it must carry an animation
-      // descriptor, else `preloadGeneratedSprites` loads the 192x64 sheet as a
-      // single flat image and the player renders as three squashed copies.
-      expect(entry?.animation).toEqual({
-        frameWidth: 64,
-        frameHeight: 64,
-        frameCount: 4,
-        frameRate: 8,
-        loop: true,
-      });
+      expect(player?.variantsByAppearanceKey).toBeDefined();
+
+      const resolvedKeys = new Set<string>();
+      for (const gender of PLAYER_GENDERS) {
+        const variant = player?.variantsByAppearanceKey?.[gender];
+        expect(variant, `missing variantsByAppearanceKey["${gender}"]`).toBeDefined();
+        expect(variant?.pinnedTextureKey).toMatch(new RegExp(`^player-walk-cycle-${gender}`));
+
+        const entry = (registry?.entries() ?? []).find(
+          (candidate) => candidate.textureKey === variant?.pinnedTextureKey,
+        );
+        expect(entry, `no shipped manifest entry for gender "${gender}"`).toBeDefined();
+        // Each gender's walk art is a 4-frame, 256x256 strip: it must carry an
+        // animation descriptor, else `preloadGeneratedSprites` loads the sheet
+        // as a single flat image and the player renders as squashed copies.
+        expect(entry?.animation).toEqual({
+          frameWidth: 256,
+          frameHeight: 256,
+          frameCount: 4,
+          frameRate: 8,
+          loop: true,
+        });
+
+        if (variant?.pinnedTextureKey !== undefined) {
+          resolvedKeys.add(variant.pinnedTextureKey);
+        }
+      }
+
+      // Hard gate: the three genders must resolve to three DISTINCT texture
+      // keys — a shared key would mean two genders silently render identical
+      // art (defeats the entire point of gender-matched sheets).
+      expect(resolvedKeys.size).toBe(PLAYER_GENDERS.length);
     },
   );
 });

@@ -357,6 +357,48 @@ function resolveNpcTexture(
   return resolveTexture(scene, 'npc');
 }
 
+/**
+ * Textures/appearanceKeys already reported through {@link warnGeneratedTextureUnresolved}
+ * this session, so a persistently-unresolvable mapping logs once instead of
+ * spamming every render tick.
+ */
+const generatedTextureUnresolvedWarnings = new Set<string>();
+
+/**
+ * `resolveGeneratedTexture` returning `null` means the entity silently falls
+ * through to its Kenney/procedural fallback with NO indication that a
+ * `generated` mapping was configured but unresolvable. That silence is
+ * exactly what let a broken/unwired generated player texture ship
+ * undetected in the past (see the Rhea Vale regression, PR #2321) — log
+ * once per (type, appearanceKey) so a similar regression is loud instead of
+ * silent.
+ */
+function warnGeneratedTextureUnresolved(
+  type: string,
+  generated: NonNullable<EntitySpriteMappings['renderKinds'][string]['generated']>,
+  appearanceKey: string | undefined,
+  effective: { briefId: string; pinnedTextureKey: string },
+): void {
+  const warningKey = `${type}:${appearanceKey ?? ''}`;
+  if (generatedTextureUnresolvedWarnings.has(warningKey)) {
+    return;
+  }
+  generatedTextureUnresolvedWarnings.add(warningKey);
+  // Log the EFFECTIVE (post-variant-lookup) descriptor that was actually
+  // unresolvable, not just the render kind's top-level default — otherwise a
+  // broken per-appearance variant (e.g. a bad `male`/`other` pinnedTextureKey)
+  // logs the unrelated top-level/default key and misleads whoever is
+  // debugging the regression.
+  logger.warn('Generated texture mapping configured but unresolvable; falling through', {
+    type,
+    appearanceKey,
+    briefId: effective.briefId,
+    pinnedTextureKey: effective.pinnedTextureKey,
+    topLevelBriefId: generated.briefId,
+    topLevelPinnedTextureKey: generated.pinnedTextureKey,
+  });
+}
+
 function resolveGeneratedTexture(
   scene: Phaser.Scene,
   type: string,
@@ -367,6 +409,17 @@ function resolveGeneratedTexture(
     return null;
   }
 
+  // Resolution precedence (highest to lowest):
+  //   1. The global enemy variant-roll registry (`pickGeneratedEnemyTextureKey`)
+  //      — enemy-only; `'player'` is deliberately absent from its backing maps
+  //      (`GENERATED_BRIEF_BY_TYPE` / `GENERATED_BRIEF_BY_APPEARANCE_KEY`), so
+  //      this always misses for the player and falls through to (2).
+  //   2. This render kind's own `generated.variantsByAppearanceKey[appearanceKey]`
+  //      (e.g. player gender selecting one of several walk-cycle sheets).
+  //   3. The top-level `generated.briefId`/`pinnedTextureKey`/`scale` default.
+  // If (1) is ever extended to cover a render kind that ALSO configures
+  // `variantsByAppearanceKey`, the registry wins — (2) is local-override-only,
+  // it does not shadow the global registry.
   const registryKey = pickGeneratedEnemyTextureKey(
     getGeneratedSpriteRegistry(scene),
     type,
@@ -377,20 +430,32 @@ function resolveGeneratedTexture(
     return { key: registryKey, scale: generated.scale };
   }
 
-  if (scene.textures.exists(generated.pinnedTextureKey)) {
-    return { key: generated.pinnedTextureKey, scale: generated.scale };
+  const variant =
+    options?.appearanceKey !== undefined
+      ? generated.variantsByAppearanceKey?.[options.appearanceKey]
+      : undefined;
+  const effectiveBriefId = variant?.briefId ?? generated.briefId;
+  const effectivePinnedTextureKey = variant?.pinnedTextureKey ?? generated.pinnedTextureKey;
+  const effectiveScale = variant?.scale ?? generated.scale;
+
+  if (scene.textures.exists(effectivePinnedTextureKey)) {
+    return { key: effectivePinnedTextureKey, scale: effectiveScale };
   }
 
-  if (scene.textures.exists(generated.briefId)) {
-    return { key: generated.briefId, scale: generated.scale };
+  if (scene.textures.exists(effectiveBriefId)) {
+    return { key: effectiveBriefId, scale: effectiveScale };
   }
 
   const textureKeys = scene.textures.getTextureKeys?.();
   if (!Array.isArray(textureKeys)) {
+    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey, {
+      briefId: effectiveBriefId,
+      pinnedTextureKey: effectivePinnedTextureKey,
+    });
     return null;
   }
 
-  const prefix = `${generated.briefId}-var-`;
+  const prefix = `${effectiveBriefId}-var-`;
   let selectedKey: string | undefined;
   let selectedVariant = -1;
   for (const key of textureKeys) {
@@ -405,7 +470,14 @@ function resolveGeneratedTexture(
     selectedVariant = variantIndex;
     selectedKey = key;
   }
-  return selectedKey === undefined ? null : { key: selectedKey, scale: generated.scale };
+  if (selectedKey === undefined) {
+    warnGeneratedTextureUnresolved(type, generated, options?.appearanceKey, {
+      briefId: effectiveBriefId,
+      pinnedTextureKey: effectivePinnedTextureKey,
+    });
+    return null;
+  }
+  return { key: selectedKey, scale: effectiveScale };
 }
 
 function getProceduralTextureForType(type: string): string {
@@ -786,7 +858,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               : refineEnemyVisualKind(world, eid)
             : entityType;
         const appearanceKey =
-          entityType === 'enemy' ? world.enemyAppearanceKeys.get(eid) : undefined;
+          entityType === 'enemy'
+            ? world.enemyAppearanceKeys.get(eid)
+            : entityType === 'player'
+              ? world.playerGender
+              : undefined;
         // Positions/velocities are stored in feet; scale feet → pixels for
         // rendering (the only place pixels exist). All downstream geometry
         // (beam/melee/aoe lengths, tip offsets) is computed in pixels too.
@@ -1146,7 +1222,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           visuals.set(eid, visual);
         }
 
-        const img = visual.obj;
+        let img = visual.obj;
         if (entityType === 'enemy') {
           const preferred = resolvePreferredTexture(visualType, {
             appearanceKey,
@@ -1179,6 +1255,44 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
+          }
+        }
+        if (entityType === 'player') {
+          // The player visual may be created (e.g. on floor-load / carryover)
+          // before its gender-keyed generated texture has finished loading, or
+          // may still be showing another gender's texture from a stale
+          // `visuals` cache entry keyed only by `visualType` (which is always
+          // 'player', so the type-mismatch recreate branch above never fires
+          // on a gender change). Reconcile to the appearanceKey-preferred
+          // texture whenever it differs so the walk sprite always matches
+          // `world.playerGender` (mirrors the enemy/NPC late-load reconcile
+          // above).
+          const preferred = resolvePreferredTexture(visualType, { appearanceKey });
+          if (img.texture.key !== preferred.key) {
+            img.setTexture(preferred.key, preferred.frame);
+            visual.baseScale = preferred.scale;
+            if (
+              generatedAnimationByTexture.has(preferred.key) &&
+              (img as Partial<Phaser.GameObjects.Sprite>).anims === undefined &&
+              typeof scene.add.sprite === 'function'
+            ) {
+              // The cached visual was created as a plain Image (no `.anims` —
+              // no walk animation was registered for its texture at creation
+              // time), but the reconciled texture DOES have one. An Image can
+              // never play a Phaser animation, so recreate it as a Sprite in
+              // place (mirrors the `hasWalkAnimation` branch above).
+              const { x: px, y: py, flipX: savedFlipX } = img;
+              img.destroy();
+              const sprite =
+                preferred.frame !== undefined
+                  ? scene.add.sprite(px, py, preferred.key, preferred.frame)
+                  : scene.add.sprite(px, py, preferred.key);
+              sprite.setScale(preferred.scale);
+              if (savedFlipX) sprite.setFlipX(true);
+              visual = { obj: sprite, type: visualType, baseScale: preferred.scale };
+              visuals.set(eid, visual);
+              img = sprite;
+            }
           }
         }
         let isVisible = true;

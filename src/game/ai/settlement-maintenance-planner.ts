@@ -49,7 +49,10 @@ import {
   type PrimaryStatId,
   type StatId,
 } from '../../shared/stats.js';
-import type { GeneratedEquipmentInventoryEntry } from '../../shared/inventory.js';
+import {
+  listGeneratedEquipmentReferences,
+  type GeneratedEquipmentInventoryEntry,
+} from '../../shared/inventory.js';
 import type { GeneratedEquipmentInstanceV1 } from '../../shared/generated-equipment-types.js';
 import type { EquipFailureReason } from '../../shared/equipment-types.js';
 import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
@@ -87,7 +90,7 @@ const CANONICAL_ENCOUNTER_FIXTURE: EquipmentEncounterFixture = Object.freeze({
   durationSeconds: 60,
   enemyCount: 6,
   clusteredEnemyCount: 3,
-  incomingHitDamage: 10,
+  incomingHitDamage: 25,
   incomingHitsPerSecond: 1,
   lowHealthUptime: 0.1,
   skillTriggerRatePerSecond: 1,
@@ -470,7 +473,7 @@ function buildEquipmentCandidates(
   const offerLookup = new Map<string, ShopOfferRef>();
 
   const bag = world.inventories.get(playerEid);
-  for (const entry of bag?.generatedEquipment ?? []) {
+  for (const entry of bag ? listGeneratedEquipmentReferences(bag) : []) {
     const instance = getGeneratedEquipmentInstance(world, entry.instanceKey);
     if (!instance) continue;
     if (instanceOccupiesProtectedSlot(instance, protectedSlots)) {
@@ -628,7 +631,7 @@ function runEquipmentLoop(
   // caller has opted in to the short-circuit (eager-tick path).
   if (options?.bagEmptyShortCircuit) {
     const bag = world.inventories.get(playerEid);
-    if (!bag || (bag.generatedEquipment?.length ?? 0) === 0) {
+    if (!bag || listGeneratedEquipmentReferences(bag).length === 0) {
       return 'exhausted';
     }
   }

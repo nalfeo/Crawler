@@ -90,12 +90,44 @@ export interface SourceFile {
   readonly content: string;
 }
 
+function isProductionConsumerPath(path: string): boolean {
+  return (path.startsWith('src/') && !path.startsWith('src/labs/')) || path.startsWith('scripts/');
+}
+
+function isExplicitTestScaffoldingExport(name: string): boolean {
+  return name.startsWith('_');
+}
+
 /**
  * Export names intentionally exposed for unit testing but without a standalone
  * production caller outside their defining file. This is keyed by both file and
  * symbol to avoid cross-file false negatives when names collide.
  */
 const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'SAFE_ROOM_EGRESS_SUPPRESS_FRAMES',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'FusedHeadingDebug',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'resolveFloor1AiCollapsePanicDeadlineMs',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'computeCollapsePanicProfile',
+  },
   {
     file: 'src/game/floor2-reward-bundle-resolver.ts',
     name: '_REWARD_BUNDLE_RARITIES',
@@ -151,6 +183,10 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
   {
     file: 'src/game/generated-equipment-generator.ts',
     name: '_getGeneratedEquipmentBaseV1',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: 'generatedEquipmentBaseHasNonArmorStatBonus',
   },
   {
     file: 'src/game/systems/achievementSystem.ts',
@@ -267,6 +303,12 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
   {
     file: 'src/shared/generated-assets.ts',
     name: 'buildGeneratedSpriteRegistry',
+  },
+  // PhaserBridge: numeric tint-mode constant re-exported so integration tests
+  // can assert flash-overlay tintMode values without embedding magic numbers.
+  {
+    file: 'src/engine/PhaserBridge.ts',
+    name: 'PHASER_TINT_MODE_FILL',
   },
   // Door art contract string used as assertion messages in unit tests that
   // verify the projection/framing contract on shipped door PNGs.
@@ -504,9 +546,14 @@ export function findTestOnlyExports(
   const result: TestOnlyExport[] = [];
 
   for (const exp of exports) {
+    if (isExplicitTestScaffoldingExport(exp.name)) continue;
+    if (isTestScaffoldAllowlisted(exp)) continue;
+
     // Consumers in src/ other than the exporting file itself.
     const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
-    const outsideSrcConsumers = [...srcConsumers].filter((f) => f !== exp.file);
+    const outsideSrcConsumers = [...srcConsumers].filter(
+      (f) => f !== exp.file && isProductionConsumerPath(f),
+    );
 
     if (outsideSrcConsumers.length > 0) continue; // production-used — skip
 
@@ -517,6 +564,31 @@ export function findTestOnlyExports(
   }
 
   return result;
+}
+
+function exportKey(exp: Pick<TestOnlyExport, 'file' | 'name'>): string {
+  return `${exp.file}::${exp.name}`;
+}
+
+/**
+ * Compare two repo snapshots and return only exports that became test-only in
+ * the current snapshot. This filters out pre-existing debt in files that a PR
+ * merely happened to touch, while still catching unchanged exports whose last
+ * production caller was removed by the branch.
+ */
+export function findNewlyTestOnlyExports(
+  currentSrcFiles: readonly SourceFile[],
+  currentTestFiles: readonly SourceFile[],
+  baseSrcFiles: readonly SourceFile[],
+  baseTestFiles: readonly SourceFile[],
+): TestOnlyExport[] {
+  const baseKeys = new Set(
+    findTestOnlyExports(baseSrcFiles, baseTestFiles).map((exp) => exportKey(exp)),
+  );
+
+  return findTestOnlyExports(currentSrcFiles, currentTestFiles).filter(
+    (exp) => !baseKeys.has(exportKey(exp)),
+  );
 }
 
 /**

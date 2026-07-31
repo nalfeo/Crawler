@@ -28,8 +28,8 @@ import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.
 import { createTestWorld } from '../helpers/world-factory.js';
 import { createSceneStub } from '../fixtures/phaser-bridge-harness.js';
 
-/** Matches the real `player-walk-cycle` manifest entry's shape. */
-const PLAYER_WALK_TEXTURE_KEY = 'player-walk-cycle';
+/** Matches the real `player-walk-cycle-female` manifest entry's shape (default gender). */
+const PLAYER_WALK_TEXTURE_KEY = 'player-walk-cycle-female';
 
 function buildTestRegistry() {
   return buildGeneratedSpriteRegistry({

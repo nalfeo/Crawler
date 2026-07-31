@@ -26,9 +26,26 @@
       "kenneySpriteId": "player",
       "kenneyScale": 1.6,
       "generated": {
-        "briefId": "player-walk-cycle",
-        "pinnedTextureKey": "player-walk-cycle",
-        "scale": 0.71875
+        "briefId": "player-walk-cycle-female",
+        "pinnedTextureKey": "player-walk-cycle-female",
+        "scale": 0.1796875,
+        "variantsByAppearanceKey": {
+          "female": {
+            "briefId": "player-walk-cycle-female",
+            "pinnedTextureKey": "player-walk-cycle-female",
+            "scale": 0.1796875
+          },
+          "male": {
+            "briefId": "player-walk-cycle-male",
+            "pinnedTextureKey": "player-walk-cycle-male",
+            "scale": 0.1796875
+          },
+          "other": {
+            "briefId": "player-walk-cycle-other",
+            "pinnedTextureKey": "player-walk-cycle-other",
+            "scale": 0.1796875
+          }
+        }
       }
     },
     "enemy": {
@@ -130,6 +147,9 @@
       "proceduralTexture": "gem",
       "kenneySpriteId": "item.gem",
       "kenneyScale": 1.0
+    },
+    "boss_chest": {
+      "proceduralTexture": "boss_chest"
     },
     "gold": {
       "proceduralTexture": "gold"

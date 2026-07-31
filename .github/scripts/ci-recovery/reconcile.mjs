@@ -2295,14 +2295,14 @@ for (const run of runs) {
     latestRunsByKey.set(key, run);
   }
 }
-const actionRequiredRuns = [...latestRunsByKey.values()].filter(
-  (candidate) => candidate.conclusion === 'action_required',
+const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
+  ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
 const changedFiles =
-  actionRequiredRuns.length > 0
+  retriggerableRuns.length > 0
     ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`)
     : [];
-for (const run of actionRequiredRuns) {
+for (const run of retriggerableRuns) {
   const rejection = workflowApprovalRejection({
     run,
     repository,
@@ -2319,18 +2319,23 @@ for (const run of actionRequiredRuns) {
     // was pushed by the same App identity (see AGENTS.md § Bot-pushed CI checks).
     // The GitHub approval endpoint does not apply to same-repository runs, so we
     // escalate an actionable retrigger blocker instead.
+    const runConclusion = String(run.conclusion || 'action_required');
+    const isCancelled = runConclusion === 'cancelled';
     blockers.push({
       kind: 'ci-retrigger',
-      id: `action-required:${String(run.name || run.id)}`,
-      summary: `${run.name} is parked in action_required because the commit was pushed by the same App identity. Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`,
+      id: `${runConclusion}:${String(run.name || run.id)}`,
+      summary: isCancelled
+        ? `${run.name} was cancelled (not failed). Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`
+        : `${run.name} is parked in action_required because the commit was pushed by the same App identity. Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`,
       url: run.html_url,
     });
     process.stdout.write(
-      `escalate action_required run=${run.id} name="${run.name}" reason=required-check-parked\n`,
+      `escalate ${runConclusion} run=${run.id} name="${run.name}" reason=required-check-${runConclusion}\n`,
     );
   } else {
+    const runConclusion = String(run.conclusion || 'unknown');
     process.stdout.write(
-      `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
+      `skip ${runConclusion} run=${run.id} name="${run.name}" reason=${rejection}\n`,
     );
   }
 }
@@ -2671,24 +2676,11 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
     stopIfReleaseConvergedElsewhere(await release('blocker-progressed'));
   } else {
     dispatchAttemptBase = state?.attempt || 0;
-    // Lease-reaper GC pass: carry the attempt count forward AND freeze
-    // progressAt at its persisted value instead of refreshing it to `now`.
-    // The default (line above) refreshes progressAt on every dispatch, which
-    // slides the staleness window forward on each reap so a dead automation
-    // lock could survive many TTLs before the attempt>=2 ceiling releases it
-    // (Bug X). Freezing progressAt makes the window monotonic: the reaper
-    // keeps finding the lock stale on each sweep, the attempt count climbs to
-    // the existing exhaustion ceiling (see automationStallAction), and the
-    // lock is released within a bounded number of sweeps -- turning the TTL
-    // into a true wall-clock bound. Liveness is deliberately NOT inferred
-    // from head-SHA workflow runs: unrelated CI / merge-train / sweep runs
-    // (and the reaper's own reconcile run) share the PR head SHA and would
-    // produce false-live signals that make a dead lock immortal,
-    // re-introducing the very deadlock this fix targets (adversarial plan
-    // review, 2026-07-22).
-    if (trigger === 'lease-reaper') {
-      dispatchProgressAt = state?.progressAt || state?.updatedAt || dispatchProgressAt;
-    }
+    // Carry the attempt count forward on stale retries, but refresh
+    // progressAt to `now` for the fresh dispatch that follows this release.
+    // Keeping a stale timestamp here can instantly re-exhaust a newly
+    // dispatched recovery attempt (before it has any liveness window),
+    // causing repeated "no progress" loops on otherwise actionable PRs.
     stopIfReleaseConvergedElsewhere(await release('stale-automation-retry'));
   }
 }
@@ -2917,12 +2909,14 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
   if (pr.mergeable_state === 'behind') {
     if (live) {
+      let updateBranchSucceeded = false;
       try {
         await request(pat || readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
           method: 'PUT',
           body: { expected_head_sha: pr.head.sha },
         });
         process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+        updateBranchSucceeded = true;
       } catch (err) {
         // 422 covers "already up-to-date" and stale expected_head_sha — log
         // it so stale-head races are visible and not silently swallowed.
@@ -2931,8 +2925,29 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
         );
       }
+      // Issue #2453: GitHub silently clears auto-merge when the head SHA changes
+      // via update-branch.  Dispatch a fresh reconcile as a latency optimisation
+      // so the PR can be re-armed sooner than the next watchdog sweep.
+      // Guard: skip when this run is itself a post-update-branch reconcile to
+      // prevent a self-dispatch loop (update-branch → dispatch → update-branch …).
+      // The durable backstop for missed or race-lost dispatches is the
+      // unarmed-PR watchdog in ci-liveness-sweep.yml, which polls every 10 min.
+      if (updateBranchSucceeded && trigger !== 'post-update-branch') {
+        await dispatchWorkflow('ci-recovery.yml', {
+          operation: 'reconcile',
+          pr_number: String(prNumber),
+          trigger: 'post-update-branch',
+          lease_id: '',
+        });
+        process.stdout.write(`dispatch-post-update-branch pr=#${prNumber}\n`);
+      }
     } else {
       process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+      // Dry-run: show that live mode would also dispatch a follow-up reconcile
+      // (only when not already running as a post-update-branch reconcile).
+      if (trigger !== 'post-update-branch') {
+        process.stdout.write(`dry-run would-dispatch-post-update-branch pr=#${prNumber}\n`);
+      }
     }
   }
   await closeLoopIncidentOnConvergence();

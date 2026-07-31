@@ -1,4 +1,4 @@
-import { query } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import { Player } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import type { StatKey } from '../../shared/stats.js';
@@ -7,8 +7,14 @@ import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { grantAbilitySources, queueAbilityTrigger } from './abilitySystem.js';
-import { SKILL_LEVEL5_ABILITY_GRANTS } from '../abilities/registry.js';
+import { SKILL_LEVEL5_ABILITY_GRANTS, getAbilityDefinition } from '../abilities/registry.js';
 import { skillAbilityGrantSourceId } from '../../shared/abilities.js';
+import { pushVfxEvent } from '../../shared/vfx-events.js';
+import { pushAnnouncement } from '../../shared/announcement-events.js';
+import { getAbilityPresentation } from '../../shared/ability-presentation.js';
+
+/** How long the level-5 passive-unlock banner is shown, in milliseconds. */
+const SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS = 2600;
 
 /**
  * Processes skill usage events each frame.
@@ -95,6 +101,42 @@ export function skillSystem(world: GameWorld): void {
                   sourceId: skillAbilityGrantSourceId(def.id, state.level),
                 },
               ]);
+
+              // Player-only, one-time unlock feedback. Mobs can level skills
+              // via the v2 holder-scoped path but never render HUD feedback.
+              if (hasComponent(world.ecs, targetEid, Player)) {
+                const abilityDef = getAbilityDefinition(abilityId);
+                const isGeneralPassive =
+                  abilityDef !== undefined &&
+                  abilityDef.kind === 'passive' &&
+                  abilityDef.weaponPrerequisite === undefined;
+
+                // Weapon-gated passives already get their activation VFX from
+                // applyPassive() the moment a matching weapon is equipped
+                // (which happens this same tick if the prerequisite is
+                // already met) — pushing it again here would double-fire.
+                // General (no-prerequisite) passives never take that path,
+                // so this milestone grant is their only VFX, emitted exactly
+                // once thanks to the `triggeredMilestones` guard above.
+                if (isGeneralPassive) {
+                  const px = world.stores.position.x[targetEid] ?? 0;
+                  const py = world.stores.position.y[targetEid] ?? 0;
+                  pushVfxEvent(world.vfxEvents, {
+                    kind: 'abilityActivateFlash',
+                    x: px,
+                    y: py,
+                  });
+                }
+
+                const presentation = getAbilityPresentation(abilityId);
+                pushAnnouncement(world.announcements, {
+                  kind: 'skillPassiveUnlocked',
+                  archetypeIndex: -1,
+                  text: `Passive Unlocked: ${presentation?.name ?? abilityId}`,
+                  durationMs: SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS,
+                  elapsedMs: world.elapsedMs,
+                });
+              }
             }
           }
         }

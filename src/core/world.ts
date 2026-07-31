@@ -52,7 +52,6 @@ import {
   Spawner,
   BroadcastScore,
   DroppedItem,
-  Weapon,
   Owner,
   Team,
   Lifetime,
@@ -211,6 +210,12 @@ export interface GameWorld {
   generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
   /** Boss chest lifecycle records keyed by chest ID (`boss-chest:<familyId>`). */
   bossChests: Map<string, BossChestRecord>;
+  /**
+   * Reverse lookup: physical boss-chest ECS entity ID keyed by chest ID.
+   * Populated when `spawnBossChestEntity` creates the world-object; cleared when
+   * `bossChestPickupSystem` removes the entity after the player opens it.
+   */
+  bossChestEids: Map<string, number>;
   /**
    * Unclaimed Floor 1 `lootBox` reward bundles keyed by achievement ID.
    * Resolved once at unlock (see `resolveLootBoxRewardBundle`) and consumed
@@ -583,7 +588,6 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Spawner, stores.spawner);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
   wireStore(ecs, DroppedItem, stores.droppedItem);
-  wireStore(ecs, Weapon, stores.weapon);
   wireStore(ecs, Owner, stores.owner);
   wireStore(ecs, Team, stores.team);
   wireStore(ecs, Lifetime, stores.lifetime);
@@ -646,6 +650,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     }),
     generatedEquipmentRewardBundles: new Map(),
     bossChests: new Map(),
+    bossChestEids: new Map(),
     lootBoxRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),

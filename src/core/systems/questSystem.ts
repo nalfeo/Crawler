@@ -14,7 +14,7 @@
 import { query } from 'bitecs';
 import { Player } from '../components.js';
 import type { GameWorld } from '../world.js';
-import { getItemCount, hasItem } from '../../shared/inventory.js';
+import { getItemCount, hasItem, listStaticInventorySlots } from '../../shared/inventory.js';
 import { getEquippableItemIds, isEquippableItem } from '../../shared/equipmentDefs.js';
 import { getEquipmentState, resolveEquipmentInstance } from './equipmentSystem.js';
 import {
@@ -290,7 +290,10 @@ function latchFeatureUnlocks(world: GameWorld, playerEid: number | undefined): v
     world.featureUnlocks.inventory = true;
   }
   // Equipment unlocks once the player holds anything equippable (the purchase).
-  if (!world.featureUnlocks.equipment && bag.slots.some((s) => isEquippableItem(s.itemId))) {
+  if (
+    !world.featureUnlocks.equipment &&
+    listStaticInventorySlots(bag).some((slot) => isEquippableItem(slot.itemId))
+  ) {
     world.featureUnlocks.equipment = true;
   }
 }

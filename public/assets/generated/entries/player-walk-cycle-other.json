@@ -1,0 +1,63 @@
+{
+  "briefId": "player-walk-cycle-other",
+  "spriteName": "player-walk-cycle-other",
+  "assetPath": "generated/player-walk-cycle-other.png",
+  "approvedAt": "2026-07-30T03:01:07.072Z",
+  "sourceRun": "generated/runs/player-walk-cycle-other/2026-07-30T02-54-59-ed7dc25c",
+  "variantIndex": 0,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "frame-sequence",
+  "judgeScore": null,
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 109,
+        "y": 125
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": null,
+  "type": "character",
+  "contentHash": "4a3f91b69d233bd5f7f39d360acfc354069d4f7bf3ea7f920f1e4ae13888b3a6",
+  "animation": {
+    "frameWidth": 256,
+    "frameHeight": 256,
+    "frameCount": 4,
+    "frameRate": 8,
+    "loop": true
+  }
+}

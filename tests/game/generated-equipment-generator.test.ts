@@ -113,9 +113,7 @@ describe('deterministic generated equipment', () => {
     );
 
     expect(affixArmor.frozen.statBonuses.armor).toBe(expectedArmor);
-    expect(affixArmor.frozen.statBonuses.constitution).toBe(
-      (staticArmor.statBonuses.constitution ?? 0) + effectConstitution,
-    );
+    expect(affixArmor.frozen.statBonuses.constitution ?? 0).toBe(effectConstitution);
     expect(affixArmor.frozen.activeWeaponSnapshot).toBeNull();
     expect(affixArmor.frozen.displayName).toMatch(/Iron Breastplate \+3$/);
     expect(
@@ -144,7 +142,7 @@ describe('deterministic generated equipment', () => {
     ]);
     expect(active.frozen.abilityGrants).toEqual(['fireball']);
     expect(active.frozen.passiveGrants).toEqual([]);
-    expect(active.frozen.statBonuses).toEqual({ luck: 1, xpBonus: 0.05 });
+    expect(active.frozen.statBonuses).toEqual({});
     expect(passive.resolvedEffects).toEqual([
       expect.objectContaining({
         kind: 'passiveGrant',
@@ -154,7 +152,7 @@ describe('deterministic generated equipment', () => {
     ]);
     expect(passive.frozen.abilityGrants).toEqual([]);
     expect(passive.frozen.passiveGrants).toEqual(['veteran-instinct']);
-    expect(passive.frozen.statBonuses).toEqual({ luck: 1, xpBonus: 0.05 });
+    expect(passive.frozen.statBonuses).toEqual({});
   });
 
   it('uses stable bounded draw counts for each exact rarity budget', () => {
