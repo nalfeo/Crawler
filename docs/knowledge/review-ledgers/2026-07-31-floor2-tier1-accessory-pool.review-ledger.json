@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "floor2-tier1-accessory-pool",
+  "task_title": "Fix Floor 2 tier1 accessory reward eligibility",
+  "estimated_apples": 2,
+  "stages": {}
+}
