@@ -1,5 +1,16 @@
 [
   {
+    "commit": "034ed37bc536eda84f33f96bd59311bfd65a3c2e",
+    "commitDate": "2026-07-31T11:18:19Z",
+    "commitSubject": "feat: boss chests drop on the ground and open on proximity (#2459)",
+    "capturedAt": "2026-07-31T12:11:46.977Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30627263460",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/034ed37bc536eda84f33f96bd59311bfd65a3c2e.json"
+  },
+  {
     "commit": "c772f276f949270100a2a0158facdc82a23eabe2",
     "commitDate": "2026-07-31T10:36:08Z",
     "commitSubject": "fix(extensions): repair workflow extension + add bare-import detection guard (#2450)",
