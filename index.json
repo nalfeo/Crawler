@@ -1,5 +1,16 @@
 [
   {
+    "commit": "339c42b80b93ca7c6fb4f8106987e68e0d71a3b1",
+    "commitDate": "2026-07-31T07:05:05Z",
+    "commitSubject": "Decouple Floor 2 generated equipment rarity from base non-armor stats (#2404)",
+    "capturedAt": "2026-07-31T08:17:18.674Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30612318020",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/339c42b80b93ca7c6fb4f8106987e68e0d71a3b1.json"
+  },
+  {
     "commit": "f9b51bc6e4c51523daac0dfc613604ca58d9b0d3",
     "commitDate": "2026-07-31T06:04:37Z",
     "commitSubject": "fix(ci-recovery): resolve stalled recovery loop on PR #2416 — post missing ✅ thread replies (#2421)",
