@@ -1,0 +1,35 @@
+name: achv-icons-batch-10
+type: icon
+description: 'Achievement icon batch 10: pixel-art symbols for dungeon achievements on Floor 2.'
+floor: 2
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells:
+      - [1, 0]
+      - [1, 1]
+      - [1, 2]
+      - [1, 3]
+      - [2, 0]
+      - [2, 1]
+      - [2, 2]
+      - [2, 3]
+      - [3, 0]
+      - [3, 1]
+      - [3, 2]
+      - [3, 3]
+    nativeCanvas: 1024
+iconBatch:
+  - id: achv-floor2-run-two-floor-gauntlet
+    concept: 'Two-Floor Gauntlet'
+    description: 'Icon for the "Two-Floor Gauntlet" achievement (Clear two floors in the same run.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-run-skill-of-the-season
+    concept: 'Skill of the Season'
+    description: 'Icon for the "Skill of the Season" achievement (Reach skill level 10 in any skill, at any point in the run.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-run-fully-outfitted
+    concept: 'Fully Outfitted'
+    description: 'Icon for the "Fully Outfitted" achievement (Unlock the equipment system, tracked for the rest of the run.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-run-ability-collector
+    concept: 'Ability Collector'
+    description: 'Icon for the "Ability Collector" achievement (Unlock 6 abilities across the run.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

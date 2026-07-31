@@ -128,7 +128,10 @@ export interface QueueCommitOptions {
    * generic "any CI caller" path.
    */
   readonly ciAuthorization?: {
-    readonly caller: 'asset-request-publisher' | 'theme-equipment-publisher';
+    readonly caller:
+      | 'asset-request-publisher'
+      | 'theme-equipment-publisher'
+      | 'icon-batch-publisher';
   };
   /**
    * Optional same-key conflict guard. Runs inside every CAS attempt against the
@@ -450,6 +453,14 @@ function isAuthorizedAssetPublisher(env: NodeJS.ProcessEnv, options: QueueCommit
       env.GITHUB_ACTIONS === 'true' &&
       typeof env.GITHUB_WORKFLOW_REF === 'string' &&
       env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/theme-equipment.yml@')
+    );
+  }
+  if (caller === 'icon-batch-publisher') {
+    return (
+      env.SPRITES_ALLOW_CI_ICON_BATCH_PUBLISH === 'true' &&
+      env.GITHUB_ACTIONS === 'true' &&
+      typeof env.GITHUB_WORKFLOW_REF === 'string' &&
+      env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/icon-batch.yml@')
     );
   }
   return false;

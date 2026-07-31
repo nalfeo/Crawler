@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "icon-batch-pipeline",
+  "task_title": "Icon batch generation pipeline (CLI + GH Actions + canvas)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "5 blocking concerns found: (1) brief generators emitted variantCount (not a schema field) and did not set generation.sheet.emptyCells for partial batches; (2) approveIconBatch index mapping unsafe if pipeline drops cells; (3) approval bypassed quality gates - hard-block gate added in approveIconBatch matching approveVariant contract; (4) runtime lookup model gap - documented in handoff as consumer-side follow-on; (5) issue body parsing used raw contains() checks instead of form-markdown parsing. All 5 blocking concerns addressed. Plan divergence: minor - no re-architecture, only bug fixes to existing design."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 12,
+          "resolved_count": 12,
+          "clean": true,
+          "notes": "PR review found 12 issues; all resolved: exact count-match guard (both directions), icon-batch-publisher CI authorization, rethrow in CI for queue failures, canonical ability registry (getAllAbilityDefinitions), shell injection via env: mapping + kebab validation, generate-briefs persistence via commit+push, per-cell brief-match instructions for judge, local-a1111 icon type support, run-all skips fully-approved batches, tests for approveIconBatch. Hard-block gate was resolved in round 1 (a44f77ea); review ledger updated to reflect."
+        }
+      ]
+    }
+  }
+}
