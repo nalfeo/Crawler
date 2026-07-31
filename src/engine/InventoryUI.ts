@@ -950,7 +950,9 @@ export function createInventoryUI(
           : undefined;
       const artKey = instance?.frozen.artKey;
       const sprite = selectGeneratedEntry(
-        entry.kind === 'stackable-static-item' ? entry.itemId : (instance?.baseId ?? entry.instanceKey),
+        entry.kind === 'stackable-static-item'
+          ? entry.itemId
+          : (instance?.baseId ?? entry.instanceKey),
       );
       const textureKey =
         artKey && scene.textures?.exists(artKey) ? artKey : (sprite?.textureKey ?? '');
