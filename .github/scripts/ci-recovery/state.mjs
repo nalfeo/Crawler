@@ -48,10 +48,16 @@ export function hasSubstantiveCopilotReview(reviews) {
   return (reviews || []).some(isSubstantiveCopilotReview);
 }
 
-export function admissionWaitReasons(requiredChecks, reviews) {
+export function admissionWaitReasons(
+  requiredChecks,
+  reviews,
+  { skipSubstantiveReview = false } = {},
+) {
   return [
     ...(requiredChecks || []),
-    ...(!hasSubstantiveCopilotReview(reviews) ? ['substantive-copilot-review'] : []),
+    ...(!skipSubstantiveReview && !hasSubstantiveCopilotReview(reviews)
+      ? ['substantive-copilot-review']
+      : []),
   ];
 }
 
@@ -140,6 +146,7 @@ export function evaluateAdmission(prFacts, config = {}) {
     requiredChecks = config.requiredChecks || DEFAULT_REQUIRED_CHECKS,
     lifecyclePhase = null,
     humanApprovalDisposition = null,
+    skipSubstantiveReview = config.skipSubstantiveReview ?? false,
   } = prFacts || {};
 
   const reasons = [];
@@ -155,7 +162,9 @@ export function evaluateAdmission(prFacts, config = {}) {
   if (mergeable === false || hasMergeConflict === true) reasons.push('not-mergeable');
 
   reasons.push(
-    ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews),
+    ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews, {
+      skipSubstantiveReview,
+    }),
   );
 
   const unresolvedCount = (reviewThreads || []).filter((thread) => !thread.isResolved).length;

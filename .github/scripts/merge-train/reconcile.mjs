@@ -363,6 +363,9 @@ async function eligible(pr) {
     reviews: review.reviews || [],
     humanApprovalDisposition: approvalRejection,
     lifecyclePhase,
+    // Asset-batch PRs from assets/promote are PNG-heavy; Copilot can't review art files
+    // and will always emit "wasn't able to review any files" — which is not a real stall.
+    skipSubstantiveReview: pr.head?.ref === 'assets/promote',
   };
   const admission = isAdmissible(prFacts, requiredAdmissionChecks);
   if (!admission.eligible) {

@@ -103,6 +103,29 @@ test('admission waits for both required checks and a substantive historical revi
   assert.deepEqual(admissionWaitReasons([], [substantiveReview]), []);
 });
 
+test('skipSubstantiveReview suppresses the substantive-copilot-review wait reason', () => {
+  const noFilesReview = {
+    author: { login: 'copilot-pull-request-reviewer' },
+    state: 'COMMENTED',
+    body: "Copilot wasn't able to review any files in this pull request.",
+    comments: { nodes: [] },
+  };
+
+  // Without skip: stalls even when Copilot can't review
+  assert.deepEqual(admissionWaitReasons(['ci'], [noFilesReview]), [
+    'ci',
+    'substantive-copilot-review',
+  ]);
+  // With skip: only real CI blockers remain
+  assert.deepEqual(admissionWaitReasons(['ci'], [noFilesReview], { skipSubstantiveReview: true }), [
+    'ci',
+  ]);
+  // With skip and no CI blockers: empty (immediately admissible)
+  assert.deepEqual(admissionWaitReasons([], [noFilesReview], { skipSubstantiveReview: true }), []);
+  // With skip and no reviews at all: still empty
+  assert.deepEqual(admissionWaitReasons([], [], { skipSubstantiveReview: true }), []);
+});
+
 test('normalizes blocker order before fingerprinting', () => {
   const left = [
     { kind: 'review-thread', id: 'B', summary: ' second  finding ' },
