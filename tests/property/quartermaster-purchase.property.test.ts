@@ -4,6 +4,7 @@ import { spawnPlayer } from '../../src/core/helpers.js';
 import { purchaseQuartermasterOffer } from '../../src/core/quartermaster-purchase.js';
 import { createInitialFloor2QuartermasterStock } from '../../src/game/quartermaster-stock.js';
 import type { Floor2SettlementSnapshot } from '../../src/shared/floor-types.js';
+import { listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function enableQuartermasterEconomy(world: ReturnType<typeof createTestWorld>): void {
@@ -51,7 +52,8 @@ describe('Quartermaster purchase properties', () => {
         if (!affordable) {
           expect(result).toMatchObject({ ok: false, reason: 'insufficient-funds' });
           expect(world.playerGold).toBe(goldBefore);
-          expect(world.inventories.get(playerEid)?.generatedEquipment).toBeUndefined();
+          const bag = world.inventories.get(playerEid);
+          expect(bag ? listGeneratedEquipmentReferences(bag) : undefined).toEqual([]);
           expect(world.floorExtendedState.settlement?.quartermasterStock?.offers[0]?.quantity).toBe(
             1,
           );
@@ -60,9 +62,10 @@ describe('Quartermaster purchase properties', () => {
 
         expect(result).toMatchObject({ ok: true, instanceId: offer.instanceId });
         expect(world.playerGold + offer.unitPrice).toBe(goldBefore);
-        expect(world.inventories.get(playerEid)?.generatedEquipment).toEqual([
-          { kind: 'generated-instance', instanceKey: offer.instanceId },
-        ]);
+        const bagAfterPurchase = world.inventories.get(playerEid);
+        expect(
+          bagAfterPurchase ? listGeneratedEquipmentReferences(bagAfterPurchase) : undefined,
+        ).toEqual([{ kind: 'generated-instance', instanceKey: offer.instanceId }]);
         expect(world.floorExtendedState.settlement?.quartermasterStock?.offers[0]?.quantity).toBe(
           0,
         );

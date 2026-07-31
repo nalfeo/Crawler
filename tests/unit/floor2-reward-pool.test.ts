@@ -16,7 +16,6 @@ import {
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import {
   generateEquipmentInstance,
-  generatedEquipmentBaseHasNonArmorStatBonus,
   _getGeneratedEquipmentBaseV1 as getGeneratedEquipmentBaseV1,
 } from '../../src/game/generated-equipment-generator.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -163,7 +162,9 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
       new Set(['accessory.leather-collar', 'accessory.leather-belt', 'accessory.iron-ring']),
     );
     for (const def of basesWithInherentNonArmorBonus) {
-      expect(generatedEquipmentBaseHasNonArmorStatBonus(def.id)).toBe(true);
+      expect(
+        Object.entries(def.statBonuses).some(([stat, v]) => stat !== 'armor' && (v ?? 0) !== 0),
+      ).toBe(true);
     }
 
     for (const [index, def] of basesWithInherentNonArmorBonus.entries()) {

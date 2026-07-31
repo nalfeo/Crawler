@@ -52,6 +52,7 @@ import {
   canAcceptGeneratedEquipment,
   hasGeneratedEquipmentReference,
   hasItem,
+  listGeneratedEquipmentReferences,
   removeGeneratedEquipmentReference,
   removeItem,
   type GeneratedEquipmentInventoryEntry,
@@ -174,7 +175,7 @@ export function findGeneratedPhysicalOwners(
 ): GeneratedPhysicalOwner[] {
   const owners: GeneratedPhysicalOwner[] = [];
   for (const [entity, bag] of world.inventories) {
-    for (const entry of bag.generatedEquipment ?? []) {
+    for (const entry of listGeneratedEquipmentReferences(bag)) {
       if (entry.instanceKey !== instanceKey) continue;
       owners.push({ container: 'bag', entity });
     }

@@ -1,5 +1,5 @@
 import type { GameWorld } from './world.js';
-import { addItem, type InventoryBag } from '../shared/inventory.js';
+import { addItem, cloneInventoryBag, type InventoryBag } from '../shared/inventory.js';
 import type { Floor2ShopInstance, Floor2ShopInventoryItem } from '../shared/floor-types.js';
 import { getItemById } from '../shared/items.js';
 import type { EquipmentItemDef } from '../shared/equipment-types.js';
@@ -60,14 +60,6 @@ function failure(
   message: string,
 ): Extract<SettlementShopPurchaseResult, { readonly ok: false }> {
   return { ok: false, reason, message };
-}
-
-function cloneBag(bag: InventoryBag): InventoryBag {
-  return {
-    ...bag,
-    slots: bag.slots.map((slot) => ({ ...slot })),
-    generatedEquipment: bag.generatedEquipment?.map((entry) => ({ ...entry })),
-  };
 }
 
 function resolveShop(world: GameWorld, shopNpcEid: number): Floor2ShopInstance | undefined {
@@ -187,7 +179,7 @@ export function purchaseSettlementShopOffer(
     return result;
   }
   const { settlement, shop, lineItem, catalogItemId, bag } = result.prepared;
-  const nextBag = cloneBag(bag);
+  const nextBag = cloneInventoryBag(bag);
   addItem(nextBag, catalogItemId, request.quantity);
   const nextShop: Floor2ShopInstance = {
     ...shop,

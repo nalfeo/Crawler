@@ -3,6 +3,7 @@ import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-re
 import { isAchievementClaimed } from '../../core/systems/achievementRewards.js';
 import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
 import { type GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
+import { listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import { FLOOR2_TIMEOUT_GOAL_ID } from '../floor2Scenario.js';
 import type { EquipmentPlayabilityMetrics } from './types.js';
 
@@ -19,7 +20,7 @@ export function collectEquipmentPlayabilityMetrics(
 ): EquipmentPlayabilityMetrics {
   const bag = world.inventories.get(playerEid);
   const equipmentState = getEquipmentState(world, playerEid);
-  const baggedEntries = bag?.generatedEquipment ?? [];
+  const baggedEntries = bag ? listGeneratedEquipmentReferences(bag) : [];
   const equippedInstanceIds = new Set(
     Object.values(equipmentState?.equipped ?? {}).filter(
       (instanceId): instanceId is GeneratedEquipmentInstanceKey => typeof instanceId === 'string',
