@@ -1,0 +1,323 @@
+# tile-door-open-side-v1 -- SIDE-ON (E/W) **OPEN** DOOR
+#
+# Texture key consumed by `src/engine/sprites/door-visuals.ts` ->
+# `openVertical: 'tile-door-open-side-v1-var-0'`. Sibling of the shipped
+# `tile-door-sideon-v1-var-0` (side-on CLOSED, opaque box 54x114, aspect 0.474).
+#
+# ---------------------------------------------------------------------------
+# HISTORY AND ROOT-CAUSE DIAGNOSIS (Asset Forge, 2026-07-30 / 2026-07-31)
+# ---------------------------------------------------------------------------
+# This brief REPLACES two dead ends. Read this before revising it.
+#
+# DEAD END 1 -- `briefs/tiles/tile-door-open-side-v1.yaml` (deleted by this
+#   brief). Full-bleed `type: tile`, face-on art, quarter-turned by the
+#   renderer at draw time. The maintainer retired that convention outright
+#   ("for e/w doors you need totally different sprites; you can't just rotate
+#   an existing one") because rotating a 6.5 ft-tall door pins its 6.5 ft axis
+#   ACROSS the 4 ft corridor slot and overhangs onto walkable floor.
+#
+# DEAD END 2 -- `briefs/props/tile-door-sideon-open-v1.yaml`. Natively side-on,
+#   correct contract, but it described the subject as **an empty gap**: the
+#   door swung fully away into the room so that NOTHING of the leaf was
+#   visible, leaving only a stone jamb strip beside a flat dark void. Six
+#   generation attempts across four brief revisions (runs 2026-07-30
+#   T05-16-59, T05-20-07, T05-36-44, T05-45-41) produced a rounded-top,
+#   symmetric ARCHWAY in 48 of 49 extracted candidates. That session concluded
+#   "generator capability ceiling".
+#
+# WHY DEAD END 2 REALLY FAILED -- it is a BRIEF bug, not a generator ceiling.
+#   The brief asked for a subject defined almost entirely by NEGATION: "a tall
+#   thin strip of stone with a dark nothing next to it, and DO NOT draw an arch
+#   / a lintel / a keystone / stone on both sides / a curved top". A
+#   near-featureless dark void framed by stone has exactly one strong archetype
+#   in an image model's prior -- an archway -- and negative prompting cannot
+#   delete an archetype, it can only fail to summon a competing one. Every
+#   revision added MORE bans and no positive subject, so every revision made
+#   the problem worse.
+#
+# ---------------------------------------------------------------------------
+# REVISION 1 (2026-07-31, run T01-10-34) -- ARCHWAY SOLVED, PROJECTION NOT.
+# ---------------------------------------------------------------------------
+# Revision 1 applied the fix above: it put the DOOR LEAF back in the picture
+# (a door standing AJAR is a strong positive archetype, structurally
+# incompatible with an archway). It worked, decisively and on the first
+# attempt: 16/16 candidates were doors standing ajar, and NOT ONE was an
+# archway. The "generator ceiling" finding is therefore retired -- the archway
+# regression was caused by the brief, and naming a positive subject fixed it.
+#
+# But revision 1 failed a DIFFERENT gate, and failed it invisibly: all 16
+# candidates were 7/7 on sensors and the top two scored 5/5/5/5 from the VLM
+# judge, while every single one was a FACE-ON stone door FRAME -- two stone
+# posts plus a lintel across the top, seen head-on, with the leaf swung toward
+# the camera. Measured aspect landed 0.805-0.891, i.e. indistinguishable from
+# the face-on `tile-door-open-v1-var-0` (0.789). Caught by mandatory visual
+# inspection; nothing from revision 1 was approved. This is the same trap the
+# earlier sessions hit: NO GATE IN THIS PIPELINE MEASURES VIEWING ANGLE.
+#
+# WHY: the brief described the subject band-by-band but never told the model
+# what fraction of the CELL to occupy, and it left the word "doorway" doing the
+# work. "Doorway" summons a complete stone surround; a complete stone surround
+# is only drawable head-on; head-on forces a near-square aspect. The bans on
+# "stone on the right" / "stone across the top" were, again, negations without
+# a competing positive.
+#
+# ---------------------------------------------------------------------------
+# REVISION 2 (2026-07-31) -- THE LEVERS THIS BRIEF NOW PULLS
+# ---------------------------------------------------------------------------
+# 1. POSITIVE ANCHOR ON THE SHIPPED SIBLING, NOT ON THE WORD "DOORWAY". The
+#    prose now starts from `tile-door-sideon-v1-var-0`'s actual, approved,
+#    verifiable composition -- TWO vertical bands, grey stone blocks on the
+#    left and brown timber on the right, no frame, no lintel, nothing above --
+#    and asks for ONE change: the timber band swings toward the viewer. The
+#    reference selector feeds our own approved door art at generate time, so
+#    the model can see that sibling. Describing a delta from a real image the
+#    model is looking at is a far stronger lever than describing an abstraction.
+#
+# 2. GENUINELY PORTRAIT SHEET CELLS (`generation.sheet: 2 rows x 4 cols`).
+#    This is the structural lever, and revision 1 did not have it. The default
+#    4x4 grid on a 1024 canvas gives 256x256 SQUARE cells -- the model was
+#    handed a square and drew a square, exactly as the earlier sessions
+#    observed. Note that the closed sibling's brief claimed a "narrow 48x128
+#    canvas" as its structural fix; that claim was wrong -- `size:` is the
+#    OUTPUT size after transparent-trim and resize, and never reached the
+#    model. This revision changes the thing the model actually sees: 2x4 on a
+#    1024 canvas yields 256 x 512 PORTRAIT cells (aspect 0.5), so a square
+#    framed doorway physically cannot fill one.
+#
+# 3. Explicit cell-occupancy proportions ("the middle third; the outer thirds
+#    are empty background") replace revision 1's vague "leave a clear band".
+#
+# ---------------------------------------------------------------------------
+# REVISION 3 (2026-07-31, after run T01-21-34) -- GEOMETRY SOLVED, LINTEL NOT.
+# ---------------------------------------------------------------------------
+# Revision 2's two levers WORKED on everything they targeted. All 8 candidates
+# were genuinely oblique/side-on (the wall runs into depth, the leaf swings
+# toward the camera -- no longer the head-on elevation of revision 1), and the
+# measured aspect landed 0.539-0.602, dead in the 0.55-0.70 sweet spot and
+# clearly below the face-on open door's 0.789. The portrait-cell lever is
+# confirmed: give the model a portrait cell and it composes portrait.
+#
+# The run still failed, and this time the pipeline caught it by itself: the VLM
+# judge hard-blocked all 8 (brief_match 1/5, design_language 2/5) citing "the
+# inclusion of a stone lintel, which is explicitly forbidden". Every candidate
+# wrapped the doorway in a full stone surround -- two posts plus a bridging
+# lintel -- and drifted the stone from cool grey to warm brown. Nothing was
+# approved. Worth recording: this is the FIRST round in this brief's history
+# where the automated gates and the eyeball agreed, because a lintel is a
+# nameable object the judge can see, whereas viewing angle is not.
+#
+# Revision 3 changes the frame problem the same way revision 1 changed the
+# archway problem -- by substituting a POSITIVE archetype rather than adding
+# another ban. "A stone GATEPOST with a gate hanging open on it" is a familiar
+# subject that structurally cannot have a lintel (a gatepost stands alone), and
+# it replaces "a doorway in a wall", which structurally must have one.
+#
+# ---------------------------------------------------------------------------
+# REVISION 4 (2026-07-31, after run T01-29-14) -- THE LINTEL BAN WAS THE BUG.
+# ---------------------------------------------------------------------------
+# Revision 3 fixed the palette drift (all 8 candidates were correct cool grey)
+# and held the geometry (aspects 0.602-0.648 on canvas; opaque box 63x114 =
+# 0.553 on the best candidate). The gatepost substitution did NOT land: all 8
+# still drew a full squared stone surround with a flat lintel, and the judge
+# again hard-blocked on brief_match 1/5 citing that lintel.
+#
+# At that point the honest question is not "how do I beat the lintel out of the
+# model" but "why is a lintel forbidden at all". It is not forbidden by the
+# maintainer's art contract, which asks only for: side-on projection (not
+# top-down), an opaque box that is portrait with transparent margins left and
+# right (target aspect 0.45-0.85), family consistency with
+# `tile-door-sideon-v1-var-0`, and an unmistakable read of "this doorway is
+# OPEN and walkable". A flat stone lintel violates none of those. It is also
+# what the REST OF THE SHIPPED DOOR FAMILY looks like: `tile-door-v1-var-9` and
+# `tile-door-open-v1-var-0` are both full stone surrounds.
+#
+# The ban was inherited, unexamined, from the DEAD END 2 lineage above, where
+# it existed only as collateral damage from that brief's (justified) panic
+# about ARCHWAYS. Banning the arch is correct; banning the flat lintel and the
+# far jamb along with it was over-constraint, and it is what three rounds of
+# generation were actually failing against. A side-on view of a real doorway
+# genuinely does show the near jamb, the reveal, and the head of the opening.
+#
+# So revision 4 removes the lintel/second-jamb ban and keeps every ban that
+# serves the contract: no arch, no curve, no keystone, no head-on symmetry, no
+# full-bleed, no square. The oblique-not-head-on requirement is restated
+# positively, and the stone is explicitly capped at "one block thick, slimmer
+# than the opening plus leaf" so the masonry cannot swell and push the aspect
+# back toward square. NOTE FOR REVIEWERS: this is a brief correction, not a
+# gate relaxation -- no sensor bound was loosened and the judge's <3 reject
+# threshold is untouched; the judge is simply now scoring against the real
+# contract instead of an inherited clause that contradicted it.
+#
+# GEOMETRY CONTRACT (maintainer, 2026-07-30): opaque box must be clearly
+#   PORTRAIT with real transparent margin on BOTH left and right -- never
+#   square, never landscape, never full-bleed. Target aspect 0.45-0.85 (w:h),
+#   and it should sit BELOW the face-on open door's 0.789 so the two states are
+#   visually distinguishable in play; ~0.55-0.70 is the sweet spot. It should
+#   be somewhat WIDER than the closed side-on door's 0.474, because the leaf
+#   swings toward the viewer and presents foreshortened width the closed
+#   edge-on door does not.
+#
+# `type: prop` (not `tile`): free-standing bottom-anchored overlay, no baked
+#   wall stone bleeding to the cell edges -- same as the closed sibling.
+type: prop
+name: tile-door-open-side-v1
+description: |
+  Modern high-quality pixel art of a heavy dungeon door STANDING AJAR, seen
+  from the SIDE. Silhouette readable at 16px. Draw ONE object, free-standing,
+  on empty background.
+
+  THINK OF THE STONE REVEAL OF A DOORWAY SEEN FROM THE SIDE. You are standing
+  in the corridor looking ALONG the wall, so the doorway is turned away from
+  you and you see it obliquely: the near jamb closest to you, the squared
+  stone reveal running back into the wall's thickness, and the dark room
+  beyond. The stone surround is SQUARED AND FLAT-TOPPED -- straight jambs and
+  a straight flat lintel, blocky masonry, never an arch.
+
+  THE STONE IS SLIM. It is one block thick, a plain border, not a monument.
+  The dark opening and the timber leaf together must take up MORE of the
+  picture's width than the stone does. Do not let the masonry swell into a
+  thick frame that dominates the sprite.
+
+  START FROM THE CLOSED SIDE-ON DOOR IN THIS GAME FOR MATERIALS AND MOOD.
+  That sprite -- the one you should treat as your reference for colour and
+  texture -- is a TALL NARROW VERTICAL STRIP of just two bands: cool grey
+  blocky stone on the left, aged dark walnut-brown timber on the right. Use
+  exactly those two materials, exactly those colours, and the same weathering
+  and outline weight here:
+    - the STONE: cool grey blocky masonry, one block thick, forming the near
+      jamb on the left and a slim squared reveal that carries up and across
+      the top as a straight flat lintel. Weathered, chipped, unfussy.
+    - the TIMBER: aged dark walnut-brown planks with tight vertical seams and
+      dull dark iron strap-work.
+
+  THE DOOR IS SWUNG OPEN TOWARD YOU. Its far vertical edge is still hinged
+  inside the reveal; its near vertical edge has swung out of the wall toward
+  the camera, maybe thirty degrees. So:
+    - a narrow upright sliver of OPAQUE near-black opens up between the jamb
+      and the timber -- the unlit room beyond, painted solid, never
+      transparent, lifting one tone stop near its base so it reads as depth;
+    - the timber leaf, now angled, is FORESHORTENED -- plank seams squeezed
+      close together, one or two iron straps compressed into short dark
+      horizontal bars with a few rivets, its outer edge catching the corridor
+      light and its inner face falling into shadow;
+    - the leaf's foot lands on the floor line slightly to the RIGHT of and
+      slightly BELOW the jamb's foot, because it has swung nearer to you.
+  A sliver of soft dark shadow pools where the stone and the leaf meet the
+  floor, grounding both.
+
+  IT IS A TALL NARROW SUBJECT. The finished piece is clearly TALLER THAN IT IS
+  WIDE -- roughly HALF AGAIN to TWICE as tall as it is wide, and never square.
+  If your drawing is as wide as it is tall, it is wrong.
+
+  HOW TO FILL THE CELL. Each cell of this sheet is a TALL PORTRAIT RECTANGLE,
+  twice as tall as it is wide. Draw the doorway down the MIDDLE of the cell,
+  running nearly the full height, floor to top. Leave the LEFT THIRD and the
+  RIGHT THIRD of the cell as EMPTY BACKGROUND. The artwork must NOT reach the
+  left or the right border of the cell.
+
+  DO NOT DRAW IT HEAD-ON. The wrong version -- and it is the most common
+  mistake for this subject -- is a flat, symmetric, front elevation: two
+  identical jambs left and right with the leaf swung straight at the camera
+  between them, as wide as it is tall. This piece is seen OBLIQUELY, from the
+  side, along the wall: the two jambs are NOT mirror images, the near one
+  reads closer and heavier than the far one, and the whole subject is
+  distinctly narrow. If your silhouette is symmetric left-to-right, redraw it.
+
+  THE STONE IS COOL GREY. Blue-grey, desaturated, the same grey as the closed
+  side-on door -- NOT warm brown, NOT tan, NOT sandy, NOT beige. Only the
+  timber is brown.
+
+  DO NOT DRAW AN ARCH. No curved top, no domed crown, no pointed top, no
+  keystone, anywhere.
+
+  REAL-WORLD SIZE. The doorway fits a wall slot about 4 FEET WIDE and stands
+  about 6.5 FEET TALL, so a 5.75 ft person walks through with headroom.
+
+  EXACTLY ONE door per cell. Never a pair of doors, never two leaves, never a
+  doorway you are looking through face-on into a room.
+
+  IT IS NOT: a closed door, a front-facing door, a front-facing open doorway
+  you can see straight through, an ARCH or ARCHWAY of any kind, a rounded or
+  curved lintel, a keystone, a portcullis, a double door, a cupboard, a
+  wardrobe, a window, a shutter, a mine shaft, or a cave mouth.
+
+  MOOD -- a grimy reality-TV dungeon. The way through is open and it is not
+  reassuring: the timber is tired and heavy, the dark beyond is flat and
+  unlit.
+
+  COLOUR -- the timber is a warm desaturated walnut-brown with 4-5 tone stops
+  so the plank seams and the foreshortening read clearly; the iron straps and
+  rivets are dull dark grey-black metal with tarnished rust-brown streaks; the
+  stone post is the same cool desaturated grey as the closed side-on door; the
+  opening is a very dark desaturated blue-black, near-black but not pure
+  black. It must NOT be pale, washed out or low-contrast. BANNED: neon, pure
+  white, pure black, saturated red, saturated yellow, orange, teal, cyan,
+  blue, green, magenta, purple, gold leaf, gemstones, glowing runes, magical
+  glow, torchlight glare, visible fire, and any ornate carved fantasy
+  filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently -- the same
+  direction as the closed side-on door, because it is the same wall.
+  Highlights sit on the upper-left of the post's stones and on the leaf's
+  outer edge; shadow falls down and to the right.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering for stone and timber grain -- no mushy
+  gradients, no airbrush, no floating unsupported elements.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils,
+  labels, captions, watermarks or signatures anywhere.
+
+  BACKGROUND: fully transparent OUTSIDE the subject's own silhouette. Draw
+  ONLY the slim stone reveal, the dark opening, and the swung leaf. Do NOT
+  paint a masonry wall face spreading out to either side, a floor slab, a
+  rectangular backing panel, a border, a vignette, or any cast/contact/drop
+  shadow beyond the small grounding sliver described above.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the artwork so it can
+  be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 64
+  height: 128
+anchor:
+  x: 32
+  y: 126
+generation:
+  sheet:
+    # 2 rows x 4 cols on a 1024 canvas = 256 wide x 512 tall PORTRAIT cells.
+    # This is the load-bearing structural lever of revision 2 (see the header):
+    # the default 4x4 square cells are what produced 16/16 square, face-on
+    # framed doorways in revision 1. Only 8 candidates, which also matches
+    # `judge.maxVariants` so every candidate is judged rather than capped out.
+    rows: 2
+    cols: 4
+    nativeCanvas: 1024
+sensors:
+  # Three vertical bands down the middle third of a portrait cell, with real
+  # transparent margins left and right: the subject covers most of the height
+  # but leaves genuine empty space on both sides. Bounds are wide enough to
+  # admit a legitimately-composed post-plus-leaf and narrow enough to exclude a
+  # full-bleed rectangle (which would land at ~1.0).
+  opaqueRatio:
+    min: 0.3
+    max: 0.85
+  # Same derived, grounded anchor as the closed sibling -- the subject is one
+  # mass whose exact width varies by candidate.
+  anchor:
+    derive: true
+    mode: center-of-mass
+    bandRows: 8
+    centerToleranceX: 8
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+  - side-on
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

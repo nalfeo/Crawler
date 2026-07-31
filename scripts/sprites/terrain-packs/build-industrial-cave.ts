@@ -44,11 +44,7 @@ import {
 import { composeWallCellOutput } from './compose-wall-cell.js';
 import { encodePng, compositeInto, createImage, setPixel, type RgbaImage } from './png-buffer.js';
 import { generateQuadrantKit } from './quadrant-kit.js';
-import {
-  renderDoorTile,
-  renderSpeckledSurface,
-  type SurfacePalette,
-} from './procedural-surfaces.js';
+import { renderSpeckledSurface, type SurfacePalette } from './procedural-surfaces.js';
 import { deriveAllowedTransforms } from './transform-eligibility.js';
 import { buildWallAccentAtlas } from './wall-accent-tools.js';
 
@@ -235,25 +231,6 @@ export function buildIndustrialCavePack(): IndustrialCaveBuildResult {
     throw new Error(`Expected ${WALL_ACCENT_COUNT} wall accents, built ${wallAccents.length}`);
   }
 
-  // --- Doors -----------------------------------------------------------------
-  const doorSpecs = [
-    { key: 'openHorizontal', isOpen: true, orientation: 'horizontal' as const },
-    { key: 'openVertical', isOpen: true, orientation: 'vertical' as const },
-    { key: 'closedHorizontal', isOpen: false, orientation: 'horizontal' as const },
-    { key: 'closedVertical', isOpen: false, orientation: 'vertical' as const },
-  ];
-  const doorEntries: Record<string, { imagePath: string; textureKey: string }> = {};
-  for (const spec of doorSpecs) {
-    const img: RgbaImage = renderDoorTile(spec.isOpen, spec.orientation);
-    const fileName = `door-${spec.isOpen ? 'open' : 'closed'}-${spec.orientation}.png`;
-    const relPath = `${packDir}/${fileName}`;
-    files.push({ relativePath: relPath, buffer: encodePng(img) });
-    doorEntries[spec.key] = {
-      imagePath: relPath,
-      textureKey: `terrain-pack-industrial-cave-door-${spec.isOpen ? 'open' : 'closed'}-${spec.orientation}`,
-    };
-  }
-
   const manifest: TerrainPackDef = {
     id: INDUSTRIAL_CAVE_PACK_ID,
     name: 'Industrial Cave',
@@ -278,7 +255,6 @@ export function buildIndustrialCavePack(): IndustrialCaveBuildResult {
     },
     floorPool,
     corridorPool,
-    doorSet: doorEntries as TerrainPackDef['doorSet'],
     wallAccents,
   };
 
