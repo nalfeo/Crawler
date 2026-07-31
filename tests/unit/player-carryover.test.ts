@@ -1497,13 +1497,13 @@ describe('player floor carryover', () => {
     );
   });
 
-  it('does not re-emit weaponAbilityActivate VFX for a general passive across a floor carryover round trip', () => {
+  it('does not re-emit abilityActivateFlash VFX for a general passive across a floor carryover round trip', () => {
     // Regression guard for a hypothesis raised in review: does restoring
     // carryover reset appliedPassiveAbilityIds (it does — persistentStatModifiers
     // deliberately excludes passive-ability modifiers, see the test above) in a
     // way that causes applyPassive() to re-fire VFX for every owned general
     // passive on every floor transition? It must not, because applyPassive()
-    // only emits weaponAbilityActivate for weapon-gated passives
+    // only emits abilityActivateFlash for weapon-gated passives
     // (def.weaponPrerequisite !== undefined) — general passives get their
     // one-time unlock VFX from the level-5 skill milestone site instead.
     const source = createTestWorld({ seed: 4242 });
@@ -1516,7 +1516,7 @@ describe('player floor carryover', () => {
     ).toBe(true);
     // First application (via abilitySystem's synchronizeAbilityPassives pass)
     // must not have emitted VFX for this no-prerequisite passive.
-    expect(source.vfxEvents.filter((e) => e.kind === 'weaponAbilityActivate')).toHaveLength(0);
+    expect(source.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(0);
 
     const snapshot = capturePlayerCarryover(source, sourcePlayer);
     // Confirmed exclusion: combat-flow's stat modifier is never carried as a
@@ -1543,7 +1543,7 @@ describe('player floor carryover', () => {
         modifier.sourceId.startsWith(`combat-flow:passive:${destinationPlayer}:`),
       ),
     ).toHaveLength(2);
-    expect(destination.vfxEvents.filter((e) => e.kind === 'weaponAbilityActivate')).toHaveLength(0);
+    expect(destination.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(0);
   });
 
   it('fails closed with PlayerCarryoverSnapshotError on malformed array-typed fields', () => {

@@ -33,6 +33,8 @@ export type VfxEffectKind =
   | 'fireballBlast'
   | 'pulseShieldWave'
   | 'healGlow'
+  // Passive became active this tick (including re-activation after prerequisite
+  // changes), not a one-time unlock-only signal.
   | 'abilityActivateFlash'
   | 'arcaneBoltImpact'
   | 'frostNovaBurst'

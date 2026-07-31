@@ -51,6 +51,7 @@ const COLOR_FIREBALL_RING = 0xff5522;
 const COLOR_PULSE_SHIELD_INNER = 0xe0f7ff;
 const COLOR_PULSE_SHIELD_RING = 0x38bdf8;
 const COLOR_HEAL_GLOW = 0x86efac;
+// Shared tint for passive-activation flash bursts.
 const COLOR_ABILITY_ACTIVATE = 0xc084fc;
 const COLOR_ARCANE_BOLT = 0xc084fc;
 const COLOR_FROST_NOVA = 0x93c5fd;

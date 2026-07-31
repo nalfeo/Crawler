@@ -802,8 +802,8 @@ function applyPassive(
   // General (no-prerequisite) passives deliberately do NOT get VFX here:
   // applyPassive() is re-run on every synchronizeAbilityPassives() pass
   // (including session/floor reload and stat carryover), so an unconditional
-  // VFX would misleadingly replay "unlock" feedback for a passive granted
-  // long ago. General passives instead get their one-time unlock VFX (and the
+  // VFX would misleadingly replay one-time unlock feedback for a passive granted
+  // long ago. General passives instead get their one-time milestone VFX (and the
   // skillPassiveUnlocked announcement) from the level-5 skill milestone grant
   // site — see skillSystem.ts.
   if (def.weaponPrerequisite !== undefined && hasComponent(world.ecs, holderEid, Player)) {
