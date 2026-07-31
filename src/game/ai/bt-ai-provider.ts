@@ -292,6 +292,7 @@ import {
 import {
   buildRunPlanCacheKey,
   estimateFloor1RunPlan,
+  planFloor1ObjectiveRoute,
   type Floor1RunPlan,
   type Floor1RunPlannerSnapshot,
   type RunPlanSegmentPhase,
@@ -920,9 +921,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     stateKey: string;
     goalId: string | null;
   } | null = null;
-  /** Cached result of {@link estimateCurrentRunPlan}, keyed on quest-state + budget bucket + speed.
-   * Invalidated when any input that affects route ordering changes. Cleared on {@link reset}. */
-  private runPlanCache: Floor1RunPlan | null = null;
+  /** Cached result of {@link planFloor1ObjectiveRoute}, keyed on quest-state + budget bucket + speed.
+   * Exact timing and segment travel are recomputed per frame from the live snapshot. Cleared on {@link reset}. */
+  private runPlanCache: ReturnType<typeof planFloor1ObjectiveRoute> | null = null;
   private runPlanCacheKey: string | null = null;
   /**
    * Locked doors the AI is currently aware of, keyed by door entity. Populated
@@ -4284,13 +4285,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
     const params = this.getRunPlannerParams(playerSpeedFtPerFrame);
     const cacheKey = buildRunPlanCacheKey(snapshot, params);
-    if (cacheKey === this.runPlanCacheKey && this.runPlanCache !== null) {
-      return this.runPlanCache;
+    let route = this.runPlanCache;
+    if (cacheKey !== this.runPlanCacheKey || route === null) {
+      route = planFloor1ObjectiveRoute(snapshot, params);
+      this.runPlanCacheKey = cacheKey;
+      this.runPlanCache = route;
     }
-    const plan = estimateFloor1RunPlan(snapshot, params);
-    this.runPlanCacheKey = cacheKey;
-    this.runPlanCache = plan;
-    return plan;
+    return estimateFloor1RunPlan(snapshot, params, route);
   }
 
   private getMerchantDecisionRunPlan(

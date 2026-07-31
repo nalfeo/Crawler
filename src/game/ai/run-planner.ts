@@ -14,7 +14,11 @@
  * into the {@link RunPlanSegment} shape existing consumers expect.
  */
 
-import { IN_PLACE_LOCATION, planObjectiveRoute } from './objective-route-planner.js';
+import {
+  IN_PLACE_LOCATION,
+  planObjectiveRoute,
+  type ObjectiveRoute,
+} from './objective-route-planner.js';
 import {
   applyFloor1WorkCosts,
   buildFloor1GoalGraph,
@@ -187,6 +191,18 @@ export interface Floor1RunPlan {
   readonly droppedOptionalBundleIds: readonly string[];
 }
 
+const EMPTY_OBJECTIVE_ROUTE: ObjectiveRoute = {
+  steps: [],
+  totalTravelMs: 0,
+  totalWorkMs: 0,
+  totalMs: 0,
+  includedOptionalBundleIds: [],
+  droppedOptionalBundleIds: [],
+  requiredOverBudget: false,
+  routeHeadId: null,
+  nextActionableGoalId: null,
+};
+
 export function canFarmOptionalMerchantPurchase(
   plan: Pick<Floor1RunPlan, 'slackMs'> | null,
   goldDeficit: number,
@@ -218,9 +234,70 @@ function travelTimeMs(
   return distance(from, to) / Math.max(params.moveSpeedFtPerMs, EPSILON);
 }
 
+export function planFloor1ObjectiveRoute(
+  snapshot: Floor1RunPlannerSnapshot,
+  params: RunPlannerParams,
+): ObjectiveRoute {
+  const rawGoalGraph = buildFloor1GoalGraph(snapshot);
+  const goalGraph = applyFloor1WorkCosts(rawGoalGraph, snapshot, params);
+
+  if (goalGraph.goals.length === 0) {
+    return EMPTY_OBJECTIVE_ROUTE;
+  }
+
+  const travelOracle = makeStraightLineTravelOracle(goalGraph.locations, params.moveSpeedFtPerMs);
+
+  // --- Committed-detour budget and goal-identity accounting ---------------
+  // The planner already starts from the detour endpoint (PLAYER_START_LOCATION
+  // maps to currentTarget when activeQuestGiverDetour). Subtract the detour's
+  // own travel+work cost from the budget so optional bundles that only fit
+  // BEFORE the detour cost are correctly dropped.
+  const detourTarget = snapshot.activeQuestGiverDetour ? snapshot.currentTarget : null;
+  const detourCostMs = detourTarget
+    ? travelTimeMs(snapshot.player, detourTarget, params) + params.interactionMs
+    : 0;
+  const rawBudgetMs = Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs);
+  const planBudgetMs = Math.max(0, rawBudgetMs - detourCostMs);
+
+  // If the detour fulfills an explicit graph goal, treat that goal as already
+  // completed so it is neither replanned nor double-charged. Its unlockEffects
+  // are merged into initialSatisfiedEffects so the DP's hypothetical effect set
+  // is not retroactively missing them.
+  const committedGoalId = detourTarget?.committedGoalId ?? null;
+  let effectiveInitialEffects = goalGraph.initialSatisfiedEffects;
+  let effectiveGoals = goalGraph.goals;
+  let effectiveCompletedGoalIds: ReadonlySet<string> | undefined;
+
+  if (committedGoalId) {
+    const committedGoal = goalGraph.goals.find((g) => g.id === committedGoalId);
+    if (committedGoal) {
+      // Remove the fulfilled goal from the pending list.
+      effectiveGoals = goalGraph.goals.filter((g) => g.id !== committedGoalId);
+      // Add its effects to initial satisfied effects.
+      if (committedGoal.unlockEffects && committedGoal.unlockEffects.length > 0) {
+        const merged = new Set(goalGraph.initialSatisfiedEffects);
+        for (const eff of committedGoal.unlockEffects) merged.add(eff);
+        effectiveInitialEffects = merged;
+      }
+      // Declare it completed so other goals may reference it as a prerequisite.
+      effectiveCompletedGoalIds = new Set([committedGoalId]);
+    }
+  }
+
+  return planObjectiveRoute({
+    goals: effectiveGoals,
+    startLocation: PLAYER_START_LOCATION,
+    initialSatisfiedEffects: effectiveInitialEffects,
+    completedGoalIds: effectiveCompletedGoalIds,
+    budgetMs: planBudgetMs,
+    travelOracle,
+  });
+}
+
 export function estimateFloor1RunPlan(
   snapshot: Floor1RunPlannerSnapshot,
   params: RunPlannerParams,
+  route: ObjectiveRoute = planFloor1ObjectiveRoute(snapshot, params),
 ): Floor1RunPlan {
   const segments: RunPlanSegment[] = [];
   let cursor: RunPlannerPoint = snapshot.player;
@@ -262,98 +339,32 @@ export function estimateFloor1RunPlan(
     );
   }
 
-  // Declarative goal graph (see floor1-goal-graph.ts): builds the set of
-  // not-yet-completed Floor 1 goals with their true dependency structure
-  // (shop chain and spell-broker chain are independent siblings; both must
-  // finish before the staircase boss, matching the real door-lock gate), then
-  // asks the generic unlock-aware planner (objective-route-planner.ts) for
-  // the exact-optimum visitation order. This is the SAME route used to expose
-  // `routeHeadId` / `nextActionableGoalId` below, so ETA/slack and "what goal
-  // is next" always agree.
   const rawGoalGraph = buildFloor1GoalGraph(snapshot);
   const goalGraph = applyFloor1WorkCosts(rawGoalGraph, snapshot, params);
-  let routeHeadId: string | null = null;
-  let nextActionableGoalId: string | null = null;
-  let includedOptionalBundleIds: readonly string[] = [];
-  let droppedOptionalBundleIds: readonly string[] = [];
 
-  if (goalGraph.goals.length > 0) {
-    const travelOracle = makeStraightLineTravelOracle(goalGraph.locations, params.moveSpeedFtPerMs);
-
-    // --- Committed-detour budget and goal-identity accounting ---------------
-    // The planner already starts from the detour endpoint (PLAYER_START_LOCATION
-    // maps to currentTarget when activeQuestGiverDetour).  Subtract the detour's
-    // own travel+work cost from the budget so optional bundles that only fit
-    // BEFORE the detour cost are correctly dropped.
-    const detourTarget = snapshot.activeQuestGiverDetour ? snapshot.currentTarget : null;
-    const detourCostMs = detourTarget
-      ? travelTimeMs(snapshot.player, detourTarget, params) + params.interactionMs
-      : 0;
-    const rawBudgetMs = Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs);
-    const planBudgetMs = Math.max(0, rawBudgetMs - detourCostMs);
-
-    // If the detour fulfills an explicit graph goal, treat that goal as already
-    // completed so it is neither replanned nor double-charged.  Its unlockEffects
-    // are merged into initialSatisfiedEffects so the DP's hypothetical effect set
-    // is not retroactively missing them.
-    const committedGoalId = detourTarget?.committedGoalId ?? null;
-    let effectiveInitialEffects = goalGraph.initialSatisfiedEffects;
-    let effectiveGoals = goalGraph.goals;
-    let effectiveCompletedGoalIds: ReadonlySet<string> | undefined;
-
-    if (committedGoalId) {
-      const committedGoal = goalGraph.goals.find((g) => g.id === committedGoalId);
-      if (committedGoal) {
-        // Remove the fulfilled goal from the pending list.
-        effectiveGoals = goalGraph.goals.filter((g) => g.id !== committedGoalId);
-        // Add its effects to initial satisfied effects.
-        if (committedGoal.unlockEffects && committedGoal.unlockEffects.length > 0) {
-          const merged = new Set(goalGraph.initialSatisfiedEffects);
-          for (const eff of committedGoal.unlockEffects) merged.add(eff);
-          effectiveInitialEffects = merged;
-        }
-        // Declare it completed so other goals may reference it as a prerequisite.
-        effectiveCompletedGoalIds = new Set([committedGoalId]);
-      }
+  for (const step of route.steps) {
+    const meta = goalGraph.meta.get(step.goalId);
+    if (!meta) continue; // unreachable: every planned goal has metadata
+    // Preserve the pre-existing "point Progress at the live hunted
+    // entity/gold pile, not just the work-only cursor" nuance for the two
+    // ambient-grind goals, exactly as the prior procedural planner did.
+    let to: RunPlannerPoint;
+    if (step.goalId === 'complete-goon-kills') {
+      to =
+        !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'quest-kills'
+          ? snapshot.currentTarget
+          : cursor;
+    } else if (step.goalId === 'farm-shop-gold') {
+      to =
+        !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
+          ? snapshot.currentTarget
+          : cursor;
+    } else if (step.location === IN_PLACE_LOCATION) {
+      to = cursor;
+    } else {
+      to = goalGraph.locations.get(step.location) ?? cursor;
     }
-
-    const route = planObjectiveRoute({
-      goals: effectiveGoals,
-      startLocation: PLAYER_START_LOCATION,
-      initialSatisfiedEffects: effectiveInitialEffects,
-      completedGoalIds: effectiveCompletedGoalIds,
-      budgetMs: planBudgetMs,
-      travelOracle,
-    });
-    routeHeadId = route.routeHeadId;
-    nextActionableGoalId = route.nextActionableGoalId;
-    includedOptionalBundleIds = route.includedOptionalBundleIds;
-    droppedOptionalBundleIds = route.droppedOptionalBundleIds;
-
-    for (const step of route.steps) {
-      const meta = goalGraph.meta.get(step.goalId);
-      if (!meta) continue; // unreachable: every planned goal has metadata
-      // Preserve the pre-existing "point Progress at the live hunted
-      // entity/gold pile, not just the work-only cursor" nuance for the two
-      // ambient-grind goals, exactly as the prior procedural planner did.
-      let to: RunPlannerPoint;
-      if (step.goalId === 'complete-goon-kills') {
-        to =
-          !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'quest-kills'
-            ? snapshot.currentTarget
-            : cursor;
-      } else if (step.goalId === 'farm-shop-gold') {
-        to =
-          !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
-            ? snapshot.currentTarget
-            : cursor;
-      } else if (step.location === IN_PLACE_LOCATION) {
-        to = cursor;
-      } else {
-        to = goalGraph.locations.get(step.location) ?? cursor;
-      }
-      addSegment(step.goalId, meta.label, meta.kind, meta.phase, to, step.workMs, meta.detail);
-    }
+    addSegment(step.goalId, meta.label, meta.kind, meta.phase, to, step.workMs, meta.detail);
   }
 
   const estimatedBeforeBuffer = segments.reduce((sum, segment) => sum + segment.estimatedMs, 0);
@@ -372,10 +383,10 @@ export function estimateFloor1RunPlan(
     slackMs,
     urgency,
     segments,
-    routeHeadId,
-    nextActionableGoalId,
-    includedOptionalBundleIds,
-    droppedOptionalBundleIds,
+    routeHeadId: route.routeHeadId,
+    nextActionableGoalId: route.nextActionableGoalId,
+    includedOptionalBundleIds: route.includedOptionalBundleIds,
+    droppedOptionalBundleIds: route.droppedOptionalBundleIds,
   };
 }
 

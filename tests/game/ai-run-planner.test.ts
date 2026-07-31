@@ -3,6 +3,7 @@ import {
   buildRunPlanCacheKey,
   canFarmOptionalMerchantPurchase,
   estimateFloor1RunPlan,
+  planFloor1ObjectiveRoute,
   type Floor1RunPlannerSnapshot,
   type RunPlannerParams,
 } from '../../src/game/ai/run-planner.js';
@@ -135,6 +136,22 @@ describe('estimateFloor1RunPlan', () => {
     expect(late.remainingMs).toBeLessThan(early.remainingMs);
     expect(late.slackMs).toBeLessThan(early.slackMs);
     expect(late.urgency).toBeGreaterThan(early.urgency);
+  });
+
+  it('recomputes timing and segment travel from the live snapshot when reusing a cached route', () => {
+    const initialSnapshot = snapshot({ nowMs: 0, player: { x: 0, y: 0 } });
+    const cachedRoute = planFloor1ObjectiveRoute(initialSnapshot, PARAMS);
+    const movedSnapshot = snapshot({ nowMs: 45_000, player: { x: 15, y: 0 } });
+
+    const reused = estimateFloor1RunPlan(movedSnapshot, PARAMS, cachedRoute);
+    const fresh = estimateFloor1RunPlan(movedSnapshot, PARAMS);
+    const stale = estimateFloor1RunPlan(initialSnapshot, PARAMS, cachedRoute);
+
+    expect(reused).toEqual(fresh);
+    expect(reused.remainingMs).toBe(555_000);
+    expect(reused.remainingMs).not.toBe(stale.remainingMs);
+    expect(reused.estimatedTravelMs).not.toBe(stale.estimatedTravelMs);
+    expect(reused.segments[0]?.from).toEqual({ x: 15, y: 0 });
   });
 
   it('models a committed quest-giver detour as the current first leg', () => {
