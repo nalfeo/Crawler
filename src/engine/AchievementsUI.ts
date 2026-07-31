@@ -70,13 +70,13 @@ function hex(value: number): string {
 function rewardLabel(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
-      return `${reward.tier} box`;
+      return reward.lootTable === 'floor2-generated-equipment'
+        ? `${reward.tier} loot box`
+        : `${reward.tier} box`;
     case 'item':
       return reward.itemId;
     case 'directorMessage':
       return 'message';
-    case 'equipment':
-      return 'equipment bundle';
     case 'none':
       return 'no reward';
   }
@@ -90,8 +90,6 @@ function rewardReveal(reward: AchievementReward): string {
       return `Opened: ${reward.itemId}`;
     case 'directorMessage':
       return `Director: ${reward.message}`;
-    case 'equipment':
-      return 'Opened: equipment bundle';
     case 'none':
       return 'No reward';
   }

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
-import { closeQuietly } from './helpers/ui-probe.js';
+import { boundsCenterScreen, closeQuietly, getCanvasRect } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 import {
   PLAYER_ACQUISITION_SOURCES,
@@ -155,6 +155,79 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     const offersAfter = await mainSceneProbe.getQuartermasterStockSnapshot(page);
     const purchasedOffer = offersAfter.find((o) => o.offerId === offers[0]!.offerId);
     expect(purchasedOffer?.quantity, 'purchased offer must show quantity = 0').toBe(0);
+  });
+
+  it('renders and equips the exact generated Quartermaster purchase through the inventory grid', async () => {
+    await bootFloor2SafeScene();
+    await mainSceneProbe.setPlayerGold(page, 100_000);
+
+    const purchase = await mainSceneProbe.purchaseFirstQuartermasterOffer(page);
+    expect(purchase.ok, 'purchase should succeed with sufficient gold').toBe(true);
+    expect(
+      purchase.instanceId,
+      'purchase should identify the immutable generated instance',
+    ).toBeTruthy();
+    if (!purchase.instanceId) return;
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    await waitForState(page, (s) => s.inventoryOpen, { label: 'inventory open after purchase' });
+    const cell = await mainSceneProbe.getGeneratedInventoryCellBounds(page, purchase.instanceId);
+    expect(
+      cell,
+      'purchased generated equipment must be visible in the same rendered inventory grid',
+    ).not.toBeNull();
+    if (!cell) return;
+
+    const center = boundsCenterScreen(
+      await getCanvasRect(page),
+      { width: 1280, height: 720 },
+      cell,
+    );
+    // This is deliberately a real canvas double-click, not a probe equip
+    // shortcut: reverting InventoryUI to bag.slots makes the exact-instance
+    // lookup return null before the interaction can occur.
+    await page.mouse.dblclick(center.x, center.y);
+    await expect
+      .poll(() => mainSceneProbe.getEquippedGeneratedInstanceKeys(page), {
+        message: 'double-click should equip the exact purchased instance',
+      })
+      .toContain(purchase.instanceId);
+  });
+
+  it('renders and equips the exact generated Quartermaster purchase through the Gear bag', async () => {
+    await bootFloor2SafeScene();
+    await mainSceneProbe.setPlayerGold(page, 100_000);
+
+    const purchase = await mainSceneProbe.purchaseFirstQuartermasterOffer(page);
+    expect(purchase.ok, 'purchase should succeed with sufficient gold').toBe(true);
+    expect(
+      purchase.instanceId,
+      'purchase should identify the immutable generated instance',
+    ).toBeTruthy();
+    if (!purchase.instanceId) return;
+
+    await mainSceneProbe.requestEquipToggle(page);
+    await waitForState(page, (s) => s.equipmentOpen, { label: 'Gear panel open after purchase' });
+    const cell = await mainSceneProbe.getGeneratedEquipmentBagCellBounds(page, purchase.instanceId);
+    expect(
+      cell,
+      'purchased generated equipment must be visible in the rendered Gear bag',
+    ).not.toBeNull();
+    if (!cell) return;
+
+    const center = boundsCenterScreen(
+      await getCanvasRect(page),
+      { width: 1280, height: 720 },
+      cell,
+    );
+    // This canvas interaction is intentionally revert-sensitive: changing the
+    // Gear panel back to bag.slots makes the exact-instance lookup return null.
+    await page.mouse.click(center.x, center.y);
+    await expect
+      .poll(() => mainSceneProbe.getEquippedGeneratedInstanceKeys(page), {
+        message: 'Gear-bag click should equip the exact purchased instance',
+      })
+      .toContain(purchase.instanceId);
   });
 
   it('supports keyboard purchase with Enter on the focused Buy control', async () => {
