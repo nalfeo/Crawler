@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-env node */
 /**
  * check-extensions.mjs — Deterministic guard against broken extension imports.
  *
@@ -27,7 +28,6 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
-const EXTENSIONS_DIR = path.join(REPO_ROOT, '.github', 'extensions');
 
 // Bare-specifier ESM import:
 //   - static: `import … from 'pkg'` and side-effect `import 'pkg'`
