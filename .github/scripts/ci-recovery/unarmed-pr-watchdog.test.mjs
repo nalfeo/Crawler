@@ -196,3 +196,34 @@ test('candidate pre-filter excludes draft, closed, armed and blocked-label PRs',
   );
   assert.equal(isUnarmedWatchdogCandidate(null), false);
 });
+
+// ── ci-recovery-waiting design decision ───────────────────────────────────
+// PRs in WAIT_ADMISSION carry the `ci-recovery-waiting` label.  The label is
+// intentionally NOT in UNARMED_WATCHDOG_BLOCKED_LABELS: a PR may become stale
+// in WAIT_ADMISSION (e.g. the push/check event that should have re-armed
+// auto-merge was dropped).  The watchdog dispatching for such a PR provides the
+// durable backstop that the post-update-branch one-shot dispatch cannot
+// guarantee.
+
+test('ci-recovery-waiting is NOT in UNARMED_WATCHDOG_BLOCKED_LABELS', () => {
+  assert.equal(
+    UNARMED_WATCHDOG_BLOCKED_LABELS.has('ci-recovery-waiting'),
+    false,
+    'ci-recovery-waiting must stay visible to the watchdog so stale WAIT_ADMISSION PRs are rescued',
+  );
+});
+
+test('detectUnarmedMergeablePrs includes a PR labelled ci-recovery-waiting', () => {
+  const result = detectUnarmedMergeablePrs([
+    pr({ labels: [{ name: 'ci-recovery-waiting' }] }),
+  ]);
+  assert.equal(result.length, 1, 'stale WAIT_ADMISSION PR must be detected as dormant-unarmed');
+});
+
+test('candidate pre-filter accepts a PR labelled ci-recovery-waiting', () => {
+  assert.equal(
+    isUnarmedWatchdogCandidate({ state: 'open', draft: false, auto_merge: null, labels: [{ name: 'ci-recovery-waiting' }] }),
+    true,
+    'ci-recovery-waiting must not prevent pre-filter pass-through',
+  );
+});

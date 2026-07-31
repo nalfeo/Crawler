@@ -2926,10 +2926,13 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
         );
       }
       // Issue #2453: GitHub silently clears auto-merge when the head SHA changes
-      // via update-branch. Dispatch a fresh reconcile so the PR is re-armed after
-      // CI passes on the new head — even if the push event is dropped or
-      // budget-gated by the router.
-      if (updateBranchSucceeded) {
+      // via update-branch.  Dispatch a fresh reconcile as a latency optimisation
+      // so the PR can be re-armed sooner than the next watchdog sweep.
+      // Guard: skip when this run is itself a post-update-branch reconcile to
+      // prevent a self-dispatch loop (update-branch → dispatch → update-branch …).
+      // The durable backstop for missed or race-lost dispatches is the
+      // unarmed-PR watchdog in ci-liveness-sweep.yml, which polls every 10 min.
+      if (updateBranchSucceeded && trigger !== 'post-update-branch') {
         await dispatchWorkflow('ci-recovery.yml', {
           operation: 'reconcile',
           pr_number: String(prNumber),
@@ -2941,8 +2944,10 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     } else {
       process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
       // Dry-run: show that live mode would also dispatch a follow-up reconcile
-      // to re-arm auto-merge after the head advance clears it.
-      process.stdout.write(`dry-run would-dispatch-post-update-branch pr=#${prNumber}\n`);
+      // (only when not already running as a post-update-branch reconcile).
+      if (trigger !== 'post-update-branch') {
+        process.stdout.write(`dry-run would-dispatch-post-update-branch pr=#${prNumber}\n`);
+      }
     }
   }
   await closeLoopIncidentOnConvergence();

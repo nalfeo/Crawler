@@ -3951,6 +3951,75 @@ test('live reconcile does NOT dispatch post-update-branch when update-branch ret
   );
 });
 
+test('live reconcile does NOT dispatch post-update-branch when trigger=post-update-branch', async (t) => {
+  // Guard: a reconcile that was itself triggered by a post-update-branch event
+  // must not issue another post-update-branch dispatch — this prevents an
+  // infinite self-dispatch loop when the PR is repeatedly seen as 'behind'.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  // Run with RECOVERY_TRIGGER=post-update-branch to simulate the recursive case.
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    RECOVERY_TRIGGER: 'post-update-branch',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  // Self-dispatch guard: NO follow-up dispatch must be emitted.
+  assert.doesNotMatch(stdout, /dispatch-post-update-branch/);
+  const postUpdateDispatches = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches` &&
+      call.body?.inputs?.trigger === 'post-update-branch',
+  );
+  assert.equal(
+    postUpdateDispatches.length,
+    0,
+    'no post-update-branch dispatch when trigger is already post-update-branch',
+  );
+});
+
 test('live reconcile calls update-branch for a clean-BEHIND PR at QUEUE_MERGE_TRAIN', async (t) => {
   // Exercises the update-branch path independently implemented in QUEUE_MERGE_TRAIN
   // (separate from ARM_AUTO_MERGE). The QUEUE_MERGE_TRAIN path adds the merge-train
