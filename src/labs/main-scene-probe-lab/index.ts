@@ -588,9 +588,9 @@ export interface MainSceneProbeApi {
   getTerrainRenderSummary(): TerrainRenderSummary;
   /**
    * Door-render provenance counts from the last `updateDoorOverlay()` pass. Used
-   * by the generated-door-overlay e2e to prove — in the REAL booted scene — that
-   * closed dungeon doors stamp the approved generated texture
-   * (`renderableClosedCount > 0 && closedGeneratedCount === renderableClosedCount`).
+   * by the unified-door-overlay e2e to prove — in the REAL booted scene — that
+   * every door stamps approved generated art at its own orientation
+   * (`generated === renderable`, zero Kenney/colour, `crossOrientationCount === 0`).
    */
   getDoorRenderSummary(): DoorRenderSummary;
   /**

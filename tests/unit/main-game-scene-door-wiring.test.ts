@@ -49,6 +49,22 @@ describe('MainGameScene door wiring — exactly one geometry rule', () => {
     expect(code).not.toContain('TERRAIN_PACK_CELL_PX');
   });
 
+  it('the KENNEY fallback goes through the shared fit, not its own divisor', () => {
+    // The generated branch alone calling `resolveDoorContainFit` is NOT enough:
+    // reintroducing `tileSize / KENNEY_DOOR_FRAME_PX` in the Kenney branch would
+    // still leave the symbol present somewhere in the file and pass the check
+    // above. Kenney is the branch most likely to regress because its 16x16 frame
+    // contain-fits to EXACTLY the old constant — the numbers agree, so a bespoke
+    // divisor produces no visible symptom until the doorway box changes.
+    expect(code).toContain('KENNEY_DOOR_FRAME_PX');
+    // The frame size may only ever be handed to the shared fit as a canvas
+    // dimension. Any arithmetic on it is a second geometry rule by definition.
+    expect(code).toContain('canvasWidth: KENNEY_DOOR_FRAME_PX');
+    expect(code).toContain('canvasHeight: KENNEY_DOOR_FRAME_PX');
+    expect(code).not.toMatch(/[/*+-]\s*KENNEY_DOOR_FRAME_PX/);
+    expect(code).not.toMatch(/KENNEY_DOOR_FRAME_PX\s*[/*+-]/);
+  });
+
   it('the comment-stripper is not vacuous', () => {
     // Guards the guard: if stripComments ever nuked the whole file, every
     // `not.toContain` above would pass trivially.

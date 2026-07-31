@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_DOOR_TEXTURE_KEYS,
+  DOOR_ART_CONTRACT_NOTE,
   DOOR_TARGET_HEIGHT_FT,
   resolveDoorContainFit,
 } from '../../src/engine/sprites/door-visuals.js';
@@ -223,15 +224,21 @@ describe('generated door art contract', () => {
       it(`${key}: has transparent side margins (art is not flush to the cell edge)`, () => {
         // A door leaf is narrower than its containing cell — the jamb/wall shows
         // beside it. A hatch painted to the canvas edge has no margin at all.
-        expect(b.width, `${key} opaque width vs canvas`).toBeLessThan(b.canvasWidth);
-        expect(b.x, `${key} left margin`).toBeGreaterThan(0);
-        expect(b.x + b.width, `${key} right margin`).toBeLessThan(b.canvasWidth);
+        expect(b.width, `${key} opaque width vs canvas — ${DOOR_ART_CONTRACT_NOTE}`).toBeLessThan(
+          b.canvasWidth,
+        );
+        expect(b.x, `${key} left margin — ${DOOR_ART_CONTRACT_NOTE}`).toBeGreaterThan(0);
+        expect(b.x + b.width, `${key} right margin — ${DOOR_ART_CONTRACT_NOTE}`).toBeLessThan(
+          b.canvasWidth,
+        );
       });
 
       it(`${key}: is PORTRAIT (a standing leaf, not a square floor hatch)`, () => {
         // Every side-on door is taller than it is wide. The retired hatches were
         // exactly square (1.000); the shipped elevations are 0.47-0.82.
-        expect(b.width / b.height, `${key} opaque aspect`).toBeLessThan(0.95);
+        expect(b.width / b.height, `${key} opaque aspect — ${DOOR_ART_CONTRACT_NOTE}`).toBeLessThan(
+          0.95,
+        );
       });
 
       it(`${key}: is BOTTOM-WEIGHTED (stands on the floor, not centred in the cell)`, () => {
@@ -239,7 +246,7 @@ describe('generated door art contract', () => {
         // art with a large bottom gap floats. Allow a small tolerance for the
         // generator's anti-aliased threshold row.
         const bottomGap = b.canvasHeight - (b.y + b.height);
-        expect(bottomGap, `${key} bottom gap px`).toBeLessThanOrEqual(
+        expect(bottomGap, `${key} bottom gap px — ${DOOR_ART_CONTRACT_NOTE}`).toBeLessThanOrEqual(
           Math.round(b.canvasHeight * 0.12),
         );
       });

@@ -30,7 +30,7 @@ export type TerrainPackPreloadEntry =
       readonly frameHeight: number;
     }
   | {
-      readonly kind: 'pool' | 'door';
+      readonly kind: 'pool';
       readonly textureKey: string;
       readonly path: string;
     };
@@ -47,9 +47,11 @@ export interface TerrainPackLoaderLike {
 
 /**
  * Walk every registered terrain pack and list every image asset it ships:
- * the wall autotile spritesheet, every floor/corridor pool variant, and all
- * four door textures. Pure — no Phaser, no I/O — so it is trivially
- * unit-testable and reusable by both BootScene and tests.
+ * the wall autotile spritesheet and every floor/corridor pool variant. Packs no
+ * longer ship door art — doors are drawn from the generated sprite registry
+ * through one shared fit — so there is deliberately no door entry here. Pure —
+ * no Phaser, no I/O — so it is trivially unit-testable and reusable by both
+ * BootScene and tests.
  */
 export function collectTerrainPackPreloadEntries(): readonly TerrainPackPreloadEntry[] {
   const entries: TerrainPackPreloadEntry[] = [];

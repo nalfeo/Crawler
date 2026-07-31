@@ -7,6 +7,7 @@ import {
   DOOR_OPEN_FRAME,
   type DoorOrientation,
 } from '../../src/engine/sprites/door-visuals.js';
+import { resolveDoorOrientationFromFlanks } from '../../src/shared/terrain-pack-variants.js';
 
 const K = GENERATED_DOOR_TEXTURE_KEYS;
 const ALL_GENERATED_DOOR_TEXTURE_KEYS = Object.values(K);
@@ -238,5 +239,76 @@ describe('resolveDoorRenderMode', () => {
     expect(DOOR_SHEET_KEY).toBe('kenney-tiny-dungeon');
     expect(DOOR_CLOSED_FRAME).toBe(46);
     expect(DOOR_OPEN_FRAME).toBe(34);
+  });
+});
+
+describe('doorway TOPOLOGY resolves to the right VIEWING ANGLE (end-to-end)', () => {
+  // REGRESSION GUARD. `resolveDoorOrientationFromFlanks` and `resolveDoorRenderMode`
+  // were individually correct while their COMPOSITION was inverted: the helper
+  // returned the passage axis (the old top-down hatch's convention) and the key
+  // table is indexed by the wall run, so every unambiguous doorway got its
+  // sibling's art — narrow side-on leaves in face-on N/S openings and wide face-on
+  // leaves in E/W ones. Neither unit test could see it, and `crossOrientationCount`
+  // reads 0 either way because a mislabelled orientation still resolves its own
+  // nominal "exact" key. Only the composition is falsifiable, so it is pinned here.
+  const ALL_KEYS = new Set(ALL_GENERATED_DOOR_TEXTURE_KEYS);
+
+  const CASES: readonly {
+    horizontalDoorway: boolean;
+    isOpen: boolean;
+    expectedKey: string;
+    why: string;
+  }[] = [
+    {
+      horizontalDoorway: true,
+      isOpen: false,
+      expectedKey: K.closedHorizontal,
+      why: 'walls L+R → wall runs left↔right → FACE-ON closed',
+    },
+    {
+      horizontalDoorway: true,
+      isOpen: true,
+      expectedKey: K.openHorizontal,
+      why: 'walls L+R → wall runs left↔right → FACE-ON open',
+    },
+    {
+      horizontalDoorway: false,
+      isOpen: false,
+      expectedKey: K.closedVertical,
+      why: 'walls T+B → wall runs up↕down → SIDE-ON closed',
+    },
+    {
+      horizontalDoorway: false,
+      isOpen: true,
+      expectedKey: K.openVertical,
+      why: 'walls T+B → wall runs up↕down → SIDE-ON open',
+    },
+  ];
+
+  for (const { horizontalDoorway, isOpen, expectedKey, why } of CASES) {
+    it(`horizontalDoorway=${horizontalDoorway} isOpen=${isOpen} → ${expectedKey} (${why})`, () => {
+      const mode = resolveDoorRenderMode(isOpen, {
+        orientation: resolveDoorOrientationFromFlanks(horizontalDoorway),
+        availableGeneratedKeys: ALL_KEYS,
+        hasSheet: true,
+      });
+      expect(mode).toEqual({
+        kind: 'generated',
+        textureKey: expectedKey,
+        orientationMatch: 'exact',
+      });
+    });
+  }
+
+  it('a doorway flanked left+right does NOT draw the side-on leaf', () => {
+    // The single most legible symptom of the inversion, stated as its own gate:
+    // a face-on opening must never receive the narrow edge-on art.
+    const mode = resolveDoorRenderMode(false, {
+      orientation: resolveDoorOrientationFromFlanks(true),
+      availableGeneratedKeys: ALL_KEYS,
+      hasSheet: true,
+    });
+    expect(mode.kind).toBe('generated');
+    expect(mode.kind === 'generated' && mode.textureKey).not.toBe(K.closedVertical);
   });
 });
