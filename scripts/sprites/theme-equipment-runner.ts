@@ -61,7 +61,9 @@ import {
   judgeThemeEquipmentCollectionWithText,
   judgeThemeEquipmentCollectionWithVision,
   publishThemeEquipmentSet,
+  RecoverableThemeSetItemError,
   runThemeEquipmentSetPhase,
+  type ThemeEquipmentSetPhaseRunResult,
   type ThemeEquipmentTextJudgeProvider,
 } from './theme-equipment-pipeline.js';
 import type { CheckinAsset } from './checkin.js';
@@ -70,7 +72,28 @@ import type { QueueCommitDeps } from './queue-commit.js';
 const STAGE_PREFIX = 'theme-equipment-stage-';
 
 export class ThemeEquipmentRunnerError extends Error {
-  override readonly name = 'ThemeEquipmentRunnerError';
+  override readonly name: string = 'ThemeEquipmentRunnerError';
+}
+
+/**
+ * Thrown by `init`/`runPhase` when a phase pass CHECKPOINTED successfully
+ * (every accepted item was persisted) but at least one item recoverably failed
+ * or the collection judge threw. Carries the persisted state and per-item
+ * failure detail so the CLI can surface a machine-readable status and a
+ * driver-facing "re-run to regenerate only the failures" message. This is a
+ * partial success — the accepted work is safe on disk — NOT a fatal.
+ */
+export class ThemeEquipmentSetPhasePartialError extends ThemeEquipmentRunnerError {
+  override readonly name = 'ThemeEquipmentSetPhasePartialError';
+  constructor(
+    message: string,
+    readonly state: ThemeEquipmentSetState,
+    readonly succeededItemIds: readonly string[],
+    readonly itemFailures: ThemeEquipmentSetPhaseRunResult['itemFailures'],
+    readonly collectionJudgeError: string | null,
+  ) {
+    super(message);
+  }
 }
 
 export interface ThemeEquipmentRunnerDeps {
@@ -93,6 +116,34 @@ export interface ThemeEquipmentRunnerDeps {
   ) => Promise<CheckinAsset[]>;
   /** Test seam; production performs the one queue-backed atomic publish. */
   readonly publishSet?: typeof publishThemeEquipmentSet;
+}
+
+/**
+ * Build the driver-facing message for a partial phase pass: what was
+ * checkpointed, what failed and why, and the exact command to re-run so ONLY
+ * the unresolved items regenerate (approved/failed items persist).
+ */
+function formatPartialMessage(setId: string, result: ThemeEquipmentSetPhaseRunResult): string {
+  const parts: string[] = [];
+  if (result.succeededItemIds.length > 0) {
+    parts.push(
+      `Checkpointed ${result.succeededItemIds.length} item(s): ${result.succeededItemIds.join(', ')}.`,
+    );
+  }
+  if (result.itemFailures.length > 0) {
+    const failures = result.itemFailures
+      .map((failure) => `${failure.itemId} (${failure.message})`)
+      .join('; ');
+    parts.push(`Failed ${result.itemFailures.length} item(s): ${failures}.`);
+  }
+  if (result.collectionJudgeError) {
+    parts.push(`Collection judge did not run: ${result.collectionJudgeError}.`);
+  }
+  parts.push(
+    `Re-run with: run-phase --set-id ${setId} ` +
+      `(approved/failed items persist; only unresolved items regenerate).`,
+  );
+  return parts.join(' ');
 }
 
 /**
@@ -162,15 +213,18 @@ export class ThemeEquipmentRunner {
     const state = buildThemeEquipmentSetStateFromPlan(plan, {
       updatedAt: this.deps.now().toISOString(),
     });
-    const judged = await runThemeEquipmentSetPhase(
+    const runResult = await runThemeEquipmentSetPhase(
       state,
       async (item) => this.rosterArtifacts(state, item),
       async (collection) => this.judgeTextCollection(collection, 'roster'),
     );
-    return saveThemeEquipmentSetState(this.deps.store, judged, {
+    // `init` always creates the doc (expectedRevision:null), so ALWAYS persist
+    // the checkpoint — even a partial/fatal pass must not vanish.
+    const persisted = await saveThemeEquipmentSetState(this.deps.store, runResult.state, {
       expectedRevision: null,
       now: this.deps.now,
     });
+    return this.finishPhaseRun(plan.id, persisted, runResult);
   }
 
   async runPhase(setId: string): Promise<ThemeEquipmentSetState> {
@@ -197,15 +251,52 @@ export class ThemeEquipmentRunner {
       }
       revisable = revision.state;
     }
-    const executed = await runThemeEquipmentSetPhase(
+    const runResult = await runThemeEquipmentSetPhase(
       revisable,
       (item, state) => this.executeItem(state, item),
       (state) => this.judgePhaseCollection(state),
     );
-    return saveThemeEquipmentSetState(this.deps.store, executed, {
-      expectedRevision,
-      now: this.deps.now,
-    });
+    // Persist only if something actually changed since we loaded (rejected-item
+    // pre-revisions already bump the revision, so any real work — or a failure
+    // marker — makes this true). A truly no-op pass avoids a needless
+    // same-revision write that would only churn the store.
+    const mutated = runResult.state.stateRevision !== expectedRevision;
+    const persisted = mutated
+      ? await saveThemeEquipmentSetState(this.deps.store, runResult.state, {
+          expectedRevision,
+          now: this.deps.now,
+        })
+      : loaded;
+    return this.finishPhaseRun(setId, persisted, runResult);
+  }
+
+  /**
+   * Shared tail for `init`/`runPhase`: given the persisted checkpoint and the
+   * graceful-run result, either (a) rethrow the original fatal error verbatim
+   * (checkpoint already saved), (b) throw a `ThemeEquipmentSetPhasePartialError`
+   * when the accepted work was saved but some items failed or the judge threw,
+   * or (c) return the clean persisted state.
+   */
+  private finishPhaseRun(
+    setId: string,
+    persisted: ThemeEquipmentSetState,
+    runResult: ThemeEquipmentSetPhaseRunResult,
+  ): ThemeEquipmentSetState {
+    if (runResult.fatalError) {
+      // Checkpoint is saved; surface the ORIGINAL error unchanged so callers can
+      // still distinguish e.g. a provider error from a pipeline error.
+      throw runResult.fatalError.error;
+    }
+    if (runResult.itemFailures.length > 0 || runResult.collectionJudgeError) {
+      throw new ThemeEquipmentSetPhasePartialError(
+        formatPartialMessage(setId, runResult),
+        persisted,
+        runResult.succeededItemIds,
+        runResult.itemFailures,
+        runResult.collectionJudgeError,
+      );
+    }
+    return persisted;
   }
 
   async advance(setId: string): Promise<ThemeEquipmentSetState> {
@@ -496,7 +587,7 @@ export class ThemeEquipmentRunner {
     const judged = await loadRunSummary(this.deps.store, sheet.briefId, sheet.runId);
     const selection = autoSelectVariants(judged.candidates, { maxVariants: 3 });
     if (selection.selected.length < 1 || selection.selected.length > 3) {
-      throw new ThemeEquipmentRunnerError(
+      throw new RecoverableThemeSetItemError(
         `Variant approval found ${selection.selected.length} acceptable variants for "${item.id}"; required 1-3.`,
       );
     }

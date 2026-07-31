@@ -23,6 +23,7 @@ import {
   createThemeEquipmentRunnerDeps,
   selectCollectionTileSources,
   ThemeEquipmentRunner,
+  ThemeEquipmentSetPhasePartialError,
 } from '../../../scripts/sprites/theme-equipment-runner.js';
 import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
 
@@ -508,7 +509,7 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
     expect(revisedItem.phases.roster.artifacts[0]?.id).toContain(`${rejectedId}-roster-r1`);
   });
 
-  it('does not save a partial state when its collection judge fails', async () => {
+  it('checkpoints the accepted roster work even when its collection judge fails', async () => {
     const store = memoryStore();
     const { runner: subject } = runner(
       store,
@@ -517,11 +518,28 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
       }),
     );
 
-    await expect(subject.init('data/theme-equipment-sets/classic-fantasy.json')).rejects.toThrow(
-      'vision unavailable',
+    // A judge failure no longer discards the paid roster work: the runner saves
+    // the checkpoint (every item's roster artifacts) and surfaces the failure as
+    // a partial error carrying the collection-judge message.
+    const error = await subject.init('data/theme-equipment-sets/classic-fantasy.json').then(
+      () => {
+        throw new Error('expected init to reject');
+      },
+      (rejection: unknown) => rejection,
     );
-    expect(store.puts).toBe(0);
-    expect(store.mem.size).toBe(0);
+    expect(error).toBeInstanceOf(ThemeEquipmentSetPhasePartialError);
+    const partial = error as ThemeEquipmentSetPhasePartialError;
+    expect(partial.collectionJudgeError).toBe('vision unavailable');
+    expect(partial.itemFailures).toHaveLength(0);
+
+    // The checkpoint was persisted exactly once.
+    expect(store.puts).toBe(1);
+    expect(store.mem.size).toBe(1);
+    // The saved state preserved the accepted roster artifacts but recorded no
+    // collection judge (the pass never got a clean score).
+    const savedItem = partial.state.items[0]!;
+    expect(savedItem.phases.roster.artifacts.length).toBeGreaterThan(0);
+    expect(partial.state.phases.roster.collectionJudge).toBeNull();
   });
 
   it('publishes one combined staged asset list, saves only after success, and cleans the stage root', async () => {

@@ -44,6 +44,7 @@ import {
   markThemeEquipmentSetPublished,
   parseThemeEquipmentSetState,
   recordThemeSetItemPhaseArtifacts,
+  recordThemeSetItemPhaseFailure,
   THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
   THEME_EQUIPMENT_MAX_APPROVED_VARIANTS,
   THEME_EQUIPMENT_MIN_APPROVED_VARIANTS,
@@ -84,7 +85,58 @@ export class ThemeEquipmentPipelineError extends Error {
   }
 }
 
-/** One item's freshly-produced current-phase artifacts/evidence. */
+/**
+ * A per-item executor failure the phase runner is allowed to RECOVER from:
+ * the item is marked failed (a durable `generationError` marker) and the pass
+ * continues with the remaining items, so paid work already accepted this pass
+ * is never discarded. Only this exact type is treated as recoverable — every
+ * other throw is fatal and aborts the pass (after checkpointing the state so
+ * far). Executors that produce a genuinely per-item, retryable failure (e.g.
+ * "0 acceptable variants") must throw THIS; anything unexpected must not.
+ */
+export class RecoverableThemeSetItemError extends Error {
+  override readonly name = 'RecoverableThemeSetItemError';
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+  }
+}
+
+/** One item that recoverably failed its executor during a phase pass. */
+export interface ThemeEquipmentSetPhaseItemFailure {
+  readonly itemId: string;
+  readonly message: string;
+  readonly cause: unknown;
+}
+
+/**
+ * A fatal condition that aborted the pass. `error` is rethrown VERBATIM by the
+ * runner after it checkpoints the state so far. `itemId` is the item being
+ * processed when it occurred, or `null` for a non-item-scoped fatal (e.g. a
+ * rejected collection-judge mutation).
+ */
+export interface ThemeEquipmentSetPhaseFatal {
+  readonly itemId: string | null;
+  readonly error: unknown;
+}
+
+/**
+ * Outcome of one graceful phase pass. `state` always reflects every mutation
+ * applied so far (recorded artifacts, failure markers, and — only on a fully
+ * clean pass — the collection judge), so the caller can persist it regardless
+ * of whether the pass succeeded, partially failed, or hit a fatal.
+ */
+export interface ThemeEquipmentSetPhaseRunResult {
+  readonly state: ThemeEquipmentSetState;
+  /** Items whose artifacts were successfully recorded this pass. */
+  readonly succeededItemIds: readonly string[];
+  /** Items that recoverably failed (marked, pass continued). */
+  readonly itemFailures: readonly ThemeEquipmentSetPhaseItemFailure[];
+  /** Set when the collection judge itself threw (never reached, no judge recorded). */
+  readonly collectionJudgeError: string | null;
+  /** Set when a fatal aborted the pass; `error` must be rethrown by the caller. */
+  readonly fatalError: ThemeEquipmentSetPhaseFatal | null;
+}
+
 export interface ThemeEquipmentItemExecutionResult {
   readonly artifacts: readonly ThemeEquipmentArtifactEvidence[];
   readonly evidence: readonly ThemeEquipmentArtifactEvidence[];
@@ -113,31 +165,35 @@ export type ThemeEquipmentCollectionJudgeFn = (
 ) => Promise<ThemeEquipmentCollectionJudgeResult>;
 
 /**
- * Run one phase pass over `state`:
+ * Run one graceful phase pass over `state`:
  *
  *   1. For every item NOT already resolved for `state.phase` (see
  *      `isThemeSetItemResolvedForPhase` — up-reviewed or frozen items are
  *      skipped, never re-executed or clobbered), call `executeItem` and
  *      record its result via `recordThemeSetItemPhaseArtifacts`.
- *   2. Call `judgeCollection` exactly once against the resulting state
- *      (which now reflects every newly-recorded item AND every untouched
- *      frozen/up item) and record the result via
- *      `applyThemeSetPhaseCollectionJudge`.
+ *   2. Call `judgeCollection` exactly once against the resulting state — but
+ *      ONLY if the pass was fully clean (no item failures, no fatal), so a
+ *      collection score is never computed over a knowingly-incomplete set.
  *
- * Never mutates `state` — every step produces a new state object via the
- * pure mutations in `theme-equipment-set.ts`. Fails closed: an executor or
- * judge callback that throws propagates its ORIGINAL error unchanged (so
- * callers can still distinguish e.g. a `VisionProviderError` from a
- * `ThemeEquipmentPipelineError`); a mutation that returns `{ ok: false }`
- * (a gate rejection, not a thrown error) is converted to a thrown
- * `ThemeEquipmentPipelineError('mutation-rejected', ...)` so this function
- * never returns a half-applied result.
+ * Graceful degradation (partial-persist recovery): a `RecoverableThemeSetItemError`
+ * thrown by `executeItem` does NOT abort the pass — the item is marked failed
+ * via `recordThemeSetItemPhaseFailure` (a durable `generationError` marker) and
+ * the loop continues, so every item accepted earlier this pass is preserved.
+ * Any OTHER throw is fatal: the runner still marks the offending item failed
+ * (to checkpoint intent) and then stops, surfacing the original error via
+ * `fatalError` for the caller to rethrow verbatim after it persists the state.
+ * A mutation that returns `{ ok: false }` is likewise fatal.
+ *
+ * Never mutates `state` — every step produces a new state object via the pure
+ * mutations in `theme-equipment-set.ts`. The returned `state` always reflects
+ * every mutation applied so far, so the caller can persist a checkpoint on any
+ * outcome.
  */
 export async function runThemeEquipmentSetPhase(
   state: ThemeEquipmentSetState,
   executeItem: ThemeEquipmentItemExecutor,
   judgeCollection: ThemeEquipmentCollectionJudgeFn,
-): Promise<ThemeEquipmentSetState> {
+): Promise<ThemeEquipmentSetPhaseRunResult> {
   if (!isReviewPhase(state.phase)) {
     throw new ThemeEquipmentPipelineError(
       'not-a-review-phase',
@@ -147,6 +203,38 @@ export async function runThemeEquipmentSetPhase(
   }
   const phase = state.phase;
   let current = state;
+  const succeededItemIds: string[] = [];
+  const itemFailures: ThemeEquipmentSetPhaseItemFailure[] = [];
+  let fatalError: ThemeEquipmentSetPhaseFatal | null = null;
+
+  /**
+   * Record a durable failure marker for `itemId`, appending to `itemFailures`.
+   * Returns the checkpointed state plus a fatal if the marker mutation itself
+   * was rejected (which must abort the pass — we could not even record intent).
+   */
+  const applyFailureMarker = (
+    from: ThemeEquipmentSetState,
+    itemId: string,
+    error: unknown,
+  ): { state: ThemeEquipmentSetState; fatal: ThemeEquipmentSetPhaseFatal | null } => {
+    const message = error instanceof Error ? error.message : String(error);
+    itemFailures.push({ itemId, message, cause: error });
+    const marker = recordThemeSetItemPhaseFailure(from, itemId, message);
+    if (!marker.ok) {
+      return {
+        state: from,
+        fatal: {
+          itemId,
+          error: new ThemeEquipmentPipelineError(
+            'mutation-rejected',
+            `Recording generation failure for item "${itemId}" was itself rejected: ` +
+              marker.reasons.map((reason) => reason.message).join('; '),
+          ),
+        },
+      };
+    }
+    return { state: marker.state, fatal: null };
+  };
 
   for (const original of state.items) {
     // Re-fetch the item from the running state: an earlier iteration in
@@ -164,7 +252,26 @@ export async function runThemeEquipmentSetPhase(
       continue;
     }
 
-    const result = await executeItem(live, current);
+    let result: ThemeEquipmentItemExecutionResult;
+    try {
+      result = await executeItem(live, current);
+    } catch (error) {
+      const marked = applyFailureMarker(current, live.id, error);
+      current = marked.state;
+      if (marked.fatal) {
+        fatalError = marked.fatal;
+        break;
+      }
+      if (error instanceof RecoverableThemeSetItemError) {
+        // Recoverable: item is marked, keep going with the rest of the pass.
+        continue;
+      }
+      // Any other throw is fatal — checkpoint intent, then abort with the
+      // ORIGINAL error so the caller can rethrow it verbatim.
+      fatalError = { itemId: live.id, error };
+      break;
+    }
+
     const mutation = recordThemeSetItemPhaseArtifacts(
       current,
       live.id,
@@ -172,25 +279,61 @@ export async function runThemeEquipmentSetPhase(
       result.evidence,
     );
     if (!mutation.ok) {
-      throw new ThemeEquipmentPipelineError(
+      const rejection = new ThemeEquipmentPipelineError(
         'mutation-rejected',
         `Recording phase artifacts for item "${live.id}" was rejected: ` +
           mutation.reasons.map((reason) => reason.message).join('; '),
       );
+      const marked = applyFailureMarker(current, live.id, rejection);
+      current = marked.state;
+      fatalError = marked.fatal ?? { itemId: live.id, error: rejection };
+      break;
     }
     current = mutation.state;
+    succeededItemIds.push(live.id);
   }
 
-  const judgeResult = await judgeCollection(current);
-  const judgeMutation = applyThemeSetPhaseCollectionJudge(current, judgeResult);
-  if (!judgeMutation.ok) {
-    throw new ThemeEquipmentPipelineError(
-      'mutation-rejected',
-      `Recording collection judge result was rejected: ` +
-        judgeMutation.reasons.map((reason) => reason.message).join('; '),
-    );
+  // Judge only a fully clean pass — never score a knowingly-incomplete set.
+  if (!fatalError && itemFailures.length === 0) {
+    let judgeResult: ThemeEquipmentCollectionJudgeResult;
+    try {
+      judgeResult = await judgeCollection(current);
+    } catch (error) {
+      return {
+        state: current,
+        succeededItemIds,
+        itemFailures,
+        collectionJudgeError: error instanceof Error ? error.message : String(error),
+        fatalError: null,
+      };
+    }
+    const judgeMutation = applyThemeSetPhaseCollectionJudge(current, judgeResult);
+    if (!judgeMutation.ok) {
+      return {
+        state: current,
+        succeededItemIds,
+        itemFailures,
+        collectionJudgeError: null,
+        fatalError: {
+          itemId: null,
+          error: new ThemeEquipmentPipelineError(
+            'mutation-rejected',
+            `Recording collection judge result was rejected: ` +
+              judgeMutation.reasons.map((reason) => reason.message).join('; '),
+          ),
+        },
+      };
+    }
+    current = judgeMutation.state;
   }
-  return judgeMutation.state;
+
+  return {
+    state: current,
+    succeededItemIds,
+    itemFailures,
+    collectionJudgeError: null,
+    fatalError,
+  };
 }
 
 // ---------------------------------------------------------------------------
