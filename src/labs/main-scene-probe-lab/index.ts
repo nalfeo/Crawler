@@ -59,6 +59,7 @@ import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
+import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
@@ -1297,8 +1298,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
       const playerEid = playerEidOf(scene);
       const before = new Set(
-        world.inventories.get(playerEid)?.generatedEquipment?.map((entry) => entry.instanceKey) ??
-          [],
+        listGeneratedEquipmentReferences(
+          world.inventories.get(playerEid) ?? createInventoryBag(),
+        ).map((entry) => entry.instanceKey),
       );
       // Use the REAL unlock path (`unlockAchievement`) rather than mutating
       // `unlockedIds` directly — for `lootBox`/`equipment` rewards, unlocking
@@ -1315,12 +1317,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       achievementsUI.refresh(world);
       achievementsUI.claimReward(achievementId);
       scene.inventoryUI?.refresh(world);
-      return (
-        world.inventories
-          .get(playerEid)
-          ?.generatedEquipment?.map((entry) => entry.instanceKey)
-          .filter((instanceKey) => !before.has(instanceKey)) ?? []
-      );
+      return listGeneratedEquipmentReferences(
+        world.inventories.get(playerEid) ?? createInventoryBag(),
+      )
+        .map((entry) => entry.instanceKey)
+        .filter((instanceKey) => !before.has(instanceKey));
     },
 
     seedPendingRewardResumeScenario: () => {

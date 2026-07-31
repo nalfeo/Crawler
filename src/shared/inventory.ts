@@ -105,6 +105,45 @@ export function listInventoryEntries(bag: InventoryBag): readonly InventoryBagEn
   ];
 }
 
+/** Canonical static-lane view for consumers that only handle stackable item ids. */
+export function listStaticInventorySlots(bag: InventoryBag): readonly InventorySlot[] {
+  return listInventoryEntries(bag)
+    .filter(
+      (entry): entry is StackableStaticInventoryEntry => entry.kind === 'stackable-static-item',
+    )
+    .map((entry) => ({ itemId: entry.itemId, quantity: entry.quantity }));
+}
+
+/** Canonical generated-reference lane view for exact-instance consumers. */
+export function listGeneratedEquipmentReferences(
+  bag: InventoryBag,
+): readonly GeneratedEquipmentInventoryEntry[] {
+  return listInventoryEntries(bag)
+    .filter(
+      (entry): entry is GeneratedEquipmentInventoryEntry => entry.kind === 'generated-instance',
+    )
+    .map((entry) => ({ kind: entry.kind, instanceKey: entry.instanceKey }));
+}
+
+/** Canonical structural clone that keeps internal lanes encapsulated in this module. */
+export function cloneInventoryBag(bag: InventoryBag): InventoryBag {
+  const staticSlots = listStaticInventorySlots(bag).map((slot) => ({
+    itemId: slot.itemId,
+    quantity: slot.quantity,
+  }));
+  const generated = listGeneratedEquipmentReferences(bag).map((entry) => ({
+    kind: entry.kind,
+    instanceKey: entry.instanceKey,
+  }));
+  return {
+    slots: staticSlots,
+    ...(generated.length > 0 ? { generatedEquipment: generated } : {}),
+    ...(bag.generatedEquipmentCapacity !== undefined
+      ? { generatedEquipmentCapacity: bag.generatedEquipmentCapacity }
+      : {}),
+  };
+}
+
 /** Check for one exact generated instance reference. */
 export function hasGeneratedEquipmentReference(
   bag: InventoryBag,
