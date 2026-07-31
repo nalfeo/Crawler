@@ -99,12 +99,18 @@ describe('planAssetCheckin', () => {
   });
 
   it('embeds a machine-readable payload that round-trips through parseAssetIssueBody', () => {
-    const plan = planAssetCheckin({ assets: [asset()], now: FIXED_NOW, slug: 'roundtrip' });
+    const plan = planAssetCheckin({
+      assets: [asset()],
+      now: FIXED_NOW,
+      slug: 'roundtrip',
+      assetRequestIssueNumbers: [1307, 1313, 1307],
+    });
     expect(plan.issueBody).toContain(`<!-- ${ASSET_CHECKIN_MARKER}`);
     const payload = parseAssetIssueBody(plan.issueBody);
     expect(payload).not.toBeNull();
     expect(payload!.branch).toBe('assets/roundtrip');
     expect(payload!.assets).toEqual([asset()]);
+    expect(payload!.assetRequestIssueNumbers).toEqual([1307, 1313]);
   });
 });
 
@@ -393,6 +399,56 @@ describe('runAssetCheckin', () => {
     ).toBe(false);
     // The filed issue's OWN payload agrees: only the unqueued asset is claimed.
     expect(result.plan.assets.map((a) => a.assetPath)).toEqual(['generated/iron-sword-var-1.png']);
+  });
+
+  it('links open floor2 asset-request issues into the filed check-in payload', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/butcher-hook-var-2.png\n' };
+      }
+      if (
+        command === 'gh' &&
+        args[0] === 'issue' &&
+        args[1] === 'list' &&
+        args.includes('asset-request')
+      ) {
+        return {
+          stdout: JSON.stringify([
+            {
+              number: 2428,
+              body: '### Name\n\nbutcher-hook\n\n### Brief\n\nA brutal cleaver hook for Floor 2.',
+            },
+            {
+              number: 2429,
+              body: '### Name\n\nnot-in-this-checkin\n\n### Brief\n\nAnother valid request body.',
+            },
+          ]),
+        };
+      }
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+        return { stdout: 'https://github.com/nalfeo/Crawler/issues/42\n' };
+      }
+      return {};
+    });
+
+    const result = await runAssetCheckin('/repo', {
+      ...baseDeps(),
+      exec,
+      readManifest: () =>
+        Promise.resolve({
+          entries: {
+            'butcher-hook-var-2': {
+              assetPath: 'generated/butcher-hook-var-2.png',
+              briefId: 'butcher-hook',
+              variantIndex: 2,
+            },
+          },
+        }),
+    });
+
+    expect(result.plan.assetRequestIssueNumbers).toEqual([2428]);
+    const payload = parseAssetIssueBody(result.plan.issueBody);
+    expect(payload?.assetRequestIssueNumbers).toEqual([2428]);
   });
 
   it('cuts a branch, pushes (no PR), and files the issue', async () => {
