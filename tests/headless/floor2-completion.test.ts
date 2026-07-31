@@ -28,7 +28,6 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 
 const PLAYABILITY_TEST_UNIT_PRICE = 123;
-const PLAYABILITY_TEST_STOCK_ID = 'playability-test-stock';
 const PLAYABILITY_TEST_OFFER_ID = 'playability-test-offer';
 
 function createPlayabilityTestInstance(
@@ -63,27 +62,25 @@ function replaceQuartermasterStockWithSoldOffer(
   if (!settlement) {
     throw new Error('Test requires a Floor 2 settlement snapshot');
   }
-  const quartermasterStock: Floor2QuartermasterStockState = {
-    stockId: PLAYABILITY_TEST_STOCK_ID,
-    restockEpoch: 0,
-    offers: [
-      {
-        offerId: PLAYABILITY_TEST_OFFER_ID,
-        instanceId,
-        rarity: 'common',
-        unitPrice: PLAYABILITY_TEST_UNIT_PRICE,
-        quantity: 0,
-      },
-    ],
-    retiredInstanceIds: [],
-  };
-  world.floorExtendedState = {
-    ...world.floorExtendedState,
-    settlement: {
-      ...settlement,
-      quartermasterStock,
-    },
-  };
+  const quartermasterStock = settlement.quartermasterStock as
+    | (Floor2QuartermasterStockState & {
+        offers: Floor2QuartermasterStockState['offers'] extends readonly (infer T)[] ? T[] : never;
+        retiredInstanceIds: string[];
+      })
+    | undefined;
+  if (!quartermasterStock) {
+    throw new Error('Test requires generated Quartermaster stock');
+  }
+  // Mutate the live stock object in place so later shallow settlement snapshots
+  // taken elsewhere in the frame preserve the synthetic "already sold" offer.
+  quartermasterStock.offers.splice(0, quartermasterStock.offers.length, {
+    offerId: PLAYABILITY_TEST_OFFER_ID,
+    instanceId,
+    rarity: 'common',
+    unitPrice: PLAYABILITY_TEST_UNIT_PRICE,
+    quantity: 0,
+  });
+  quartermasterStock.retiredInstanceIds.splice(0, quartermasterStock.retiredInstanceIds.length);
 }
 
 function clearPlayabilityRewardState(world: GameWorld): void {
