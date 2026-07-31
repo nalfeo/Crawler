@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-env node */
+/* global console */
 /**
  * check-extensions.mjs — Deterministic guard against broken extension imports.
  *
