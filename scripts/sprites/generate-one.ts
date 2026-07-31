@@ -417,6 +417,19 @@ export async function generateSheetCore(
           `slicer produced 0 cells from the generated sheet (structural failure)`,
         );
       }
+      // Icon-batch exception to ADR 0052: each cell maps to a specific icon ID
+      // by sequential index, so a count mismatch makes every index wrong. This
+      // is fundamentally different from regular sprite sheets (where the honest
+      // count is carried to gallery review). Retry so the model has another
+      // chance to draw the full grid with proper gutters.
+      if (brief.iconBatch && slice.cells.length !== expected) {
+        throw new ProviderError(
+          'bad-grid',
+          `icon-batch slicer produced ${slice.cells.length} cells but brief requires ${expected} ` +
+            `(${brief.generation.sheet.rows}×${brief.generation.sheet.cols} grid). ` +
+            `Retry to let the model draw the full grid with visible gutters.`,
+        );
+      }
       sliceResult = slice;
       break;
     } catch (err) {
