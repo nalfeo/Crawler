@@ -6,7 +6,7 @@ import {
   getItemIndex,
   KNOWN_TAGS,
   isKnownTag,
-  customTag,
+  _customTag as customTag,
   normalizeGeneratedInventoryTag,
 } from '../../src/shared/items.js';
 

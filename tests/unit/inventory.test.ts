@@ -26,7 +26,7 @@ import {
   type TabPreferences,
 } from '../../src/shared/inventory.js';
 import {
-  customTag,
+  _customTag as customTag,
   ItemRarity,
   normalizeGeneratedInventoryTag,
   type ItemDef,

@@ -40,9 +40,11 @@ export type CustomTag = string & { readonly __brand: 'CustomTag' };
 export type ItemTag = KnownTag | CustomTag;
 
 /** Create a custom tag (used by AI content pipeline or catalog). */
-export function customTag(label: string): CustomTag {
+function customTag(label: string): CustomTag {
   return label as CustomTag;
 }
+
+export const _customTag = customTag;
 
 const GENERATED_INVENTORY_TAG_ALIASES: Readonly<Record<string, KnownTag>> = Object.freeze({
   material: 'Materials',
