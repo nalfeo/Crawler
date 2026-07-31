@@ -3149,12 +3149,14 @@ export class MainGameScene extends Phaser.Scene {
           }
           case 'color': {
             // No art at all (e.g. tests). There is nothing to contain-fit, so this
-            // draws the DOORWAY BOX's own footprint: one cell wide, floor-anchored
-            // on the same bottom edge every other branch anchors to.
+            // draws the DOORWAY BOX's own footprint: one cell wide × doorTargetHeightPx
+            // tall, floor-anchored on the same bottom edge every other branch anchors to.
+            const doorH = doorTargetHeightPx;
+            const doorY = tileBottomY - doorH;
             g.fillStyle(mode.open ? 0xd2b48c : 0x6b4423, 1);
-            g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            g.fillRect(x * tileSize, doorY, tileSize, doorH);
             g.lineStyle(1, mode.open ? 0xf5deb3 : 0x3d2615, 0.9);
-            g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+            g.strokeRect(x * tileSize + 0.5, doorY + 0.5, tileSize - 1, doorH - 1);
             if (mode.open) {
               openColorCount += 1;
             } else {

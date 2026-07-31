@@ -12,6 +12,12 @@ terrain-packs, rendering, sprite-pipeline, labs
 **4🍎** (estimated 4, actual 4). Ledger:
 `docs/knowledge/review-ledgers/2026-07-31-unified-door-rendering.review-ledger.json`
 
+## ADR
+
+[ADR 0080](../adr/0080-door-ownership-moved-to-global-renderer.md) — door ownership
+moved from terrain packs to the global renderer (supersedes the implicit pack-door
+ownership established when `doorSet` was added to the manifest schema).
+
 ## The defect (measured, not inferred)
 
 `resolveDoorRenderMode` returned five kinds and `MainGameScene` gave each its **own scale
@@ -34,9 +40,10 @@ seed 42):
   unconditionally, so the "real" renderer never ran on Floor 1.
 - All four pack door PNGs were **64×64 with zero transparent pixels** → exactly
   4.00 ft × 4.00 ft against a 5.75 ft player.
-- Across four packs there were only **two distinct door files**, visually
-  indistinguishable. The pack path bought **no biome differentiation** while overriding the
-  real renderer — the whole justification for its existence was not being cashed in.
+- Across four packs there were only **8 distinct decoded variants** (the two Floor 1 packs
+  share the same door files, and industrial-cave duplicates caeles-fixture), yielding two
+  dungeon themes total. The pack path bought **no biome differentiation** while overriding
+  the real renderer — the whole justification for its existence was not being cashed in.
 
 ## What changed
 

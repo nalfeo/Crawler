@@ -108,6 +108,62 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     file: 'src/shared/generated-assets.ts',
     name: 'buildGeneratedSpriteRegistry',
   },
+  // Door art contract string used as assertion messages in unit tests that
+  // verify the projection/framing contract on shipped door PNGs.
+  {
+    file: 'src/engine/sprites/door-visuals.ts',
+    name: 'DOOR_ART_CONTRACT_NOTE',
+  },
+  // terrain-pack-visuals: pure helper + interface used only in unit tests
+  // that verify preload-entry generation without loading Phaser.
+  {
+    file: 'src/engine/sprites/terrain-pack-visuals.ts',
+    name: 'TerrainPackLoaderLike',
+  },
+  {
+    file: 'src/engine/sprites/terrain-pack-visuals.ts',
+    name: 'collectTerrainPackPreloadEntries',
+  },
+  // terrain-pack-types: zod sub-schemas and constants exposed so unit tests
+  // can validate schema fragments independently of the top-level pack schema.
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'terrainPackIdSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'provenanceSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'transformIdSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'WALL_ACCENT_COUNT',
+  },
+  // terrain-pack-variants: internal variance helpers tested in isolation so
+  // that seed-based determinism and pool-weight contracts are unit-verifiable.
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'deriveTileVariantSeed',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'pickPoolVariant',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'buildWeightedCombos',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'WALL_ACCENT_DENSITY',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'GROUND_DECAL_DENSITY',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {

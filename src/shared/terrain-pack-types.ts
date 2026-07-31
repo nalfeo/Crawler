@@ -438,10 +438,14 @@ export const terrainPackDefSchema = z
      * own door art, which won precedence over the shared door renderer and was
      * drawn at a pack-specific scale. That made a door's size and projection depend
      * on which pack happened to ship art rather than on one design rule. Doors are
-     * now owned end-to-end by `src/engine/sprites/door-visuals.ts` for every floor;
-     * per-tileset door LOOKS re-enter there, through the same selection and fit.
-     * `.strict()` below means a manifest that still declares `doorSet` fails
-     * validation loudly instead of being silently ignored.
+     * now owned end-to-end by `src/engine/sprites/door-visuals.ts` for every floor.
+     * Per-tileset door looks are NOT currently supported: `resolveDoorRenderMode`
+     * consults only the global `GENERATED_DOOR_TEXTURE_KEYS` and `MainGameScene`
+     * does not derive a pack-scoped key, so every floor uses the same door theme.
+     * When per-tileset art is added, it must re-enter through the same fit and
+     * selection rules — not a bespoke scale branch. `.strict()` below means a
+     * manifest that still declares `doorSet` fails validation loudly instead of
+     * being silently ignored.
      */
     /** Optional set of exactly `WALL_ACCENT_COUNT` mask-aware accent atlases. */
     wallAccents: z.array(wallAccentSchema).length(WALL_ACCENT_COUNT).optional(),
