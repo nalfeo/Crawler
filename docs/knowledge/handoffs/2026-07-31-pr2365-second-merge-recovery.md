@@ -15,7 +15,7 @@ ci-policy, inventory
 - Resolved the only textual conflict in `scripts/agent/health/test-only-exports-lib.ts` by preserving both sides:
   - main's path-scoped allowlist for intentional generated-assets test scaffolding
   - this branch's stricter production-consumer semantics (`src/labs/**` excluded, `scripts/**` counted) and snapshot-based `findNewlyTestOnlyExports(...)` support.
-- Updated `scripts/agent/health/test-only-exports.ts` to use the snapshot-based "newly test-only" flow again so the merge does not regress into flagging pre-existing debt while still benefiting from the merged allowlist logic in the library.
+- Kept `scripts/agent/health/test-only-exports.ts` aligned with current `origin/main` after the merge so the older silent-merge-revert blocker for that wrapper stays cleared; the merged library still carries the additional pure helper coverage and path-scoped allowlist support.
 - Accepted the remaining staged files exactly as they came from `origin/main`; no other branch-local logic changes were made during conflict resolution.
 
 ## Files touched manually in this recovery
@@ -33,6 +33,7 @@ ci-policy, inventory
 - `npm run verify:pr-prereqs` ✅
 - `npx tsx scripts/agent/health/test-only-exports.ts` ⚠️ environment-blocked: this sandbox still lacks the repo's installed `typescript` package, so tsx cannot load `scripts/agent/health/test-only-exports-lib.ts`
 - `npm exec --yes --package typescript --package tsx -- tsx ...` ⚠️ same environment limitation; module resolution still prefers the worktree's missing repo dependency tree
+- `npx tsx scripts/agent/health/silent-reverts.ts` ⚠️ before the final follow-up checkpoint, the guard still reported the historical `scripts/agent/health/test-only-exports.ts` discard because the wrapper restore was uncommitted; committing that restore is the last step before the check can turn green on `HEAD`
 
 ## Notes
 

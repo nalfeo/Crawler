@@ -27,8 +27,9 @@ import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 import {
   collectNamedExports,
+  collectNamedImports,
   findDuplicateExportNames,
-  findNewlyTestOnlyExports,
+  isTestScaffoldAllowlisted,
   type SourceFile,
 } from './test-only-exports-lib.js';
 
@@ -116,63 +117,47 @@ function listChangedSrcPaths(baseRef: string | null): string[] {
   return [...changed];
 }
 
-function listChangedPaths(baseRef: string | null, roots: readonly string[]): string[] {
-  const changed = new Set<string>();
-  const diffSpecs = baseRef
-    ? [`${baseRef}...HEAD`, undefined, '--cached']
-    : [undefined, '--cached'];
-
-  for (const diffSpec of diffSpecs) {
-    const args = ['diff', '--name-only', '--diff-filter=ACMRD'];
-    if (diffSpec) {
-      args.push(diffSpec);
-    }
-    args.push('--', ...roots);
-
-    const result = spawnSync('git', args, {
-      encoding: 'utf8',
-      maxBuffer: 1024 * 1024,
-    });
-    if (result.status !== 0) continue;
-
-    for (const line of result.stdout.split(/\r?\n/)) {
-      const rel = line.trim().replace(/\\/g, '/');
-      if (rel) changed.add(rel);
-    }
-  }
-
-  return [...changed];
-}
-
-function readSourceFileAtRef(ref: string, relPath: string): SourceFile | null {
+/**
+ * Read the content of a file at a specific git ref. Returns null if the file
+ * did not exist at that ref (e.g. it is newly added in this branch).
+ */
+function readFileAtRef(relPath: string, ref: string): string | null {
   const result = spawnSync('git', ['show', `${ref}:${relPath}`], {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024,
   });
   if (result.status !== 0) return null;
-  return { path: relPath, content: result.stdout };
+  return result.stdout;
 }
 
-function buildBaseSnapshot(
-  currentFiles: readonly SourceFile[],
-  changedPaths: ReadonlySet<string>,
-  baseRef: string,
-  roots: readonly string[],
-): SourceFile[] {
-  const baseFiles = new Map(currentFiles.map((file) => [file.path, file]));
+/**
+ * For each changed src file, collect the import names it had at `baseRef`.
+ * These are candidates for "last caller removed": if the name is no longer
+ * imported anywhere in production at HEAD, the export may now be test-only
+ * even though the exporting file itself is unchanged.
+ *
+ * Note: the returned set is deliberately over-inclusive — names still
+ * imported by any src file at HEAD are filtered out downstream by the
+ * per-export `srcConsumers` check in the caller.
+ */
+function collectDeletedImportNames(
+  changedSrcPaths: Set<string>,
+  baseRef: string | null,
+): Set<string> {
+  if (!baseRef || changedSrcPaths.size === 0) return new Set();
 
-  for (const relPath of changedPaths) {
-    const isUnderRoot = roots.some((root) => relPath === root || relPath.startsWith(`${root}/`));
-    if (!isUnderRoot) continue;
-    const baseFile = readSourceFileAtRef(baseRef, relPath);
-    if (baseFile) {
-      baseFiles.set(relPath, baseFile);
-    } else {
-      baseFiles.delete(relPath);
+  const candidates = new Set<string>();
+  for (const relPath of changedSrcPaths) {
+    const baseContent = readFileAtRef(relPath, baseRef);
+    if (baseContent === null) continue; // newly added file — no prior imports
+
+    const baseFile = { path: relPath, content: baseContent };
+    const baseImports = collectNamedImports([baseFile]);
+    for (const name of baseImports.keys()) {
+      candidates.add(name);
     }
   }
-
-  return [...baseFiles.values()];
+  return candidates;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,15 +189,11 @@ function main(): void {
     report.finish();
   }
 
+  const changedSrcFiles = srcFiles.filter((file) => changedSrcPaths.has(file.path));
   const allExports = collectNamedExports(srcFiles);
-  const changedExports = allExports.filter((exp) => changedSrcPaths.has(exp.file));
-  const testOnlyExports = (() => {
-    if (!baseRef) return [];
-    const changedPaths = new Set(listChangedPaths(baseRef, ['src', 'tests']));
-    const baseSrcFiles = buildBaseSnapshot(srcFiles, changedPaths, baseRef, ['src']);
-    const baseTestFiles = buildBaseSnapshot(testFiles, changedPaths, baseRef, ['tests']);
-    return findNewlyTestOnlyExports(srcFiles, testFiles, baseSrcFiles, baseTestFiles);
-  })();
+  const changedExports = collectNamedExports(changedSrcFiles);
+  const srcImports = collectNamedImports(srcFiles);
+  const testImports = collectNamedImports(testFiles);
 
   // Warn about duplicate export names in changed files; they can cause false negatives.
   const changedExportNames = new Set(changedExports.map((exp) => exp.name));
@@ -228,6 +209,28 @@ function main(): void {
       },
     );
   }
+
+  // Also check exports whose *last production caller* may have been removed in
+  // a changed file.  Removing an import from a changed file leaves the
+  // exporting file unchanged, so it would otherwise be absent from
+  // `changedExports` and the guard would silently pass.
+  const deletedImportNames = collectDeletedImportNames(changedSrcPaths, baseRef);
+  const deletedImportCandidates = allExports.filter(
+    (exp) => deletedImportNames.has(exp.name) && !changedExportNames.has(exp.name),
+  );
+  const candidates = [...changedExports, ...deletedImportCandidates];
+  const testOnlyExports = candidates.flatMap((exp) => {
+    if (isTestScaffoldAllowlisted(exp)) return []; // documented test scaffold
+
+    const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
+    const outsideSrcConsumers = [...srcConsumers].filter((file) => file !== exp.file);
+    if (outsideSrcConsumers.length > 0) return [];
+
+    const testConsumers = [...(testImports.get(exp.name) ?? new Set<string>())];
+    if (testConsumers.length === 0) return [];
+
+    return [{ ...exp, testConsumers }];
+  });
 
   for (const exp of testOnlyExports) {
     const consumers = exp.testConsumers.join(', ');
@@ -245,7 +248,7 @@ function main(): void {
 
   if (testOnlyExports.length === 0) {
     report.info(
-      `${changedExports.length} changed src/ export(s) checked; none newly became test-only.`,
+      `${candidates.length} src/ export(s) checked (${changedExports.length} from changed files, ${deletedImportCandidates.length} from deleted importers); none are consumed exclusively by tests.`,
     );
   }
 
