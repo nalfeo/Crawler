@@ -179,7 +179,6 @@ const allPackKeys = new Set<string>([
   pack.wallAutotile.textureKey,
   ...pack.floorPool.map((v) => v.textureKey),
   ...pack.corridorPool.map((v) => v.textureKey),
-  ...Object.values(pack.doorSet).map((v) => v.textureKey),
   ...(pack.wallAccents ?? []).map((a) => a.textureKey),
   ...(pack.linework ?? []).map((l) => l.textureKey),
   ...(pack.linework ?? []).flatMap((l) => (l.props ? [l.props.textureKey] : [])),
@@ -265,7 +264,6 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
         doorPack.wallAutotile.textureKey,
         ...doorPack.floorPool.map((v) => v.textureKey),
         ...doorPack.corridorPool.map((v) => v.textureKey),
-        ...Object.values(doorPack.doorSet).map((v) => v.textureKey),
         ...(doorPack.wallAccents ?? []).map((a) => a.textureKey),
         ...(doorPack.linework ?? []).map((l) => l.textureKey),
       ]);

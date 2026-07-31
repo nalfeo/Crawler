@@ -45,11 +45,8 @@ import {
   preloadGeneratedSprites,
 } from '../../engine/generatedAssets/index.js';
 import { buildGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
-import {
-  getEquipmentDefForItem,
-  GEAR_ITEM_IDS,
-  MERCHANTS_CHARM_DEF,
-} from '../../shared/equipmentDefs.js';
+import { getEquipmentDefForItem, MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
+import equipmentDefsTestSeams from '../../shared/equipmentDefs.test-seams.js';
 import { GAME } from '../../shared/constants.js';
 import {
   addItem,
@@ -369,7 +366,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         // Seed placeholder gear for every non-weapon slot so the paper-doll is
         // fully fillable and the double-click equip flow is exercisable across
         // all 18 slots directly in the lab.
-        for (const gearId of GEAR_ITEM_IDS) {
+        for (const gearId of equipmentDefsTestSeams.GEAR_ITEM_IDS) {
           addItem(bag, gearId, 1);
         }
       }
@@ -451,7 +448,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     private seedAllGear(): void {
       const bag = this.world.inventories.get(this.playerEid);
       if (!bag) return;
-      for (const gearId of GEAR_ITEM_IDS) {
+      for (const gearId of equipmentDefsTestSeams.GEAR_ITEM_IDS) {
         addItem(bag, gearId, 1);
       }
       this.inventoryUI?.refresh(this.world);
@@ -464,9 +461,13 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
      * deterministic way to reach the scroll path.
      */
     private seedOverflowBag(count: number): void {
-      if (!this.world.inventories.has(this.playerEid)) return;
+      const currentBag = this.world.inventories.get(this.playerEid);
+      if (!currentBag) return;
       const bag = createInventoryBag();
-      const gearId = GEAR_ITEM_IDS[0]!;
+      if (currentBag.generatedEquipmentCapacity !== undefined) {
+        bag.generatedEquipmentCapacity = currentBag.generatedEquipmentCapacity;
+      }
+      const gearId = equipmentDefsTestSeams.GEAR_ITEM_IDS[0]!;
       for (let i = 0; i < count; i += 1) {
         addItem(bag, gearId, 1);
       }

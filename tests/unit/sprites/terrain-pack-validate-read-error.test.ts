@@ -74,10 +74,7 @@ describe('validatePoolAndDoorImages — readFileSync EACCES produces image-read-
 
   it('reports image-read-error (not throw) on every pool/door entry when readFileSync throws', () => {
     const { manifest } = buildIndustrialCavePack();
-    const entryCount =
-      manifest.floorPool.length +
-      manifest.corridorPool.length +
-      Object.keys(manifest.doorSet).length;
+    const entryCount = manifest.floorPool.length + manifest.corridorPool.length;
     const opts = { repoRoot: repoRoot() };
 
     // All stats succeed; all reads fail.

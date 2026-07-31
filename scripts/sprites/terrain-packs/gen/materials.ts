@@ -62,11 +62,9 @@ export interface PackGenSpec {
   readonly wall: SurfaceMaterialSpec;
   readonly floor: SurfaceMaterialSpec;
   readonly corridor: SurfaceMaterialSpec;
-  /** Wood material used for the closed-door slab. */
-  readonly doorSlab: SurfaceMaterialSpec;
   /**
    * Compose the Floor 1 role-keyed floor pools (welcome / safe / boss-stair)
-   * into this pack. They share this pack's walls and doors, so only the pack
+   * into this pack. They share this pack's walls, so only the pack
    * that owns those surfaces should carry them.
    */
   readonly includeSpecialFloorPools?: boolean;
@@ -100,20 +98,6 @@ export const FLOOR1_DUNGEON_SPEC: PackGenSpec = {
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },
-  doorSlab: {
-    cacheKey: 'floor1-door-wood',
-    prompt:
-      'Heavy weathered oak plank door surface with dark iron banding and rivets, ' +
-      'vertical plank grain, aged and scarred. ' +
-      SHARED_STYLE,
-    tile: {
-      sizePx: 64,
-      posterizeLevels: 10,
-      targetMeanLuminance: 78,
-      maxLuminance: 150,
-      targetStdDev: 20,
-    },
-  },
 };
 
 export const FLOOR1_CAVE_SPEC: PackGenSpec = {
@@ -143,7 +127,6 @@ export const FLOOR1_CAVE_SPEC: PackGenSpec = {
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },
-  doorSlab: FLOOR1_DUNGEON_SPEC.doorSlab,
 };
 
 /**

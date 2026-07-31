@@ -1,0 +1,66 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "unified-door-rendering",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 1732,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 1716,
+      "crash": 4
+    },
+    "pr-preflight": {
+      "allow": 5,
+      "deny": 1
+    },
+    "pr-review-ledger": {
+      "allow": 6
+    }
+  },
+  "tools": {
+    "ask_user": 12,
+    "chrome-devtools-evaluate_script": 26,
+    "chrome-devtools-navigate_page": 2,
+    "chrome-devtools-new_page": 4,
+    "chrome-devtools-press_key": 1,
+    "chrome-devtools-resize_page": 4,
+    "chrome-devtools-take_screenshot": 16,
+    "create": 30,
+    "create_pull_request": 12,
+    "create_session": 3,
+    "edit": 199,
+    "extensions_reload": 1,
+    "get_session": 6,
+    "glob": 8,
+    "grep": 113,
+    "list_agents": 4,
+    "list_powershell": 1,
+    "playwright-browser_click": 1,
+    "playwright-browser_evaluate": 9,
+    "playwright-browser_find": 1,
+    "playwright-browser_navigate": 8,
+    "playwright-browser_press_key": 2,
+    "playwright-browser_run_code_unsafe": 19,
+    "playwright-browser_snapshot": 1,
+    "playwright-browser_take_screenshot": 8,
+    "powershell": 607,
+    "read_agent": 16,
+    "read_powershell": 30,
+    "rename_branch": 1,
+    "rename_session": 2,
+    "rg": 98,
+    "send_session_message": 4,
+    "session_store_sql": 3,
+    "skill": 5,
+    "sql": 8,
+    "stop_powershell": 3,
+    "task": 13,
+    "update_pull_request": 1,
+    "view": 448,
+    "write_agent": 2
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

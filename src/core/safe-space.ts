@@ -20,9 +20,15 @@ function roomContainsTile(room: RoomData, tx: number, ty: number): boolean {
 export function isPointInSafeSpace(world: GameWorld, x: number, y: number): boolean {
   const floorMap = world.floorMap;
   if (!floorMap) return false;
+  const tile = floorMap.worldToTile(x, y);
+  if (world.floorId === 'floor2') {
+    const entranceRoom = floorMap.spawnRoom;
+    if (entranceRoom && roomContainsTile(entranceRoom, tile.x, tile.y)) {
+      return true;
+    }
+  }
   const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
   if (safeRooms.length === 0) return false;
-  const tile = floorMap.worldToTile(x, y);
   return safeRooms.some((room) => roomContainsTile(room, tile.x, tile.y));
 }
 

@@ -27,10 +27,6 @@ import { BLOB47_CANONICAL_MASKS } from '../../src/shared/terrain-pack-mask.js';
 /** A minimal, schema-valid terrain pack def used as a base for mutation tests. */
 function buildValidPackDef(overrides: Partial<Record<string, unknown>> = {}) {
   const masks = BLOB47_CANONICAL_MASKS.map((maskId, frameIndex) => ({ maskId, frameIndex }));
-  const doorVariant = (name: string) => ({
-    imagePath: `assets/terrain-packs/test/${name}.png`,
-    textureKey: `terrain-pack-test-${name}`,
-  });
   const poolVariant = (name: string) => ({
     id: name,
     imagePath: `assets/terrain-packs/test/${name}.png`,
@@ -60,12 +56,6 @@ function buildValidPackDef(overrides: Partial<Record<string, unknown>> = {}) {
     },
     floorPool: [poolVariant('floor-0'), poolVariant('floor-1'), poolVariant('floor-2')],
     corridorPool: [poolVariant('corridor-0'), poolVariant('corridor-1'), poolVariant('corridor-2')],
-    doorSet: {
-      openHorizontal: doorVariant('door-open-horizontal'),
-      openVertical: doorVariant('door-open-vertical'),
-      closedHorizontal: doorVariant('door-closed-horizontal'),
-      closedVertical: doorVariant('door-closed-vertical'),
-    },
     wallAccents: [
       accentVariant('accent-crack'),
       accentVariant('accent-mineral-vein'),
@@ -131,10 +121,30 @@ describe('terrainPackDefSchema — per-surface contract (refinement #2)', () => 
     expect(terrainPackDefSchema.safeParse(rest).success).toBe(false);
   });
 
-  it('rejects a def missing the doorSet surface entirely', () => {
+  it('rejects a def that still declares a doorSet (packs no longer carry door art)', () => {
+    // INVERTED GUARD. This replaces "rejects a def missing the doorSet surface
+    // entirely": doorSet used to be REQUIRED, and is now FORBIDDEN. The strict
+    // schema turns a stale manifest into a loud parse failure at load rather
+    // than a silently-ignored block of dead JSON, which is what makes deleting
+    // the four pack door PNGs safe.
     const def = buildValidPackDef();
-    const { doorSet: _drop, ...rest } = def;
-    expect(terrainPackDefSchema.safeParse(rest).success).toBe(false);
+    const withDoorSet = {
+      ...def,
+      doorSet: {
+        openHorizontal: { imagePath: 'a.png', textureKey: 'a' },
+        openVertical: { imagePath: 'b.png', textureKey: 'b' },
+        closedHorizontal: { imagePath: 'c.png', textureKey: 'c' },
+        closedVertical: { imagePath: 'd.png', textureKey: 'd' },
+      },
+    };
+    expect(terrainPackDefSchema.safeParse(withDoorSet).success).toBe(false);
+  });
+
+  it('accepts a def with NO doorSet (the shipped shape after door unification)', () => {
+    // The positive half of the inversion: proves the rejection above is caused
+    // by the doorSet key specifically and not by some unrelated invalidity in
+    // the fixture, so the test cannot pass vacuously.
+    expect(terrainPackDefSchema.safeParse(buildValidPackDef()).success).toBe(true);
   });
 
   it('rejects unknown extra top-level fields (strict schema, no coarse "topology" field)', () => {
@@ -333,23 +343,6 @@ describe('terrainPackDefSchema — wallAccents (2026-07-25 refinement #3)', () =
     const def = buildValidPackDef();
     const wallAccents = [{ ...def.wallAccents[0]!, gridCols: 8 }, ...def.wallAccents.slice(1)];
     expect(terrainPackDefSchema.safeParse({ ...def, wallAccents }).success).toBe(false);
-  });
-});
-
-describe('terrainPackDefSchema — doorSet is exactly open/closed x horizontal/vertical', () => {
-  it('rejects a doorSet with a "locked" variant added (explicitly out of scope)', () => {
-    const def = buildValidPackDef();
-    const doorSet = {
-      ...def.doorSet,
-      lockedHorizontal: { imagePath: 'locked.png', textureKey: 'locked' },
-    };
-    expect(terrainPackDefSchema.safeParse({ ...def, doorSet }).success).toBe(false);
-  });
-
-  it('rejects a doorSet missing one of the four required combinations', () => {
-    const def = buildValidPackDef();
-    const { closedVertical: _drop, ...doorSet } = def.doorSet;
-    expect(terrainPackDefSchema.safeParse({ ...def, doorSet }).success).toBe(false);
   });
 });
 
