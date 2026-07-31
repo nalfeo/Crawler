@@ -290,7 +290,9 @@ import {
   type TravelPickup,
 } from './travel-steering.js';
 import {
+  buildRunPlanCacheKey,
   estimateFloor1RunPlan,
+  planFloor1ObjectiveRoute,
   type Floor1RunPlan,
   type Floor1RunPlannerSnapshot,
   type RunPlanSegmentPhase,
@@ -656,8 +658,6 @@ export interface AINpcMemoryDebug {
   neededInteractionReasons: Record<string, string | null>;
 }
 
-export type { AILockedDoorMemory };
-
 export interface TacticalRunDebug {
   /**
    * Post-tick travel-steering run plan (`lastRunPlan`), estimated from the
@@ -919,6 +919,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     stateKey: string;
     goalId: string | null;
   } | null = null;
+  /** Cached result of {@link planFloor1ObjectiveRoute}, keyed on quest-state + budget bucket + speed.
+   * Exact timing and segment travel are recomputed per frame from the live snapshot. Cleared on {@link reset}. */
+  private runPlanCache: ReturnType<typeof planFloor1ObjectiveRoute> | null = null;
+  private runPlanCacheKey: string | null = null;
   /**
    * Locked doors the AI is currently aware of, keyed by door entity. Populated
    * from {@link getNavigationBlockedDoors} each poll and pruned when a door's
@@ -4277,7 +4281,15 @@ export class BehaviorTreeAI implements AIInputProvider {
         staircase: objective.staircasePos,
       },
     };
-    return estimateFloor1RunPlan(snapshot, this.getRunPlannerParams(playerSpeedFtPerFrame));
+    const params = this.getRunPlannerParams(playerSpeedFtPerFrame);
+    const cacheKey = buildRunPlanCacheKey(snapshot, params);
+    let route = this.runPlanCache;
+    if (cacheKey !== this.runPlanCacheKey || route === null) {
+      route = planFloor1ObjectiveRoute(snapshot, params);
+      this.runPlanCacheKey = cacheKey;
+      this.runPlanCache = route;
+    }
+    return estimateFloor1RunPlan(snapshot, params, route);
   }
 
   private getMerchantDecisionRunPlan(
@@ -8538,6 +8550,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.navEpoch = 0;
     this.navSignature = null;
     this.floor1MiddleChainCache = null;
+    this.runPlanCacheKey = null;
+    this.runPlanCache = null;
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;
