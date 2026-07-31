@@ -351,7 +351,7 @@ test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside t
   assert.ok(numbers.includes(1), 'the train-labeled PR must survive the cap');
 });
 
-test('flag-off non-sweep suppresses known no-op direct dispatches and backfills stale lane', () => {
+test('flag-off non-sweep still dispatches stale merge-train labels for cleanup', () => {
   const scheduledPulls = [
     {
       number: 2421,
@@ -359,14 +359,6 @@ test('flag-off non-sweep suppresses known no-op direct dispatches and backfills 
       labels: [{ name: 'merge-train' }],
       created_at: '2026-07-31T05:55:00Z',
       updated_at: '2026-07-31T06:00:00Z',
-      head: { repo: { full_name: 'nalfeo/Crawler' } },
-    },
-    {
-      number: 2401,
-      draft: false,
-      labels: [],
-      created_at: '2026-07-31T02:00:00Z',
-      updated_at: '2026-07-31T02:10:00Z',
       head: { repo: { full_name: 'nalfeo/Crawler' } },
     },
   ];
@@ -380,7 +372,7 @@ test('flag-off non-sweep suppresses known no-op direct dispatches and backfills 
     now: new Date('2026-07-31T06:05:00Z'),
   });
 
-  assert.deepEqual(selected, [2401]);
+  assert.deepEqual(selected, [2421]);
 });
 
 test('flag-off non-sweep reserves a stale lane so event storms cannot starve stale PRs', () => {
@@ -415,6 +407,76 @@ test('flag-off non-sweep reserves a stale lane so event storms cannot starve sta
   const { dispatchable } = partitionDispatchable(ordered, 1);
   assert.deepEqual(dispatchable, [2401]);
   assert.deepEqual(ordered, [2401, 2421]);
+});
+
+test('train-enabled non-sweep suppresses repeated R06 direct dispatches for an unchanged head', () => {
+  const scheduledPulls = [
+    {
+      number: 2421,
+      draft: false,
+      labels: [{ name: 'merge-train' }, { name: 'ci-owner-pr-2421' }],
+      created_at: '2026-07-31T05:55:00Z',
+      updated_at: '2026-07-31T06:00:00Z',
+      head: { sha: 'head-2421', repo: { full_name: 'nalfeo/Crawler' } },
+      recoveryState: automationOwnerState(2421, '2026-07-31T05:59:00.000Z'),
+    },
+  ];
+
+  const selected = collectPrNumbers({
+    payload: { issue: { number: 2421, pull_request: {} } },
+    eventName: 'issue_comment',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    trainEnabled: true,
+    now: new Date('2026-07-31T06:05:00Z'),
+  });
+
+  assert.deepEqual(selected, []);
+});
+
+test('flag-off non-sweep skips unhydrated owner-labeled PRs from the stale lane instead of misclassifying a healthy owner as unhealthy', () => {
+  // scheduledPulls on flag-off non-sweep events (issue_comment, pull_request_target,
+  // etc.) is raw /pulls data -- recoveryState is never hydrated for these events.
+  // A live, healthy owner (e.g. an active automation or shepherd lease) is
+  // therefore indistinguishable from an absent owner to hasHealthyOwnerForSweep.
+  // Without an explicit skip, this owned PR would be misclassified as unhealthy,
+  // receive the maximum staleness age, and repeatedly consume the single
+  // RECONCILIATION_LANE_CAP slot -- recreating the exact starvation the lane is
+  // meant to prevent, since the reconciler will just no-op skip it as owned.
+  const scheduledPulls = [
+    {
+      number: 2421,
+      draft: false,
+      labels: [{ name: 'ci-owner-pr-2421' }],
+      // recoveryState intentionally omitted -- never hydrated on this event path.
+      created_at: '2026-07-25T00:00:00Z',
+      updated_at: '2026-07-25T00:05:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2401,
+      draft: false,
+      labels: [],
+      created_at: '2026-07-30T02:00:00Z',
+      updated_at: '2026-07-30T02:10:00Z',
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  const ordered = collectPrNumbers({
+    payload: { issue: { number: 9999, pull_request: {} } },
+    eventName: 'issue_comment',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    trainEnabled: false,
+    now: new Date('2026-07-31T06:05:00Z'),
+  });
+
+  // The unhydrated owned PR #2421 -- despite having the oldest updated_at and
+  // thus the maximum staleness score -- must NOT consume the reserved stale
+  // lane slot. Only the genuinely unowned/stale PR #2401 should occupy the
+  // reserved lane; the directly-triggered PR still pass-throughs after it.
+  assert.deepEqual(ordered, [2401, 9999]);
 });
 
 test('flag-off sweeps order PRs oldest-first (global FIFO) across sweeps', () => {
@@ -3730,5 +3792,76 @@ test('runFromEnv hydrates waiting/no-owner candidates and dispatches repair wake
     stdout,
     /dispatched pr=#20/,
     `dispatch log line expected for PR #20; stdout: ${stdout}`,
+  );
+});
+
+test('runFromEnv hydrates direct owned train PRs before suppressing repeated R06 dispatches', async (t) => {
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const pr42 = {
+    number: 42,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-31T06:00:00Z',
+    labels: [{ name: 'merge-train' }, { name: 'ci-owner-pr-42' }],
+    head: { sha: 'head-42', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+  const stateComment = {
+    id: 1,
+    body: renderStateComment(automationOwnerState(42, '2026-07-31T05:59:00.000Z')),
+  };
+
+  const dispatches = [];
+  const commentRequestsFor42 = [];
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr42] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/42/comments`]: () => {
+      commentRequestsFor42.push(1);
+      return { body: [stateComment] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: (url) => {
+      const parsed = new URL(`http://127.0.0.1${url}`);
+      return { body: { total_count: parsed.searchParams.get('status') ? 0 : 0, workflow_runs: [] } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-direct-train-dedupe-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({
+      action: 'created',
+      issue: { number: 42, pull_request: {} },
+      repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' },
+    }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'issue_comment',
+    GITHUB_EVENT_PATH: eventPath,
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  assert.ok(
+    commentRequestsFor42.length >= 1,
+    `comments for PR #42 must be fetched before train-mode direct dedupe; stdout: ${stdout}`,
+  );
+  assert.equal(
+    dispatches.length,
+    0,
+    `no dispatch expected after hydrating an unchanged R06 direct noop; stdout: ${stdout}`,
   );
 });

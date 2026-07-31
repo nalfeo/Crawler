@@ -130,8 +130,24 @@ export function getReasonRestatementViolationsForCurrentBranch() {
 }
 
 function isActive(exception, now) {
-  const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+  const expiresAt = parseStrictExpiryDate(exception);
   return now <= expiresAt;
+}
+
+function parseStrictExpiryDate(exception) {
+  const raw = String(exception?.expiresOn ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new Error(
+      `Invalid expiresOn '${raw}' for ${exception?.packageName ?? exception?.url ?? 'exception'}: expected YYYY-MM-DD`,
+    );
+  }
+  const expiresAt = new Date(`${raw}T23:59:59.999Z`);
+  if (Number.isNaN(expiresAt.getTime()) || expiresAt.toISOString().slice(0, 10) !== raw) {
+    throw new Error(
+      `Invalid expiresOn '${raw}' for ${exception?.packageName ?? exception?.url ?? 'exception'}: not a real calendar date`,
+    );
+  }
+  return expiresAt;
 }
 
 function matchesException(packageName, advisory, exception, now) {
@@ -209,7 +225,7 @@ export function evaluateTemporaryDependencyExceptions(
     const pinnedVersion =
       fieldValue && typeof fieldValue === 'object' ? fieldValue[exception.packageName] : undefined;
     if (pinnedVersion !== exception.version) continue;
-    const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+    const expiresAt = parseStrictExpiryDate(exception);
     if (now > expiresAt) {
       expired.push(exception);
     } else {

@@ -396,9 +396,39 @@ function isFlagOffDispatchEligibleByBlockState(pullRequest) {
   return hasOwner || hasTransition || isRepairWakeEligible(pullRequest);
 }
 
-function isKnownNoopDirectDispatch(pullRequest) {
+function hasUnhydratedOwnerLabel(pullRequest) {
   const labels = pullRequest?.labels || [];
-  return labels.some((label) => label.name === QUEUE_LABEL || label.name === 'ci-conflict-order-wait');
+  return (
+    labels.some((label) => String(label.name || '').startsWith(OWNER_LABEL_PREFIX)) &&
+    pullRequest?.recoveryState === undefined &&
+    pullRequest?.recoveryStateUnreadable === undefined
+  );
+}
+
+function knownTrainNoopDecisionRow(pullRequest) {
+  const labels = pullRequest?.labels || [];
+  if (labels.some((label) => label.name === HUMAN_APPROVAL_LABEL)) return null;
+  if (labels.some((label) => label.name === QUEUE_LABEL)) return 'R06';
+  if (labels.some((label) => label.name === 'ci-conflict-order-wait')) return 'R07';
+  return null;
+}
+
+function isRepeatedTrainNoopDirectDispatch(pullRequest) {
+  const rowId = knownTrainNoopDecisionRow(pullRequest);
+  if (!rowId) return false;
+  const labels = pullRequest?.labels || [];
+  const ownerLabels = labels.filter((label) =>
+    String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+  );
+  if (ownerLabels.length !== 1 || ownerLabels[0].name !== ownerLabel(pullRequest.number)) {
+    return false;
+  }
+  const state = pullRequest?.recoveryState;
+  if (!state || state.owner !== 'automation') return false;
+  if (!['active', 'dispatched', 'escalated'].includes(state.status)) return false;
+  const liveHead = String(pullRequest.head?.sha || '').toLowerCase();
+  const stateHead = String(state.headSha || '').toLowerCase();
+  return Boolean(liveHead) && stateHead === liveHead;
 }
 
 function stalenessScore(pullRequest, now = new Date()) {
@@ -443,7 +473,9 @@ export function collectPrNumbers({
     );
 
     if (!repairWindowSweep) {
-      return direct.map((pullRequest) => pullRequest.number);
+      return direct
+        .filter((pullRequest) => !isRepeatedTrainNoopDirectDispatch(pullRequest))
+        .map((pullRequest) => pullRequest.number);
     }
 
     const waitingTransitions = eligiblePulls.filter(
@@ -533,15 +565,13 @@ export function collectPrNumbers({
     ];
     return ordered.slice(0, maxDispatchPerRun);
   }
-  const directTier = unblocked.filter((number) => {
-    if (!directNumbers.has(number)) return false;
-    return !isKnownNoopDirectDispatch(pullsByNumber.get(number));
-  });
+  const directTier = unblocked.filter((number) => directNumbers.has(number));
   const staleLane = [...pullsByNumber.values()]
     .filter((pullRequest) => {
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (!Number.isInteger(number) || number <= 0 || directNumbers.has(number)) return false;
       if (!isFlagOffDispatchEligibleByBlockState(pullRequest)) return false;
+      if (hasUnhydratedOwnerLabel(pullRequest)) return false;
       return !hasHealthyOwnerForSweep(pullRequest, now);
     })
     .sort((left, right) => {
@@ -1157,6 +1187,12 @@ export async function runFromEnv(env = process.env) {
   }
   const dispatchTrigger =
     payload.action && !trigger.includes(':') ? `${trigger}:${payload.action}` : trigger;
+  const directlyTriggeredPrs = eventPrNumbers(payload);
+  const repairWindowSweepEvent = isRepairWindowSweepEvent({
+    payload,
+    eventName,
+    trainEnabled,
+  });
 
   // Always fetched now (previously only for schedule/workflow_dispatch or
   // train-enabled events): the global backpressure check below needs to
@@ -1174,14 +1210,7 @@ export async function runFromEnv(env = process.env) {
       ),
     { label: 'list-open-prs' },
   );
-  if (
-    trainEnabled &&
-    isRepairWindowSweepEvent({
-      payload,
-      eventName,
-      trainEnabled,
-    })
-  ) {
+  if (trainEnabled && repairWindowSweepEvent) {
     // Snapshot the reference time before hydration so the age-ordering and
     // "healthy owner" checks inside the callback all share the same clock.
     const hydrateNow = new Date();
@@ -1209,6 +1238,25 @@ export async function runFromEnv(env = process.env) {
     );
   }
 
+  if (trainEnabled && !repairWindowSweepEvent) {
+    const directlyTriggeredOwned = scheduledPulls.filter(
+      (pr) => directlyTriggeredPrs.has(pr.number) && hasUnhydratedOwnerLabel(pr),
+    );
+    if (directlyTriggeredOwned.length > 0) {
+      const hydratedDirect = await hydrateRecoveryOwnership(
+        directlyTriggeredOwned,
+        (number) =>
+          requestWithBackoff(
+            () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+            { label: `direct-owner-load-state-${number}` },
+          ),
+        directlyTriggeredOwned.length,
+      );
+      const patchByNumber = new Map(hydratedDirect.map((pr) => [pr.number, pr]));
+      scheduledPulls = scheduledPulls.map((pr) => patchByNumber.get(pr.number) ?? pr);
+    }
+  }
+
   // Bounded hydration pass for waiting/no-owner repair-wake candidates.
   // hydrateRecoveryOwnership only covers owner-labelled PRs (it filters by
   // OWNER_LABEL_PREFIX internally). isRepairWakeEligible requires the
@@ -1217,7 +1265,7 @@ export async function runFromEnv(env = process.env) {
   // permanently false. This separate pass loads the recovery state comment
   // for waiting/no-owner/no-transition candidates so isRepairWakeEligible
   // can become true for a PR that reconcile has already converged to idle.
-  if (isRepairWindowSweepEvent({ payload, eventName, trainEnabled })) {
+  if (repairWindowSweepEvent) {
     const waitingNoOwnerCandidates = scheduledPulls.filter(
       (pr) =>
         (pr.labels || []).some((l) => l.name === WAITING_LABEL) &&
@@ -1380,7 +1428,6 @@ export async function runFromEnv(env = process.env) {
   if (reaperDispatchedSet.size > 0) {
     prNumbers = prNumbers.filter((n) => !reaperDispatchedSet.has(n));
   }
-  const directlyTriggeredPrs = eventPrNumbers(payload);
 
   // Global backpressure applies unconditionally now -- independent of
   // MERGE_TRAIN_ENABLED -- because runner-capacity protection must hold even
