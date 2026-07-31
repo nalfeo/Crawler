@@ -11,7 +11,6 @@ import {
 } from '../core/components.js';
 import {
   spawnAoeProjectile,
-  spawnAreaAttack,
   spawnBeam,
   clearEntityStores,
   spawnMeleeSwing,

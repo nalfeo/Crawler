@@ -185,13 +185,15 @@ async function main(): Promise<void> {
           `Wire ${orphan.name} into a real pipeline entry point (one of: ` +
           `${WIRING_SITES.join(', ')}) — a lab that force-calls it does NOT count. ` +
           `If it is intentionally not wired, add a structured entry to ALLOWLIST in ` +
-          `scripts/agent/health/orphaned-systems-lib.ts (reason + trackedIssue + owner).`,
+          `scripts/agent/health/orphaned-systems-lib.ts ` +
+          `(reason + trackedIssue + trackedIssuePolicy + owner).`,
       },
     );
   }
 
   // The allowlist is a tracked-debt list, not a mute button: every entry must
-  // carry reason + trackedIssue + owner, or the guard fails (rule #12).
+  // carry reason + trackedIssue + trackedIssuePolicy + owner, or the guard
+  // fails (rule #12).
   for (const bad of findMalformedAllowlistEntries(ALLOWLIST)) {
     report.error(
       `ALLOWLIST entry "${bad.name}" is missing required field(s): ${bad.missing.join(', ')}.`,
