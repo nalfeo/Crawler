@@ -25,6 +25,13 @@
 
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { createRepoRequire } from '../../shared/node-modules-resolver.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// lib -> workflow -> extensions -> .github -> repo root
+const _repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+const _require = createRepoRequire(_repoRoot, import.meta.url);
 
 /**
  * Transpile one TS data module and pull a top-level exported array's `id` field
@@ -35,11 +42,9 @@ import { readFile } from 'node:fs/promises';
  * @returns {Promise<Set<string> | null>}
  */
 async function loadIdSet(absFile, exportName) {
-  // Import esbuild lazily so a context without it degrades instead of failing
-  // at module load. `esbuild` resolves from the repo node_modules (node walks
-  // up from this file's location).
-  const esbuildMod = await import('esbuild');
-  const esbuild = esbuildMod.default ?? esbuildMod;
+  // Use createRepoRequire so this works in git worktrees where node_modules
+  // lives in the main checkout, not in the worktree directory.
+  const esbuild = _require('esbuild');
   const source = await readFile(absFile, 'utf8');
   const { code } = await esbuild.transform(source, {
     loader: 'ts',

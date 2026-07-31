@@ -795,12 +795,21 @@ function applyPassive(
 
   state.appliedPassiveAbilityIds.add(passiveId);
 
-  // Emit VFX when a weapon-prerequisite passive becomes active so the player
-  // sees visual feedback that swapping to the right weapon unlocked a bonus.
+  // Emit VFX only for weapon-gated passives becoming active (e.g. swapping to
+  // a matching weapon). This intentionally re-fires on every qualifying
+  // weapon swap-in — a deliberate repeatable "equip flash", not a bug.
+  //
+  // General (no-prerequisite) passives deliberately do NOT get VFX here:
+  // applyPassive() is re-run on every synchronizeAbilityPassives() pass
+  // (including session/floor reload and stat carryover), so an unconditional
+  // VFX would misleadingly replay one-time unlock feedback for a passive granted
+  // long ago. General passives instead get their one-time milestone VFX (and the
+  // skillPassiveUnlocked announcement) from the level-5 skill milestone grant
+  // site — see skillSystem.ts.
   if (def.weaponPrerequisite !== undefined && hasComponent(world.ecs, holderEid, Player)) {
     const px = world.stores.position.x[holderEid] ?? 0;
     const py = world.stores.position.y[holderEid] ?? 0;
-    pushVfxEvent(world.vfxEvents, { kind: 'weaponAbilityActivate', x: px, y: py });
+    pushVfxEvent(world.vfxEvents, { kind: 'abilityActivateFlash', x: px, y: py });
   }
 }
 

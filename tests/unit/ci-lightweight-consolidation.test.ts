@@ -174,6 +174,16 @@ describe('ci.yml — check-lightweight blocking steps', () => {
     expect(step.run).toContain('human-approval-check.mjs');
   });
 
+  it('Orphaned-system wiring guard step has GITHUB_TOKEN env and runs the wired-systems check', () => {
+    const doc = loadCiWorkflow();
+    const step = getSteps(doc).find((s) => s.name === 'Orphaned-system wiring guard');
+    if (!step) throw new Error('Orphaned-system wiring guard step not found');
+    expect(['${{ github.token }}', '${{ secrets.GITHUB_TOKEN }}']).toContain(
+      step.env?.GITHUB_TOKEN,
+    );
+    expect(step.run).toContain('npm run check:wired-systems');
+  });
+
   it('Human approval step does NOT have a DOCS_ONLY guard (must run even on docs-only PRs)', () => {
     const doc = loadCiWorkflow();
     const step = getSteps(doc).find((s) => s.name === 'Human approval');

@@ -75,6 +75,27 @@ export function classifyRunTermination(stdout: string): RunTermination {
     : { kind: 'errored', outcome };
 }
 
+function isMainThreadProfile(fileName: string): boolean {
+  const parts = fileName.replace(/\.cpuprofile$/, '').split('.');
+  return parts.length === 6 && parts[4] === '0';
+}
+
+export function selectMainThreadProfile(files: readonly string[]): string {
+  if (files.length === 1) {
+    return files[0]!;
+  }
+
+  const mainThreadProfiles = files.filter(isMainThreadProfile);
+  if (mainThreadProfiles.length === 1) {
+    return mainThreadProfiles[0]!;
+  }
+
+  throw new Error(
+    `Expected exactly 1 .cpuprofile but found ${files.length}: ${files.join(', ')}` +
+      ` (could not isolate main-thread profile: found ${mainThreadProfiles.length} candidate(s) with worker-ID 0)`,
+  );
+}
+
 interface Options {
   seeds: number[];
   weapons: string[];
@@ -279,13 +300,19 @@ function profileOneRun(
     );
   }
 
-  if (emitted.length > 1) {
-    // One child, one profile. More means worker threads or a stale directory;
-    // silently picking the first would attribute the wrong thread's time.
-    fail(`Expected exactly 1 .cpuprofile but found ${emitted.length}: ${emitted.join(', ')}`);
+  let profileFile!: string;
+  try {
+    profileFile = selectMainThreadProfile(emitted);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+  if (emitted.length > 1 && isMainThreadProfile(profileFile) && !options.json) {
+    console.error(
+      `  note: ${emitted.length - 1} tsx worker-thread profile(s) discarded; using main-thread profile`,
+    );
   }
 
-  const profile = JSON.parse(readFileSync(path.join(dir, emitted[0]!), 'utf8')) as CpuProfile;
+  const profile = JSON.parse(readFileSync(path.join(dir, profileFile), 'utf8')) as CpuProfile;
   return summarizeProfile(profile);
 }
 

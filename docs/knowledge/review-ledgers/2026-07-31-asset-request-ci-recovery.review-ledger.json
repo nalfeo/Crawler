@@ -1,0 +1,16 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "asset-request-ci-recovery",
+  "task_title": "Recover asset-request auto-close PR CI",
+  "estimated_apples": 2,
+  "stages": {
+    "code_review": {
+      "completed": true,
+      "reviewer_model": "parallel_validation",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Review recovery on the asset-request auto-close PR. Separate code-review agents validated the listed threads: restored package.json/package-lock.json/npm-audit files to origin/main to remove unrelated dependency rollback diff, and tightened scripts/sprites/checkin.ts to fail closed when asset-request provenance lookup fails. parallel_validation reported 0 review findings."
+    }
+  }
+}

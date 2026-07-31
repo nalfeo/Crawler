@@ -25,7 +25,7 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { query } from 'bitecs';
+import { query, removeEntity } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
@@ -34,7 +34,8 @@ import {
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
-import { spawnDroppedItem } from '../../core/helpers.js';
+import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
+import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -58,6 +59,7 @@ import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
+import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
@@ -131,6 +133,12 @@ interface MainSceneInternals {
       bounds: ScreenBounds | null;
       panelVisible: boolean;
     };
+    /**
+     * The currently-rendered announcement banner content (kind + exact
+     * text), or `null` when no banner is showing. Real rendered projection,
+     * not `world.announcements` or internal ability/skill state.
+     */
+    getCurrentAnnouncement?(): { kind: string; text: string } | null;
   };
   inventoryUI?: {
     isOpen(): boolean;
@@ -153,7 +161,6 @@ interface MainSceneInternals {
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
   };
-  bossChestUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
    * The shared reward-opening sequence overlay driven by `AchievementsUI` /
@@ -178,12 +185,25 @@ interface MainSceneInternals {
    * by the probe so each e2e scenario starts clean.
    */
   rewardAudioCueLog?: RewardAudioCueLogEntryProbe[];
-  abilityLoadoutUI?: { isOpen(): boolean; close(): void };
+  abilityLoadoutUI?: {
+    isOpen(): boolean;
+    close(): void;
+    getVisibleEntries?(): ReadonlyArray<{
+      id: string;
+      details: string;
+      canToggle?: boolean;
+    }>;
+    /**
+     * Label of the non-equippable-passives section header currently
+     * rendered in the visible row list, or `null` when no passive rows are
+     * visible. Reflects the real rendered UI, not internal entry data.
+     */
+    getVisibleSectionHeaderLabel?(): string | null;
+  };
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
-  bossChestButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   modalPicker?: {
     isOpen(): boolean;
@@ -197,7 +217,6 @@ interface MainSceneInternals {
   requestInventoryToggle?(): void;
   requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
-  requestBossChestsToggle?(): void;
   requestQuartermasterToggle?(): void;
   getSettlementShopOfferSnapshot?(): ReadonlyArray<{
     readonly stockId?: string;
@@ -312,6 +331,12 @@ export interface NpcRenderInfo {
   readonly distancePx: number;
 }
 
+export interface AbilityLoadoutVisibleEntryProbe {
+  readonly id: string;
+  readonly details: string;
+  readonly canToggle: boolean;
+}
+
 /** Boot-time facts + live readings exposed for characterization assertions. */
 export interface MainSceneState {
   /** ECS world state machine value (e.g. 'loadout' | 'playing'). */
@@ -326,13 +351,31 @@ export interface MainSceneState {
   readonly modalOpen: boolean;
   /** True while the dedicated abilities management surface is open. */
   readonly abilityLoadoutOpen: boolean;
+  /** Rendered loadout rows currently visible in the list viewport. */
+  readonly abilityLoadoutVisibleEntries: readonly AbilityLoadoutVisibleEntryProbe[];
+  /**
+   * Label of the non-equippable-passives section header currently rendered
+   * in the visible loadout row list (e.g. "PASSIVE ABILITIES"), or `null`
+   * when no passive rows are visible. Real rendered UI projection.
+   */
+  readonly abilityLoadoutSectionHeaderLabel: string | null;
+  /**
+   * The currently-rendered HUD announcement banner content (kind + exact
+   * text), or `null` when no banner is showing. Real rendered projection —
+   * lets e2e assert the player-visible level-5 skill-passive-unlock
+   * announcement without reaching into `world.announcements` or
+   * `AbilityState` internals.
+   */
+  readonly currentAnnouncement: { readonly kind: string; readonly text: string } | null;
+  /** Active abilities currently equipped to the auto bar. */
+  readonly equippedActiveAbilityIds: readonly string[];
   /** True when inventory is open. */
   readonly inventoryOpen: boolean;
   /** True when equipment is open. */
   readonly equipmentOpen: boolean;
   /** True when achievements is open. */
   readonly achievementsOpen: boolean;
-  /** True when the boss chest panel is open. */
+  /** True when the boss chest panel is open. Always false — chests now drop in-world. */
   readonly bossChestOpen: boolean;
   /** True when the Quartermaster shop panel is open. */
   readonly quartermasterOpen: boolean;
@@ -345,7 +388,6 @@ export interface MainSceneState {
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
-  readonly bossChestButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
@@ -571,18 +613,16 @@ export interface MainSceneProbeApi {
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
   requestInventoryToggle(): void;
   requestEquipToggle(): void;
-  /** Queue Boss Chests ([C]) through the scene request path. */
-  requestBossChestsToggle(): void;
   /** Queue Quartermaster ([Q]) through the scene request path. */
   requestQuartermasterToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
+  /** Inject one skill-usage event into the real simulation input queue. */
+  queueSkillUsage(skillId: string, metric: UsageMetric, amount: number): void;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
-  /** Emit a pointer tap on the Chests corner button. Returns false if unavailable/hidden. */
-  tapBossChestButton(): boolean;
   /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
   tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
@@ -626,7 +666,7 @@ export interface MainSceneProbeApi {
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
-  seedAvailableBossChest(): void;
+  seedAvailableBossChest(x?: number, y?: number): ProbePoint | null;
   /** Run the real MainGameScene shared reward-resume coordinator. */
   resumePendingRewardPresentations(): void;
   /** Snapshot of the shared reward-opening overlay, or the closed shape. */
@@ -794,10 +834,24 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         position && eid >= 0 ? { x: position.x[eid] ?? 0, y: position.y[eid] ?? 0 } : null;
       const modalOpen = scene?.modalPicker?.isOpen() ?? false;
       const abilityLoadoutOpen = scene?.abilityLoadoutUI?.isOpen() ?? false;
+      const abilityLoadoutVisibleEntries = (
+        scene?.abilityLoadoutUI?.getVisibleEntries?.() ?? []
+      ).map((entry) => ({
+        id: entry.id,
+        details: entry.details,
+        canToggle: entry.canToggle !== false,
+      }));
+      const abilityLoadoutSectionHeaderLabel =
+        scene?.abilityLoadoutUI?.getVisibleSectionHeaderLabel?.() ?? null;
+      const currentAnnouncement = scene?.hudUi?.getCurrentAnnouncement?.() ?? null;
+      const equippedActiveAbilityIds =
+        eid >= 0
+          ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
+          : [];
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
-      const bossChestOpen = scene?.bossChestUI?.isOpen() ?? false;
+      const bossChestOpen = false; // chests now drop in-world; panel removed
       const quartermasterOpen = scene?.quartermasterUI?.isOpen() ?? false;
       const conversationNpcEid = scene?.conversationNpcEid ?? null;
       const conversationLineIndex =
@@ -811,6 +865,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         bridgePresent: scene?.bridge != null,
         modalOpen,
         abilityLoadoutOpen,
+        abilityLoadoutVisibleEntries,
+        abilityLoadoutSectionHeaderLabel,
+        currentAnnouncement,
+        equippedActiveAbilityIds,
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
@@ -822,7 +880,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
-        bossChestButtonVisible: scene?.bossChestButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         primarySurfaceCount: [
           modalOpen,
@@ -1082,10 +1139,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.requestAchievementsToggle?.();
     },
 
-    requestBossChestsToggle: () => {
-      getScene()?.requestBossChestsToggle?.();
-    },
-
     requestQuartermasterToggle: () => {
       getScene()?.requestQuartermasterToggle?.();
     },
@@ -1105,17 +1158,16 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
     },
 
-    tapAbilitiesButton: () => {
-      const button = getScene()?.abilitiesButton;
-      if (!button?.visible) {
-        return false;
-      }
-      button.emit('pointerdown');
-      return true;
+    queueSkillUsage: (skillId: string, metric: UsageMetric, amount: number) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!world || holderEid < 0) return;
+      world.skillUsageEvents.push({ holderEid, skillId, metric, amount });
     },
 
-    tapBossChestButton: () => {
-      const button = getScene()?.bossChestButton;
+    tapAbilitiesButton: () => {
+      const button = getScene()?.abilitiesButton;
       if (!button?.visible) {
         return false;
       }
@@ -1348,16 +1400,21 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         },
       });
       scene.achievementsUI?.refresh(world);
-      scene.bossChestUI?.refresh(world);
     },
 
-    seedAvailableBossChest: () => {
+    seedAvailableBossChest: (x?: number, y?: number) => {
       const scene = getScene();
       const world = scene?.world;
       if (!world) {
-        return;
+        return null;
       }
       const chestId = 'boss-chest:ratfolk';
+      const existingEid = world.bossChestEids.get(chestId);
+      if (existingEid !== undefined) {
+        clearEntityStores(world, existingEid);
+        removeEntity(world.ecs, existingEid);
+        world.bossChestEids.delete(chestId);
+      }
       world.bossChests.delete(chestId);
       world.generatedEquipmentRewardBundles.delete(chestId);
       resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS, 'tier4');
@@ -1365,7 +1422,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!created.ok) {
         throw new Error(`probe boss chest setup failed: missing bundle for ${chestId}`);
       }
-      scene.bossChestUI?.refresh(world);
+      const playerEid = playerEidOf(scene);
+      const spawnX = x ?? (playerEid >= 0 ? (world.stores.position.x[playerEid] ?? 0) + 8 : 8);
+      const spawnY = y ?? (playerEid >= 0 ? (world.stores.position.y[playerEid] ?? 0) : 0);
+      spawnBossChestEntity(world, spawnX, spawnY, chestId);
+      return { x: spawnX, y: spawnY };
     },
 
     resumePendingRewardPresentations: () => {
@@ -1478,7 +1539,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!opened.ok) return { ok: false, reason: opened.reason };
       const acknowledged = acknowledgeBossChestReveal(world, chest.chestId);
       if (!acknowledged.ok) return { ok: false, reason: acknowledged.reason };
-      scene.bossChestUI?.refresh(world);
       scene.inventoryUI?.refresh(world);
       return { ok: true };
     },

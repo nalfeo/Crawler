@@ -148,6 +148,9 @@
       "kenneySpriteId": "item.gem",
       "kenneyScale": 1.0
     },
+    "boss_chest": {
+      "proceduralTexture": "boss_chest"
+    },
     "gold": {
       "proceduralTexture": "gold"
     },

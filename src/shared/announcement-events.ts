@@ -18,7 +18,11 @@
  */
 
 /** Discriminant for every announcement kind the banner can render. */
-export type AnnouncementKind = 'spawnerArenaStart' | 'spawnerArenaEnd' | 'bossAbilityCast';
+export type AnnouncementKind =
+  | 'spawnerArenaStart'
+  | 'spawnerArenaEnd'
+  | 'bossAbilityCast'
+  | 'skillPassiveUnlocked';
 
 /**
  * Spawner-arena announcement — signals the start or end of a combat-wave
@@ -70,10 +74,32 @@ export interface BossAbilityCastAnnouncementEvent {
 }
 
 /**
+ * Skill-passive-unlock announcement — fired exactly once, from the level-5
+ * skill-milestone grant site (`skillSystem.ts`), when a passive ability is
+ * granted. Fires for both general (no-prerequisite) and weapon-gated passive
+ * grants alike — this is a one-time "you unlocked X" fact independent of
+ * whether the passive's stat effects are immediately active.
+ */
+export interface SkillPassiveUnlockedAnnouncementEvent {
+  readonly kind: 'skillPassiveUnlocked';
+  /** `-1` sentinel; skill-passive unlocks have no spawner archetype. */
+  readonly archetypeIndex: number;
+  /** Exact, verbatim banner text, e.g. "Passive Unlocked: Combat Flow". */
+  readonly text: string;
+  /** How long the banner should be shown, in milliseconds. */
+  readonly durationMs: number;
+  /** Simulation timestamp at which the event was pushed (`world.elapsedMs`). */
+  readonly elapsedMs: number;
+}
+
+/**
  * Discriminated union of every announcement variant the banner can render.
  * Narrow on `kind` to access variant-specific fields.
  */
-export type AnnouncementEvent = SpawnerArenaAnnouncementEvent | BossAbilityCastAnnouncementEvent;
+export type AnnouncementEvent =
+  | SpawnerArenaAnnouncementEvent
+  | BossAbilityCastAnnouncementEvent
+  | SkillPassiveUnlockedAnnouncementEvent;
 
 /**
  * Hard cap on `world.announcements` — the HUD drains quickly under normal play

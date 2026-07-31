@@ -57,9 +57,7 @@ export const SkillHolder = {};
  */
 export const DamageMeta = {};
 
-// --- Weapon System Components ---
-/** Marks an entity as a weapon with type, stats, and cooldown tracking. */
-export const Weapon = {};
+// --- Combat/Attack Components ---
 /** Links an entity to its owner (e.g., weapon→player, projectile→player). */
 export const Owner = {};
 /** Assigns a team to prevent friendly fire. */
@@ -145,6 +143,14 @@ export const Harvestable = {};
  * the single boss per family. Introduced by Floor 2 Slice 1 (ADR 0040 · D1).
  */
 export const FamilyMembership = {};
+
+/**
+ * Marks an entity as a physical boss chest world-object. Proximity-opened by
+ * `bossChestPickupSystem` when the player walks within BOSS_CHEST_RANGE_FT.
+ * The chest's lifecycle record is keyed by `chestId` in `world.bossChests`
+ * and the reverse EID lookup lives in `world.bossChestEids`.
+ */
+export const BossChestEntity = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -287,14 +293,6 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     broadcastScore: { current: new Float32Array(maxEntities) },
     droppedItem: { itemIndex: new Uint16Array(maxEntities) },
-    weapon: {
-      weaponType: new Uint8Array(maxEntities),
-      baseDamage: new Float32Array(maxEntities),
-      cooldownMs: new Float32Array(maxEntities),
-      lastFireMs: new Float32Array(maxEntities),
-      range: new Float32Array(maxEntities),
-      projectileSpeed: new Float32Array(maxEntities),
-    },
     owner: {
       eid: new Uint16Array(maxEntities),
     },

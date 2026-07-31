@@ -148,6 +148,80 @@ describe('MainGameScene UI exclusivity', () => {
     ).toBe(true);
   });
 
+  it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
+    await bootPlayingSafeScene();
+    await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 100);
+    await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 9_999);
+    await mainSceneProbe.advanceSimulationFrames(page, 2);
+
+    // Real rendered player-visible projection of the level-5 skill-passive
+    // unlock. Poll rather than sample a single frame: the banner is a shared
+    // FIFO with other announcement kinds, so the unlock event may not be the
+    // very first one drained even though it is guaranteed to appear.
+    const announcementState = await waitForState(
+      page,
+      (s) => s.currentAnnouncement?.kind === 'skillPassiveUnlocked',
+      { label: 'level-5 swordsmanship milestone renders a HUD unlock announcement' },
+    );
+    expect(announcementState.currentAnnouncement?.kind).toBe('skillPassiveUnlocked');
+    expect(announcementState.currentAnnouncement?.text).toContain('Combat Flow');
+
+    await mainSceneProbe.setWorldState(page, 'safe_room');
+    await waitForState(page, (s) => s.worldState === 'safe_room' && s.safeContext, {
+      label: 'safe_room restored for passive projection check',
+    });
+
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    const state = await waitForState(page, (s) => s.abilityLoadoutOpen, {
+      label: 'abilities loadout opened for passive projection check',
+    });
+    const equippedBeforePassiveActivate = [...state.equippedActiveAbilityIds];
+
+    const combatFlow = state.abilityLoadoutVisibleEntries.find(
+      (entry) => entry.id === 'combat-flow',
+    );
+    expect(combatFlow, 'combat-flow should be visible in the rendered loadout list').toBeDefined();
+    expect(combatFlow?.details).toContain('PASSIVE');
+    expect(combatFlow?.details).toContain('• ACTIVE •');
+    expect(combatFlow?.details).not.toContain('INACTIVE');
+    expect(combatFlow?.details).toContain('Damage +5%');
+
+    const shadowblade = state.abilityLoadoutVisibleEntries.find(
+      (entry) => entry.id === 'shadowblade',
+    );
+    expect(shadowblade, 'shadowblade should be visible in the rendered loadout list').toBeDefined();
+    expect(shadowblade?.details).toContain('INACTIVE');
+    expect(shadowblade?.details).toContain('requires a dagger');
+
+    const combatFlowIndex = state.abilityLoadoutVisibleEntries.findIndex(
+      (entry) => entry.id === 'combat-flow',
+    );
+    expect(
+      combatFlowIndex,
+      'combat-flow should stay inside the visible viewport rows',
+    ).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < combatFlowIndex; i += 1) {
+      await page.keyboard.press('ArrowDown');
+    }
+
+    // Real rendered projection of the distinct non-equippable-passives
+    // section header — asserted while the passive row is the active
+    // selection so the header is guaranteed to be within the visible window.
+    const stateWithHeader = await mainSceneProbe.getState(page);
+    expect(
+      stateWithHeader.abilityLoadoutSectionHeaderLabel,
+      'a distinct PASSIVE section header must render above the non-equippable rows',
+    ).toBe('PASSIVE ABILITIES');
+
+    await page.keyboard.press('Enter');
+
+    const afterPassiveActivate = await mainSceneProbe.getState(page);
+    expect(
+      afterPassiveActivate.equippedActiveAbilityIds,
+      'pressing Enter on a passive row must not change the equipped auto-bar loadout',
+    ).toEqual(equippedBeforePassiveActivate);
+  });
+
   it('does not open inventory after pressing I inside the abilities loadout', async () => {
     await bootPlayingSafeScene();
 
@@ -263,26 +337,5 @@ describe('MainGameScene UI exclusivity', () => {
         (after.conversationLineIndex ?? -1) > (before.conversationLineIndex ?? -1),
       'interaction input should advance to the next line or close the conversation',
     ).toBe(true);
-  });
-
-  it('shows a touch shortcut for boss chests outside safe rooms and opens the panel on tap', async () => {
-    await bootPlayingSafeScene();
-    await mainSceneProbe.setSafeContext(page, false);
-    await waitForState(page, (s) => !s.safeContext, { label: 'leave safe context' });
-    await mainSceneProbe.seedAvailableBossChest(page);
-
-    const ready = await waitForState(page, (s) => s.bossChestButtonVisible, {
-      label: 'boss chest touch shortcut visible',
-    });
-    expect(ready.safeContext, 'boss chest touch shortcut should not require a safe room').toBe(
-      false,
-    );
-    expect(ready.bossChestOpen, 'boss chest panel should start closed').toBe(false);
-
-    const tapped = await mainSceneProbe.tapBossChestButton(page);
-    expect(tapped, 'probe should be able to tap the visible Chests shortcut').toBe(true);
-    await waitForState(page, (s) => s.bossChestOpen, {
-      label: 'boss chest panel opened from touch shortcut',
-    });
   });
 });
