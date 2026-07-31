@@ -130,8 +130,29 @@ export function getReasonRestatementViolationsForCurrentBranch() {
 }
 
 function isActive(exception, now) {
-  const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+  const expiresAt = parseExpiresOnDate(exception);
   return now <= expiresAt;
+}
+
+function parseExpiresOnDate(exception) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(exception.expiresOn)) {
+    throw new Error(
+      `${exception.packageName} expiresOn must be YYYY-MM-DD (received '${exception.expiresOn}')`,
+    );
+  }
+  const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+  if (Number.isNaN(expiresAt.getTime())) {
+    throw new Error(
+      `${exception.packageName} expiresOn must parse as a valid date (received '${exception.expiresOn}')`,
+    );
+  }
+  const roundTripped = expiresAt.toISOString().slice(0, 10);
+  if (roundTripped !== exception.expiresOn) {
+    throw new Error(
+      `${exception.packageName} expiresOn '${exception.expiresOn}' is not a real calendar date (normalizes to ${roundTripped})`,
+    );
+  }
+  return expiresAt;
 }
 
 function matchesException(packageName, advisory, exception, now) {
@@ -209,7 +230,7 @@ export function evaluateTemporaryDependencyExceptions(
     const pinnedVersion =
       fieldValue && typeof fieldValue === 'object' ? fieldValue[exception.packageName] : undefined;
     if (pinnedVersion !== exception.version) continue;
-    const expiresAt = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+    const expiresAt = parseExpiresOnDate(exception);
     if (now > expiresAt) {
       expired.push(exception);
     } else {
