@@ -14,8 +14,34 @@
       "notes": "Separate-model plan review (gpt-5.6-sol), 2 rounds. R1: 3 blocking (bulk-approve of stale/roster-failed items; broad catch masks invariant bugs; zero-mutation same-revision write) + 3 non-blocking (end-of-pass not per-item checkpoint; succeededItemIds+cause; init recovery wording). R2 verdict Approve-with-changes: (a) typed recoverable item error so unknown throws are fatal, no TypeError sniffing; (b) clear generationError only on explicit up-vote, preserve on null/down. All folded in: durable generationError marker excluded from bulk-approve; RecoverableThemeSetItemError vs fatal split; save-only-if-mutated; succeededItemIds+cause; sanitizeStatus surfaces marker. Deferred (documented): per-item real-time checkpoint (crash/OOM/timeout) as follow-up; this PR is end-of-pass partial-state recovery."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Source logic clean across all categories (fatal/recoverable branch, checkpoint integrity, judge-skip, marker lifecycle, determinism). Two Medium coverage gaps: (1) CLI main() partial-checkpoint catch path untested; (2) runner fatal save-then-rethrow-verbatim untested."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Runner fatal test asserted only instanceof+message, not object identity; would not catch production code that wraps/recreates the error. Resolved: rewrote to inject a sentinel via prototype spy on executeItem and assert expect(error).toBe(sentinel)."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final confirmation: no significant issues. Identity assertion, single-checkpoint puts===1, generationError marker, spy restored in finally, companion real-null-provider fatal path, CLI partial+fatal branches with restored stdout/stderr spies all verified."
+        }
+      ],
+      "completed": true
     }
   }
 }
