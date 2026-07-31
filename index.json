@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a703a035c2ee5e33b58ef3228baecd79d102dd31",
+    "commitDate": "2026-07-31T00:04:26Z",
+    "commitSubject": "fix(probe): restore floor-agnostic seedAvailableBossChest to prevent Floor 1 silent no-op (#2386)",
+    "capturedAt": "2026-07-31T01:13:12.623Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30593034449",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/a703a035c2ee5e33b58ef3228baecd79d102dd31.json"
+  },
+  {
     "commit": "32ab83b873cbc169b60f9790ae9aebd49a6736d0",
     "commitDate": "2026-07-30T22:42:13Z",
     "commitSubject": "Fix CI-recovery head-drift classification to prevent stale retry-loop behavior (#2397)",
