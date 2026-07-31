@@ -26,8 +26,10 @@
  *   Kenney sprites + procedural fallbacks.
  */
 import {
-  buildGeneratedSpriteRegistry,
   emptyGeneratedSpriteRegistry,
+  GENERATED_MANIFEST_VERSION,
+  loadGeneratedManifest,
+  parseGeneratedManifest,
   type GeneratedSpriteRegistry,
 } from '../../shared/generated-assets.js';
 import { createLogger } from '../../shared/logger.js';
@@ -135,8 +137,13 @@ export async function fetchGeneratedSpriteRegistry(
   }
 
   try {
-    const registry = buildGeneratedSpriteRegistry(raw);
-    logger.info('Loaded generated sprite manifest', { url, count: registry.size });
+    const manifest = parseGeneratedManifest(raw);
+    const registry = loadGeneratedManifest(manifest);
+    logger.info('Loaded generated sprite manifest', {
+      url,
+      count: registry.size,
+      version: GENERATED_MANIFEST_VERSION,
+    });
     return registry;
   } catch (err) {
     logger.warn('Generated sprite manifest failed schema validation; using empty registry', {

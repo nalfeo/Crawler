@@ -33,6 +33,8 @@ export type { DecorationDef, DepthLayer } from './decorationDefs.js';
 export type { BiomeTag } from './biome-tags.js';
 export { SLOT_REGISTRY, VALID_SLOT_IDS, isValidSlotId, getSlotLabel } from './equipment-slots.js';
 export type { SlotDefinition, EquipmentSlotId } from './equipment-slots.js';
+// Side-effect import: throws at load time if mirror-slot metadata is inconsistent.
+import './mirror-slot-metadata.js';
 export {
   PRIMARY_STATS,
   SECONDARY_STATS,
