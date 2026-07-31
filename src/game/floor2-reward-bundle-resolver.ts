@@ -19,7 +19,6 @@ import { getActiveWeapon } from './weaponSystem.js';
 import {
   generateEquipmentInstance,
   getGeneratedEquipmentBaseAffinity,
-  generatedEquipmentBaseHasNonArmorStatBonus,
   generatedEquipmentInstanceHasNonArmorStatBonus,
 } from './generated-equipment-generator.js';
 import {
@@ -65,7 +64,8 @@ export class RewardBundleResolutionError extends Error {
       | 'no-run-key'
       | 'empty-aligned-pool'
       | 'empty-nonaligned-pool'
-      | 'illegal-effect-budget',
+      | 'illegal-effect-budget'
+      | 'illegal-base',
     message: string,
   ) {
     super(message);

@@ -375,11 +375,11 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
 
   it('a non-armor-bonus base drawn at Uncommon carries affix-driven non-armor stats', () => {
     // Same base, same candidate set, tier2 (common/uncommon pool) can roll
-    // Uncommon. Under the decoupled model, a drawn travelers-cloak at Uncommon
-    // will have exactly 1 affix effect whose stat is non-armor (from the
-    // rarity effect budget, not the base definition). (Rare is intentionally
-    // avoided here — travelers-cloak's effect catalog has no legal 2-unit
-    // combination.)
+    // Common or Uncommon. Under the decoupled model:
+    //   - Common draws have zero non-armor stats (0-effect budget).
+    //   - Uncommon draws have ≥1 affix-driven non-armor stat.
+    // (Rare is intentionally avoided here — travelers-cloak's effect catalog
+    // has no legal 2-unit combination.)
     const bases = [...MIXED_BASES, 'travelers-cloak'] as const;
     let sawTravelersCloakUncommon = false;
     for (let seed = 0; seed < 60; seed += 1) {
@@ -391,12 +391,17 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
       const bundle = resolveEquipmentRewardBundle(world, 'ach', bases, 'tier2');
       const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
       if (instance.baseId === 'travelers-cloak') {
-        expect(instance.rarity).toBe('uncommon');
-        sawTravelersCloakUncommon = true;
         const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
           ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
         );
-        expect(nonArmor.length).toBeGreaterThan(0);
+        if (instance.rarity === 'uncommon') {
+          sawTravelersCloakUncommon = true;
+          // Uncommon budget = 1 effect → at least one non-armor stat.
+          expect(nonArmor.length).toBeGreaterThan(0);
+        } else {
+          // Common budget = 0 effects → no non-armor stats.
+          expect(nonArmor.length).toBe(0);
+        }
       }
     }
     expect(sawTravelersCloakUncommon).toBe(true);
