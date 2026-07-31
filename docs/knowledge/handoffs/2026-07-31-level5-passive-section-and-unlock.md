@@ -225,6 +225,36 @@ src/game/systems/abilitySystem.ts`; re-ran the same file → 29/29 passed, and
 Both witnesses independently confirm each hunk is load-bearing for its own
 named assertion, with no cross-hunk masking.
 
+**Witness C — announcement/VFX hunk, consumer-boundary (e2e rendered) proof**
+(same revert as Witness B — `skillSystem.ts`/`abilitySystem.ts` reverted
+together; `AbilityLoadoutUI.ts` left at HEAD — but this time run against the
+real-pipeline e2e test rather than the game-system unit test, so the
+rendered-banner projection itself is proven sensitive, not just internal
+`world.vfxEvents`/`world.announcements` state):
+
+- Named test:
+  `tests/e2e/main-game-scene-ui-exclusivity.test.ts > MainGameScene UI
+exclusivity > renders level-5 passive abilities in the loadout projection
+with active/inactive status` (both `|e2e|` and `|e2e-game|` projects)
+- Exact failure:
+  ```
+  Error: Timed out waiting for level-5 swordsmanship milestone renders a HUD
+  unlock announcement; last state: {..."currentAnnouncement":null...}
+  ```
+  at `waitForState` (`tests/e2e/helpers/main-scene-probe.ts:277`), called from
+  `main-game-scene-ui-exclusivity.test.ts:161`. The assertion is on
+  `state.currentAnnouncement` — the real `HudAnnouncementBanner.
+getCurrentAnnouncement()` rendered projection surfaced through the production
+  probe, not on `world.announcements` or any other producer-side field.
+- Restored via `git checkout HEAD -- src/game/systems/skillSystem.ts
+src/game/systems/abilitySystem.ts`; re-ran the same test → 20/20 passed
+  (both projects).
+
+This closes the gap between Witness B (which only proved the game-system
+unit test is revert-sensitive) and the consumer-boundary assertion shape
+required for this PR's witnesses generally (matching Witness A, which already
+asserted on the rendered section-header label rather than internal state).
+
 ## Notes / blockers
 
 None. All design ambiguities were resolved during the plan review; no
