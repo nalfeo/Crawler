@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import inventorybagLaneAccessRule from './tools/eslint-rules/inventorybag-lane-access.js';
 
 const layerImportPatterns = (layer) => [
   layer,
@@ -10,6 +11,12 @@ const layerImportPatterns = (layer) => [
   `**/${layer}`,
   `**/${layer}/**`,
 ];
+
+const crawlerLocalPlugin = {
+  rules: {
+    'no-direct-inventorybag-lane-read': inventorybagLaneAccessRule,
+  },
+};
 
 export default tseslint.config(
   {
@@ -88,6 +95,20 @@ export default tseslint.config(
         ...(globals.browser ?? {}),
         ...(globals.node ?? {}),
       },
+    },
+  },
+  {
+    files: ['src/**/*.ts', 'tests/**/*.ts'],
+    ignores: [
+      'src/shared/inventory.ts',
+      // Intentional corruption fixture for defensive-path testing.
+      'tests/ecs/equipment.test.ts',
+    ],
+    plugins: {
+      crawler: crawlerLocalPlugin,
+    },
+    rules: {
+      'crawler/no-direct-inventorybag-lane-read': 'error',
     },
   },
   {
@@ -170,6 +191,7 @@ export default tseslint.config(
       'tests/ecs/spawners/**/*.test.ts',
       'tests/ecs/drop-system.test.ts',
       'tests/game/ability-system.test.ts',
+      'tests/ecs/equipment.test.ts',
     ],
     rules: {
       'no-restricted-syntax': [
