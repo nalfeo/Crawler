@@ -21,6 +21,7 @@ import {
   EQUIPMENT_REWARD_TIERS,
   EQUIPMENT_REWARD_TIER_RARITIES,
 } from '../../src/shared/generated-equipment-types.js';
+import { FLOOR2_REWARD_POOL_BASE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -254,15 +255,15 @@ describe('floor2 achievements catalog', () => {
     }
   });
 
-  it('gives every equipment reward a non-empty pool of valid weapon bases', () => {
+  it('gives every equipment reward the shared mixed Floor 2 reward pool', () => {
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
       if (achievement.reward.type === 'equipment') {
-        expect(achievement.reward.bases.length).toBeGreaterThan(0);
-        for (const base of achievement.reward.bases) {
-          expect(base).toMatch(/^weapon\./);
-        }
+        expect(achievement.reward.bases).toEqual(FLOOR2_REWARD_POOL_BASE_IDS);
       }
     }
+    expect(FLOOR2_REWARD_POOL_BASE_IDS.some((base) => base.startsWith('weapon.'))).toBe(true);
+    expect(FLOOR2_REWARD_POOL_BASE_IDS.some((base) => !base.startsWith('weapon.'))).toBe(true);
+    expect(FLOOR2_REWARD_POOL_BASE_IDS.some((base) => base.startsWith('accessory.'))).toBe(true);
   });
 
   it('scopes all 6 run-global achievements as current_run', () => {

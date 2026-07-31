@@ -24,6 +24,10 @@ import { SeededRandom } from '../../src/shared/random.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1 } from '../../src/core/generated-equipment-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import {
+  generatedEquipmentBaseIsCommonRewardLegal,
+} from '../../src/game/generated-equipment-generator.js';
+import { FLOOR2_REWARD_POOL_BASE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
 
 // Two physical + two magic weapon bases so aligned/non-aligned pools are both
 // non-empty for either player affinity — the same shape the Floor 2 achievement
@@ -163,16 +167,34 @@ describe('resolveEquipmentRewardBundle — structure and tier rarity bounds', ()
     }
   });
 
-  it('tier1 always yields Common with zero non-armor stat bonus and zero resolved effects', () => {
+  it('tier1 always yields Common with zero resolved effects', () => {
     const world = makeWorld();
     const bundle = resolveEquipmentRewardBundle(world, 'a', MIXED_BASES, 'tier1');
     const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
     expect(instance.rarity).toBe('common');
     expect(instance.resolvedEffects).toHaveLength(0);
-    const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
-      ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+  });
+
+  it('the shared Floor 2 pool contains modest accessory bases that are legal for tier1 common rewards', () => {
+    const legalAccessoryBases = FLOOR2_REWARD_POOL_BASE_IDS.filter(
+      (baseId) =>
+        baseId.startsWith('accessory.') && generatedEquipmentBaseIsCommonRewardLegal(baseId),
     );
-    expect(nonArmor).toHaveLength(0);
+    expect(legalAccessoryBases).toEqual(
+      expect.arrayContaining(['accessory.compass-charm', 'accessory.surveyor-map']),
+    );
+  });
+
+  it('does not reject a tier1 pool just because it contains a modest accessory base', () => {
+    const world = makeWorld();
+    expect(() =>
+      resolveEquipmentRewardBundle(
+        world,
+        'tier1-accessory-legal',
+        [PHYSICAL_BASE_A, MAGIC_BASE_A, 'accessory.compass-charm'],
+        'tier1',
+      ),
+    ).not.toThrow();
   });
 
   it('is idempotent — a second resolve returns the identical stored bundle without re-rolling', () => {
@@ -237,12 +259,11 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });
 
-  it('fails closed with illegal-base when a base carries an inherent non-armor stat bonus (Common contract)', () => {
+  it('fails closed with illegal-base when a base exceeds the modest Common stat contract', () => {
     const world = makeWorld();
-    // `travelers-cloak` is a resolvable accessory with moveSpeed + dodgeChance
-    // stat bonuses (both non-armor), so the guard fires as 'illegal-base'
-    // rather than 'unknown-base'. The MIXED_BASES supply aligned + non-aligned
-    // pools so the partition check never fires first.
+    // `travelers-cloak` stacks moveSpeed + dodgeChance, so it exceeds the
+    // "single modest non-armor bonus" Common contract even though accessories
+    // are no longer categorically excluded.
     let err: unknown;
     try {
       resolveEquipmentRewardBundle(world, 'ach', [...MIXED_BASES, 'travelers-cloak'], 'tier1');

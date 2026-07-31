@@ -16,7 +16,7 @@ import { getActiveWeapon } from './weaponSystem.js';
 import {
   generateEquipmentInstance,
   getGeneratedEquipmentBaseAffinity,
-  generatedEquipmentBaseHasNonArmorStatBonus,
+  generatedEquipmentBaseIsCommonRewardLegal,
 } from './generated-equipment-generator.js';
 
 /**
@@ -198,16 +198,15 @@ export function resolveEquipmentRewardBundle(
 
   // Enforce the Common rarity contract structurally when 'common' is in the
   // tier's rarity pool: the Common item spreads its base's inherent stat
-  // bonuses verbatim with zero effect units, so any candidate base carrying a
-  // non-armor stat bonus would violate "Common has no non-armor stat bonus".
-  // Tiers that never draw Common (e.g. tier4 — uncommon/rare only) skip this
-  // check since the constraint only applies to Common-rarity items.
+  // bonuses verbatim with zero effect units, so only stat-modest bases are
+  // legal. Tiers that never draw Common (e.g. tier4 — uncommon/rare only) skip
+  // this check since the constraint only applies to Common-rarity items.
   if (EQUIPMENT_REWARD_TIER_RARITIES[tier].includes('common')) {
     for (const baseId of bases) {
-      if (generatedEquipmentBaseHasNonArmorStatBonus(baseId)) {
+      if (!generatedEquipmentBaseIsCommonRewardLegal(baseId)) {
         throw new RewardBundleResolutionError(
           'illegal-base',
-          `Reward base ${baseId} has an inherent non-armor stat bonus, violating the Common rarity contract`,
+          `Reward base ${baseId} exceeds the Common rarity contract (at most one modest inherent non-armor stat bonus)`,
         );
       }
     }

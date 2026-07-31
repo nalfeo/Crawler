@@ -304,18 +304,45 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
   return resolved.weaponDef.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
 }
 
+const COMMON_REWARD_SINGLE_STAT_CAPS: Readonly<Partial<Record<StatId, number>>> = Object.freeze({
+  strength: 1,
+  dexterity: 1,
+  constitution: 1,
+  intelligence: 1,
+  charisma: 1,
+  luck: 1,
+  damageBonus: 2,
+  attackSpeed: 0.05,
+  moveSpeed: 0.03,
+  critChance: 0.03,
+  dodgeChance: 0.02,
+  hpRegen: 0.25,
+  xpBonus: 0.03,
+  cooldownReduction: 0.03,
+});
+
 /**
- * Whether a base carries any inherent NON-armor stat bonus. The reward-bundle
- * resolver asserts this is `false` for every candidate base so the Common item
- * (which spreads the base's inherent stat bonuses verbatim and is generated with
- * zero effect units) satisfies the Common rarity contract: no non-armor stat
- * bonus. Pure and registry-free.
+ * Structural Common-rarity legality check for a generated-equipment base.
+ *
+ * Common rewards still resolve with zero effect units, but they may now carry a
+ * SINGLE modest inherent non-armor bonus instead of requiring a totally blank
+ * non-armor stat sheet. This keeps stacked/oversized bases out of tier1 while
+ * allowing modest accessories like a +1 luck charm back into the pool.
  */
-export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
+export function generatedEquipmentBaseIsCommonRewardLegal(baseId: string): boolean {
   const resolved = resolveGeneratedEquipmentBase(baseId);
-  return Object.entries(resolved.equipmentDef.statBonuses).some(
-    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
-  );
+  const nonArmorBonuses: { stat: StatId; value: number }[] = [];
+  for (const [stat, rawValue] of Object.entries(resolved.equipmentDef.statBonuses)) {
+    if (stat === 'armor') continue;
+    const value = rawValue ?? 0;
+    if (value === 0) continue;
+    nonArmorBonuses.push({ stat: stat as StatId, value });
+  }
+  if (nonArmorBonuses.length === 0) return true;
+  if (nonArmorBonuses.length > 1) return false;
+  const { stat, value } = nonArmorBonuses[0]!;
+  const cap = COMMON_REWARD_SINGLE_STAT_CAPS[stat];
+  return cap !== undefined && Number.isFinite(value) && value > 0 && value <= cap;
 }
 
 function effectsAreCompatible(

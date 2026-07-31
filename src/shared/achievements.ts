@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import floor1Achievements from './data/achievements.floor1.json';
 import floor2Achievements from './data/achievements.floor2.json';
+import { FLOOR2_REWARD_POOL_BASE_IDS } from './data/floor2-reward-pool.js';
 import {
   ACHIEVEMENT_EQUIPMENT_REWARD_TIERS,
   type AchievementEquipmentRewardTier,
@@ -504,6 +505,18 @@ export function createAchievementCatalogRegistry(
 }
 
 export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achievements);
+const FLOOR2_ACHIEVEMENTS_WITH_SHARED_REWARD_POOL = floor2Achievements.map(
+  (achievement: (typeof floor2Achievements)[number]) =>
+    achievement.reward?.type === 'equipment'
+    ? {
+        ...achievement,
+        reward: {
+          ...achievement.reward,
+          bases: FLOOR2_REWARD_POOL_BASE_IDS,
+        },
+      }
+    : achievement,
+);
 /**
  * Floor 2 catalog, content-driven from `data/achievements.floor2.json` (mirrors
  * the Floor 1 pattern in ADR-consistent style — a 30-entry-plus content array
@@ -513,13 +526,17 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * the exit staircase, safe rooms, equipment/ability/stat progression, and gold —
  * every criterion is driven by facts already emitted by real, shipped Floor 2
  * systems (see `collectCurrentFloorAchievementFacts` in
- * `src/game/systems/achievementSystem.ts`). Reward `bases` span magic
- * (`ember-wand`, `frost-crook`) and physical (`iron-cleaver`, `ashwood-bow`)
- * Floor 2 weapon bases — all have empty inherent stat bonuses, so the Common
- * item carries no non-armor stat bonus (rarity contract). Reward rarity spans
- * Common/Uncommon/Rare (via `tier1`-`tier4`); Unique is intentionally never
- * used (deferred from this epic). Only `tier4` (used by the 3 `brutal`-difficulty
- * achievements: `floor2-family-annihilator`, `floor2-floor-cleared`,
+ * `src/game/systems/achievementSystem.ts`). Reward `bases` are expanded at load
+ * time to the shared {@link FLOOR2_REWARD_POOL_BASE_IDS} set, spanning both
+ * Floor 2 weapon waves plus the mixed non-weapon Wave B catalog so achievement
+ * rewards can surface weapons, armor, and accessories from one deterministic
+ * pool. Common rewards still resolve with zero affix effects, but the Common
+ * contract now permits at most one modest inherent non-armor stat bonus, so
+ * tier1 can include modest accessories without admitting stacked high-stat
+ * bases. Reward rarity spans Common/Uncommon/Rare (via `tier1`-`tier4`);
+ * Unique is intentionally never used (deferred from this epic). Only `tier4`
+ * (used by the 3 `brutal`-difficulty achievements: `floor2-family-annihilator`,
+ * `floor2-floor-cleared`,
  * `floor2-scorched-earth`, sharing the same tier boss chests use) can resolve
  * Rare — `tier1`-`tier3` are deliberately capped at Uncommon so the epic's
  * single best rarity stays reserved for its hardest, most narratively-final
@@ -527,7 +544,10 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * rationale. `iconId`s are placeholder keys; no art is generated or required
  * to ship this slice.
  */
-export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, floor2Achievements);
+export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(
+  2,
+  FLOOR2_ACHIEVEMENTS_WITH_SHARED_REWARD_POOL,
+);
 export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
   FLOOR1_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENT_CATALOG,
