@@ -157,6 +157,28 @@ test('different bytes produce different bundle names', async () => {
   assert.ok(existsSync(first.entry) && existsSync(second.entry));
 });
 
+test('buildCliBundle writes cache output under resolved main-checkout node_modules for worktrees', async () => {
+  const root = temporaryRepo();
+  const mainRoot = path.join(root, 'main');
+  const worktreeRoot = path.join(root, 'worktree');
+  mkdirSync(path.join(mainRoot, 'node_modules'), { recursive: true });
+  mkdirSync(path.join(mainRoot, '.git', 'worktrees', 'wt'), { recursive: true });
+  mkdirSync(worktreeRoot, { recursive: true });
+  writeFileSync(path.join(worktreeRoot, '.git'), 'gitdir: ../main/.git/worktrees/wt\n');
+
+  const esbuildModule = {
+    build: async () => ({
+      outputFiles: [{ contents: Buffer.from('export const worktree = true;\n') }],
+      metafile: { inputs: {} },
+    }),
+  };
+  const built = await buildCliBundle({ repoRoot: worktreeRoot, esbuildModule });
+  assert.equal(
+    path.dirname(built.entry),
+    path.join(mainRoot, 'node_modules', '.cache', 'theme-equipment-review'),
+  );
+});
+
 test('node_modules inputs are not watched for staleness', async () => {
   const root = temporaryRepo();
   mkdirSync(path.join(root, 'scripts'), { recursive: true });

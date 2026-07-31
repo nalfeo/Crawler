@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRepoRequire } from '../../shared/node-modules-resolver.mjs';
+import { createRepoRequire, resolveNodeModules } from '../../shared/node-modules-resolver.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // lib -> theme-equipment-review -> extensions -> .github -> repo root
@@ -66,7 +66,8 @@ export async function buildCliBundle({ repoRoot, esbuildModule }) {
   // Use createRepoRequire so this works in git worktrees where node_modules
   // lives in the main checkout, not in the worktree directory.
   const esbuild = esbuildModule ?? _require('esbuild');
-  const cacheDir = path.join(repoRoot, 'node_modules', '.cache', 'theme-equipment-review');
+  const nodeModulesDir = resolveNodeModules(repoRoot) ?? path.join(repoRoot, 'node_modules');
+  const cacheDir = path.join(nodeModulesDir, '.cache', 'theme-equipment-review');
   mkdirSync(cacheDir, { recursive: true });
   const result = await esbuild.build({
     entryPoints: [path.join(repoRoot, CLI_RELATIVE_PATH)],

@@ -20,7 +20,7 @@
  * @module workflow/workflow-model
  */
 
-import { readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRepoRequire } from '../../shared/node-modules-resolver.mjs';
