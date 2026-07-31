@@ -153,7 +153,7 @@ export function renderHtml({ batches, baseUrl, activeRuns = [] }) {
   <div id="status-bar">Ready</div>
   <script>
     // ── Active-run helpers ───────────────────────────────────────────────────
-    const INITIAL_RUNS = ${JSON.stringify(activeRuns)};
+    const INITIAL_RUNS = ${JSON.stringify(activeRuns).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')};
 
     function timeAgo(isoStr) {
       const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
@@ -181,13 +181,18 @@ export function renderHtml({ batches, baseUrl, activeRuns = [] }) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    let pollRunsInFlight = false;
     async function pollRuns() {
+      if (pollRunsInFlight) return;
+      pollRunsInFlight = true;
       try {
         const res = await fetch('/_runs');
         if (!res.ok) return;
         const data = await res.json();
         renderRuns(data.runs || []);
-      } catch {}
+      } catch {} finally {
+        pollRunsInFlight = false;
+      }
     }
 
     renderRuns(INITIAL_RUNS);

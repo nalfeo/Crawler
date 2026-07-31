@@ -160,7 +160,7 @@ export function createBridge(repoRoot, opts = {}) {
             '--json',
             'databaseId,status,displayTitle,createdAt',
           ],
-          { cwd: repoRoot },
+          { cwd: repoRoot, timeout: 15_000 },
         );
         const all = JSON.parse(stdout || '[]');
         return all.filter((r) => ['in_progress', 'queued', 'waiting'].includes(r.status));
