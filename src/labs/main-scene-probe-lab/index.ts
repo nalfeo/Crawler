@@ -343,6 +343,8 @@ export interface MainSceneState {
   readonly abilityLoadoutOpen: boolean;
   /** Rendered loadout rows currently visible in the list viewport. */
   readonly abilityLoadoutVisibleEntries: readonly AbilityLoadoutVisibleEntryProbe[];
+  /** Active abilities currently equipped to the auto bar. */
+  readonly equippedActiveAbilityIds: readonly string[];
   /** True when inventory is open. */
   readonly inventoryOpen: boolean;
   /** True when equipment is open. */
@@ -820,6 +822,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         details: entry.details,
         canToggle: entry.canToggle !== false,
       }));
+      const equippedActiveAbilityIds =
+        eid >= 0
+          ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
+          : [];
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
@@ -838,6 +844,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         modalOpen,
         abilityLoadoutOpen,
         abilityLoadoutVisibleEntries,
+        equippedActiveAbilityIds,
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,

@@ -162,6 +162,7 @@ describe('MainGameScene UI exclusivity', () => {
     const state = await waitForState(page, (s) => s.abilityLoadoutOpen, {
       label: 'abilities loadout opened for passive projection check',
     });
+    const equippedBeforePassiveActivate = [...state.equippedActiveAbilityIds];
 
     const combatFlow = state.abilityLoadoutVisibleEntries.find(
       (entry) => entry.id === 'combat-flow',
@@ -178,6 +179,24 @@ describe('MainGameScene UI exclusivity', () => {
     expect(shadowblade, 'shadowblade should be visible in the rendered loadout list').toBeDefined();
     expect(shadowblade?.details).toContain('INACTIVE');
     expect(shadowblade?.details).toContain('requires a dagger');
+
+    const combatFlowIndex = state.abilityLoadoutVisibleEntries.findIndex(
+      (entry) => entry.id === 'combat-flow',
+    );
+    expect(
+      combatFlowIndex,
+      'combat-flow should stay inside the visible viewport rows',
+    ).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < combatFlowIndex; i += 1) {
+      await page.keyboard.press('ArrowDown');
+    }
+    await page.keyboard.press('Enter');
+
+    const afterPassiveActivate = await mainSceneProbe.getState(page);
+    expect(
+      afterPassiveActivate.equippedActiveAbilityIds,
+      'pressing Enter on a passive row must not change the equipped auto-bar loadout',
+    ).toEqual(equippedBeforePassiveActivate);
   });
 
   it('does not open inventory after pressing I inside the abilities loadout', async () => {
