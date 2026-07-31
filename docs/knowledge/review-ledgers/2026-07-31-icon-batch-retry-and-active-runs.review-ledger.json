@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "icon-batch-retry-and-active-runs",
+  "task_title": "Icon batch retry + active runs UX",
+  "estimated_apples": 2,
+  "stages": {}
+}

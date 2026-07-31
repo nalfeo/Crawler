@@ -6,10 +6,10 @@
  */
 
 /**
- * @param {{ batches: import('./lib/bridge.mjs').BatchSummary[], baseUrl: string }} state
+ * @param {{ batches: import('./lib/bridge.mjs').BatchSummary[], baseUrl: string, activeRuns?: { databaseId: number, status: string, displayTitle: string, createdAt: string }[] }} state
  * @returns {string} HTML document
  */
-export function renderHtml({ batches, baseUrl }) {
+export function renderHtml({ batches, baseUrl, activeRuns = [] }) {
   const totalIcons = batches.reduce((s, b) => s + b.total, 0);
   const totalApproved = batches.reduce((s, b) => s + b.approved, 0);
   const pct = totalIcons > 0 ? Math.round((totalApproved / totalIcons) * 100) : 0;
@@ -74,6 +74,8 @@ export function renderHtml({ batches, baseUrl }) {
       --done: #4caf50;
       --partial: #ff9800;
       --pending: #555;
+      --running: #2196f3;
+      --queued: #9c27b0;
       font-family: 'Courier New', monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -104,6 +106,20 @@ export function renderHtml({ batches, baseUrl }) {
     .progress-bar { height: 4px; background: var(--border); margin-bottom: 4px; }
     .progress-fill { height: 100%; background: var(--done); transition: width 0.3s; }
     .scroll-area { overflow: auto; height: calc(100vh - 90px); }
+    #active-runs { padding: 0 14px 6px; }
+    .runs-header { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 0 4px; }
+    .run-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+    .run-item:last-child { border-bottom: none; }
+    .run-badge { display: inline-block; padding: 1px 6px; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; }
+    .run-in_progress { background: var(--running); color: #fff; }
+    .run-queued { background: var(--queued); color: #fff; }
+    .run-waiting { background: var(--pending); color: #ccc; }
+    .run-title { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-link { color: var(--accent); text-decoration: none; font-size: 11px; flex-shrink: 0; }
+    .run-link:hover { text-decoration: underline; }
+    .run-age { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+    .pulse { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
   </style>
 </head>
 <body>
@@ -117,6 +133,7 @@ export function renderHtml({ batches, baseUrl }) {
     <button class="btn" onclick="refresh()">↺ Refresh</button>
   </div>
   <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+  <div id="active-runs"></div>
   <div class="scroll-area">
     <table>
       <thead>
@@ -135,6 +152,53 @@ export function renderHtml({ batches, baseUrl }) {
   </div>
   <div id="status-bar">Ready</div>
   <script>
+    // ── Active-run helpers ───────────────────────────────────────────────────
+    const INITIAL_RUNS = ${JSON.stringify(activeRuns).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')};
+
+    function timeAgo(isoStr) {
+      const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+      if (secs < 60) return secs + 's ago';
+      if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+      return Math.floor(secs / 3600) + 'h ago';
+    }
+
+    function renderRuns(runs) {
+      const el = document.getElementById('active-runs');
+      if (!runs.length) { el.innerHTML = ''; return; }
+      el.innerHTML =
+        '<div class="runs-header">⚡ ' + runs.length + ' run' + (runs.length > 1 ? 's' : '') + ' in progress</div>' +
+        runs.map(function(r) {
+          return '<div class="run-item">' +
+            '<span class="run-badge run-' + r.status + (r.status === "in_progress" ? " pulse" : "") + '">' + r.status.replace('_', ' ') + '</span>' +
+            '<span class="run-title">' + escHtml(r.displayTitle) + '</span>' +
+            '<span class="run-age">' + timeAgo(r.createdAt) + '</span>' +
+            '<a class="run-link" href="https://github.com/nalfeo/Crawler/actions/runs/' + r.databaseId + '" target="_blank" rel="noreferrer">#' + r.databaseId + ' ↗</a>' +
+            '</div>';
+        }).join('');
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    let pollRunsInFlight = false;
+    async function pollRuns() {
+      if (pollRunsInFlight) return;
+      pollRunsInFlight = true;
+      try {
+        const res = await fetch('/_runs');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderRuns(data.runs || []);
+      } catch {} finally {
+        pollRunsInFlight = false;
+      }
+    }
+
+    renderRuns(INITIAL_RUNS);
+    setInterval(pollRuns, 10000);
+
+    // ── Batch table helpers ──────────────────────────────────────────────────
     function setStatus(msg) {
       document.getElementById('status-bar').textContent = msg;
     }

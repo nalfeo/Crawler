@@ -71,11 +71,14 @@ function readJsonBody(req) {
 async function buildState() {
   const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
   try {
-    const batches = await bridge.listBatches();
-    return { batches, error: null };
+    const [batches, activeRuns] = await Promise.all([
+      bridge.listBatches(),
+      bridge.listActiveRuns(),
+    ]);
+    return { batches, activeRuns, error: null };
   } catch (err) {
     log(`buildState failed: ${err?.message ?? err}`, 'warn');
-    return { batches: [], error: err?.message ?? String(err) };
+    return { batches: [], activeRuns: [], error: err?.message ?? String(err) };
   }
 }
 
@@ -84,6 +87,14 @@ function makeRoutes() {
 
   return {
     jsonRoutes: [
+      {
+        method: 'GET',
+        path: '/_runs',
+        handler: async () => {
+          const runs = await bridge.listActiveRuns();
+          return { json: { runs } };
+        },
+      },
       {
         method: 'POST',
         path: '/_action',
@@ -161,7 +172,12 @@ async function startInstance(instanceId) {
       instanceId,
       // The harness calls renderHtml(instanceId) lazily at request time.
       // Close over `serverUrl` which is set after the server resolves below.
-      renderHtml: (_id) => renderHtml({ batches: state.batches, baseUrl: serverUrl }),
+      renderHtml: (_id) =>
+        renderHtml({
+          batches: state.batches,
+          activeRuns: state.activeRuns ?? [],
+          baseUrl: serverUrl,
+        }),
       jsonRoutes,
       binaryRoutes,
       log: (msg, level) => log(`[canvas-server] ${msg}`, level),
