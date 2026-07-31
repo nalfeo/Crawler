@@ -54,8 +54,26 @@ describe('itemSpriteConcepts', () => {
     expect(itemSpriteConcepts('iron-ore')).toEqual(['iron-ore']);
   });
 
-  it('adds the weaponId alias for the bat (bone-club → baseball-bat)', () => {
-    expect(itemSpriteConcepts('bone-club')).toEqual(['bone-club', 'baseball-bat']);
+  it('adds the weaponId alias for the bat plus the Floor 2 runtimeKey for baseball-bat (bone-club → baseball-bat → equipment/weapon/baseball-bat)', () => {
+    expect(itemSpriteConcepts('bone-club')).toEqual([
+      'bone-club',
+      'baseball-bat',
+      'equipment/weapon/baseball-bat',
+    ]);
+  });
+
+  it('adds the Floor 2 runtimeKey for a direct Floor 2 equipment item', () => {
+    expect(itemSpriteConcepts('iron-cleaver')).toEqual([
+      'iron-cleaver',
+      'equipment/weapon/iron-cleaver',
+    ]);
+  });
+
+  it('adds the Floor 2 runtimeKey for a non-weapon Floor 2 item', () => {
+    expect(itemSpriteConcepts('chain-hauberk')).toEqual([
+      'chain-hauberk',
+      'equipment/torso/chain-hauberk',
+    ]);
   });
 });
 
@@ -211,6 +229,46 @@ describe('resolveItemSprite', () => {
         }
       }
       expect(picked.size).toBeGreaterThan(1);
+    });
+  });
+
+  describe('Floor 2 wiring entries (briefId = equipment/{category}/{slug})', () => {
+    it('resolves a wiring-format entry for a direct Floor 2 item', () => {
+      // moon-scythe only has a wiring entry; without the Floor 2 concept fix
+      // resolveItemSprite would return null instead of the wiring entry.
+      const registry = makeRegistry([
+        ['equipment/weapon/moon-scythe', 'equipment/weapon/moon-scythe'],
+      ]);
+      const result = resolveItemSprite(registry, 'moon-scythe', SEED);
+      expect(result?.textureKey).toBe('equipment/weapon/moon-scythe');
+      expect(isPlaceholderEntry(result!)).toBe(false);
+    });
+
+    it('prefers a wiring entry (TIER_BARE_REAL) over an old-style versioned entry', () => {
+      // Items that have BOTH wiring and legacy entries should prefer the wiring entry.
+      const registry = makeRegistry([
+        ['equipment/weapon/iron-cleaver', 'equipment/weapon/iron-cleaver'],
+        ['iron-cleaver-v1-var-0', 'iron-cleaver-v1'],
+      ]);
+      expect(resolveItemSprite(registry, 'iron-cleaver', SEED)?.textureKey).toBe(
+        'equipment/weapon/iron-cleaver',
+      );
+    });
+
+    it('falls back to old-style versioned entry when no wiring entry exists', () => {
+      const registry = makeRegistry([['iron-cleaver-v1-var-0', 'iron-cleaver-v1']]);
+      expect(resolveItemSprite(registry, 'iron-cleaver', SEED)?.textureKey).toBe(
+        'iron-cleaver-v1-var-0',
+      );
+    });
+
+    it('resolves a wiring entry via the weaponId runtimeKey (bone-club → baseball-bat wiring)', () => {
+      const registry = makeRegistry([
+        ['equipment/weapon/baseball-bat', 'equipment/weapon/baseball-bat'],
+      ]);
+      const result = resolveItemSprite(registry, 'bone-club', SEED);
+      expect(result?.textureKey).toBe('equipment/weapon/baseball-bat');
+      expect(isPlaceholderEntry(result!)).toBe(false);
     });
   });
 });

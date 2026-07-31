@@ -33,6 +33,7 @@ import type { GeneratedSpriteEntry, GeneratedSpriteRegistry } from './generated-
 import { HARVESTABLE_DEFS } from './harvestableDefs.js';
 import { ITEM_CATALOG } from './items.js';
 import { SeededRandom } from './random.js';
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from './data/floor2-equipment-art.js';
 
 /** Quality tiers for a candidate entry; lower is preferred. */
 const TIER_BARE_REAL = 0;
@@ -92,13 +93,51 @@ function matchConcept(
 }
 
 /**
- * Candidate concepts for an item, in preference order: the item id first, then
- * its equipment `weaponId` alias (e.g. `bone-club` → `baseball-bat`) when it
- * differs. Weapon-less items resolve by id alone.
+ * Lazy map from item slug (e.g. `'iron-cleaver'`) to its Floor 2 equipment
+ * `runtimeKey` (e.g. `'equipment/weapon/iron-cleaver'`). Used by
+ * `itemSpriteConcepts` so the resolver can match wiring entries whose `briefId`
+ * is the full `equipment/{category}/{slug}` path rather than the bare slug.
+ */
+let floor2SlugToRuntimeKey: ReadonlyMap<string, string> | null = null;
+
+function getFloor2SlugToRuntimeKey(): ReadonlyMap<string, string> {
+  if (floor2SlugToRuntimeKey !== null) {
+    return floor2SlugToRuntimeKey;
+  }
+  const map = new Map<string, string>();
+  for (const def of FLOOR2_EQUIPMENT_ART_DEFINITIONS) {
+    const dot = def.stableId.indexOf('.');
+    const slug = def.stableId.slice(dot + 1);
+    map.set(slug, def.runtimeKey);
+  }
+  floor2SlugToRuntimeKey = map;
+  return map;
+}
+
+/**
+ * Candidate concepts for an item, in preference order:
+ *  1. The item id itself.
+ *  2. Its equipment `weaponId` alias (e.g. `bone-club` → `baseball-bat`) when
+ *     it differs from the item id.
+ *  3. The Floor 2 equipment `runtimeKey` for any of the above concepts that
+ *     map to a Floor 2 base (e.g. `iron-cleaver` → `equipment/weapon/iron-cleaver`).
+ *     This lets the resolver match "wiring entries" whose `briefId` carries the
+ *     full `equipment/{category}/{slug}` path instead of the bare slug.
  */
 export function itemSpriteConcepts(itemId: string): readonly string[] {
   const weaponId = getEquipmentDefForItem(itemId)?.weaponId;
-  return weaponId !== undefined && weaponId !== itemId ? [itemId, weaponId] : [itemId];
+  const base: readonly string[] =
+    weaponId !== undefined && weaponId !== itemId ? [itemId, weaponId] : [itemId];
+
+  const f2 = getFloor2SlugToRuntimeKey();
+  const extra: string[] = [];
+  for (const concept of base) {
+    const runtimeKey = f2.get(concept);
+    if (runtimeKey !== undefined) {
+      extra.push(runtimeKey);
+    }
+  }
+  return extra.length > 0 ? [...base, ...extra] : base;
 }
 
 /**
