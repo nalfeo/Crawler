@@ -1,0 +1,53 @@
+name: achv-icons-batch-08
+type: icon
+description: 'Achievement icon batch 8: pixel-art symbols for dungeon achievements on Floor 2.'
+floor: 2
+iconBatch:
+  - id: achv-floor2-field-kit
+    concept: 'Floor 2 Field Kit'
+    description: 'Icon for the "Floor 2 Field Kit" achievement (Defeat your first enemy on Floor 2.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-second-wind
+    concept: 'Floor 2 Second Wind'
+    description: 'Icon for the "Floor 2 Second Wind" achievement (Defeat 10 enemies on Floor 2.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-veteran-cast
+    concept: 'Floor 2 Veteran Cast'
+    description: 'Icon for the "Floor 2 Veteran Cast" achievement (Defeat 30 enemies on Floor 2.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-first-friend
+    concept: 'Making Friends'
+    description: 'Icon for the "Making Friends" achievement (Get one Floor 2 family to neutral or better standing.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-inner-circle
+    concept: 'Inner Circle'
+    description: 'Icon for the "Inner Circle" achievement (Get two Floor 2 families to neutral or better standing at once.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-court-favorite
+    concept: 'Court Favorite'
+    description: 'Icon for the "Court Favorite" achievement (Get every present Floor 2 family to neutral or better standing simultaneously.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-made-an-enemy
+    concept: 'Burned a Bridge'
+    description: 'Icon for the "Burned a Bridge" achievement (Land kills against the forces of one Floor 2 family.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-most-wanted
+    concept: 'Most Wanted'
+    description: 'Icon for the "Most Wanted" achievement (Land kills against the forces of two or more Floor 2 families.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-double-agent
+    concept: 'Double Agent'
+    description: 'Icon for the "Double Agent" achievement (Keep a family at neutral standing on paper while their trash mobs keep turning up dead by your hand.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-boss-sighted
+    concept: 'Meet the Boss'
+    description: 'Icon for the "Meet the Boss" achievement (Enter a family''s boss den.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-den-breaker
+    concept: 'Den Breaker'
+    description: 'Icon for the "Den Breaker" achievement (Defeat one family boss.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-den-crusher
+    concept: 'Den Crusher'
+    description: 'Icon for the "Den Crusher" achievement (Defeat two family bosses.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-family-annihilator
+    concept: 'Family Annihilator'
+    description: 'Icon for the "Family Annihilator" achievement (Defeat three or more family bosses.) — difficulty: brutal, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-settlement-found
+    concept: 'Civilization, Sort Of'
+    description: 'Icon for the "Civilization, Sort Of" achievement (Find the Floor 2 settlement.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-meet-the-broker
+    concept: 'Meet the Broker'
+    description: 'Icon for the "Meet the Broker" achievement (Complete the Broker''s introduction at the settlement.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-way-out
+    concept: 'Found the Way Out'
+    description: 'Icon for the "Found the Way Out" achievement (Unlock the Floor 2 exit staircase.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

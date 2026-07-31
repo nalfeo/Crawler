@@ -54,8 +54,44 @@ describe('itemSpriteConcepts', () => {
     expect(itemSpriteConcepts('iron-ore')).toEqual(['iron-ore']);
   });
 
-  it('adds the weaponId alias for the bat (bone-club → baseball-bat)', () => {
-    expect(itemSpriteConcepts('bone-club')).toEqual(['bone-club', 'baseball-bat']);
+  it('adds the weaponId alias for the bat plus the Floor 2 runtimeKey for baseball-bat (bone-club → baseball-bat → equipment/weapon/baseball-bat)', () => {
+    expect(itemSpriteConcepts('bone-club')).toEqual([
+      'bone-club',
+      'baseball-bat',
+      'equipment/weapon/baseball-bat',
+    ]);
+  });
+
+  it('adds the Floor 2 runtimeKey for a Wave A equipment item via its production stableId', () => {
+    // Wave A: stableId = 'weapon.iron-cleaver'. No equipment def registered in
+    // getEquipmentDefForItem for Wave A (only Wave B is in WEAPON_EQUIPMENT_DEFS),
+    // so base = ['weapon.iron-cleaver']. The stableId index provides the runtimeKey;
+    // the bare slug is also added so legacy versioned entries (iron-cleaver-v1) are found.
+    expect(itemSpriteConcepts('weapon.iron-cleaver')).toEqual([
+      'weapon.iron-cleaver',
+      'iron-cleaver',
+      'equipment/weapon/iron-cleaver',
+    ]);
+  });
+
+  it('adds the Floor 2 runtimeKey for a Wave B weapon item via its production stableId', () => {
+    // Wave B: id = 'weapon.moon-scythe', weaponId = 'weapon.moon-scythe' (same as id).
+    // The stableId index provides the runtimeKey; the bare slug is added for legacy art.
+    expect(itemSpriteConcepts('weapon.moon-scythe')).toEqual([
+      'weapon.moon-scythe',
+      'moon-scythe',
+      'equipment/weapon/moon-scythe',
+    ]);
+  });
+
+  it('adds the Floor 2 runtimeKey for a non-weapon Floor 2 item via its production stableId', () => {
+    // Non-weapon: id = 'torso.chain-hauberk', no weaponId.
+    // The stableId index provides the runtimeKey; the bare slug covers legacy art.
+    expect(itemSpriteConcepts('torso.chain-hauberk')).toEqual([
+      'torso.chain-hauberk',
+      'chain-hauberk',
+      'equipment/torso/chain-hauberk',
+    ]);
   });
 });
 
@@ -211,6 +247,50 @@ describe('resolveItemSprite', () => {
         }
       }
       expect(picked.size).toBeGreaterThan(1);
+    });
+  });
+
+  describe('Floor 2 wiring entries (briefId = equipment/{category}/{slug})', () => {
+    it('resolves a wiring-format entry for a Wave B weapon via its production stableId', () => {
+      // In production, the inventory item id for a Wave B weapon is its stableId
+      // (e.g. `weapon.moon-scythe`), not the bare slug. This test verifies that
+      // the stableId-indexed lookup finds the runtimeKey and matches the wiring entry.
+      const registry = makeRegistry([
+        ['equipment/weapon/moon-scythe', 'equipment/weapon/moon-scythe'],
+      ]);
+      const result = resolveItemSprite(registry, 'weapon.moon-scythe', SEED);
+      expect(result?.textureKey).toBe('equipment/weapon/moon-scythe');
+      expect(isPlaceholderEntry(result!)).toBe(false);
+    });
+
+    it('prefers a wiring entry (TIER_BARE_REAL) over an old-style versioned entry via production stableId', () => {
+      // Items that have BOTH wiring and legacy entries should prefer the wiring entry.
+      // Use the production stableId `weapon.iron-cleaver` (Wave A; weaponId = `iron-cleaver`).
+      const registry = makeRegistry([
+        ['equipment/weapon/iron-cleaver', 'equipment/weapon/iron-cleaver'],
+        ['iron-cleaver-v1-var-0', 'iron-cleaver-v1'],
+      ]);
+      expect(resolveItemSprite(registry, 'weapon.iron-cleaver', SEED)?.textureKey).toBe(
+        'equipment/weapon/iron-cleaver',
+      );
+    });
+
+    it('falls back to slug-keyed versioned entry when no wiring entry exists', () => {
+      // When no wiring entry exists, a legacy versioned entry keyed by the bare slug
+      // (e.g. `iron-cleaver-v1`) is found via the slug concept derived from the stableId.
+      const registry = makeRegistry([['iron-cleaver-v1-var-0', 'iron-cleaver-v1']]);
+      expect(resolveItemSprite(registry, 'weapon.iron-cleaver', SEED)?.textureKey).toBe(
+        'iron-cleaver-v1-var-0',
+      );
+    });
+
+    it('resolves a wiring entry via the weaponId runtimeKey (bone-club → baseball-bat wiring)', () => {
+      const registry = makeRegistry([
+        ['equipment/weapon/baseball-bat', 'equipment/weapon/baseball-bat'],
+      ]);
+      const result = resolveItemSprite(registry, 'bone-club', SEED);
+      expect(result?.textureKey).toBe('equipment/weapon/baseball-bat');
+      expect(isPlaceholderEntry(result!)).toBe(false);
     });
   });
 });

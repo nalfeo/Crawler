@@ -4745,6 +4745,68 @@ test('train mode waits when Copilot produced only a no-files review', async (t) 
   );
 });
 
+test('train mode skips substantive-review wait for assets/promote when diff is art+docs only', async (t) => {
+  const noFilesReview = substantiveCopilotReview({
+    body: "Copilot wasn't able to review any files in this pull request.",
+  });
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        head: { ...basePr().head, ref: 'assets/promote' },
+        changed_files: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      body: [
+        { filename: 'public/assets/generated/sprites/dagger.png' },
+        { filename: 'docs/knowledge/handoffs/2026-07-31-assets.md' },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads([noFilesReview]) }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /admission=substantive-copilot-review/);
+  const labelPosts = mutatingCalls.filter(
+    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  assert.equal(
+    labelPosts.some((call) => call.body?.labels?.includes(WAITING_LABEL)),
+    false,
+    'art+docs assets/promote diff should not be marked as waiting for substantive review',
+  );
+});
+
 test('synchronize sweep does not immediately recreate a stale merge-train-noop blocker it just cleared', async (t) => {
   // The PR previously carried merge-train-blocked + merge-train-noop (the
   // train decided its squash diff was already in the base). A new

@@ -42,6 +42,7 @@ export const SPRITE_TYPES = [
   'tile',
   'vfx',
   'character',
+  'icon',
 ];
 
 /** Mirrors `SIZE_VARIANTS` in `scripts/sprites/size-variants.ts`. */

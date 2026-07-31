@@ -20,6 +20,7 @@ import {
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
+  shouldSkipSubstantiveReview,
   STATE_MARKER,
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
@@ -2298,10 +2299,21 @@ for (const run of runs) {
 const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
   ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
-const changedFiles =
-  retriggerableRuns.length > 0
-    ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`)
-    : [];
+const needsChangedFiles =
+  retriggerableRuns.length > 0 || String(pr.head?.ref || '').trim() === 'assets/promote';
+let changedFiles = [];
+if (needsChangedFiles) {
+  try {
+    changedFiles = await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`);
+  } catch (error) {
+    const status = Number(error?.status || 0) || 'unknown';
+    process.stdout.write(
+      `warn pull-files pr=#${prNumber} status=${status} reason=${String(error?.message || error || 'unknown')}\n`,
+    );
+    changedFiles = [];
+  }
+}
+const skipSubstantiveReview = shouldSkipSubstantiveReview(pr, changedFiles);
 for (const run of retriggerableRuns) {
   const rejection = workflowApprovalRejection({
     run,
@@ -2562,6 +2574,7 @@ const lifecyclePrFacts = {
   reviews: review.reviews || [],
   humanApprovalDisposition: approvalRejection,
   lifecyclePhase: currentLifecyclePhase,
+  skipSubstantiveReview,
 };
 const lifecycleEvaluation = evaluatePhase(lifecyclePrFacts, {}, {});
 process.stdout.write(
@@ -2582,7 +2595,7 @@ if (lifecycleEvaluation.readmit && mergeTrainEnabled) {
 // `release()` call already mutates `state`/`labelExists` in place, and the
 // next pass's ctx naturally observes the GC'd lock as cleared.
 const admissionWaiting = [
-  ...admissionWaitReasons(waitingRequiredChecks, review.reviews),
+  ...admissionWaitReasons(waitingRequiredChecks, review.reviews, { skipSubstantiveReview }),
   ...(pendingHumanApproval ? [`human-approval:${approvalRejection}`] : []),
 ];
 const currentProgressKey = automationProgressKey(pr.head.sha, fingerprint);
