@@ -19,8 +19,7 @@ import { getActiveWeapon } from './weaponSystem.js';
 import {
   generateEquipmentInstance,
   getGeneratedEquipmentBaseAffinity,
-  generatedEquipmentBaseExceedsCommonStatLimit,
-  generatedEquipmentInstanceExceedsCommonStatLimit,
+  generatedEquipmentInstanceHasNonArmorStatBonus,
 } from './generated-equipment-generator.js';
 import {
   FLOOR2_REWARD_POOL_STABLE_IDS,
@@ -65,8 +64,8 @@ export class RewardBundleResolutionError extends Error {
       | 'no-run-key'
       | 'empty-aligned-pool'
       | 'empty-nonaligned-pool'
-      | 'illegal-base'
-      | 'illegal-effect-budget',
+      | 'illegal-effect-budget'
+      | 'illegal-base',
     message: string,
   ) {
     super(message);
@@ -78,10 +77,10 @@ export function _assertGeneratedRewardInstanceLegal(
   instance: GeneratedEquipmentInstanceV1,
   rarity: GeneratedEquipmentRarity,
 ): void {
-  if (rarity === 'common' && generatedEquipmentInstanceExceedsCommonStatLimit(instance)) {
+  if (rarity === 'common' && generatedEquipmentInstanceHasNonArmorStatBonus(instance)) {
     throw new RewardBundleResolutionError(
       'illegal-base',
-      `Generated Common instance for base ${instance.baseId} exceeds the Common rarity contract (at most one modest inherent non-armor stat bonus)`,
+      `Generated Common instance for base ${instance.baseId} has a non-armor stat bonus, violating the Common rarity contract`,
     );
   }
 }
@@ -163,23 +162,20 @@ export type Floor2RewardPoolTierEligibilityReport = Readonly<
 
 /** Rarity-eligible subset of `bases` for `rarity`, mirroring the exact filter
  * `resolveEquipmentRewardBundle` applies at selection time (see its Common
- * rarity contract comment above). For `common`, bases whose inherent
- * non-armor stat bonuses exceed the modest-stat limit (more than one bonus,
- * or a single bonus above its {@link COMMON_REWARD_SINGLE_STAT_CAPS} cap) are
- * excluded — bases with no non-armor bonus, or exactly one in-cap bonus, are
- * included. Modest accessories (e.g. `accessory.compass-charm` with `luck: 1`)
- * and single-stat armor pieces therefore remain eligible at Common while
- * stacked or oversized bases (e.g. `accessory.lucky-feather` with `luck: 2`)
- * are filtered out. Exported so authoring validation and tests both derive
- * eligibility from the SAME rule the resolver actually uses — never a second,
- * hand-maintained copy of the filter. */
+ * rarity contract comment above). Exported so authoring validation and tests
+ * both derive eligibility from the SAME rule the resolver actually uses —
+ * never a second, hand-maintained copy of the filter. */
 export function _rarityEligibleBaseIds(
   bases: readonly string[],
-  rarity: GeneratedEquipmentRarity,
+  _rarity: GeneratedEquipmentRarity,
 ): readonly string[] {
-  return rarity === 'common'
-    ? bases.filter((baseId) => !generatedEquipmentBaseExceedsCommonStatLimit(baseId))
-    : bases;
+  // Under the decoupled model, non-armor power is affix-driven (not base-stat
+  // spreading). All bases are eligible for all rarities since their inherent
+  // non-armor stats are never copied into generated instances. Common generates
+  // zero affix effects (RARITY_EFFECT_BUDGET.common === 0), so a Common item
+  // from a base with a non-armor authoring rider simply has no non-armor stats
+  // in its generated output — the rarity contract is still satisfied.
+  return bases;
 }
 
 /**
@@ -301,12 +297,11 @@ export function _validateFloor2RewardPoolTierEligibility(
     }
   }
 
-  // Every base must be legal for at least one achievement rarity/tier. The
-  // Common exclusion is the ONLY filter `rarityEligibleBaseIds` ever applies
-  // (see its body), so the uncommon-eligible set (unfiltered `bases`) is
-  // exactly `bases` itself — this loop exists so a FUTURE filter change
-  // (e.g. an uncommon-scoped exclusion) cannot silently bench a base without
-  // this check catching it, not because today's rule could ever fail it.
+  // Every base must be legal for at least one achievement rarity/tier. Under
+  // the decoupled model, all bases are eligible for every rarity
+  // (_rarityEligibleBaseIds always returns all bases), so this check is a
+  // no-op today — but it exists so a future filter change cannot silently
+  // bench a base without this check catching it at import time.
   const uncommonEligible = new Set(_rarityEligibleBaseIds(bases, 'uncommon'));
   const neverEligible = bases.filter((baseId) => !uncommonEligible.has(baseId));
   if (neverEligible.length > 0) {
@@ -403,28 +398,13 @@ export function resolveEquipmentRewardBundle(
     }
   }
 
-  // Common rarity contract: a base's inherent stat bonuses are part of its
-  // fixed, source-independent identity (see
-  // `generatedEquipmentBaseExceedsCommonStatLimit`'s doc comment in
-  // generated-equipment-generator.ts) — the SAME base must produce the SAME
-  // stats whether it is drawn here or sold by the Quartermaster. So instead
-  // of generating an instance and then normalizing/stripping its output
-  // (which would make a base's stats depend on acquisition source — not
-  // allowed), rarity is rolled FIRST, and bases that exceed the modest-stat
-  // Common limit are excluded from *candidacy* only for a Common draw
-  // specifically (Common contributes zero rarity-effect units, see
-  // {@link RARITY_EFFECT_BUDGET}`.common === 0`, so a base's inherent bonus
-  // would otherwise be the item's only non-armor stat). Bases with at most
-  // one modest non-armor bonus — including plain-stat accessories like
-  // `accessory.compass-charm` — remain eligible for Common. Stacked or
-  // oversized bases remain fully eligible for Uncommon/Rare draws of this
-  // same tier. The broad reward pool is unioned from every generated-equipment
-  // catalog and is not curated per-achievement, so this filter (rather than
-  // pool curation) is what keeps every rarity's candidate set legal. See
-  // `_rarityEligibleBaseIds` (the single source of truth for this exact
-  // filter, shared with the module-load authoring validation below) and
-  // `_validateFloor2RewardPoolTierEligibility` (the authoring-time proof that
-  // this filter never empties an achievement-reachable pool).
+  // Under the decoupled model, non-armor power is affix-driven. Rarity is
+  // rolled first so the eligible base pool (via _rarityEligibleBaseIds) is
+  // known before partition. Under this model, _rarityEligibleBaseIds returns
+  // all bases regardless of rarity — Common generates zero affix effects
+  // (RARITY_EFFECT_BUDGET.common === 0) but the base's non-armor authoring
+  // riders are never spread into the generated instance, so no candidacy
+  // filtering is needed to keep Common output rarity-contract-legal.
   const rarityRng = substreamRng(runKey, achievementId, tier, 'tier-rarity');
   const rarity = _rollTierRarity(rarityRng, tier);
 
@@ -462,11 +442,10 @@ export function resolveEquipmentRewardBundle(
     { rng: effectsRng, allowedEffectKinds: ['stat'] },
   );
 
-  // Defense in depth: the eligibility filter above should make this
-  // unreachable, but assert the actual output rather than trusting the
-  // filter silently — a future data change (e.g. a base's `statBonuses`
-  // changing) should fail loudly here instead of shipping an illegal Common
-  // item.
+  // Defense in depth: under the decoupled model a Common instance always has
+  // zero non-armor stats (no base spreading, no effects), so this is a
+  // no-op — but if a future change introduces a new affix path or bug, the
+  // tripwire catches it loudly before it ships.
   _assertGeneratedRewardInstanceLegal(instance, rarity);
 
   // Generated successfully — publish the registry state, then record the

@@ -21,7 +21,7 @@ import {
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   getGeneratedEquipmentBaseAffinity,
-  generatedEquipmentBaseExceedsCommonStatLimit,
+  generatedEquipmentBaseHasNonArmorStatBonus,
   _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
@@ -143,29 +143,30 @@ describe('resolvePlayerBuildAffinity', () => {
   });
 
   describe('post-generation Common contract', () => {
-    it('throws illegal-base without publishing a generated instance when the output exceeds the modest-stat Common limit', () => {
-      const illegalBaseId = FLOOR2_REWARD_POOL_STABLE_IDS.find(
-        generatedEquipmentBaseExceedsCommonStatLimit,
+    it('does not throw for a Common instance drawn from a base with inherent non-armor riders (decoupled model: stats from effects only)', () => {
+      // Under the decoupled model, no base non-armor stats are spread into
+      // generated instances. A Common item from a base with non-armor authoring
+      // riders generates ZERO non-armor stats (Common has zero effect units).
+      const baseWithNonArmorRiders = FLOOR2_REWARD_POOL_STABLE_IDS.find(
+        generatedEquipmentBaseHasNonArmorStatBonus,
       );
-      if (illegalBaseId === undefined) {
-        throw new Error(
-          'expected at least one Floor 2 base that exceeds the Common modest-stat limit',
-        );
+      if (baseWithNonArmorRiders === undefined) {
+        throw new Error('expected at least one Floor 2 base with an inherent non-armor bonus');
       }
       const world = makeWorld('post-generation-common-guard');
       const transaction = createGeneratedEquipmentRegistryTransaction(world);
       const effectsRng = new SeededRandom(42);
       const instance = generateEquipmentInstance(
         { generatedEquipmentRegistry: transaction.registry, rng: effectsRng },
-        { baseId: illegalBaseId, itemLevel: 1, rarity: 'common' },
+        { baseId: baseWithNonArmorRiders, itemLevel: 1, rarity: 'common' },
         { rng: effectsRng, allowedEffectKinds: ['stat'] },
       );
-
-      expect(() => assertGeneratedRewardInstanceLegal(instance, 'common')).toThrow(
-        expect.objectContaining({ code: 'illegal-base' }),
+      // The decoupled model: no non-armor base stats flow into the instance.
+      expect(() => assertGeneratedRewardInstanceLegal(instance, 'common')).not.toThrow();
+      const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
+        ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
       );
-      expect(listGeneratedEquipmentInstances(world)).toHaveLength(0);
-      expect(world.generatedEquipmentRewardBundles.size).toBe(0);
+      expect(nonArmor).toHaveLength(0);
     });
   });
 
@@ -349,17 +350,12 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
   });
 
-  it('excludes a candidate base with an inherent non-armor stat bonus from Common draws (tier1 is 100% Common) — never drawn, even though it is in the candidate set', () => {
-    // `travelers-cloak` carries moveSpeed + dodgeChance (both non-armor). At
-    // tier1 (100% Common) it must never be selected: the resolver rolls
-    // rarity FIRST, then excludes non-armor-bonus bases from Common
-    // candidacy specifically (see `resolveEquipmentRewardBundle`'s Common
-    // rarity contract comment) — it does NOT generate the item and then
-    // strip its stats (that would make the same base's stats depend on
-    // acquisition source, which is forbidden). Loop several seeds/achievement
-    // ids so the assertion is not vacuous, and confirm resolution still
-    // succeeds (the other neutral/opposite-affinity weapon bases keep the
-    // non-aligned pool non-empty).
+  it('allows non-armor base riders and still resolves a Common item with no non-armor bonus', () => {
+    // Under the decoupled model, bases with inherent non-armor riders are
+    // never excluded from Common candidacy — non-armor power is affix-driven.
+    // Common draws zero affix effects (RARITY_EFFECT_BUDGET.common === 0), so
+    // the generated instance carries no non-armor stats regardless of what
+    // the base's catalog definition contains.
     const bases = [...MIXED_BASES, 'travelers-cloak'] as const;
     for (let seed = 0; seed < 24; seed += 1) {
       const world = createTestWorld({
@@ -370,7 +366,6 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
       const bundle = resolveEquipmentRewardBundle(world, 'ach', bases, 'tier1');
       const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
       expect(instance.rarity).toBe('common');
-      expect(instance.baseId).not.toBe('travelers-cloak');
       const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
         ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
       );
@@ -378,15 +373,13 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     }
   });
 
-  it('the same non-armor-bonus base remains eligible — bonus intact — for an Uncommon draw (tier2 rarity pool is common/uncommon)', () => {
-    // Same base, same candidate set as above, but tier2 (common/uncommon
-    // pool) can roll Uncommon, which never filters this base out: this
-    // proves the exclusion is rarity-scoped, not a whole-tier/whole-pool
-    // ban, and that a drawn instance's stats are identical to the base's
-    // catalog-defined stats (source-independent). (Rare is intentionally
-    // avoided here — `travelers-cloak`'s effect catalog has no legal 2-unit
-    // combination, an unrelated, pre-existing generator limitation for this
-    // specific base that is out of scope for this correction.)
+  it('a non-armor-bonus base drawn at Uncommon carries affix-driven non-armor stats', () => {
+    // Same base, same candidate set, tier2 (common/uncommon pool) can roll
+    // Common or Uncommon. Under the decoupled model:
+    //   - Common draws have zero non-armor stats (0-effect budget).
+    //   - Uncommon draws have ≥1 affix-driven non-armor stat.
+    // (Rare is intentionally avoided here — travelers-cloak's effect catalog
+    // has no legal 2-unit combination.)
     const bases = [...MIXED_BASES, 'travelers-cloak'] as const;
     let sawTravelersCloakUncommon = false;
     for (let seed = 0; seed < 60; seed += 1) {
@@ -398,43 +391,35 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
       const bundle = resolveEquipmentRewardBundle(world, 'ach', bases, 'tier2');
       const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
       if (instance.baseId === 'travelers-cloak') {
-        expect(instance.rarity).toBe('uncommon');
-        sawTravelersCloakUncommon = true;
         const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
           ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
         );
-        expect(nonArmor.length).toBeGreaterThan(0);
+        if (instance.rarity === 'uncommon') {
+          sawTravelersCloakUncommon = true;
+          // Uncommon budget = 1 effect → at least one non-armor stat.
+          expect(nonArmor.length).toBeGreaterThan(0);
+        } else {
+          // Common budget = 0 effects → no non-armor stats.
+          expect(nonArmor.length).toBe(0);
+        }
       }
     }
     expect(sawTravelersCloakUncommon).toBe(true);
   });
 
-  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity and every player build', () => {
-    // The direct, deterministic proof the user's correction requires: filter
-    // the actual pool used by all 36 Floor 2 achievements down to what a
-    // Common draw can legally select, and confirm both the aligned and
-    // non-aligned partitions stay non-empty for a physical AND a magic
-    // player build. (Uncommon/Rare are a strict superset of the Common
-    // candidate set here, so if Common passes, they trivially pass too.)
-    const commonEligible = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-      (baseId) => !generatedEquipmentBaseExceedsCommonStatLimit(baseId),
-    );
-    expect(commonEligible.length).toBeGreaterThan(0);
+  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity', () => {
+    // Under the decoupled model all bases are eligible for Common draws (no
+    // base-stat pre-filtering). The full pool must keep both aligned and
+    // non-aligned partitions non-empty for every player build and rarity.
     for (const playerAffinity of ['physical', 'magic'] as const) {
-      const aligned = commonEligible.filter(
+      const aligned = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
         (baseId) => getGeneratedEquipmentBaseAffinity(baseId) === playerAffinity,
       );
-      const nonAligned = commonEligible.filter(
+      const nonAligned = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
         (baseId) => getGeneratedEquipmentBaseAffinity(baseId) !== playerAffinity,
       );
-      expect(
-        aligned.length,
-        `${playerAffinity}-aligned Common-eligible pool must be non-empty`,
-      ).toBeGreaterThan(0);
-      expect(
-        nonAligned.length,
-        `non-${playerAffinity} Common-eligible pool must be non-empty`,
-      ).toBeGreaterThan(0);
+      expect(aligned.length, `${playerAffinity}-aligned pool must be non-empty`).toBeGreaterThan(0);
+      expect(nonAligned.length, `non-${playerAffinity} pool must be non-empty`).toBeGreaterThan(0);
     }
   });
 
@@ -517,30 +502,16 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
   });
 
   it('computes the EXACT per-tier/per-rarity composition over the real 88-base pool (deterministic, not sampled)', () => {
-    // Ground truth, computed directly from the real catalogs (see the report
-    // this same test also cross-checks below): 88 total = 56 weapons + 32
-    // non-weapons. Common excludes bases whose inherent non-armor stat bonuses
-    // exceed the modest-stat limit (more than one bonus, or a single bonus
-    // above its COMMON_REWARD_SINGLE_STAT_CAPS cap) — 0 weapons and 4 of 32
-    // non-weapons are excluded: feet.shadow-boots (moveSpeed 0.05 > cap 0.03),
-    // feet.merchant-sandals (2 non-armor stats), accessory.blood-vial (2
-    // non-armor stats), accessory.lucky-feather (luck 2 > cap 1). That leaves
-    // 84 Common-eligible (56 weapons + 28 non-weapons). Uncommon excludes
-    // nothing (all 88).
+    // Ground truth, computed directly from the real catalogs: 88 total =
+    // 56 weapons + 32 non-weapons. Under the decoupled model, Common excludes
+    // nothing — all 88 bases are eligible at every rarity. 51 physical-aligned
+    // weapon bases, 5 magic-aligned weapon bases, 32 neutral non-weapons.
     const report = computeFloor2RewardPoolTierEligibility(
       FLOOR2_REWARD_POOL_STABLE_IDS,
       weaponIdSet,
     );
 
-    const commonComposition = {
-      total: 84,
-      weapons: 56,
-      nonWeapons: 28,
-      physicalAligned: 51,
-      magicAligned: 5,
-      neutral: 28,
-    };
-    const uncommonComposition = {
+    const fullComposition = {
       total: 88,
       weapons: 56,
       nonWeapons: 32,
@@ -549,11 +520,11 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
       neutral: 32,
     };
 
-    expect(report.tier1.common).toEqual(commonComposition);
-    expect(report.tier2.common).toEqual(commonComposition);
-    expect(report.tier2.uncommon).toEqual(uncommonComposition);
-    expect(report.tier3.uncommon).toEqual(uncommonComposition);
-    expect(report.tier3.common).toEqual(commonComposition);
+    expect(report.tier1.common).toEqual(fullComposition);
+    expect(report.tier2.common).toEqual(fullComposition);
+    expect(report.tier2.uncommon).toEqual(fullComposition);
+    expect(report.tier3.uncommon).toEqual(fullComposition);
+    expect(report.tier3.common).toEqual(fullComposition);
 
     // Sanity cross-checks against the pool's own published totals.
     expect(FLOOR2_REWARD_POOL_STABLE_IDS.length).toBe(88);
@@ -561,43 +532,21 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect(FLOOR2_REWARD_POOL_NON_WEAPON_IDS.length).toBe(32);
   });
 
-  it('tier1 (Common-only) is NOT narrow / one-category-only — reports the exact counts rather than masking behind the aggregate 88', () => {
-    // The exact counts with the modest-stat Common limit
-    // (generatedEquipmentBaseExceedsCommonStatLimit):
-    //
-    //   - ALL 56 weapons remain Common-eligible (0 excluded) — weapon variety
-    //     at tier1 is exactly as broad as the full pool.
-    //   - 28 of 32 non-weapons remain Common-eligible (4 excluded: bases whose
-    //     inherent non-armor bonuses exceed the cap — too many stat bonuses, or
-    //     a single bonus above its COMMON_REWARD_SINGLE_STAT_CAPS cap):
-    //     feet.shadow-boots (moveSpeed 0.05 > cap 0.03),
-    //     feet.merchant-sandals (2 non-armor stats),
-    //     accessory.blood-vial (2 non-armor stats),
-    //     accessory.lucky-feather (luck 2 > cap 1).
-    //   - Modest single-stat accessories (e.g. accessory.compass-charm,
-    //     accessory.leather-collar) ARE included — this is the key improvement
-    //     over the prior strict "any non-armor bonus → excluded" rule.
-    //   - All 16 armor slots are covered by the 28 Common-eligible non-weapons,
-    //     including neck/belt/ring slots via the now-included modest accessories.
-    const commonEligible = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-      (baseId) => !generatedEquipmentBaseExceedsCommonStatLimit(baseId),
-    );
-    const commonEligibleWeapons = commonEligible.filter((id) => weaponIdSet.has(id));
-    const commonEligibleNonWeapons = commonEligible.filter((id) => !weaponIdSet.has(id));
-
-    expect(commonEligibleWeapons).toHaveLength(56); // ALL weapons — no narrowing.
-    expect(commonEligibleNonWeapons).toHaveLength(28); // Includes modest accessories.
+  it('tier1 (Common-only) covers all non-weapon armor slots — no slot gaps under the decoupled model', () => {
+    // Under the decoupled model, all 32 non-weapon bases are Common-eligible
+    // (no base-stat pre-filtering). This means all 16 armor slots are
+    // reachable from tier1 Common draws, eliminating the historical slot
+    // gaps (neck/belt/ringLeft/ringRight) that existed under the old model
+    // where 22 accessory-style non-weapons were excluded.
+    const allNonWeapons = FLOOR2_REWARD_POOL_STABLE_IDS.filter((id) => !weaponIdSet.has(id));
+    expect(allNonWeapons).toHaveLength(32);
 
     const coveredSlots = new Set<string>();
-    for (const id of commonEligibleNonWeapons) {
+    for (const id of allNonWeapons) {
       for (const slot of nonWeaponSlotsById.get(id) ?? []) coveredSlots.add(slot);
     }
     const uncoveredArmorSlots = FLOOR2_ARMOR_SLOT_IDS.filter((slot) => !coveredSlots.has(slot));
-
-    expect([...coveredSlots].sort()).toEqual(
-      expect.arrayContaining(FLOOR2_ARMOR_SLOT_IDS.slice().sort()),
-    );
-    expect(uncoveredArmorSlots).toHaveLength(0); // All 16 armor slots reachable at Common.
+    expect(uncoveredArmorSlots).toHaveLength(0);
   });
 
   it('every base in the pool is legal for at least one achievement rarity/tier — uncommon never excludes, so the union is exhaustive', () => {
@@ -679,12 +628,12 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect((err as Error).message).toMatch(/no physical-aligned candidate/);
   });
 
-  it('rarityEligibleBaseIds is the exact same filter resolveEquipmentRewardBundle applies at selection time (no second, drifting copy of the rule)', () => {
-    const excludedCount = FLOOR2_REWARD_POOL_STABLE_IDS.filter((id) =>
-      generatedEquipmentBaseExceedsCommonStatLimit(id),
-    ).length;
+  it('rarityEligibleBaseIds returns all bases for every rarity under the decoupled model (no pre-filtering)', () => {
+    // Under the decoupled model, non-armor power is affix-driven and bases
+    // are never filtered by their inherent stat bonuses. All bases are
+    // eligible for all rarities.
     expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'common')).toHaveLength(
-      FLOOR2_REWARD_POOL_STABLE_IDS.length - excludedCount,
+      FLOOR2_REWARD_POOL_STABLE_IDS.length,
     );
     expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'uncommon')).toHaveLength(
       FLOOR2_REWARD_POOL_STABLE_IDS.length,

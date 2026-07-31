@@ -5,6 +5,8 @@ import {
   addGeneratedEquipmentReference,
   addItem,
   hasGeneratedEquipmentReference,
+  listGeneratedEquipmentReferences,
+  listStaticInventorySlots,
   removeItem,
   removeGeneratedEquipmentReference,
   hasItem,
@@ -51,7 +53,9 @@ const itemId = () => fc.constantFrom(...CATALOG.map((d) => d.id));
 
 /** Sum of every slot quantity that matches `id`. */
 function slotSum(bag: InventoryBag, id: string): number {
-  return bag.slots.filter((s) => s.itemId === id).reduce((acc, s) => acc + s.quantity, 0);
+  return listStaticInventorySlots(bag)
+    .filter((slot) => slot.itemId === id)
+    .reduce((acc, slot) => acc + slot.quantity, 0);
 }
 
 describe('inventory invariants (property-based)', () => {
@@ -77,7 +81,7 @@ describe('inventory invariants (property-based)', () => {
           for (const id of CATALOG.map((d) => d.id)) {
             expect(slotSum(bag, id)).toBe(getItemCount(bag, id));
           }
-          for (const slot of bag.slots) {
+          for (const slot of listStaticInventorySlots(bag)) {
             expect(slot.quantity).toBeGreaterThan(0);
             expect(slot.quantity).toBeLessThanOrEqual(maxStackOf(slot.itemId));
           }
@@ -94,7 +98,7 @@ describe('inventory invariants (property-based)', () => {
         const removed = removeItem(bag, id, qty);
         expect(removed).toBe(qty);
         expect(getItemCount(bag, id)).toBe(0);
-        expect(bag.slots.some((s) => s.itemId === id)).toBe(false);
+        expect(listStaticInventorySlots(bag).some((slot) => slot.itemId === id)).toBe(false);
       }),
     );
   });
@@ -181,11 +185,9 @@ describe('inventory invariants (property-based)', () => {
           expect(removeGeneratedEquipmentReference(bag, removedKey) !== undefined).toBe(existed);
 
           const expected = keys.filter((key) => key !== removedKey);
-          // Verify each expected key is still present and the removed key is gone.
-          for (const key of expected) {
-            expect(hasGeneratedEquipmentReference(bag, key)).toBe(true);
-          }
-          expect(hasGeneratedEquipmentReference(bag, removedKey)).toBe(false);
+          expect(listGeneratedEquipmentReferences(bag).map((entry) => entry.instanceKey)).toEqual(
+            expected,
+          );
         },
       ),
     );
@@ -199,10 +201,10 @@ describe('inventory invariants (property-based)', () => {
         addGeneratedEquipmentReference(bag, key);
 
         expect(() => addGeneratedEquipmentReference(bag, key)).toThrow();
-        // The key is still present exactly once after the duplicate rejection —
-        // check count directly so a regression that pushes before checking would
-        // be caught even though hasGeneratedEquipmentReference uses .some().
-        expect(bag.generatedEquipment?.filter((e) => e.instanceKey === key).length).toBe(1);
+        expect(hasGeneratedEquipmentReference(bag, key)).toBe(true);
+        expect(
+          listGeneratedEquipmentReferences(bag).filter((entry) => entry.instanceKey === key),
+        ).toHaveLength(1);
       }),
     );
   });

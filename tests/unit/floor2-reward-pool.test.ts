@@ -139,18 +139,19 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
     }
   });
 
-  it("a base's inherent non-armor stat bonus is source-independent: identical at every rarity, for every caller", () => {
+  it('non-armor base stat bonuses are NOT copied into generated frozen stats (affix-driven model)', () => {
     // leather-collar (charisma), leather-belt (luck), iron-ring (luck) are
     // the 3 Basic Leather non-weapon bases that carry an inherent non-armor
     // stat bonus in the catalog (see floor2-basic-leather-bases.ts).
-    // `generateEquipmentInstance` must NEVER mutate a base's inherent stats
-    // based on rarity or caller — the same base always yields the same
-    // `statBonuses` baseline (base bonus + that rarity's effect budget)
-    // regardless of who is generating it (achievement reward, Quartermaster,
-    // or anything else). The reward-bundle resolver enforces the Common
-    // rarity contract by excluding such bases from *candidacy* for a Common
-    // draw specifically (see floor2-reward-bundle-resolver.test.ts) — never
-    // by stripping generated output.
+    // Under the decoupled model, `generateEquipmentInstance` does NOT copy
+    // non-armor base stats into the frozen instance. Non-armor power comes
+    // exclusively from the rarity-affix budget:
+    //   common   → 0 effects → 0 non-armor stats in frozen.statBonuses
+    //   uncommon → 1 effect  → non-armor stat IFF the drawn effect is non-armor
+    //   rare     → 2 effects → may have non-armor stats from affixes
+    // Common eligibility is no longer gated by base definition — the
+    // resolver accepts any base at Common and the generator produces zero
+    // non-armor stats (empty affix budget).
     const basesWithInherentNonArmorBonus = FLOOR2_BASIC_LEATHER_NON_WEAPON_BASES.filter((def) =>
       Object.entries(def.statBonuses).some(
         ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
@@ -167,10 +168,32 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
     }
 
     for (const [index, def] of basesWithInherentNonArmorBonus.entries()) {
-      for (const rarity of LEGAL_RARITIES) {
+      // At Common (0-affix budget), the generated instance must have zero
+      // non-armor stats regardless of the base definition.
+      const commonWorld = createTestWorld({
+        seed: 200 + index,
+        generatedEquipmentRunKey: `basic-leather-affix-driven-${index}-common`,
+      });
+      const commonInstance = generateEquipmentInstance(commonWorld, {
+        baseId: def.id,
+        itemLevel: 6,
+        rarity: 'common',
+        enhancementLevel: 0,
+      });
+      const commonNonArmor = Object.entries(commonInstance.frozen.statBonuses).filter(
+        ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+      );
+      expect(
+        commonNonArmor.length,
+        `${def.id} at common must have zero non-armor stats (base stats not copied)`,
+      ).toBe(0);
+
+      // At Uncommon/Rare the frozen non-armor stats must equal the sum of
+      // resolved stat effects — they never reflect the authored base bonus.
+      for (const rarity of ['uncommon', 'rare'] as const) {
         const world = createTestWorld({
           seed: 200 + index,
-          generatedEquipmentRunKey: `basic-leather-source-independent-${index}-${rarity}`,
+          generatedEquipmentRunKey: `basic-leather-affix-driven-${index}-${rarity}`,
         });
         const instance = generateEquipmentInstance(world, {
           baseId: def.id,
@@ -178,13 +201,21 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
           rarity,
           enhancementLevel: 0,
         });
-        const nonArmor = Object.entries(instance.frozen.statBonuses).filter(
-          ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
-        );
-        expect(
-          nonArmor.length,
-          `${def.id} at ${rarity} must preserve its inherent non-armor base bonus (source-independent)`,
-        ).toBeGreaterThan(0);
+        const effectNonArmorTotal = instance.resolvedEffects.reduce<
+          Partial<Record<string, number>>
+        >((acc, effect) => {
+          if ('kind' in effect && effect.kind === 'stat' && effect.stat !== 'armor') {
+            acc[effect.stat] = (acc[effect.stat] ?? 0) + effect.value;
+          }
+          return acc;
+        }, {});
+        for (const [stat, value] of Object.entries(instance.frozen.statBonuses)) {
+          if (stat === 'armor') continue;
+          expect(
+            value ?? 0,
+            `${def.id} at ${rarity}: frozen.statBonuses.${stat} must equal resolved effect sum`,
+          ).toBe(effectNonArmorTotal[stat] ?? 0);
+        }
       }
     }
   });

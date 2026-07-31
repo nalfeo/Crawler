@@ -7,6 +7,7 @@ import {
 } from '../../src/core/generated-equipment-registry.js';
 import { addGeneratedEquipmentToBag } from '../../src/core/systems/equipmentSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
+import { listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
@@ -36,10 +37,11 @@ describe('player carryover properties', () => {
         const destinationPlayer = spawnPlayer(destination, 0, 0);
         restorePlayerCarryover(destination, destinationPlayer, serialized);
 
+        const destinationBag = destination.inventories.get(destinationPlayer);
         expect(
-          destination.inventories
-            .get(destinationPlayer)
-            ?.generatedEquipment?.map((entry) => entry.instanceKey),
+          destinationBag
+            ? listGeneratedEquipmentReferences(destinationBag).map((entry) => entry.instanceKey)
+            : undefined,
         ).toEqual(expectedKeys);
         expect(snapshotGeneratedEquipmentRegistry(destination)).toEqual(
           snapshotGeneratedEquipmentRegistry(source),
