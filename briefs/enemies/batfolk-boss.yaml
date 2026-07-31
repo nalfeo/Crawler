@@ -4,32 +4,42 @@ name: batfolk-boss
 floor: 2
 sizeVariant: large
 description: |
-  Countess Vesper, an aristocratic batfolk crime matriarch. FULL BODY visible
-  head to feet — not a bust or portrait crop. The entire figure must fit within
-  the sprite frame, from the top of her head down to her feet or the base of
-  her cloak. A compact, single connected boss silhouette with folded cloak-like
-  wings wrapped into the body, a severe noble face, and industrial salvage
-  jewelry and armor suited to dark-fantasy Floor 2. Preserve the square boss
-  mass created by the folded cloak-wings. Avoid open wing holes, detached thin
-  appendages, or fragile accessories. Front-facing toward the viewer. Dark
-  purples and blacks with accents of tarnished gold and rusted metal salvage.
-  Bold, intimidating full-body silhouette that reads clearly at game scale —
-  the folded-wing cloak should create a solid rectangular body mass with the
-  head rising above it and the feet/cloak base grounding it below.
+  Countess Vesper, an aristocratic batfolk crime matriarch. Squat, wide-bodied
+  standing figure — FULL BODY head to talon-feet. NOT a bust or portrait crop.
+  The entire figure from the tips of her bat ears down to her clawed feet must
+  be visible within the sprite frame. Short thick legs ending in bat-talon
+  feet are planted at the bottom of the frame.
+
+  Body design: large batfolk head with swept-back pointed bat ears, broad
+  heavy shoulders, ornate salvage pauldrons, and a structured dark noble coat
+  or armored tabard covering the torso and thighs. A back-cape or cloak hangs
+  behind the body without hiding the legs. Short stubby arms visible at the
+  sides. The silhouette reads as a compact, low-slung boss mass.
+
+  Floor 2 palette: deep purples and near-blacks, tarnished gold trim on
+  pauldrons and jewelry, rusted iron and charcoal. No bright primaries. Dark,
+  menacing aristocratic authority.
+
+  Silhouette: wide trapezoid boss-mass with head prominent at top, clawed feet
+  grounding the base. No thin floating accessories — all props merged into the
+  body silhouette. IMPORTANT: legs and feet visible at bottom of frame.
+
 sensors:
   enemy:
     toleranceDeg: 20
-    # Countess Vesper is authored front-facing toward the viewer.
     facing: front
   edge:
-    # Large boss — allow silhouette to touch the frame edge.
     allowMainTouch: true
-variations:
-  - Countess Vesper with deep purple-black feathered cloak-wings clasped tight, ornate salvage pauldrons, gold chain collar
-  - Countess Vesper with charcoal wing-cloak and exposed ribbed membrane edges, iron crown of twisted rebar
-  - Countess Vesper with midnight-blue wrapped wings, glittering bone-and-scrap brooch, regal stern expression
+    allowDetachedEdgeComponents: false
+
 judge:
   enabled: true
-  # Boss brief — cap judge calls at 4 variants maximum to bound large-boss review cost.
   maxVariants: 4
+
+variations:
+  - 'Countess Vesper full-body standing — deep purple pauldrons with gold trim, heavy gold chain collar, dark armored coat, short bat-talon feet at base'
+  - 'Countess Vesper full-body standing — iron rebar crown, charcoal noble coat, rusted iron pauldrons, clawed feet visible, menacing front-facing glare'
+  - 'Countess Vesper full-body standing — midnight-blue armored tabard, bone-and-scrap brooch, tarnished gold jewelry, bat-claw feet planted on ground'
+  - 'Countess Vesper full-body standing — heavy scrap-plate cloak open at front revealing armored torso and thick legs, gold salvage chain, imperious stance'
+
 minVariations: 4

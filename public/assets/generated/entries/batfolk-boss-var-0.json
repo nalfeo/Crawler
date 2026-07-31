@@ -2,23 +2,23 @@
   "briefId": "batfolk-boss",
   "spriteName": "batfolk-boss-var-0",
   "assetPath": "generated/batfolk-boss-var-0.png",
-  "approvedAt": "2026-07-31T19:11:26.620Z",
-  "sourceRun": "generated/runs/batfolk-boss/2026-07-31T19-08-19-cf814bd5",
+  "approvedAt": "2026-07-31T21:56:07.446Z",
+  "sourceRun": "generated/runs/batfolk-boss/2026-07-31T21-51-54-bf58df91",
   "variantIndex": 0,
   "anchor": {
-    "x": 253,
-    "y": 280,
+    "x": 254,
+    "y": 291,
     "source": "derived"
   },
   "anchors": {
     "hold": {
-      "x": 253,
-      "y": 280,
+      "x": 254,
+      "y": 291,
       "source": "derived"
     },
     "centerOfGravity": {
-      "x": 253,
-      "y": 280,
+      "x": 254,
+      "y": 291,
       "source": "derived"
     }
   },
@@ -53,42 +53,46 @@
       "ok": true,
       "sensor": "anchor-center-of-mass",
       "anchor": {
-        "x": 253,
-        "y": 280
+        "x": 254,
+        "y": 291
       }
     }
   ],
   "judgeScorecard": {
     "variantIndex": 0,
     "modelDeployment": "gpt-4o",
-    "judgedAt": "2026-07-31T19:09:25.484Z",
+    "judgedAt": "2026-07-31T21:53:00.218Z",
     "designLanguage": {
       "score": 4,
-      "rationale": "The candidate effectively combines the gothic nobility of a batfolk matriarch with industrial salvage elements, creating a unique and authored contradiction. However, the design could push the 'aristocratic' aspect further to enhance the dark humor and operatic mob hierarchy."
+      "rationale": "The design captures the aristocratic batfolk crime matriarch concept with a compact, wide silhouette and menacing presence. The combination of noble attire and bat-like features aligns with the Crawler design language, though the concept could be pushed further for more distinctiveness."
     },
     "referenceStyleMatch": {
       "score": 5,
-      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering feels consistent with the approved references."
+      "rationale": "The sprite's rendering matches the references in terms of outline weight, shading, and palette depth. The use of deep purples and tarnished gold is consistent with the approved style."
     },
     "styleMatch": {
       "score": 5,
-      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering feels consistent with the approved references."
+      "rationale": "The sprite's rendering matches the references in terms of outline weight, shading, and palette depth. The use of deep purples and tarnished gold is consistent with the approved style."
     },
     "briefMatch": {
-      "score": 5,
-      "rationale": "The sprite clearly depicts a batfolk matriarch with folded cloak-like wings, a severe noble face, and industrial salvage jewelry, adhering closely to the brief."
+      "score": 4,
+      "rationale": "The sprite mostly matches the brief, with a wide, squat figure, visible talon feet, and a noble appearance. However, the back-cape or cloak is not clearly visible, which slightly detracts from the match."
     },
     "readability": {
       "score": 5,
-      "rationale": "The silhouette is bold and rectangular, with the head rising above the body as specified. The sprite reads clearly at game scale on a dark floor tile."
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity issues or floating elements. The figure is easily recognizable as a batfolk boss."
     },
     "bossPresence": {
       "score": 4,
-      "rationale": "The sprite has a strong, compact silhouette and a commanding presence, but it could benefit from slightly more exaggerated features or size to emphasize its boss status."
+      "rationale": "The sprite has a wide, imposing silhouette and a sense of authority, but it could be made slightly larger or more exaggerated to enhance its boss-like presence."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure, from the tips of the ears to the talon feet, is visible within the frame, fulfilling the brief's requirements."
     },
     "themeAdherence": {
       "score": 4,
-      "rationale": "The sprite incorporates dark purples, blacks, tarnished gold, and rusted metal salvage, aligning with the theme. However, the 'club-culture accents' and 'cathedral jewelry' could be more pronounced to fully capture the Nightwing Coven's aesthetic."
+      "rationale": "The sprite incorporates deep purples, tarnished gold, and a noble appearance, aligning with the theme. However, the lack of a visible back-cape or cloak and the absence of more explicit gothic or aviation elements slightly detract from full adherence."
     },
     "passed": true,
     "minScore": 4,
@@ -99,24 +103,24 @@
     "hardBlockRationale": null,
     "confidence": 0.92,
     "usage": {
-      "promptTokens": 4062,
-      "completionTokens": 404,
-      "totalTokens": 4466
+      "promptTokens": 4560,
+      "completionTokens": 487,
+      "totalTokens": 5047
     }
   },
   "type": "enemy",
-  "contentHash": "9fe16c4d9ec4c8a7d37a73b1426b0b86835013d669cb66d77f76056999f9cdc4",
+  "contentHash": "6f777386bde10e518f5b59d0e4739b0c6430938df5c9553107fecdf3893d6a21",
   "opaqueBounds": {
-    "x": 27,
-    "y": 27,
-    "width": 458,
-    "height": 458,
+    "x": 28,
+    "y": 28,
+    "width": 456,
+    "height": 466,
     "canvasWidth": 512,
-    "canvasHeight": 512
+    "canvasHeight": 522
   },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\batfolk-boss\\2026-07-31T19-08-19-cf814bd5\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\batfolk-boss\\2026-07-31T19-08-19-cf814bd5\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\batfolk-boss\\2026-07-31T19-08-19-cf814bd5\\postprocess.pipeline.effective.yaml",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\batfolk-boss\\2026-07-31T21-51-54-bf58df91\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\batfolk-boss\\2026-07-31T21-51-54-bf58df91\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\batfolk-boss\\2026-07-31T21-51-54-bf58df91\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }
