@@ -82,6 +82,11 @@ export interface ReconcileResult {
   /** Art-surface paths that differ between queue and main (the batch). */
   readonly changedPaths?: readonly string[];
   /**
+   * Number of orphaned `assets/checkin-*` branches folded into this promotion
+   * (branches with no open PR that weren't captured in `assets/queue`).
+   */
+  readonly orphanedBranchCount?: number;
+  /**
    * Issue numbers for open `asset-checkin` issues whose complete asset payload
    * is fully covered by this promotion (and will therefore be closed by it).
    * Empty when no issues are fully covered or the issue list query fails.
@@ -335,6 +340,15 @@ function parseNameOnly(stdout: string): string[] {
     .filter((line) => line !== '');
 }
 
+/**
+ * Returns true for top-level JSON files directly under `public/assets/generated/`
+ * that predate the shard migration (e.g. the aggregate `manifest.json`).
+ * Shard files live under `entries/` and are safe to harvest; those are NOT matched.
+ */
+function isLegacyAggregateManifestPath(p: string): boolean {
+  return /^public\/assets\/generated\/[^/]+\.json$/.test(p);
+}
+
 /** Destination tree-entry modes the reconciler will allow onto `main`. */
 const ALLOWED_DST_MODES = new Set([
   '100644', // regular non-executable file (PNG / manifest.json / catalog.json)
@@ -408,6 +422,7 @@ function buildPrContent(
   promoteBranch: string,
   baseBranch: string,
   closingIssueNumbers: readonly number[] = [],
+  orphanedBranchCount = 0,
 ): { title: string; body: string } {
   const iso = now.toISOString();
   const count = changedPaths.length;
@@ -421,6 +436,14 @@ function buildPrContent(
     `- Batched at: ${iso}`,
     '- Diff is art-surface-only **by construction** (harvested onto current',
     `  \`${baseBranch}\`); the trust-boundary guard re-validated it before arming auto-merge.`,
+  ];
+  if (orphanedBranchCount > 0) {
+    parts.push(
+      `- Also folded **${orphanedBranchCount}** orphaned \`assets/checkin-*\` branch(es) ` +
+        `not previously captured in \`${queueBranch}\`.`,
+    );
+  }
+  parts.push(
     '',
     '### Changed art-surface paths',
     '',
@@ -430,7 +453,7 @@ function buildPrContent(
     '(`scripts/sprites/reconcile-queue.ts`). See',
     'ADR `2026-07-24-sprite-queue-reconciler`.</sub>',
     '',
-  ];
+  );
   // Auto-close each fully-covered tracking issue when the PR merges.
   for (const n of closingIssueNumbers) {
     parts.push(`Closes #${n}`);
@@ -576,6 +599,62 @@ export async function computeClosingIssueNumbers(
   return { issueNumbers: closing.sort((a, b) => a - b), complete: true };
 }
 
+/**
+ * Discover `assets/checkin-*` branches on the remote that have no currently-open
+ * PR pointing to them. These represent approved art that was checked in locally
+ * but never consolidated into a batch or promote PR.
+ *
+ * Non-fatal: any query failure returns an empty list so the reconciler degrades
+ * gracefully. Exported for deterministic unit testing.
+ */
+export async function scanOrphanedCheckinBranches(
+  exec: Exec,
+  repoRoot: string,
+  remote: string,
+  repo: string | undefined,
+): Promise<string[]> {
+  // 1. List all assets/checkin-* branches on the remote.
+  const lsr = await exec('git', ['ls-remote', '--heads', remote, 'assets/checkin-*'], {
+    cwd: repoRoot,
+  });
+  if (lsr.code !== 0 || lsr.stdout.trim() === '') return [];
+  const allBranches = lsr.stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '')
+    .map((l) => {
+      const tab = l.indexOf('\t');
+      return tab < 0 ? '' : l.slice(tab + 1).replace(/^refs\/heads\//, '');
+    })
+    .filter((b) => b.startsWith('assets/checkin-'));
+
+  if (allBranches.length === 0) return [];
+
+  // 2. Get open PR head branches to cross-reference. Fail closed on any error:
+  //    harvesting branches whose PRs are unknown risks overwriting active art.
+  const prResult = await exec(
+    'gh',
+    ['pr', 'list', ...repoArgs(repo), '--state', 'open', '--json', 'headRefName', '--limit', '500'],
+    { cwd: repoRoot },
+  );
+  if (prResult.code !== 0) return [];
+  const openBranches = new Set<string>();
+  try {
+    const parsed = JSON.parse(prResult.stdout.trim() || '[]') as Array<{
+      headRefName?: string;
+    }>;
+    for (const pr of parsed) {
+      if (typeof pr.headRefName === 'string') openBranches.add(pr.headRefName);
+    }
+  } catch {
+    // JSON parse failure: fail closed — don't harvest when PR state is unknown.
+    return [];
+  }
+
+  // 3. Return branches not referenced by any open PR.
+  return allBranches.filter((b) => !openBranches.has(b));
+}
+
 /** Result of locating the open promote PR: its number and current labels. */
 interface OpenPromotePr {
   readonly number: number;
@@ -673,9 +752,8 @@ export async function runReconcile(
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
 
   return withLock(async () => {
-    // 1. Cold start: if the queue branch does not exist yet, there is nothing to
-    //    reconcile. `ls-remote` cleanly distinguishes "absent" (empty stdout)
-    //    from a real network/auth error (non-zero exit).
+    // 1. Check whether the queue branch exists. `ls-remote` cleanly distinguishes
+    //    "absent" (empty stdout) from a real network/auth error (non-zero exit).
     const lsr = await runGit(deps.exec, repoRoot, ['ls-remote', '--heads', remote, queueBranch]);
     if (lsr.code !== 0) {
       throw new ReconcileError(
@@ -685,7 +763,19 @@ export async function runReconcile(
         }`,
       );
     }
-    if (lsr.stdout.trim() === '') {
+    const queueExists = lsr.stdout.trim() !== '';
+
+    // 1b. Discover orphaned branches BEFORE the cold-start return so a repo
+    //     with no queue branch but with orphaned assets/checkin-* branches still
+    //     reconciles. Non-fatal: scan failure → treat as empty orphan set.
+    const orphanedBranches = await scanOrphanedCheckinBranches(
+      deps.exec,
+      repoRoot,
+      remote,
+      repo,
+    ).catch(() => [] as string[]);
+
+    if (!queueExists && orphanedBranches.length === 0) {
       return { status: 'noop', promoteBranch };
     }
 
@@ -706,11 +796,20 @@ export async function runReconcile(
       );
     }
     const promoteExists = promoteLsr.stdout.trim() !== '';
-    const fetchRefs = [queueBranch, baseBranch];
+    // Only include queue branch in the fetch when it actually exists.
+    const fetchRefs = queueExists ? [queueBranch, baseBranch] : [baseBranch];
     if (promoteExists) fetchRefs.push(promoteBranch);
     await mustGit(deps.exec, repoRoot, ['fetch', '--no-tags', remote, ...fetchRefs]);
 
-    const queueRef = `${remote}/${queueBranch}`;
+    // 2b. Fetch orphaned branches so we can compute deltas. Non-fatal: a fetch
+    //     failure for any single branch is ignored (branch is silently skipped).
+    for (const branch of orphanedBranches) {
+      await runGit(deps.exec, repoRoot, ['fetch', '--no-tags', remote, branch]).catch(
+        () => undefined,
+      );
+    }
+
+    const queueRef = queueExists ? `${remote}/${queueBranch}` : null;
     const baseRef = `${remote}/${baseBranch}`;
     const promoteRef = promoteExists ? `${remote}/${promoteBranch}` : null;
 
@@ -731,20 +830,51 @@ export async function runReconcile(
     //    intended A) into a single R entry — which --diff-filter=AM drops,
     //    silently omitting real queue art from the promotion. Disabling rename
     //    detection keeps A and D independent and the delta deterministic.
-    const delta = await mustGit(deps.exec, repoRoot, [
-      'diff',
-      '--no-renames',
-      '--name-only',
-      '--diff-filter=AM',
-      baseRef,
-      queueRef,
-      '--',
-      ...ASSET_SURFACE_PATHS,
-    ]);
-    const queueVsMainArt = parseNameOnly(delta);
-    if (queueVsMainArt.length === 0) {
-      // Queue's art surface already matches main (steady state after a merge, or
-      // no pending edits). Deliberately DO NOT reset assets/queue (data-loss
+    let queueVsMainArt: readonly string[] = [];
+    if (queueRef !== null) {
+      const delta = await mustGit(deps.exec, repoRoot, [
+        'diff',
+        '--no-renames',
+        '--name-only',
+        '--diff-filter=AM',
+        baseRef,
+        queueRef,
+        '--',
+        ...ASSET_SURFACE_PATHS,
+      ]);
+      queueVsMainArt = parseNameOnly(delta);
+    }
+
+    // 3b. Compute art deltas for each orphaned branch (two-dot AM only, art
+    //     surface restricted — same rationale as the queue delta above). Branches
+    //     that are inaccessible after fetch are silently skipped.
+    //     Pre-sharding aggregate manifest paths (e.g. manifest.json directly
+    //     under public/assets/generated/) are filtered out: those files are
+    //     gitignored build artifacts in the sharded layout and must never be
+    //     raw-checked-out onto main.
+    const orphanedPathsByBranch: Array<{ ref: string; paths: string[] }> = [];
+    for (const branch of orphanedBranches) {
+      const ref = `${remote}/${branch}`;
+      const orphanDelta = await runGit(deps.exec, repoRoot, [
+        'diff',
+        '--no-renames',
+        '--name-only',
+        '--diff-filter=AM',
+        baseRef,
+        ref,
+        '--',
+        ...ASSET_SURFACE_PATHS,
+      ]);
+      if (orphanDelta.code !== 0) continue;
+      const paths = parseNameOnly(orphanDelta.stdout).filter(
+        (p) => !isLegacyAggregateManifestPath(p),
+      );
+      if (paths.length > 0) orphanedPathsByBranch.push({ ref, paths });
+    }
+
+    if (queueVsMainArt.length === 0 && orphanedPathsByBranch.length === 0) {
+      // Queue's art surface already matches main and no orphaned branches
+      // contribute new art. Deliberately DO NOT reset assets/queue (data-loss
       // trap): it keeps accumulating and the next non-empty delta re-harvests.
       return { status: 'noop', promoteBranch };
     }
@@ -765,8 +895,19 @@ export async function runReconcile(
       // are in the list), leaving everything else in main's worktree untouched.
       // This prevents reverting art that reached main via an independent flow
       // (e.g. the legacy asset-PR) without ever being committed to the queue.
-      await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...queueVsMainArt]);
-      await mustGit(deps.exec, worktree, ['add', '--', ...queueVsMainArt]);
+      if (queueVsMainArt.length > 0 && queueRef !== null) {
+        await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...queueVsMainArt]);
+        await mustGit(deps.exec, worktree, ['add', '--', ...queueVsMainArt]);
+      }
+
+      // Also overlay art from orphaned checkin branches. Each branch contributes
+      // only its AM paths (pre-computed above, two-dot vs main), so we never
+      // revert art that arrived via another flow. Later overlays win on collision
+      // (last-writer semantics, consistent with the queue union).
+      for (const { ref, paths } of orphanedPathsByBranch) {
+        await mustGit(deps.exec, worktree, ['checkout', ref, '--', ...paths]);
+        await mustGit(deps.exec, worktree, ['add', '--', ...paths]);
+      }
 
       // No-op guard: if nothing staged, main already carries identical art bytes
       // (the two-dot path delta can list paths whose CONTENT is unchanged after
@@ -877,6 +1018,7 @@ export async function runReconcile(
       promoteBranch,
       baseBranch,
       closingIssueNumbers,
+      orphanedPathsByBranch.length,
     );
     const existing = await findOpenPromotePr(deps.exec, repoRoot, repo, promoteBranch, baseBranch);
     let prNumber: number;
@@ -999,6 +1141,7 @@ export async function runReconcile(
       changedPaths,
       closingIssueNumbers,
       closingIssueDiscoveryComplete: closingIssueDiscovery.complete,
+      orphanedBranchCount: orphanedPathsByBranch.length,
     };
   });
 }
