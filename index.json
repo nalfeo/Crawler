@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fb29cb8f073a4edf3fa57f7745e9e9e894df6fec",
+    "commitDate": "2026-07-31T22:06:56Z",
+    "commitSubject": "fix(abilities): split ability-icons-batch-01 into 4-icon sub-batches; wire iconBriefId for 16 abilities (#2489)",
+    "capturedAt": "2026-07-31T23:11:11.924Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30669540940",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/fb29cb8f073a4edf3fa57f7745e9e9e894df6fec.json"
+  },
+  {
     "commit": "ed8ec080163b7d1db6e668ca82f4277673fbcad3",
     "commitDate": "2026-07-31T21:10:28Z",
     "commitSubject": "Suppress carryover rehydration VFX for weapon-gated passives (#2481)",
