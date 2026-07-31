@@ -166,7 +166,12 @@ export const postprocessModules: Record<string, ModuleHandler> = {
 
   'resize-nearest': (image, _params, ctx) => {
     const { width: targetW, height: targetH } = ctx.brief.size;
-    const strategy = resizeSpriteStrategy(ctx.brief.type, targetW, targetH);
+    const strategy = resizeSpriteStrategy(
+      ctx.brief.type,
+      targetW,
+      targetH,
+      ctx.brief.frameSequence?.enabled,
+    );
     const fitResize = fitWithinNearest(image, targetW, targetH, strategy);
     const mode = strategy === 'stretch' ? 'nearest-stretch' : 'nearest-fit';
 
