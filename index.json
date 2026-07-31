@@ -1,5 +1,16 @@
 [
   {
+    "commit": "cbfd53b1d811c38e4e2508db574f3689b6a545c3",
+    "commitDate": "2026-07-31T10:09:36Z",
+    "commitSubject": "Surface level-5 passive abilities in Abilities UI and add unlock feedback (#2440)",
+    "capturedAt": "2026-07-31T11:20:12.149Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30623256505",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/cbfd53b1d811c38e4e2508db574f3689b6a545c3.json"
+  },
+  {
     "commit": "fe35dd95fe5949b4c0bb669af7a42d7a9baaf907",
     "commitDate": "2026-07-31T09:48:49Z",
     "commitSubject": "CI recovery router: suppress repeated no-op dispatches and reserve stale-PR fairness lane (#2435)",
