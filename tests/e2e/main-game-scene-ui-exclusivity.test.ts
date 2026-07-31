@@ -153,6 +153,19 @@ describe('MainGameScene UI exclusivity', () => {
     await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 100);
     await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 9_999);
     await mainSceneProbe.advanceSimulationFrames(page, 2);
+
+    // Real rendered player-visible projection of the level-5 skill-passive
+    // unlock. Poll rather than sample a single frame: the banner is a shared
+    // FIFO with other announcement kinds, so the unlock event may not be the
+    // very first one drained even though it is guaranteed to appear.
+    const announcementState = await waitForState(
+      page,
+      (s) => s.currentAnnouncement?.kind === 'skillPassiveUnlocked',
+      { label: 'level-5 swordsmanship milestone renders a HUD unlock announcement' },
+    );
+    expect(announcementState.currentAnnouncement?.kind).toBe('skillPassiveUnlocked');
+    expect(announcementState.currentAnnouncement?.text).toContain('Combat Flow');
+
     await mainSceneProbe.setWorldState(page, 'safe_room');
     await waitForState(page, (s) => s.worldState === 'safe_room' && s.safeContext, {
       label: 'safe_room restored for passive projection check',
@@ -190,6 +203,16 @@ describe('MainGameScene UI exclusivity', () => {
     for (let i = 0; i < combatFlowIndex; i += 1) {
       await page.keyboard.press('ArrowDown');
     }
+
+    // Real rendered projection of the distinct non-equippable-passives
+    // section header — asserted while the passive row is the active
+    // selection so the header is guaranteed to be within the visible window.
+    const stateWithHeader = await mainSceneProbe.getState(page);
+    expect(
+      stateWithHeader.abilityLoadoutSectionHeaderLabel,
+      'a distinct PASSIVE section header must render above the non-equippable rows',
+    ).toBe('PASSIVE ABILITIES');
+
     await page.keyboard.press('Enter');
 
     const afterPassiveActivate = await mainSceneProbe.getState(page);

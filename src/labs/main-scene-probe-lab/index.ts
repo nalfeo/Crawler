@@ -133,6 +133,12 @@ interface MainSceneInternals {
       bounds: ScreenBounds | null;
       panelVisible: boolean;
     };
+    /**
+     * The currently-rendered announcement banner content (kind + exact
+     * text), or `null` when no banner is showing. Real rendered projection,
+     * not `world.announcements` or internal ability/skill state.
+     */
+    getCurrentAnnouncement?(): { kind: string; text: string } | null;
   };
   inventoryUI?: {
     isOpen(): boolean;
@@ -187,6 +193,12 @@ interface MainSceneInternals {
       details: string;
       canToggle?: boolean;
     }>;
+    /**
+     * Label of the non-equippable-passives section header currently
+     * rendered in the visible row list, or `null` when no passive rows are
+     * visible. Reflects the real rendered UI, not internal entry data.
+     */
+    getVisibleSectionHeaderLabel?(): string | null;
   };
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
@@ -341,6 +353,20 @@ export interface MainSceneState {
   readonly abilityLoadoutOpen: boolean;
   /** Rendered loadout rows currently visible in the list viewport. */
   readonly abilityLoadoutVisibleEntries: readonly AbilityLoadoutVisibleEntryProbe[];
+  /**
+   * Label of the non-equippable-passives section header currently rendered
+   * in the visible loadout row list (e.g. "PASSIVE ABILITIES"), or `null`
+   * when no passive rows are visible. Real rendered UI projection.
+   */
+  readonly abilityLoadoutSectionHeaderLabel: string | null;
+  /**
+   * The currently-rendered HUD announcement banner content (kind + exact
+   * text), or `null` when no banner is showing. Real rendered projection —
+   * lets e2e assert the player-visible level-5 skill-passive-unlock
+   * announcement without reaching into `world.announcements` or
+   * `AbilityState` internals.
+   */
+  readonly currentAnnouncement: { readonly kind: string; readonly text: string } | null;
   /** Active abilities currently equipped to the auto bar. */
   readonly equippedActiveAbilityIds: readonly string[];
   /** True when inventory is open. */
@@ -815,6 +841,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         details: entry.details,
         canToggle: entry.canToggle !== false,
       }));
+      const abilityLoadoutSectionHeaderLabel =
+        scene?.abilityLoadoutUI?.getVisibleSectionHeaderLabel?.() ?? null;
+      const currentAnnouncement = scene?.hudUi?.getCurrentAnnouncement?.() ?? null;
       const equippedActiveAbilityIds =
         eid >= 0
           ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
@@ -837,6 +866,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         modalOpen,
         abilityLoadoutOpen,
         abilityLoadoutVisibleEntries,
+        abilityLoadoutSectionHeaderLabel,
+        currentAnnouncement,
         equippedActiveAbilityIds,
         inventoryOpen,
         equipmentOpen,
