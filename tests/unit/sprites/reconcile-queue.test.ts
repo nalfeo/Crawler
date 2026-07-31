@@ -709,7 +709,8 @@ describe('scanOrphanedCheckinBranches', () => {
   });
 
   it('passes --repo flag when repo param is provided', async () => {
-    const { exec, calls } = makeScanExec('', '[]');
+    const lsRemote = 'abc123\trefs/heads/assets/checkin-foo\n';
+    const { exec, calls } = makeScanExec(lsRemote, '[]');
     await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, 'owner/repo');
     const prCall = calls.find((c) => c.command === 'gh');
     expect(prCall?.args).toContain('--repo');
