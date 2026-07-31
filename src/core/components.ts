@@ -144,6 +144,14 @@ export const Harvestable = {};
  */
 export const FamilyMembership = {};
 
+/**
+ * Marks an entity as a physical boss chest world-object. Proximity-opened by
+ * `bossChestPickupSystem` when the player walks within BOSS_CHEST_RANGE_FT.
+ * The chest's lifecycle record is keyed by `chestId` in `world.bossChests`
+ * and the reverse EID lookup lives in `world.bossChestEids`.
+ */
+export const BossChestEntity = {};
+
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
 export const DEFAULT_MAX_ENTITIES = 10_000;

@@ -211,6 +211,12 @@ export interface GameWorld {
   /** Boss chest lifecycle records keyed by chest ID (`boss-chest:<familyId>`). */
   bossChests: Map<string, BossChestRecord>;
   /**
+   * Reverse lookup: physical boss-chest ECS entity ID keyed by chest ID.
+   * Populated when `spawnBossChestEntity` creates the world-object; cleared when
+   * `bossChestPickupSystem` removes the entity after the player opens it.
+   */
+  bossChestEids: Map<string, number>;
+  /**
    * Unclaimed Floor 1 `lootBox` reward bundles keyed by achievement ID.
    * Resolved once at unlock (see `resolveLootBoxRewardBundle`) and consumed
    * read-only by `claimAchievementReward` — no RNG at claim/load/presentation.
@@ -644,6 +650,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     }),
     generatedEquipmentRewardBundles: new Map(),
     bossChests: new Map(),
+    bossChestEids: new Map(),
     lootBoxRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),

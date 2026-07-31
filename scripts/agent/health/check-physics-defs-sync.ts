@@ -40,6 +40,7 @@ const ROW_TO_ID: Readonly<Record<string, PhysicsBodyId>> = {
   Door: 'door',
   Trap: 'trap',
   'Harvestable node': 'harvestable-node',
+  'Boss chest': 'boss-chest',
 };
 
 interface DocRow {
