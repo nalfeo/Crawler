@@ -14,7 +14,7 @@ The model provides reasoning. The harness is everything else: tools, memory, san
 
 No ECS system ships to production without a corresponding lab sandbox. Labs live in `src/labs/<system>-lab/`. Lab coverage is enforced by `scripts/agent/lab-gate-check.sh` (currently scoped to `src/core/systems`).
 
-Lab-only proof is **insufficient** for wiring/behavior changes: any `*System` exported from `src/core/**` or `src/game/**` must also be referenced by a real runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or explicitly allowlisted in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. Enforced by `npm run check:wired-systems` (ADR 0039). See rule #15 in `AGENTS.md`.
+Lab-only proof is **insufficient** for wiring/behavior changes: any `*System` exported from `src/core/**` or `src/game/**` must also be referenced by a real runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/core/simulation-core-step.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`) or explicitly allowlisted in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. Enforced by `npm run check:wired-systems` (ADR 0039). See rule #15 in `AGENTS.md`.
 
 ### 3. Deterministic CI Only
 

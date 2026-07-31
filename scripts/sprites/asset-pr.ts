@@ -80,6 +80,8 @@ export interface ConsolidationPlan {
   readonly sourceBranches: readonly string[];
   /** Issue numbers being consolidated (closed by the PR). */
   readonly issueNumbers: readonly number[];
+  /** Source asset-request issues linked from the consolidated check-ins. */
+  readonly assetRequestIssueNumbers: readonly number[];
   /** Every approved asset across all issues (deduped by assetPath). */
   readonly assets: readonly CheckinAsset[];
   /**
@@ -114,6 +116,9 @@ export function planConsolidation(input: PlanConsolidationInput): ConsolidationP
 
   const sourceBranches = dedupe(input.issues.map((i) => i.payload.branch));
   const issueNumbers = input.issues.map((i) => i.number);
+  const assetRequestIssueNumbers = dedupeNumbers(
+    input.issues.flatMap((i) => i.payload.assetRequestIssueNumbers ?? []),
+  );
   const assets = dedupeAssets(input.issues.flatMap((i) => i.payload.assets));
 
   const totalSources = sourceBranches.length + orphanedBranches.length;
@@ -127,7 +132,14 @@ export function planConsolidation(input: PlanConsolidationInput): ConsolidationP
     assets.length > 0
       ? `feat(sprites): add ${assets.length} approved ${noun} (${totalSources} ${checkinLabel})`
       : `feat(sprites): consolidate ${totalSources} orphaned check-in${totalSources === 1 ? '' : 's'}`;
-  const prBody = renderPrBody(input.issues, assets, baseBranch, orphanedBranches);
+  const prBody = renderPrBody(
+    input.issues,
+    assets,
+    baseBranch,
+    orphanedBranches,
+    issueNumbers,
+    assetRequestIssueNumbers,
+  );
 
   return {
     batchBranch,
@@ -137,6 +149,7 @@ export function planConsolidation(input: PlanConsolidationInput): ConsolidationP
     commitMessage,
     sourceBranches,
     issueNumbers,
+    assetRequestIssueNumbers,
     assets,
     orphanedBranches,
   };
@@ -147,6 +160,8 @@ function renderPrBody(
   assets: readonly CheckinAsset[],
   baseBranch: string,
   orphanedBranches: readonly string[] = [],
+  checkinIssueNumbers: readonly number[] = [],
+  assetRequestIssueNumbers: readonly number[] = [],
 ): string {
   const lines: string[] = [];
   lines.push('## Consolidated asset check-ins');
@@ -184,14 +199,18 @@ function renderPrBody(
   }
   lines.push('');
   // Auto-close each tracking issue when the PR merges.
-  for (const issue of issues) {
-    lines.push(`Closes #${issue.number}`);
+  for (const issueNumber of dedupeNumbers([...checkinIssueNumbers, ...assetRequestIssueNumbers])) {
+    lines.push(`Closes #${issueNumber}`);
   }
   return `${lines.join('\n')}\n`;
 }
 
 function dedupe(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function dedupeNumbers(values: readonly number[]): number[] {
+  return [...new Set(values.filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
 }
 
 function dedupeAssets(assets: readonly CheckinAsset[]): CheckinAsset[] {
