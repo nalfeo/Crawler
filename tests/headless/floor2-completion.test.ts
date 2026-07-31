@@ -343,9 +343,31 @@ describe('Floor 2 headless completion', () => {
         world.playerInSafeRoom = true;
         // Guarantee affordability regardless of the real generator's rolled
         // prices for this seed — the property under test is "the wiring
-        // completes a purchase when one is affordable," not "this seed's
-        // gold economy happens to cover it."
+        // completes a purchase when one is affordable and evaluation-positive,"
+        // not "this seed's gold economy or price tier happens to cover it."
+        // Setting playerGold ensures the preparePurchase affordability gate
+        // passes; setting unitPrice to 1g ensures the evaluator's purchaseCost
+        // component is negligible so stat-gain always dominates (score > 0).
+        // Both are needed: playerGold alone doesn't prevent the evaluator from
+        // rejecting items when tier pricing (e.g. floor2TierMultiplier) raises
+        // costs above the stat-gain magnitude.
         world.playerGold = 999_999;
+        const settlement = world.floorExtendedState?.settlement;
+        const stock = settlement?.quartermasterStock;
+        if (settlement && stock) {
+          world.floorExtendedState = {
+            ...world.floorExtendedState!,
+            settlement: {
+              ...settlement,
+              quartermasterStock: Object.freeze({
+                ...stock,
+                offers: Object.freeze(
+                  stock.offers.map((offer) => Object.freeze({ ...offer, unitPrice: 1 })),
+                ),
+              }),
+            },
+          };
+        }
 
         const result = runSettlementMaintenancePlanner(world);
         decisionKinds = result.decisions.map((decision) => decision.kind);
