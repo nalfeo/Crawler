@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1fb7e11274a8a5d7b43e250fac0e0efdf205802d",
+    "commitDate": "2026-07-31T01:45:21Z",
+    "commitSubject": "fix(ci): resolve test-only-exports guard failures triggered by generated-assets.ts changes (#2400)",
+    "capturedAt": "2026-07-31T02:51:52.271Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30597546771",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/1fb7e11274a8a5d7b43e250fac0e0efdf205802d.json"
+  },
+  {
     "commit": "6929343062595f405685f37ab8e498e6fc478972",
     "commitDate": "2026-07-31T00:33:13Z",
     "commitSubject": "Rebalance Floor 2 shop economy via shared pricing multiplier (#2369)",
