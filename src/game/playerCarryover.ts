@@ -1862,7 +1862,6 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
       playerEid,
       restoreAbilityState(snapshot.abilityState, world.frameCount, persistedPassiveAbilityIds),
     );
-    synchronizeAbilityPassives(world, playerEid, { suppressActivationVfx: true });
   } else {
     world.abilityStatesByEntity.delete(playerEid);
   }
@@ -1959,6 +1958,10 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
           .join('; ')}`,
       );
     }
+  }
+
+  if (snapshot.abilityState) {
+    synchronizeAbilityPassives(world, playerEid, { suppressActivationVfx: true });
   }
 
   const equipment = getEquipmentState(world, playerEid);
