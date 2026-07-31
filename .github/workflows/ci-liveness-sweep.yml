@@ -330,3 +330,126 @@ jobs:
             } else {
               core.notice(`dispatch liveness healthy; incident ${dispatchResult.action}`);
             }
+
+      # Issue #2453: Detect PRs where auto-merge was silently cleared by an
+      # automation-driven head advance (update-branch / conflict-coordinator
+      # rebase / merge-train branch update).  These PRs look healthy from the
+      # outside (passing checks, no labels) but will never merge because
+      # nothing is armed — they are externally indistinguishable from a
+      # dormant PR.
+      #
+      # A clean PR (mergeable_state='clean') with auto_merge=null and no
+      # blocking labels SHOULD have auto-merge armed.  Finding it without is
+      # a high-signal dormancy indicator.  Dispatching a fresh CI Recovery
+      # reconcile run causes the loop to re-arm auto-merge immediately.
+      #
+      # Cap: at most 5 dispatches per sweep window to stay within the global
+      # runner budget.  Additional dormant PRs are picked up in the next sweep.
+      - name: Dispatch reconcile for dormant unarmed PRs
+        uses: actions/github-script@v7
+        env:
+          UNARMED_WATCHDOG_DISPATCH_CAP: ${{ vars.UNARMED_WATCHDOG_DISPATCH_CAP || '5' }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const lib = await import(
+              pathToFileURL(
+                `${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-recovery/unarmed-pr-watchdog.mjs`,
+              ).href
+            );
+
+            const { owner, repo } = context.repo;
+            const ref = context.payload.repository?.default_branch || 'main';
+            const cap = Math.max(
+              1,
+              Number.parseInt(process.env.UNARMED_WATCHDOG_DISPATCH_CAP, 10) || 5,
+            );
+
+            // Fetch ALL open non-draft PRs (base=main) across every page.  The
+            // list endpoint returns the SIMPLE PR representation, which omits
+            // `mergeable_state` — so pre-filter on list-only fields, then
+            // hydrate each candidate with `pulls.get` (the only endpoint that
+            // computes mergeability) before running the detector.
+            const listed = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              base: 'main',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100,
+            });
+
+            const candidates = listed.filter((pull) =>
+              lib.isUnarmedWatchdogCandidate(pull),
+            );
+
+            const hydrated = [];
+            for (const pull of candidates) {
+              try {
+                const detail = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: pull.number,
+                });
+                hydrated.push(detail.data);
+              } catch (err) {
+                core.warning(
+                  `unarmed-watchdog hydrate failed pr=#${pull.number}: ${err.message}`,
+                );
+              }
+            }
+
+            const dormant = lib.detectUnarmedMergeablePrs(hydrated);
+
+            core.info(
+              `unarmed-watchdog found=${dormant.length} of ${listed.length} open PRs ` +
+                `(hydrated=${hydrated.length}/${candidates.length}) dormant-unarmed cap=${cap}`,
+            );
+
+            // Sort by staleness: oldest updated_at (or created_at as fallback)
+            // first so no-op-reconcile candidates that bump updated_at on each
+            // cycle cannot crowd out genuinely disarmed PRs that received no
+            // recent activity.  This mirrors the router's own ageOrder fairness
+            // used in selectRepairWindowPulls (router.mjs:340-345).
+            dormant.sort((a, b) => {
+              const tA = Date.parse(a.updated_at || a.created_at || '') || 0;
+              const tB = Date.parse(b.updated_at || b.created_at || '') || 0;
+              if (tA !== tB) return tA - tB; // oldest first
+              return (a.number || 0) - (b.number || 0); // stable tiebreak
+            });
+
+            const toDispatch = dormant.slice(0, cap);
+            let dispatched = 0;
+            for (const pull of toDispatch) {
+              try {
+                await github.rest.actions.createWorkflowDispatch({
+                  owner,
+                  repo,
+                  workflow_id: 'ci-recovery.yml',
+                  ref,
+                  inputs: {
+                    operation: 'reconcile',
+                    pr_number: String(pull.number),
+                    trigger: 'unarmed-watchdog',
+                    lease_id: '',
+                  },
+                });
+                dispatched += 1;
+                core.notice(
+                  `unarmed-watchdog dispatched reconcile pr=#${pull.number}`,
+                );
+              } catch (err) {
+                core.warning(
+                  `unarmed-watchdog dispatch failed pr=#${pull.number}: ${err.message}`,
+                );
+              }
+            }
+
+            if (dormant.length > cap) {
+              core.notice(
+                `unarmed-watchdog deferred=${dormant.length - cap} prs beyond cap=${cap}; will retry next sweep`,
+              );
+            }
+
+            core.info(`unarmed-watchdog dispatched=${dispatched} cap=${cap}`);
