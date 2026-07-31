@@ -8,8 +8,6 @@ import {
   Owner,
   Player,
   Position,
-  Team,
-  Weapon,
 } from '../core/components.js';
 import {
   spawnAoeProjectile,
@@ -1080,108 +1078,5 @@ export function weaponSystem(world: GameWorld): void {
       weaponType: def.weaponType,
       elapsedMs: world.elapsedMs,
     });
-  }
-}
-
-/** Process weapon entities (for multi-weapon support). */
-export function weaponEntitySystem(world: GameWorld): void {
-  const weaponEntities = query(world.ecs, [Weapon, Owner]);
-  const { weapon, owner, position, team } = world.stores;
-
-  for (const weid of weaponEntities) {
-    const ownerEid = owner.eid[weid]!;
-    if (!hasComponent(world.ecs, ownerEid, Position)) {
-      continue;
-    }
-    if (hasComponent(world.ecs, ownerEid, Player) && isEntityInSafeSpace(world, ownerEid)) {
-      continue;
-    }
-
-    const cooldownMs = weapon.cooldownMs[weid]!;
-    const lastFireMs = weapon.lastFireMs[weid]!;
-
-    if (world.elapsedMs - lastFireMs < cooldownMs) {
-      continue;
-    }
-
-    const px = position.x[ownerEid]!;
-    const py = position.y[ownerEid]!;
-    const target = getNearestEnemyTarget(world, px, py);
-    if (!target) {
-      continue;
-    }
-    const weaponType = weapon.weaponType[weid]!;
-    const rawRange = weapon.range[weid] ?? 0;
-    if (rawRange > 0) {
-      let gateRangeFt = rawRange * ATTACK_TARGET_GATE_MULTIPLIER;
-      if (weaponType === WeaponType.MELEE) {
-        gateRangeFt += target.radiusFt;
-      }
-      if (target.distanceSq > gateRangeFt * gateRangeFt) {
-        continue;
-      }
-    }
-    const baseDamage = weapon.baseDamage[weid]!;
-    const projSpeed = weapon.projectileSpeed[weid]!;
-    // Lead moving targets for forward-fired projectiles (RANGED / default).
-    const projDir = computeLeadDirection(
-      target.deltaX,
-      target.deltaY,
-      target.velocityX,
-      target.velocityY,
-      projSpeed,
-    );
-
-    // Snapshot the weapon type at attack creation time — affinity is fixed to the
-    // weapon that spawned the attack and must not change if the owner later
-    // switches loadouts (this variable is already captured before the switch).
-    let attackEid: number;
-    switch (weaponType) {
-      case WeaponType.RANGED:
-        attackEid = spawnProjectile(
-          world,
-          px,
-          py,
-          projDir.x * projSpeed,
-          projDir.y * projSpeed,
-          baseDamage,
-        );
-        break;
-      case WeaponType.MELEE: {
-        const range = weapon.range[weid]!;
-        const ownerTeam = hasComponent(world.ecs, ownerEid, Team)
-          ? team.id[ownerEid]!
-          : TeamId.PLAYER;
-        attackEid = spawnAreaAttack(
-          world,
-          px,
-          py,
-          ownerEid,
-          baseDamage,
-          range,
-          WEAPON.MELEE_DURATION_MS,
-          ownerTeam,
-        );
-        break;
-      }
-      default:
-        attackEid = spawnProjectile(
-          world,
-          px,
-          py,
-          projDir.x * projSpeed,
-          projDir.y * projSpeed,
-          baseDamage,
-        );
-        break;
-    }
-    tagDamageMeta(world, attackEid, {
-      origin: 'player',
-      affinity: weaponType === WeaponType.MAGIC ? 'magic' : 'physical',
-      scaleWithPrimary: true,
-      canCrit: true,
-    });
-
-    weapon.lastFireMs[weid] = world.elapsedMs;
   }
 }

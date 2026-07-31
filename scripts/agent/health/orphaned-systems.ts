@@ -29,14 +29,64 @@ import {
   MIN_EXPECTED_SYSTEMS,
   SYSTEM_SOURCE_ROOTS,
   WIRING_SITES,
+  collectOpenRequiredTrackedIssues,
   collectExportedSystems,
   collectWiredRefs,
+  findClosedTrackedIssueEntries,
+  findInvalidAllowlistPolicyEntries,
   findDuplicateSystemDeclarations,
   findMalformedAllowlistEntries,
   findOrphanedSystems,
   findStaleAllowlistEntries,
   type SourceFile,
 } from './orphaned-systems-lib.js';
+
+function resolveRepo(): { owner: string; repo: string } {
+  const slug = process.env.GITHUB_REPOSITORY?.trim();
+  if (slug) {
+    const [owner, repo] = slug.split('/');
+    if (owner && repo) return { owner, repo };
+  }
+  return { owner: 'nalfeo', repo: 'Crawler' };
+}
+
+async function loadTrackedIssueStates(
+  entries: ReadonlyArray<{ issueNumber: number }>,
+): Promise<Map<number, 'open' | 'closed'>> {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) {
+    throw new Error('GITHUB_TOKEN is not set');
+  }
+
+  const { owner, repo } = resolveRepo();
+  const states = new Map<number, 'open' | 'closed'>();
+  await Promise.all(
+    entries.map(async ({ issueNumber }) => {
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
+        {
+          headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: ['Bearer', token].join(' '),
+            'User-Agent': 'crawler-orphaned-systems-guard',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`GitHub returned ${response.status} for issue #${issueNumber}`);
+      }
+      const payload = (await response.json()) as { state?: unknown };
+      if (payload.state !== 'open' && payload.state !== 'closed') {
+        throw new Error(
+          `Issue #${issueNumber} returned unexpected state: ${String(payload.state)}`,
+        );
+      }
+      states.set(issueNumber, payload.state);
+    }),
+  );
+  return states;
+}
 
 /** Recursively collect `.ts` files under a directory (skipping declaration files). */
 function walkTsFiles(absDir: string): string[] {
@@ -75,7 +125,7 @@ function loadSystemSourceFiles(): SourceFile[] {
   return files;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const report = new Report('health-orphaned-systems');
 
   const sourceFiles = loadSystemSourceFiles();
@@ -152,6 +202,19 @@ function main(): void {
     );
   }
 
+  for (const bad of findInvalidAllowlistPolicyEntries(ALLOWLIST)) {
+    report.error(
+      `ALLOWLIST entry "${bad.name}" has invalid tracking metadata: ${bad.invalid.join(', ')}.`,
+      {
+        file: 'scripts/agent/health/orphaned-systems-lib.ts',
+        remediation:
+          `Use trackedIssuePolicy="reference-only" for provenance refs, or ` +
+          `trackedIssuePolicy="open-required" with a repo-local "#123" issue ref ` +
+          `for live allowlist debt.`,
+      },
+    );
+  }
+
   for (const stale of findStaleAllowlistEntries(systems, wiredRefs, ALLOWLIST)) {
     if (stale.kind === 'missing') {
       report.error(`Stale ALLOWLIST entry "${stale.name}" — no such exported system exists.`, {
@@ -169,6 +232,30 @@ function main(): void {
     }
   }
 
+  const openRequiredIssues = collectOpenRequiredTrackedIssues(ALLOWLIST);
+  if (openRequiredIssues.length > 0) {
+    if (!process.env.GITHUB_TOKEN?.trim()) {
+      report.info(
+        `Skipping allowlist tracking-issue state audit for ${openRequiredIssues.length} open-required entr` +
+          `${openRequiredIssues.length === 1 ? 'y' : 'ies'} (no GITHUB_TOKEN in environment).`,
+      );
+    } else {
+      const issueStates = await loadTrackedIssueStates(openRequiredIssues);
+      for (const closed of findClosedTrackedIssueEntries(openRequiredIssues, issueStates)) {
+        report.error(
+          `ALLOWLIST entry "${closed.name}" still remains, but its tracking issue ${closed.trackedIssue} is closed.`,
+          {
+            file: 'scripts/agent/health/orphaned-systems-lib.ts',
+            remediation:
+              `Remove "${closed.name}" from ALLOWLIST, reopen/file a fresh tracking issue, ` +
+              `or reclassify the entry as trackedIssuePolicy="reference-only" if the ref is ` +
+              `provenance rather than live debt.`,
+          },
+        );
+      }
+    }
+  }
+
   if (orphans.length === 0) {
     report.info(
       `${systems.length} system(s) checked; all wired into a real pipeline or documented on the allowlist.`,
@@ -179,7 +266,7 @@ function main(): void {
 }
 
 try {
-  main();
+  await main();
 } catch (err) {
   process.stderr.write(
     `orphaned-systems crashed: ${err instanceof Error ? err.stack : String(err)}\n`,

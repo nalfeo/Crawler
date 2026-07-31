@@ -9,14 +9,18 @@ import {
   REQUIRED_ALLOWLIST_FIELDS,
   SYSTEM_SOURCE_ROOTS,
   WIRING_SITES,
+  collectOpenRequiredTrackedIssues,
   collectExportedSystems,
   collectWiredRefs,
   extractReferencedSystems,
   extractSystemDefs,
+  findClosedTrackedIssueEntries,
+  findInvalidAllowlistPolicyEntries,
   findDuplicateSystemDeclarations,
   findMalformedAllowlistEntries,
   findOrphanedSystems,
   findStaleAllowlistEntries,
+  parseTrackedIssueNumber,
   type AllowlistEntry,
   type SourceFile,
 } from '../../scripts/agent/health/orphaned-systems-lib.js';
@@ -370,6 +374,7 @@ describe('findOrphanedSystems', () => {
   const entry: AllowlistEntry = {
     reason: 'lab/test-only helper',
     trackedIssue: 'ADR 0039',
+    trackedIssuePolicy: 'reference-only',
     owner: 'labs',
   };
   const allowlist = { enemySpawnerSystem: entry };
@@ -402,15 +407,99 @@ describe('findOrphanedSystems', () => {
 describe('findMalformedAllowlistEntries', () => {
   it('flags entries missing required fields (blank counts as missing)', () => {
     const allowlist: Record<string, AllowlistEntry> = {
-      good: { reason: 'x', trackedIssue: '#1', owner: 'me' },
+      good: {
+        reason: 'x',
+        trackedIssue: '#1',
+        trackedIssuePolicy: 'reference-only',
+        owner: 'me',
+      },
       // @ts-expect-error deliberately missing owner for the test
-      noOwner: { reason: 'x', trackedIssue: '#1' },
-      blankReason: { reason: '   ', trackedIssue: '#1', owner: 'me' },
+      noOwner: { reason: 'x', trackedIssue: '#1', trackedIssuePolicy: 'reference-only' },
+      blankReason: {
+        reason: '   ',
+        trackedIssue: '#1',
+        trackedIssuePolicy: 'reference-only',
+        owner: 'me',
+      },
     };
     const bad = findMalformedAllowlistEntries(allowlist);
     expect(bad.map((b) => b.name)).toEqual(['blankReason', 'noOwner']);
     expect(bad.find((b) => b.name === 'noOwner')?.missing).toContain('owner');
     expect(bad.find((b) => b.name === 'blankReason')?.missing).toContain('reason');
+  });
+});
+
+describe('tracked issue metadata', () => {
+  it('parses repo-local #123 tracking refs and rejects non-issue provenance refs', () => {
+    expect(parseTrackedIssueNumber('#2442')).toBe(2442);
+    expect(parseTrackedIssueNumber(' #17 ')).toBe(17);
+    expect(parseTrackedIssueNumber('ADR 0039')).toBeNull();
+    expect(parseTrackedIssueNumber('https://github.com/nalfeo/Crawler/issues/1')).toBeNull();
+  });
+
+  it('flags invalid trackedIssuePolicy values and open-required entries without a repo-local issue ref', () => {
+    const allowlist = {
+      good: {
+        reason: 'wire or remove pending follow-up',
+        trackedIssue: '#2442',
+        trackedIssuePolicy: 'open-required',
+        owner: 'weapons',
+      },
+      badPolicy: {
+        reason: 'invalid policy',
+        trackedIssue: '#2',
+        trackedIssuePolicy: 'forever' as AllowlistEntry['trackedIssuePolicy'],
+        owner: 'tests',
+      },
+      badRef: {
+        reason: 'open-required refs must be repo-local issues',
+        trackedIssue: 'ADR 0039',
+        trackedIssuePolicy: 'open-required' as const,
+        owner: 'tests',
+      },
+    } satisfies Record<string, AllowlistEntry>;
+
+    expect(findInvalidAllowlistPolicyEntries(allowlist)).toEqual([
+      { name: 'badPolicy', invalid: ['trackedIssuePolicy'] },
+      { name: 'badRef', invalid: ['trackedIssue'] },
+    ]);
+  });
+
+  it('collects open-required allowlist entries and reports the ones whose issue is closed', () => {
+    const allowlist = {
+      keepOpen: {
+        reason: 'temporary allowlist debt',
+        trackedIssue: '#11',
+        trackedIssuePolicy: 'open-required' as const,
+        owner: 'guards',
+      },
+      provenanceOnly: {
+        reason: 'documented indirection',
+        trackedIssue: '#816',
+        trackedIssuePolicy: 'reference-only' as const,
+        owner: 'floor2',
+      },
+      another: {
+        reason: 'second live debt item',
+        trackedIssue: '#12',
+        trackedIssuePolicy: 'open-required' as const,
+        owner: 'guards',
+      },
+    } satisfies Record<string, AllowlistEntry>;
+
+    const tracked = collectOpenRequiredTrackedIssues(allowlist);
+    expect(tracked).toEqual([
+      { name: 'another', trackedIssue: '#12', issueNumber: 12 },
+      { name: 'keepOpen', trackedIssue: '#11', issueNumber: 11 },
+    ]);
+
+    const states = new Map<number, 'open' | 'closed'>([
+      [11, 'open'],
+      [12, 'closed'],
+    ]);
+    expect(findClosedTrackedIssueEntries(tracked, states)).toEqual([
+      { name: 'another', trackedIssue: '#12' },
+    ]);
   });
 });
 
@@ -427,7 +516,12 @@ describe('findStaleAllowlistEntries', () => {
       kind: 'declaration' as const,
     },
   ];
-  const entry: AllowlistEntry = { reason: 'r', trackedIssue: '#1', owner: 'o' };
+  const entry: AllowlistEntry = {
+    reason: 'r',
+    trackedIssue: '#1',
+    trackedIssuePolicy: 'reference-only',
+    owner: 'o',
+  };
 
   it('flags a "missing" entry when the system no longer exists', () => {
     const allowlist = { goneSystem: entry };
@@ -453,6 +547,7 @@ describe('ALLOWLIST honesty invariants (against the real source tree)', () => {
 
   it('every allowlist entry carries all required fields', () => {
     expect(findMalformedAllowlistEntries(ALLOWLIST)).toEqual([]);
+    expect(findInvalidAllowlistPolicyEntries(ALLOWLIST)).toEqual([]);
     // Belt-and-braces: assert each required key is a non-empty string.
     for (const [name, e] of Object.entries(ALLOWLIST)) {
       for (const field of REQUIRED_ALLOWLIST_FIELDS) {
@@ -462,6 +557,10 @@ describe('ALLOWLIST honesty invariants (against the real source tree)', () => {
           `ALLOWLIST["${name}"].${field} must be a non-empty string`,
         ).toBe(true);
       }
+      expect(
+        e.trackedIssuePolicy === 'reference-only' || e.trackedIssuePolicy === 'open-required',
+        `ALLOWLIST["${name}"].trackedIssuePolicy must classify the reference as provenance-only or live debt`,
+      ).toBe(true);
     }
   });
 
