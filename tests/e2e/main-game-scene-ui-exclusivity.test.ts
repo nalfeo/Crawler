@@ -148,6 +148,57 @@ describe('MainGameScene UI exclusivity', () => {
     ).toBe(true);
   });
 
+  it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
+    await bootPlayingSafeScene();
+    await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 100);
+    await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 9_999);
+    await mainSceneProbe.advanceSimulationFrames(page, 2);
+    await mainSceneProbe.setWorldState(page, 'safe_room');
+    await waitForState(page, (s) => s.worldState === 'safe_room' && s.safeContext, {
+      label: 'safe_room restored for passive projection check',
+    });
+
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    const state = await waitForState(page, (s) => s.abilityLoadoutOpen, {
+      label: 'abilities loadout opened for passive projection check',
+    });
+    const equippedBeforePassiveActivate = [...state.equippedActiveAbilityIds];
+
+    const combatFlow = state.abilityLoadoutVisibleEntries.find(
+      (entry) => entry.id === 'combat-flow',
+    );
+    expect(combatFlow, 'combat-flow should be visible in the rendered loadout list').toBeDefined();
+    expect(combatFlow?.details).toContain('PASSIVE');
+    expect(combatFlow?.details).toContain('• ACTIVE •');
+    expect(combatFlow?.details).not.toContain('INACTIVE');
+    expect(combatFlow?.details).toContain('Damage +5%');
+
+    const shadowblade = state.abilityLoadoutVisibleEntries.find(
+      (entry) => entry.id === 'shadowblade',
+    );
+    expect(shadowblade, 'shadowblade should be visible in the rendered loadout list').toBeDefined();
+    expect(shadowblade?.details).toContain('INACTIVE');
+    expect(shadowblade?.details).toContain('requires a dagger');
+
+    const combatFlowIndex = state.abilityLoadoutVisibleEntries.findIndex(
+      (entry) => entry.id === 'combat-flow',
+    );
+    expect(
+      combatFlowIndex,
+      'combat-flow should stay inside the visible viewport rows',
+    ).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < combatFlowIndex; i += 1) {
+      await page.keyboard.press('ArrowDown');
+    }
+    await page.keyboard.press('Enter');
+
+    const afterPassiveActivate = await mainSceneProbe.getState(page);
+    expect(
+      afterPassiveActivate.equippedActiveAbilityIds,
+      'pressing Enter on a passive row must not change the equipped auto-bar loadout',
+    ).toEqual(equippedBeforePassiveActivate);
+  });
+
   it('does not open inventory after pressing I inside the abilities loadout', async () => {
     await bootPlayingSafeScene();
 

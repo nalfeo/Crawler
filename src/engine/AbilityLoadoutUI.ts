@@ -13,6 +13,7 @@ export interface AbilityLoadoutEntry {
   readonly category: string;
   readonly details: string;
   readonly equipped: boolean;
+  readonly canToggle?: boolean;
 }
 
 export interface AbilityLoadoutToggleResult {
@@ -73,6 +74,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
   getListViewportScreenBounds(): ScreenBounds;
   getVisibleRowScreenBounds(): ScreenBounds[];
   getVisibleAbilityIds(): string[];
+  getVisibleEntries(): readonly AbilityLoadoutEntry[];
   getFooterScreenBounds(): ScreenBounds;
   getSelectedAbilityId(): string | null;
   scrollRows(delta: number): boolean;
@@ -183,6 +185,13 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
 
   const applyToggle = (abilityId: string): void => {
     if (!config) return;
+    const entry = entries.find((candidate) => candidate.id === abilityId);
+    if (entry?.canToggle === false) {
+      feedback = `${entry.name} is passive and always on when requirements are met.`;
+      feedbackTone = 'warning';
+      render();
+      return;
+    }
     const result = config.onToggle(abilityId);
     entries = result.entries;
     feedback = result.feedback;
@@ -331,42 +340,54 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
         wordWrap: { width: viewport.width - 250 },
       });
       const actionWidth = 112;
+      const canToggle = entry.canToggle !== false;
       const action = scene.add
         .rectangle(
           viewport.x + viewport.width - actionWidth - 12,
           rowY + 32,
           actionWidth,
           38,
-          entry.equipped ? COLORS.equippedDark : COLORS.sectionHeader,
+          canToggle ? (entry.equipped ? COLORS.equippedDark : COLORS.sectionHeader) : COLORS.rowBg,
           1,
         )
         .setOrigin(0, 0)
-        .setStrokeStyle(2, entry.equipped ? COLORS.equipped : COLORS.accent)
-        .setInteractive({ useHandCursor: true });
+        .setStrokeStyle(
+          2,
+          canToggle ? (entry.equipped ? COLORS.equipped : COLORS.accent) : COLORS.panelBorder,
+        );
+      if (canToggle) {
+        action.setInteractive({ useHandCursor: true });
+      }
       const actionLabel = text(
         viewport.x + viewport.width - actionWidth / 2 - 12,
         rowY + 51,
-        entry.equipped ? 'REMOVE' : 'EQUIP',
+        canToggle ? (entry.equipped ? 'REMOVE' : 'EQUIP') : 'PASSIVE',
         {
           fontFamily: 'monospace',
           fontSize: '14px',
           fontStyle: 'bold',
-          color: entry.equipped ? '#bff7e8' : hex(COLORS.textPrimary),
+          color: canToggle
+            ? entry.equipped
+              ? '#bff7e8'
+              : hex(COLORS.textPrimary)
+            : hex(COLORS.textMuted),
         },
       ).setOrigin(0.5);
-      action.on(
-        'pointerdown',
-        (
-          _pointer: Phaser.Input.Pointer,
-          _localX: number,
-          _localY: number,
-          event: Phaser.Types.Input.EventData,
-        ) => {
-          event.stopPropagation();
-          selectedIndex = entryIndex;
-          applyToggle(entry.id);
-        },
-      );
+      if (canToggle) {
+        action.on(
+          'pointerdown',
+          (
+            _pointer: Phaser.Input.Pointer,
+            _localX: number,
+            _localY: number,
+            event: Phaser.Types.Input.EventData,
+          ) => {
+            event.stopPropagation();
+            selectedIndex = entryIndex;
+            applyToggle(entry.id);
+          },
+        );
+      }
 
       const box = { x: viewport.x, y: rowY, width: viewport.width, height: ROW_HEIGHT };
       rowBounds.push(scaledBounds(box));
@@ -538,6 +559,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     getVisibleRowScreenBounds: () => [...rowBounds],
     getVisibleAbilityIds: () =>
       entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS).map((entry) => entry.id),
+    getVisibleEntries: () => entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS),
     getFooterScreenBounds: () => scaledBounds(footerBounds()),
     getSelectedAbilityId: () => entries[selectedIndex]?.id ?? null,
     scrollRows,
