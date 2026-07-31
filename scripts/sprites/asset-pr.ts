@@ -302,20 +302,32 @@ export async function runAssetPrConsolidation(
     await exec(deps.exec, repoRoot, 'git', ['fetch', remote, branch]).catch(() => undefined);
   }
 
-  // Pre-compute the AM paths for each orphaned branch vs origin/main.
+  // Pre-compute the AM paths for each orphaned branch vs current main.
+  // Two-dot (not three-dot): comparing tips directly ensures an orphan whose art
+  // already landed on main via a previous batch merge shows an empty delta and is
+  // skipped, preventing stale re-replay. --no-renames matches the reconciler.
+  // Legacy aggregate manifest.json (pre-shard-migration) is filtered out; only
+  // per-asset entries/*.json shards and PNGs are safe to harvest.
   const orphanedPathsByBranch = new Map<string, string[]>();
   for (const branch of orphanedBranches) {
     const ref = `${remote}/${branch}`;
     const diffResult = await exec(deps.exec, repoRoot, 'git', [
       'diff',
+      '--no-renames',
       '--name-only',
       '--diff-filter=AM',
-      `${remote}/${baseBranch}...${ref}`,
+      `${remote}/${baseBranch}`,
+      ref,
     ]).catch(() => ({ stdout: '', stderr: '', code: 0 }));
     const paths = diffResult.stdout
       .split('\n')
       .map((p) => p.trim())
-      .filter((p) => p.length > 0 && ASSET_SURFACE_PATHS.some((prefix) => p.startsWith(prefix)));
+      .filter(
+        (p) =>
+          p.length > 0 &&
+          ASSET_SURFACE_PATHS.some((prefix) => p.startsWith(prefix)) &&
+          !isLegacyAggregateManifestPath(p),
+      );
     if (paths.length > 0) orphanedPathsByBranch.set(branch, paths);
   }
 
@@ -380,6 +392,21 @@ export async function runAssetPrConsolidation(
       plan.prBody,
     ]);
     const prUrl = created.stdout.trim().split('\n').filter(Boolean).pop() ?? '';
+
+    // Delete the orphan source branches that were folded into this batch so
+    // subsequent invocations don't re-open a duplicate PR for the same content.
+    // Non-fatal: a delete failure is not a reason to fail the whole operation.
+    for (const branch of orphanedBranches) {
+      if (orphanedPathsByBranch.has(branch)) {
+        await exec(deps.exec, repoRoot, 'git', [
+          'push',
+          remote,
+          '--delete',
+          branch,
+        ]).catch(() => undefined);
+      }
+    }
+
     return { prUrl, plan };
   } finally {
     await exec(deps.exec, repoRoot, 'git', ['worktree', 'remove', worktree, '--force']).catch(
@@ -387,6 +414,15 @@ export async function runAssetPrConsolidation(
     );
     await deps.removeDir(worktree).catch(() => undefined);
   }
+}
+
+/**
+ * Returns true for top-level JSON files directly under `public/assets/generated/`
+ * that predate the shard migration (e.g. the aggregate `manifest.json`).
+ * Shard files live under `entries/` and are safe to harvest; those are NOT matched.
+ */
+function isLegacyAggregateManifestPath(p: string): boolean {
+  return /^public\/assets\/generated\/[^/]+\.json$/.test(p);
 }
 
 /**

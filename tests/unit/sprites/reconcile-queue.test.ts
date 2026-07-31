@@ -689,13 +689,13 @@ describe('scanOrphanedCheckinBranches', () => {
     expect(result).toEqual([]);
   });
 
-  it('returns all branches when gh pr list returns invalid JSON (conservative)', async () => {
+  it('returns [] when gh pr list returns invalid JSON (fail-closed)', async () => {
     const lsRemote = 'abc123\trefs/heads/assets/checkin-foo\n';
     const { exec } = makeScanExec(lsRemote, 'not-json', 0, 0);
     const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
-    // Conservative: invalid PR list → treat as no open PRs found → all branches are orphaned
-    // (unlike a failed call which returns []; parse failure returns all branches)
-    expect(result).toEqual(['assets/checkin-foo']);
+    // Fail-closed: invalid PR list → treat as unknown PR state → return [] to avoid
+    // harvesting branches that might have active PRs.
+    expect(result).toEqual([]);
   });
 
   it('does not include non-checkin branches from ls-remote', async () => {
@@ -858,6 +858,39 @@ function simulateSquashMerge(liveDir: string, gh: FakeGh, prNumber: number): voi
   }
   const pr = gh.prs.find((p) => p.number === prNumber);
   if (pr) pr.state = 'merged';
+}
+
+/**
+ * Seed a pre-sharding check-in branch on origin. This branch carries an
+ * aggregate `manifest.json` at `public/assets/generated/manifest.json` (the
+ * layout that predates the July-29 shard migration) instead of per-asset
+ * shards under `entries/`. The test verifies that `runReconcile` filters out
+ * the legacy manifest and only promotes the PNGs.
+ */
+function seedLegacyCheckinBranch(
+  liveDir: string,
+  branchName: string,
+  keys: readonly string[],
+): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-legacy-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const genDir = path.join(wt, 'public', 'assets', 'generated');
+    mkdirSync(genDir, { recursive: true });
+    for (const key of keys) {
+      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+    }
+    // Simulate the pre-shard aggregate manifest.json (no entries/ shards).
+    writeJson(path.join(genDir, 'manifest.json'), { version: 1, assets: keys });
+    gitSync(wt, 'add', '--', 'public/assets/generated');
+    gitSync(wt, 'commit', '--no-verify', '-m', `legacy checkin: ${keys.join(', ')}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${branchName}`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
 }
 
 interface FakePr {
@@ -1491,5 +1524,66 @@ describe('runReconcile (real git)', () => {
     expect(result.status).toBe('pr-open');
     expect(result.closingIssueNumbers).toEqual([]);
     expect(gh.prs[0]!.body).not.toContain('Closes #88');
+  });
+
+  it('(s) harvests orphan checkin branch when queue branch is absent', async () => {
+    // No assets/queue branch — only an orphaned assets/checkin-* branch.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-orphan-only', ['orphan-sprite-var-1']);
+    const gh = new FakeGh();
+    // No open PRs for the orphan branch.
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    // Should reconcile (not noop) because the orphan branch contributes art.
+    expect(result.status).toBe('pr-open');
+    expect(gh.prs).toHaveLength(1);
+    // The PNG path should be in the promote commit; manifest.json must NOT be.
+    const promotedFiles = gitSync(
+      liveDir,
+      'ls-tree',
+      '--name-only',
+      '-r',
+      'origin/assets/promote',
+      '--',
+      'public/assets/generated',
+    )
+      .split('\n')
+      .filter(Boolean);
+    expect(promotedFiles.some((f) => f.endsWith('orphan-sprite-var-1.png'))).toBe(true);
+    expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
+  });
+
+  it('(t) filters pre-sharding aggregate manifest from legacy checkin branch — idempotent on re-run', async () => {
+    // A legacy orphan branch (aggregate manifest, no shards) plus a queue branch.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['queue-sprite-var-1']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-legacy-123', ['legacy-sprite-var-1']);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+
+    // Verify: legacy manifest.json must not have landed in the promote commit.
+    const promotedFiles = gitSync(
+      liveDir,
+      'ls-tree',
+      '--name-only',
+      '-r',
+      'origin/assets/promote',
+      '--',
+      'public/assets/generated',
+    )
+      .split('\n')
+      .filter(Boolean);
+    expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
+    expect(promotedFiles.some((f) => f.endsWith('legacy-sprite-var-1.png'))).toBe(true);
+    expect(promotedFiles.some((f) => f.endsWith('queue-sprite-var-1.png'))).toBe(true);
+
+    // Re-run: idempotent — same PR reused, no duplicate.
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('pr-open');
+    expect(gh.prs).toHaveLength(1);
   });
 });
