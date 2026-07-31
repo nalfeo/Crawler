@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6929343062595f405685f37ab8e498e6fc478972",
+    "commitDate": "2026-07-31T00:33:13Z",
+    "commitSubject": "Rebalance Floor 2 shop economy via shared pricing multiplier (#2369)",
+    "capturedAt": "2026-07-31T01:43:00.826Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30594378134",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/6929343062595f405685f37ab8e498e6fc478972.json"
+  },
+  {
     "commit": "a703a035c2ee5e33b58ef3228baecd79d102dd31",
     "commitDate": "2026-07-31T00:04:26Z",
     "commitSubject": "fix(probe): restore floor-agnostic seedAvailableBossChest to prevent Floor 1 silent no-op (#2386)",
