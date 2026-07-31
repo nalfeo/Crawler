@@ -130,6 +130,101 @@ left unimplemented, and one change in that PR needed to be walked back:
 - `npm run verify:fast` ✅
 - Re-ran typecheck/lint + targeted unit + e2e suites after `npm run sync:main -- --reason periodic` rebased HEAD onto latest `main` — all green.
 
+## Floor-path wiring proof (maintainer-requested addendum)
+
+`check:wired-systems` only scans exported `*System` symbols under
+`src/core/**`/`src/game/**`. Two things in this PR sit outside that net and
+needed a different kind of proof:
+
+1. **The lab drives the canonical bootstrap, not a hand-built array.**
+   `src/labs/main-scene-probe-lab/index.ts` calls
+   `const baseOptions = createFloorMainSceneOptions(floorId);` and then only
+   overrides `lightingConfig` on the spread (`{...baseOptions, lightingConfig:
+...}`) — there is no hand-built `postSystems`/system array that could drift
+   from the real floor bootstrap. This is pre-existing architecture (from
+   before this PR); confirmed present at HEAD by direct inspection, not
+   changed by this diff.
+2. **`buildEntries()` is a plain-function projection callback with no
+   `*System` shape, and needs its own floor-path witness.** It's a private
+   closure at `src/engine/scenes/MainGameScene.ts` (inside
+   `openAbilitiesConfigModal()`, `~lines 2999-3031`) that produces
+   `[...activeEntries, ...passiveEntries]` — the contiguous active-then-passive
+   ordering the new `AbilityLoadoutUI` section-boundary detection depends on.
+   It is not exported and is not a `*System`, so `check:wired-systems`
+   structurally cannot see it. The floor-path witness for it is
+   **`tests/e2e/main-game-scene-ui-exclusivity.test.ts` →
+   `'renders level-5 passive abilities in the loadout projection with
+active/inactive status'`**: it boots the real `MainGameScene` via the
+   lab's `createFloorMainSceneOptions`-driven bootstrap (not a stub), drives
+   the real production input path
+   (`mainSceneProbe.queueAbilitiesToggle(page)` → the real
+   `openAbilitiesConfigModal()` handler → `buildEntries()`), and asserts on the
+   rendered projection (`stateWithHeader.abilityLoadoutSectionHeaderLabel` and
+   `state.currentAnnouncement`) rather than on `AbilityState` directly. This
+   test is the floor-path witness for `buildEntries()`; see the revert
+   witnesses below for direct proof that it actually exercises the real call
+   path (reverting either hunk it depends on breaks it).
+
+## Revert-sensitivity witnesses (maintainer-requested; two independent reverts)
+
+Two isolated reverts were performed against the merge-base
+(`034ed37bc536eda84f33f96bd59311bfd65a3c2e`) content, one hunk at a time (both
+production changes for this PR land in a single commit, so a plain `git
+revert` of that commit would have reverted both hunks together — insufficient
+for "independent" witnesses). Each file was overwritten with
+`git show 034ed37bc:<path> > <path>`, the targeted test(s) were run and the
+exact failure captured, then the file was restored with
+`git checkout HEAD -- <path>` and the same test(s) re-run to confirm green.
+
+**Witness A — UI section-header hunk alone**
+(`src/engine/AbilityLoadoutUI.ts` reverted; `skillSystem.ts`/`abilitySystem.ts`
+left at HEAD):
+
+- Named test:
+  `tests/e2e/main-game-scene-ui-exclusivity.test.ts > MainGameScene UI
+exclusivity > renders level-5 passive abilities in the loadout projection
+with active/inactive status`
+- Exact failed assertion (line 214):
+  ```
+  AssertionError: a distinct PASSIVE section header must render above the non-equippable rows: expected null to be 'PASSIVE ABILITIES'
+  - Expected: "PASSIVE ABILITIES"
+  + Received: null
+  ```
+- Restored via `git checkout HEAD -- src/engine/AbilityLoadoutUI.ts`; re-ran
+  the same test → 2/2 passed (both `|e2e|` and `|e2e-game|` projects).
+
+**Witness B — unlock announcement / VFX hunk alone**
+(`src/game/systems/skillSystem.ts` and `src/game/systems/abilitySystem.ts`
+reverted together, since they're one conceptual "grant-site feedback" unit;
+`AbilityLoadoutUI.ts` left at HEAD):
+
+- Named test file: `tests/game/weapon-skill-abilities.test.ts` — 4 of 29 tests
+  failed:
+  1. `abilitySystem weapon-prerequisite passive gate > does NOT push
+activation VFX for a no-prerequisite passive applied via applyPassive
+directly` — `expected true to be false` (line 386; the reverted
+     `applyPassive` fires VFX for every passive again, not just weapon-gated
+     ones).
+  2. `level-5 milestone unlock feedback (VFX + announcement) > pushes exactly
+one activation VFX and one skillPassiveUnlocked announcement for a
+general passive` — `expected +0 to be 1` (line 420; the milestone site no
+     longer pushes the general-passive VFX).
+  3. `level-5 milestone unlock feedback (VFX + announcement) > pushes a
+skillPassiveUnlocked announcement but NO activation VFX for a
+weapon-gated passive at grant time` — `expected undefined to be defined`
+     (line 443; no `skillPassiveUnlocked` announcement is pushed at all — the
+     kind doesn't exist on the reverted milestone site).
+  4. `level-5 milestone unlock feedback (VFX + announcement) > does not
+double-fire activation VFX when the matching weapon is already equipped
+at grant time` — `expected +0 to be 1` (line 472; no announcement count
+     to double-fire-check because the announcement was never pushed).
+- Restored via `git checkout HEAD -- src/game/systems/skillSystem.ts
+src/game/systems/abilitySystem.ts`; re-ran the same file → 29/29 passed, and
+  re-ran the e2e test above → 2/2 passed.
+
+Both witnesses independently confirm each hunk is load-bearing for its own
+named assertion, with no cross-hunk masking.
+
 ## Notes / blockers
 
 None. All design ambiguities were resolved during the plan review; no
