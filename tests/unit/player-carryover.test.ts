@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { addEntity } from 'bitecs';
+import { addEntity, entityExists } from 'bitecs';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBossChestEntity } from '../../src/core/spawners/world-objects.js';
+import { createBossChestRecord } from '../../src/core/systems/bossChestRewards.js';
 import {
   addGeneratedEquipmentToBag,
   equip,
@@ -11,6 +13,7 @@ import {
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
+import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { memorizeSpell } from '../../src/game/systems/abilitySystem.js';
 import { createEmptyAchievementFactSnapshot } from '../../src/shared/achievements.js';
 import {
@@ -1779,6 +1782,52 @@ describe('player floor carryover', () => {
         tier: 'tier4',
         instanceKeys,
       });
+    });
+
+    it('round-trips an available boss chest physical spawn position through carryover restore', () => {
+      const runKey = 'carryover-bosschest-position-run';
+      const chestId = 'boss-chest:goblin-warband';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const chestEid = spawnBossChestEntity(source, 17, 29, chestId);
+      resolveEquipmentRewardBundle(
+        source,
+        chestId,
+        ['weapon.iron-cleaver', 'weapon.ember-wand'],
+        'tier4',
+      );
+      const created = createBossChestRecord(source, chestId, 'goblin-warband');
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      source.bossChests.set(chestId, { ...created.chest, createdAtMs: 123 });
+
+      const snapshot = capturePlayerCarryover(source, player);
+      expect(snapshot.bossChests).toContainEqual({
+        chestId,
+        familyId: 'goblin-warband',
+        state: 'available',
+        createdAtMs: 123,
+        spawnX: 17,
+        spawnY: 29,
+      });
+      expect(source.bossChestEids.get(chestId)).toBe(chestEid);
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(
+        destination,
+        destinationPlayer,
+        JSON.parse(JSON.stringify(snapshot)) as Record<string, unknown>,
+      );
+
+      const restoredChest = destination.bossChests.get(chestId);
+      const restoredEid = destination.bossChestEids.get(chestId);
+      expect(restoredChest?.state).toBe('available');
+      expect(restoredEid).toBeDefined();
+      if (restoredEid === undefined) return;
+      expect(entityExists(destination.ecs, restoredEid)).toBe(true);
+      expect(destination.stores.position.x[restoredEid]).toBe(17);
+      expect(destination.stores.position.y[restoredEid]).toBe(29);
     });
 
     it('restores a "player-carryover/v1" snapshot missing achievements.pendingPresentations (pre-existing field)', () => {

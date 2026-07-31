@@ -11,7 +11,9 @@
  * concerns, so they are re-exported here unchanged for callers that only
  * import from the game layer.
  */
+import { query } from 'bitecs';
 import type { GameWorld } from '../core/world.js';
+import { Player, Position } from '../core/components.js';
 import {
   createBossChestId,
   createBossChestRecord,
@@ -47,13 +49,30 @@ export type SpawnBossChestResult =
   | { readonly created: true; readonly chest: BossChestRecord }
   | { readonly created: false; readonly reason: 'notFloor2' | 'economyDisabled' | 'alreadyExists' };
 
+function resolveBossChestSpawnPosition(
+  world: GameWorld,
+  x?: number,
+  y?: number,
+): { readonly x: number; readonly y: number } | null {
+  if (x !== undefined && y !== undefined) {
+    return { x, y };
+  }
+  const playerEid = query(world.ecs, [Player, Position])[0];
+  if (playerEid === undefined) {
+    return null;
+  }
+  return {
+    x: world.stores.position.x[playerEid] ?? 0,
+    y: world.stores.position.y[playerEid] ?? 0,
+  };
+}
+
 /**
  * Spawn (or idempotently no-op on) the boss chest for `familyId`'s defeat.
  * When `x` and `y` are provided, a physical ECS entity is spawned at that
  * position so the player can walk up to open it. When omitted (legacy /
- * secondary victory-sweep path where boss position is unknown) no entity
- * is spawned — the chest is still available but has no physical world
- * presence until a reload restores it via `BossChestCarryoverEntry`.
+ * secondary victory-sweep path where boss position is unknown) the chest
+ * falls back to the live player position so it always remains reachable.
  */
 export function spawnBossChestForDefeatedBoss(
   world: GameWorld,
@@ -87,9 +106,9 @@ export function spawnBossChestForDefeatedBoss(
       `Boss chest ${chestId} record creation failed unexpectedly after bundle resolution`,
     );
   }
-  // Spawn the physical world entity when coordinates are available.
-  if (x !== undefined && y !== undefined) {
-    spawnBossChestEntity(world, x, y, chestId);
+  const spawn = resolveBossChestSpawnPosition(world, x, y);
+  if (spawn) {
+    spawnBossChestEntity(world, spawn.x, spawn.y, chestId);
   }
   return { created: true, chest: result.chest };
 }
