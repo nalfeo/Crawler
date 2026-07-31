@@ -161,6 +161,10 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     name: '_getGeneratedEquipmentBaseV1',
   },
   {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: 'generatedEquipmentBaseHasNonArmorStatBonus',
+  },
+  {
     file: 'src/game/systems/achievementSystem.ts',
     name: 'unlockAchievement',
   },

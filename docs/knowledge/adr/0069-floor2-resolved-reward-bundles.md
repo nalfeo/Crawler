@@ -354,3 +354,11 @@ non-weapon side, rather than inventing a category that isn't in the schema.
 3. **In-place live-registry generation with rollback bookkeeping** — rejected: a
    cloned scratch transaction with a single WeakMap commit swap is simpler to prove
    atomic than unwinding partial mutations on the live registry.
+
+### Amendment (2026-07-31): base identity decoupled from non-armor rarity power
+
+Generated equipment no longer copies non-armor base stat bonuses into resolved
+instances. Inherent armor remains base-driven and level/rarity-scaled, while
+non-armor power is affix-budget driven by rarity (Common 0, Uncommon 1, Rare 2).
+This makes the Common non-armor contract hold by construction and removes the
+need for resolver-time base-category prefiltering.
