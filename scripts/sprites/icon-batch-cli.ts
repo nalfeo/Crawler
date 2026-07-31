@@ -306,7 +306,9 @@ async function main(): Promise<void> {
             pending.push(brief);
           }
         }
-        process.stdout.write(`icon-batch run-all: ${pending.length}/${briefs.length} brief(s) pending\n`);
+        process.stdout.write(
+          `icon-batch run-all: ${pending.length}/${briefs.length} brief(s) pending\n`,
+        );
         for (const brief of pending) {
           await runBrief(brief);
         }
