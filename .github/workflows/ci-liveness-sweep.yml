@@ -365,10 +365,12 @@ jobs:
               Number.parseInt(process.env.UNARMED_WATCHDOG_DISPATCH_CAP, 10) || 5,
             );
 
-            // Fetch all open non-draft PRs (base=main, one page — enough for
-            // the signal; the sweep runs every 10 minutes so stragglers are
-            // caught on the next pass).
-            const pullsResp = await github.rest.pulls.list({
+            // Fetch ALL open non-draft PRs (base=main) across every page.  The
+            // list endpoint returns the SIMPLE PR representation, which omits
+            // `mergeable_state` — so pre-filter on list-only fields, then
+            // hydrate each candidate with `pulls.get` (the only endpoint that
+            // computes mergeability) before running the detector.
+            const listed = await github.paginate(github.rest.pulls.list, {
               owner,
               repo,
               state: 'open',
@@ -378,10 +380,31 @@ jobs:
               per_page: 100,
             });
 
-            const dormant = lib.detectUnarmedMergeablePrs(pullsResp.data);
+            const candidates = listed.filter((pull) =>
+              lib.isUnarmedWatchdogCandidate(pull),
+            );
+
+            const hydrated = [];
+            for (const pull of candidates) {
+              try {
+                const detail = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: pull.number,
+                });
+                hydrated.push(detail.data);
+              } catch (err) {
+                core.warning(
+                  `unarmed-watchdog hydrate failed pr=#${pull.number}: ${err.message}`,
+                );
+              }
+            }
+
+            const dormant = lib.detectUnarmedMergeablePrs(hydrated);
 
             core.info(
-              `unarmed-watchdog found=${dormant.length} of ${pullsResp.data.length} open PRs dormant-unarmed cap=${cap}`,
+              `unarmed-watchdog found=${dormant.length} of ${listed.length} open PRs ` +
+                `(hydrated=${hydrated.length}/${candidates.length}) dormant-unarmed cap=${cap}`,
             );
 
             const toDispatch = dormant.slice(0, cap);

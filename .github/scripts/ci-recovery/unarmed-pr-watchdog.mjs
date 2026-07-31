@@ -51,6 +51,30 @@ export const UNARMED_WATCHDOG_BLOCKED_LABELS = new Set([
 ]);
 
 /**
+ * Cheap pre-filter over the SIMPLE pull request representation returned by
+ * `GET /repos/{owner}/{repo}/pulls` (the list endpoint).
+ *
+ * The list endpoint does NOT include `mergeable`/`mergeable_state` — those are
+ * computed on demand and only returned by `GET /repos/.../pulls/{number}`.
+ * Callers therefore must hydrate candidates with `pulls.get` before running
+ * `detectUnarmedMergeablePrs`.  This helper narrows the hydration set to PRs
+ * that can still qualify using only list-representation fields (`state`,
+ * `draft`, `auto_merge`, `labels`), so the watchdog spends one extra API call
+ * per *plausible* PR rather than per open PR.
+ *
+ * @param {{state?: string, draft?: boolean, auto_merge?: object|null, labels?: Array<{name: string}>}} pr
+ * @returns {boolean} true when the PR is worth hydrating.
+ */
+export function isUnarmedWatchdogCandidate(pr) {
+  if (!pr) return false;
+  if (String(pr.state || '').toLowerCase() !== 'open') return false;
+  if (pr.draft) return false;
+  if (pr.auto_merge !== null && pr.auto_merge !== undefined) return false;
+  const labelNames = (pr.labels || []).map((l) => String(l.name || ''));
+  return !labelNames.some((name) => UNARMED_WATCHDOG_BLOCKED_LABELS.has(name));
+}
+
+/**
  * Filters a list of pull request objects (as returned by the GitHub REST API)
  * and returns those that appear dormant because auto-merge is not armed despite
  * the PR being fully ready to merge.
@@ -69,7 +93,8 @@ export const UNARMED_WATCHDOG_BLOCKED_LABELS = new Set([
  *   mergeable_state?: string,
  *   auto_merge?: object|null,
  *   labels?: Array<{name: string}>,
- * }>} pulls - Open pull request objects from the GitHub REST list API.
+ * }>} pulls - Pull request objects in the FULL representation (i.e. hydrated
+ *   via `pulls.get`); the list endpoint omits `mergeable_state`.
  * @returns {Array} The subset of `pulls` that are dormant unarmed.
  */
 export function detectUnarmedMergeablePrs(pulls) {

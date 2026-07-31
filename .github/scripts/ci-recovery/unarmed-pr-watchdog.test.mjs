@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   detectUnarmedMergeablePrs,
+  isUnarmedWatchdogCandidate,
   UNARMED_WATCHDOG_BLOCKED_LABELS,
 } from './unarmed-pr-watchdog.mjs';
 
@@ -75,16 +76,12 @@ test('excludes a PR with merge-train label', () => {
 });
 
 test('excludes a PR with human-approval-required label', () => {
-  const result = detectUnarmedMergeablePrs([
-    pr({ labels: [{ name: 'human-approval-required' }] }),
-  ]);
+  const result = detectUnarmedMergeablePrs([pr({ labels: [{ name: 'human-approval-required' }] })]);
   assert.equal(result.length, 0);
 });
 
 test('excludes a PR with ci-conflict-order-wait label', () => {
-  const result = detectUnarmedMergeablePrs([
-    pr({ labels: [{ name: 'ci-conflict-order-wait' }] }),
-  ]);
+  const result = detectUnarmedMergeablePrs([pr({ labels: [{ name: 'ci-conflict-order-wait' }] })]);
   assert.equal(result.length, 0);
 });
 
@@ -169,4 +166,33 @@ test('UNARMED_WATCHDOG_BLOCKED_LABELS contains the expected labels', () => {
       `Expected ${label} in UNARMED_WATCHDOG_BLOCKED_LABELS`,
     );
   }
+});
+
+// ── isUnarmedWatchdogCandidate (list-representation pre-filter) ────────────
+
+test('candidate pre-filter accepts a list-representation PR without mergeable_state', () => {
+  // GET /pulls returns the SIMPLE representation: no mergeable_state field.
+  const listed = { number: 7, state: 'open', draft: false, auto_merge: null, labels: [] };
+  assert.equal(isUnarmedWatchdogCandidate(listed), true);
+  // ...and the detector must reject it until it is hydrated via pulls.get.
+  assert.deepEqual(detectUnarmedMergeablePrs([listed]), []);
+  assert.equal(detectUnarmedMergeablePrs([{ ...listed, mergeable_state: 'clean' }]).length, 1);
+});
+
+test('candidate pre-filter excludes draft, closed, armed and blocked-label PRs', () => {
+  assert.equal(isUnarmedWatchdogCandidate({ state: 'open', draft: true }), false);
+  assert.equal(isUnarmedWatchdogCandidate({ state: 'closed', draft: false }), false);
+  assert.equal(
+    isUnarmedWatchdogCandidate({ state: 'open', auto_merge: { merge_method: 'squash' } }),
+    false,
+  );
+  assert.equal(
+    isUnarmedWatchdogCandidate({
+      state: 'open',
+      auto_merge: null,
+      labels: [{ name: 'merge-train' }],
+    }),
+    false,
+  );
+  assert.equal(isUnarmedWatchdogCandidate(null), false);
 });
