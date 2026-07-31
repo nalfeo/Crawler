@@ -6,16 +6,24 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "5 blocking concerns found: (1) brief generators emitted variantCount (not a schema field) and did not set generation.sheet.emptyCells for partial batches; (2) approveIconBatch index mapping unsafe if pipeline drops cells; (3) approval bypassed quality gates - documented as known gap, count guard added; (4) runtime lookup model gap - documented in handoff as consumer-side follow-on; (5) issue body parsing used raw contains() checks instead of form-markdown parsing. All 5 blocking concerns addressed. Plan divergence: minor - no re-architecture, only bug fixes to existing design."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
     }
   }
 }
