@@ -1,0 +1,28 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "boss-chest-ground-drop",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 409,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 409
+    }
+  },
+  "tools": {
+    "create": 3,
+    "edit": 83,
+    "filesystem-write_file": 2,
+    "glob": 10,
+    "grep": 55,
+    "powershell": 98,
+    "read_powershell": 23,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "view": 133
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

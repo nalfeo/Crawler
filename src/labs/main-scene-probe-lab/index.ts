@@ -35,6 +35,7 @@ import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-op
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { spawnDroppedItem } from '../../core/helpers.js';
+import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -154,7 +155,6 @@ interface MainSceneInternals {
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
   };
-  bossChestUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
    * The shared reward-opening sequence overlay driven by `AchievementsUI` /
@@ -640,7 +640,7 @@ export interface MainSceneProbeApi {
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
-  seedAvailableBossChest(): void;
+  seedAvailableBossChest(x?: number, y?: number): ProbePoint | null;
   /** Run the real MainGameScene shared reward-resume coordinator. */
   resumePendingRewardPresentations(): void;
   /** Snapshot of the shared reward-opening overlay, or the closed shape. */
@@ -1369,16 +1369,19 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         },
       });
       scene.achievementsUI?.refresh(world);
-      scene.bossChestUI?.refresh(world);
     },
 
-    seedAvailableBossChest: () => {
+    seedAvailableBossChest: (x?: number, y?: number) => {
       const scene = getScene();
       const world = scene?.world;
       if (!world) {
-        return;
+        return null;
       }
       const chestId = 'boss-chest:ratfolk';
+      const existingEid = world.bossChestEids.get(chestId);
+      if (existingEid !== undefined) {
+        world.bossChestEids.delete(chestId);
+      }
       world.bossChests.delete(chestId);
       world.generatedEquipmentRewardBundles.delete(chestId);
       resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS, 'tier4');
@@ -1386,7 +1389,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!created.ok) {
         throw new Error(`probe boss chest setup failed: missing bundle for ${chestId}`);
       }
-      scene.bossChestUI?.refresh(world);
+      const playerEid = playerEidOf(scene);
+      const spawnX = x ?? (playerEid >= 0 ? (world.stores.position.x[playerEid] ?? 0) + 8 : 8);
+      const spawnY = y ?? (playerEid >= 0 ? (world.stores.position.y[playerEid] ?? 0) : 0);
+      spawnBossChestEntity(world, spawnX, spawnY, chestId);
+      return { x: spawnX, y: spawnY };
     },
 
     resumePendingRewardPresentations: () => {
@@ -1499,7 +1506,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!opened.ok) return { ok: false, reason: opened.reason };
       const acknowledged = acknowledgeBossChestReveal(world, chest.chestId);
       if (!acknowledged.ok) return { ok: false, reason: acknowledged.reason };
-      scene.bossChestUI?.refresh(world);
       scene.inventoryUI?.refresh(world);
       return { ok: true };
     },

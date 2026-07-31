@@ -1822,6 +1822,12 @@ export class MainGameScene extends Phaser.Scene {
     this.updateDoorOverlay();
     this.updateLightingOverlay();
     this.bridge.sync(this.world);
+    this.resumePendingRewardPresentations();
+    if (this.rewardOpeningUI?.isOpen()) {
+      this.updateCamera();
+      this.updateOverlayText();
+      return;
+    }
     this.barrierOverlay?.update();
     this.playBossSpawnIntro();
     this.updateCamera();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { spawnPlayer } from '../../src/core/helpers.js';
 import {
   createBossChestId,
   spawnBossChestForDefeatedBoss,
@@ -109,5 +110,22 @@ describe('spawnBossChestForDefeatedBoss — Floor 2 gating', () => {
     if (!first.created || !second.created) return;
     expect(first.chest.chestId).not.toBe(second.chest.chestId);
     expect(world.bossChests.size).toBe(2);
+  });
+
+  it('falls back to the live player position when the boss position is unknown', () => {
+    const world = createTestWorld({ seed: 1, floor: 2, generatedEquipmentRunKey: RUN_KEY });
+    enableFloor2Economy(world);
+    const playerEid = spawnPlayer(world, 37, 19);
+
+    const result = spawnBossChestForDefeatedBoss(world, FAMILY_ID);
+
+    expect(result.created).toBe(true);
+    if (!result.created) return;
+    const chestId = createBossChestId(FAMILY_ID);
+    const chestEid = world.bossChestEids.get(chestId);
+    expect(chestEid).toBeDefined();
+    if (chestEid === undefined) return;
+    expect(world.stores.position.x[chestEid]).toBe(world.stores.position.x[playerEid]);
+    expect(world.stores.position.y[chestEid]).toBe(world.stores.position.y[playerEid]);
   });
 });

@@ -165,8 +165,11 @@ export const mainSceneProbe = {
     page.evaluate((id) => window.__mainSceneProbe!.claimAchievementReward(id), achievementId),
   seedPendingRewardResumeScenario: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.seedPendingRewardResumeScenario()),
-  seedAvailableBossChest: (page: Page): Promise<void> =>
-    page.evaluate(() => window.__mainSceneProbe!.seedAvailableBossChest()),
+  seedAvailableBossChest: (page: Page, x?: number, y?: number): Promise<ProbePoint | null> =>
+    page.evaluate(({ x: fx, y: fy }) => window.__mainSceneProbe!.seedAvailableBossChest(fx, fy), {
+      x,
+      y,
+    }),
   resumePendingRewardPresentations: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.resumePendingRewardPresentations()),
   getRewardOpeningState: (page: Page): Promise<RewardOpeningProbeState> =>
