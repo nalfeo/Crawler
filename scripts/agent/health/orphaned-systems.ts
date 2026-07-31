@@ -2,8 +2,8 @@
 /**
  * health/orphaned-systems.ts — Deterministic guard against "orphaned" ECS
  * systems: a `*System` exported from `src/core/**` or `src/game/**` that is
- * never referenced by a REAL runtime pipeline entry point (and is not on the
- * documented allowlist).
+ * never referenced by a sim-side/shared runtime pipeline entry point (and is
+ * not on the documented allowlist).
  *
  * This is the process backstop for the class of bug where `spawnerSystem`
  * shipped fully inert because it was only ever force-called by its lab
@@ -128,12 +128,12 @@ function main(): void {
   const orphans = findOrphanedSystems({ systems, wiredRefs, allowlist: ALLOWLIST });
   for (const orphan of orphans) {
     report.error(
-      `Orphaned system "${orphan.name}" is defined but never referenced by any real pipeline.`,
+      `Orphaned system "${orphan.name}" is defined but never referenced by any sim-side/shared pipeline.`,
       {
         file: orphan.file,
         remediation:
-          `Wire ${orphan.name} into a real pipeline entry point (one of: ` +
-          `${WIRING_SITES.join(', ')}) — a lab that force-calls it does NOT count. ` +
+          `Wire ${orphan.name} into a sim-side/shared pipeline entry point (one of: ` +
+          `${WIRING_SITES.join(', ')}) — visual-scene-only and lab references do NOT count. ` +
           `If it is intentionally not wired, add a structured entry to ALLOWLIST in ` +
           `scripts/agent/health/orphaned-systems-lib.ts (reason + trackedIssue + owner).`,
       },
@@ -160,7 +160,7 @@ function main(): void {
       });
     } else {
       report.error(
-        `Redundant ALLOWLIST entry "${stale.name}" — it is now wired into a real pipeline.`,
+        `Redundant ALLOWLIST entry "${stale.name}" — it is now wired into a sim-side/shared pipeline.`,
         {
           file: 'scripts/agent/health/orphaned-systems-lib.ts',
           remediation: `Remove "${stale.name}" from ALLOWLIST; it no longer needs an exemption.`,
@@ -171,7 +171,7 @@ function main(): void {
 
   if (orphans.length === 0) {
     report.info(
-      `${systems.length} system(s) checked; all wired into a real pipeline or documented on the allowlist.`,
+      `${systems.length} system(s) checked; all wired into a sim-side/shared pipeline or documented on the allowlist.`,
     );
   }
 

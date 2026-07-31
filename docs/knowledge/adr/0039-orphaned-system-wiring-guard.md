@@ -85,13 +85,14 @@ fooSystem }` re-export forms, and `export default fooSystem` / `export =
    fooSystem` assignment forms (an assignment of a _local_ declaration is
    attributed to that file, not treated as a barrel re-export, so a system
    shipped via a default export can't slip past discovery). It then asserts each
-   is referenced from a real
+   is referenced from a sim-side/shared
    pipeline wiring site — `src/bootstrap/floor-main-scene-options.ts`,
-   `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`,
-   `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts` — or
+   `src/core/simulation-core-step.ts`, `src/engine/sim/simulation-step.ts`,
+   `src/game/ai/simulation-step.ts`, or `src/game/ai/headless-runner.ts` — or
    is on an explicit, structured `ALLOWLIST` (for systems intentionally not-yet
    wired or non-pipeline helpers). A reference counts **only** when it is one of
-   the two real wiring forms: a direct call (`fooSystem(world)`) or a
+   the two real wiring forms: a direct call (`fooSystem(world)`, including an
+   invoked nullish fallback such as `(override ?? fooSystem)(world)`) or a
    pipeline-array element/spread (`preSystems: [fooSystem, …]`). Because
    detection is AST-based, identifiers inside imports, strings, comments, type
    positions, and bare assignments are never miscounted — the exact false
@@ -102,6 +103,19 @@ fooSystem }` re-export forms, and `export default fooSystem` / `export =
    `trackedIssue`, or `owner`) and **stale allowlist entries** — `missing` (the
    name no longer exists) or `redundant` (now actually wired) — so the allowlist
    cannot rot into a silent mute button.
+
+   **2026-07-31 sim-side reachability ratchet.** `MainGameScene.ts` is no longer
+   an independent wiring witness: a scene-only call can be absent from the
+   AI/headless simulation. The shared bootstrap options remain a witness because
+   `headless-runner.ts` consumes `createFloorMainSceneOptions()` and passes its
+   canonical `preSystems`/`postSystems` into the headless step. Both sim wrappers
+   remain valid witnesses by explicit maintainer decision. This is intentionally
+   a sim-side-only rule; a stronger player/UI-observability witness requirement
+   was considered and declined. The current tree measures 49 exported systems:
+   46 sim-side reachable, 3 already allowlisted, and 0 genuine failures. The
+   nullish-callee form above is required for `fovSystem`, which the shared core
+   step executes as `(options.runFovSystem ?? fovSystem)(world)`.
+
 2. **CLI.** `scripts/agent/health/orphaned-systems.ts` runs the lib via the
    shared `Report` helper and exits 0 (all wired/allowlisted), 1 (orphan, or a
    malformed/stale allowlist entry, or a duplicate `*System` declaration), or 2
@@ -152,7 +166,8 @@ allowlisted "because it isn't wired." We deliberately did **not** allowlist
 
 ### Negative
 
-- AST matching follows only two structural wiring forms (direct call and
+- AST matching follows only two structural wiring forms (direct call, including
+  an invoked nullish fallback, and
   pipeline-array element/spread). A system wired via some other indirection (a
   registry, a builder that receives system refs by another shape) would be a
   false positive until either `extractReferencedSystems` learns that form or the
@@ -163,8 +178,8 @@ allowlisted "because it isn't wired." We deliberately did **not** allowlist
   prove the enclosing array/function is itself reached at runtime. A dead
   reference inside a wiring file (`const unused = [fooSystem]`, or a call inside
   an unused local helper) would mark `fooSystem` wired. Tightening this by
-  parent-context would break the legitimate direct-call form used in
-  `MainGameScene`/`headless-runner`, so it is accepted, documented in the lib,
+  parent-context would break the legitimate direct-call form used in trusted
+  sim-side files, so it is accepted, documented in the lib,
   and pinned by negative regression tests. Destructured registry exports
   (`export const { fooSystem } = …`) are likewise an accepted blind spot — ECS
   systems are standalone functions, never destructured.
@@ -178,7 +193,7 @@ allowlisted "because it isn't wired." We deliberately did **not** allowlist
   trackedIssue + owner, enforced), the malformed- and stale-entry checks,
   review-harness scrutiny, and rules #12/#15 explicitly forbidding go-green
   allowlisting.
-- **Wiring-site drift** — if a new real pipeline entry point is added, it must be
+- **Wiring-site drift** — if a new sim-side/shared pipeline entry point is added, it must be
   added to `WIRING_SITES` or legitimately-wired systems will false-positive.
   Documented in the lib.
 

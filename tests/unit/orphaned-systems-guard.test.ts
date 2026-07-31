@@ -242,6 +242,26 @@ describe('extractReferencedSystems (AST)', () => {
     expect(extractReferencedSystems(file).has('spawnerSystem')).toBe(true);
   });
 
+  it('counts an invoked *System nullish fallback callee', () => {
+    const file: SourceFile = {
+      path: 'src/core/simulation-core-step.ts',
+      content: '(options.runFovSystem ?? fovSystem)(world);',
+    };
+    expect([...extractReferencedSystems(file)]).toEqual(['fovSystem']);
+  });
+
+  it('does not count nullish fallbacks used as values or arguments', () => {
+    const file: SourceFile = {
+      path: 'src/engine/sim/simulation-step.ts',
+      content: [
+        'const hooks = { runFovSystem: options.runFovSystem ?? fovSystem };',
+        'helper(options.runFovSystem ?? fovSystem);',
+      ].join('\n'),
+    };
+    expect(extractReferencedSystems(file).has('fovSystem')).toBe(false);
+    expect(extractReferencedSystems(file).has('runFovSystem')).toBe(false);
+  });
+
   it('counts systems referenced as bare identifiers in a pipeline array', () => {
     const file: SourceFile = {
       path: 'src/bootstrap/floor-main-scene-options.ts',
@@ -380,6 +400,74 @@ describe('findOrphanedSystems', () => {
     expect(orphans.map((o) => o.name)).toEqual(['spawnerSystem']);
   });
 
+  describe('sim-side/shared wiring witness contract', () => {
+    const system = {
+      name: 'sceneOnlySystem',
+      file: 'src/game/sceneOnlySystem.ts',
+      kind: 'declaration' as const,
+    };
+
+    function refsFromTrustedSites(files: SourceFile[]): Set<string> {
+      return collectWiredRefs(files.filter((file) => WIRING_SITES.includes(file.path)));
+    }
+
+    it('excludes MainGameScene and includes the shared core + both sim steps', () => {
+      expect(WIRING_SITES).toEqual([
+        'src/bootstrap/floor-main-scene-options.ts',
+        'src/core/simulation-core-step.ts',
+        'src/engine/sim/simulation-step.ts',
+        'src/game/ai/simulation-step.ts',
+        'src/game/ai/headless-runner.ts',
+      ]);
+      expect(WIRING_SITES).not.toContain('src/engine/scenes/MainGameScene.ts');
+    });
+
+    it('FAILS a system referenced only by the visual scene', () => {
+      const wiredRefs = refsFromTrustedSites([
+        {
+          path: 'src/engine/scenes/MainGameScene.ts',
+          content: 'sceneOnlySystem(world);',
+        },
+      ]);
+      expect(findOrphanedSystems({ systems: [system], wiredRefs })).toEqual([
+        { name: 'sceneOnlySystem', file: 'src/game/sceneOnlySystem.ts' },
+      ]);
+    });
+
+    it('PASSES a system wired through the shared bootstrap options', () => {
+      const wiredRefs = refsFromTrustedSites([
+        {
+          path: 'src/bootstrap/floor-main-scene-options.ts',
+          content: 'const preSystems = [sceneOnlySystem];',
+        },
+      ]);
+      expect(findOrphanedSystems({ systems: [system], wiredRefs })).toEqual([]);
+    });
+
+    it.each(['src/engine/sim/simulation-step.ts', 'src/game/ai/simulation-step.ts'])(
+      'PASSES a system wired through %s',
+      (site) => {
+        const wiredRefs = refsFromTrustedSites([
+          { path: site, content: 'sceneOnlySystem(world);' },
+        ]);
+        expect(findOrphanedSystems({ systems: [system], wiredRefs })).toEqual([]);
+      },
+    );
+
+    it('PASSES an allowlisted system without a sim-side reference', () => {
+      const allowlist = {
+        sceneOnlySystem: {
+          reason: 'intentionally not wired',
+          trackedIssue: '#1',
+          owner: 'tests',
+        },
+      };
+      expect(findOrphanedSystems({ systems: [system], wiredRefs: new Set(), allowlist })).toEqual(
+        [],
+      );
+    });
+  });
+
   it('PASSES once the system is wired into a real pipeline (models the #665 fix)', () => {
     const wiredRefs = new Set(['movementSystem', 'spawnerSystem']);
     const orphans = findOrphanedSystems({ systems, wiredRefs, allowlist });
@@ -467,6 +555,10 @@ describe('ALLOWLIST honesty invariants (against the real source tree)', () => {
 
   it('no allowlist entry is stale (system gone) or redundant (now wired)', () => {
     expect(findStaleAllowlistEntries(realSystems, realWiredRefs, ALLOWLIST)).toEqual([]);
+  });
+
+  it('the real shared-core fallback is recognized without a scene witness', () => {
+    expect(realWiredRefs.has('fovSystem')).toBe(true);
   });
 
   it('the real tree exports the systems the guard is meant to check', () => {
