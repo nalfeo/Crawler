@@ -12,14 +12,21 @@ export function getAbilityIconEntry(
   scene: Phaser.Scene,
   abilityId: string,
 ): GeneratedSpriteEntry | null {
-  const briefId = getAbilityPresentation(abilityId)?.iconBriefId;
-  if (!briefId) return null;
+  const iconRef = getAbilityPresentation(abilityId)?.iconBriefId;
+  if (!iconRef) return null;
 
   const registry = scene.game.registry.get(GENERATED_SPRITE_REGISTRY_KEY);
   if (!isGeneratedSpriteRegistry(registry)) return null;
 
-  const entry = pickGeneratedVariant(registry, briefId, hashStringToSeed(abilityId));
-  return entry && scene.textures.exists(entry.textureKey) ? entry : null;
+  // Try the common case first: iconRef is a briefId grouping approved variants.
+  const byBrief = pickGeneratedVariant(registry, iconRef, hashStringToSeed(abilityId));
+  if (byBrief && scene.textures.exists(byBrief.textureKey)) return byBrief;
+
+  // Fallback: iconRef might actually be a per-icon manifest key/textureKey
+  // (the approveIconBatch path writes per-icon manifest keys). Search the
+  // flattened entries for a matching textureKey.
+  const byTexture = registry.entries().find((e) => e.textureKey === iconRef);
+  return byTexture && scene.textures.exists(byTexture.textureKey) ? byTexture : null;
 }
 
 function isGeneratedSpriteRegistry(value: unknown): value is GeneratedSpriteRegistry {
