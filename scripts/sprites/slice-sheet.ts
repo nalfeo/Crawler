@@ -137,6 +137,11 @@ function findBgColumns(
   for (let x = 0; x < sheet.width; x++) {
     for (let y = 0; y < sheet.height; y++) {
       const idx = (y * sheet.width + x) * 4;
+      // Fully transparent pixel is always background regardless of RGB values.
+      // This is critical for icon sheets where gutters are transparent (alpha=0)
+      // and the RGB channels at those positions may differ from the estimated
+      // background colour (causing them to be mis-classified as foreground).
+      if ((sheet.data[idx + 3] ?? 255) === 0) continue;
       const r = sheet.data[idx] ?? 0;
       const g = sheet.data[idx + 1] ?? 0;
       const b = sheet.data[idx + 2] ?? 0;
@@ -158,6 +163,8 @@ function findBgRows(
   for (let y = 0; y < sheet.height; y++) {
     for (let x = 0; x < sheet.width; x++) {
       const idx = (y * sheet.width + x) * 4;
+      // Fully transparent pixel is always background regardless of RGB values.
+      if ((sheet.data[idx + 3] ?? 255) === 0) continue;
       const r = sheet.data[idx] ?? 0;
       const g = sheet.data[idx + 1] ?? 0;
       const b = sheet.data[idx + 2] ?? 0;
@@ -202,6 +209,8 @@ function inferContentBounds(
   for (let y = 0; y < sheet.height; y++) {
     for (let x = 0; x < sheet.width; x++) {
       const idx = (y * sheet.width + x) * 4;
+      // Fully transparent pixel is always background regardless of RGB values.
+      if ((sheet.data[idx + 3] ?? 255) === 0) continue;
       const r = sheet.data[idx] ?? 0;
       const g = sheet.data[idx + 1] ?? 0;
       const b = sheet.data[idx + 2] ?? 0;

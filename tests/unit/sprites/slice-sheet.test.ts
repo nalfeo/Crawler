@@ -1246,3 +1246,150 @@ describe('sliceSheetWithGrid (rerun re-slice determinism)', () => {
     expect(rerun.cells.map((c) => c.length)).toEqual(generated.cells.map((c) => c.length));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Transparent-background sheet slicing (icon batch regression)
+//
+// Icon sheets are generated on a TRANSPARENT background (alpha=0 gutters).
+// Before the fix, `findBgRows`/`findBgColumns` ignored the alpha channel,
+// so transparent gutter pixels were mis-classified as foreground when their
+// stored RGB values differed from the corner-estimated background colour —
+// producing 1 cell instead of the expected grid.
+//
+// The failure trigger: corners happen to have a different (or zeroed) RGB from
+// the interior gutter pixels, so `estimateSheetBackgroundRgb` returns a value
+// that doesn't match the gutter RGB. With alpha ignored, those gutter pixels
+// were classified as "foreground" → no interior bands → 1 cell.
+//
+// The fix: alpha=0 always → background, regardless of RGB.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('transparent-background sheet slicing (icon batch)', () => {
+  /**
+   * Encode a rows×cols grid of coloured blocks on a FULLY TRANSPARENT sheet.
+   * Gutter areas and margins have alpha=0 with `gutterRgb`. Corner pixels are
+   * independently set to `cornerRgb` (defaults to {r:0,g:0,b:0}) to simulate
+   * a real-world PNG where transparent corner pixels are zeroed but the interior
+   * gutter pixels retain a different "bleed" RGB — the exact condition that
+   * caused the slicer to misclassify gutters as foreground before the fix.
+   */
+  function encodeTransparentGrid(
+    rows: number,
+    cols: number,
+    block: number,
+    gutter: number,
+    margin: number,
+    gutterRgb: Rgb = { r: 150, g: 100, b: 200 },
+    cornerRgb: Rgb = { r: 0, g: 0, b: 0 },
+  ): Buffer {
+    const width = margin * 2 + cols * block + (cols - 1) * gutter;
+    const height = margin * 2 + rows * block + (rows - 1) * gutter;
+    const png = new PNG({ width, height });
+    // Fill entire sheet with gutterRgb at alpha=0.
+    for (let i = 0; i < png.data.length; i += 4) {
+      png.data[i] = gutterRgb.r;
+      png.data[i + 1] = gutterRgb.g;
+      png.data[i + 2] = gutterRgb.b;
+      png.data[i + 3] = 0; // fully transparent
+    }
+    // Override the 4 corner pixels with cornerRgb (still transparent).
+    // This causes estimateSheetBackgroundRgb to return cornerRgb, not gutterRgb,
+    // so the gutter interior pixels appear "far from background" in the old code.
+    for (const [cx, cy] of [
+      [0, 0],
+      [width - 1, 0],
+      [0, height - 1],
+      [width - 1, height - 1],
+    ] as const) {
+      const ci = (cy * width + cx) * 4;
+      png.data[ci] = cornerRgb.r;
+      png.data[ci + 1] = cornerRgb.g;
+      png.data[ci + 2] = cornerRgb.b;
+      png.data[ci + 3] = 0; // still transparent
+    }
+    // Place opaque icon blocks.
+    const origin = (idx: number): number => margin + idx * (block + gutter);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const col: Rgb = { r: 80 + c * 30, g: 120 + r * 20, b: 60 };
+        const x0 = origin(c);
+        const y0 = origin(r);
+        for (let y = y0; y < y0 + block; y++) {
+          for (let x = x0; x < x0 + block; x++) {
+            const i = (y * width + x) * 4;
+            png.data[i] = col.r;
+            png.data[i + 1] = col.g;
+            png.data[i + 2] = col.b;
+            png.data[i + 3] = 255; // fully opaque icon content
+          }
+        }
+      }
+    }
+    return PNG.sync.write(png);
+  }
+
+  it('slices a 4×4 transparent-background icon sheet into 16 cells (regression: was 1)', () => {
+    // Corner pixels: alpha=0, RGB=(0,0,0) → estimated background = (0,0,0)
+    // Gutter pixels: alpha=0, RGB=(150,100,200) → far from bg → mis-classified
+    //   as foreground by the old code → no interior bands → 1 cell.
+    // With the fix (alpha=0 → always background): 16 cells sliced correctly.
+    const sheet = encodeTransparentGrid(4, 4, 20, 4, 4);
+    const brief = {
+      generation: { sheet: { rows: 4, cols: 4, emptyCells: [] } },
+    } as unknown as Brief;
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.variantCount).toBe(16);
+    expect(result.grid.rows).toBe(4);
+    expect(result.grid.cols).toBe(4);
+  });
+
+  it('slices a 4×4 transparent sheet when gutter RGB happens to be black (corner=gutter)', () => {
+    // When gutter RGB equals the corner RGB the old code also worked, but the
+    // fix must keep working here too — not just for the adversarial case.
+    const sheet = encodeTransparentGrid(4, 4, 20, 4, 4, { r: 0, g: 0, b: 0 }, {
+      r: 0,
+      g: 0,
+      b: 0,
+    });
+    const brief = {
+      generation: { sheet: { rows: 4, cols: 4, emptyCells: [] } },
+    } as unknown as Brief;
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.variantCount).toBe(16);
+    expect(result.grid).toEqual({ rows: 4, cols: 4, emptyCells: [] });
+  });
+
+  it('slices a 2×2 transparent sheet with high-RGB gutter against zero-corner background', () => {
+    // Explicitly adversarial: corners=(0,0,0), gutter=(220,80,170) — the
+    // euclidean distance of 220²+80²+170² ≈ 86024 >> 24² = 576 threshold,
+    // so the old code would flag every gutter pixel as foreground → 1 cell.
+    const sheet = encodeTransparentGrid(
+      2, 2, 16, 4, 4,
+      { r: 220, g: 80, b: 170 }, // gutter RGB far from corners
+      { r: 0, g: 0, b: 0 },     // corner RGB (zeroed transparent)
+    );
+    const brief = {
+      generation: { sheet: { rows: 2, cols: 2, emptyCells: [] } },
+    } as unknown as Brief;
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.variantCount).toBe(4);
+    expect(result.grid.rows).toBe(2);
+    expect(result.grid.cols).toBe(2);
+  });
+
+  it('still slices a solid-background sheet correctly (non-regression for existing types)', () => {
+    // Solid-background sprite sheets (enemies, weapons, etc.) must continue to
+    // work exactly as before — the alpha fix must not break the common path.
+    const sheet = encodeContentGrid(3, 3, {
+      block: 16,
+      gutter: 4,
+      margin: 4,
+      color: (r, c) => ({ r: 80 + c * 40, g: 100 + r * 30, b: 60 }),
+    });
+    const brief = {
+      generation: { sheet: { rows: 3, cols: 3, emptyCells: [] } },
+    } as unknown as Brief;
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.variantCount).toBe(9);
+    expect(result.grid).toEqual({ rows: 3, cols: 3, emptyCells: [] });
+  });
+});
