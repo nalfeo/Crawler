@@ -1,21 +1,7 @@
 import { hasComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import {
-  Gold,
-  Owner,
-  Position,
-  Sprite,
-  Team,
-  Weapon,
-  XpGem,
-} from '../../../src/core/components.js';
-import {
-  spawnDroppedItem,
-  spawnGold,
-  spawnWeapon,
-  spawnXpGem,
-} from '../../../src/core/spawners/pickups.js';
-import { WeaponType } from '../../../src/shared/constants.js';
+import { Gold, Position, Sprite, XpGem } from '../../../src/core/components.js';
+import { spawnDroppedItem, spawnGold, spawnXpGem } from '../../../src/core/spawners/pickups.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 
 describe('spawnXpGem', () => {
@@ -60,26 +46,5 @@ describe('spawnDroppedItem', () => {
 
     const huge = spawnDroppedItem(world, 0, 0, 70000);
     expect(world.stores.droppedItem.itemIndex[huge]).toBe(0xffff);
-  });
-});
-
-describe('spawnWeapon', () => {
-  it('stores weapon stats with primed lastFireMs, Owner, and Team', () => {
-    const world = createTestWorld();
-    const ownerEid = 7;
-    const eid = spawnWeapon(world, ownerEid, WeaponType.RANGED, 12, 500, 30, 18, 1);
-
-    expect(hasComponent(world.ecs, eid, Weapon)).toBe(true);
-    expect(hasComponent(world.ecs, eid, Owner)).toBe(true);
-    expect(hasComponent(world.ecs, eid, Team)).toBe(true);
-    expect(world.stores.weapon.weaponType[eid]).toBe(WeaponType.RANGED);
-    expect(world.stores.weapon.baseDamage[eid]).toBe(12);
-    expect(world.stores.weapon.cooldownMs[eid]).toBe(500);
-    // Primed so the weapon can fire immediately on its first tick.
-    expect(world.stores.weapon.lastFireMs[eid]).toBe(-500);
-    expect(world.stores.weapon.range[eid]).toBe(30);
-    expect(world.stores.weapon.projectileSpeed[eid]).toBe(18);
-    expect(world.stores.owner.eid[eid]).toBe(ownerEid);
-    expect(world.stores.team.id[eid]).toBe(1);
   });
 });

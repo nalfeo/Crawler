@@ -245,7 +245,6 @@ postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSys
 | System                      | Status | Brief                                                   | Detail                                             |
 | --------------------------- | ------ | ------------------------------------------------------- | -------------------------------------------------- |
 | `weaponSystem`              | ✅     | Player auto-fires all 6 weapon types                    | [Weapons](systems/03-weapons.md)                   |
-| `weaponEntitySystem`        | ✅     | Weapon entities auto-target nearest enemy and fire      | [Weapons](systems/03-weapons.md)                   |
 | `enemyAISystem`             | ✅     | Pathfinding + 3 AI personas (Chase, Swarm, Ranged)      | [Enemy AI](systems/04-enemy-ai.md)                 |
 | `enemySpawnerSystem`        | ✅     | Timed enemy spawning within bounds                      | [Enemy AI](systems/04-enemy-ai.md)                 |
 | `levelSystem`               | ✅     | Accumulates XP; grants stat points on level-up          | [Progression](systems/05-progression.md)           |
@@ -333,7 +332,7 @@ Detailed diagrams, contracts, and cross-system relationships for each system gro
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | [Movement & Input](systems/01-movement-input.md)              | playerInput, movement, collision (spatial hash), InputCapture                                                                      |
 | [Combat](systems/02-combat.md)                                | damage, health, knockback, melee swing, beam, trap, AoE, death timer, lifetime                                                     |
-| [Weapons](systems/03-weapons.md)                              | weaponSystem (all 6 types), weaponEntitySystem, projectile cleanup, returning projectile                                           |
+| [Weapons](systems/03-weapons.md)                              | weaponSystem (all 6 types), projectile cleanup, returning projectile                                                               |
 | [Enemy AI](systems/04-enemy-ai.md)                            | enemyAISystem (3 personas + pathfinding), enemySpawnerSystem                                                                       |
 | [Progression](systems/05-progression.md)                      | levelSystem, core statSystem, skillSystem, abilitySystem, equipmentSystem                                                          |
 | [Map Generation](systems/06-map-generation.md)                | Generators (Dungeon/Cave/Arena), FloorMap, FOV, doorSystem, Floor 1 scenario                                                       |
