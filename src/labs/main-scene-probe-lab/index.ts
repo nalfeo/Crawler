@@ -35,14 +35,14 @@ import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-op
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { spawnDroppedItem } from '../../core/helpers.js';
-import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
-import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
-import { acceptQuest } from '../../core/systems/questSystem.js';
 import {
-  openBossChest,
   acknowledgeBossChestReveal,
   createBossChestRecord,
+  openBossChest,
 } from '../../core/systems/bossChestRewards.js';
+import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
+import { acceptQuest } from '../../core/systems/questSystem.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -56,19 +56,15 @@ import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
-import { getItemIndex } from '../../shared/items.js';
+import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
+import { getItemById, getItemIndex } from '../../shared/items.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
-import {
-  getQuartermasterOfferViews,
-  purchaseQuartermasterOffer,
-} from '../../core/quartermaster-purchase.js';
-import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
-import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -202,6 +198,20 @@ interface MainSceneInternals {
   requestAchievementsToggle?(): void;
   requestBossChestsToggle?(): void;
   requestQuartermasterToggle?(): void;
+  getSettlementShopOfferSnapshot?(): ReadonlyArray<{
+    readonly stockId?: string;
+    readonly offerId: string;
+    readonly quantity: number;
+    readonly unitPrice: number;
+    readonly displayName: string | null;
+  }>;
+  purchaseFirstSettlementShopOffer?(): {
+    ok: boolean;
+    reason?: string;
+    goldSpent?: number;
+    itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
+  };
   resumePendingRewardPresentations?(): void;
   setSimulationPaused(paused: boolean): void;
   advanceSimulationFrames?(frames?: number): void;
@@ -632,21 +642,25 @@ export interface MainSceneProbeApi {
   getPlayerGold(): number | null;
   /** Set player gold — for arranging purchase preconditions in tests. */
   setPlayerGold(amount: number): void;
-  /**
-   * Get a snapshot of the current Quartermaster stock offers (stockId, offerId, quantity,
-   * unitPrice, displayName). Returns an empty array if no stock exists.
-   */
+  /** Get a snapshot of whichever settlement shop the shared panel is currently targeting. */
   getQuartermasterStockSnapshot(): ReadonlyArray<{
-    readonly stockId: string;
+    readonly stockId?: string;
     readonly offerId: string;
     readonly quantity: number;
     readonly unitPrice: number;
     readonly displayName: string | null;
   }>;
+  /** Get the raw seeded inventory snapshot for a non-Quartermaster settlement shop NPC. */
+  getSettlementShopInventorySnapshot(npcEid: number): ReadonlyArray<{
+    readonly itemId: string;
+    readonly quantity: number;
+    readonly unitPrice: number;
+    readonly displayName: string | null;
+  }>;
   /**
-   * Purchase the first purchasable Quartermaster offer via the real purchase
-   * function and return the result. Used to exercise the full purchase path
-   * from an e2e test.
+   * Purchase the first purchasable offer from whichever settlement shop the shared
+   * panel is currently targeting. Used to exercise the full purchase path from
+   * an e2e test.
    */
   purchaseFirstQuartermasterOffer(): {
     ok: boolean;
@@ -1404,46 +1418,26 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     getQuartermasterStockSnapshot: () => {
       const scene = getScene();
-      const world = scene?.world;
-      if (!world) return [];
-      const playerEid = playerEidOf(scene);
-      if (playerEid < 0) return [];
-      const views = getQuartermasterOfferViews(world, playerEid);
-      return views.map((v) => ({
-        stockId: v.stockId,
-        offerId: v.offerId,
-        quantity: v.quantity,
-        unitPrice: v.unitPrice,
-        displayName: v.displayName,
-      }));
+      return scene?.getSettlementShopOfferSnapshot?.() ?? [];
+    },
+
+    getSettlementShopInventorySnapshot: (npcEid: number) => {
+      const world = getScene()?.world;
+      const settlement = world?.floorExtendedState?.settlement;
+      const shop = settlement?.shops.find((entry) => entry.npcEid === npcEid);
+      return (
+        shop?.inventory.map((entry) => ({
+          itemId: entry.itemId,
+          quantity: entry.stock,
+          unitPrice: entry.unitPrice,
+          displayName: displayNameForSettlementShopItem(entry.itemId),
+        })) ?? []
+      );
     },
 
     purchaseFirstQuartermasterOffer: () => {
       const scene = getScene();
-      const world = scene?.world;
-      if (!world) return { ok: false, reason: 'no-world' };
-      const playerEid = playerEidOf(scene);
-      if (playerEid < 0) return { ok: false, reason: 'no-player' };
-      const views = getQuartermasterOfferViews(world, playerEid);
-      const purchasable = views.find((v) => v.canPurchase);
-      if (!purchasable) return { ok: false, reason: 'none-purchasable' };
-      const result = purchaseQuartermasterOffer(world, playerEid, {
-        stockId: purchasable.stockId,
-        offerId: purchasable.offerId,
-        quantity: 1,
-      });
-      scene?.quartermasterUI?.refresh(world);
-      scene?.inventoryUI?.refresh(world);
-      if (result.ok) {
-        const purchased = getGeneratedEquipmentInstance(world, result.instanceId);
-        return {
-          ok: true,
-          goldSpent: result.goldSpent,
-          itemId: purchased?.baseId,
-          instanceId: result.instanceId,
-        };
-      }
-      return { ok: false, reason: result.reason };
+      return scene?.purchaseFirstSettlementShopOffer?.() ?? { ok: false, reason: 'no-scene' };
     },
     getGeneratedInventoryCellBounds: (instanceKey: GeneratedEquipmentInstanceKey) => {
       const inventory = getScene()?.inventoryUI;
@@ -1542,3 +1536,6 @@ registerLab(LAB_ID, {
     'Characterization harness that boots the real MainGameScene via the shipped floor bootstrap (fixed seed) and exposes window.__mainSceneProbe for boot-wiring + camera-follow e2e guards.',
   create: createMainSceneProbeLab,
 });
+function displayNameForSettlementShopItem(itemId: string): string | null {
+  return getItemById(itemId)?.name ?? getWeaponDef(itemId)?.name ?? null;
+}

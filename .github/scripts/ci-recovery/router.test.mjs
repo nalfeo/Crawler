@@ -2020,7 +2020,9 @@ test('isRetryableError still retries secondary rate limits even at zero budget',
 
 test('isPrimaryRateLimitExhausted detects exhausted budget only on 403/429', () => {
   assert.equal(
-    isPrimaryRateLimitExhausted(makeError(429, 'Too Many Requests', { 'x-ratelimit-remaining': '0' })),
+    isPrimaryRateLimitExhausted(
+      makeError(429, 'Too Many Requests', { 'x-ratelimit-remaining': '0' }),
+    ),
     true,
   );
   assert.equal(isPrimaryRateLimitExhausted(makeError(404, 'Not Found')), false);
