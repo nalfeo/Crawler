@@ -1,0 +1,38 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "ai-reachability-wiring-ratchet",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 272,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 272
+    }
+  },
+  "tools": {
+    "apply_patch": 7,
+    "ask_user": 1,
+    "extensions_reload": 1,
+    "get_changes_overview": 1,
+    "get_session": 1,
+    "glob": 11,
+    "grep": 19,
+    "memory-read_graph": 1,
+    "memory-search_nodes": 1,
+    "powershell": 66,
+    "read_powershell": 4,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "rg": 30,
+    "send_session_message": 4,
+    "skill": 1,
+    "sql": 9,
+    "task": 5,
+    "view": 106,
+    "web_fetch": 2
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

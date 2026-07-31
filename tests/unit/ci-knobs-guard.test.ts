@@ -58,6 +58,7 @@ const NUMERIC_KNOBS: Record<string, string[]> = {
     'SWEEP_RUNNER_WEIGHT',
     'VALIDATION_RUNNER_WEIGHT',
     'REAPER_LANE_CAP',
+    'RECONCILIATION_LANE_CAP',
   ],
   '.github/scripts/ci-recovery/state.mjs': [
     'DEFAULT_LEASE_TTL_MINUTES',
@@ -154,6 +155,7 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'SWEEP_RUNNER_WEIGHT', // estimated concurrent jobs per in-progress sweep run
   'VALIDATION_RUNNER_WEIGHT', // estimated concurrent jobs per Validation run
   'REAPER_LANE_CAP', // max PRs per reaper sweep window
+  'RECONCILIATION_LANE_CAP', // reserved stale-PR fairness lane in non-sweep routing
   // router.mjs — runner-safety ceilings for env-driven cap overrides.
   // Changing these requires evidence from incident metrics, not a repo variable.
   'TRAIN_CAP_MAX', // enforced ceiling for CI_GLOBAL_TRAIN_DISPATCH_CAP (safe range 1-10)
