@@ -821,7 +821,10 @@ function renderAchievementsEditorPage(shell: HTMLElement): void {
       const safeTier = LOOT_BOX_TIERS.includes(tier as LootBoxTier)
         ? (tier as LootBoxTier)
         : 'common';
-      return { type: 'lootBox', tier: safeTier };
+      // This devtools canvas only ever edits Floor 1 achievements (see the
+      // FLOOR1_ACHIEVEMENTS-only scoping elsewhere in this file), so the
+      // loot table is always Floor 1's.
+      return { type: 'lootBox', lootTable: 'floor1-materials', tier: safeTier };
     }
     if (rewardTypeValue === 'item') {
       return { type: 'item', itemId: itemValue.trim() };

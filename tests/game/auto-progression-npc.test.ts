@@ -22,7 +22,7 @@ import {
 } from '../../src/shared/equipmentDefs.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
-import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
+import { _customTag as customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
 import { NPC_INTERACT_RANGE_FT } from '../../src/shared/npc-types.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../src/shared/quest-types.js';

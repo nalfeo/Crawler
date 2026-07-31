@@ -39,7 +39,12 @@ import {
   getItemCount,
   type InventoryBag,
 } from '../../src/shared/inventory.js';
-import { ItemRarity, customTag, getItemById, type ItemDef } from '../../src/shared/items.js';
+import {
+  _customTag as customTag,
+  ItemRarity,
+  getItemById,
+  type ItemDef,
+} from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,

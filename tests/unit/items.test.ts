@@ -6,7 +6,8 @@ import {
   getItemIndex,
   KNOWN_TAGS,
   isKnownTag,
-  customTag,
+  _customTag as customTag,
+  normalizeGeneratedInventoryTag,
 } from '../../src/shared/items.js';
 
 describe('Item Catalog', () => {
@@ -125,5 +126,18 @@ describe('Tag system', () => {
     const tag = customTag('Forbidden Snacks');
     expect(tag).toBe('Forbidden Snacks');
     expect(typeof tag).toBe('string');
+  });
+
+  it('normalizes generated category tags onto inventory tabs', () => {
+    expect(normalizeGeneratedInventoryTag('weapon')).toBe('Weapons');
+    expect(normalizeGeneratedInventoryTag('Weapons')).toBe('Weapons');
+    expect(normalizeGeneratedInventoryTag('equipment')).toBe(customTag('Gear'));
+    expect(normalizeGeneratedInventoryTag('armor')).toBe(customTag('Gear'));
+    expect(normalizeGeneratedInventoryTag('accessory')).toBe(customTag('Gear'));
+  });
+
+  it('preserves non-category generated tags as custom tabs', () => {
+    expect(normalizeGeneratedInventoryTag('basic-leather')).toBe(customTag('basic-leather'));
+    expect(normalizeGeneratedInventoryTag('floor2')).toBe(customTag('floor2'));
   });
 });
