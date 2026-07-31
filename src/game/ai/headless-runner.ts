@@ -60,6 +60,7 @@ import {
   getSettlementReturnIntent,
   isSettlementReturnRoutingEnabled,
 } from './settlement-return-router.js';
+import { restockFloor2Quartermaster } from '../quartermaster-stock.js';
 import { countEngagingEnemies } from '../floorScenario.js';
 import {
   classifyGameOverOutcome,
@@ -68,6 +69,9 @@ import {
 } from './headless-runner-invariants.js';
 
 const logger = createLogger('game:headless-runner');
+
+/** Tracks the previous-frame safe-room state per world so the restock fires only on the entry edge. */
+const quartermasterRestockLatches = new WeakMap<GameWorld, boolean>();
 
 /**
  * Reads `world.state` outside the run loop's control-flow narrowing.
@@ -800,6 +804,21 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      // On each new safe-room entry, advance the Quartermaster restock epoch so
+      // sold items are retired and fresh offers are generated. The call is
+      // unconditional: `restockFloor2Quartermaster` guards against a disabled
+      // economy, missing settlement, and backwards/skipped epoch requests and
+      // returns a typed error result rather than throwing, so this is safe on
+      // Floor 1 runs and on every frame after the initial entry-edge.
+      const isNowInSafeRoom = world.playerInSafeRoom === true;
+      const wasInSafeRoom = quartermasterRestockLatches.get(world) ?? false;
+      if (isNowInSafeRoom && !wasInSafeRoom) {
+        const qmStock = world.floorExtendedState?.settlement?.quartermasterStock;
+        if (qmStock) {
+          restockFloor2Quartermaster(world, qmStock.restockEpoch + 1);
+        }
+      }
+      quartermasterRestockLatches.set(world, isNowInSafeRoom);
       runEagerMaintenanceTick(world, playerEid, {
         // When settlement-return routing is active, the router uses unclaimed
         // achievements as its navigation signal (utility ∝ unclaimedAchievements).

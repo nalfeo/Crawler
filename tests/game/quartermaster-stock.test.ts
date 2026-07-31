@@ -4,6 +4,7 @@ import {
   createInitialFloor2QuartermasterStock,
   restockFloor2Quartermaster,
 } from '../../src/game/quartermaster-stock.js';
+import tuning from '../../src/shared/data/tuning.json';
 import type {
   Floor2QuartermasterStockState,
   Floor2SettlementSnapshot,
@@ -77,10 +78,18 @@ describe('Floor 2 Quartermaster generated stock', () => {
       expect(instance?.rarity).not.toBe('rare');
       expect(instance?.enhancementLevel).toBe(0);
       expect(instance?.frozen.activeWeaponSnapshot).toBeNull();
+      const expectedPrice = Math.max(
+        1,
+        Math.round(
+          (20 + (instance?.itemLevel ?? 0) * 5) *
+            (offer.rarity === 'uncommon' ? 1.5 : 1) *
+            tuning.shopPricing.floor2TierMultiplier,
+        ),
+      );
+      expect(offer.unitPrice).toBe(expectedPrice);
       expect(
         instance?.resolvedEffects.every((effect) => 'kind' in effect && effect.kind === 'stat'),
       ).toBe(true);
-      expect(offer.unitPrice).toBeGreaterThan(0);
       expect(offer.quantity).toBe(1);
     }
   });
