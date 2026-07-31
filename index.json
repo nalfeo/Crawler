@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ed8ec080163b7d1db6e668ca82f4277673fbcad3",
+    "commitDate": "2026-07-31T21:10:28Z",
+    "commitSubject": "Suppress carryover rehydration VFX for weapon-gated passives (#2481)",
+    "capturedAt": "2026-07-31T22:18:19.706Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30666345197",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/ed8ec080163b7d1db6e668ca82f4277673fbcad3.json"
+  },
+  {
     "commit": "64b200826a41cfe06968af90e92bad0a41b99b21",
     "commitDate": "2026-07-31T19:55:59Z",
     "commitSubject": "fix(icons): retry icon-batch grid mismatches and show active runs in canvas (#2493)",
