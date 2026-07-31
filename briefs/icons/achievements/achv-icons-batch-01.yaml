@@ -1,0 +1,53 @@
+name: achv-icons-batch-01
+type: icon
+description: 'Achievement icon batch 1: pixel-art symbols for dungeon achievements on Floor 1.'
+floor: 1
+iconBatch:
+  - id: achv-first-bonk
+    concept: 'First Bonk'
+    description: 'Icon for the "First Bonk" achievement (Defeat your first enemy on Floor 1.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-slime-no-more
+    concept: 'Gel Exit'
+    description: 'Icon for the "Gel Exit" achievement (Defeat your first slime.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-rat-retired
+    concept: 'Rat Retirement'
+    description: 'Icon for the "Rat Retirement" achievement (Defeat your first rat.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-triple-swipe
+    concept: 'Three at Once'
+    description: 'Icon for the "Three at Once" achievement (Defeat 3 enemies with one swing.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-five-chain
+    concept: 'Five-Alarm Combo'
+    description: 'Icon for the "Five-Alarm Combo" achievement (Defeat 5 enemies within 4 seconds.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-ten-chain
+    concept: 'Ten Tiny Funerals'
+    description: 'Icon for the "Ten Tiny Funerals" achievement (Defeat 10 enemies within 8 seconds.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-door-camper
+    concept: 'Door Camper'
+    description: 'Icon for the "Door Camper" achievement (Defeat 5 enemies near a doorway.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-hallway-cleaner
+    concept: 'Hallway Cleaner'
+    description: 'Icon for the "Hallway Cleaner" achievement (Defeat 12 enemies in hallways on Floor 1.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-room-sweeper
+    concept: 'Room Sweeper'
+    description: 'Icon for the "Room Sweeper" achievement (Defeat 20 enemies in one room before leaving it.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-no-scope-ish
+    concept: 'No Scope-ish'
+    description: 'Icon for the "No Scope-ish" achievement (Defeat an enemy at maximum weapon range.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-close-quarters-tv
+    concept: 'Close-Quarters TV'
+    description: 'Icon for the "Close-Quarters TV" achievement (Defeat an enemy while within 1 foot of it.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-trap-finisher
+    concept: 'Hazard Assist'
+    description: 'Icon for the "Hazard Assist" achievement (Defeat an enemy that was recently hit by a trap.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-lucky-bounce
+    concept: 'Lucky Bounce'
+    description: 'Icon for the "Lucky Bounce" achievement (Defeat an enemy with a ricochet hit.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-last-hit-hero
+    concept: 'Last Hit Hero'
+    description: 'Icon for the "Last Hit Hero" achievement (Defeat an enemy while below 10 HP.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-crowd-control
+    concept: 'Crowd Control'
+    description: 'Icon for the "Crowd Control" achievement (Defeat 30 total enemies before the Floor 1 boss appears.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-mob-eviction
+    concept: 'Mob Eviction'
+    description: 'Icon for the "Mob Eviction" achievement (Defeat 60 total enemies on Floor 1.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

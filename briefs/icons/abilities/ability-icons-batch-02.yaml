@@ -1,0 +1,54 @@
+name: 'ability-icons-batch-02'
+description: >-
+  Icon batch for 13 abilities missing art (batch 02).
+  Pixel-art symbols on transparent background; frames are composited separately.
+type: icon
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells:
+      - [3, 1]
+      - [3, 2]
+      - [3, 3]
+    nativeCanvas: 1024
+iconBatch:
+  - id: ability-icon-rapid-release
+    concept: 'Rapid Release'
+    description: 'PASSIVE ability — Muscle memory for throwing sharpens your windup — bonus attack speed while a throwing weapon is equipped.'
+  - id: ability-icon-iron-resolve
+    concept: 'Iron Resolve'
+    description: 'PASSIVE ability — Fighting bare-handed builds raw power — bonus damage while a forearms weapon is equipped.'
+  - id: ability-icon-arcane-efficiency
+    concept: 'Arcane Efficiency'
+    description: 'PASSIVE ability — Arcane discipline sharpens with practice — bonus damage while an arcane weapon is equipped.'
+  - id: ability-icon-keen-swordsman
+    concept: 'Keen Swordsman'
+    description: 'PASSIVE ability — Sword technique refines into precision — bonus accuracy and damage while a sword is equipped.'
+  - id: ability-icon-shadowblade
+    concept: 'Shadowblade'
+    description: 'PASSIVE ability — Dagger mastery exploits blind spots — significant damage bonus while a dagger is equipped.'
+  - id: ability-icon-crushing-momentum
+    concept: 'Crushing Momentum'
+    description: 'PASSIVE ability — Hammer swings build inertia — bonus damage while a hammer is equipped.'
+  - id: ability-icon-athletes-grit
+    concept: "Athlete's Grit"
+    description: 'PASSIVE ability — Sporting form builds toughness — bonus accuracy and armor while sports equipment is equipped.'
+  - id: ability-icon-archers-stance
+    concept: "Archer's Stance"
+    description: 'PASSIVE ability — Practiced bow form steadies your aim — bonus accuracy while a bow is equipped.'
+  - id: ability-icon-precision-bolts
+    concept: 'Precision Bolts'
+    description: 'PASSIVE ability — Crossbow expertise translates to harder-hitting shots — bonus damage while a crossbow is equipped.'
+  - id: ability-icon-hair-trigger
+    concept: 'Hair Trigger'
+    description: 'PASSIVE ability — Pistol familiarity speeds your draw — bonus attack speed while a pistol is equipped.'
+  - id: ability-icon-juggling-arsenal
+    concept: 'Juggling Arsenal'
+    description: 'PASSIVE ability — Expert throwing technique enables multi-projectile salvos while throwing weapons are equipped.'
+  - id: ability-icon-bare-knuckle
+    concept: 'Bare Knuckle'
+    description: 'PASSIVE ability — Years of fighting empty-handed concentrate force into raw power — bonus damage while unarmed.'
+  - id: ability-icon-arcane-attunement
+    concept: 'Arcane Attunement'
+    description: 'PASSIVE ability — Spellcraft mastery deepens magical resonance — bonus damage while a spellcraft weapon is equipped.'

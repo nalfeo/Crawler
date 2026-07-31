@@ -1,0 +1,53 @@
+name: achv-icons-batch-09
+type: icon
+description: 'Achievement icon batch 9: pixel-art symbols for dungeon achievements on Floor 2.'
+floor: 2
+iconBatch:
+  - id: achv-floor2-floor-cleared
+    concept: 'Off This Floor'
+    description: 'Icon for the "Off This Floor" achievement (Complete the quest to leave Floor 2 and descend the staircase.) — difficulty: brutal, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-two-front-war
+    concept: 'Two-Front War'
+    description: 'Icon for the "Two-Front War" achievement (Fight trash mobs from two different families.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-total-war
+    concept: 'Total War'
+    description: 'Icon for the "Total War" achievement (Fight trash mobs from three different families.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-scorched-earth
+    concept: 'Scorched Earth'
+    description: 'Icon for the "Scorched Earth" achievement (Fight trash mobs from every family present on Floor 2.) — difficulty: brutal, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-safe-harbor
+    concept: 'Safe Harbor'
+    description: 'Icon for the "Safe Harbor" achievement (Take shelter in a Floor 2 safe room.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-suited-up
+    concept: 'Suited Up'
+    description: 'Icon for the "Suited Up" achievement (Unlock the equipment system on Floor 2.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-pocket-change
+    concept: 'Pocket Change'
+    description: 'Icon for the "Pocket Change" achievement (Carry 150 gold.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-staircase-spotted
+    concept: 'Staircase Spotted'
+    description: 'Icon for the "Staircase Spotted" achievement (Discover the Floor 2 exit staircase.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-breach-the-gate
+    concept: 'Breach the Gate'
+    description: 'Icon for the "Breach the Gate" achievement (Unlock the Floor 2 exit staircase.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-new-tricks
+    concept: 'New Tricks'
+    description: 'Icon for the "New Tricks" achievement (Unlock 2 abilities.) — difficulty: basic, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-braved-the-dens
+    concept: 'Braved the Dens'
+    description: 'Icon for the "Braved the Dens" achievement (Enter two or more family boss dens.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-no-den-unbraved
+    concept: 'No Den Unbraved'
+    description: 'Icon for the "No Den Unbraved" achievement (Enter every family boss den present on Floor 2.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-sharpened-edge
+    concept: 'Sharpened Edge'
+    description: 'Icon for the "Sharpened Edge" achievement (Reach skill level 8 in any skill.) — difficulty: hard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-built-different
+    concept: 'Built Different'
+    description: 'Icon for the "Built Different" achievement (Spend 10 stat points.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-run-body-count
+    concept: 'Body Count of the Season'
+    description: 'Icon for the "Body Count of the Season" achievement (Defeat 60 enemies across the run.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-floor2-run-hoarders-ledger
+    concept: "Hoarder's Ledger"
+    description: 'Icon for the "Hoarder''s Ledger" achievement (Accumulate a peak gold balance of 800 at any point in the run.) — difficulty: standard, floor 2. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

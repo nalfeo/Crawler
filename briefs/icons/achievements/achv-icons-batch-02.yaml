@@ -1,0 +1,53 @@
+name: achv-icons-batch-02
+type: icon
+description: 'Achievement icon batch 2: pixel-art symbols for dungeon achievements on Floor 1.'
+floor: 1
+iconBatch:
+  - id: achv-ratings-climbing
+    concept: 'Ratings Climbing'
+    description: 'Icon for the "Ratings Climbing" achievement (Defeat 100 total enemies on Floor 1.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-clean-up-crew
+    concept: 'Cleanup Crew'
+    description: 'Icon for the "Cleanup Crew" achievement (Defeat the last enemy in a wave within 3 seconds.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-spell-slap
+    concept: 'Spell Slap'
+    description: 'Icon for the "Spell Slap" achievement (Defeat an enemy with a spell.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-melee-main
+    concept: 'Melee Main'
+    description: 'Icon for the "Melee Main" achievement (Defeat 25 enemies with melee attacks on Floor 1.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-skill-first-blood
+    concept: 'Tutorial Complete-ish'
+    description: 'Icon for the "Tutorial Complete-ish" achievement (Level up any skill for the first time.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-skill-five
+    concept: 'Skill Issue Solved'
+    description: 'Icon for the "Skill Issue Solved" achievement (Reach skill level 5 on any skill.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-skill-ten
+    concept: 'Double Digits'
+    description: 'Icon for the "Double Digits" achievement (Reach skill level 10 on any skill.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-skill-fifteen
+    concept: 'Fifteen Minutes of Fame'
+    description: 'Icon for the "Fifteen Minutes of Fame" achievement (Reach skill level 15 on any skill.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-skill-twenty
+    concept: 'Cap Curious'
+    description: 'Icon for the "Cap Curious" achievement (Reach skill level 20 on any skill.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-sword-five
+    concept: 'Sword Club 5'
+    description: 'Icon for the "Sword Club 5" achievement (Reach level 5 with a blade skill.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-ranged-five
+    concept: 'Ranged and Dangerous'
+    description: 'Icon for the "Ranged and Dangerous" achievement (Reach level 5 with a ranged skill.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-magic-five
+    concept: 'Wizard Adjacent'
+    description: 'Icon for the "Wizard Adjacent" achievement (Reach level 5 with a magic skill.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-defense-five
+    concept: 'Tank-ish'
+    description: 'Icon for the "Tank-ish" achievement (Reach level 5 with a defense skill.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-utility-five
+    concept: 'Quality of Life'
+    description: 'Icon for the "Quality of Life" achievement (Reach level 5 with a utility skill.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-dual-specialist
+    concept: 'Dual Specialist'
+    description: 'Icon for the "Dual Specialist" achievement (Get two different skills to level 10 in one Floor 1 run.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-triple-specialist
+    concept: 'Triple Specialist'
+    description: 'Icon for the "Triple Specialist" achievement (Get three different skills to level 10 in one Floor 1 run.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

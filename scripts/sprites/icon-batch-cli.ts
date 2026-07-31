@@ -32,9 +32,13 @@ import {
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
+import { loadEnvLocal } from './sidecar/env-local.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..', '..');
+
+// Load Azure credentials from .env.local before any provider is created.
+loadEnvLocal(REPO_ROOT);
 const ICONS_BRIEF_DIR = path.join(REPO_ROOT, 'briefs', 'icons');
 const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
 
