@@ -56,6 +56,12 @@ export const SIZE_VARIANT_MULTIPLIERS: Readonly<Record<SizeVariant, SizeMultipli
  * variants use axis-priority strategies so the dominant axis is fully occupied
  * rather than letterboxed:
  *
+ *   frameSequence     → 'fit'     — every cell MUST land at exactly W×H so
+ *                                   `packFrameStrip`/Phaser's `loader.spritesheet`
+ *                                   get uniform, unpadded frames; 'cover' would
+ *                                   silently grow the secondary axis past the
+ *                                   frame size for a portrait-aspect subject
+ *                                   (see the 256×434 defect this branch fixes)
  *   wide   (w >= 2*h) → 'width'  — lock width, allow height growth
  *   tall   (h >= 2*w) → 'height' — lock height, allow width growth
  *   large  (square, w===h, >=128) → 'cover' — max occupancy, expand secondary axis
@@ -69,8 +75,16 @@ export function resizeSpriteStrategy(
   type: string,
   width: number,
   height: number,
+  frameSequenceEnabled?: boolean,
 ): 'fit' | 'width' | 'height' | 'cover' | 'stretch' {
   if (type === 'tile') return 'stretch';
+  // frameSequence briefs have a hard exact-size contract per frame (the
+  // animation descriptor and pack-frame-strip both assume uniform, unpadded
+  // W×H cells) — this must win over every other axis-occupancy heuristic
+  // below, including the square/large 'cover' branch, which is designed to
+  // deliberately overflow the secondary axis and is incompatible with a
+  // fixed spritesheet cell size.
+  if (frameSequenceEnabled) return 'fit';
   if (width >= height * 2) return 'width';
   if (height >= width * 2) return 'height';
   if (width === height && width >= 128) return 'cover';

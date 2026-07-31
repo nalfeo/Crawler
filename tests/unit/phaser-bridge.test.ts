@@ -41,6 +41,7 @@ import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTelegraph.js';
 import { sampleContactAttackMotion } from '../../src/shared/mob-motion.js';
 import { ftToPx } from '../../src/shared/units.js';
+import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -742,8 +743,8 @@ describe('createPhaserBridge', () => {
 
   it('prefers Kenney sprite + frame when the sheet texture exists', () => {
     // Exclude the generated player art so this exercises the Kenney FALLBACK.
-    // The `player` render kind now also pins generated art (the real walk
-    // cycle sheet), which otherwise wins and hides this branch.
+    // The `player` render kind now also pins generated art (the gender-matched
+    // walk-cycle sheets), which otherwise wins and hides this branch.
     const { scene, images } = createSceneStub({
       kenneyLoaded: true,
       textureExists: (key) => !key.startsWith('player-walk-cycle'),
@@ -764,7 +765,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
   });
 
-  it('prefers the pinned generated player art over the Kenney sheet', () => {
+  it('prefers the pinned generated player art over the Kenney sheet (default gender: female)', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -777,10 +778,90 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('player-walk-cycle');
-    // 64px art at 0.71875 => exactly 46px drawn box == 5.75 ft, matching the
+    // world.playerGender defaults to 'female' (src/core/world.ts), so the
+    // variantsByAppearanceKey['female'] entry wins over the top-level default.
+    expect(images[0]?.textureKey).toBe('player-walk-cycle-female');
+    // 256px art at 0.1796875 => exactly 46px drawn box == 5.75 ft, matching the
     // welcome-room NPCs. See `player-npc-scale-parity.test.ts` for the guard.
-    expect(images[0]?.scaleX).toBeCloseTo(0.71875, 5);
+    expect(images[0]?.scaleX).toBeCloseTo(0.1796875, 5);
+  });
+
+  it('upgrades player Image to Sprite when walk-cycle texture late-loads (Image→Sprite reconcile)', () => {
+    // Exercise the path where the player entity is first created as a plain
+    // Image (because the walk-cycle texture has not loaded yet) and is later
+    // reconciled into an animated Sprite when the texture becomes available.
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'player-walk-cycle-female': {
+          briefId: 'player-walk-cycle-female',
+          spriteName: 'player-walk-cycle-female',
+          assetPath: 'generated/player-walk-cycle-female.png',
+          approvedAt: '2026-07-01T00:00:00.000Z',
+          sourceRun: 'test-run',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '8/8',
+          judgeScore: '2',
+          animation: {
+            frameWidth: 64,
+            frameHeight: 64,
+            frameCount: 8,
+            frameRate: 12,
+            loop: true,
+          },
+        },
+      },
+    });
+
+    const loadedKeys = new Set<string>(['kenney-tiny-dungeon']);
+    const { scene, images, sprites } = createSceneStub({
+      kenneyLoaded: true,
+      generatedRegistry: registry,
+      textureExists: (key) => loadedKeys.has(key),
+    });
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    // First sync: walk-cycle texture not yet loaded → Kenney Image fallback
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+    expect(sprites).toHaveLength(0);
+    const kenneyImage = images[0]!;
+    expect(kenneyImage.textureKey).toBe('kenney-tiny-dungeon');
+    expect((kenneyImage as unknown as { anims?: unknown }).anims).toBeUndefined();
+    const savedX = kenneyImage.x;
+    const savedY = kenneyImage.y;
+
+    // Simulate the player last facing left (flipX=true) before the walk-cycle loads
+    kenneyImage.setFlipX(true);
+
+    // Simulate late-load: walk-cycle PNG finishes loading
+    loadedKeys.add('player-walk-cycle-female');
+
+    // Second sync: reconcile detects stale Image → destroys it, recreates as Sprite
+    bridge.sync(world);
+
+    expect(kenneyImage.destroyed).toBe(true);
+    expect(sprites).toHaveLength(1);
+    const walkSprite = sprites[0]!;
+    expect(walkSprite.textureKey).toBe('player-walk-cycle-female');
+    // Sourced from the mapping rather than restated as a literal: the player
+    // scale is an exact ratio (46/256) pinned by the scale-parity guard, so a
+    // hard-coded approximation drifts out of sync whenever that ratio changes.
+    expect(walkSprite.scaleX).toBe(ENTITY_SPRITE_MAPPINGS.renderKinds.player.generated.scale);
+    // Position must be preserved — no snap-to-origin regression
+    expect(walkSprite.x).toBe(savedX);
+    expect(walkSprite.y).toBe(savedY);
+    // flipX must be preserved — late-load must not snap facing direction to right
+    expect(walkSprite.flipX).toBe(true);
+    // Must be a Sprite (has .anims), not a plain Image
+    expect(walkSprite.anims).toBeDefined();
   });
 
   it('fades the skull marker out quickly while the corpse desaturates and fades', () => {

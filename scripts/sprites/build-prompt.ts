@@ -231,7 +231,7 @@ function outputSizeBlock(brief: Brief): string {
   const width = brief.size.width;
   const height = brief.size.height;
   const aspect = aspectOf(width, height);
-  const strategy = resizeSpriteStrategy(brief.type, width, height);
+  const strategy = resizeSpriteStrategy(brief.type, width, height, brief.frameSequence?.enabled);
   const lines: string[] = ['## Output size'];
   if (brief.type === 'tile') {
     lines.push(
@@ -477,12 +477,27 @@ function variantExplorationLine(): string {
  * is the opposite intent of `variantExplorationLine` — identity, palette,
  * outfit, and proportions must be held IDENTICAL across every cell, and the
  * only thing allowed to change is the walking pose (limb/leg placement),
- * read left-to-right as one continuous stride cycle.
+ * read in the sheet's reading order (left-to-right, then top-to-bottom row
+ * by row) as one continuous stride cycle. Works for any grid shape — a
+ * single row (1×N) or a square grid (e.g. 2×2) — since `sheetLayoutBlock`
+ * already states the reading order generically; this only needs to spell
+ * out the explicit cell→frame-index mapping when there's more than one row,
+ * since "reading order" alone is ambiguous about whether row 2 continues
+ * the stride or restarts it.
  */
 function walkCycleSequenceLine(brief: Brief): string {
   const { frameCount } = brief.frameSequence;
+  const { rows, cols } = brief.generation.sheet;
+  const rowRanges = Array.from(
+    { length: rows },
+    (_, r) => `row ${r + 1} left-to-right (frames ${r * cols + 1}..${(r + 1) * cols})`,
+  );
+  const orderNote =
+    rows > 1
+      ? ` Cell order follows the grid's reading order: ${rowRanges.join(', then ')} — top-left is frame 1 and bottom-right is frame ${frameCount}.`
+      : ' Cells read left-to-right as frames 1 through ' + frameCount + '.';
   return [
-    `These ${frameCount} cells are NOT independent design alternatives — they are ORDERED FRAMES of a single side-view walk-cycle animation for the exact same character, read left-to-right as one continuous walking stride.`,
+    `These ${frameCount} cells are NOT independent design alternatives — they are ORDERED FRAMES of a single side-view walk-cycle animation for the exact same character, forming one continuous walking stride.${orderNote}`,
     'Keep identity strictly IDENTICAL across every frame: the same character, same face/head, same outfit and accessories, same color palette, same body proportions, same overall scale, and the same side-view (profile) orientation and camera angle.',
     'The ONLY thing that may change between frames is the walking pose: leg stride and arm swing progressing smoothly through one gait cycle (for example: left leg forward / neutral mid-stride / right leg forward), so that played back in sequence the character appears to walk in place.',
     "Do not change the character's design, clothing, colors, or size between frames. Do not add or remove props between frames. Do not have the character face a different direction in different frames.",
