@@ -172,7 +172,12 @@ async function startInstance(instanceId) {
       instanceId,
       // The harness calls renderHtml(instanceId) lazily at request time.
       // Close over `serverUrl` which is set after the server resolves below.
-      renderHtml: (_id) => renderHtml({ batches: state.batches, baseUrl: serverUrl }),
+      renderHtml: (_id) =>
+        renderHtml({
+          batches: state.batches,
+          activeRuns: state.activeRuns ?? [],
+          baseUrl: serverUrl,
+        }),
       jsonRoutes,
       binaryRoutes,
       log: (msg, level) => log(`[canvas-server] ${msg}`, level),
