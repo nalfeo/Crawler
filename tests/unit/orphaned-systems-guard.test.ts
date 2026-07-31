@@ -394,7 +394,7 @@ describe('findOrphanedSystems', () => {
   const entry: AllowlistEntry = {
     reason: 'lab/test-only helper',
     trackedIssue: 'ADR 0039',
-    trackedIssuePolicy: 'reference-only',
+    trackedIssuePolicy: 'reference-only' as const,
     owner: 'labs',
   };
   const allowlist = { enemySpawnerSystem: entry };
@@ -460,10 +460,11 @@ describe('findOrphanedSystems', () => {
     );
 
     it('PASSES an allowlisted system without a sim-side reference', () => {
-      const allowlist = {
+      const allowlist: Readonly<Record<string, AllowlistEntry>> = {
         sceneOnlySystem: {
           reason: 'intentionally not wired',
           trackedIssue: '#1',
+          trackedIssuePolicy: 'reference-only',
           owner: 'tests',
         },
       };
