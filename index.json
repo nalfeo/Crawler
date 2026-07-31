@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e8313117b46ddb1bc6faf476063521dcd43bb060",
+    "commitDate": "2026-07-31T04:12:40Z",
+    "commitSubject": "feat(sprites): harvest orphaned assets/checkin-* branches in asset-pr and reconciler (#2416)",
+    "capturedAt": "2026-07-31T05:17:41.880Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30603904833",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/e8313117b46ddb1bc6faf476063521dcd43bb060.json"
+  },
+  {
     "commit": "90b89e506513e29363548185a296677ec296a304",
     "commitDate": "2026-07-31T03:55:50Z",
     "commitSubject": "refactor(doors): unify door rendering on one geometry rule, retire top-down pack door art (#2417)",
