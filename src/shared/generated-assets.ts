@@ -24,7 +24,7 @@ import { SPRITE_TYPES } from './sprite-types.js';
  * `sprite-anchor.ts` (bottom-center). This default is the safer fallback
  * for arbitrary item icons.
  */
-export const DEFAULT_GENERATED_ANCHOR: { readonly x: number; readonly y: number } = Object.freeze({
+const DEFAULT_GENERATED_ANCHOR: { readonly x: number; readonly y: number } = Object.freeze({
   x: 8,
   y: 8,
 });
@@ -405,7 +405,7 @@ export function pickGeneratedVariant(
  * asset pipeline. Used when deriving normalized weapon-anchor offsets without
  * an actual loaded texture reference (e.g. in headless simulation or tests).
  */
-export const DEFAULT_GENERATED_FRAME_SIZE_PX = 64;
+const DEFAULT_GENERATED_FRAME_SIZE_PX = 64;
 
 /** Inputs for {@link resolveOpaqueFit}. */
 export interface OpaqueFitInput {
@@ -462,12 +462,11 @@ export interface OpaqueFit {
  * bounds when they are present and consistent with the loaded texture,
  * otherwise the whole canvas.
  *
- * Exported so callers that need a non-height-authoritative fit (doors are
- * width-authoritative) can derive their own scale from the SAME box
- * `resolveOpaqueFit` anchors on. Recomputing this validation at the call site
- * is how origin and scale drift apart on malformed bounds.
+ * Shared with `resolveOpaqueFit` and `door-visuals.ts` resolve helpers; kept
+ * internal now that `MainGameScene` uses `resolveGeneratedDoorContainFit`
+ * instead of calling this directly.
  */
-export function resolveOpaqueBox(
+function resolveOpaqueBox(
   bounds: OpaqueBounds | undefined,
   canvasWidth: number,
   canvasHeight: number,

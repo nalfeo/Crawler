@@ -320,6 +320,7 @@ test('save-plan forwards only the plan and overwrite flag, never a path', async 
       action: 'save-plan',
       plan: { id: 'pirate' },
       overwrite: true,
+      retryPublish: false,
     });
   } finally {
     await server.close();
