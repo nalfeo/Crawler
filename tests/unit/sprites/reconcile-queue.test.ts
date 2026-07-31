@@ -37,6 +37,7 @@ import {
   isArtSurfacePath,
   ReconcileError,
   runReconcile,
+  scanOrphanedCheckinBranches,
   type ReconcileDeps,
 } from '../../../scripts/sprites/reconcile-queue.js';
 
@@ -612,6 +613,107 @@ describe('runReconcile (control-flow)', () => {
     expect(
       calls.some((c) => c.command === 'gh' && c.args[0] === 'pr' && c.args[1] === 'merge'),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layer 2b: scanOrphanedCheckinBranches (faked exec)
+// ---------------------------------------------------------------------------
+
+type FakeCall = { command: string; args: string[] };
+
+function makeScanExec(
+  lsRemoteOutput: string,
+  prListOutput: string,
+  lsCode = 0,
+  prCode = 0,
+): { exec: Exec; calls: FakeCall[] } {
+  const calls: FakeCall[] = [];
+  const exec: Exec = async (command, args, _opts) => {
+    calls.push({ command, args: [...args] });
+    if (command === 'git' && args[0] === 'ls-remote') {
+      return { stdout: lsRemoteOutput, stderr: '', code: lsCode };
+    }
+    if (command === 'gh' && args[0] === 'pr') {
+      return { stdout: prListOutput, stderr: '', code: prCode };
+    }
+    return { stdout: '', stderr: '', code: 0 };
+  };
+  return { exec, calls };
+}
+
+describe('scanOrphanedCheckinBranches', () => {
+  const REMOTE = 'origin';
+  const REPO_ROOT = '/fake/root';
+
+  it('returns empty array when ls-remote returns nothing', async () => {
+    const { exec } = makeScanExec('', '[]');
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('returns all checkin branches when no open PRs exist', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' + 'def456\trefs/heads/assets/checkin-bar\n';
+    const { exec } = makeScanExec(lsRemote, '[]');
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-bar']);
+  });
+
+  it('excludes branches that are the head of an open PR', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' +
+      'def456\trefs/heads/assets/checkin-bar\n' +
+      'ghi789\trefs/heads/assets/checkin-baz\n';
+    const prList = JSON.stringify([{ headRefName: 'assets/checkin-bar' }]);
+    const { exec } = makeScanExec(lsRemote, prList);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-baz']);
+  });
+
+  it('returns empty when all branches have open PRs', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' + 'def456\trefs/heads/assets/checkin-bar\n';
+    const prList = JSON.stringify([
+      { headRefName: 'assets/checkin-foo' },
+      { headRefName: 'assets/checkin-bar' },
+    ]);
+    const { exec } = makeScanExec(lsRemote, prList);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty when ls-remote fails', async () => {
+    const { exec } = makeScanExec('', '[]', 1);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('returns all branches when gh pr list returns invalid JSON (conservative)', async () => {
+    const lsRemote = 'abc123\trefs/heads/assets/checkin-foo\n';
+    const { exec } = makeScanExec(lsRemote, 'not-json', 0, 0);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    // Conservative: invalid PR list → treat as no open PRs found → all branches are orphaned
+    // (unlike a failed call which returns []; parse failure returns all branches)
+    expect(result).toEqual(['assets/checkin-foo']);
+  });
+
+  it('does not include non-checkin branches from ls-remote', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' +
+      '111222\trefs/heads/assets/batch-123456\n' +
+      '333444\trefs/heads/main\n';
+    const { exec } = makeScanExec(lsRemote, '[]');
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual(['assets/checkin-foo']);
+  });
+
+  it('passes --repo flag when repo param is provided', async () => {
+    const { exec, calls } = makeScanExec('', '[]');
+    await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, 'owner/repo');
+    const prCall = calls.find((c) => c.command === 'gh');
+    expect(prCall?.args).toContain('--repo');
+    expect(prCall?.args).toContain('owner/repo');
   });
 });
 
