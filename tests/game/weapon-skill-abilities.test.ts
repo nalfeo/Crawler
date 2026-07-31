@@ -444,6 +444,34 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     expect(announcement?.text).toContain('Passive Unlocked:');
   });
 
+  it('does not double-fire activation VFX when the matching weapon is already equipped at grant time', () => {
+    // Regression guard for the hazard the milestone-site VFX split exists to
+    // avoid: if the weapon-gated passive's prerequisite is ALREADY met the
+    // same tick as the level-5 grant, applyPassive() will apply it on the
+    // very next abilitySystem() run and push its own "equip flash" VFX. The
+    // milestone site must not ALSO push VFX for weapon-gated passives, or the
+    // player would see two flashes for one unlock.
+    const { world, player } = setupPlayerWithSkills();
+    const swordWeapon = WEAPON_DEFS.get('sword')!;
+    setActiveWeaponDef(world, swordWeapon); // matching weapon already equipped
+    const swordDef = getSkillDefinition('sword')!; // grants keen-swordsman (sword prereq)
+    const threshold = swordDef.usageThresholds[4]!;
+
+    fireSkillUsageEvents(world, player, 'sword', 'weapon_fired', threshold);
+    skillSystem(world); // grants the passive at level 5
+    abilitySystem(world); // applies the now-eligible passive, may push its own VFX
+
+    const vfxCount = world.vfxEvents.filter(
+      (event) => event.kind === 'weaponAbilityActivate',
+    ).length;
+    expect(vfxCount).toBe(1);
+
+    const announcementCount = world.announcements.filter(
+      (event) => event.kind === 'skillPassiveUnlocked',
+    ).length;
+    expect(announcementCount).toBe(1);
+  });
+
   it('does not push unlock feedback for a mob (non-Player) reaching a skill milestone', () => {
     const world = createTestWorld({ seed: 7 });
     const mob = spawnEnemy(world, 0, 0, 50); // Enemy-tagged, not Player-tagged

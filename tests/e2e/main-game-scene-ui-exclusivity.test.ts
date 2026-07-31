@@ -155,13 +155,14 @@ describe('MainGameScene UI exclusivity', () => {
     await mainSceneProbe.advanceSimulationFrames(page, 2);
 
     // Real rendered player-visible projection of the level-5 skill-passive
-    // unlock, captured immediately after the milestone-granting frames and
-    // before any further UI interaction advances wall-clock time.
-    const announcementState = await mainSceneProbe.getState(page);
-    expect(
-      announcementState.currentAnnouncement,
-      'level-5 swordsmanship milestone should render a HUD unlock announcement',
-    ).not.toBeNull();
+    // unlock. Poll rather than sample a single frame: the banner is a shared
+    // FIFO with other announcement kinds, so the unlock event may not be the
+    // very first one drained even though it is guaranteed to appear.
+    const announcementState = await waitForState(
+      page,
+      (s) => s.currentAnnouncement?.kind === 'skillPassiveUnlocked',
+      { label: 'level-5 swordsmanship milestone renders a HUD unlock announcement' },
+    );
     expect(announcementState.currentAnnouncement?.kind).toBe('skillPassiveUnlocked');
     expect(announcementState.currentAnnouncement?.text).toContain('Combat Flow');
 
