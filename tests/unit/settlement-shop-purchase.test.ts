@@ -5,6 +5,7 @@ import {
   purchaseSettlementShopOffer,
 } from '../../src/core/settlement-shop-purchase.js';
 import type { Floor2SettlementSnapshot } from '../../src/shared/floor-types.js';
+import { listStaticInventorySlots } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 type TestWorld = ReturnType<typeof createTestWorld>;
@@ -91,7 +92,9 @@ describe('Settlement shop purchase', () => {
       remainingGold: 375,
     });
     expect(world.playerGold).toBe(375);
-    expect(world.inventories.get(playerEid)?.slots).toContainEqual({
+    const bag = world.inventories.get(playerEid);
+    expect(bag).toBeDefined();
+    expect(listStaticInventorySlots(bag!)).toContainEqual({
       itemId: 'throwing-knife',
       quantity: 1,
     });

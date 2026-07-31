@@ -27,6 +27,7 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 import { getActiveWeaponSnapshot } from '../../src/core/active-weapon.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
+import { addItem } from '../../src/shared/inventory.js';
 
 describe('Floor 1 to Floor 2 production transition', () => {
   it('creates Floor 2 with the completed player build and Broker starter chain', () => {
@@ -45,10 +46,7 @@ describe('Floor 1 to Floor 2 production transition', () => {
     floor1.stores.coreStatPoints.constitution[floor1Player] = 5;
     floor1.stores.health.current[floor1Player] = 137;
     floor1.stores.health.max[floor1Player] = 260;
-    floor1.inventories.get(floor1Player)!.slots.push({
-      itemId: 'throwing-knife',
-      quantity: 3,
-    });
+    addItem(floor1.inventories.get(floor1Player)!, 'throwing-knife', 3);
     floor1.featureUnlocks = { inventory: true, equipment: true, spells: true };
 
     const objective = floor1.floorScenario!.objective;

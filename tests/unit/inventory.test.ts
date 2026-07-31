@@ -17,6 +17,7 @@ import {
   sortSlots,
   getActiveTags,
   getVisibleTabs,
+  listStaticInventorySlots,
   reorderTab,
   hideTab,
   inventoryEntryIdentity,
@@ -190,35 +191,38 @@ describe('InventoryBag', () => {
     it('adds a new item to an empty bag', () => {
       const added = addItem(bag, 'test-ore', 3, testCatalog);
       expect(added).toBe(3);
-      expect(bag.slots).toHaveLength(1);
-      expect(bag.slots[0]).toEqual({ itemId: 'test-ore', quantity: 3 });
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(1);
+      expect(slots[0]).toEqual({ itemId: 'test-ore', quantity: 3 });
     });
 
     it('stacks identical items', () => {
       addItem(bag, 'test-ore', 3, testCatalog);
       addItem(bag, 'test-ore', 5, testCatalog);
-      expect(bag.slots).toHaveLength(1);
-      expect(bag.slots[0]!.quantity).toBe(8);
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(1);
+      expect(slots[0]!.quantity).toBe(8);
     });
 
     it('respects maxStack and creates overflow slots', () => {
       addItem(bag, 'test-ore', 25, testCatalog); // maxStack=10
-      expect(bag.slots).toHaveLength(3);
-      expect(bag.slots[0]!.quantity).toBe(10);
-      expect(bag.slots[1]!.quantity).toBe(10);
-      expect(bag.slots[2]!.quantity).toBe(5);
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(3);
+      expect(slots[0]!.quantity).toBe(10);
+      expect(slots[1]!.quantity).toBe(10);
+      expect(slots[2]!.quantity).toBe(5);
     });
 
     it('non-stackable items create separate slots', () => {
       addItem(bag, 'test-sword', 1, testCatalog);
       addItem(bag, 'test-sword', 1, testCatalog);
-      expect(bag.slots).toHaveLength(2);
+      expect(listStaticInventorySlots(bag)).toHaveLength(2);
     });
 
     it('returns 0 for zero or negative quantity', () => {
       expect(addItem(bag, 'test-ore', 0, testCatalog)).toBe(0);
       expect(addItem(bag, 'test-ore', -5, testCatalog)).toBe(0);
-      expect(bag.slots).toHaveLength(0);
+      expect(listStaticInventorySlots(bag)).toHaveLength(0);
     });
 
     it('throws for unknown item ids', () => {
@@ -245,13 +249,13 @@ describe('InventoryBag', () => {
       addItem(bag, 'test-ore', 5, testCatalog);
       const removed = removeItem(bag, 'test-ore', 3);
       expect(removed).toBe(3);
-      expect(bag.slots[0]!.quantity).toBe(2);
+      expect(listStaticInventorySlots(bag)[0]!.quantity).toBe(2);
     });
 
     it('removes the slot when quantity reaches 0', () => {
       addItem(bag, 'test-ore', 5, testCatalog);
       removeItem(bag, 'test-ore', 5);
-      expect(bag.slots).toHaveLength(0);
+      expect(listStaticInventorySlots(bag)).toHaveLength(0);
     });
 
     it('removes across multiple slots', () => {
@@ -259,15 +263,16 @@ describe('InventoryBag', () => {
       const removed = removeItem(bag, 'test-ore', 15);
       expect(removed).toBe(15);
       // Removes from last slot first: 5→0(removed), 10→0(removed), total=15
-      expect(bag.slots).toHaveLength(1);
-      expect(bag.slots[0]!.quantity).toBe(10);
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(1);
+      expect(slots[0]!.quantity).toBe(10);
     });
 
     it('returns actual amount removed if not enough', () => {
       addItem(bag, 'test-ore', 3, testCatalog);
       const removed = removeItem(bag, 'test-ore', 10);
       expect(removed).toBe(3);
-      expect(bag.slots).toHaveLength(0);
+      expect(listStaticInventorySlots(bag)).toHaveLength(0);
     });
 
     it('returns 0 for item not in bag', () => {

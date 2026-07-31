@@ -30,6 +30,7 @@ import {
   collectNamedImports,
   findDuplicateExportNames,
   isTestScaffoldAllowlisted,
+  type ExportDef,
   type SourceFile,
 } from './test-only-exports-lib.js';
 
@@ -160,6 +161,36 @@ function collectDeletedImportNames(
   return candidates;
 }
 
+function exportKey(exp: Pick<ExportDef, 'file' | 'name'>): string {
+  return `${exp.file}#${exp.name}`;
+}
+
+/**
+ * Only treat exports in changed files as candidates when the branch introduced
+ * the exported symbol (new file, new export, or rename). Pre-existing
+ * test-only exports in a file the branch merely edited are handled as baseline
+ * debt and should not fail the guard. Unchanged exports whose last production
+ * caller was removed are covered separately by `collectDeletedImportNames`.
+ */
+function collectBranchIntroducedExports(
+  changedSrcFiles: readonly SourceFile[],
+  baseRef: string | null,
+): ExportDef[] {
+  const currentExports = collectNamedExports(changedSrcFiles);
+  if (!baseRef) return currentExports;
+
+  const baseExportKeys = new Set<string>();
+  for (const file of changedSrcFiles) {
+    const baseContent = readFileAtRef(file.path, baseRef);
+    if (baseContent === null) continue;
+    for (const exp of collectNamedExports([{ path: file.path, content: baseContent }])) {
+      baseExportKeys.add(exportKey(exp));
+    }
+  }
+
+  return currentExports.filter((exp) => !baseExportKeys.has(exportKey(exp)));
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -191,12 +222,12 @@ function main(): void {
 
   const changedSrcFiles = srcFiles.filter((file) => changedSrcPaths.has(file.path));
   const allExports = collectNamedExports(srcFiles);
-  const changedExports = collectNamedExports(changedSrcFiles);
+  const branchIntroducedExports = collectBranchIntroducedExports(changedSrcFiles, baseRef);
   const srcImports = collectNamedImports(srcFiles);
   const testImports = collectNamedImports(testFiles);
 
   // Warn about duplicate export names in changed files; they can cause false negatives.
-  const changedExportNames = new Set(changedExports.map((exp) => exp.name));
+  const changedExportNames = new Set(branchIntroducedExports.map((exp) => exp.name));
   for (const dup of findDuplicateExportNames(allExports).filter((dup) =>
     changedExportNames.has(dup.name),
   )) {
@@ -218,8 +249,9 @@ function main(): void {
   const deletedImportCandidates = allExports.filter(
     (exp) => deletedImportNames.has(exp.name) && !changedExportNames.has(exp.name),
   );
-  const candidates = [...changedExports, ...deletedImportCandidates];
+  const candidates = [...branchIntroducedExports, ...deletedImportCandidates];
   const testOnlyExports = candidates.flatMap((exp) => {
+    if (exp.name.startsWith('_')) return []; // explicit test scaffolding by convention
     if (isTestScaffoldAllowlisted(exp)) return []; // documented test scaffold
 
     const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
@@ -248,7 +280,7 @@ function main(): void {
 
   if (testOnlyExports.length === 0) {
     report.info(
-      `${candidates.length} src/ export(s) checked (${changedExports.length} from changed files, ${deletedImportCandidates.length} from deleted importers); none are consumed exclusively by tests.`,
+      `${candidates.length} src/ export(s) checked (${branchIntroducedExports.length} introduced by changed files, ${deletedImportCandidates.length} from deleted importers); none are consumed exclusively by tests.`,
     );
   }
 
