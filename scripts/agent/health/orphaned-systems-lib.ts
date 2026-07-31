@@ -123,6 +123,13 @@ export interface AllowlistEntry {
   readonly reason: string;
   /** Issue/ADR/PR reference that tracks the exemption (e.g. `#666`, `ADR 0039`). Required. */
   readonly trackedIssue: string;
+  /**
+   * How the tracked reference should behave while the allowlist entry remains:
+   * - `reference-only` → provenance / explanatory reference; it may be closed.
+   * - `open-required` → live debt tracker; a closed ref means the exemption no
+   *   longer has an actionable owner and should be reported by the guard.
+   */
+  readonly trackedIssuePolicy: 'reference-only' | 'open-required';
   /** Who owns resolving or maintaining this exemption. Required. */
   readonly owner: string;
   /** Optional condition under which this entry should be removed. */
@@ -133,6 +140,7 @@ export interface AllowlistEntry {
 export const REQUIRED_ALLOWLIST_FIELDS: ReadonlyArray<keyof AllowlistEntry> = [
   'reason',
   'trackedIssue',
+  'trackedIssuePolicy',
   'owner',
 ];
 
@@ -151,6 +159,7 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
     reason:
       'Lab/test-only enemy-wave helper (takes a SpawnerConfig arg, not a (world)=>void pipeline system); production floors use floor1EnemyDirectorSystem + enemyAISystem.',
     trackedIssue: 'ADR 0039',
+    trackedIssuePolicy: 'reference-only',
     owner: 'labs (abilities-lab, weapon-lab)',
     removeWhen:
       'the labs stop using it, or it is refactored into a lab-only helper module outside src/game.',
@@ -163,24 +172,19 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
     reason:
       'Intentionally called from floor2ObjectiveTick (world.floorObjectiveTick) so Floor 2 objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
     trackedIssue: '#816',
+    trackedIssuePolicy: 'reference-only',
     owner: 'enemies/floor2',
     removeWhen:
       'Floor 2 objective/director ordering is refactored into explicit pipeline stages in both visual and headless runners.',
   },
-  // Latent, never-wired multi-weapon feature (same failure class as
-  // spawnerSystem, not yet fixed). weaponEntitySystem processes [Weapon, Owner]
-  // entities, but spawnWeapon (the only producer) and the system itself are
-  // called ONLY in tests — nothing in runtime spawns weapon entities. Tracked
-  // in #666 for a wire-or-delete product decision; do NOT treat as permanent.
-  weaponEntitySystem: {
-    reason:
-      'Latent multi-weapon-entity feature: processes [Weapon, Owner] entities, but its only producer (spawnWeapon) and the system are called only in tests — nothing wires it into a real pipeline. Player weapon uses the singleton weaponSystem.',
-    trackedIssue: '#666',
-    owner: 'weapons',
-    removeWhen:
-      'the feature is wired into a real pipeline (visual + headless) or removed as YAGNI per #666.',
-  },
 };
+
+const VALID_TRACKED_ISSUE_POLICIES = new Set<AllowlistEntry['trackedIssuePolicy']>([
+  'open-required',
+  'reference-only',
+]);
+
+const GITHUB_ISSUE_REF_RE = /^#(\d+)$/;
 
 /** True if `name` looks like an ECS system identifier (`*System`). */
 function isSystemName(name: string): boolean {
@@ -470,6 +474,23 @@ export interface MalformedAllowlistFinding {
   readonly missing: string[];
 }
 
+/** An allowlist entry whose tracking-reference policy is invalid. */
+export interface InvalidAllowlistPolicyFinding {
+  readonly name: string;
+  readonly invalid: string[];
+}
+
+export interface OpenRequiredTrackedIssue {
+  readonly name: string;
+  readonly trackedIssue: string;
+  readonly issueNumber: number;
+}
+
+export interface ClosedTrackedIssueFinding {
+  readonly name: string;
+  readonly trackedIssue: string;
+}
+
 /**
  * Find allowlist entries missing a required field (reason / trackedIssue /
  * owner). A blank or whitespace-only value counts as missing. This makes the
@@ -485,6 +506,68 @@ export function findMalformedAllowlistEntries(
       return typeof value !== 'string' || value.trim().length === 0;
     });
     if (missing.length > 0) findings.push({ name, missing });
+  }
+  return findings.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Parse a repo-local `#123` tracking issue reference into its numeric id. */
+export function parseTrackedIssueNumber(ref: string): number | null {
+  const match = GITHUB_ISSUE_REF_RE.exec(ref.trim());
+  if (!match) return null;
+  return Number.parseInt(match[1]!, 10);
+}
+
+/**
+ * Find allowlist entries with invalid tracking metadata. `open-required`
+ * entries MUST point at a repo-local `#123` issue reference so the wrapper can
+ * audit its open/closed state against GitHub.
+ */
+export function findInvalidAllowlistPolicyEntries(
+  allowlist: Readonly<Record<string, AllowlistEntry>> = ALLOWLIST,
+): InvalidAllowlistPolicyFinding[] {
+  const findings: InvalidAllowlistPolicyFinding[] = [];
+  for (const [name, entry] of Object.entries(allowlist)) {
+    const invalid: string[] = [];
+    if (!VALID_TRACKED_ISSUE_POLICIES.has(entry.trackedIssuePolicy)) {
+      invalid.push('trackedIssuePolicy');
+    } else if (
+      entry.trackedIssuePolicy === 'open-required' &&
+      parseTrackedIssueNumber(entry.trackedIssue) === null
+    ) {
+      invalid.push('trackedIssue');
+    }
+    if (invalid.length > 0) findings.push({ name, invalid });
+  }
+  return findings.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Collect the allowlist entries whose tracking issues must stay open. */
+export function collectOpenRequiredTrackedIssues(
+  allowlist: Readonly<Record<string, AllowlistEntry>> = ALLOWLIST,
+): OpenRequiredTrackedIssue[] {
+  const findings: OpenRequiredTrackedIssue[] = [];
+  for (const [name, entry] of Object.entries(allowlist)) {
+    if (entry.trackedIssuePolicy !== 'open-required') continue;
+    const issueNumber = parseTrackedIssueNumber(entry.trackedIssue);
+    if (issueNumber === null) continue;
+    findings.push({ name, trackedIssue: entry.trackedIssue, issueNumber });
+  }
+  return findings.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Given the observed state of repo-local tracking issues, find allowlist
+ * entries whose live debt tracker has already been closed.
+ */
+export function findClosedTrackedIssueEntries(
+  entries: ReadonlyArray<OpenRequiredTrackedIssue>,
+  issueStates: ReadonlyMap<number, 'open' | 'closed'>,
+): ClosedTrackedIssueFinding[] {
+  const findings: ClosedTrackedIssueFinding[] = [];
+  for (const entry of entries) {
+    if (issueStates.get(entry.issueNumber) === 'closed') {
+      findings.push({ name: entry.name, trackedIssue: entry.trackedIssue });
+    }
   }
   return findings.sort((a, b) => a.name.localeCompare(b.name));
 }
