@@ -710,7 +710,7 @@ export function createInventoryUI(
         entry.kind === 'generated-instance' && currentWorld
           ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
           : undefined;
-      const generatedEntry = selectGeneratedEntry(instance?.frozen.artKey ?? def.id);
+      const generatedEntry = selectGeneratedEntry(instance?.baseId ?? def.id);
       const generatedTextureKey =
         instance?.frozen.artKey && scene.textures?.exists(instance.frozen.artKey)
           ? instance.frozen.artKey
@@ -950,7 +950,7 @@ export function createInventoryUI(
           : undefined;
       const artKey = instance?.frozen.artKey;
       const sprite = selectGeneratedEntry(
-        artKey ?? (entry.kind === 'stackable-static-item' ? entry.itemId : entry.instanceKey),
+        entry.kind === 'stackable-static-item' ? entry.itemId : (instance?.baseId ?? entry.instanceKey),
       );
       const textureKey =
         artKey && scene.textures?.exists(artKey) ? artKey : (sprite?.textureKey ?? '');

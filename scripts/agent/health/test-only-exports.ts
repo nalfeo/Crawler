@@ -220,6 +220,7 @@ function main(): void {
   );
   const candidates = [...changedExports, ...deletedImportCandidates];
   const testOnlyExports = candidates.flatMap((exp) => {
+    if (exp.name.startsWith('_')) return []; // explicit test scaffolding by convention
     if (isTestScaffoldAllowlisted(exp)) return []; // documented test scaffold
 
     const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
