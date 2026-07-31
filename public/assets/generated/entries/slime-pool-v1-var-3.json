@@ -25,7 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "3",
   "type": "enemy",
-  "contentHash": "8a55dc35302adcb2d37dcc65d561e3eb881ac72333390d21c3402c03d43c62fd",
+  "contentHash": "1317ac9fdab9a30bf1cecbb1b13660b0d57061a3962f8c4e62d9a3b3a110f62e",
   "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/slime-pool-v1/2026-07-06T20-26-40-713474c0/postprocess.pipeline.effective.yaml",

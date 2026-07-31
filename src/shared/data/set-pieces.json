@@ -10,7 +10,11 @@
       "width": 10,
       "height": 8,
       "description": "A cramped New York slice joint lifted straight off the corner, grease stains and all.",
-      "tags": ["nyc", "restaurant", "named"],
+      "tags": [
+        "nyc",
+        "restaurant",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -1386,7 +1390,10 @@
                 "requestId": "brick-pizza-oven",
                 "label": "Brick pizza oven",
                 "prompt": "A wood-fired brick pizza oven with a glowing arched mouth, 16x16 pixel art top-down.",
-                "tags": ["food", "appliance"],
+                "tags": [
+                  "food",
+                  "appliance"
+                ],
                 "placeholder": {
                   "source": "sheet",
                   "sheetKey": "kenney-tiny-town",
@@ -1414,7 +1421,10 @@
                 "prompt": "Hot pink and cyan neon sign reading JIMMY'S in a retro cursive script, glowing, pixel art.",
                 "widthTiles": 4,
                 "heightTiles": 1,
-                "tags": ["neon", "signage"]
+                "tags": [
+                  "neon",
+                  "signage"
+                ]
               }
             }
           ],
@@ -1516,7 +1526,11 @@
       "width": 9,
       "height": 7,
       "description": "A 24-hour bodega with a bulletproof counter, lottery tickets, and a very judgmental cat.",
-      "tags": ["nyc", "shop", "named"],
+      "tags": [
+        "nyc",
+        "shop",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -2613,7 +2627,9 @@
                 "requestId": "cash-register",
                 "label": "Cash register",
                 "prompt": "A chunky retro cash register, beige with green buttons, 16x16 pixel art.",
-                "tags": ["retail"]
+                "tags": [
+                  "retail"
+                ]
               },
               "offsetX": 2,
               "offsetY": -4
@@ -2691,7 +2707,11 @@
       "width": 12,
       "height": 6,
       "description": "An express platform ripped from underground, complete with flickering lights and one stalled train.",
-      "tags": ["nyc", "transit", "named"],
+      "tags": [
+        "nyc",
+        "transit",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -3932,7 +3952,9 @@
                 "requestId": "subway-turnstile",
                 "label": "Subway turnstile",
                 "prompt": "A metal subway turnstile with rotating arms, top-down 16x16 pixel art.",
-                "tags": ["transit"]
+                "tags": [
+                  "transit"
+                ]
               }
             }
           ],
@@ -4027,7 +4049,10 @@
       "width": 10,
       "height": 7,
       "description": "A chrome-and-vinyl diner booth set, bottomless coffee not guaranteed.",
-      "tags": ["diner", "named"],
+      "tags": [
+        "diner",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -5243,7 +5268,10 @@
                 "requestId": "coffee-mug",
                 "label": "Coffee mug",
                 "prompt": "A small white diner coffee mug with steam, 16x16 pixel art.",
-                "tags": ["food", "prop"]
+                "tags": [
+                  "food",
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -5341,7 +5369,11 @@
       "width": 9,
       "height": 8,
       "description": "A highway mini-mart with roller-grill hot dogs and a wall of energy drinks.",
-      "tags": ["roadside", "shop", "named"],
+      "tags": [
+        "roadside",
+        "shop",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -6565,7 +6597,10 @@
                 "label": "Glass-door drink cooler",
                 "prompt": "A tall glass-door refrigerator full of colorful drink bottles, top-down 16x16 pixel art tileable vertically.",
                 "heightTiles": 4,
-                "tags": ["retail", "appliance"]
+                "tags": [
+                  "retail",
+                  "appliance"
+                ]
               }
             }
           ],
@@ -6679,7 +6714,10 @@
       "maxWidth": 11,
       "maxHeight": 9,
       "description": "An exam room kit: paper-covered table, eye chart, and the lingering smell of antiseptic.",
-      "tags": ["medical", "themed"],
+      "tags": [
+        "medical",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -7631,7 +7669,10 @@
                 "label": "Medical exam table",
                 "prompt": "A padded medical exam table with paper roll, light blue, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": ["medical", "furniture"]
+                "tags": [
+                  "medical",
+                  "furniture"
+                ]
               }
             }
           ],
@@ -7666,7 +7707,10 @@
                 "requestId": "eye-chart",
                 "label": "Snellen eye chart",
                 "prompt": "A wall-mounted Snellen eye chart poster, big E at top, 16x16 pixel art.",
-                "tags": ["medical", "signage"]
+                "tags": [
+                  "medical",
+                  "signage"
+                ]
               }
             }
           ],
@@ -7744,7 +7788,10 @@
       "maxWidth": 11,
       "maxHeight": 8,
       "description": "A waiting room of stiff chairs, a fish tank, and ten-year-old magazines.",
-      "tags": ["medical", "themed"],
+      "tags": [
+        "medical",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -8584,7 +8631,9 @@
                 "requestId": "magazine-stack",
                 "label": "Magazine stack",
                 "prompt": "A small stack of dog-eared magazines, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 3,
               "offsetY": -2,
@@ -8605,7 +8654,9 @@
                 "requestId": "waiting-room-fish-tank",
                 "label": "Fish tank",
                 "prompt": "A glowing aquarium with a few orange fish and bubbles, top-down 16x16 pixel art.",
-                "tags": ["decoration"]
+                "tags": [
+                  "decoration"
+                ]
               }
             }
           ],
@@ -8668,7 +8719,11 @@
       "maxWidth": 10,
       "maxHeight": 8,
       "description": "Folding tables, a temperamental vending machine, and a microwave with a history.",
-      "tags": ["office", "industrial", "themed"],
+      "tags": [
+        "office",
+        "industrial",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -9400,7 +9455,9 @@
                 "label": "Snack vending machine",
                 "prompt": "A red snack vending machine with a glass front and glowing buttons, top-down 16x16 pixel art.",
                 "heightTiles": 2,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -9495,7 +9552,11 @@
       "maxWidth": 12,
       "maxHeight": 10,
       "description": "A maze of grey cubicles, dying potted plants, and a single motivational poster.",
-      "tags": ["office", "corporate", "themed"],
+      "tags": [
+        "office",
+        "corporate",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -10452,7 +10513,10 @@
                 "requestId": "desktop-computer",
                 "label": "Desktop computer",
                 "prompt": "A beige CRT desktop computer and monitor, top-down 16x16 pixel art.",
-                "tags": ["office", "prop"]
+                "tags": [
+                  "office",
+                  "prop"
+                ]
               },
               "offsetX": 2,
               "offsetY": -3,
@@ -10580,7 +10644,10 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "A cozy living room kit: couch, coffee table, and a TV permanently tuned to the reality show.",
-      "tags": ["home", "themed"],
+      "tags": [
+        "home",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -11556,7 +11623,9 @@
                 "requestId": "tv-remote",
                 "label": "TV remote",
                 "prompt": "A small black TV remote control, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -1,
@@ -11580,7 +11649,9 @@
                 "label": "CRT television",
                 "prompt": "A boxy CRT television showing a glowing reality-show broadcast, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -11658,7 +11729,10 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "Rows of humming machines, a wall of detergent, and one sock that never makes it home.",
-      "tags": ["services", "themed"],
+      "tags": [
+        "services",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -12491,7 +12565,9 @@
                 "label": "Washing machine",
                 "prompt": "A front-loading washing machine with a round glass door, top-down 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -12590,7 +12666,10 @@
       "maxWidth": 12,
       "maxHeight": 9,
       "description": "Tiny desks, a chalkboard of half-erased equations, and a cubby of forgotten lunches.",
-      "tags": ["school", "themed"],
+      "tags": [
+        "school",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -13661,7 +13740,10 @@
                 "label": "Chalkboard",
                 "prompt": "A green chalkboard with faint white equations and a wooden frame, 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": ["education", "signage"]
+                "tags": [
+                  "education",
+                  "signage"
+                ]
               }
             }
           ],
@@ -13704,7 +13786,9 @@
                 "requestId": "apple-on-desk",
                 "label": "Apple",
                 "prompt": "A shiny red apple, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -13800,8 +13884,13 @@
       "sizing": "exact",
       "width": 7,
       "height": 7,
-      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
-      "tags": ["reality-show", "welcome", "floor1", "named"],
+      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off \u2014 the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
+      "tags": [
+        "reality-show",
+        "welcome",
+        "floor1",
+        "named"
+      ],
       "placement": {
         "verticalAlign": "top"
       },
@@ -13817,7 +13906,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 6.49,
+              "widthFt": 5.46,
               "heightFt": 3.5
             },
             {
@@ -13858,7 +13947,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 6.48,
+              "widthFt": 4.25,
               "heightFt": 4
             },
             {
@@ -13889,7 +13978,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-              "widthFt": 7.22,
+              "widthFt": 7.05,
               "heightFt": 6.8,
               "anchorBase": true
             },
@@ -14115,7 +14204,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-rug-var-0"
               },
-              "widthFt": 7,
+              "widthFt": 5.87,
               "heightFt": 3.62
             }
           ],
@@ -14135,7 +14224,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-              "widthFt": 5.13,
+              "widthFt": 6.57,
               "heightFt": 3.4,
               "rotationDeg": 90,
               "flipX": true,
