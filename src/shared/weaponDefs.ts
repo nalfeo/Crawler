@@ -9,6 +9,7 @@ import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
 import { FLOOR2_WEAPON_WAVE_A_BASES } from './data/floor2-weapon-bases.js';
 import { createWeaponDef } from './weapon-def-defaults.js';
 import { FLOOR2_EQUIPMENT_WAVE_B_WEAPON_DEFS } from './data/floor2-equipment-wave-b.js';
+import { FLOOR2_BASIC_LEATHER_WEAPON_BASES } from './data/floor2-basic-leather-bases.js';
 
 export interface WeaponDef {
   readonly id: string;
@@ -359,6 +360,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
   ),
   ...FLOOR2_EQUIPMENT_WAVE_B_WEAPON_DEFS.map(
     (weaponDefinition) => [weaponDefinition.id, weaponDefinition] as const,
+  ),
+  ...FLOOR2_BASIC_LEATHER_WEAPON_BASES.map(
+    (definition) => [definition.weaponDef.id, definition.weaponDef] as const,
   ),
 ]);
 

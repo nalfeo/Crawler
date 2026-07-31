@@ -160,13 +160,13 @@ export type {
 } from './abilities/types.js';
 export { ACTIVE_ABILITY_SLOT_LIMIT } from './abilities/types.js';
 export {
-  GeneratedEquipmentGeneratorError,
+  _GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
-  getGeneratedEquipmentBaseV1,
+  _getGeneratedEquipmentBaseV1,
 } from './generated-equipment-generator.js';
 export type {
   GeneratedEquipmentGeneratorErrorCode,
-  GenerateEquipmentInstanceRequest,
+  _GenerateEquipmentInstanceRequest,
   GenerateEquipmentInstanceOptions,
 } from './generated-equipment-generator.js';
 export {

@@ -634,8 +634,8 @@ export function validateWallAutotileImagePath(
 }
 
 /**
- * Validate every floorPool, corridorPool, and doorSet imagePath in a pack
- * manifest: the path must be within `assets/terrain-packs/`, exist on disk,
+ * Validate every floorPool, corridorPool, and specialFloorPools imagePath in a
+ * pack manifest: the path must be within `assets/terrain-packs/`, exist on disk,
  * decode as PNG, and be exactly 64×64 pixels. Path traversal (`..`) is
  * rejected explicitly; no broad catch / silent skip.
  */
@@ -651,10 +651,6 @@ export function validatePoolAndDoorImages(
     ...manifest.corridorPool.map((v) => ({
       imagePath: v.imagePath,
       context: `corridorPool[${v.id}]`,
-    })),
-    ...Object.entries(manifest.doorSet).map(([key, v]) => ({
-      imagePath: v.imagePath,
-      context: `doorSet.${key}`,
     })),
     ...Object.entries(manifest.specialFloorPools ?? {}).flatMap(([key, pool]) =>
       pool.map((v) => ({

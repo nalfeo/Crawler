@@ -40,8 +40,46 @@ export type CustomTag = string & { readonly __brand: 'CustomTag' };
 export type ItemTag = KnownTag | CustomTag;
 
 /** Create a custom tag (used by AI content pipeline or catalog). */
-export function customTag(label: string): CustomTag {
+function customTag(label: string): CustomTag {
   return label as CustomTag;
+}
+
+export const _customTag = customTag;
+
+const GENERATED_INVENTORY_TAG_ALIASES: Readonly<Record<string, KnownTag>> = Object.freeze({
+  material: 'Materials',
+  materials: 'Materials',
+  weapon: 'Weapons',
+  weapons: 'Weapons',
+  consumable: 'Consumables',
+  consumables: 'Consumables',
+  'key item': 'Key Items',
+  'key items': 'Key Items',
+  'key-item': 'Key Items',
+  'key-items': 'Key Items',
+  misc: 'Misc',
+  miscellaneous: 'Misc',
+} as const satisfies Record<string, KnownTag>);
+
+const GENERATED_GEAR_TAGS = new Set([
+  'gear',
+  'equipment',
+  'armor',
+  'armour',
+  'accessory',
+  'accessories',
+]);
+
+/**
+ * Map generator-authored category tags onto the inventory taxonomy before
+ * falling back to a branded custom tag.
+ */
+export function normalizeGeneratedInventoryTag(tag: string): ItemTag {
+  const normalized = tag.trim().toLowerCase();
+  const knownTag = GENERATED_INVENTORY_TAG_ALIASES[normalized];
+  if (knownTag) return knownTag;
+  if (GENERATED_GEAR_TAGS.has(normalized)) return customTag('Gear');
+  return customTag(tag);
 }
 
 /** Type-guard: is this tag one of the canonical five? */
