@@ -12,6 +12,7 @@ import { doorSystem } from './systems/doorSystem.js';
 import { dropSystem } from './systems/dropSystem.js';
 import { fovSystem } from './systems/fovSystem.js';
 import { harvestSystem } from './systems/harvestSystem.js';
+import { bossChestPickupSystem } from './systems/bossChestPickupSystem.js';
 import { healthSystem } from './systems/healthSystem.js';
 import { itemPickupSystem } from './systems/itemPickupSystem.js';
 import { knockbackSystem } from './systems/knockbackSystem.js';
@@ -66,6 +67,7 @@ export function runCoreSimulationStep(
   trapSystem(world, collision);
   itemPickupSystem(world, collision);
   harvestSystem(world);
+  bossChestPickupSystem(world);
   dropSystem(world);
   corpseStepSystem(world);
   bloodyFootprintSystem(world);

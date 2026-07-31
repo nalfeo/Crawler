@@ -315,25 +315,4 @@ describe('MainGameScene UI exclusivity', () => {
       'interaction input should advance to the next line or close the conversation',
     ).toBe(true);
   });
-
-  it('shows a touch shortcut for boss chests outside safe rooms and opens the panel on tap', async () => {
-    await bootPlayingSafeScene();
-    await mainSceneProbe.setSafeContext(page, false);
-    await waitForState(page, (s) => !s.safeContext, { label: 'leave safe context' });
-    await mainSceneProbe.seedAvailableBossChest(page);
-
-    const ready = await waitForState(page, (s) => s.bossChestButtonVisible, {
-      label: 'boss chest touch shortcut visible',
-    });
-    expect(ready.safeContext, 'boss chest touch shortcut should not require a safe room').toBe(
-      false,
-    );
-    expect(ready.bossChestOpen, 'boss chest panel should start closed').toBe(false);
-
-    const tapped = await mainSceneProbe.tapBossChestButton(page);
-    expect(tapped, 'probe should be able to tap the visible Chests shortcut').toBe(true);
-    await waitForState(page, (s) => s.bossChestOpen, {
-      label: 'boss chest panel opened from touch shortcut',
-    });
-  });
 });

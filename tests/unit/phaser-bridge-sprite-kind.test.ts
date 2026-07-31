@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AoeOnImpact,
   AreaDamage,
+  BossChestEntity,
   Enemy,
   EnemyProjectile,
   Gold,
@@ -69,6 +70,7 @@ const DEFINING_COMPONENT: ReadonlyArray<readonly [string, KindBuild]> = [
   ['player', (w, e) => addComponent(w.ecs, e, Player)],
   ['npc', (w, e) => addComponent(w.ecs, e, Npc)],
   ['harvestable', (w, e) => addComponent(w.ecs, e, Harvestable)],
+  ['boss_chest', (w, e) => addComponent(w.ecs, e, BossChestEntity)],
   ['enemy', (w, e) => addComponent(w.ecs, e, Enemy)],
   ['gem', (w, e) => addComponent(w.ecs, e, XpGem)],
   ['gold', (w, e) => addComponent(w.ecs, e, Gold)],

@@ -109,8 +109,6 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getVisibleQuestArrowIds()),
   requestAchievementsToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestAchievementsToggle()),
-  requestBossChestsToggle: (page: Page): Promise<void> =>
-    page.evaluate(() => window.__mainSceneProbe!.requestBossChestsToggle()),
   requestQuartermasterToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.requestQuartermasterToggle()),
   requestInventoryToggle: (page: Page): Promise<void> =>
@@ -140,8 +138,6 @@ export const mainSceneProbe = {
     ),
   tapAbilitiesButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
-  tapBossChestButton: (page: Page): Promise<boolean> =>
-    page.evaluate(() => window.__mainSceneProbe!.tapBossChestButton()),
   tapQuartermasterButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapQuartermasterButton()),
   queueAbilitiesAndAchievementsToggle: (page: Page): Promise<void> =>
@@ -169,8 +165,11 @@ export const mainSceneProbe = {
     page.evaluate((id) => window.__mainSceneProbe!.claimAchievementReward(id), achievementId),
   seedPendingRewardResumeScenario: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.seedPendingRewardResumeScenario()),
-  seedAvailableBossChest: (page: Page): Promise<void> =>
-    page.evaluate(() => window.__mainSceneProbe!.seedAvailableBossChest()),
+  seedAvailableBossChest: (page: Page, x?: number, y?: number): Promise<ProbePoint | null> =>
+    page.evaluate(({ x: fx, y: fy }) => window.__mainSceneProbe!.seedAvailableBossChest(fx, fy), {
+      x,
+      y,
+    }),
   resumePendingRewardPresentations: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.resumePendingRewardPresentations()),
   getRewardOpeningState: (page: Page): Promise<RewardOpeningProbeState> =>

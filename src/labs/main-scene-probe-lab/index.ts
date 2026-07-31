@@ -25,7 +25,7 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { query } from 'bitecs';
+import { query, removeEntity } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
@@ -34,7 +34,8 @@ import {
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
-import { spawnDroppedItem } from '../../core/helpers.js';
+import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
+import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -154,7 +155,6 @@ interface MainSceneInternals {
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
   };
-  bossChestUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   quartermasterUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
   /**
    * The shared reward-opening sequence overlay driven by `AchievementsUI` /
@@ -192,7 +192,6 @@ interface MainSceneInternals {
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
-  bossChestButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   modalPicker?: {
     isOpen(): boolean;
@@ -206,7 +205,6 @@ interface MainSceneInternals {
   requestInventoryToggle?(): void;
   requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
-  requestBossChestsToggle?(): void;
   requestQuartermasterToggle?(): void;
   getSettlementShopOfferSnapshot?(): ReadonlyArray<{
     readonly stockId?: string;
@@ -351,7 +349,7 @@ export interface MainSceneState {
   readonly equipmentOpen: boolean;
   /** True when achievements is open. */
   readonly achievementsOpen: boolean;
-  /** True when the boss chest panel is open. */
+  /** True when the boss chest panel is open. Always false — chests now drop in-world. */
   readonly bossChestOpen: boolean;
   /** True when the Quartermaster shop panel is open. */
   readonly quartermasterOpen: boolean;
@@ -364,7 +362,6 @@ export interface MainSceneState {
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
-  readonly bossChestButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
@@ -590,8 +587,6 @@ export interface MainSceneProbeApi {
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
   requestInventoryToggle(): void;
   requestEquipToggle(): void;
-  /** Queue Boss Chests ([C]) through the scene request path. */
-  requestBossChestsToggle(): void;
   /** Queue Quartermaster ([Q]) through the scene request path. */
   requestQuartermasterToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
@@ -602,8 +597,6 @@ export interface MainSceneProbeApi {
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
-  /** Emit a pointer tap on the Chests corner button. Returns false if unavailable/hidden. */
-  tapBossChestButton(): boolean;
   /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
   tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
@@ -647,7 +640,7 @@ export interface MainSceneProbeApi {
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
-  seedAvailableBossChest(): void;
+  seedAvailableBossChest(x?: number, y?: number): ProbePoint | null;
   /** Run the real MainGameScene shared reward-resume coordinator. */
   resumePendingRewardPresentations(): void;
   /** Snapshot of the shared reward-opening overlay, or the closed shape. */
@@ -829,7 +822,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
-      const bossChestOpen = scene?.bossChestUI?.isOpen() ?? false;
+      const bossChestOpen = false; // chests now drop in-world; panel removed
       const quartermasterOpen = scene?.quartermasterUI?.isOpen() ?? false;
       const conversationNpcEid = scene?.conversationNpcEid ?? null;
       const conversationLineIndex =
@@ -856,7 +849,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
-        bossChestButtonVisible: scene?.bossChestButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         primarySurfaceCount: [
           modalOpen,
@@ -1116,10 +1108,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.requestAchievementsToggle?.();
     },
 
-    requestBossChestsToggle: () => {
-      getScene()?.requestBossChestsToggle?.();
-    },
-
     requestQuartermasterToggle: () => {
       getScene()?.requestQuartermasterToggle?.();
     },
@@ -1149,15 +1137,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapAbilitiesButton: () => {
       const button = getScene()?.abilitiesButton;
-      if (!button?.visible) {
-        return false;
-      }
-      button.emit('pointerdown');
-      return true;
-    },
-
-    tapBossChestButton: () => {
-      const button = getScene()?.bossChestButton;
       if (!button?.visible) {
         return false;
       }
@@ -1390,16 +1369,21 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         },
       });
       scene.achievementsUI?.refresh(world);
-      scene.bossChestUI?.refresh(world);
     },
 
-    seedAvailableBossChest: () => {
+    seedAvailableBossChest: (x?: number, y?: number) => {
       const scene = getScene();
       const world = scene?.world;
       if (!world) {
-        return;
+        return null;
       }
       const chestId = 'boss-chest:ratfolk';
+      const existingEid = world.bossChestEids.get(chestId);
+      if (existingEid !== undefined) {
+        clearEntityStores(world, existingEid);
+        removeEntity(world.ecs, existingEid);
+        world.bossChestEids.delete(chestId);
+      }
       world.bossChests.delete(chestId);
       world.generatedEquipmentRewardBundles.delete(chestId);
       resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS, 'tier4');
@@ -1407,7 +1391,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!created.ok) {
         throw new Error(`probe boss chest setup failed: missing bundle for ${chestId}`);
       }
-      scene.bossChestUI?.refresh(world);
+      const playerEid = playerEidOf(scene);
+      const spawnX = x ?? (playerEid >= 0 ? (world.stores.position.x[playerEid] ?? 0) + 8 : 8);
+      const spawnY = y ?? (playerEid >= 0 ? (world.stores.position.y[playerEid] ?? 0) : 0);
+      spawnBossChestEntity(world, spawnX, spawnY, chestId);
+      return { x: spawnX, y: spawnY };
     },
 
     resumePendingRewardPresentations: () => {
@@ -1520,7 +1508,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!opened.ok) return { ok: false, reason: opened.reason };
       const acknowledged = acknowledgeBossChestReveal(world, chest.chestId);
       if (!acknowledged.ok) return { ok: false, reason: acknowledged.reason };
-      scene.bossChestUI?.refresh(world);
       scene.inventoryUI?.refresh(world);
       return { ok: true };
     },
