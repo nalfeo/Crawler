@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "unified-door-rendering",
+  "task_title": "Unify door rendering: one geometry rule, art as per-tileset lookup",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review (gpt-5.6-sol) of the unified-door design. Verdict SOUND-WITH-CHANGES; plan_divergence minor - the core architecture (one geometry path, art as a per-tileset lookup, retire the top-down hatch art) survived, but 8 blocking/migration defects were found and all are accepted. B1: Floor 2 is ALL open doors (cave_system stamps every room connector DOOR_OPEN; renderableClosedCount === 0) and tile-door-open-side-v1-var-0 does not exist, so retiring pack art regresses every E/W open door to face-on art. Resolved by commissioning the missing side-on OPEN art rather than accepting the regression; if generation fails this escalates to the maintainer instead of shipping silently. B2: contain-fit is one ALGORITHM, not one physical geometry - a square Kenney frame still yields 4x4 ft and the color fallback is a raw one-cell rect - so the design was reframed around a shared doorway BOX contract that the color fallback also honours. B3: the proposed art gate was TAUTOLOGICAL (a full-cell hatch trivially passes width <= 1 cell and height <= 6.5 ft); replaced with a real projection proxy - door art must have transparent side margins (not full-bleed) plus portrait aspect and exact state/orientation coverage - which the retired hatch (0 transparent px) fails and the generated art passes. B4: making doorSet optional breaks the pack validator, the runtime preloader, the terrain-pack lab and three test suites, so full removal was chosen over optional-but-unused. B5: all three pack builders still GENERATE the retired art and their tests require four door PNGs, so builder door emission is retired too or the next build undoes the deletion. B6: the two door-material.png files are durable --from-source build inputs, not runtime textures, so only the 16 rendered variants are deleted (my 20-PNG figure was wrong). B7: optional-but-unused is the worst middle state, so doorSet, DoorSetDef and resolveDoorPoolVariant are fully removed. B8: inverting the e2e assertions is insufficient because openGeneratedCount === renderableOpenCount passes even when every vertical door renders horizontal art, so door telemetry is extended to report exact-vs-cross-orientation selection per texture. The reviewer also corrected two of my measured claims: there are 18 tracked door PNGs (16 rendered + 2 material) not 20, and 8 distinct decoded variants across the 4 packs (floor1-dungeon duplicates floor1-cave, industrial-cave duplicates caeles-fixture) not 2 - the low-differentiation diagnosis stands but the literal two-file claim was wrong. Alternatives argued: (1) keep doorSet canonical but regenerate the art side-on and route it through the shared fit; (2) a first-class door-theme registry referenced by doorThemeId carrying texture, projection and opaque-bounds metadata; (3) transitional generated-first precedence that deletes pack art only once all four generated variants exist. Chosen design retained because (1) and (3) both preserve the two-system split that caused the defect, and (2) adds a registry indirection with no second consumer today.",
+      "models": ["gpt-5.6-sol"]
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

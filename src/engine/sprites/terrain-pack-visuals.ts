@@ -115,13 +115,6 @@ export function collectTerrainPackPreloadEntries(): readonly TerrainPackPreloadE
     ]) {
       entries.push({ kind: 'pool', textureKey: variant.textureKey, path: variant.imagePath });
     }
-    for (const doorVariant of Object.values(pack.doorSet)) {
-      entries.push({
-        kind: 'door',
-        textureKey: doorVariant.textureKey,
-        path: doorVariant.imagePath,
-      });
-    }
   }
   return entries;
 }

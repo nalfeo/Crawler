@@ -27,13 +27,7 @@ import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipme
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
-import { getFloorManifest } from '../../shared/floor-registry.js';
-import { getTerrainPack } from '../../shared/terrain-pack-registry.js';
-import {
-  resolveDoorOrientationFromFlanks,
-  resolveDoorPoolVariant,
-} from '../../shared/terrain-pack-variants.js';
-import { TERRAIN_PACK_CELL_PX } from '../../shared/terrain-pack-types.js';
+import { resolveDoorOrientationFromFlanks } from '../../shared/terrain-pack-variants.js';
 import {
   buildTerrainLayer,
   type LineworkRunStats,
@@ -47,7 +41,8 @@ import {
   DOOR_TARGET_HEIGHT_FT,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
-  resolveGeneratedDoorContainFit,
+  KENNEY_DOOR_FRAME_PX,
+  resolveDoorContainFit,
 } from '../sprites/door-visuals.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from '../generatedAssets/index.js';
 import { type GeneratedSpriteRegistry, type OpaqueBounds } from '../../shared/generated-assets.js';
@@ -348,14 +343,13 @@ declare global {
        * pass, in the REAL game (the probe lab has its own copy of this seam).
        */
       getDoorRenderSummary?: () => {
-        closedPackCount: number;
         closedGeneratedCount: number;
         closedKenneyCount: number;
         closedColorCount: number;
-        openPackCount: number;
         openGeneratedCount: number;
         openKenneyCount: number;
         openColorCount: number;
+        crossOrientationCount: number;
         renderableClosedCount: number;
         renderableOpenCount: number;
       };
@@ -488,35 +482,38 @@ export class MainGameScene extends Phaser.Scene {
   /**
    * Diagnostic door-render counts from the last `updateDoorOverlay()` pass. Read
    * by the main-scene-probe-lab observe seam (`getDoorRenderSummary`) to prove —
-   * in a REAL booted scene — that CLOSED dungeon doors render the active terrain
-   * pack's doorSet art when a pack is active (`closedPackCount`), while non-pack
-   * floors keep the generated/Kenney/color fallback path. The kind buckets are
-   * mutually exclusive;
-   * `renderableClosedCount` is the sum of the three CLOSED buckets so the e2e can
-   * tell "no eligible closed doors on the map" (0) apart from "wrong branch taken"
-   * (generated !== renderable). Doors are drawn per-frame, so these reflect the
-   * most recent overlay pass.
+   * in a REAL booted scene — that every dungeon door renders from the single
+   * unified door path, on every floor, with no placeholder fallback.
+   *
+   * The kind buckets are mutually exclusive; `renderableClosedCount` is the sum of
+   * the three CLOSED buckets so an e2e can tell "no eligible closed doors on this
+   * map" (0) apart from "wrong branch taken" (generated !== renderable).
+   *
+   * `crossOrientationCount` is deliberately NOT a kind bucket — it counts doors
+   * that rendered generated art authored for the OTHER orientation, which is a
+   * visible projection defect a kind-count gate cannot detect: every E/W doorway
+   * could borrow the face-on N/S leaf while `openGeneratedCount` still equals
+   * `renderableOpenCount`. Doors are drawn per-frame, so these reflect the most
+   * recent overlay pass.
    */
   private doorRenderSummary: {
-    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
-    openPackCount: number;
     openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
+    crossOrientationCount: number;
     renderableClosedCount: number;
     renderableOpenCount: number;
   } = {
-    closedPackCount: 0,
     closedGeneratedCount: 0,
     closedKenneyCount: 0,
     closedColorCount: 0,
-    openPackCount: 0,
     openGeneratedCount: 0,
     openKenneyCount: 0,
     openColorCount: 0,
+    crossOrientationCount: 0,
     renderableClosedCount: 0,
     renderableOpenCount: 0,
   };
@@ -2022,19 +2019,18 @@ export class MainGameScene extends Phaser.Scene {
 
   /**
    * Diagnostic door-render provenance counts from the last `updateDoorOverlay()`
-   * pass. Lets the main-scene-probe-lab prove — in a REAL booted scene — that a
-   * pack-using floor stamps `doorSet` textures (`closedPackCount`) and non-pack
-   * floors preserve the generated/Kenney/color fallback chain.
+   * pass. Lets the main-scene-probe-lab prove — in a REAL booted scene — that every
+   * floor renders doors from the one unified path with correct per-orientation art
+   * and no placeholder fallback.
    */
   getDoorRenderSummary(): {
-    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
-    openPackCount: number;
     openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
+    crossOrientationCount: number;
     renderableClosedCount: number;
     renderableOpenCount: number;
   } {
@@ -2919,14 +2915,13 @@ export class MainGameScene extends Phaser.Scene {
       // Nothing to render this pass — zero the observe seam so a prior floor's
       // counts can't mislead the probe into a false "closed door rendered".
       this.doorRenderSummary = {
-        closedPackCount: 0,
         closedGeneratedCount: 0,
         closedKenneyCount: 0,
         closedColorCount: 0,
-        openPackCount: 0,
         openGeneratedCount: 0,
         openKenneyCount: 0,
         openColorCount: 0,
+        crossOrientationCount: 0,
         renderableClosedCount: 0,
         renderableOpenCount: 0,
       };
@@ -2943,26 +2938,26 @@ export class MainGameScene extends Phaser.Scene {
     const doorTargetHeightPx = ftToPx(DOOR_TARGET_HEIGHT_FT);
     const hasSheet = this.textures.exists(DOOR_SHEET_KEY);
 
-    // Derive each generated door texture's scale ONCE from its ACTUAL loaded
-    // opaque box (mirrors terrain-renderer's resolveGeneratedScale). Doors are
-    // CONTAIN-fitted into a one-cell (tileSize) × DOOR_TARGET_HEIGHT_FT box: a
-    // single uniform scale = min(tileSize / box.width, doorHeightPx / box.height)
-    // that never exceeds EITHER axis. Whichever term is smaller binds; the other
-    // comes in under its cap. See DOOR_TARGET_HEIGHT_FT.
+    // Derive each door texture's scale ONCE from its ACTUAL loaded opaque box
+    // (mirrors terrain-renderer's resolveGeneratedScale). Doors are CONTAIN-fitted
+    // into THE DOORWAY BOX — one cell (tileSize) wide × DOOR_TARGET_HEIGHT_FT tall,
+    // floor-anchored — with a single uniform scale = min(tileSize / box.width,
+    // doorHeightPx / box.height) that never exceeds EITHER axis. Whichever term is
+    // smaller binds; the other comes in under its cap. See DOOR_TARGET_HEIGHT_FT.
     //
-    // This clamps WIDTH to one cell. Under the previous HEIGHT-authoritative rule
-    // (`doorHeightPx / box.height` alone) width followed the art's ~1:1.25 aspect
-    // and rendered ~5.2 ft in a 4 ft cell, overhanging the doorway. The width cap
-    // removes that. The cost — face-on N/S art now binds on width and renders
-    // ~4.9–5.1 ft tall rather than 6.5 ft — was accepted explicitly (a generator
-    // ceiling blocks taller art). Side-on E/W art (aspect ~0.47) binds on HEIGHT
-    // instead and renders as a correct narrow tall strip.
+    // ONE FIT, EVERY SOURCE. No draw branch below computes its own scale. This is
+    // the core of the door unification: a per-source scale constant is exactly how
+    // door SIZE came to be decided by asset availability rather than design. The
+    // retired terrain-pack branch drew at `tileSize / TERRAIN_PACK_CELL_PX`, which
+    // is why Floor 1's doors were a square 4 ft × 4 ft against a 5.75 ft player.
     //
-    // PATH REALITY: both shipped floors declare terrain packs whose doorSet wins
-    // precedence below, so this generated-door fit renders ZERO times on them today
-    // (floor1-default = 84 pack doors, 0 generated, verified live). It is fallback
-    // hardening for a pack-less floor / a pack missing an orientation, NOT a change
-    // to the doors the player currently sees on Floor 1.
+    // This clamps WIDTH to one cell. Under a HEIGHT-authoritative rule
+    // (`doorHeightPx / box.height` alone) width follows the art's ~1:1.25 aspect and
+    // renders ~5.2 ft in a 4 ft cell, overhanging the doorway. The width cap removes
+    // that. The cost — face-on N/S art binds on width and renders ~4.9–5.1 ft tall
+    // rather than 6.5 ft — was accepted explicitly (a generator ceiling blocks taller
+    // art). Side-on E/W art (aspect ~0.47) binds on HEIGHT instead and renders as a
+    // correct narrow tall strip.
     //
     // The art contract this relies on: door textures are bottom-aligned, so the
     // opaque box's bottom edge is the floor line (anchorBase origins pin the box
@@ -3011,7 +3006,7 @@ export class MainGameScene extends Phaser.Scene {
       const bounds = generatedDoorBounds.get(key);
       // Shared with tests/unit/generated-door-art.test.ts to prevent the
       // production fit wiring and regression gates from drifting apart.
-      const fit = resolveGeneratedDoorContainFit({
+      const fit = resolveDoorContainFit({
         bounds,
         canvasWidth,
         canvasHeight,
@@ -3025,12 +3020,20 @@ export class MainGameScene extends Phaser.Scene {
       });
     }
     const availableGeneratedKeys: ReadonlySet<string> = new Set(generatedDoorFits.keys());
-    const doorManifest = this.options.floorId ? getFloorManifest(this.options.floorId) : undefined;
-    const terrainPackId =
-      doorManifest?.terrainPacks?.stone ??
-      doorManifest?.terrainPackId ??
-      doorManifest?.terrainPacks?.cave;
-    const activeDoorSet = terrainPackId ? getTerrainPack(terrainPackId).doorSet : null;
+
+    // The Kenney placeholder goes through the SAME fit as generated art rather than
+    // a bespoke `tileSize / 16`. Its frame is a 16×16 SQUARE with no opaque-bounds
+    // metadata, so contain-fit necessarily binds on width and lands at exactly one
+    // cell — numerically identical to the old constant. That equivalence is the
+    // point: the constant is gone, so no future change to the doorway box can leave
+    // this branch behind.
+    const kenneyDoorFit = resolveDoorContainFit({
+      bounds: undefined,
+      canvasWidth: KENNEY_DOOR_FRAME_PX,
+      canvasHeight: KENNEY_DOOR_FRAME_PX,
+      targetWidth: tileSize,
+      targetHeight: doorTargetHeightPx,
+    });
 
     // Door images are recreated every frame, AFTER refreshCameraMasks() has
     // already rebuilt the camera ignore lists. Without pinning uiCamera.ignore
@@ -3040,10 +3043,9 @@ export class MainGameScene extends Phaser.Scene {
     //
     // Anchored BOTTOM-centre on the tile's bottom edge, not centre-centre on the
     // tile: art taller than one tile then grows UPWARD into the wall above
-    // instead of straddling the doorway. For square art (every Kenney frame,
-    // every pack cell, and the historical 256² generated door) bottom-anchoring
-    // at the tile's bottom edge is pixel-identical to centre-anchoring at the
-    // tile centre, so this is a no-op until taller door art lands.
+    // instead of straddling the doorway. For square art (every Kenney frame)
+    // bottom-anchoring at the tile's bottom edge is pixel-identical to
+    // centre-anchoring at the tile centre.
     const addDoorImage = (
       px: number,
       tileBottomY: number,
@@ -3062,14 +3064,17 @@ export class MainGameScene extends Phaser.Scene {
       this.doorImages.push(img);
     };
 
-    let closedPackCount = 0;
     let closedGeneratedCount = 0;
     let closedKenneyCount = 0;
     let closedColorCount = 0;
-    let openPackCount = 0;
     let openGeneratedCount = 0;
     let openKenneyCount = 0;
     let openColorCount = 0;
+    // Doors that rendered generated art authored for the OTHER orientation. Counted
+    // separately because a plain "all doors are generated" gate cannot see it: every
+    // E/W doorway could borrow the face-on N/S leaf and still satisfy such a gate
+    // while showing the wrong projection.
+    let crossOrientationCount = 0;
 
     const tm = floorMap.tileMap;
     // A wall is an in-bounds tile that is neither passable nor a door.
@@ -3094,36 +3099,13 @@ export class MainGameScene extends Phaser.Scene {
         const cx = x * tileSize + tileSize / 2;
         const tileBottomY = y * tileSize + tileSize;
         const orientation = resolveDoorOrientationFromFlanks(horizontalDoorway);
-        const packDoorVariant = activeDoorSet
-          ? resolveDoorPoolVariant(activeDoorSet, { isOpen, orientation })
-          : null;
-        const packDoorTextureKey =
-          packDoorVariant && this.textures.exists(packDoorVariant.textureKey)
-            ? packDoorVariant.textureKey
-            : undefined;
         const mode = resolveDoorRenderMode(isOpen, {
           orientation,
           availableGeneratedKeys,
           hasSheet,
-          packDoorTextureKey,
         });
 
         switch (mode.kind) {
-          case 'pack': {
-            addDoorImage(
-              cx,
-              tileBottomY,
-              mode.textureKey,
-              undefined,
-              tileSize / TERRAIN_PACK_CELL_PX,
-            );
-            if (isOpen) {
-              openPackCount += 1;
-            } else {
-              closedPackCount += 1;
-            }
-            break;
-          }
           case 'generated': {
             // 'generated' is only chosen for a key present in
             // availableGeneratedKeys, which is built from generatedDoorFits, so
@@ -3145,6 +3127,9 @@ export class MainGameScene extends Phaser.Scene {
               fit?.originX ?? 0.5,
               fit?.originY ?? 1,
             );
+            if (mode.orientationMatch === 'cross') {
+              crossOrientationCount += 1;
+            }
             if (isOpen) {
               openGeneratedCount += 1;
             } else {
@@ -3153,17 +3138,19 @@ export class MainGameScene extends Phaser.Scene {
             break;
           }
           case 'kenney-closed': {
-            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_CLOSED_FRAME, tileSize / 16);
+            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_CLOSED_FRAME, kenneyDoorFit.scale);
             closedKenneyCount += 1;
             break;
           }
           case 'kenney-open': {
-            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_OPEN_FRAME, tileSize / 16);
+            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_OPEN_FRAME, kenneyDoorFit.scale);
             openKenneyCount += 1;
             break;
           }
           case 'color': {
-            // Fallback for environments without any door art (e.g. tests).
+            // No art at all (e.g. tests). There is nothing to contain-fit, so this
+            // draws the DOORWAY BOX's own footprint: one cell wide, floor-anchored
+            // on the same bottom edge every other branch anchors to.
             g.fillStyle(mode.open ? 0xd2b48c : 0x6b4423, 1);
             g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
             g.lineStyle(1, mode.open ? 0xf5deb3 : 0x3d2615, 0.9);
@@ -3180,17 +3167,15 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.doorRenderSummary = {
-      closedPackCount,
       closedGeneratedCount,
       closedKenneyCount,
       closedColorCount,
-      openPackCount,
       openGeneratedCount,
       openKenneyCount,
       openColorCount,
-      renderableClosedCount:
-        closedPackCount + closedGeneratedCount + closedKenneyCount + closedColorCount,
-      renderableOpenCount: openPackCount + openGeneratedCount + openKenneyCount + openColorCount,
+      crossOrientationCount,
+      renderableClosedCount: closedGeneratedCount + closedKenneyCount + closedColorCount,
+      renderableOpenCount: openGeneratedCount + openKenneyCount + openColorCount,
     };
   }
 

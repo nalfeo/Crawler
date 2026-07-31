@@ -63,7 +63,6 @@ import {
   type RgbaImage,
 } from './png-buffer.js';
 import type { BuildOutputFile } from './build-industrial-cave.js';
-import { renderDoorTile } from './procedural-surfaces.js';
 import { isWallAlpha } from './wall-opacity.js';
 
 const CAELES_FIXTURE_PACK_ID = 'caeles-fixture' as const;
@@ -307,24 +306,6 @@ export function buildCaelesFixturePack(templatePng: Buffer): CaelesFixtureBuildR
   const floorPool = buildDerivedPool('floor', 3);
   const corridorPool = buildDerivedPool('corridor', 3);
 
-  const doorSpecs = [
-    { key: 'openHorizontal' as const, isOpen: true, orientation: 'horizontal' as const },
-    { key: 'openVertical' as const, isOpen: true, orientation: 'vertical' as const },
-    { key: 'closedHorizontal' as const, isOpen: false, orientation: 'horizontal' as const },
-    { key: 'closedVertical' as const, isOpen: false, orientation: 'vertical' as const },
-  ];
-  const doorEntries: Record<string, { imagePath: string; textureKey: string }> = {};
-  for (const spec of doorSpecs) {
-    const img = renderDoorTile(spec.isOpen, spec.orientation);
-    const fileName = `door-${spec.isOpen ? 'open' : 'closed'}-${spec.orientation}.png`;
-    const relPath = `${packDir}/${fileName}`;
-    files.push({ relativePath: relPath, buffer: encodePng(img) });
-    doorEntries[spec.key] = {
-      imagePath: relPath,
-      textureKey: `terrain-pack-caeles-fixture-door-${spec.isOpen ? 'open' : 'closed'}-${spec.orientation}`,
-    };
-  }
-
   // This build-only fixture pack never renders wall-accent variety (it never
   // ships to a floor manifest — scope is Floor 2's industrial-cave only), so
   // its 4 required accent atlases are fully-transparent no-ops: schema-valid,
@@ -352,7 +333,6 @@ export function buildCaelesFixturePack(templatePng: Buffer): CaelesFixtureBuildR
     },
     floorPool,
     corridorPool,
-    doorSet: doorEntries as TerrainPackDef['doorSet'],
     wallAccents,
   };
 

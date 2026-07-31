@@ -8,12 +8,7 @@
  * "deterministic variants derive only from stable seed + coordinates").
  */
 import { hashStringToSeed, SeededRandom } from './random.js';
-import type {
-  DoorSetDef,
-  PoolVariantDef,
-  TransformId,
-  WallAccentDef,
-} from './terrain-pack-types.js';
+import type { PoolVariantDef, TransformId, WallAccentDef } from './terrain-pack-types.js';
 import { TRANSFORM_IDS } from './terrain-pack-types.js';
 import type { DoorOrientation } from './terrain-pack-types.js';
 
@@ -410,22 +405,4 @@ function deriveLineworkPropSeed(
  */
 export function resolveDoorOrientationFromFlanks(horizontalDoorway: boolean): DoorOrientation {
   return horizontalDoorway ? 'vertical' : 'horizontal';
-}
-export interface DoorVariantKey {
-  readonly isOpen: boolean;
-  readonly orientation: DoorOrientation;
-}
-
-/**
- * Pure resolver: select the terrain-pack door texture for a given
- * open/closed × horizontal/vertical state. Exactly the 4 combinations the
- * `doorSet` schema supports — no locked-door branch (out of scope, refinement
- * #5). Always returns a value (no null) since `doorSet` is a required,
- * fully-populated field on every registered pack.
- */
-export function resolveDoorPoolVariant(doorSet: DoorSetDef, key: DoorVariantKey) {
-  if (key.isOpen) {
-    return key.orientation === 'horizontal' ? doorSet.openHorizontal : doorSet.openVertical;
-  }
-  return key.orientation === 'horizontal' ? doorSet.closedHorizontal : doorSet.closedVertical;
 }

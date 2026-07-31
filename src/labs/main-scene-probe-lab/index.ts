@@ -223,14 +223,13 @@ interface MainSceneInternals {
     packLineworkHubs: readonly { tx: number; ty: number }[];
   };
   getDoorRenderSummary(): {
-    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
-    openPackCount: number;
     openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
+    crossOrientationCount: number;
     renderableClosedCount: number;
     renderableOpenCount: number;
   };
@@ -460,30 +459,32 @@ export interface TerrainRenderSummary {
  * Door-render provenance counts from the last `updateDoorOverlay()` pass in the
  * REAL booted scene. Doors are drawn per-frame as overlay Images (not baked into
  * the terrain RenderTexture); this summary (read from the scene's stored counts)
- * is the observe seam proving CLOSED doors stamp the approved generated texture
- * (`closedPackCount === renderableClosedCount` on a pack-using floor) rather
- * than generated/Kenney/color fallbacks. Buckets are mutually exclusive.
+ * is the observe seam proving doors stamp the approved GENERATED texture
+ * (`closedGeneratedCount === renderableClosedCount`) rather than Kenney/color
+ * fallbacks. Buckets are mutually exclusive.
  */
 export interface DoorRenderSummary {
-  /** Closed doors rendered from a terrain-pack doorSet texture. */
-  readonly closedPackCount: number;
   /** Closed doors rendered from the approved GENERATED texture. */
   readonly closedGeneratedCount: number;
   /** Closed doors rendered from the Kenney closed frame (fallback). */
   readonly closedKenneyCount: number;
   /** Closed doors drawn as a solid-color fill (no art at all). */
   readonly closedColorCount: number;
-  /** Open doors rendered from a terrain-pack doorSet texture. */
-  readonly openPackCount: number;
   /** Open doors rendered from an approved GENERATED open-door texture. */
   readonly openGeneratedCount: number;
   /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
+  /**
+   * Doors whose art came from the OTHER orientation's key (e.g. an E/W doorway
+   * falling back to face-on art because no side-on variant exists). Zero is the
+   * healthy state; a non-zero count names a real art gap.
+   */
+  readonly crossOrientationCount: number;
+  /** Sum of the CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
-  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  /** Sum of the OPEN buckets — total open doors actually rendered. */
   readonly renderableOpenCount: number;
 }
 
@@ -1240,14 +1241,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getDoorRenderSummary: (): DoorRenderSummary => {
       const summary = getScene()?.getDoorRenderSummary();
       return {
-        closedPackCount: summary?.closedPackCount ?? 0,
         closedGeneratedCount: summary?.closedGeneratedCount ?? 0,
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
-        openPackCount: summary?.openPackCount ?? 0,
         openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
+        crossOrientationCount: summary?.crossOrientationCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
         renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };

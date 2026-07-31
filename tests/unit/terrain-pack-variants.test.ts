@@ -16,11 +16,9 @@ import {
   GROUND_DECAL_DENSITY,
   groundDecalHalfExtentPx,
   resolveDoorOrientationFromFlanks,
-  resolveDoorPoolVariant,
   WALL_ACCENT_DENSITY,
 } from '../../src/shared/terrain-pack-variants.js';
 import type {
-  DoorSetDef,
   PoolVariantDef,
   TransformId,
   WallAccentDef,
@@ -70,13 +68,6 @@ const accents: WallAccentDef[] = ['crack', 'mineral-vein', 'rust-brace', 'damp-s
     textureKey: `accent-${id}`,
   }),
 );
-
-const doorSet: DoorSetDef = {
-  openHorizontal: { imagePath: 'oh.png', textureKey: 'open-horizontal' },
-  openVertical: { imagePath: 'ov.png', textureKey: 'open-vertical' },
-  closedHorizontal: { imagePath: 'ch.png', textureKey: 'closed-horizontal' },
-  closedVertical: { imagePath: 'cv.png', textureKey: 'closed-vertical' },
-};
 
 describe('deriveTileVariantSeed', () => {
   it('is a pure function of (floorSeed, tx, ty): same inputs -> same output', () => {
@@ -541,28 +532,6 @@ describe('pickWallAccentSelection — wall-accent density + representation (2026
         expect(extent).toBeLessThanOrEqual(96 * Math.SQRT2 + 1e-9);
       }
     });
-  });
-});
-
-describe('resolveDoorPoolVariant — pure open/closed x horizontal/vertical resolver', () => {
-  it('resolves all 4 combinations to their matching doorSet entry', () => {
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: true, orientation: 'horizontal' })).toBe(
-      doorSet.openHorizontal,
-    );
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: true, orientation: 'vertical' })).toBe(
-      doorSet.openVertical,
-    );
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: false, orientation: 'horizontal' })).toBe(
-      doorSet.closedHorizontal,
-    );
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: false, orientation: 'vertical' })).toBe(
-      doorSet.closedVertical,
-    );
-  });
-
-  it('is a pure function: repeated calls with the same key return the same reference', () => {
-    const key = { isOpen: false, orientation: 'vertical' } as const;
-    expect(resolveDoorPoolVariant(doorSet, key)).toBe(resolveDoorPoolVariant(doorSet, key));
   });
 });
 

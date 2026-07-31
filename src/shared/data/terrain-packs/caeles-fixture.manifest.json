@@ -250,24 +250,6 @@
       "allowedTransforms": ["none"]
     }
   ],
-  "doorSet": {
-    "openHorizontal": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-open-horizontal.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-open-horizontal"
-    },
-    "openVertical": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-open-vertical.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-open-vertical"
-    },
-    "closedHorizontal": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-closed-horizontal.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-closed-horizontal"
-    },
-    "closedVertical": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-closed-vertical.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-closed-vertical"
-    }
-  },
   "wallAccents": [
     {
       "id": "crack",

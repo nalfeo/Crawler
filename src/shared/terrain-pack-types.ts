@@ -265,28 +265,6 @@ export type WallAccentDef = z.infer<typeof wallAccentSchema>;
 /** Number of wall-accent overlay atlases for packs that opt in. */
 export const WALL_ACCENT_COUNT = 4;
 
-/** One door texture (a single open/closed × horizontal/vertical combination). */
-const doorVariantSchema = z
-  .object({
-    imagePath: z.string().min(1),
-    textureKey: z.string().min(1),
-  })
-  .strict();
-
-/**
- * Door contract: EXACTLY open/closed × horizontal/vertical (refinement #5).
- * Locked-door art is explicitly out of scope — no `locked` variants here.
- */
-const doorSetSchema = z
-  .object({
-    openHorizontal: doorVariantSchema,
-    openVertical: doorVariantSchema,
-    closedHorizontal: doorVariantSchema,
-    closedVertical: doorVariantSchema,
-  })
-  .strict();
-export type DoorSetDef = z.infer<typeof doorSetSchema>;
-
 /**
  * Optional floor pools for rooms whose role — not terrain family — should look
  * distinct. Walls, corridors, and doors remain owned by the surrounding pack.
@@ -455,7 +433,16 @@ export const terrainPackDefSchema = z
     wallAutotile: wallAutotileSchema,
     floorPool: variantPoolSchema,
     corridorPool: variantPoolSchema,
-    doorSet: doorSetSchema,
+    /**
+     * NOTE — there is deliberately no `doorSet`. Terrain packs used to carry their
+     * own door art, which won precedence over the shared door renderer and was
+     * drawn at a pack-specific scale. That made a door's size and projection depend
+     * on which pack happened to ship art rather than on one design rule. Doors are
+     * now owned end-to-end by `src/engine/sprites/door-visuals.ts` for every floor;
+     * per-tileset door LOOKS re-enter there, through the same selection and fit.
+     * `.strict()` below means a manifest that still declares `doorSet` fails
+     * validation loudly instead of being silently ignored.
+     */
     /** Optional set of exactly `WALL_ACCENT_COUNT` mask-aware accent atlases. */
     wallAccents: z.array(wallAccentSchema).length(WALL_ACCENT_COUNT).optional(),
     specialFloorPools: specialFloorPoolsSchema.optional(),

@@ -3,7 +3,7 @@ import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_TARGET_HEIGHT_FT,
-  resolveGeneratedDoorContainFit,
+  resolveDoorContainFit,
 } from '../../src/engine/sprites/door-visuals.js';
 
 const ALL_GENERATED_DOOR_TEXTURE_KEYS = Object.values(GENERATED_DOOR_TEXTURE_KEYS);
@@ -81,7 +81,7 @@ function renderedFt(bounds: NonNullable<ManifestEntry['opaqueBounds']>): {
   widthFt: number;
   heightFt: number;
 } {
-  const fit = resolveGeneratedDoorContainFit({
+  const fit = resolveDoorContainFit({
     bounds,
     canvasWidth: bounds.canvasWidth,
     canvasHeight: bounds.canvasHeight,
@@ -181,22 +181,69 @@ describe('generated door art contract', () => {
     expect(Math.abs(closedWidthFt - openWidthFt)).toBeLessThanOrEqual(0.5);
   });
 
-  it('both HORIZONTAL door keys name art that actually exists', () => {
+  it('ALL FOUR wired door keys name art that actually exists', () => {
     // The wired key is a hand-typed variant index, and `sprites:approve` writes
     // whichever index won review — so the two are free to drift apart silently.
     // When they do, the renderer's fallback chain hides it perfectly: the door
-    // simply keeps rendering Kenney placeholder art and nothing fails. That is
-    // exactly how `welcome-room-door-var-2` sat approved with zero consumers.
-    expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedHorizontal]).toBeDefined();
-    expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.openHorizontal]).toBeDefined();
+    // simply keeps rendering the other orientation's leaf (or Kenney placeholder
+    // art) and nothing fails. That is exactly how `welcome-room-door-var-2` sat
+    // approved with zero consumers.
+    //
+    // All four are now REQUIRED. The OPEN E/W leaf was the last gap (it was the
+    // reason a cross-orientation fallback existed at all); with it generated,
+    // every state x orientation has genuine art and `crossOrientationCount`
+    // must be 0 at runtime. Re-opening the gap must fail here, loudly, rather
+    // than degrade silently into face-on art on every E/W open doorway.
+    for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
+      expect(manifest.entries[key], `no approved entry for wired key ${key}`).toBeDefined();
+    }
   });
 
-  it('the side-on (closed E/W) key names art that actually exists', () => {
-    // PR #2375 shipped genuine side-on art for the closed E/W door and this PR
-    // wired it. Unlike the still-missing OPEN E/W key, the closed side-on key must
-    // resolve to a real entry or the renderer silently falls back to the face-on
-    // leaf and the edge-on read is lost with nothing failing.
-    expect(manifest.entries[GENERATED_DOOR_TEXTURE_KEYS.closedVertical]).toBeDefined();
+  describe('projection contract — no full-cell top-down hatch may return', () => {
+    /**
+     * THE POINT OF THIS BLOCK. Terrain packs used to override the renderer with
+     * their own door art drawn in a DIFFERENT PROJECTION: a top-down hatch that
+     * filled the whole 64x64 cell. Deleting those four PNGs fixes today; it does
+     * not stop a future tileset from reintroducing the same mistake. These three
+     * properties are the machine-checkable difference between a side-on elevation
+     * (what this game draws) and a top-down hatch (what it must not).
+     *
+     * NON-TAUTOLOGY, MEASURED: the retired `floor1-dungeon` door PNGs were
+     * 64x64 with ZERO transparent pixels — opaque box 64x64, aspect exactly
+     * 1.000, flush to every edge. They fail (1) (no side margin), (2) (aspect
+     * 1.0 is not < 0.95) and would render as a 4x4 ft full-cell block. So this
+     * block genuinely rejects the art being retired rather than restating the
+     * fit algorithm. Feeding those bounds through `renderedFt` alone would NOT
+     * fail — a 1:1 box contain-fits to a legal 4x4 ft — which is exactly why the
+     * width/height caps above are insufficient on their own.
+     */
+    for (const { key, entry } of approved) {
+      const b = entry.opaqueBounds!;
+
+      it(`${key}: has transparent side margins (art is not flush to the cell edge)`, () => {
+        // A door leaf is narrower than its containing cell — the jamb/wall shows
+        // beside it. A hatch painted to the canvas edge has no margin at all.
+        expect(b.width, `${key} opaque width vs canvas`).toBeLessThan(b.canvasWidth);
+        expect(b.x, `${key} left margin`).toBeGreaterThan(0);
+        expect(b.x + b.width, `${key} right margin`).toBeLessThan(b.canvasWidth);
+      });
+
+      it(`${key}: is PORTRAIT (a standing leaf, not a square floor hatch)`, () => {
+        // Every side-on door is taller than it is wide. The retired hatches were
+        // exactly square (1.000); the shipped elevations are 0.47-0.82.
+        expect(b.width / b.height, `${key} opaque aspect`).toBeLessThan(0.95);
+      });
+
+      it(`${key}: is BOTTOM-WEIGHTED (stands on the floor, not centred in the cell)`, () => {
+        // The renderer pins the opaque box's bottom edge to the tile's bottom, so
+        // art with a large bottom gap floats. Allow a small tolerance for the
+        // generator's anti-aliased threshold row.
+        const bottomGap = b.canvasHeight - (b.y + b.height);
+        expect(bottomGap, `${key} bottom gap px`).toBeLessThanOrEqual(
+          Math.round(b.canvasHeight * 0.12),
+        );
+      });
+    }
   });
 
   for (const key of ALL_GENERATED_DOOR_TEXTURE_KEYS) {
