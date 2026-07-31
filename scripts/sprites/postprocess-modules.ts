@@ -247,7 +247,7 @@ export const postprocessModules: Record<string, ModuleHandler> = {
 
     const trimmed = trimTransparentEdges(image);
     if (trimmed.width > 0 && trimmed.height > 0) {
-      const minDim = (params.minDimension as number) ?? 64;
+      const minDim = (params.minDimension as number) ?? 256;
       const result = scaleToMinDimension(trimmed, minDim);
       ctx.pushStep('trim-fit', `Trim + fit (${minDim}px min)`, result);
       return result;

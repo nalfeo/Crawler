@@ -25,7 +25,7 @@ const validBrief: Brief = {
   variations: [],
   minVariations: 4,
   judge: { enabled: false, maxVariants: 16 },
-  postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'strict' },
+  postprocessing: { trimAndFit: false, minDimension: 256, paletteMode: 'strict' },
   frameSequence: { enabled: false, frameCount: 3, frameRate: 8, loop: true },
 };
 

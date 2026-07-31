@@ -315,11 +315,11 @@ export const briefSchema = z
     postprocessing: z
       .object({
         trimAndFit: z.boolean().default(false),
-        minDimension: z.number().int().min(8).max(256).default(64),
+        minDimension: z.number().int().min(8).max(256).default(256),
         paletteMode: z.enum(['none', 'strict']).default('none'),
       })
       .strict()
-      .default({ trimAndFit: false, minDimension: 64, paletteMode: 'none' }),
+      .default({ trimAndFit: false, minDimension: 256, paletteMode: 'none' }),
     /**
      * Opt-in ORDERED frame-sequence mode (walk-cycle animation sheets).
      *
