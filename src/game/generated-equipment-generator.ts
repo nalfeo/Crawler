@@ -332,19 +332,14 @@ function hasNonArmorStatBonus(statBonuses: Partial<Record<StatId, number>>): boo
 }
 
 /**
- * Whether a base carries any inherent NON-armor stat bonus. Pure and
- * registry-free. A base's inherent stat bonuses never change based on who is
- * generating an instance from it — the SAME base always produces the SAME
- * `statBonuses` at a given rarity, regardless of caller (reward resolver,
- * Quartermaster, or anything else). This predicate exists so a caller that
- * needs Common-rarity output to carry no non-armor bonus (Common contributes
- * zero rarity-effect units, see {@link RARITY_EFFECT_BUDGET}`.common === 0`,
- * so a base's inherent bonus is the only possible non-armor source at Common)
- * can filter such bases out of *candidacy* before generation, rather than
- * generating and then mutating the output. The reward-bundle resolver is the
- * only current caller that does this, and only for a Common draw specifically
- * — the base remains fully eligible (with its bonus intact) for Uncommon/Rare
- * draws, and for any other caller (e.g. Quartermaster) at any rarity.
+ * Whether a base's equipment definition carries any inherent NON-armor stat
+ * bonus. Pure and registry-free. Under the decoupled model, generated
+ * instances do NOT spread a base's inherent non-armor stats — non-armor power
+ * is affix-driven. This predicate inspects the base definition (not the
+ * generated output) and remains valid as an authoring utility (e.g.
+ * categorizing or auditing base pools). It is NOT used to filter Common
+ * candidacy: all bases are eligible for Common since their non-armor base
+ * stats are never copied into the generated instance.
  */
 export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
   const resolved = resolveGeneratedEquipmentBase(baseId);
@@ -353,20 +348,16 @@ export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): bool
 
 /**
  * Whether a *generated instance's* final, frozen stat-bonus map carries any
- * non-armor entry. Unlike {@link generatedEquipmentBaseHasNonArmorStatBonus}
- * (which inspects a base's inherent bonuses before generation), this checks
- * the actual output — used as a defense-in-depth, post-generation tripwire by
- * callers that pre-filtered candidacy (see above) so a future data-authoring
- * mistake (a base's `statBonuses` changing after the candidate list was
- * built, or a rarity-effect budget misconfiguration) still fails loudly
- * instead of silently shipping a Common item with a non-armor bonus.
+ * non-armor entry. Under the decoupled model, Common instances will always
+ * return false here (no effects → no non-armor stats). For Uncommon/Rare,
+ * non-armor stats come only from affix effects. Used as a post-generation
+ * tripwire to confirm the contract is satisfied.
  */
 export function generatedEquipmentInstanceHasNonArmorStatBonus(
   instance: GeneratedEquipmentInstanceV1,
 ): boolean {
   return hasNonArmorStatBonus(instance.frozen.statBonuses);
 }
-
 function effectsAreCompatible(
   left: GeneratedEquipmentEffectDefinition,
   right: GeneratedEquipmentEffectDefinition,
@@ -514,16 +505,10 @@ export function generateEquipmentInstance(
     options.allowedEffectKinds,
   );
   const resolvedEffects = materializeEffects(effectDefinitions);
-  // The base's inherent stat bonuses are spread verbatim, identically for
-  // every caller and every rarity — a base's own stats never depend on who is
-  // generating an instance from it (see
-  // {@link generatedEquipmentBaseHasNonArmorStatBonus}'s doc comment). Callers
-  // that need a Common draw to carry no non-armor bonus must filter such
-  // bases out of candidacy *before* calling this function; this function
-  // itself never mutates a base's stats based on rarity or caller.
-  const statBonuses: Partial<Record<StatId, number>> = {
-    ...resolvedBase.equipmentDef.statBonuses,
-  };
+  // Under the decoupled model, non-armor power is affix-driven. Base inherent
+  // non-armor stats are NOT spread into generated instances — only armor (for
+  // armor-kind bases) and rarity-effect stats contribute to statBonuses.
+  const statBonuses: Partial<Record<StatId, number>> = {};
   if (resolvedBase.targetKind === 'armor') {
     statBonuses.armor = resolvedInherent;
   }
