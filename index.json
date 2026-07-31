@@ -1,5 +1,16 @@
 [
   {
+    "commit": "da2adafab291b358dbdec3fc8aa4486aadb1e33e",
+    "commitDate": "2026-07-31T07:43:01Z",
+    "commitSubject": "Restore tier1 Floor 2 accessory reward eligibility (#2406)",
+    "capturedAt": "2026-07-31T08:50:50.600Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30614271767",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/da2adafab291b358dbdec3fc8aa4486aadb1e33e.json"
+  },
+  {
     "commit": "36826783a68d2c492190b35f709324f1810a1fc1",
     "commitDate": "2026-07-31T07:24:35Z",
     "commitSubject": "Guard InventoryBag lanes with accessor-only reads (#2365)",
