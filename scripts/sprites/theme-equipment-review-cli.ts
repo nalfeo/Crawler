@@ -181,6 +181,11 @@ const commandSchema = z.discriminatedUnion('action', [
       // accepted from a caller.
       plan: z.unknown(),
       overwrite: z.boolean().optional(),
+      // When true, skip the local-file-already-exists check and go straight
+      // to re-publishing the existing local content.  The remote overwrite
+      // protection still uses the caller's `overwrite` flag so a retry can
+      // never silently clobber a *different* plan that landed at the same id.
+      retryPublish: z.boolean().optional(),
     })
     .strict(),
   baseCommandSchema.extend({ action: z.literal('state') }).strict(),
@@ -644,7 +649,11 @@ function readAuthoredPlans(repoRoot: string): readonly AuthoredPlanEntry[] {
  * instead; there is deliberately no override flag.
  */
 export async function savePlan(
-  command: { readonly plan: unknown; readonly overwrite?: boolean },
+  command: {
+    readonly plan: unknown;
+    readonly overwrite?: boolean;
+    readonly retryPublish?: boolean;
+  },
   deps: Pick<ThemeEquipmentReviewCliDeps, 'store' | 'repoRoot' | 'publishPlan'>,
 ): Promise<Record<string, unknown>> {
   const plan = themeEquipmentSetPlanSchema.parse(command.plan);
@@ -680,7 +689,11 @@ export async function savePlan(
   }
 
   const exists = existsSync(target);
-  if (exists && command.overwrite !== true) {
+  // On a publish-retry the local file was intentionally kept so the authored
+  // plan is not lost.  Allow overwriting it (same bytes) without requiring the
+  // caller to tick the overwrite checkbox — that flag still controls the
+  // *remote* copy so a retry can never clobber a different maintainer's plan.
+  if (exists && command.overwrite !== true && command.retryPublish !== true) {
     throw new Error(
       `Plan ${THEME_SET_PLAN_DIR.split(path.sep).join('/')}/${plan.id}.json already exists. ` +
         `Pass overwrite to replace it.`,

@@ -494,11 +494,11 @@ describe('runSettlementMaintenancePlanner', () => {
       'iron-visor',
       'steel-pauldrons',
       'iron-breastplate',
-      'travelers-cloak',
-      'sturdy-belt',
+      'bronze-vambrace',
+      'iron-armguard',
       'iron-greaves',
       'leather-boots',
-      'leather-gloves',
+      'iron-sword',
     ];
     expect(baseIds.length).toBe(9); // 1 more than the equipment action cap (8)
     for (const baseId of baseIds) {

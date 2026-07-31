@@ -538,6 +538,71 @@ describe('player floor carryover', () => {
     expect(destination.inventories.get(destinationPlayer)).toEqual(source.inventories.get(player));
   });
 
+  it.each(['floor2-family-annihilator', 'floor2-floor-cleared', 'floor2-scorched-earth'] as const)(
+    'restores the legacy tier4 reward bundle for %s',
+    (achievementId) => {
+      const runKey = `legacy-tier4-${achievementId}`;
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const bundled = createGeneratedEquipmentInstance(
+        source,
+        generatedEquipmentInput({
+          baseId: `legacy.${achievementId}`,
+          slots: ['feet'],
+          rarity: 'rare',
+        }),
+      );
+      source.achievements.unlockedIds.add(achievementId);
+      source.generatedEquipmentRewardBundles.set(achievementId, {
+        schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+        achievementId,
+        tier: 'tier4',
+        instanceKeys: [bundled.instanceId],
+      });
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(
+        destination,
+        destinationPlayer,
+        JSON.parse(JSON.stringify(capturePlayerCarryover(source, player))),
+      );
+
+      expect(destination.generatedEquipmentRewardBundles.get(achievementId)?.tier).toBe('tier4');
+    },
+  );
+
+  it('still fails closed for a tier4 bundle on an achievement outside the legacy allowlist', () => {
+    const runKey = 'invalid-tier4-nonlegacy';
+    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const player = spawnPlayer(source, 0, 0);
+    const bundled = createGeneratedEquipmentInstance(
+      source,
+      generatedEquipmentInput({
+        baseId: 'legacy.non-allowlisted',
+        slots: ['feet'],
+        rarity: 'rare',
+      }),
+    );
+    source.achievements.unlockedIds.add('floor2-field-kit');
+    source.generatedEquipmentRewardBundles.set('floor2-field-kit', {
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId: 'floor2-field-kit',
+      tier: 'tier4',
+      instanceKeys: [bundled.instanceId],
+    });
+
+    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    expect(() =>
+      restorePlayerCarryover(
+        destination,
+        destinationPlayer,
+        JSON.parse(JSON.stringify(capturePlayerCarryover(source, player))),
+      ),
+    ).toThrow(/tier tier4 does not match achievement tier tier1/);
+  });
+
   it('round-trips exact generated ownership, bundles, grants, and frozen weapon behavior', () => {
     const runKey = 'carryover-generated-run';
     const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
@@ -1601,6 +1666,78 @@ describe('player floor carryover', () => {
         gold: 25,
         materials: ['floor1-common-scrap', 'floor1-common-scrap'],
       });
+    });
+
+    it.each([
+      'floor2-family-annihilator',
+      'floor2-floor-cleared',
+      'floor2-scorched-earth',
+    ] as const)('restores the legacy pending tier4 presentation for %s', (achievementId) => {
+      const runKey = `legacy-tier4-presentation-${achievementId}`;
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const generated = createGeneratedEquipmentInstance(
+        source,
+        generatedEquipmentInput({
+          baseId: `legacy-presentation.${achievementId}`,
+          slots: ['feet'],
+          rarity: 'rare',
+        }),
+      );
+      expect(addGeneratedEquipmentToBag(source, player, generated.instanceId).ok).toBe(true);
+      source.achievements.unlockedIds.add(achievementId);
+      source.achievements.claimedIds.add(achievementId);
+      source.achievements.pendingPresentations.set(achievementId, {
+        kind: 'equipment',
+        tier: 'tier4',
+        instanceKeys: [generated.instanceId],
+      });
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      restorePlayerCarryover(
+        destination,
+        destinationPlayer,
+        JSON.parse(JSON.stringify(capturePlayerCarryover(source, player))),
+      );
+
+      expect(destination.achievements.pendingPresentations.get(achievementId)).toEqual({
+        kind: 'equipment',
+        tier: 'tier4',
+        instanceKeys: [generated.instanceId],
+      });
+    });
+
+    it('rejects a pending tier4 presentation outside the legacy allowlist', () => {
+      const runKey = 'invalid-tier4-presentation';
+      const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(source, 0, 0);
+      const generated = createGeneratedEquipmentInstance(
+        source,
+        generatedEquipmentInput({
+          baseId: 'legacy-presentation.non-allowlisted',
+          slots: ['feet'],
+          rarity: 'rare',
+        }),
+      );
+      expect(addGeneratedEquipmentToBag(source, player, generated.instanceId).ok).toBe(true);
+      source.achievements.unlockedIds.add('floor2-field-kit');
+      source.achievements.claimedIds.add('floor2-field-kit');
+      source.achievements.pendingPresentations.set('floor2-field-kit', {
+        kind: 'equipment',
+        tier: 'tier4',
+        instanceKeys: [generated.instanceId],
+      });
+
+      const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
+      const destinationPlayer = spawnPlayer(destination, 0, 0);
+      expect(() =>
+        restorePlayerCarryover(
+          destination,
+          destinationPlayer,
+          JSON.parse(JSON.stringify(capturePlayerCarryover(source, player))),
+        ),
+      ).toThrow(/has tier "tier4", expected "tier1"/);
     });
 
     it('round-trips a boss chest revealedGrant through a JSON save/load cycle without mutating it', () => {

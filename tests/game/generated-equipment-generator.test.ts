@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
 import {
-  GeneratedEquipmentGeneratorError,
+  _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
-  getGeneratedEquipmentBaseV1,
+  _getGeneratedEquipmentBaseV1 as getGeneratedEquipmentBaseV1,
 } from '../../src/game/generated-equipment-generator.js';
 import { canonicalJson } from '../../src/shared/canonical-json.js';
 import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
@@ -113,7 +113,7 @@ describe('deterministic generated equipment', () => {
     );
 
     expect(affixArmor.frozen.statBonuses.armor).toBe(expectedArmor);
-    expect(affixArmor.frozen.statBonuses.constitution).toBe(effectConstitution);
+    expect(affixArmor.frozen.statBonuses.constitution ?? 0).toBe(effectConstitution);
     expect(affixArmor.frozen.activeWeaponSnapshot).toBeNull();
     expect(affixArmor.frozen.displayName).toMatch(/Iron Breastplate \+3$/);
     expect(

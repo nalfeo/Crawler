@@ -16,11 +16,9 @@ import {
   GROUND_DECAL_DENSITY,
   groundDecalHalfExtentPx,
   resolveDoorOrientationFromFlanks,
-  resolveDoorPoolVariant,
   WALL_ACCENT_DENSITY,
 } from '../../src/shared/terrain-pack-variants.js';
 import type {
-  DoorSetDef,
   PoolVariantDef,
   TransformId,
   WallAccentDef,
@@ -70,13 +68,6 @@ const accents: WallAccentDef[] = ['crack', 'mineral-vein', 'rust-brace', 'damp-s
     textureKey: `accent-${id}`,
   }),
 );
-
-const doorSet: DoorSetDef = {
-  openHorizontal: { imagePath: 'oh.png', textureKey: 'open-horizontal' },
-  openVertical: { imagePath: 'ov.png', textureKey: 'open-vertical' },
-  closedHorizontal: { imagePath: 'ch.png', textureKey: 'closed-horizontal' },
-  closedVertical: { imagePath: 'cv.png', textureKey: 'closed-vertical' },
-};
 
 describe('deriveTileVariantSeed', () => {
   it('is a pure function of (floorSeed, tx, ty): same inputs -> same output', () => {
@@ -544,35 +535,19 @@ describe('pickWallAccentSelection — wall-accent density + representation (2026
   });
 });
 
-describe('resolveDoorPoolVariant — pure open/closed x horizontal/vertical resolver', () => {
-  it('resolves all 4 combinations to their matching doorSet entry', () => {
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: true, orientation: 'horizontal' })).toBe(
-      doorSet.openHorizontal,
-    );
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: true, orientation: 'vertical' })).toBe(
-      doorSet.openVertical,
-    );
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: false, orientation: 'horizontal' })).toBe(
-      doorSet.closedHorizontal,
-    );
-    expect(resolveDoorPoolVariant(doorSet, { isOpen: false, orientation: 'vertical' })).toBe(
-      doorSet.closedVertical,
-    );
+describe('resolveDoorOrientationFromFlanks — names the WALL RUN, not the passage', () => {
+  // Corrected 2026-07-31. This used to assert the inverse, pinning the passage
+  // axis (the convention of the now-deleted top-down `renderDoorTile` hatch).
+  // Consumers read the result as the wall run in order to pick a VIEWING ANGLE,
+  // so the old mapping handed every doorway its sibling's art. It was dead code
+  // on the shipped floors — pack art won selection unconditionally — until the
+  // pack path was retired.
+  it('horizontalDoorway=true (walls left+right) → horizontal: the wall runs left↔right, seen FACE-ON', () => {
+    expect(resolveDoorOrientationFromFlanks(true)).toBe('horizontal');
   });
 
-  it('is a pure function: repeated calls with the same key return the same reference', () => {
-    const key = { isOpen: false, orientation: 'vertical' } as const;
-    expect(resolveDoorPoolVariant(doorSet, key)).toBe(resolveDoorPoolVariant(doorSet, key));
-  });
-});
-
-describe('resolveDoorOrientationFromFlanks — door axis semantics (Fix 2)', () => {
-  it('horizontalDoorway=true (walls left+right) → vertical art (passage runs top-to-bottom)', () => {
-    expect(resolveDoorOrientationFromFlanks(true)).toBe('vertical');
-  });
-
-  it('horizontalDoorway=false (walls top+bottom) → horizontal art (passage runs left-to-right)', () => {
-    expect(resolveDoorOrientationFromFlanks(false)).toBe('horizontal');
+  it('horizontalDoorway=false (walls top+bottom) → vertical: the wall runs up↕down, seen SIDE-ON', () => {
+    expect(resolveDoorOrientationFromFlanks(false)).toBe('vertical');
   });
 
   it('is a pure function: same input always returns the same string', () => {

@@ -20,6 +20,10 @@ import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { WeaponType } from '../shared/constants.js';
 import { getFloor2WeaponWaveABase } from '../shared/data/floor2-weapon-bases.js';
+import {
+  getFloor2BasicLeatherNonWeaponBase,
+  getFloor2BasicLeatherWeaponBase,
+} from '../shared/data/floor2-basic-leather-bases.js';
 import type { SeededRandom } from '../shared/random.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 
@@ -31,7 +35,7 @@ export type GeneratedEquipmentGeneratorErrorCode =
   | 'registry-unconfigured'
   | 'unknown-base';
 
-export class GeneratedEquipmentGeneratorError extends Error {
+export class _GeneratedEquipmentGeneratorError extends Error {
   constructor(
     readonly code: GeneratedEquipmentGeneratorErrorCode,
     message: string,
@@ -42,7 +46,7 @@ export class GeneratedEquipmentGeneratorError extends Error {
   }
 }
 
-export interface GenerateEquipmentInstanceRequest {
+export interface _GenerateEquipmentInstanceRequest {
   readonly baseId: string;
   readonly itemLevel: number;
   readonly rarity: GeneratedEquipmentRarity;
@@ -159,7 +163,7 @@ const EFFECT_CATALOG: readonly GeneratedEquipmentEffectDefinition[] = deepFreeze
 ]);
 
 function fail(code: GeneratedEquipmentGeneratorErrorCode, message: string, path: string): never {
-  throw new GeneratedEquipmentGeneratorError(code, message, path);
+  throw new _GeneratedEquipmentGeneratorError(code, message, path);
 }
 
 function validateEffectCatalog(): void {
@@ -231,8 +235,18 @@ function baseTags(
 }
 
 function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipmentBase {
-  const floor2WeaponBase = getFloor2WeaponWaveABase(baseId);
-  const equipmentDef = floor2WeaponBase?.equipmentDef ?? getEquipmentDefForItem(baseId);
+  // Resolution order: Floor 2 Wave A weapon bases -> Classic Fantasy Basic
+  // Leather weapon bases -> Basic Leather non-weapon bases -> the shared
+  // equipment catalog (which already carries Wave B, per ADR 0068). This is
+  // the sole bridge from a stable/base ID to a resolvable equipment def —
+  // Basic Leather bases are deliberately NOT added to `equipmentDefs.ts`
+  // (unlike Wave B, which predates this slice and is left untouched).
+  const floor2WeaponBase =
+    getFloor2WeaponWaveABase(baseId) ?? getFloor2BasicLeatherWeaponBase(baseId);
+  const equipmentDef =
+    floor2WeaponBase?.equipmentDef ??
+    getFloor2BasicLeatherNonWeaponBase(baseId) ??
+    getEquipmentDefForItem(baseId);
   if (equipmentDef === undefined) {
     fail('unknown-base', `Unknown generated-equipment base ${baseId}`, '$.request.baseId');
   }
@@ -285,7 +299,7 @@ function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipme
   });
 }
 
-export function getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentBaseV1 {
+export function _getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentBaseV1 {
   return resolveGeneratedEquipmentBase(baseId).base;
 }
 
@@ -304,6 +318,46 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
   return resolved.weaponDef.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
 }
 
+/**
+ * Pure predicate: does this stat-bonus map carry any non-zero, non-armor
+ * entry? Extracted so both the base-level check
+ * ({@link generatedEquipmentBaseHasNonArmorStatBonus}) and the instance-level
+ * check ({@link generatedEquipmentInstanceHasNonArmorStatBonus}) share one
+ * definition of "non-armor stat bonus".
+ */
+function hasNonArmorStatBonus(statBonuses: Partial<Record<StatId, number>>): boolean {
+  return Object.entries(statBonuses).some(
+    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+  );
+}
+
+/**
+ * Whether a base's equipment definition carries any inherent NON-armor stat
+ * bonus. Pure and registry-free. Under the decoupled model, generated
+ * instances do NOT spread a base's inherent non-armor stats — non-armor power
+ * is affix-driven. This predicate inspects the base definition (not the
+ * generated output) and remains valid as an authoring utility (e.g.
+ * categorizing or auditing base pools). It is NOT used to filter Common
+ * candidacy: all bases are eligible for Common since their non-armor base
+ * stats are never copied into the generated instance.
+ */
+export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
+  const resolved = resolveGeneratedEquipmentBase(baseId);
+  return hasNonArmorStatBonus(resolved.equipmentDef.statBonuses);
+}
+
+/**
+ * Whether a *generated instance's* final, frozen stat-bonus map carries any
+ * non-armor entry. Under the decoupled model, Common instances will always
+ * return false here (no effects → no non-armor stats). For Uncommon/Rare,
+ * non-armor stats come only from affix effects. Used as a post-generation
+ * tripwire to confirm the contract is satisfied.
+ */
+export function generatedEquipmentInstanceHasNonArmorStatBonus(
+  instance: GeneratedEquipmentInstanceV1,
+): boolean {
+  return hasNonArmorStatBonus(instance.frozen.statBonuses);
+}
 function effectsAreCompatible(
   left: GeneratedEquipmentEffectDefinition,
   right: GeneratedEquipmentEffectDefinition,
@@ -411,7 +465,7 @@ export interface GenerateEquipmentInstanceWorld {
 
 export function generateEquipmentInstance(
   world: GenerateEquipmentInstanceWorld,
-  request: GenerateEquipmentInstanceRequest,
+  request: _GenerateEquipmentInstanceRequest,
   options: GenerateEquipmentInstanceOptions = {},
 ): GeneratedEquipmentInstanceV1 {
   if (world.generatedEquipmentRegistry.runKey === null) {
@@ -451,6 +505,9 @@ export function generateEquipmentInstance(
     options.allowedEffectKinds,
   );
   const resolvedEffects = materializeEffects(effectDefinitions);
+  // Under the decoupled model, non-armor power is affix-driven. Base inherent
+  // non-armor stats are NOT spread into generated instances — only armor (for
+  // armor-kind bases) and rarity-effect stats contribute to statBonuses.
   const statBonuses: Partial<Record<StatId, number>> = {};
   if (resolvedBase.targetKind === 'armor') {
     statBonuses.armor = resolvedInherent;

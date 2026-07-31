@@ -338,6 +338,81 @@ weight table was already in place). Consequences:
   85/15 split its ADR/PR description establishes); no further changes were
   needed there beyond widening the achievement-side enum.
 
+### Amendment (2026-07-30): `common`/`uncommon`/`rare` player-facing vocabulary; `tier4` retracted from achievement JSON; full 36-achievement catalog
+
+The `floor2-inventory-reward-pool` slice required the human's exact
+player-facing tier vocabulary — `common`/`uncommon`/`rare`, mapped from the
+internal `tier1`/`tier2`/`tier3` — for **every** Floor 2 achievement reward,
+and explicitly forbade `tier4` from ever appearing in achievement JSON again.
+This **reverses** the 2026-07-31 amendment above, which had made `tier4` a
+shared Rare-capable tier available to both boss chests and the three
+`brutal`-difficulty achievements. Escalating a second time was unnecessary —
+the human's own task instructions were the decision this time, not a
+cross-session collision — but the reversal is significant enough to record
+explicitly rather than silently re-editing the prior amendment's prose away:
+
+1. **Vocabulary.** `src/shared/achievements.ts` now defines
+   `FLOOR2_ACHIEVEMENT_LOOT_TIERS = ['common', 'uncommon', 'rare']` (a
+   `Floor2AchievementLootTier`) as the only tier vocabulary that may appear in
+   `achievements.floor2.json`, with a one-way
+   `FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER` map
+   (`common → tier1`, `uncommon → tier2`, `rare → tier3`) applied exactly once,
+   at each achievement-reward call site, before invoking
+   `resolveEquipmentRewardBundle`/`claimGeneratedEquipmentRewardBundle`. The
+   resolver's own `tier1`-`tier4` keyspace, `EQUIPMENT_REWARD_TIER_RARITIES`
+   pools, and the boss-chest 85%/15% Uncommon/Rare `tier4` split are all
+   **unchanged** — only a translation layer was added above them.
+2. **`tier4` is boss-chest-exclusive again.** The three `brutal`-difficulty
+   achievements (`floor2-family-annihilator`, `floor2-floor-cleared`,
+   `floor2-scorched-earth`) now carry the player-facing `rare` tier, which
+   maps to internal `tier3` — **not** `tier4`. This is a real, intentional
+   capability reduction versus the reversed amendment: `tier3`'s allowed
+   rarity pool (`['uncommon', 'common']`, 75%/25%) contains **no** `rare`
+   draw, so these three achievements can no longer mechanically produce a
+   true Rare-rarity generated-equipment instance, despite being labeled
+   `rare` in content and being the hardest-to-earn Floor 2 achievements. This
+   was a known, accepted consequence of the human's explicit instruction
+   ("tier4 remains boss-chest-only... never in achievement JSON") — not
+   relaxed, not silently reinterpreted, and flagged back to the human rather
+   than fixed unilaterally, per rule #2 (never weaken an explicit requirement
+   to make something pass) and rule #11 (escalate, don't silently
+   reinterpret). If a genuine Rare-capable achievement tier is wanted in the
+   future, it needs its own named tier and its own human decision — reusing
+   `tier4` is explicitly off the table now.
+3. **Full production catalog, not a 3-achievement reference ladder.** All 36
+   real Floor 2 achievements in `achievements.floor2.json` now carry a
+   `lootBox`/`floor2-generated-equipment` reward with a
+   `Floor2AchievementLootTier`, replacing the `floor2-field-kit` /
+   `floor2-second-wind` / `floor2-veteran-cast` 3-achievement demo ladder this
+   ADR originally introduced (those three IDs are retained as real content
+   achievements within the full 36, still exercising `tier1`/`tier2`/`tier3`
+   respectively). Distribution: 13 `common` / 12 `uncommon` / 11 `rare`. One
+   deliberate promotion: `floor2-safe-harbor` moved from `common` to `rare`
+   during migration (a considered content decision to keep the tier
+   distribution close to even, not an oversight) — this is a definitional
+   change to that specific achievement's reward, not a mechanical side effect,
+   and is called out here since no other individual achievement's originally
+   authored tier was altered.
+4. **Central reward pool feeds every achievement uniformly.** See the ADR
+   0069 amendment for the 88-base central pool
+   (`src/shared/data/floor2-reward-pool.ts`) that all 36 achievements now draw
+   from via `resolveEquipmentRewardBundle`, replacing what would otherwise
+   have been 36 hand-authored per-achievement base lists.
+5. **18 new Classic Fantasy Basic Leather bases.** Sourced from
+   `data/theme-equipment-sets/classic-fantasy-basic-leather.json`; authored
+   as 6 weapons + 12 non-weapons (`src/shared/data/floor2-basic-leather-bases.ts`)
+   at conservative Common baselines using the nearest existing weapon/slot
+   profile, covering all 16 armor slots between the new and pre-existing
+   bases combined. These consume the 18 art concepts already checked into
+   `src/shared/data/floor2-equipment-art.ts` (88-entry manifest total: 70
+   pre-existing + 18 new). Per ADR 0068 (unchanged, re-confirmed, not
+   touched): the 6 Basic Leather weapons register only in `weaponDefs.ts`'s
+   generator-only weapon-base map, and none of the 18 Basic Leather bases
+   (weapon or non-weapon) were added to `equipmentDefs.ts` —
+   `resolveGeneratedEquipmentBase` remains the sole bridge, verified directly
+   by a dedicated test asserting all 18 stable IDs are absent from
+   `getEquippableItemIds()`.
+
 ## Alternatives Considered
 
 1. **Keep the fixed 3-item bundle and gate "tier" by which rarities are

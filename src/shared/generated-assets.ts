@@ -462,12 +462,11 @@ export interface OpaqueFit {
  * bounds when they are present and consistent with the loaded texture,
  * otherwise the whole canvas.
  *
- * Exported so callers that need a non-height-authoritative fit (doors are
- * width-authoritative) can derive their own scale from the SAME box
- * `resolveOpaqueFit` anchors on. Recomputing this validation at the call site
- * is how origin and scale drift apart on malformed bounds.
+ * Shared with `resolveOpaqueFit` and `door-visuals.ts` resolve helpers; kept
+ * internal now that `MainGameScene` uses `resolveGeneratedDoorContainFit`
+ * instead of calling this directly.
  */
-export function resolveOpaqueBox(
+function resolveOpaqueBox(
   bounds: OpaqueBounds | undefined,
   canvasWidth: number,
   canvasHeight: number,

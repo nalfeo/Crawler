@@ -8,12 +8,7 @@
  * "deterministic variants derive only from stable seed + coordinates").
  */
 import { hashStringToSeed, SeededRandom } from './random.js';
-import type {
-  DoorSetDef,
-  PoolVariantDef,
-  TransformId,
-  WallAccentDef,
-} from './terrain-pack-types.js';
+import type { PoolVariantDef, TransformId, WallAccentDef } from './terrain-pack-types.js';
 import { TRANSFORM_IDS } from './terrain-pack-types.js';
 import type { DoorOrientation } from './terrain-pack-types.js';
 
@@ -398,34 +393,33 @@ function deriveLineworkPropSeed(
 /**
  * Resolve door art orientation from wall-flank geometry.
  *
- * Convention from `procedural-surfaces.renderDoorTile`:
- * - 'horizontal' = passage runs left-right, jambs on top+bottom strips
- * - 'vertical'   = passage runs top-bottom, jambs on left+right strips
+ * `DoorOrientation` names the **WALL-RUN axis**, which is what decides the
+ * VIEWING ANGLE the art must be drawn at (see `door-visuals.ts`):
+ * - `horizontal` = wall runs left↔right, doorway crossed N↕S → seen FACE-ON
+ * - `vertical`   = wall runs up↕down, doorway crossed E↔W → seen SIDE-ON
  *
- * Wall-flank geometry:
- * - `horizontalDoorway` (walls at x±1): door sits in a left-right wall run →
- *   player moves top-to-bottom through the opening → art is 'vertical'
- * - NOT `horizontalDoorway` (walls at y±1): door sits in a top-bottom wall run →
- *   player moves left-to-right through the opening → art is 'horizontal'
+ * So the mapping is the identity on the wall run:
+ * - `horizontalDoorway` (walls at x±1) → the wall runs left↔right → `horizontal`
+ * - otherwise (walls at y±1) → the wall runs up↕down → `vertical`
+ *
+ * INVERTED UNTIL 2026-07-31. This returned the **passage** axis (the perpendicular),
+ * matching the convention of `procedural-surfaces.renderDoorTile` — a top-down hatch
+ * whose jamb strips were laid out along the passage. Consumers, however, read it as
+ * the wall run to pick a viewing angle, so every unambiguous doorway got its
+ * SIBLING's art: face-on N/S doorways drew the narrow side-on leaf and E/W doorways
+ * drew the wide face-on leaf.
+ *
+ * It went unnoticed because it was DEAD on the shipped floors: terrain-pack door art
+ * won selection unconditionally, so the orientation-sensitive generated keys were
+ * never reached. Retiring the pack path made it live, and `crossOrientationCount`
+ * cannot detect it — a mislabelled orientation still resolves its own nominal
+ * "exact" key, so the counter reads 0 either way.
+ *
+ * `renderDoorTile` and the entire pack door path are now deleted, so the passage
+ * convention has no remaining consumer and the wall-run convention is the only one
+ * left. `tests/unit/terrain-pack-variants.test.ts` pins the corrected mapping and
+ * `tests/unit/door-visuals.test.ts` pins topology → texture key end-to-end.
  */
 export function resolveDoorOrientationFromFlanks(horizontalDoorway: boolean): DoorOrientation {
-  return horizontalDoorway ? 'vertical' : 'horizontal';
-}
-export interface DoorVariantKey {
-  readonly isOpen: boolean;
-  readonly orientation: DoorOrientation;
-}
-
-/**
- * Pure resolver: select the terrain-pack door texture for a given
- * open/closed × horizontal/vertical state. Exactly the 4 combinations the
- * `doorSet` schema supports — no locked-door branch (out of scope, refinement
- * #5). Always returns a value (no null) since `doorSet` is a required,
- * fully-populated field on every registered pack.
- */
-export function resolveDoorPoolVariant(doorSet: DoorSetDef, key: DoorVariantKey) {
-  if (key.isOpen) {
-    return key.orientation === 'horizontal' ? doorSet.openHorizontal : doorSet.openVertical;
-  }
-  return key.orientation === 'horizontal' ? doorSet.closedHorizontal : doorSet.closedVertical;
+  return horizontalDoorway ? 'horizontal' : 'vertical';
 }

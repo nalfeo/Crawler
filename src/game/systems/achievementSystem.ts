@@ -6,12 +6,14 @@ import {
   createEmptyAchievementFactSnapshot,
   getAchievementById,
   mergeAchievementFactSnapshots,
+  FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
   type AchievementCatalogRegistry,
   type AchievementFactSnapshot,
   type AchievementNumberOperator,
   type AchievementRulePhase,
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
+import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../shared/data/floor2-reward-pool.js';
 import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
 import { bandFor, getRelation } from '../../core/faction-relations.js';
 import { isInSafeContext } from '../../core/safe-space.js';
@@ -300,7 +302,10 @@ export function unlockAchievement(
   // so the whole unlock is atomic: if the Floor 2 equipment economy is not
   // enabled (e.g. Floor 1, which is equipment-free), or bundle resolution fails
   // for any reason, we do NOT record the unlock (fail-closed).
-  if (achievement.reward.type === 'equipment') {
+  if (
+    achievement.reward.type === 'lootBox' &&
+    achievement.reward.lootTable === 'floor2-generated-equipment'
+  ) {
     // getFloor2EquipmentRewardsAccess gates on floor + feature flags, but does
     // NOT itself check whether the generated-equipment registry has a run key
     // configured. A world could (in principle) have those flags enabled yet
@@ -317,8 +322,8 @@ export function unlockAchievement(
       resolveEquipmentRewardBundle(
         world,
         achievementId,
-        achievement.reward.bases,
-        achievement.reward.tier,
+        FLOOR2_REWARD_POOL_STABLE_IDS,
+        FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier],
       );
     } catch (err) {
       if (err instanceof RewardBundleResolutionError) throw err;

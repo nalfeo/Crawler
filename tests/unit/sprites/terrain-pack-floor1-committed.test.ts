@@ -169,7 +169,6 @@ function allImagePaths(manifest: TerrainPackDef): string[] {
     manifest.wallAutotile.imagePath,
     ...manifest.floorPool.map((v) => v.imagePath),
     ...manifest.corridorPool.map((v) => v.imagePath),
-    ...Object.values(manifest.doorSet).map((v) => v.imagePath),
     ...Object.values(manifest.specialFloorPools ?? {}).flatMap((pool) =>
       pool.map((v) => v.imagePath),
     ),
@@ -331,12 +330,12 @@ describe.each(FLOOR1_PACK_IDS)('committed terrain pack — %s', (packId) => {
    */
   it('bakes no straight bright line into a tile (anti-lattice)', () => {
     const MAX_LINE_Z = 3.4;
-    // Exclude the wall-atlas (composed atlas, not a floor tile) and all
-    // doorSet images (doors have legitimate straight edges/highlights and are
-    // never tiled as room-scale floors, so the lattice artifact cannot occur).
-    const doorSetPaths = new Set(Object.values(manifest.doorSet).map((v) => v.imagePath));
+    // Exclude only the wall-atlas (a composed atlas, not a floor tile). Door
+    // images used to need excluding too — they had legitimate straight
+    // edges/highlights — but packs no longer reference any door art, so every
+    // remaining referenced image IS a room-scale tile and must pass.
     const tileImagePaths = allImagePaths(manifest).filter(
-      (p) => p !== manifest.wallAutotile.imagePath && !doorSetPaths.has(p),
+      (p) => p !== manifest.wallAutotile.imagePath,
     );
     const offenders: string[] = [];
     for (const imagePath of tileImagePaths) {
