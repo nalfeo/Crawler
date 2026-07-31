@@ -1345,11 +1345,19 @@ describe('transparent-background sheet slicing (icon batch)', () => {
   it('slices a 4×4 transparent sheet when gutter RGB happens to be black (corner=gutter)', () => {
     // When gutter RGB equals the corner RGB the old code also worked, but the
     // fix must keep working here too — not just for the adversarial case.
-    const sheet = encodeTransparentGrid(4, 4, 20, 4, 4, { r: 0, g: 0, b: 0 }, {
-      r: 0,
-      g: 0,
-      b: 0,
-    });
+    const sheet = encodeTransparentGrid(
+      4,
+      4,
+      20,
+      4,
+      4,
+      { r: 0, g: 0, b: 0 },
+      {
+        r: 0,
+        g: 0,
+        b: 0,
+      },
+    );
     const brief = {
       generation: { sheet: { rows: 4, cols: 4, emptyCells: [] } },
     } as unknown as Brief;
@@ -1363,9 +1371,13 @@ describe('transparent-background sheet slicing (icon batch)', () => {
     // euclidean distance of 220²+80²+170² ≈ 86024 >> 24² = 576 threshold,
     // so the old code would flag every gutter pixel as foreground → 1 cell.
     const sheet = encodeTransparentGrid(
-      2, 2, 16, 4, 4,
+      2,
+      2,
+      16,
+      4,
+      4,
       { r: 220, g: 80, b: 170 }, // gutter RGB far from corners
-      { r: 0, g: 0, b: 0 },     // corner RGB (zeroed transparent)
+      { r: 0, g: 0, b: 0 }, // corner RGB (zeroed transparent)
     );
     const brief = {
       generation: { sheet: { rows: 2, cols: 2, emptyCells: [] } },
