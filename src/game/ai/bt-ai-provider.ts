@@ -658,8 +658,6 @@ export interface AINpcMemoryDebug {
   neededInteractionReasons: Record<string, string | null>;
 }
 
-export type { AILockedDoorMemory };
-
 export interface TacticalRunDebug {
   /**
    * Post-tick travel-steering run plan (`lastRunPlan`), estimated from the

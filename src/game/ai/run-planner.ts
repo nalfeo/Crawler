@@ -402,6 +402,8 @@ export function estimateFloor1RunPlan(
  * `playerGold` is included raw because `applyFloor1WorkCosts` computes
  * `goldOwed * goldFarmMs` for the `farm-shop-gold` and `farm-merchant-weapon-gold`
  * goals, and every unit change affects the DP cost and optional-bundle inclusion.
+ * `currentTarget.committedGoalId` is included because a detour can satisfy a
+ * different graph goal without changing the rest of the quest-state snapshot.
  */
 export function buildRunPlanCacheKey(
   snapshot: Floor1RunPlannerSnapshot,
