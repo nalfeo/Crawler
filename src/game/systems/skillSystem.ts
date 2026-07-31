@@ -122,7 +122,7 @@ export function skillSystem(world: GameWorld): void {
                   const px = world.stores.position.x[targetEid] ?? 0;
                   const py = world.stores.position.y[targetEid] ?? 0;
                   pushVfxEvent(world.vfxEvents, {
-                    kind: 'weaponAbilityActivate',
+                    kind: 'abilityActivateFlash',
                     x: px,
                     y: py,
                   });
