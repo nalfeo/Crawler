@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildTestScaffoldAllowlist,
   collectNamedExports,
   collectNamedImports,
   findDuplicateExportNames,
+  findNewlyTestOnlyExports,
   findTestOnlyExports,
+  isTestScaffoldAllowlisted,
   type SourceFile,
 } from '../../../scripts/agent/health/test-only-exports-lib.js';
 
@@ -177,6 +180,48 @@ describe('findTestOnlyExports', () => {
     expect(results).toHaveLength(0);
   });
 
+  it('does flag an export consumed only by tests and labs', () => {
+    const srcFiles = [
+      src('src/shared/foo.ts', 'export function foo() {}'),
+      src('src/labs/bar.ts', "import { foo } from '../shared/foo.js';"),
+    ];
+    const testFiles = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
+
+    const results = findTestOnlyExports(srcFiles, testFiles);
+    expect(results).toEqual([
+      {
+        name: 'foo',
+        file: 'src/shared/foo.ts',
+        testConsumers: ['tests/unit/foo.test.ts'],
+      },
+    ]);
+  });
+
+  it('does NOT flag an export consumed by scripts and tests', () => {
+    const srcFiles = [
+      src('src/shared/foo.ts', 'export function foo() {}'),
+      src('scripts/tool.ts', "import { foo } from '../src/shared/foo.js';"),
+    ];
+    const testFiles = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
+
+    const results = findTestOnlyExports(srcFiles, testFiles);
+    expect(results).toEqual([]);
+  });
+
+  it('does NOT flag an underscore-prefixed export that is explicitly test scaffolding', () => {
+    const srcFiles = [src('src/shared/foo.ts', 'export function _fooForTests() {}')];
+    const testFiles = [
+      src('tests/unit/foo.test.ts', "import { _fooForTests } from '../../src/shared/foo.js';"),
+    ];
+
+    const results = findTestOnlyExports(srcFiles, testFiles);
+    expect(results).toEqual([]);
+  });
+
   it('does NOT flag an export that has NO consumers at all (not test-only — just dead)', () => {
     const srcFiles = [src('src/shared/foo.ts', 'export function foo() {}')];
     const testFiles: SourceFile[] = [];
@@ -258,6 +303,95 @@ describe('findTestOnlyExports', () => {
 });
 
 // ---------------------------------------------------------------------------
+// findNewlyTestOnlyExports
+// ---------------------------------------------------------------------------
+
+describe('findNewlyTestOnlyExports', () => {
+  it('ignores test-only exports that already existed in the base snapshot', () => {
+    const baseSrc = [
+      src(
+        'src/shared/inventory.ts',
+        ['export function search() {}', 'export function getVisibleTabs() {}'].join('\n'),
+      ),
+    ];
+    const baseTests = [
+      src(
+        'tests/unit/inventory.test.ts',
+        "import { search } from '../../src/shared/inventory.js';",
+      ),
+    ];
+    const currentSrc = [
+      src(
+        'src/shared/inventory.ts',
+        [
+          'export function search() {}',
+          'export function getVisibleTabs() {}',
+          'export function listStaticInventorySlots() {}',
+        ].join('\n'),
+      ),
+    ];
+    const currentTests = [
+      src(
+        'tests/unit/inventory.test.ts',
+        [
+          "import { search } from '../../src/shared/inventory.js';",
+          "import { listStaticInventorySlots } from '../../src/shared/inventory.js';",
+        ].join('\n'),
+      ),
+    ];
+
+    expect(findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests)).toEqual([
+      {
+        name: 'listStaticInventorySlots',
+        file: 'src/shared/inventory.ts',
+        testConsumers: ['tests/unit/inventory.test.ts'],
+      },
+    ]);
+  });
+
+  it('flags an unchanged export whose last production caller was removed by the branch', () => {
+    const baseSrc = [
+      src('src/shared/foo.ts', 'export function foo() {}'),
+      src('src/game/bar.ts', "import { foo } from '../shared/foo.js';"),
+    ];
+    const baseTests = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
+    const currentSrc = [
+      src('src/shared/foo.ts', 'export function foo() {}'),
+      src('src/game/bar.ts', 'export function bar() {}'),
+    ];
+    const currentTests = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
+
+    expect(findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests)).toEqual([
+      {
+        name: 'foo',
+        file: 'src/shared/foo.ts',
+        testConsumers: ['tests/unit/foo.test.ts'],
+      },
+    ]);
+  });
+
+  it('ignores unchanged exports whose only base-only src callers lived in labs', () => {
+    const baseSrc = [
+      src('src/shared/foo.ts', 'export function foo() {}'),
+      src('src/labs/bar.ts', "import { foo } from '../shared/foo.js';"),
+    ];
+    const baseTests = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
+    const currentSrc = [src('src/shared/foo.ts', 'export function foo() {}')];
+    const currentTests = [
+      src('tests/unit/foo.test.ts', "import { foo } from '../../src/shared/foo.js';"),
+    ];
+
+    expect(findNewlyTestOnlyExports(currentSrc, currentTests, baseSrc, baseTests)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // findDuplicateExportNames
 // ---------------------------------------------------------------------------
 
@@ -286,5 +420,29 @@ describe('findDuplicateExportNames', () => {
   it('does not report a name that appears once', () => {
     const exports = [{ name: 'uniqueName', file: 'src/x.ts' }];
     expect(findDuplicateExportNames(exports)).toHaveLength(0);
+  });
+});
+
+describe('isTestScaffoldAllowlisted', () => {
+  it('matches only the exact file + symbol pair', () => {
+    expect(
+      isTestScaffoldAllowlisted({
+        file: 'src/shared/generated-assets.ts',
+        name: 'buildGeneratedSpriteRegistry',
+      }),
+    ).toBe(true);
+
+    expect(
+      isTestScaffoldAllowlisted({
+        file: 'src/shared/another-registry.ts',
+        name: 'buildGeneratedSpriteRegistry',
+      }),
+    ).toBe(false);
+  });
+
+  it('supports custom path-scoped allowlists', () => {
+    const allowlist = buildTestScaffoldAllowlist([{ file: 'src/a.ts', name: 'foo' }]);
+    expect(isTestScaffoldAllowlisted({ file: 'src/a.ts', name: 'foo' }, allowlist)).toBe(true);
+    expect(isTestScaffoldAllowlisted({ file: 'src/b.ts', name: 'foo' }, allowlist)).toBe(false);
   });
 });

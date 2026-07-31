@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
-import { closeQuietly } from './helpers/ui-probe.js';
+import { boundsCenterScreen, closeQuietly, getCanvasRect } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 import {
   PLAYER_ACQUISITION_SOURCES,
@@ -65,26 +65,52 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     await waitForState(page, (s) => s.safeContext, { label: 'safe-room surfaces unlocked' });
   }
 
-  it('shows Shop button in safe context when quartermasterStock exists', async () => {
+  async function interactWithQuartermasterNpc(): Promise<void> {
+    const npcs = await mainSceneProbe.getNpcRenderInfo(page);
+    const quartermaster = npcs.find((npc) => npc.defId === 'shop-the-quartermaster');
+    expect(quartermaster, 'floor2 should spawn a quartermaster NPC').toBeDefined();
+    await mainSceneProbe.setPlayerFeet(page, quartermaster!.feet.x, quartermaster!.feet.y);
+    await mainSceneProbe.advanceSimulationFrames(page, 1);
+    await mainSceneProbe.queueInteraction(page);
+  }
+
+  async function interactWithNonQuartermasterShopNpc(): Promise<{
+    eid: number;
+    defId: string;
+  }> {
+    const npcs = await mainSceneProbe.getNpcRenderInfo(page);
+    const nonQuartermaster = npcs.find(
+      (npc) => npc.defId.startsWith('shop-the-') && npc.defId !== 'shop-the-quartermaster',
+    );
+    expect(
+      nonQuartermaster,
+      'floor2 should spawn at least one non-quartermaster shop NPC',
+    ).toBeDefined();
+    await mainSceneProbe.setPlayerFeet(page, nonQuartermaster!.feet.x, nonQuartermaster!.feet.y);
+    await mainSceneProbe.advanceSimulationFrames(page, 1);
+    await mainSceneProbe.queueInteraction(page);
+    return { eid: nonQuartermaster!.eid, defId: nonQuartermaster!.defId };
+  }
+
+  it('does not expose a Shop button in safe context while the panel is closed', async () => {
     await bootFloor2SafeScene();
 
     const state = await waitForState(page, (s) => s.safeContext, {
       label: 'in safe context',
     });
 
-    // On Floor 2 the settlement is initialised at boot, so quartermasterStock
-    // should already be present — the Shop button must be visible.
+    // Shop opens from NPC interaction, not from a persistent corner button.
     expect(
       state.quartermasterButtonVisible,
-      'Shop button should be visible in safe context with stock',
-    ).toBe(true);
+      'Shop button should stay hidden until panel open',
+    ).toBe(false);
     expect(state.quartermasterOpen, 'Quartermaster panel should start closed').toBe(false);
   });
 
-  it('opens and closes the Quartermaster panel via Q key request', async () => {
+  it('opens the Quartermaster panel by interacting with the quartermaster NPC', async () => {
     await bootFloor2SafeScene();
 
-    await mainSceneProbe.requestQuartermasterToggle(page);
+    await interactWithQuartermasterNpc();
     const opened = await waitForState(page, (s) => s.quartermasterOpen, {
       label: 'Quartermaster panel opened',
     });
@@ -104,7 +130,7 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
   it('Quartermaster panel closes when inventory opens (exclusivity)', async () => {
     await bootFloor2SafeScene();
 
-    await mainSceneProbe.requestQuartermasterToggle(page);
+    await interactWithQuartermasterNpc();
     await waitForState(page, (s) => s.quartermasterOpen, { label: 'Quartermaster opened' });
 
     await mainSceneProbe.requestInventoryToggle(page);
@@ -115,6 +141,57 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     expect(state.inventoryOpen, 'inventory must be open').toBe(true);
     expect(state.quartermasterOpen, 'Quartermaster must close when inventory opens').toBe(false);
     expect(state.primarySurfaceCount, 'only one panel open at a time').toBe(1);
+  });
+
+  it('opens the same purchase panel from non-quartermaster shop NPC interactions', async () => {
+    await bootFloor2SafeScene();
+
+    const nonQuartermaster = await interactWithNonQuartermasterShopNpc();
+    const opened = await waitForState(page, (s) => s.quartermasterOpen, {
+      label: 'shop panel opened from non-quartermaster NPC interaction',
+    });
+    const expectedInventory = await mainSceneProbe.getSettlementShopInventorySnapshot(
+      page,
+      nonQuartermaster.eid,
+    );
+    const shownInventory = await mainSceneProbe.getQuartermasterStockSnapshot(page);
+
+    expect(opened.quartermasterOpen).toBe(true);
+    expect(shownInventory).toEqual(
+      expectedInventory.map((entry) => ({
+        offerId: entry.itemId,
+        quantity: entry.quantity,
+        unitPrice: entry.unitPrice,
+        displayName: entry.displayName,
+      })),
+    );
+  });
+
+  it('purchases from the interacted non-quartermaster shop inventory instead of Quartermaster stock', async () => {
+    await bootFloor2SafeScene();
+    await mainSceneProbe.setPlayerGold(page, 100_000);
+
+    const nonQuartermaster = await interactWithNonQuartermasterShopNpc();
+    await waitForState(page, (s) => s.quartermasterOpen, {
+      label: 'shop panel opened from non-quartermaster NPC interaction',
+    });
+    const before = await mainSceneProbe.getSettlementShopInventorySnapshot(
+      page,
+      nonQuartermaster.eid,
+    );
+    expect(before.length, 'non-quartermaster shop should have seeded inventory').toBeGreaterThan(0);
+
+    const result = await mainSceneProbe.purchaseFirstQuartermasterOffer(page);
+    expect(result.ok, 'purchase should succeed from non-quartermaster stock').toBe(true);
+
+    const after = await mainSceneProbe.getSettlementShopInventorySnapshot(
+      page,
+      nonQuartermaster.eid,
+    );
+    expect(
+      after.some((entry, index) => entry.quantity < (before[index]?.quantity ?? entry.quantity)),
+      'purchasing from a non-quartermaster shop should reduce that shop inventory',
+    ).toBe(true);
   });
 
   it('generates purchasable stock offers on Floor 2 settlement bootstrap', async () => {
@@ -157,6 +234,79 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     expect(purchasedOffer?.quantity, 'purchased offer must show quantity = 0').toBe(0);
   });
 
+  it('renders and equips the exact generated Quartermaster purchase through the inventory grid', async () => {
+    await bootFloor2SafeScene();
+    await mainSceneProbe.setPlayerGold(page, 100_000);
+
+    const purchase = await mainSceneProbe.purchaseFirstQuartermasterOffer(page);
+    expect(purchase.ok, 'purchase should succeed with sufficient gold').toBe(true);
+    expect(
+      purchase.instanceId,
+      'purchase should identify the immutable generated instance',
+    ).toBeTruthy();
+    if (!purchase.instanceId) return;
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    await waitForState(page, (s) => s.inventoryOpen, { label: 'inventory open after purchase' });
+    const cell = await mainSceneProbe.getGeneratedInventoryCellBounds(page, purchase.instanceId);
+    expect(
+      cell,
+      'purchased generated equipment must be visible in the same rendered inventory grid',
+    ).not.toBeNull();
+    if (!cell) return;
+
+    const center = boundsCenterScreen(
+      await getCanvasRect(page),
+      { width: 1280, height: 720 },
+      cell,
+    );
+    // This is deliberately a real canvas double-click, not a probe equip
+    // shortcut: reverting InventoryUI to bag.slots makes the exact-instance
+    // lookup return null before the interaction can occur.
+    await page.mouse.dblclick(center.x, center.y);
+    await expect
+      .poll(() => mainSceneProbe.getEquippedGeneratedInstanceKeys(page), {
+        message: 'double-click should equip the exact purchased instance',
+      })
+      .toContain(purchase.instanceId);
+  });
+
+  it('renders and equips the exact generated Quartermaster purchase through the Gear bag', async () => {
+    await bootFloor2SafeScene();
+    await mainSceneProbe.setPlayerGold(page, 100_000);
+
+    const purchase = await mainSceneProbe.purchaseFirstQuartermasterOffer(page);
+    expect(purchase.ok, 'purchase should succeed with sufficient gold').toBe(true);
+    expect(
+      purchase.instanceId,
+      'purchase should identify the immutable generated instance',
+    ).toBeTruthy();
+    if (!purchase.instanceId) return;
+
+    await mainSceneProbe.requestEquipToggle(page);
+    await waitForState(page, (s) => s.equipmentOpen, { label: 'Gear panel open after purchase' });
+    const cell = await mainSceneProbe.getGeneratedEquipmentBagCellBounds(page, purchase.instanceId);
+    expect(
+      cell,
+      'purchased generated equipment must be visible in the rendered Gear bag',
+    ).not.toBeNull();
+    if (!cell) return;
+
+    const center = boundsCenterScreen(
+      await getCanvasRect(page),
+      { width: 1280, height: 720 },
+      cell,
+    );
+    // This canvas interaction is intentionally revert-sensitive: changing the
+    // Gear panel back to bag.slots makes the exact-instance lookup return null.
+    await page.mouse.click(center.x, center.y);
+    await expect
+      .poll(() => mainSceneProbe.getEquippedGeneratedInstanceKeys(page), {
+        message: 'Gear-bag click should equip the exact purchased instance',
+      })
+      .toContain(purchase.instanceId);
+  });
+
   it('supports keyboard purchase with Enter on the focused Buy control', async () => {
     await bootFloor2SafeScene();
 
@@ -164,7 +314,7 @@ describe('MainGameScene Floor 2 Quartermaster purchase UI', () => {
     expect(offers.length, 'need at least one offer to test keyboard purchase').toBeGreaterThan(0);
 
     await mainSceneProbe.setPlayerGold(page, 100_000);
-    await mainSceneProbe.requestQuartermasterToggle(page);
+    await interactWithQuartermasterNpc();
     await waitForState(page, (s) => s.quartermasterOpen, { label: 'Quartermaster opened' });
 
     const goldBefore = await mainSceneProbe.getPlayerGold(page);

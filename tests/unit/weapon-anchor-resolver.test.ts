@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeNormalizedWeaponAnchor,
-  DEFAULT_GENERATED_FRAME_SIZE_PX,
   resolveWeaponAnchorWorldPos,
   type GeneratedSpriteEntry,
 } from '../../src/shared/generated-assets.js';
@@ -240,19 +239,15 @@ describe('computeNormalizedWeaponAnchor', () => {
     expect(result!.relX).toBeCloseTo(-0.125); // weapon left of COG
   });
 
-  it('uses DEFAULT_GENERATED_FRAME_SIZE_PX when no frame size provided', () => {
-    // COG at (32,32), weapon at (40,28). Default frame = DEFAULT_GENERATED_FRAME_SIZE_PX (64).
+  it('uses the default frame size (64) when no frame size is provided', () => {
+    // COG at (32,32), weapon at (40,28). Default frame = 64px.
     // Same calc as explicit 64x64.
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 28 },
     });
     const withDefault = computeNormalizedWeaponAnchor(entry);
-    const withExplicit = computeNormalizedWeaponAnchor(
-      entry,
-      DEFAULT_GENERATED_FRAME_SIZE_PX,
-      DEFAULT_GENERATED_FRAME_SIZE_PX,
-    );
+    const withExplicit = computeNormalizedWeaponAnchor(entry, 64, 64);
     expect(withDefault).toEqual(withExplicit);
   });
 });

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "fix-test-only-exports-generated-assets",
+  "task_title": "Fix test-only-exports CI guard failures for generated-assets.ts",
+  "estimated_apples": 1,
+  "stages": {}
+}

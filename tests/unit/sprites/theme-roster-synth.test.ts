@@ -12,7 +12,7 @@ import {
   THEME_EQUIPMENT_SET_MIN_NON_HAND_SLOTS,
   THEME_EQUIPMENT_SET_MIN_WEAPON_TYPES,
 } from '../../../scripts/sprites/theme-equipment-set.js';
-import { getMirrorSlot } from '../../../src/shared/equipment-slots.js';
+import { _getMirrorSlotForTests } from '../../../src/shared/equipment-slots.js';
 
 const REQUEST = {
   setId: 'edo-samurai',
@@ -31,7 +31,7 @@ function validRoster(): Record<string, unknown> {
   let index = 0;
   for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
     if (covered.has(slot)) continue;
-    const partner = getMirrorSlot(slot);
+    const partner = _getMirrorSlotForTests(slot);
     const slots = partner ? [slot, partner] : [slot];
     for (const s of slots) covered.add(s);
     equipment.push({ id: `gear-${index}`, displayName: `Gear ${index}`, slots });

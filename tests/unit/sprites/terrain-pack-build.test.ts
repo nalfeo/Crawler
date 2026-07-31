@@ -115,11 +115,14 @@ describe('buildIndustrialCavePack (authored)', () => {
     }
     expect(hasOpaquePixel).toBe(true);
   });
-  it('produces exactly 8 floor variants, 8 corridor variants, 4 wall accents, and exactly 4 door PNGs (grown from 4/4/0 2026-07-25)', () => {
+  it('produces exactly 8 floor variants, 8 corridor variants, 4 wall accents, and NO door PNGs', () => {
     expect(result.manifest.floorPool.length).toBe(8);
     expect(result.manifest.corridorPool.length).toBe(8);
     expect(result.manifest.wallAccents).toHaveLength(4);
-    expect(Object.keys(result.manifest.doorSet)).toHaveLength(4);
+    // INVERTED: the builder used to emit exactly 4 door PNGs and a doorSet.
+    // Door art is no longer a pack concern, so emitting any is a regression.
+    expect(result.manifest).not.toHaveProperty('doorSet');
+    expect(result.files.filter((f) => f.relativePath.includes('door'))).toHaveLength(0);
   });
 
   it('every floor/corridor variant declares allowedTransforms including "none", with >=24 combos per pool', () => {
@@ -616,11 +619,11 @@ describe('validatePoolAndDoorImages — existing directory path produces image-n
 });
 
 describe('validateTerrainPack — malformed manifest produces structured issues, not TypeError', () => {
-  it('returns schema issues (not throws) for a manifest missing floorPool and doorSet', () => {
+  it('returns schema issues (not throws) for a manifest missing floorPool and wallAutotile', () => {
     const malformed: unknown = {
       id: 'industrial-cave',
       name: 'Test',
-      // floorPool, corridorPool, doorSet, wallAutotile, provenance all missing
+      // floorPool, corridorPool, wallAutotile, provenance all missing
     };
     const { manifest } = buildIndustrialCavePack();
     const atlasBytes = atlasBufferOf(buildIndustrialCavePack());
@@ -633,14 +636,13 @@ describe('validateTerrainPack — malformed manifest produces structured issues,
   });
 
   it('returns schema issues (not throws) for a manifest with floorPool missing', () => {
-    const { wallAutotile, provenance, corridorPool, doorSet } = buildIndustrialCavePack().manifest;
+    const { wallAutotile, provenance, corridorPool } = buildIndustrialCavePack().manifest;
     const malformed: unknown = {
       id: 'industrial-cave',
       name: 'Test',
       provenance,
       wallAutotile,
       corridorPool,
-      doorSet,
       // floorPool deliberately absent
     };
     const atlasBytes = atlasBufferOf(buildIndustrialCavePack());

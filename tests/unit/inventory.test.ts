@@ -5,6 +5,7 @@ import {
   addGeneratedEquipmentReference,
   addItem,
   hasGeneratedEquipmentReference,
+  listInventoryEntries,
   removeItem,
   removeGeneratedEquipmentReference,
   hasItem,
@@ -14,11 +15,23 @@ import {
   filterByEquipmentSlot,
   filterEquippable,
   sortSlots,
+  getActiveTags,
   getVisibleTabs,
+  listStaticInventorySlots,
+  reorderTab,
+  hideTab,
+  inventoryEntryIdentity,
+  showTab,
+  type GeneratedInventoryEntryResolver,
   type InventoryBag,
   type TabPreferences,
 } from '../../src/shared/inventory.js';
-import { customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
+import {
+  _customTag as customTag,
+  ItemRarity,
+  normalizeGeneratedInventoryTag,
+  type ItemDef,
+} from '../../src/shared/items.js';
 import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 
 // Small test catalog for deterministic tests
@@ -68,6 +81,16 @@ describe('InventoryBag', () => {
     const first = 'gei:v1:inventory-test:0' as GeneratedEquipmentInstanceKey;
     const second = 'gei:v1:inventory-test:1' as GeneratedEquipmentInstanceKey;
 
+    it('exposes static stacks and exact generated keys as discriminated entries', () => {
+      addItem(bag, 'test-ore', 3, testCatalog);
+      addGeneratedEquipmentReference(bag, first);
+
+      expect(listInventoryEntries(bag)).toEqual([
+        { kind: 'stackable-static-item', itemId: 'test-ore', quantity: 3 },
+        { kind: 'generated-instance', instanceKey: first },
+      ]);
+    });
+
     it('rejects a duplicate exact key without changing the bag', () => {
       addGeneratedEquipmentReference(bag, first);
       const before = structuredClone(bag);
@@ -76,6 +99,22 @@ describe('InventoryBag', () => {
         'Generated equipment instance already exists in bag',
       );
       expect(bag).toEqual(before);
+    });
+
+    it('listInventoryEntries returns a snapshot — mutating a listed entry does not affect the bag', () => {
+      addGeneratedEquipmentReference(bag, first);
+      const entries = listInventoryEntries(bag);
+      const listed = entries.find((e) => e.kind === 'generated-instance');
+      expect(listed).toBeDefined();
+
+      // Force-cast to mutate the returned object
+      (listed as { instanceKey: string }).instanceKey = 'gei:v1:mutated:0';
+
+      // The bag's stored entry must be unchanged
+      expect(hasGeneratedEquipmentReference(bag, first)).toBe(true);
+      expect(
+        hasGeneratedEquipmentReference(bag, 'gei:v1:mutated:0' as GeneratedEquipmentInstanceKey),
+      ).toBe(false);
     });
 
     it('removes only the requested key and leaves distinct instances intact', () => {
@@ -89,41 +128,101 @@ describe('InventoryBag', () => {
       expect(hasGeneratedEquipmentReference(bag, first)).toBe(false);
       expect(hasGeneratedEquipmentReference(bag, second)).toBe(true);
     });
+
+    it('uses registry-backed generated metadata across tabs, search, slot filtering, and sorting', () => {
+      addGeneratedEquipmentReference(bag, first);
+      addGeneratedEquipmentReference(bag, second);
+      const resolveGenerated: GeneratedInventoryEntryResolver = (entry) =>
+        entry.instanceKey === first
+          ? {
+              name: 'Twin Blade',
+              description: 'A rare first copy',
+              tags: [normalizeGeneratedInventoryTag('weapon')],
+              rarity: 'Rare',
+              slots: ['mainHand'],
+            }
+          : {
+              name: 'Twin Blade',
+              description: 'A common second copy',
+              tags: [normalizeGeneratedInventoryTag('weapon'), customTag('Generated')],
+              rarity: 'Common',
+              slots: ['offHand'],
+            };
+
+      expect(getVisibleTabs(bag, createTabPreferences(), undefined, resolveGenerated)).toContain(
+        'Weapons',
+      );
+      expect(search(bag, 'second copy', undefined, resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+      expect(filterByTag(bag, customTag('Generated'), undefined, resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+      expect(filterByEquipmentSlot(bag, 'offHand', resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+      expect(sortSlots(bag, 'rarity', undefined, resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: first },
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+    });
+
+    it('keeps entry identities stable across static stack quantity changes and exact for duplicates', () => {
+      addItem(bag, 'test-ore', 2, testCatalog);
+      addGeneratedEquipmentReference(bag, first);
+      addGeneratedEquipmentReference(bag, second);
+      const [staticEntry, firstGenerated, secondGenerated] = listInventoryEntries(bag);
+
+      expect(inventoryEntryIdentity(staticEntry!)).toBe('static:test-ore');
+      expect(inventoryEntryIdentity(firstGenerated!)).toBe(`generated:${first}`);
+      expect(inventoryEntryIdentity(secondGenerated!)).toBe(`generated:${second}`);
+      expect(inventoryEntryIdentity(firstGenerated!)).not.toBe(
+        inventoryEntryIdentity(secondGenerated!),
+      );
+
+      addItem(bag, 'test-ore', 1, testCatalog);
+      expect(inventoryEntryIdentity(listInventoryEntries(bag)[0]!)).toBe(
+        inventoryEntryIdentity(staticEntry!),
+      );
+    });
   });
 
   describe('addItem', () => {
     it('adds a new item to an empty bag', () => {
       const added = addItem(bag, 'test-ore', 3, testCatalog);
       expect(added).toBe(3);
-      expect(bag.slots).toHaveLength(1);
-      expect(bag.slots[0]).toEqual({ itemId: 'test-ore', quantity: 3 });
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(1);
+      expect(slots[0]).toEqual({ itemId: 'test-ore', quantity: 3 });
     });
 
     it('stacks identical items', () => {
       addItem(bag, 'test-ore', 3, testCatalog);
       addItem(bag, 'test-ore', 5, testCatalog);
-      expect(bag.slots).toHaveLength(1);
-      expect(bag.slots[0]!.quantity).toBe(8);
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(1);
+      expect(slots[0]!.quantity).toBe(8);
     });
 
     it('respects maxStack and creates overflow slots', () => {
       addItem(bag, 'test-ore', 25, testCatalog); // maxStack=10
-      expect(bag.slots).toHaveLength(3);
-      expect(bag.slots[0]!.quantity).toBe(10);
-      expect(bag.slots[1]!.quantity).toBe(10);
-      expect(bag.slots[2]!.quantity).toBe(5);
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(3);
+      expect(slots[0]!.quantity).toBe(10);
+      expect(slots[1]!.quantity).toBe(10);
+      expect(slots[2]!.quantity).toBe(5);
     });
 
     it('non-stackable items create separate slots', () => {
       addItem(bag, 'test-sword', 1, testCatalog);
       addItem(bag, 'test-sword', 1, testCatalog);
-      expect(bag.slots).toHaveLength(2);
+      expect(listStaticInventorySlots(bag)).toHaveLength(2);
     });
 
     it('returns 0 for zero or negative quantity', () => {
       expect(addItem(bag, 'test-ore', 0, testCatalog)).toBe(0);
       expect(addItem(bag, 'test-ore', -5, testCatalog)).toBe(0);
-      expect(bag.slots).toHaveLength(0);
+      expect(listStaticInventorySlots(bag)).toHaveLength(0);
     });
 
     it('throws for unknown item ids', () => {
@@ -150,13 +249,13 @@ describe('InventoryBag', () => {
       addItem(bag, 'test-ore', 5, testCatalog);
       const removed = removeItem(bag, 'test-ore', 3);
       expect(removed).toBe(3);
-      expect(bag.slots[0]!.quantity).toBe(2);
+      expect(listStaticInventorySlots(bag)[0]!.quantity).toBe(2);
     });
 
     it('removes the slot when quantity reaches 0', () => {
       addItem(bag, 'test-ore', 5, testCatalog);
       removeItem(bag, 'test-ore', 5);
-      expect(bag.slots).toHaveLength(0);
+      expect(listStaticInventorySlots(bag)).toHaveLength(0);
     });
 
     it('removes across multiple slots', () => {
@@ -164,15 +263,16 @@ describe('InventoryBag', () => {
       const removed = removeItem(bag, 'test-ore', 15);
       expect(removed).toBe(15);
       // Removes from last slot first: 5→0(removed), 10→0(removed), total=15
-      expect(bag.slots).toHaveLength(1);
-      expect(bag.slots[0]!.quantity).toBe(10);
+      const slots = listStaticInventorySlots(bag);
+      expect(slots).toHaveLength(1);
+      expect(slots[0]!.quantity).toBe(10);
     });
 
     it('returns actual amount removed if not enough', () => {
       addItem(bag, 'test-ore', 3, testCatalog);
       const removed = removeItem(bag, 'test-ore', 10);
       expect(removed).toBe(3);
-      expect(bag.slots).toHaveLength(0);
+      expect(listStaticInventorySlots(bag)).toHaveLength(0);
     });
 
     it('returns 0 for item not in bag', () => {
@@ -330,6 +430,26 @@ describe('InventoryBag', () => {
       expect(sorted[1]!.itemId).toBe('test-ore');
       expect(sorted[2]!.itemId).toBe('test-potion');
     });
+
+    it('no-resolver path on a mixed bag returns only static slots, not generated entries', () => {
+      // Mixed bag: two static items + one generated entry.
+      addItem(bag, 'test-sword', 1, testCatalog); // Rare
+      addItem(bag, 'test-ore', 2, testCatalog); // Common
+      const genKey = 'gei:v1:sort-mixed-test:0' as GeneratedEquipmentInstanceKey;
+      addGeneratedEquipmentReference(bag, genKey);
+
+      // No-resolver overload — must return InventorySlot[] over static lane only.
+      const sorted = sortSlots(bag, 'rarity', testCatalog);
+
+      // Generated entry must be absent; only the 2 static items returned.
+      expect(sorted).toHaveLength(2);
+      expect(sorted[0]!.itemId).toBe('test-sword'); // Rare first
+      expect(sorted[1]!.itemId).toBe('test-ore'); // Common second
+
+      // Ensure the generated key is not lurking in the result under any shape.
+      const keys = sorted.map((s) => ('instanceKey' in s ? s.instanceKey : null));
+      expect(keys).not.toContain(genKey);
+    });
   });
 });
 
@@ -342,31 +462,33 @@ describe('Tab system', () => {
     prefs = createTabPreferences();
   });
 
-  describe('getVisibleTabs', () => {
+  describe('getActiveTags', () => {
     it('returns empty for empty bag', () => {
-      expect(getVisibleTabs(bag, prefs, testCatalog)).toEqual([]);
+      expect(getActiveTags(bag, testCatalog)).toEqual([]);
     });
 
+    it('returns tags of held items', () => {
+      addItem(bag, 'test-ore', 1, testCatalog);
+      addItem(bag, 'test-sword', 1, testCatalog);
+      const tags = getActiveTags(bag, testCatalog);
+      expect(tags).toContain('Materials');
+      expect(tags).toContain('Weapons');
+      expect(tags).not.toContain('Consumables');
+    });
+
+    it('includes custom tags', () => {
+      addItem(bag, 'stinky-bone', 1, testCatalog);
+      const tags = getActiveTags(bag, testCatalog);
+      expect(tags).toContain('Materials');
+      expect(tags).toContain('Smelly Stuff');
+    });
+  });
+
+  describe('getVisibleTabs', () => {
     it('only shows tabs for held items', () => {
       addItem(bag, 'test-ore', 1, testCatalog);
       const tabs = getVisibleTabs(bag, prefs, testCatalog);
       expect(tabs).toEqual(['Materials']);
-    });
-
-    it('includes every active tag from held items', () => {
-      addItem(bag, 'test-ore', 1, testCatalog);
-      addItem(bag, 'test-sword', 1, testCatalog);
-      const tabs = getVisibleTabs(bag, prefs, testCatalog);
-      expect(tabs).toContain('Materials');
-      expect(tabs).toContain('Weapons');
-      expect(tabs).not.toContain('Consumables');
-    });
-
-    it('includes custom tags from held items', () => {
-      addItem(bag, 'stinky-bone', 1, testCatalog);
-      const tabs = getVisibleTabs(bag, prefs, testCatalog);
-      expect(tabs).toContain('Materials');
-      expect(tabs).toContain('Smelly Stuff');
     });
 
     it('respects hidden custom tags', () => {
@@ -375,6 +497,14 @@ describe('Tab system', () => {
       const tabs = getVisibleTabs(bag, prefs, testCatalog);
       expect(tabs).toContain('Materials');
       expect(tabs).not.toContain('Smelly Stuff');
+    });
+
+    it('cannot hide known tags', () => {
+      addItem(bag, 'test-ore', 1, testCatalog);
+      const result = hideTab(prefs, 'Materials');
+      expect(result).toBe(false);
+      const tabs = getVisibleTabs(bag, prefs, testCatalog);
+      expect(tabs).toContain('Materials');
     });
 
     it('orders known tags before custom tags', () => {
@@ -393,10 +523,7 @@ describe('Tab system', () => {
       addItem(bag, 'test-potion', 1, testCatalog);
 
       // Default order has Materials before Weapons before Consumables
-      const consumablesIndex = prefs.order.indexOf('Consumables');
-      expect(consumablesIndex).toBeGreaterThanOrEqual(0);
-      const [consumables] = prefs.order.splice(consumablesIndex, 1);
-      prefs.order.splice(0, 0, consumables!);
+      reorderTab(prefs, 'Consumables', 0);
       const tabs = getVisibleTabs(bag, prefs, testCatalog);
       expect(tabs[0]).toBe('Consumables');
     });
@@ -407,10 +534,10 @@ describe('Tab system', () => {
       addItem(bag, 'stinky-bone', 1, testCatalog);
       const smelly = customTag('Smelly Stuff');
 
-      prefs.hidden.add(smelly);
+      hideTab(prefs, smelly);
       expect(getVisibleTabs(bag, prefs, testCatalog)).not.toContain('Smelly Stuff');
 
-      prefs.hidden.delete(smelly);
+      showTab(prefs, smelly);
       expect(getVisibleTabs(bag, prefs, testCatalog)).toContain('Smelly Stuff');
     });
   });

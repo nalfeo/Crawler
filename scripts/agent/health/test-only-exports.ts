@@ -29,6 +29,8 @@ import {
   collectNamedExports,
   collectNamedImports,
   findDuplicateExportNames,
+  isTestScaffoldAllowlisted,
+  type ExportDef,
   type SourceFile,
 } from './test-only-exports-lib.js';
 
@@ -116,6 +118,79 @@ function listChangedSrcPaths(baseRef: string | null): string[] {
   return [...changed];
 }
 
+/**
+ * Read the content of a file at a specific git ref. Returns null if the file
+ * did not exist at that ref (e.g. it is newly added in this branch).
+ */
+function readFileAtRef(relPath: string, ref: string): string | null {
+  const result = spawnSync('git', ['show', `${ref}:${relPath}`], {
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.status !== 0) return null;
+  return result.stdout;
+}
+
+/**
+ * For each changed src file, collect the import names it had at `baseRef`.
+ * These are candidates for "last caller removed": if the name is no longer
+ * imported anywhere in production at HEAD, the export may now be test-only
+ * even though the exporting file itself is unchanged.
+ *
+ * Note: the returned set is deliberately over-inclusive — names still
+ * imported by any src file at HEAD are filtered out downstream by the
+ * per-export `srcConsumers` check in the caller.
+ */
+function collectDeletedImportNames(
+  changedSrcPaths: Set<string>,
+  baseRef: string | null,
+): Set<string> {
+  if (!baseRef || changedSrcPaths.size === 0) return new Set();
+
+  const candidates = new Set<string>();
+  for (const relPath of changedSrcPaths) {
+    const baseContent = readFileAtRef(relPath, baseRef);
+    if (baseContent === null) continue; // newly added file — no prior imports
+
+    const baseFile = { path: relPath, content: baseContent };
+    const baseImports = collectNamedImports([baseFile]);
+    for (const name of baseImports.keys()) {
+      candidates.add(name);
+    }
+  }
+  return candidates;
+}
+
+function exportKey(exp: Pick<ExportDef, 'file' | 'name'>): string {
+  return `${exp.file}#${exp.name}`;
+}
+
+/**
+ * Only treat exports in changed files as candidates when the branch introduced
+ * the exported symbol (new file, new export, or rename). Pre-existing
+ * test-only exports in a file the branch merely edited are handled as baseline
+ * debt and should not fail the guard. Unchanged exports whose last production
+ * caller was removed are covered separately by `collectDeletedImportNames`.
+ */
+function collectBranchIntroducedExports(
+  changedSrcFiles: readonly SourceFile[],
+  baseRef: string | null,
+): ExportDef[] {
+  const currentExports = collectNamedExports(changedSrcFiles);
+  if (!baseRef) return currentExports;
+
+  const baseExportKeys = new Set<string>();
+  for (const file of changedSrcFiles) {
+    const baseContent = readFileAtRef(file.path, baseRef);
+    if (baseContent === null) continue;
+    for (const exp of collectNamedExports([{ path: file.path, content: baseContent }])) {
+      baseExportKeys.add(exportKey(exp));
+    }
+  }
+
+  return currentExports.filter((exp) => !baseExportKeys.has(exportKey(exp)));
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -130,7 +205,8 @@ function main(): void {
     .map(readSourceFile)
     .filter((file) => isProductionSrcPath(file.path));
   const testFiles = walkTsFiles(testsRoot).map(readSourceFile);
-  const changedSrcPaths = new Set(listChangedSrcPaths(resolveBaseRef()));
+  const baseRef = resolveBaseRef();
+  const changedSrcPaths = new Set(listChangedSrcPaths(baseRef));
 
   if (srcFiles.length === 0) {
     report.error('No src/**/*.ts files found — the guard is not scanning anything.', {
@@ -146,12 +222,12 @@ function main(): void {
 
   const changedSrcFiles = srcFiles.filter((file) => changedSrcPaths.has(file.path));
   const allExports = collectNamedExports(srcFiles);
-  const changedExports = collectNamedExports(changedSrcFiles);
+  const branchIntroducedExports = collectBranchIntroducedExports(changedSrcFiles, baseRef);
   const srcImports = collectNamedImports(srcFiles);
   const testImports = collectNamedImports(testFiles);
 
   // Warn about duplicate export names in changed files; they can cause false negatives.
-  const changedExportNames = new Set(changedExports.map((exp) => exp.name));
+  const changedExportNames = new Set(branchIntroducedExports.map((exp) => exp.name));
   for (const dup of findDuplicateExportNames(allExports).filter((dup) =>
     changedExportNames.has(dup.name),
   )) {
@@ -165,7 +241,19 @@ function main(): void {
     );
   }
 
-  const testOnlyExports = changedExports.flatMap((exp) => {
+  // Also check exports whose *last production caller* may have been removed in
+  // a changed file.  Removing an import from a changed file leaves the
+  // exporting file unchanged, so it would otherwise be absent from
+  // `changedExports` and the guard would silently pass.
+  const deletedImportNames = collectDeletedImportNames(changedSrcPaths, baseRef);
+  const deletedImportCandidates = allExports.filter(
+    (exp) => deletedImportNames.has(exp.name) && !changedExportNames.has(exp.name),
+  );
+  const candidates = [...branchIntroducedExports, ...deletedImportCandidates];
+  const testOnlyExports = candidates.flatMap((exp) => {
+    if (exp.name.startsWith('_')) return []; // explicit test scaffolding by convention
+    if (isTestScaffoldAllowlisted(exp)) return []; // documented test scaffold
+
     const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
     const outsideSrcConsumers = [...srcConsumers].filter((file) => file !== exp.file);
     if (outsideSrcConsumers.length > 0) return [];
@@ -192,7 +280,7 @@ function main(): void {
 
   if (testOnlyExports.length === 0) {
     report.info(
-      `${changedExports.length} changed src/ export(s) checked; none are consumed exclusively by tests.`,
+      `${candidates.length} src/ export(s) checked (${branchIntroducedExports.length} introduced by changed files, ${deletedImportCandidates.length} from deleted importers); none are consumed exclusively by tests.`,
     );
   }
 

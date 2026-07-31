@@ -20,7 +20,7 @@ import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
-import { getCatalogEquippableItemIds } from '../../shared/equipmentDefs.js';
+import equipmentDefsTestSeams from '../../shared/equipmentDefs.test-seams.js';
 import {
   computeEquippedWeightLb,
   getCarryThresholdLb,
@@ -28,7 +28,12 @@ import {
   ENCUMBRANCE_BAND_LABELS,
   ENCUMBRANCE_HEAVY_FACTOR,
 } from '../../shared/encumbrance.js';
-import { addItem, type InventoryBag } from '../../shared/inventory.js';
+import {
+  addItem,
+  createInventoryBag,
+  listStaticInventorySlots,
+  type InventoryBag,
+} from '../../shared/inventory.js';
 import { getItemById } from '../../shared/items.js';
 import { pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -91,7 +96,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   root.append(gameHost, hud);
   canvasHost.append(root);
 
-  const equippableIds = getCatalogEquippableItemIds();
+  const equippableIds = equipmentDefsTestSeams.getCatalogEquippableItemIds();
   const initialItemId = equippableIds[0] ?? 'merchants-stained-charm';
   const settings: EquipmentLabSettings = {
     selectedItemId: initialItemId,
@@ -243,9 +248,8 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     }
 
     private clearBag(): void {
-      const bag = this.getBag();
-      if (!bag) return;
-      bag.slots.length = 0;
+      if (!this.world.inventories.has(this.playerEid)) return;
+      this.world.inventories.set(this.playerEid, createInventoryBag());
       this.inventoryUI?.refresh(this.world);
       this.equipmentUI?.refresh(this.world);
     }
@@ -295,7 +299,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       hud.textContent = [
         `Safe context: ${isInSafeContext(this.world) ? 'yes' : 'no'} (state=${this.world.state})`,
         `Overlays: inventory=${this.inventoryUI?.isOpen() ? 'open' : 'closed'} · equipment=${this.equipmentUI?.isOpen() ? 'open' : 'closed'}`,
-        `Inventory slots: ${bag?.slots.length ?? 0} · Equipped items: ${equippedCount}`,
+        `Inventory slots: ${bag ? listStaticInventorySlots(bag).length : 0} · Equipped items: ${equippedCount}`,
         `Active slot filter: ${slotFilter}`,
         `Effective charisma: ${charisma}`,
         `Gear load: ${gearStr} → ${bandLabel}`,

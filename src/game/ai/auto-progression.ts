@@ -28,6 +28,7 @@ import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
+import { listStaticInventorySlots } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
 import {
@@ -290,16 +291,17 @@ function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean
   const persona = getWeaponPersonaForWorld(world);
   const bag = world.inventories.get(playerEid);
   if (!persona || !bag) return false;
+  const staticSlots = listStaticInventorySlots(bag);
 
   let equippedAny = false;
-  if (bag.slots.some((slot) => slot.itemId === SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
+  if (staticSlots.some((slot) => slot.itemId === SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
     const questGear = equipFromBag(world, playerEid, SHOPKEEPER_EQUIPMENT_ITEM_ID, { force: true });
     equippedAny = questGear.ok || equippedAny;
   }
   while (true) {
     const currentStats = getEffectiveStats(world, playerEid);
     const currentUtility = scoreLoadoutForPersona(persona, currentStats);
-    const bestCandidate = [...new Set(bag.slots.map((slot) => slot.itemId))]
+    const bestCandidate = [...new Set(listStaticInventorySlots(bag).map((slot) => slot.itemId))]
       .map((itemId) => {
         const def = getEquipmentDefForItem(itemId);
         const preview = previewEquipDelta(world, playerEid, itemId);

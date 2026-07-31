@@ -31,27 +31,35 @@ JSON into `{ number, title, payload }[]`.
 
 1. `gh issue list --label asset-checkin --state open --json number,title,body`
    → parse payloads (issues without a valid payload are skipped).
-2. `planConsolidation` → batch branch `assets/batch-<UTC-stamp>`, PR title/body
+2. `scanOrphanedCheckinBranches` — `git ls-remote --heads origin 'assets/checkin-*'`
+   cross-referenced with `gh pr list --state open` to find branches with no open PR.
+   Non-fatal: query failures return `[]` (trust guard still validates all paths).
+3. If both issues and orphaned branches are empty → print "nothing to consolidate"
+   and exit 0.
+4. `planConsolidation` → batch branch `assets/batch-<UTC-stamp>`, PR title/body
    (with `Closes #<n>` per issue), the deduped source branches, and the deduped
    asset list.
-3. `git fetch origin main` + each source branch.
-4. `git worktree add <tmp> -b assets/batch-… origin/main` (the session branch is
+5. `git fetch origin main` + each source branch + each orphaned branch.
+6. Pre-compute AM-only (`--diff-filter=AM`) paths vs `origin/main` for each
+   orphaned branch (restricted to `ASSET_SURFACE_PATHS` — same as the queue).
+7. `git worktree add <tmp> -b assets/batch-… origin/main` (the session branch is
    never touched).
-5. For each source branch: read its `manifest.json` + `sprite-catalog.json` via
+8. For each issue-backed source branch: read its `manifest.json` + `sprite-catalog.json` via
    `git show <ref>:<path>` (text-safe), and materialize each approved PNG with
    `git checkout <ref> -- <path>` (object-store → worktree, **binary-safe** — no
    blob ever passes through stdout).
-6. Union: `mergeManifests(base, …overlays)` (by entry key) and
-   `mergeCatalogs(base, …overlays)` (by `id`), both later-wins. Write the merged
-   JSON back into the worktree.
-7. `git add` the art surface, commit (`feat(sprites): consolidate …`), `push -u`.
-8. `gh pr create --base main --head assets/batch-… --title … --body …`. Print
-   the PR URL.
-9. `finally`: `git worktree remove --force` + delete the temp dir.
+9. For each orphaned branch: overlay only its AM-scoped paths via
+   `git checkout <ref> -- <paths>`. Later branches win on collision
+   (last-writer semantics, same as the queue union).
+10. `git add` the art surface, commit (`feat(sprites): consolidate …`), `push -u`.
+11. `gh pr create --base main --head assets/batch-… --title … --body …`. Print
+    the PR URL.
+12. `finally`: `git worktree remove --force` + delete the temp dir.
 
 The pure pieces (`parseOpenAssetIssues`, `planConsolidation`, `mergeManifests`,
 `mergeCatalogs`, `parseAssetIssueBody`) are unit-tested in
 `tests/unit/sprites/asset-pr.test.ts` and `asset-issues.test.ts`.
+`scanOrphanedCheckinBranches` is unit-tested in `reconcile-queue.test.ts` (Layer 2b).
 
 ## Why union instead of `git merge`
 
@@ -98,6 +106,15 @@ After the batch merges:
    into the art-only batch.
 
 ## §Recovery — when something goes wrong
+
+**Orphaned `assets/checkin-*` branches (no issue, no open PR):**
+These are automatically picked up by both `sprites:asset-pr` and the hourly
+`sprite-queue-reconciler`. If you want to fold them immediately without waiting
+for the cron, run `npm run sprites:asset-pr` — it now scans and overlays
+all orphaned branches in addition to issue-backed ones. The PR body lists them
+under **Orphaned branches (no issue)**. If a specific orphaned branch's art
+conflicts with newer work, delete the branch on the remote first:
+`git push origin --delete assets/checkin-<slug>`.
 
 **A source branch was deleted** (e.g. someone pruned `assets/<slug>`):
 `git fetch origin <branch>` fails and the run aborts. Options:

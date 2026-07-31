@@ -3,6 +3,7 @@ import { query } from 'bitecs';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { DoorState } from '../../src/core/index.js';
 import { getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { safeRoomSystem } from '../../src/core/safe-space.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
@@ -172,6 +173,27 @@ describe('initializeFloor2Scenario manifest validation', () => {
     ).toBe(true);
     // Den-unlock quests are passive background counters — they must be hidden.
     expect(denQuestIds.every((questId) => getQuestDef(questId)?.hidden === true)).toBe(true);
+  });
+
+  it('treats the Floor 2 entrance room as a safe room while keeping settlement anchor targeting stable', () => {
+    const { world, playerEid } = createScenarioWorld();
+
+    initializeFloor2Scenario(world, playerEid);
+
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(true);
+
+    const settlementAnchor = resolveFloor2SettlementAnchor(world);
+    expect(settlementAnchor).not.toBeNull();
+    const settlementAnchorTile = world.floorMap!.worldToTile(
+      settlementAnchor!.x,
+      settlementAnchor!.y,
+    );
+    const settlementAnchorRoomId = world.floorMap!.roomGraph.getRoomAt(
+      settlementAnchorTile.x,
+      settlementAnchorTile.y,
+    );
+    expect(settlementAnchorRoomId).toBe(world.floorExtendedState?.settlement?.settlementRoomId);
   });
 
   it('starts a direct Floor 2 run at level 5 with spent stats and the charm equipped', () => {

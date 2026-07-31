@@ -2295,14 +2295,14 @@ for (const run of runs) {
     latestRunsByKey.set(key, run);
   }
 }
-const actionRequiredRuns = [...latestRunsByKey.values()].filter(
-  (candidate) => candidate.conclusion === 'action_required',
+const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
+  ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
 const changedFiles =
-  actionRequiredRuns.length > 0
+  retriggerableRuns.length > 0
     ? await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`)
     : [];
-for (const run of actionRequiredRuns) {
+for (const run of retriggerableRuns) {
   const rejection = workflowApprovalRejection({
     run,
     repository,
@@ -2319,18 +2319,23 @@ for (const run of actionRequiredRuns) {
     // was pushed by the same App identity (see AGENTS.md § Bot-pushed CI checks).
     // The GitHub approval endpoint does not apply to same-repository runs, so we
     // escalate an actionable retrigger blocker instead.
+    const runConclusion = String(run.conclusion || 'action_required');
+    const isCancelled = runConclusion === 'cancelled';
     blockers.push({
       kind: 'ci-retrigger',
-      id: `action-required:${String(run.name || run.id)}`,
-      summary: `${run.name} is parked in action_required because the commit was pushed by the same App identity. Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`,
+      id: `${runConclusion}:${String(run.name || run.id)}`,
+      summary: isCancelled
+        ? `${run.name} was cancelled (not failed). Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`
+        : `${run.name} is parked in action_required because the commit was pushed by the same App identity. Push one commit under a different identity to retrigger CI — e.g. git commit --allow-empty -m "chore: retrigger CI".`,
       url: run.html_url,
     });
     process.stdout.write(
-      `escalate action_required run=${run.id} name="${run.name}" reason=required-check-parked\n`,
+      `escalate ${runConclusion} run=${run.id} name="${run.name}" reason=required-check-${runConclusion}\n`,
     );
   } else {
+    const runConclusion = String(run.conclusion || 'unknown');
     process.stdout.write(
-      `skip action_required run=${run.id} name="${run.name}" reason=${rejection}\n`,
+      `skip ${runConclusion} run=${run.id} name="${run.name}" reason=${rejection}\n`,
     );
   }
 }

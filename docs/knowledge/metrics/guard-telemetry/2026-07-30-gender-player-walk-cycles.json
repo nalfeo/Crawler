@@ -1,0 +1,47 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "gender-player-walk-cycles",
+  "date": "2026-07-30",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 628,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 625,
+      "crash": 1
+    },
+    "pr-preflight": {
+      "allow": 1
+    },
+    "pr-review-ledger": {
+      "allow": 1
+    }
+  },
+  "tools": {
+    "chrome-devtools-click": 3,
+    "chrome-devtools-close_page": 1,
+    "chrome-devtools-evaluate_script": 4,
+    "chrome-devtools-navigate_page": 2,
+    "chrome-devtools-new_page": 1,
+    "chrome-devtools-press_key": 6,
+    "chrome-devtools-take_screenshot": 7,
+    "chrome-devtools-take_snapshot": 3,
+    "chrome-devtools-wait_for": 1,
+    "create": 5,
+    "create_pull_request": 2,
+    "edit": 14,
+    "get_changes_overview": 1,
+    "glob": 4,
+    "grep": 41,
+    "powershell": 293,
+    "read_agent": 16,
+    "read_powershell": 13,
+    "rg": 34,
+    "stop_powershell": 2,
+    "task": 8,
+    "view": 167
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

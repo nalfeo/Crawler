@@ -408,6 +408,56 @@ test('fails closed after temporary dependency exception expiry', () => {
   assert.equal(result.expired.length, 1);
 });
 
+test('rejects temporary dependency exceptions with malformed expiresOn', () => {
+  const packageManifest = {
+    overrides: {
+      postcss: '8.5.22',
+    },
+  };
+
+  assert.throws(
+    () =>
+      evaluateTemporaryDependencyExceptions(packageManifest, {
+        now: new Date('2026-08-01T00:00:00Z'),
+        exceptions: [
+          {
+            packageName: 'postcss',
+            field: 'overrides',
+            version: '8.5.22',
+            expiresOn: '2026/08/06',
+            reason: 'Temporary rollback for feed availability.',
+          },
+        ],
+      }),
+    /expiresOn must be YYYY-MM-DD/,
+  );
+});
+
+test('rejects temporary dependency exceptions with impossible expiresOn date', () => {
+  const packageManifest = {
+    overrides: {
+      postcss: '8.5.22',
+    },
+  };
+
+  assert.throws(
+    () =>
+      evaluateTemporaryDependencyExceptions(packageManifest, {
+        now: new Date('2026-08-01T00:00:00Z'),
+        exceptions: [
+          {
+            packageName: 'postcss',
+            field: 'overrides',
+            version: '8.5.22',
+            expiresOn: '2026-02-31',
+            reason: 'Temporary rollback for feed availability.',
+          },
+        ],
+      }),
+    /is not a real calendar date/,
+  );
+});
+
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.
 // New entries: add the advisory URL, expiry date, and the reason text here.

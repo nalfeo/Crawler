@@ -8,7 +8,7 @@ import {
   type GeneratedEquipmentRarity,
   type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
-import type { GenerateEquipmentInstanceRequest } from '../../src/game/generated-equipment-generator.js';
+import type { _GenerateEquipmentInstanceRequest as GenerateEquipmentInstanceRequest } from '../../src/game/generated-equipment-generator.js';
 
 export const GENERATED_WEAPON_REQUEST = {
   baseId: 'plasma-pistol',

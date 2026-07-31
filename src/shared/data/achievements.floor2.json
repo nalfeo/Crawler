@@ -10,14 +10,9 @@
     "iconId": "achv-floor2-field-kit-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -39,14 +34,9 @@
     "iconId": "achv-floor2-second-wind-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -68,14 +58,9 @@
     "iconId": "achv-floor2-veteran-cast-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -97,14 +82,9 @@
     "iconId": "achv-floor2-first-friend-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -126,14 +106,9 @@
     "iconId": "achv-floor2-inner-circle-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -155,14 +130,9 @@
     "iconId": "achv-floor2-court-favorite-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -183,14 +153,9 @@
     "iconId": "achv-floor2-made-an-enemy-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -212,14 +177,9 @@
     "iconId": "achv-floor2-most-wanted-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -241,14 +201,9 @@
     "iconId": "achv-floor2-double-agent-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -269,14 +224,9 @@
     "iconId": "achv-floor2-boss-sighted-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -298,14 +248,9 @@
     "iconId": "achv-floor2-den-breaker-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -327,14 +272,9 @@
     "iconId": "achv-floor2-den-crusher-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -356,14 +296,9 @@
     "iconId": "achv-floor2-family-annihilator-placeholder",
     "difficulty": "brutal",
     "reward": {
-      "type": "equipment",
-      "tier": "tier4",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -385,14 +320,9 @@
     "iconId": "achv-floor2-settlement-found-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -412,14 +342,9 @@
     "iconId": "achv-floor2-meet-the-broker-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -440,14 +365,9 @@
     "iconId": "achv-floor2-way-out-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -468,14 +388,9 @@
     "iconId": "achv-floor2-floor-cleared-placeholder",
     "difficulty": "brutal",
     "reward": {
-      "type": "equipment",
-      "tier": "tier4",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -502,14 +417,9 @@
     "iconId": "achv-floor2-two-front-war-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -531,14 +441,9 @@
     "iconId": "achv-floor2-total-war-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -560,14 +465,9 @@
     "iconId": "achv-floor2-scorched-earth-placeholder",
     "difficulty": "brutal",
     "reward": {
-      "type": "equipment",
-      "tier": "tier4",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -588,14 +488,9 @@
     "iconId": "achv-floor2-safe-harbor-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -616,14 +511,9 @@
     "iconId": "achv-floor2-suited-up-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -644,14 +534,9 @@
     "iconId": "achv-floor2-pocket-change-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -673,14 +558,9 @@
     "iconId": "achv-floor2-staircase-spotted-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -695,25 +575,20 @@
     "floor": 2,
     "title": "Breach the Gate",
     "popupText": "New achievement: Breach the Gate!",
-    "unlockCriteria": "Start the contested battle for the Floor 2 exit staircase.",
-    "details": "Unlock the moment the staircase's contested battle begins.",
+    "unlockCriteria": "Unlock the Floor 2 exit staircase.",
+    "details": "Unlock the moment the Floor 2 exit staircase spawns after family victory.",
     "directorFlavor": "The staircase isn't just going to hand itself over — whoever's holding that ground now knows you're coming, and the fight for it just started whether you were ready or not. This is the one skirmish on the floor that's explicitly about territory and nothing else: no reputation angle, no diplomacy option, just who ends up controlling the exit. The camera crew's been briefed to treat this as the floor's real climax, whatever else happened upstream. Win it and the way out is yours. Lose it and you'll be back here having this exact conversation again.",
     "iconId": "achv-floor2-breach-the-gate-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
         "type": "booleanIs",
-        "fact": "staircaseBattleStarted",
+        "fact": "staircaseSpawned",
         "value": true
       }
     ]
@@ -729,14 +604,9 @@
     "iconId": "achv-floor2-new-tricks-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -758,14 +628,9 @@
     "iconId": "achv-floor2-braved-the-dens-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -787,14 +652,9 @@
     "iconId": "achv-floor2-no-den-unbraved-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -815,14 +675,9 @@
     "iconId": "achv-floor2-sharpened-edge-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -844,14 +699,9 @@
     "iconId": "achv-floor2-built-different-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -874,14 +724,9 @@
     "iconId": "achv-floor2-run-body-count-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -904,14 +749,9 @@
     "iconId": "achv-floor2-run-hoarders-ledger-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {
@@ -934,14 +774,9 @@
     "iconId": "achv-floor2-run-two-floor-gauntlet-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -965,14 +800,9 @@
     "iconId": "achv-floor2-run-skill-of-the-season-placeholder",
     "difficulty": "hard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier3",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -995,14 +825,9 @@
     "iconId": "achv-floor2-run-fully-outfitted-placeholder",
     "difficulty": "basic",
     "reward": {
-      "type": "equipment",
-      "tier": "tier1",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "common"
     },
     "unlockRules": [
       {
@@ -1024,14 +849,9 @@
     "iconId": "achv-floor2-run-ability-collector-placeholder",
     "difficulty": "standard",
     "reward": {
-      "type": "equipment",
-      "tier": "tier2",
-      "bases": [
-        "weapon.iron-cleaver",
-        "weapon.ashwood-bow",
-        "weapon.ember-wand",
-        "weapon.frost-crook"
-      ]
+      "type": "lootBox",
+      "lootTable": "floor2-generated-equipment",
+      "tier": "uncommon"
     },
     "unlockRules": [
       {

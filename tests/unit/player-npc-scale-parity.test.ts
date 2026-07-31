@@ -24,7 +24,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import PLAYER_WALK_SHARD from '../../public/assets/generated/entries/player-walk-cycle.json';
+import PLAYER_WALK_SHARD from '../../public/assets/generated/entries/player-walk-cycle-female.json';
 import ENTITY_SPRITE_MAPPINGS from '../../src/shared/data/entity-sprite-mappings.json';
 import SET_PIECES from '../../src/shared/data/set-pieces.json';
 import { ftToPx } from '../../src/shared/units.js';

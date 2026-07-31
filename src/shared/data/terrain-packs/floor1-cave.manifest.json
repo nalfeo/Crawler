@@ -246,23 +246,5 @@
       "imagePath": "assets/terrain-packs/floor1-cave/corridor-3.png",
       "textureKey": "terrain-pack-floor1-cave-corridor-3"
     }
-  ],
-  "doorSet": {
-    "openHorizontal": {
-      "imagePath": "assets/terrain-packs/floor1-cave/door-open-horizontal.png",
-      "textureKey": "terrain-pack-floor1-cave-door-open-horizontal"
-    },
-    "openVertical": {
-      "imagePath": "assets/terrain-packs/floor1-cave/door-open-vertical.png",
-      "textureKey": "terrain-pack-floor1-cave-door-open-vertical"
-    },
-    "closedHorizontal": {
-      "imagePath": "assets/terrain-packs/floor1-cave/door-closed-horizontal.png",
-      "textureKey": "terrain-pack-floor1-cave-door-closed-horizontal"
-    },
-    "closedVertical": {
-      "imagePath": "assets/terrain-packs/floor1-cave/door-closed-vertical.png",
-      "textureKey": "terrain-pack-floor1-cave-door-closed-vertical"
-    }
-  }
+  ]
 }

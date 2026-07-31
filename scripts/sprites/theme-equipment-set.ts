@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { SLOT_REGISTRY, getMirrorSlot } from '../../src/shared/equipment-slots.js';
+import { SLOT_REGISTRY, _getMirrorSlotForTests } from '../../src/shared/equipment-slots.js';
 import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from './store/types.js';
 
 export const THEME_EQUIPMENT_SET_SCHEMA_VERSION = 1;
@@ -65,11 +65,29 @@ const artifactEvidenceSchema = z
   })
   .strict();
 
+/**
+ * Durable marker for the last generation attempt that failed for this item in
+ * this phase. Set by `recordThemeSetItemPhaseFailure` (the pipeline records it
+ * when an executor recoverably fails), cleared by a successful
+ * `recordThemeSetItemPhaseArtifacts`, an explicit human up-vote, a rejected-item
+ * revision, or a phase advance. Its purpose is to keep a failed item OUT of the
+ * "approve remaining" bulk action even when it retains stale artifacts from an
+ * earlier pass (see `computeBulkApprovePlan`).
+ */
+const itemPhaseGenerationErrorSchema = z
+  .object({
+    message: z.string().trim().min(1),
+  })
+  .strict();
+
 const itemPhaseStateSchema = z
   .object({
     artifacts: z.array(artifactEvidenceSchema),
     evidence: z.array(artifactEvidenceSchema),
     review: reviewSchema,
+    // Optional-with-default so states persisted before this field existed parse
+    // unchanged (absent → null), same treatment as `publication`.
+    generationError: itemPhaseGenerationErrorSchema.nullable().default(null),
   })
   .strict();
 
@@ -266,7 +284,12 @@ export function emptyThemeEquipmentReview(): ThemeEquipmentReview {
 }
 
 export function emptyThemeEquipmentItemPhaseState(): ThemeEquipmentItemPhaseState {
-  return { artifacts: [], evidence: [], review: emptyThemeEquipmentReview() };
+  return {
+    artifacts: [],
+    evidence: [],
+    review: emptyThemeEquipmentReview(),
+    generationError: null,
+  };
 }
 
 export function emptyThemeEquipmentSetPhaseReview(): ThemeEquipmentSetPhaseReview {
@@ -667,6 +690,8 @@ export function recordThemeSetItemPhaseArtifacts(
                 artifacts: parsedArtifacts.data,
                 evidence: parsedEvidence.data,
                 review: emptyThemeEquipmentReview(),
+                // A successful (re)generation supersedes any prior failure marker.
+                generationError: null,
               },
             },
           }
@@ -676,6 +701,91 @@ export function recordThemeSetItemPhaseArtifacts(
       ...state.phases,
       [phase]: emptyThemeEquipmentSetPhaseReview(),
     },
+  };
+
+  return { ok: true, state: parseThemeEquipmentSetState(nextState) };
+}
+
+/**
+ * Records a durable, per-item/per-phase generation-failure marker for the
+ * CURRENT phase without touching that item's artifacts, evidence, review, or
+ * any set-level review. Called by the pipeline when a per-item executor fails
+ * recoverably, so a failed item stays visible AND is excluded from the "approve
+ * remaining" bulk action (`computeBulkApprovePlan`) even if it retains stale
+ * artifacts from a prior pass. Bumps `stateRevision` so the marker is a real
+ * mutation (never a same-revision rewrite — see the runner's save-if-mutated
+ * boundary). Refuses missing/resolved/non-review-phase items, mirroring the
+ * artifact-recording gates; the pipeline treats such a refusal as fatal.
+ */
+export function recordThemeSetItemPhaseFailure(
+  input: unknown,
+  itemId: string,
+  message: string,
+): ThemeSetMutationResult {
+  const parsed = themeEquipmentSetStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, reasons: zodIssuesToGateReasons(parsed.error.issues) };
+  }
+  const state = parsed.data;
+  if (!isReviewPhase(state.phase)) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'phase-not-recordable',
+          message: `Cannot record item phase failure during phase "${state.phase}"`,
+          path: ['phase'],
+        },
+      ],
+    };
+  }
+
+  const item = state.items.find((candidate) => candidate.id === itemId);
+  if (!item) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'item-not-found',
+          message: `Theme set item "${itemId}" was not found`,
+          path: ['items'],
+        },
+      ],
+    };
+  }
+  if (isThemeSetItemResolvedForPhase(item, state.phase)) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'item-already-resolved',
+          message: `Item "${itemId}" is up-reviewed or frozen for phase "${state.phase}" and cannot be marked failed`,
+          path: ['items', item.id, 'phases', state.phase],
+        },
+      ],
+    };
+  }
+
+  const trimmed = message.trim();
+  const safeMessage = trimmed.length > 0 ? trimmed : 'Generation failed';
+  const phase = state.phase;
+  const nextState: ThemeEquipmentSetState = {
+    ...state,
+    stateRevision: state.stateRevision + 1,
+    items: state.items.map((candidate) =>
+      candidate.id === itemId
+        ? {
+            ...candidate,
+            phases: {
+              ...candidate.phases,
+              [phase]: {
+                ...candidate.phases[phase],
+                generationError: { message: safeMessage },
+              },
+            },
+          }
+        : candidate,
+    ),
   };
 
   return { ok: true, state: parseThemeEquipmentSetState(nextState) };
@@ -837,6 +947,10 @@ export function applyThemeSetItemReview(
               [phase]: {
                 ...candidate.phases[phase],
                 review: parsedReview.data,
+                // An explicit up-vote supersedes any prior failure marker; a
+                // null/down verdict leaves it intact so a failed item stays
+                // excluded from bulk approval until it is regenerated.
+                ...(nextVerdict === 'up' ? { generationError: null } : {}),
               },
             },
           }
@@ -916,7 +1030,18 @@ function computeBulkApprovePlan(state: ThemeEquipmentSetState): ThemeSetBulkAppr
       });
       continue;
     }
-    // verdict === null → approve only if the phase's required artifacts are present.
+    // verdict === null → approve only if the phase's required artifacts are
+    // present AND the item did not fail its last generation attempt. A failed
+    // item may retain stale artifacts from an earlier pass, so the artifact
+    // check alone is insufficient — exclude it until it is regenerated.
+    if (item.phases[phase].generationError) {
+      skipped.push({
+        id: item.id,
+        code: 'item-generation-failed',
+        reason: `Item "${item.id}" failed its last generation attempt (${item.phases[phase].generationError.message}); regenerate it before approving`,
+      });
+      continue;
+    }
     const artifactReason = validatePhaseArtifactsForUpVote(item, phase);
     if (artifactReason) {
       skipped.push({ id: item.id, code: artifactReason.code, reason: artifactReason.message });
@@ -1170,6 +1295,8 @@ export function applyEditedThemeSetBrief(
                 artifacts: [parsedArtifact.data],
                 evidence: [parsedEvidence.data],
                 review: { verdict: 'up' as const },
+                // A freshly minted brief supersedes any prior failure marker.
+                generationError: null,
               },
             },
           }
@@ -1375,8 +1502,9 @@ const themeEquipmentSetPlanEquipmentSchema = z
  *
  * Pure and side-effect free; returns one reason per offending slot so callers
  * (and the roster-synth repair loop) get an actionable, per-slot message. The
- * canonical pair list is `MIRROR_SLOT_PAIRS` in `equipment-slots.ts`, consulted
- * here via `getMirrorSlot` so this rule can never drift from the slot registry.
+ * canonical pair list is `_MIRROR_SLOT_PAIRS_FOR_TESTS` in `equipment-slots.ts`,
+ * consulted here via `_getMirrorSlotForTests` so this rule can never drift from
+ * the slot registry.
  */
 export function validateThemeSetPlanMirrorSlots(
   equipment: readonly { readonly id: string; readonly slots: readonly string[] }[],
@@ -1385,7 +1513,7 @@ export function validateThemeSetPlanMirrorSlots(
   equipment.forEach((item, index) => {
     const slotSet = new Set(item.slots);
     for (const slot of item.slots) {
-      const partner = getMirrorSlot(slot);
+      const partner = _getMirrorSlotForTests(slot);
       if (partner !== undefined && !slotSet.has(partner)) {
         reasons.push({
           code: 'mirror-slot-unpaired',

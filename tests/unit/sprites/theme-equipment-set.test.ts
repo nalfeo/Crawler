@@ -26,6 +26,7 @@ import {
   planApproveRemaining,
   planRunPhase,
   recordThemeSetItemPhaseArtifacts,
+  recordThemeSetItemPhaseFailure,
   reviseRejectedThemeSetItem,
   saveThemeEquipmentSetState,
   themeEquipmentSetStateKey,
@@ -41,7 +42,7 @@ import {
   type ConditionalWriteConditions,
   type RunStore,
 } from '../../../scripts/sprites/store/types.js';
-import { getMirrorSlot } from '../../../src/shared/equipment-slots.js';
+import { _getMirrorSlotForTests } from '../../../src/shared/equipment-slots.js';
 import { CachingRunStore } from '../../../scripts/sprites/store/caching-store.js';
 import { SharedResourceCache } from '../../../scripts/sprites/store/shared-cache.js';
 
@@ -1082,7 +1083,7 @@ describe('buildThemeEquipmentSetStateFromPlan', () => {
       const items: Array<{ id: string; displayName: string; slots: string[] }> = [];
       for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
         if (covered.has(slot)) continue;
-        const partner = getMirrorSlot(slot);
+        const partner = _getMirrorSlotForTests(slot);
         const slots = partner ? [slot, partner] : [slot];
         for (const s of slots) covered.add(s);
         items.push({
@@ -1132,7 +1133,7 @@ describe('mirror-pair unified-slot authoring rule', () => {
     const equipment: Array<{ id: string; displayName: string; slots: string[] }> = [];
     for (const slot of NON_HAND_EQUIPMENT_SLOT_IDS) {
       if (covered.has(slot)) continue;
-      const partner = getMirrorSlot(slot);
+      const partner = _getMirrorSlotForTests(slot);
       const slots = partner ? [slot, partner] : [slot];
       for (const s of slots) covered.add(s);
       equipment.push({
@@ -1216,7 +1217,7 @@ describe('mirror-pair unified-slot authoring rule', () => {
       (item) =>
         item.kind === 'equipment' &&
         item.slots.length === 1 &&
-        getMirrorSlot(item.slots[0]!) !== undefined,
+        _getMirrorSlotForTests(item.slots[0]!) !== undefined,
     );
     expect(splitItem).toBeDefined();
     expect(() => cloneState(state)).not.toThrow();
@@ -1345,6 +1346,225 @@ describe('approve remaining (bulk up-vote)', () => {
     expect(result.reasons).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'phase-not-reviewable' })]),
     );
+  });
+});
+
+describe('recordThemeSetItemPhaseFailure (graceful per-item degradation marker)', () => {
+  it('marks the current-phase generationError, bumps the revision, and preserves artifacts/review', () => {
+    // Give item 0 stale artifacts + a null verdict (an unresolved item), then
+    // fail it. The marker must attach without touching those artifacts.
+    const withArtifacts = parseThemeEquipmentSetState({
+      ...makeState(),
+      items: makeState().items.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              phases: {
+                ...item.phases,
+                roster: {
+                  artifacts: [
+                    { id: 'stale', kind: 'roster', uri: 'run://stale', provenance: 'unit-test' },
+                  ],
+                  evidence: [],
+                  review: { verdict: null },
+                },
+              },
+            }
+          : item,
+      ),
+    });
+    const itemId = withArtifacts.items[0]!.id;
+
+    const result = recordThemeSetItemPhaseFailure(withArtifacts, itemId, '0 acceptable variants');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.stateRevision).toBe(withArtifacts.stateRevision + 1);
+    const item = result.state.items.find((candidate) => candidate.id === itemId)!;
+    expect(item.phases.roster.generationError).toEqual({ message: '0 acceptable variants' });
+    // Artifacts, evidence, and verdict are all untouched by the marker.
+    expect(item.phases.roster.artifacts).toEqual([
+      { id: 'stale', kind: 'roster', uri: 'run://stale', provenance: 'unit-test' },
+    ]);
+    expect(item.phases.roster.review.verdict).toBeNull();
+    // Set-level review is not touched either.
+    expect(result.state.phases.roster.humanReview.verdict).toBeNull();
+  });
+
+  it('falls back to a generic message when the failure message is blank', () => {
+    const state = makeState();
+    const itemId = state.items[0]!.id;
+
+    const result = recordThemeSetItemPhaseFailure(state, itemId, '   ');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const item = result.state.items.find((candidate) => candidate.id === itemId)!;
+    expect(item.phases.roster.generationError).toEqual({ message: 'Generation failed' });
+  });
+
+  it('refuses an unknown item id without mutating input', () => {
+    const state = makeState();
+    const before = JSON.stringify(state);
+
+    const result = recordThemeSetItemPhaseFailure(state, 'not-a-real-item', 'boom');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'item-not-found' })]),
+    );
+    expect(JSON.stringify(state)).toBe(before);
+  });
+
+  it('refuses to mark a resolved (up-reviewed) item', () => {
+    const state = readyForPhase(makeState()); // every item up-reviewed/frozen
+    const itemId = state.items[0]!.id;
+
+    const result = recordThemeSetItemPhaseFailure(state, itemId, 'boom');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'item-already-resolved' })]),
+    );
+  });
+
+  it('refuses to mark during a non-review phase', () => {
+    const complete = parseThemeEquipmentSetState({ ...makeState(), phase: 'complete' });
+
+    const result = recordThemeSetItemPhaseFailure(complete, complete.items[0]!.id, 'boom');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'phase-not-recordable' })]),
+    );
+  });
+});
+
+describe('generation-failure marker lifecycle', () => {
+  /** Attaches a generationError marker to item `index` for the current phase. */
+  function withFailure(state: ThemeEquipmentSetState, index: number): ThemeEquipmentSetState {
+    const itemId = state.items[index]!.id;
+    const result = recordThemeSetItemPhaseFailure(state, itemId, 'no acceptable variants');
+    if (!result.ok) throw new Error('withFailure setup failed');
+    return result.state;
+  }
+
+  it('excludes a failed item (even with stale artifacts) from the bulk-approve plan', () => {
+    // briefs phase with a real `selected-brief` artifact so the item WOULD be
+    // approvable — except the failure marker must exclude it.
+    const ready = parseThemeEquipmentSetState({
+      ...makeState({ phase: 'briefs' }),
+      items: makeState({ phase: 'briefs' }).items.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              phases: {
+                ...item.phases,
+                briefs: {
+                  artifacts: [
+                    {
+                      id: `${item.id}-brief`,
+                      kind: 'selected-brief',
+                      uri: `run://${item.id}/brief`,
+                      provenance: 'unit-test',
+                    },
+                  ],
+                  evidence: [],
+                  review: { verdict: null },
+                },
+              },
+            }
+          : item,
+      ),
+    });
+    const failed = withFailure(ready, 0);
+    const itemId = failed.items[0]!.id;
+
+    const plan = planApproveRemaining(failed);
+
+    expect(plan.approvableIds).not.toContain(itemId);
+    expect(plan.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: itemId, code: 'item-generation-failed' }),
+      ]),
+    );
+  });
+
+  it('clears the marker on an explicit up-vote', () => {
+    // Arrange a failed item that also has the required artifact so an up-vote
+    // is permitted.
+    const ready = parseThemeEquipmentSetState({
+      ...makeState({ phase: 'briefs' }),
+      items: makeState({ phase: 'briefs' }).items.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              phases: {
+                ...item.phases,
+                briefs: {
+                  artifacts: [
+                    {
+                      id: `${item.id}-brief`,
+                      kind: 'selected-brief',
+                      uri: `run://${item.id}/brief`,
+                      provenance: 'unit-test',
+                    },
+                  ],
+                  evidence: [],
+                  review: { verdict: null },
+                },
+              },
+            }
+          : item,
+      ),
+    });
+    const failed = withFailure(ready, 0);
+    const itemId = failed.items[0]!.id;
+    expect(failed.items[0]!.phases.briefs.generationError).not.toBeNull();
+
+    const result = applyThemeSetItemReview(failed, itemId, { verdict: 'up' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.items[0]!.phases.briefs.generationError).toBeNull();
+  });
+
+  it('preserves the marker on a null or down verdict', () => {
+    const failed = withFailure(makeState(), 0);
+    const itemId = failed.items[0]!.id;
+
+    const down = applyThemeSetItemReview(failed, itemId, { verdict: 'down' });
+    expect(down.ok).toBe(true);
+    if (!down.ok) return;
+    expect(down.state.items[0]!.phases.roster.generationError).toEqual({
+      message: 'no acceptable variants',
+    });
+
+    const cleared = applyThemeSetItemReview(failed, itemId, { verdict: null });
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) return;
+    expect(cleared.state.items[0]!.phases.roster.generationError).toEqual({
+      message: 'no acceptable variants',
+    });
+  });
+
+  it('clears the marker when the item is successfully regenerated', () => {
+    const failed = withFailure(makeState(), 0);
+    const itemId = failed.items[0]!.id;
+
+    const regen = recordThemeSetItemPhaseArtifacts(
+      failed,
+      itemId,
+      [{ id: 'fresh', kind: 'roster', uri: 'run://fresh', provenance: 'unit-test' }],
+      [],
+    );
+
+    expect(regen.ok).toBe(true);
+    if (!regen.ok) return;
+    expect(regen.state.items[0]!.phases.roster.generationError).toBeNull();
   });
 });
 
