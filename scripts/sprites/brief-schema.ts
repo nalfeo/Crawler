@@ -321,6 +321,43 @@ export const briefSchema = z
       .strict()
       .default({ trimAndFit: false, minDimension: 64, paletteMode: 'none' }),
     /**
+     * Opt-in icon-batch mode.
+     *
+     * When present, each cell on the sheet is a DIFFERENT icon concept rather
+     * than a variant of one subject. Used for achievement icons, ability icons,
+     * and other UI icon families where batching many distinct symbols into one
+     * generation call reduces cost (~15× vs per-icon calls).
+     *
+     * Key differences from a normal brief:
+     *   - `minVariations` should be 0 — variation expansion is skipped.
+     *   - Each entry's `id` becomes the manifest key and asset filename.
+     *   - Approval uses `approveIconBatch()` (not `approveVariant()`).
+     *   - The prompt builder emits per-cell concept labels instead of a
+     *     single subject + thematic-variations list.
+     *
+     * Length must equal `generation.sheet.rows × cols − emptyCells.length`.
+     * Validated in `superRefine` below.
+     */
+    iconBatch: z
+      .array(
+        z
+          .object({
+            /** Manifest key and asset filename for this icon. Kebab-case. */
+            id: z
+              .string()
+              .min(1)
+              .regex(/^[a-z0-9][a-z0-9-]*$/, 'iconBatch entry id must be lowercase kebab-case'),
+            /** Short human-readable name shown in the cell label prompt. */
+            concept: z.string().trim().min(1).max(200),
+            /** Optional detailed visual description for this cell's icon. */
+            description: z.string().trim().min(1).max(1000).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(16)
+      .optional(),
+    /**
      * Opt-in ORDERED frame-sequence mode (walk-cycle animation sheets).
      *
      * When enabled, the sheet's cells are NOT independent design
@@ -412,6 +449,30 @@ export const briefSchema = z
         path: ['generation', 'sheet'],
         message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
       });
+    }
+    // iconBatch mode: each cell is a DIFFERENT icon concept. The iconBatch
+    // array length must match the total cell count (rows × cols − emptyCells).
+    if (brief.iconBatch !== undefined) {
+      const batchLen = brief.iconBatch.length;
+      if (batchLen !== variantCount) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['iconBatch'],
+          message: `iconBatch length (${batchLen}) must equal grid cell count (${variantCount})`,
+        });
+      }
+      // Unique id guard — duplicate ids would stomp each other's manifest entry.
+      const seenIds = new Set<string>();
+      for (const entry of brief.iconBatch) {
+        if (seenIds.has(entry.id)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['iconBatch'],
+            message: `duplicate iconBatch id: "${entry.id}"`,
+          });
+        }
+        seenIds.add(entry.id);
+      }
     }
     // frameSequence mode: the grid cells are ordered animation frames, so
     // rows × cols must equal frameCount and every cell must be a required frame.

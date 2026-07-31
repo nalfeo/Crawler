@@ -388,6 +388,36 @@
       "favorite": false,
       "comment": "Off-style: semi-realistic proportions/dithering. Superseded by the cartoon (v3) direction; excluded as a style reference.",
       "disliked": true
+    },
+    "welcome-room-floor-tape-var-1": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "sewer-grate-floor-tile-v1-var-1": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "the-stairs-v2-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "the-stairs-v2-var-1": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "the-stairs-v2-var-2": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
+    },
+    "cactusfolk-boss-v1-var-0": {
+      "favorite": true,
+      "disliked": false,
+      "comment": ""
     }
   }
 }

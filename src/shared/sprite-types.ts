@@ -19,6 +19,7 @@ export const SPRITE_TYPES = [
   'tile',
   'vfx',
   'character',
+  'icon',
 ] as const;
 
 export type SpriteType = (typeof SPRITE_TYPES)[number];

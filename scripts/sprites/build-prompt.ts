@@ -780,3 +780,61 @@ function pickByRgbDistance(
   }
   return best;
 }
+
+/**
+ * Build a prompt for an icon-batch sheet — a sheet where each cell is a
+ * DIFFERENT icon concept, not a variant of one subject.
+ *
+ * Used for achievement icons, ability icons, and other UI icon families.
+ * Each `iconBatch` entry describes one cell by concept name and optional
+ * visual description.
+ */
+export function buildIconBatchSheetPrompt(brief: Brief, styleGuide: string): string {
+  const { rows, cols } = brief.generation.sheet;
+  const { cellW, cellH } = cellDims(brief);
+  const count = brief.iconBatch!.length;
+  const bg = pickContrastingBackgroundColor(brief);
+
+  const cellListLines: string[] = ['## Cell assignments (left-to-right, top-to-bottom)'];
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / cols) + 1;
+    const col = (i % cols) + 1;
+    const entry = brief.iconBatch![i]!;
+    const desc = entry.description ? ` — ${entry.description}` : '';
+    cellListLines.push(`- Cell ${i + 1} (row ${row}, col ${col}): **${entry.concept}**${desc}`);
+  }
+
+  return [
+    styleGuide,
+    '',
+    floorContextBlock(brief.floor),
+    '',
+    '## Subject',
+    brief.prompt.trim(),
+    '',
+    '## Output size',
+    `- Each finished icon resolves to exactly ${brief.size.width}x${brief.size.height} pixels after post-processing.`,
+    `- Draw each icon at a 1:1 (square) proportion, centered within its square ${cellW}x${cellH} source cell.`,
+    '',
+    '## Sheet layout',
+    `Generate exactly ${count} distinct icons on a single sheet, arranged in a ${rows}×${cols} grid (${rows} rows, ${cols} columns).`,
+    `Each grid cell must be the same size (${cellW}×${cellH} source pixels) and icons must be laid out left-to-right, top-to-bottom in reading order.`,
+    'Separate every adjacent row and column with a uniform, flat, background-only gutter — a consistent strip of the sheet background running the full width/height between cells so no two cells touch.',
+    'Every cell must contain exactly one icon — no empty cells.',
+    '',
+    ...cellListLines,
+    '',
+    '## Icon rules',
+    '- Each icon is a clear pixel-art symbol recognizable at small sizes. Think inventory/achievement icons from classic RPGs.',
+    '- Icons should be bold, readable symbols — not detailed scenes or full character art.',
+    '- Do NOT include any frame, border, rounded-corner border, or UI chrome baked into the icon. The frame is composited separately.',
+    '- Each icon should express its own concept clearly. Do NOT reuse compositions across cells; each must be visually distinct.',
+    '',
+    '## Per-variant requirements (apply to every cell)',
+    '- Each icon must fit fully within its grid cell — none cut off at any edge. Leave at least a 10% margin between the icon and the cell edge.',
+    '- All icons are square, share the same dimensions, and use the same scale.',
+    '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
+    `- Transparent background, or one flat high-contrast background color consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. No drop shadow on the floor (shading and volume on the icon itself are fine). No per-cell background variation. No decorative borders between cells.`,
+    '- Do not draw a frame, header, or footer around the grid.',
+  ].join('\n');
+}

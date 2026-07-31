@@ -1155,6 +1155,173 @@ function normalizeSourceRunOverride(value: string): string {
 }
 
 /**
+ * One entry in an icon batch brief — identifies a single icon within the batch.
+ * Callers supply this by extracting `brief.iconBatch` from a loaded Brief.
+ */
+export interface IconBatchEntry {
+  readonly id: string;
+  readonly concept: string;
+  readonly description?: string;
+}
+
+export interface ApproveIconBatchOptions {
+  /** Absolute path to the run directory (`generated/runs/<brief>/<runId>`). */
+  readonly runDir: string;
+  /**
+   * The `iconBatch` array from the brief (index N maps to cell N on the sheet).
+   * Must match the number of candidate cells that were generated.
+   */
+  readonly iconBatch: readonly IconBatchEntry[];
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. Approve derives
+   * the generated directory from this path and writes per-asset shards under
+   * `entries/<iconId>.json`.
+   */
+  readonly manifestPath: string;
+  /** Absolute path to `public/assets/` (parent of `generated/`). */
+  readonly publicAssetsDir: string;
+  /** Absolute path to the repo root, used to compute `sourceRun` relative path. */
+  readonly repoRoot: string;
+  /**
+   * Zero-based cell indices to SKIP (e.g. icons the operator judged as poor
+   * quality). Default: approve all cells whose processed PNG exists.
+   */
+  readonly skipIndices?: ReadonlySet<number>;
+  /** Clock injection for deterministic tests. Defaults to `() => new Date()`. */
+  readonly now?: () => Date;
+  /** Injected fs for tests. Defaults to `node:fs`. */
+  readonly fs?: ApproveFs;
+  readonly allowReapprove?: boolean;
+}
+
+/**
+ * Approve an entire icon-batch run as a set of individual icon assets.
+ *
+ * Unlike `approveVariant` (one design-alternative cell → `briefId-var-N`),
+ * this function maps each cell by index to its declared icon `id` from
+ * `iconBatch`, writing:
+ *   - `public/assets/generated/<iconId>.png`
+ *   - a manifest shard keyed by `iconId` (not `briefId-var-N`)
+ *
+ * This lets icons be referenced directly by their semantic ID (e.g.
+ * `achv-first-bonk`) rather than by generation-run metadata. Cells listed in
+ * `skipIndices` are silently skipped. Cells whose processed PNG is missing are
+ * also skipped (non-fatal — a partial batch still ships the good icons).
+ *
+ * Returns an array of all approved manifest entries, in cell-index order.
+ */
+export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntry[] {
+  const fs = options.fs ?? DEFAULT_FS;
+  const now = options.now ?? (() => new Date());
+  const skipIndices = options.skipIndices ?? new Set<number>();
+
+  const summaryPath = path.join(options.runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
+  }
+
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const sourceRun = toRepoRelativePosix(options.repoRoot, options.runDir);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = rawBriefId;
+
+  const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
+  const generatedDir = path.join(options.publicAssetsDir, 'generated');
+  const processedDir = path.join(options.runDir, 'processed');
+  const candidatesByIndex = new Map((summary.candidates ?? []).map((c) => [c.index, c]));
+
+  const approved: ManifestEntry[] = [];
+
+  for (let cellIndex = 0; cellIndex < options.iconBatch.length; cellIndex++) {
+    if (skipIndices.has(cellIndex)) continue;
+
+    const iconEntry = options.iconBatch[cellIndex]!;
+    const iconId = iconEntry.id;
+    const padded = padIndex(cellIndex);
+    const processedPng = path.join(processedDir, `${padded}.png`);
+
+    if (!fs.existsSync(processedPng)) {
+      // Non-fatal: partial batches (model dropped a cell) still ship the rest.
+      process.stderr.write(
+        `approveIconBatch: processed PNG missing for cell ${cellIndex} (${iconId}), skipping.\n`,
+      );
+      continue;
+    }
+
+    const processedBytes = fs.readFileSync(processedPng);
+    const contentHash = createHash('sha256').update(processedBytes).digest('hex');
+
+    if (!options.allowReapprove) {
+      const existing = readManifestEntry(fs, options.manifestPath, iconId);
+      if (existing) {
+        const storedHash =
+          existing.contentHash && existing.contentHash.length > 0
+            ? existing.contentHash
+            : hashFileIfExists(fs, path.join(generatedDir, `${iconId}.png`));
+        if (storedHash !== null && storedHash === contentHash) {
+          process.stderr.write(
+            `approveIconBatch: icon "${iconId}" already approved with identical content, skipping.\n`,
+          );
+          approved.push(existing);
+          continue;
+        }
+      }
+    }
+
+    let opaqueBounds: DerivedBounds | undefined;
+    try {
+      opaqueBounds = deriveOpaqueBounds(PNG.sync.read(processedBytes));
+    } catch {
+      opaqueBounds = undefined;
+    }
+
+    const assetAbsPath = path.join(generatedDir, `${iconId}.png`);
+    fs.mkdirSync(generatedDir, { recursive: true });
+    fs.copyFileSync(processedPng, assetAbsPath);
+
+    const candidate = candidatesByIndex.get(cellIndex);
+    const sensorScore =
+      typeof candidate?.score === 'number' && typeof candidate.outOf === 'number'
+        ? `${candidate.score}/${candidate.outOf}`
+        : 'unknown';
+    const judgeScore =
+      typeof candidate?.judgeScorecard?.minScore === 'number'
+        ? String(candidate.judgeScorecard.minScore)
+        : null;
+
+    const entry: ManifestEntry = {
+      briefId,
+      spriteName: iconId,
+      assetPath: `generated/${iconId}.png`,
+      approvedAt: now().toISOString(),
+      sourceRun,
+      variantIndex: cellIndex,
+      anchor: null,
+      anchors: { hold: null, centerOfGravity: null },
+      sensorScore,
+      judgeScore,
+      sensorBreakdown: candidate?.breakdown,
+      judgeScorecard: candidate?.judgeScorecard ?? null,
+      type,
+      contentHash,
+      ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
+      postprocessOverrideProfilePath: null,
+      effectivePipelineSnapshotPath: null,
+      effectivePipelineSnapshotYamlPath: null,
+      effectiveAnchorSource: null,
+    };
+
+    upsertManifest(fs, options.manifestPath, entry, iconId);
+    approved.push(entry);
+  }
+
+  return approved;
+}
+
+/**
  * Error thrown by `unapproveVariant` when the operation cannot proceed.
  * Discriminated by `kind` so callers can translate to HTTP status / exit code.
  */
