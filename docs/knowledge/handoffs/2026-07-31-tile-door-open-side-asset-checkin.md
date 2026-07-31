@@ -10,7 +10,7 @@ Producer → Sprite Engineer
 
 ## Systems touched
 
-<!-- Docs/tooling-only session with no runtime impact — sprite asset pipeline only. -->
+sprite-pipeline, sprite-workflow
 
 ## Apples
 
