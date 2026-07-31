@@ -19,22 +19,31 @@ quests, inventory, weapons
 ## What Was Done
 
 Fixed the Floor 2 achievement reward path so tier1 rewards are no longer hard-locked to
-weapon-only outcomes by the combination of a tiny authored base list and the old
-"any non-armor stat is illegal" Common contract.
+weapon-only outcomes. PR was also a CI recovery that merged with main's #2415 refactor
+(lootBox architecture with an 88-item `FLOOR2_REWARD_POOL_STABLE_IDS`), then applied the
+modest-accessory eligibility change on top.
 
-- Added `src/shared/data/floor2-reward-pool.ts`, a shared Floor 2 achievement reward pool
-  built from the existing Floor 2 weapon Wave A ids plus the mixed weapon/non-weapon Wave B ids.
-- Switched the shipped `FLOOR2_ACHIEVEMENT_CATALOG` to use that shared reward pool at load time
-  instead of the repeated four-weapon list from `achievements.floor2.json`.
-- Replaced the Common-tier structural base check in
-  `src/game/floor2-reward-bundle-resolver.ts` with a stat-modest rule:
-  Common rewards may carry **at most one modest inherent non-armor stat bonus**.
-- Added focused regression coverage proving:
-  - shipped Floor 2 achievement rewards now use the shared mixed pool;
-  - the shared pool includes accessory bases;
-  - modest accessory bases such as `accessory.compass-charm` / `accessory.surveyor-map`
-    are legal for tier1 Common rewards;
-  - stacked accessory-style bases such as `travelers-cloak` still fail closed with `illegal-base`.
+- **Merged main's #2415 architecture**: `lootBox` reward type, `FLOOR2_REWARD_POOL_STABLE_IDS`
+  (88 items: Wave A weapons + Wave B weapons/non-weapons + Classic Fantasy Basic Leather set),
+  `_rarityEligibleBaseIds` / `_computeFloor2RewardPoolTierEligibility` / `_validateFloor2RewardPoolTierEligibility`.
+- **Applied modest-accessory eligibility on top of main's architecture**:
+  - Added `COMMON_REWARD_SINGLE_STAT_CAPS` constant and `statBonusesExceedCommonLimit()`
+    private helper to `generated-equipment-generator.ts`.
+  - Exported `generatedEquipmentBaseExceedsCommonStatLimit()` and
+    `generatedEquipmentInstanceExceedsCommonStatLimit()` from the same file.
+  - Updated `_rarityEligibleBaseIds()` in `floor2-reward-bundle-resolver.ts` to use
+    `generatedEquipmentBaseExceedsCommonStatLimit` instead of the blanket
+    `generatedEquipmentBaseHasNonArmorStatBonus` exclusion.
+  - Updated `_assertGeneratedRewardInstanceLegal()` to use
+    `generatedEquipmentInstanceExceedsCommonStatLimit` for defense-in-depth.
+  - Common-eligible non-weapon count grows from 10 → 28 (4 excluded: shadow-boots,
+    merchant-sandals, blood-vial, lucky-feather due to over-budget or multi-bonus).
+- **Fixed missing exports** in `src/shared/generated-assets.ts`:
+  `DEFAULT_GENERATED_ANCHOR`, `DEFAULT_GENERATED_FRAME_SIZE_PX`, `resolveOpaqueBox`
+  (main's `generated-assets.test-seams.ts` imports them; merge had taken my branch's
+  version that stripped the `export` keywords).
+- Updated resolver tests: composition counts (66→84 common-eligible), post-generation
+  contract test, consistency test.
 
 ## Key Decisions Made
 
@@ -51,42 +60,23 @@ weapon-only outcomes by the combination of a tiny authored base list and the old
 
 ## Files Changed
 
-- `src/shared/data/floor2-reward-pool.ts`
-- `src/shared/achievements.ts`
-- `src/game/generated-equipment-generator.ts`
-- `src/game/floor2-reward-bundle-resolver.ts`
-- `tests/unit/achievements.test.ts`
-- `tests/unit/floor2-reward-bundle-resolver.test.ts`
+- `src/shared/generated-assets.ts` (restored missing `export` keywords for test-seams compat)
+- `src/game/generated-equipment-generator.ts` (added stat-cap logic and exported functions)
+- `src/game/floor2-reward-bundle-resolver.ts` (switched Common filter to stat-cap functions)
+- `tests/unit/floor2-reward-bundle-resolver.test.ts` (updated 3 test cases for new counts)
+- `src/shared/data/floor2-reward-pool.ts` (taken wholesale from main's #2415 — 88-item pool)
+- `src/shared/achievements.ts` (taken from main's #2415 — lootBox architecture)
 - `docs/knowledge/review-ledgers/2026-07-31-floor2-tier1-accessory-pool.review-ledger.json`
 
 ## Verification
 
-- `runtime-tools-secret_scanning` on all changed code/test files → no secrets detected
-- `bash scripts/agent/lab-gate-check.sh` → pass
-- `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-31-floor2-tier1-accessory-pool.review-ledger.json`
-  → valid 2-apple ledger
-- `npm run verify:fast` → blocked locally because repo dev dependencies are not installed
-  in this sandbox (`typescript`, `vitest`, `@eslint/js`, `zod`, etc.)
-- `npm run test -- tests/unit/floor2-reward-bundle-resolver.test.ts tests/unit/achievements.test.ts`
-  → blocked locally because `vitest` is unavailable in `node_modules`
-- `tsc -p tsconfig.json --noEmit` (global TypeScript) → full-project run still blocked by
-  missing repo dependencies; after fixing one local non-null issue from the filtered output,
-  remaining changed-file errors were dependency-driven (`zod` / `vitest` missing)
+- `npm run format:check` → clean (fixed formatting in `floor2-reward-bundle-resolver.test.ts`)
+- `npm run typecheck` → clean
+- `npx vitest run tests/unit/floor2-reward-bundle-resolver.test.ts` → 42 tests pass
+- `npx vitest run tests/unit/achievements.test.ts tests/game/achievement-system.test.ts tests/game/settlement-maintenance-planner.test.ts tests/unit/achievement-reward-presentation.test.ts` → 84 tests pass
+- `npm run verify:fast` → all 2076 unit tests pass, all format/lint/type checks clean
+- `parallel_validation` → CodeQL 0 alerts, code review no findings
 
 ## Unresolved Issues / Blockers
 
-- Could not post the requested pre-code implementation-plan comment on issue #2405 from this
-  sandbox. Local `gh auth status` reported an invalid `GITHUB_TOKEN`, and the repo's own
-  CI-recovery tooling notes that repair agents may lack `issues:write`.
-- Could not complete local `verify:fast` / Vitest execution because this clone is missing repo
-  dev dependencies and `npm install` fails in the sandbox with upstream mirror/network errors.
-
-## Recommended Next Steps
-
-- Let CI run the normal TypeScript/lint/test gates on the pushed branch, since local validation
-  is dependency-blocked here.
-- If the maintainer still wants the issue-level plan comment for audit purposes, have a trusted
-  actor with `issues:write` post it (the CI recovery pipeline already has a retroactive path for
-  this case).
-- After this lands, re-measure the resulting Floor 2 tier composition; if the pool still feels
-  too weapon-heavy, treat category weighting as a separate balance pass.
+None. The PR is ready to merge.
