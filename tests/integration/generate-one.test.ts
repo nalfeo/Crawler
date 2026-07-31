@@ -541,6 +541,131 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
   });
 });
 
+/**
+ * A minimal 2×2 icon-batch brief (4 cells, 4 iconBatch entries). Used to
+ * exercise the icon-batch-specific mismatch gate in `generateSheetCore`: when
+ * the slicer returns fewer cells than the brief requires, the orchestrator must
+ * surface a `bad-grid` error and retry rather than proceeding with a broken
+ * index mapping.
+ */
+const ICON_BATCH_BRIEF_YAML = `
+type: icon
+name: test-icon-batch
+size: { width: 32, height: 32 }
+palette: { id: test-palette }
+anchor: { x: 8, y: 8 }
+prompt: Pixel-art icons for testing.
+generation:
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
+minVariations: 0
+iconBatch:
+  - id: icon-test-a
+    concept: Icon A
+  - id: icon-test-b
+    concept: Icon B
+  - id: icon-test-c
+    concept: Icon C
+  - id: icon-test-d
+    concept: Icon D
+`.trim();
+
+/**
+ * Provider that returns a 1×1 (single-cell) sheet on the first N calls, then
+ * a proper 2×2 four-cell sheet. Used to simulate the icon-batch under-slicing
+ * scenario without throwing errors from the provider itself.
+ */
+function makeUnderSlicingProvider(underSlicedCalls = 1): {
+  provider: ImageProvider;
+  callCount: () => number;
+} {
+  let calls = 0;
+  return {
+    callCount: () => calls,
+    provider: {
+      async generateSheet(): Promise<Buffer> {
+        calls++;
+        if (calls <= underSlicedCalls) {
+          // Single-cell sheet — the content-aware slicer finds 1 cell,
+          // triggering the icon-batch count-mismatch gate.
+          return tileVariantsIntoSheet([buildGoodSwordFixture()], 1, 1);
+        }
+        // Full 4-cell 2×2 sheet — slicer finds all 4, gate passes.
+        return tileVariantsIntoSheet(
+          Array.from({ length: 4 }, () => buildGoodSwordFixture()),
+          2,
+          2,
+        );
+      },
+    },
+  };
+}
+
+describe('generateOne — icon-batch count-mismatch gate and retry', () => {
+  let root: string;
+  let outputRoot: string;
+  let preloaded: LoadedBrief;
+  let briefPath: string;
+
+  const fixedClock = () => new Date('2026-06-04T12:00:00.000Z');
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-iconbatch-'));
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    mkdirSync(path.join(root, 'docs', 'agent-os'), { recursive: true });
+    mkdirSync(path.join(root, 'briefs', 'icons'), { recursive: true });
+    writeFileSync(path.join(root, 'data', 'palettes', 'test-palette.json'), PALETTE_JSON);
+    writeFileSync(path.join(root, 'docs', 'agent-os', 'sprite-style.md'), STYLE_GUIDE);
+    briefPath = path.join(root, 'briefs', 'icons', 'test-icon-batch.yaml');
+    writeFileSync(briefPath, ICON_BATCH_BRIEF_YAML);
+    outputRoot = path.join(root, 'generated');
+    preloaded = loadBrief(briefPath, { projectRoot: root });
+  }, 30_000);
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('retries when first sheet under-slices and succeeds when second sheet has correct count', async () => {
+    // Provider returns 1 cell on attempt 1, 4 cells on attempt 2.
+    // The icon-batch gate must surface bad-grid on attempt 1 (triggering a
+    // retry) and pass on attempt 2, proving the code path at generate-one.ts
+    // line 425 is exercised.
+    const { provider, callCount } = makeUnderSlicingProvider(1);
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider,
+      repoRoot: root,
+      outputRoot,
+      maxAttempts: 3,
+      now: fixedClock,
+      ...refInjection,
+    });
+    expect(callCount()).toBe(2);
+    expect(result.attempts).toBe(2);
+    expect(existsSync(path.join(result.runDir, 'sheet-01.png'))).toBe(true);
+  });
+
+  it('exhausts maxAttempts on persistent icon-batch under-slicing and surfaces bad-grid', async () => {
+    // Provider always returns 1 cell — the mismatch gate fires on every
+    // attempt and the orchestrator exhausts retries, surfacing bad-grid.
+    const { provider, callCount } = makeUnderSlicingProvider(999);
+    await expect(
+      generateOne({
+        briefPath,
+        preloaded,
+        provider,
+        repoRoot: root,
+        outputRoot,
+        maxAttempts: 2,
+        now: fixedClock,
+        ...refInjection,
+      }),
+    ).rejects.toMatchObject({ kind: 'bad-grid' });
+    expect(callCount()).toBe(2);
+  });
+});
+
 describe('generateOne — exact-cell slice gate at 16 (Bug B honest happy path)', () => {
   let root: string;
   let outputRoot: string;
