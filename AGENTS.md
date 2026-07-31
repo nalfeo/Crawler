@@ -103,10 +103,6 @@ The sole maintainer works best answering questions one at a time rather than wri
 | AI hill-climb sweep       | `npm run ai:hill-climb`                   |
 | AI weapon sweep           | `npm run ai:weapon-sweep`                 |
 | AI win-rate sweep         | `npm run ai:winrate-sweep`                |
-| AI A/B decision mode      | `npm run ai:ab-decision-mode`             |
-| AI A/B pathing mode       | `npm run ai:ab-pathing-mode`              |
-| AI navmesh sweep          | `npm run ai:navmesh-sweep`                |
-| AI navmesh seam sweep     | `npm run ai:navmesh-seam-sweep`           |
 | AI gen configs            | `npm run ai:gen-configs`                  |
 | AI sweep eval             | `npm run ai:sweep-eval`                   |
 | AI aggregate shards       | `npm run ai:aggregate-shards`             |
