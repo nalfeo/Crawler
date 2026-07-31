@@ -21,6 +21,7 @@ import {
 } from '../../src/engine/generatedAssets/index.js';
 import {
   emptyGeneratedSpriteRegistry,
+  GENERATED_MANIFEST_VERSION,
   type GeneratedSpriteRegistry,
 } from '../../src/shared/generated-assets.js';
 import { getAbilityIconEntry } from '../../src/engine/ability-icon.js';
@@ -124,5 +125,37 @@ describe('ability-icon real render path over the shipped manifest (observe-befor
       const entry = getAbilityIconEntry(scene as never, abilityId);
       expect(entry, `expected null for "${abilityId}" when texture not loaded`).toBeNull();
     }
+  });
+
+  it('resolves icon-batch entries when iconBriefId is a manifest key (textureKey)', () => {
+    const entry = {
+      briefId: 'ability-icons-batch-01',
+      textureKey: 'ability-icon-battle-focus',
+      assetPath: 'public/assets/generated/ability-icon-battle-focus.png',
+      anchor: { x: 0.5, y: 0.5 },
+      centerOfGravity: { x: 0.5, y: 0.5 },
+      anchorIsDefault: false,
+      approvedAt: '2026-07-31T00:00:00.000Z',
+      sourceRun: 'files/sprites/runs/mock',
+      variantIndex: 0,
+      sensorScore: '1/1',
+      judgeScore: null,
+      facingDirection: 'right' as const,
+    };
+    const byBrief = Object.freeze([entry]);
+    const registry: GeneratedSpriteRegistry = {
+      version: GENERATED_MANIFEST_VERSION,
+      size: 1,
+      has: (briefId) => briefId === entry.briefId,
+      lookup: (briefId) => (briefId === entry.briefId ? entry : null),
+      variants: (briefId) => (briefId === entry.briefId ? byBrief : []),
+      entries: () => byBrief,
+      briefIds: () => [entry.briefId],
+    };
+    const scene = makeRecordingScene(registry);
+    const resolved = getAbilityIconEntry(scene as never, 'battle-focus');
+    expect(resolved).not.toBeNull();
+    expect(resolved?.textureKey).toBe('ability-icon-battle-focus');
+    expect(resolved?.briefId).toBe('ability-icons-batch-01');
   });
 });

@@ -2,16 +2,7 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-31",
   "session_slug": "pr-2489",
-  "task_title": "PR #2489 — review ledger added post-hoc",
-  "estimated_apples": 3,
-  "stages": {
-    "plan_review": {
-      "completed": false,
-      "notes": "Ledger created after PR to satisfy missing ledger thread. The original plan_review was not recorded in the repository."
-    },
-    "code_review": {
-      "clean": false,
-      "rounds": []
-    }
-  }
+  "task_title": "PR #2489 ability icon batch recovery",
+  "estimated_apples": 1,
+  "stages": {}
 }

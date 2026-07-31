@@ -8,6 +8,7 @@ import {
   FLOOR1_BOSS_REWARD_SPELL_IDS,
   FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
 } from '../../src/shared/abilities.js';
+import { ABILITY_PRESENTATION_BY_ID } from '../../src/shared/ability-presentation.js';
 
 describe('ability registry', () => {
   it('returns undefined for unknown ability id', () => {
@@ -26,6 +27,39 @@ describe('ability registry', () => {
     expect(FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT).toBe(3);
     for (const spellId of FLOOR1_BOSS_REWARD_SPELL_IDS) {
       expect(getAbilityDefinition(spellId)?.kind).toBe('spell');
+    }
+  });
+
+  it('keeps icon-batch ability metadata aligned with shared ability presentation', () => {
+    const iconBatchAbilityIds = [
+      'battle-focus',
+      'veteran-instinct',
+      'magic-missile',
+      'frost-nova',
+      'bless',
+      'stoneskin',
+      'curse',
+      'vampiric-touch',
+      'haste',
+      'combat-flow',
+      'stalwart-resolve',
+      'ever-vigilant',
+      'blade-mastery',
+      'vital-targeting',
+      'brute-force',
+      'marksmans-eye',
+    ] as const;
+
+    for (const id of iconBatchAbilityIds) {
+      const ability = getAbilityDefinition(id);
+      const presentation = ABILITY_PRESENTATION_BY_ID[id];
+      expect(ability, `missing ability definition for "${id}"`).toBeDefined();
+      expect(ability?.name).toBe(presentation.name);
+      expect(ability?.shortLabel).toBe(presentation.shortLabel);
+      expect(ability?.description).toBe(presentation.description);
+      expect(ability?.category).toBe(presentation.category);
+      expect(ability?.kind).toBe(presentation.kind);
+      expect(ability?.iconBriefId).toBe(presentation.iconBriefId);
     }
   });
 

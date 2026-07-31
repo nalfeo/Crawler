@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31  
 **Branch:** `copilot/ability-icons-batch-01-run-e2e-test`  
-**Issue:** #2488  
+**Issue:** #2488 (keep open until all four icon-batch runs are generated, judged, and approved)  
 **Agent:** Asset Forge / Graphics Designer persona  
 **Apple estimate:** 1🍎 (brief restructure + wiring = code-touching; art generation pending CI)
 
@@ -33,7 +33,7 @@ Split the 16-icon `ability-icons-batch-01.yaml` into four 4-icon sub-batches mat
 | batch-01c | `ability-icons-batch-01c.yaml` (new)     | haste, combat-flow, stalwart-resolve, ever-vigilant        |
 | batch-01d | `ability-icons-batch-01d.yaml` (new)     | blade-mastery, vital-targeting, brute-force, marksmans-eye |
 
-All 4 briefs use `nativeCanvas: 1024`, `judge.enabled: true`, and the `emptyCells` pattern from `achv-icons-batch-10`.
+All 4 briefs use `nativeCanvas: 1024` and the `emptyCells` pattern from `achv-icons-batch-10`.
 
 ### Wiring: iconBriefId
 
@@ -66,7 +66,7 @@ Cooldown values corrected to match `registry.ts` exactly:
 
 ## What remains (maintainer action required)
 
-1. **Trigger CI generation** for all 4 sub-batches via `workflow_dispatch` on `icon-batch.yml`:
+1. **Before closing #2488, trigger CI generation** for all 4 sub-batches via `workflow_dispatch` on `icon-batch.yml`:
    - `action=run, batch_ids=ability-icons-batch-01` (modified brief — 4 icons)
    - `action=run, batch_ids=ability-icons-batch-01b`
    - `action=run, batch_ids=ability-icons-batch-01c`
@@ -79,6 +79,7 @@ Cooldown values corrected to match `registry.ts` exactly:
 4. **Batch art PR** — `npm run sprites:asset-pr` to fold all open `asset-checkin` issues into one art-only PR.
 
 5. **Observe in game** — confirm icons render in `npm run dev` (ability panel / HUD tooltips) and report before/after.
+6. **Only then close #2488** (avoid `Fixes #2488` in this PR while dispatch/judging/approval is still pending).
 
 ---
 
@@ -86,7 +87,7 @@ Cooldown values corrected to match `registry.ts` exactly:
 
 - Azure OpenAI credentials are **not available** in the Copilot agent environment — generation can only run via GitHub Actions CI.
 - The `gh` CLI proxy (`localhost:26831`) does not support REST API write operations in this environment, so workflow_dispatch cannot be triggered from the agent session.
-- Wiring path: `getAbilityIconEntry()` in `src/engine/ability-icon.ts` resolves icons via `iconBriefId` → manifest lookup. Once art is in the manifest (post-approve + asset-PR), icons will display automatically.
+- Wiring path: `getAbilityIconEntry()` in `src/engine/ability-icon.ts` first resolves by brief-group lookup, then falls back to manifest-key lookup for icon-batch assets. Once art is in the manifest (post-approve + asset-PR), icons will display automatically.
 
 ---
 
