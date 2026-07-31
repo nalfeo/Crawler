@@ -25,7 +25,12 @@ import {
   type InventoryBag,
   type TabPreferences,
 } from '../../src/shared/inventory.js';
-import { customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
+import {
+  customTag,
+  ItemRarity,
+  normalizeGeneratedInventoryTag,
+  type ItemDef,
+} from '../../src/shared/items.js';
 import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 
 // Small test catalog for deterministic tests
@@ -131,14 +136,14 @@ describe('InventoryBag', () => {
           ? {
               name: 'Twin Blade',
               description: 'A rare first copy',
-              tags: ['Weapons'],
+              tags: [normalizeGeneratedInventoryTag('weapon')],
               rarity: 'Rare',
               slots: ['mainHand'],
             }
           : {
               name: 'Twin Blade',
               description: 'A common second copy',
-              tags: ['Weapons', customTag('Generated')],
+              tags: [normalizeGeneratedInventoryTag('weapon'), customTag('Generated')],
               rarity: 'Common',
               slots: ['offHand'],
             };

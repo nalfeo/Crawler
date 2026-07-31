@@ -31,10 +31,10 @@ import {
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
 import {
-  customTag,
   ItemRarity,
   type ItemDef,
   type ItemTag,
+  normalizeGeneratedInventoryTag,
   RARITY_COLORS,
   getItemById,
 } from '../shared/items.js';
@@ -228,7 +228,7 @@ export function createInventoryUI(
       ]
         .filter(Boolean)
         .join(' · '),
-      tags: instance.frozen.tags.map((tag) => customTag(tag)),
+      tags: instance.frozen.tags.map(normalizeGeneratedInventoryTag),
       rarity: generatedRarityToItemRarity[instance.rarity] ?? ItemRarity.Common,
       slots: instance.frozen.slots,
     };
