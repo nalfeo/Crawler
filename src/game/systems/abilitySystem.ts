@@ -795,9 +795,9 @@ function applyPassive(
 
   state.appliedPassiveAbilityIds.add(passiveId);
 
-  // Emit VFX when a weapon-prerequisite passive becomes active so the player
-  // sees visual feedback that swapping to the right weapon unlocked a bonus.
-  if (def.weaponPrerequisite !== undefined && hasComponent(world.ecs, holderEid, Player)) {
+  // Emit VFX when a passive becomes active so the player gets immediate
+  // feedback on unlock/application, including non-weapon-gated passives.
+  if (hasComponent(world.ecs, holderEid, Player)) {
     const px = world.stores.position.x[holderEid] ?? 0;
     const py = world.stores.position.y[holderEid] ?? 0;
     pushVfxEvent(world.vfxEvents, { kind: 'weaponAbilityActivate', x: px, y: py });
