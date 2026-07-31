@@ -22,6 +22,7 @@ import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   getGeneratedEquipmentBaseAffinity,
   generatedEquipmentBaseHasNonArmorStatBonus,
+  generatedEquipmentBaseExceedsCommonStatLimit,
   _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
@@ -143,12 +144,14 @@ describe('resolvePlayerBuildAffinity', () => {
   });
 
   describe('post-generation Common contract', () => {
-    it('throws illegal-base without publishing a generated instance when the output has a non-armor bonus', () => {
+    it('throws illegal-base without publishing a generated instance when the output exceeds the modest-stat Common limit', () => {
       const illegalBaseId = FLOOR2_REWARD_POOL_STABLE_IDS.find(
-        generatedEquipmentBaseHasNonArmorStatBonus,
+        generatedEquipmentBaseExceedsCommonStatLimit,
       );
       if (illegalBaseId === undefined) {
-        throw new Error('expected at least one Floor 2 base with an inherent non-armor bonus');
+        throw new Error(
+          'expected at least one Floor 2 base that exceeds the Common modest-stat limit',
+        );
       }
       const world = makeWorld('post-generation-common-guard');
       const transaction = createGeneratedEquipmentRegistryTransaction(world);
@@ -517,21 +520,26 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
   it('computes the EXACT per-tier/per-rarity composition over the real 88-base pool (deterministic, not sampled)', () => {
     // Ground truth, computed directly from the real catalogs (see the report
     // this same test also cross-checks below): 88 total = 56 weapons + 32
-    // non-weapons. Common excludes every base carrying an inherent non-armor
-    // stat bonus — 0 weapons, 22 of 32 non-weapons — leaving 66 Common-eligible
-    // (56 weapons + 10 non-weapons). Uncommon excludes nothing (all 88).
+    // non-weapons. Common excludes bases whose inherent non-armor stat bonuses
+    // exceed the modest-stat limit (more than one bonus, or a single bonus
+    // above its COMMON_REWARD_SINGLE_STAT_CAPS cap) — 0 weapons and 4 of 32
+    // non-weapons are excluded: feet.shadow-boots (moveSpeed 0.05 > cap 0.03),
+    // feet.merchant-sandals (2 non-armor stats), accessory.blood-vial (2
+    // non-armor stats), accessory.lucky-feather (luck 2 > cap 1). That leaves
+    // 84 Common-eligible (56 weapons + 28 non-weapons). Uncommon excludes
+    // nothing (all 88).
     const report = computeFloor2RewardPoolTierEligibility(
       FLOOR2_REWARD_POOL_STABLE_IDS,
       weaponIdSet,
     );
 
     const commonComposition = {
-      total: 66,
+      total: 84,
       weapons: 56,
-      nonWeapons: 10,
+      nonWeapons: 28,
       physicalAligned: 51,
       magicAligned: 5,
-      neutral: 10,
+      neutral: 28,
     };
     const uncommonComposition = {
       total: 88,
@@ -689,7 +697,7 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
 
   it('rarityEligibleBaseIds is the exact same filter resolveEquipmentRewardBundle applies at selection time (no second, drifting copy of the rule)', () => {
     const excludedCount = FLOOR2_REWARD_POOL_STABLE_IDS.filter((id) =>
-      generatedEquipmentBaseHasNonArmorStatBonus(id),
+      generatedEquipmentBaseExceedsCommonStatLimit(id),
     ).length;
     expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'common')).toHaveLength(
       FLOOR2_REWARD_POOL_STABLE_IDS.length - excludedCount,

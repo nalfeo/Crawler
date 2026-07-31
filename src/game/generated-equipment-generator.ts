@@ -319,6 +319,37 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
 }
 
 /**
+ * Per-stat caps for a single inherent non-armor bonus that may appear on a
+ * Common-tier reward base. A base with exactly one non-armor stat bonus that
+ * is ≤ its cap here passes the Common rarity contract; any base with two or
+ * more non-armor bonuses, or a single bonus exceeding its cap, is excluded
+ * from Common candidacy (but remains fully eligible for Uncommon/Rare draws).
+ *
+ * These caps are calibrated to admit modest accessories (compass-charm,
+ * surveyor-map, gearwork-locket, warding-bell) and single-stat armor pieces
+ * (batfolk-hood, tinker-grips, etc.) without admitting stacked or oversized
+ * bases such as accessory.lucky-feather (luck: 2 > cap 1) or
+ * feet.shadow-boots (moveSpeed: 0.05 > cap 0.03).
+ */
+export const COMMON_REWARD_SINGLE_STAT_CAPS: Readonly<Partial<Record<StatId, number>>> =
+  Object.freeze({
+    strength: 1,
+    dexterity: 1,
+    constitution: 1,
+    intelligence: 1,
+    charisma: 1,
+    luck: 1,
+    damageBonus: 2,
+    attackSpeed: 0.05,
+    moveSpeed: 0.03,
+    critChance: 0.03,
+    dodgeChance: 0.02,
+    hpRegen: 0.25,
+    xpBonus: 0.03,
+    cooldownReduction: 0.03,
+  });
+
+/**
  * Pure predicate: does this stat-bonus map carry any non-zero, non-armor
  * entry? Extracted so both the base-level check
  * ({@link generatedEquipmentBaseHasNonArmorStatBonus}) and the instance-level
@@ -329,6 +360,24 @@ function hasNonArmorStatBonus(statBonuses: Partial<Record<StatId, number>>): boo
   return Object.entries(statBonuses).some(
     ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
   );
+}
+
+/**
+ * Whether a stat-bonus map exceeds the Common-rarity modest-stat limit:
+ * returns `true` (exceeds) if it has ≥2 non-armor bonuses, or exactly one
+ * non-armor bonus whose value is outside {@link COMMON_REWARD_SINGLE_STAT_CAPS}.
+ * Returns `false` (within limit) for zero non-armor bonuses or one modest
+ * in-cap bonus.
+ */
+function statBonusesExceedCommonLimit(statBonuses: Partial<Record<StatId, number>>): boolean {
+  const nonArmorEntries = Object.entries(statBonuses).filter(
+    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+  );
+  if (nonArmorEntries.length === 0) return false;
+  if (nonArmorEntries.length > 1) return true;
+  const [stat, value] = nonArmorEntries[0]!;
+  const cap = COMMON_REWARD_SINGLE_STAT_CAPS[stat as StatId];
+  return cap === undefined || !Number.isFinite(value) || (value ?? 0) <= 0 || (value ?? 0) > cap;
 }
 
 /**
@@ -352,6 +401,26 @@ export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): bool
 }
 
 /**
+ * Whether a base's inherent stat bonuses exceed the Common-rarity modest-stat
+ * limit. Returns `true` if the base has ≥2 non-armor bonuses, or exactly one
+ * non-armor bonus whose value exceeds its {@link COMMON_REWARD_SINGLE_STAT_CAPS}
+ * cap. Returns `false` for bases with no non-armor bonuses, or exactly one
+ * non-armor bonus within its cap (i.e. modest single-stat accessories and
+ * armor pieces are permitted at Common rarity; stacked or oversized bases are
+ * not).
+ *
+ * This is the single source of truth for Common-candidacy filtering in
+ * {@link _rarityEligibleBaseIds}. Both the filter and the post-generation
+ * defense-in-depth tripwire ({@link generatedEquipmentInstanceExceedsCommonStatLimit})
+ * use this shape so authoring validation, runtime filtering, and tests all
+ * agree on what "legal for Common" means.
+ */
+export function generatedEquipmentBaseExceedsCommonStatLimit(baseId: string): boolean {
+  const resolved = resolveGeneratedEquipmentBase(baseId);
+  return statBonusesExceedCommonLimit(resolved.equipmentDef.statBonuses);
+}
+
+/**
  * Whether a *generated instance's* final, frozen stat-bonus map carries any
  * non-armor entry. Unlike {@link generatedEquipmentBaseHasNonArmorStatBonus}
  * (which inspects a base's inherent bonuses before generation), this checks
@@ -365,6 +434,19 @@ export function generatedEquipmentInstanceHasNonArmorStatBonus(
   instance: GeneratedEquipmentInstanceV1,
 ): boolean {
   return hasNonArmorStatBonus(instance.frozen.statBonuses);
+}
+
+/**
+ * Whether a *generated instance's* final, frozen stat-bonus map exceeds the
+ * Common-rarity modest-stat limit (mirrors
+ * {@link generatedEquipmentBaseExceedsCommonStatLimit} but operates on the
+ * generated output rather than the base definition). Used as a
+ * defense-in-depth, post-generation tripwire.
+ */
+export function generatedEquipmentInstanceExceedsCommonStatLimit(
+  instance: GeneratedEquipmentInstanceV1,
+): boolean {
+  return statBonusesExceedCommonLimit(instance.frozen.statBonuses);
 }
 
 function effectsAreCompatible(
