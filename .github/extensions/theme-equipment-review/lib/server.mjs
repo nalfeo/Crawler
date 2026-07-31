@@ -302,6 +302,7 @@ export async function startThemeEquipmentReviewServer(options) {
           action: 'save-plan',
           plan: body.plan,
           overwrite: body.overwrite === true,
+          retryPublish: body.retryPublish === true,
         });
         // A newly authored plan belongs in the index immediately.
         invalidateList();

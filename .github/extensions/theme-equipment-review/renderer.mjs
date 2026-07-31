@@ -367,14 +367,13 @@ export function renderHtml(bootstrap) {
       });
       planEditor?.addEventListener('change', () => { draft.planText = planEditor.value; renderCreate(); });
       document.querySelector('[data-synth]')?.addEventListener('click', synthRoster);
-      document.querySelector('[data-save]')?.addEventListener('click', () => savePlan());
-      // Retry after a transient publish outage. It does NOT force overwrite: if
-      // this attempt's bytes already landed, the publisher treats an identical
-      // remote copy as idempotent success; if a *different* plan now occupies
-      // the shared id, the retry is refused unless the maintainer explicitly
-      // ticks "overwrite existing file" — so a retry can never silently clobber
-      // someone else's plan.
-      document.querySelector('[data-retry-publish]')?.addEventListener('click', () => savePlan());
+      document.querySelector('[data-save]')?.addEventListener('click', () => savePlan(false));
+      // Retry after a transient publish outage.  Passes retryPublish:true so
+      // the CLI skips the local-file-already-exists check (the file was
+      // intentionally kept) while still honouring the maintainer's overwrite
+      // checkbox for the *remote* copy — a retry can never silently clobber a
+      // different plan that landed at the same id.
+      document.querySelector('[data-retry-publish]')?.addEventListener('click', () => savePlan(true));
     }
 
     async function synthRoster() {
@@ -403,7 +402,7 @@ export function renderHtml(bootstrap) {
       }
     }
 
-    async function savePlan() {
+    async function savePlan(retryPublish = false) {
       if (busy) return;
       let plan;
       try {
@@ -417,7 +416,7 @@ export function renderHtml(bootstrap) {
       busy = true;
       renderCreate();
       try {
-        draft.saved = await request('/api/save-plan', { method: 'POST', body: JSON.stringify({ plan, overwrite }) });
+        draft.saved = await request('/api/save-plan', { method: 'POST', body: JSON.stringify({ plan, overwrite, ...(retryPublish ? { retryPublish: true } : {}) }) });
       } catch (error) {
         draft.error = error.message;
       } finally {

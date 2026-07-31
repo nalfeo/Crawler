@@ -14,4 +14,8 @@ const MIRROR_SLOT_METADATA_CHECK =
       getMirrorSlot(b) === a,
   ) && MIRROR_SLOT_IDS.size === MIRROR_SLOT_PAIRS.length * 2;
 
-void MIRROR_SLOT_METADATA_CHECK;
+if (!MIRROR_SLOT_METADATA_CHECK) {
+  throw new Error(
+    'mirror-slot-metadata: MIRROR_SLOT_PAIRS / getMirrorSlot consistency check failed',
+  );
+}
