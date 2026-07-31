@@ -12,7 +12,7 @@ const SEVERITY_ORDER = ['info', 'low', 'moderate', 'high', 'critical'];
 export const AUDIT_EXCEPTIONS = [
   {
     packageName: 'brace-expansion',
-    source: 1124334,
+    source: 1130591,
     url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
     expiresOn: '2026-08-13',
     reason:
