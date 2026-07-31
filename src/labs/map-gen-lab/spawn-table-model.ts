@@ -1,7 +1,7 @@
 import type { EnemyArchetypeDef, EnemyPackDef } from '../../shared/enemy-packs.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { SpawnerArchetype } from '../../game/spawners/types.js';
-import { getQuadrantSpawnWeights } from '../../game/floor2Scenario.js';
+import floor2ScenarioTestSeams from '../../game/floor2Scenario.test-seams.js';
 
 export interface SpawnTableRow {
   readonly region: string;
@@ -114,7 +114,9 @@ function buildQuadrantRows(context: SpawnTableContext): SpawnTableRow[] {
     .map((quadrantId) => {
       const primary = quadrants.get(quadrantId);
       if (!primary) return null;
-      const weightedArchetypes = [...getQuadrantSpawnWeights(quadrantId).entries()]
+      const weightedArchetypes = [
+        ...floor2ScenarioTestSeams.getQuadrantSpawnWeights(quadrantId).entries(),
+      ]
         .map((entry) => ({
           quadrant: entry[0] as SpawnQuadrantId,
           weight: Math.round(entry[1] * 100),
