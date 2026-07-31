@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "ci-recovery-pr2365-progressat-window",
+  "task_title": "CI recovery PR2365 progressAt window fix",
+  "estimated_apples": 2,
+  "stages": {}
+}
