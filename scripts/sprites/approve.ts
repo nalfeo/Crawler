@@ -1193,6 +1193,13 @@ export interface ApproveIconBatchOptions {
   /** Injected fs for tests. Defaults to `node:fs`. */
   readonly fs?: ApproveFs;
   readonly allowReapprove?: boolean;
+  /**
+   * When `true`, cells with `judgeScorecard.hardBlocked === true` are approved
+   * despite the judge veto. Defaults to `false` (fail-closed).
+   * Reserved for conscious human overrides; automated batch runs must not set
+   * this flag.
+   */
+  readonly allowHardBlocked?: boolean;
 }
 
 /**
@@ -1267,6 +1274,21 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
     const processedBytes = fs.readFileSync(processedPng);
     const contentHash = createHash('sha256').update(processedBytes).digest('hex');
 
+    // Hard-block gate: mirrors the same contract in approveVariant. A judge-
+    // issued hard-block is a veto, not a score to be weighed. Refuse unless
+    // the caller explicitly opts out with allowHardBlocked: true (reserved for
+    // conscious human overrides; automated batch runs must not set this flag).
+    const candidate = candidatesByIndex.get(cellIndex);
+    if (candidate?.judgeScorecard?.hardBlocked === true && !options.allowHardBlocked) {
+      const instruction = candidate.judgeScorecard.hardBlockInstruction;
+      throw new ApproveError(
+        'hard-blocked',
+        `Cell ${cellIndex} (${iconId}) was hard-blocked by the judge and cannot be approved. ` +
+          (instruction ? `Judge instruction: "${instruction}". ` : '') +
+          `Pass allowHardBlocked: true to override deliberately.`,
+      );
+    }
+
     if (!options.allowReapprove) {
       const existing = readManifestEntry(fs, options.manifestPath, iconId);
       if (existing) {
@@ -1295,7 +1317,6 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
     fs.mkdirSync(generatedDir, { recursive: true });
     fs.copyFileSync(processedPng, assetAbsPath);
 
-    const candidate = candidatesByIndex.get(cellIndex);
     const sensorScore =
       typeof candidate?.score === 'number' && typeof candidate.outOf === 'number'
         ? `${candidate.score}/${candidate.outOf}`

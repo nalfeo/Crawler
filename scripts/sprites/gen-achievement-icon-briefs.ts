@@ -90,15 +90,8 @@ function renderBrief(batchIndex: number, entries: IconBatchEntry[], floor: numbe
   return lines.join('\n');
 }
 
-function main(): void {
-  const floor1Path = path.join(REPO_ROOT, 'src', 'shared', 'data', 'achievements.floor1.json');
-  const floor2Path = path.join(REPO_ROOT, 'src', 'shared', 'data', 'achievements.floor2.json');
-
-  const floor1: AchievementEntry[] = JSON.parse(readFileSync(floor1Path, 'utf8'));
-  const floor2: AchievementEntry[] = JSON.parse(readFileSync(floor2Path, 'utf8'));
-  const all = [...floor1, ...floor2];
-
-  const entries: IconBatchEntry[] = all.map((a) => ({
+function toIconEntries(achievements: AchievementEntry[]): IconBatchEntry[] {
+  return achievements.map((a) => ({
     id: iconIdFromPlaceholder(a.iconId),
     concept: a.title,
     description: [
@@ -110,24 +103,45 @@ function main(): void {
       .filter(Boolean)
       .join(' '),
   }));
+}
+
+function main(): void {
+  const floor1Path = path.join(REPO_ROOT, 'src', 'shared', 'data', 'achievements.floor1.json');
+  const floor2Path = path.join(REPO_ROOT, 'src', 'shared', 'data', 'achievements.floor2.json');
+
+  const floor1: AchievementEntry[] = JSON.parse(readFileSync(floor1Path, 'utf8'));
+  const floor2: AchievementEntry[] = JSON.parse(readFileSync(floor2Path, 'utf8'));
+
+  // Process each floor's achievements separately so no batch ever spans two
+  // floors. This guarantees batchFloor is correct for every batch (the
+  // context prompt references the floor number, so a mixed-floor batch would
+  // describe the wrong dungeon tier to the model).
+  const groups: { floor: number; achievements: AchievementEntry[] }[] = [
+    { floor: 1, achievements: floor1 },
+    { floor: 2, achievements: floor2 },
+  ];
 
   mkdirSync(OUTPUT_DIR, { recursive: true });
 
   let batchIndex = 0;
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-    const batch = entries.slice(i, i + BATCH_SIZE);
-    // Use the floor number of the first entry in each batch as the brief floor.
-    const batchFloor = all[i]?.floor ?? 1;
-    const yaml = renderBrief(batchIndex, batch, batchFloor);
-    const num = String(batchIndex + 1).padStart(2, '0');
-    const outPath = path.join(OUTPUT_DIR, `achv-icons-batch-${num}.yaml`);
-    writeFileSync(outPath, yaml);
-    process.stdout.write(`Wrote ${outPath} (${batch.length} icons)\n`);
-    batchIndex++;
+  let totalIcons = 0;
+
+  for (const group of groups) {
+    const entries = toIconEntries(group.achievements);
+    for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+      const batch = entries.slice(i, i + BATCH_SIZE);
+      const yaml = renderBrief(batchIndex, batch, group.floor);
+      const num = String(batchIndex + 1).padStart(2, '0');
+      const outPath = path.join(OUTPUT_DIR, `achv-icons-batch-${num}.yaml`);
+      writeFileSync(outPath, yaml);
+      process.stdout.write(`Wrote ${outPath} (${batch.length} icons, floor ${group.floor})\n`);
+      batchIndex++;
+      totalIcons += batch.length;
+    }
   }
 
   process.stdout.write(
-    `Done. Generated ${batchIndex} brief file(s) for ${entries.length} achievement icons.\n`,
+    `Done. Generated ${batchIndex} brief file(s) for ${totalIcons} achievement icons.\n`,
   );
 }
 
