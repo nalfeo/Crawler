@@ -1,0 +1,104 @@
+{
+  "id": "classic-fantasy-basic-cloth",
+  "displayName": "Classic Fantasy [Basic Cloth]",
+  "themeDesignLanguage": "Undyed roughspun wool and linen in oatmeal, ash-grey, and dull brown; simple robes, habits, tunics, and hooded cowls with cord or rope belts, cloth wraps, and plain sandals. Humble hand-me-down wear for fledgling wizards, clerics, monks, and peasants — soft draped cloth, visible weave and mends, no dye-work. Strictly no plate, mail, or leather armour, no metal ornament, no gems, no magical glow or runes.",
+  "weapons": [
+    {
+      "id": "quarterstaff",
+      "displayName": "Quarterstaff",
+      "weaponType": "staff"
+    },
+    {
+      "id": "walking-stick",
+      "displayName": "Walking Stick",
+      "weaponType": "club"
+    },
+    {
+      "id": "sling",
+      "displayName": "Sling",
+      "weaponType": "sling"
+    },
+    {
+      "id": "simple-dagger",
+      "displayName": "Simple Dagger",
+      "weaponType": "dagger"
+    },
+    {
+      "id": "wooden-wand",
+      "displayName": "Wooden Wand",
+      "weaponType": "wand"
+    },
+    {
+      "id": "crooked-crook",
+      "displayName": "Crooked Crook",
+      "weaponType": "polearm"
+    }
+  ],
+  "equipment": [
+    {
+      "id": "roughspun-hood",
+      "displayName": "Roughspun Hood",
+      "slots": ["head"]
+    },
+    {
+      "id": "plain-cloth-scarf",
+      "displayName": "Plain Cloth Scarf",
+      "slots": ["neck"]
+    },
+    {
+      "id": "patched-cloak",
+      "displayName": "Patched Cloak",
+      "slots": ["back"]
+    },
+    {
+      "id": "linen-arm-wraps",
+      "displayName": "Linen Arm Wraps",
+      "slots": ["leftArm", "rightArm"]
+    },
+    {
+      "id": "simple-cloth-mask",
+      "displayName": "Simple Cloth Mask",
+      "slots": ["face"]
+    },
+    {
+      "id": "cord-tied-tunic",
+      "displayName": "Cord-Tied Tunic",
+      "slots": ["chest"]
+    },
+    {
+      "id": "worn-cloth-gloves",
+      "displayName": "Worn Cloth Gloves",
+      "slots": ["gloves"]
+    },
+    {
+      "id": "coarse-wool-pants",
+      "displayName": "Coarse Wool Pants",
+      "slots": ["legs"]
+    },
+    {
+      "id": "frayed-rope-belt",
+      "displayName": "Frayed Rope Belt",
+      "slots": ["belt"]
+    },
+    {
+      "id": "woven-cloth-band",
+      "displayName": "Woven Cloth Band",
+      "slots": ["ringLeft", "ringRight"]
+    },
+    {
+      "id": "simple-cloth-sandals",
+      "displayName": "Simple Cloth Sandals",
+      "slots": ["feet"]
+    },
+    {
+      "id": "patched-cloth-bracers",
+      "displayName": "Patched Cloth Bracers",
+      "slots": ["leftWrist", "rightWrist"]
+    },
+    {
+      "id": "simple-cloth-shoulder-wrap",
+      "displayName": "Simple Cloth Shoulder Wrap",
+      "slots": ["shoulders"]
+    }
+  ]
+}

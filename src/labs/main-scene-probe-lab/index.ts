@@ -34,6 +34,14 @@ import {
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
+import { spawnDroppedItem } from '../../core/helpers.js';
+import {
+  acknowledgeBossChestReveal,
+  createBossChestRecord,
+  openBossChest,
+} from '../../core/systems/bossChestRewards.js';
+import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
@@ -48,14 +56,15 @@ import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
+import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
+import { getItemById, getItemIndex } from '../../shared/items.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
-import {
-  getQuartermasterOfferViews,
-  purchaseQuartermasterOffer,
-} from '../../core/quartermaster-purchase.js';
+import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
+import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -122,8 +131,22 @@ interface MainSceneInternals {
       panelVisible: boolean;
     };
   };
-  inventoryUI?: { isOpen(): boolean };
-  equipmentUI?: { isOpen(): boolean };
+  inventoryUI?: {
+    isOpen(): boolean;
+    refresh(world: GameWorld): void;
+    getVisibleItemIds?(): readonly string[];
+    getCellScreenBounds(index: number): ScreenBounds | null;
+    getCellIndexForEntry(entry: {
+      readonly kind: 'generated-instance';
+      readonly instanceKey: GeneratedEquipmentInstanceKey;
+    }): number | null;
+  };
+  equipmentUI?: {
+    isOpen(): boolean;
+    getGeneratedBagCellScreenBounds(
+      instanceKey: GeneratedEquipmentInstanceKey,
+    ): ScreenBounds | null;
+  };
   achievementsUI?: {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
@@ -175,6 +198,20 @@ interface MainSceneInternals {
   requestAchievementsToggle?(): void;
   requestBossChestsToggle?(): void;
   requestQuartermasterToggle?(): void;
+  getSettlementShopOfferSnapshot?(): ReadonlyArray<{
+    readonly stockId?: string;
+    readonly offerId: string;
+    readonly quantity: number;
+    readonly unitPrice: number;
+    readonly displayName: string | null;
+  }>;
+  purchaseFirstSettlementShopOffer?(): {
+    ok: boolean;
+    reason?: string;
+    goldSpent?: number;
+    itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
+  };
   resumePendingRewardPresentations?(): void;
   setSimulationPaused(paused: boolean): void;
   advanceSimulationFrames?(frames?: number): void;
@@ -208,14 +245,13 @@ interface MainSceneInternals {
     packLineworkHubs: readonly { tx: number; ty: number }[];
   };
   getDoorRenderSummary(): {
-    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
-    openPackCount: number;
     openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
+    crossOrientationCount: number;
     renderableClosedCount: number;
     renderableOpenCount: number;
   };
@@ -445,30 +481,32 @@ export interface TerrainRenderSummary {
  * Door-render provenance counts from the last `updateDoorOverlay()` pass in the
  * REAL booted scene. Doors are drawn per-frame as overlay Images (not baked into
  * the terrain RenderTexture); this summary (read from the scene's stored counts)
- * is the observe seam proving CLOSED doors stamp the approved generated texture
- * (`closedPackCount === renderableClosedCount` on a pack-using floor) rather
- * than generated/Kenney/color fallbacks. Buckets are mutually exclusive.
+ * is the observe seam proving doors stamp the approved GENERATED texture
+ * (`closedGeneratedCount === renderableClosedCount`) rather than Kenney/color
+ * fallbacks. Buckets are mutually exclusive.
  */
 export interface DoorRenderSummary {
-  /** Closed doors rendered from a terrain-pack doorSet texture. */
-  readonly closedPackCount: number;
   /** Closed doors rendered from the approved GENERATED texture. */
   readonly closedGeneratedCount: number;
   /** Closed doors rendered from the Kenney closed frame (fallback). */
   readonly closedKenneyCount: number;
   /** Closed doors drawn as a solid-color fill (no art at all). */
   readonly closedColorCount: number;
-  /** Open doors rendered from a terrain-pack doorSet texture. */
-  readonly openPackCount: number;
   /** Open doors rendered from an approved GENERATED open-door texture. */
   readonly openGeneratedCount: number;
   /** Open doors rendered from the Kenney open frame (fallback). */
   readonly openKenneyCount: number;
   /** Open doors drawn as a solid-color fill (no art at all). */
   readonly openColorCount: number;
-  /** Sum of the four CLOSED buckets — total closed doors actually rendered. */
+  /**
+   * Doors whose art came from the OTHER orientation's key (e.g. an E/W doorway
+   * falling back to face-on art because no side-on variant exists). Zero is the
+   * healthy state; a non-zero count names a real art gap.
+   */
+  readonly crossOrientationCount: number;
+  /** Sum of the CLOSED buckets — total closed doors actually rendered. */
   readonly renderableClosedCount: number;
-  /** Sum of the four OPEN buckets — total open doors actually rendered. */
+  /** Sum of the OPEN buckets — total open doors actually rendered. */
   readonly renderableOpenCount: number;
 }
 
@@ -572,9 +610,9 @@ export interface MainSceneProbeApi {
   getTerrainRenderSummary(): TerrainRenderSummary;
   /**
    * Door-render provenance counts from the last `updateDoorOverlay()` pass. Used
-   * by the generated-door-overlay e2e to prove — in the REAL booted scene — that
-   * closed dungeon doors stamp the approved generated texture
-   * (`renderableClosedCount > 0 && closedGeneratedCount === renderableClosedCount`).
+   * by the unified-door-overlay e2e to prove — in the REAL booted scene — that
+   * every door stamps approved generated art at its own orientation
+   * (`generated === renderable`, zero Kenney/colour, `crossOrientationCount === 0`).
    */
   getDoorRenderSummary(): DoorRenderSummary;
   /**
@@ -583,7 +621,7 @@ export interface MainSceneProbeApi {
    * `RewardOpeningUI.open()` call a player's "Open reward" click drives. A
    * no-op unlock if the achievement is already unlocked/claimed (idempotent).
    */
-  claimAchievementReward(achievementId: string): void;
+  claimAchievementReward(achievementId: string): readonly GeneratedEquipmentInstanceKey[];
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
@@ -604,23 +642,47 @@ export interface MainSceneProbeApi {
   getPlayerGold(): number | null;
   /** Set player gold — for arranging purchase preconditions in tests. */
   setPlayerGold(amount: number): void;
-  /**
-   * Get a snapshot of the current Quartermaster stock offers (stockId, offerId, quantity,
-   * unitPrice, displayName). Returns an empty array if no stock exists.
-   */
+  /** Get a snapshot of whichever settlement shop the shared panel is currently targeting. */
   getQuartermasterStockSnapshot(): ReadonlyArray<{
-    readonly stockId: string;
+    readonly stockId?: string;
     readonly offerId: string;
     readonly quantity: number;
     readonly unitPrice: number;
     readonly displayName: string | null;
   }>;
+  /** Get the raw seeded inventory snapshot for a non-Quartermaster settlement shop NPC. */
+  getSettlementShopInventorySnapshot(npcEid: number): ReadonlyArray<{
+    readonly itemId: string;
+    readonly quantity: number;
+    readonly unitPrice: number;
+    readonly displayName: string | null;
+  }>;
   /**
-   * Purchase the first purchasable Quartermaster offer via the real purchase
-   * function and return the result. Used to exercise the full purchase path
-   * from an e2e test.
+   * Purchase the first purchasable offer from whichever settlement shop the shared
+   * panel is currently targeting. Used to exercise the full purchase path from
+   * an e2e test.
    */
-  purchaseFirstQuartermasterOffer(): { ok: boolean; reason?: string; goldSpent?: number };
+  purchaseFirstQuartermasterOffer(): {
+    ok: boolean;
+    reason?: string;
+    goldSpent?: number;
+    itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
+  };
+  /** Visible rendered inventory item ids from the live InventoryUI grid. */
+  getInventoryVisibleItemIds(): readonly string[];
+  /** Open + acknowledge the first available boss chest through core grant APIs. */
+  openFirstAvailableBossChest(): { ok: boolean; reason?: string };
+  /** Spawn a floor drop at the player and advance the real sim enough to pick it up. */
+  spawnAndPickupFloorDrop(itemId: string): { ok: boolean; reason?: string };
+  /** Bounds for an exact generated instance's rendered inventory cell. */
+  getGeneratedInventoryCellBounds(instanceKey: GeneratedEquipmentInstanceKey): ScreenBounds | null;
+  /** Bounds for an exact generated instance's rendered Gear-panel bag cell. */
+  getGeneratedEquipmentBagCellBounds(
+    instanceKey: GeneratedEquipmentInstanceKey,
+  ): ScreenBounds | null;
+  /** Exact generated instance keys currently equipped by the player. */
+  getEquippedGeneratedInstanceKeys(): readonly GeneratedEquipmentInstanceKey[];
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -1214,14 +1276,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getDoorRenderSummary: (): DoorRenderSummary => {
       const summary = getScene()?.getDoorRenderSummary();
       return {
-        closedPackCount: summary?.closedPackCount ?? 0,
         closedGeneratedCount: summary?.closedGeneratedCount ?? 0,
         closedKenneyCount: summary?.closedKenneyCount ?? 0,
         closedColorCount: summary?.closedColorCount ?? 0,
-        openPackCount: summary?.openPackCount ?? 0,
         openGeneratedCount: summary?.openGeneratedCount ?? 0,
         openKenneyCount: summary?.openKenneyCount ?? 0,
         openColorCount: summary?.openColorCount ?? 0,
+        crossOrientationCount: summary?.crossOrientationCount ?? 0,
         renderableClosedCount: summary?.renderableClosedCount ?? 0,
         renderableOpenCount: summary?.renderableOpenCount ?? 0,
       };
@@ -1232,8 +1293,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const world = scene?.world;
       const achievementsUI = scene?.achievementsUI;
       if (!world || !achievementsUI) {
-        return;
+        return [];
       }
+      const playerEid = playerEidOf(scene);
+      const before = new Set(
+        world.inventories.get(playerEid)?.generatedEquipment?.map((entry) => entry.instanceKey) ??
+          [],
+      );
       // Use the REAL unlock path (`unlockAchievement`) rather than mutating
       // `unlockedIds` directly — for `lootBox`/`equipment` rewards, unlocking
       // is what resolves the immutable reward bundle into
@@ -1248,6 +1314,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // the achievements panel to be visibly open first.
       achievementsUI.refresh(world);
       achievementsUI.claimReward(achievementId);
+      scene.inventoryUI?.refresh(world);
+      return (
+        world.inventories
+          .get(playerEid)
+          ?.generatedEquipment?.map((entry) => entry.instanceKey)
+          .filter((instanceKey) => !before.has(instanceKey)) ?? []
+      );
     },
 
     seedPendingRewardResumeScenario: () => {
@@ -1283,12 +1356,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) {
         return;
       }
-      world.bossChests.set('boss-chest:ratfolk', {
-        chestId: 'boss-chest:ratfolk',
-        familyId: 'ratfolk',
-        state: 'available',
-        createdAtMs: 0,
-      });
+      const chestId = 'boss-chest:ratfolk';
+      world.bossChests.delete(chestId);
+      world.generatedEquipmentRewardBundles.delete(chestId);
+      resolveEquipmentRewardBundle(world, chestId, BOSS_CHEST_REWARD_BASE_IDS, 'tier4');
+      const created = createBossChestRecord(world, chestId, 'ratfolk');
+      if (!created.ok) {
+        throw new Error(`probe boss chest setup failed: missing bundle for ${chestId}`);
+      }
       scene.bossChestUI?.refresh(world);
     },
 
@@ -1343,39 +1418,92 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     getQuartermasterStockSnapshot: () => {
       const scene = getScene();
-      const world = scene?.world;
-      if (!world) return [];
-      const playerEid = playerEidOf(scene);
-      if (playerEid < 0) return [];
-      const views = getQuartermasterOfferViews(world, playerEid);
-      return views.map((v) => ({
-        stockId: v.stockId,
-        offerId: v.offerId,
-        quantity: v.quantity,
-        unitPrice: v.unitPrice,
-        displayName: v.displayName,
-      }));
+      return scene?.getSettlementShopOfferSnapshot?.() ?? [];
+    },
+
+    getSettlementShopInventorySnapshot: (npcEid: number) => {
+      const world = getScene()?.world;
+      const settlement = world?.floorExtendedState?.settlement;
+      const shop = settlement?.shops.find((entry) => entry.npcEid === npcEid);
+      return (
+        shop?.inventory.map((entry) => ({
+          itemId: entry.itemId,
+          quantity: entry.stock,
+          unitPrice: entry.unitPrice,
+          displayName: displayNameForSettlementShopItem(entry.itemId),
+        })) ?? []
+      );
     },
 
     purchaseFirstQuartermasterOffer: () => {
+      const scene = getScene();
+      return scene?.purchaseFirstSettlementShopOffer?.() ?? { ok: false, reason: 'no-scene' };
+    },
+    getGeneratedInventoryCellBounds: (instanceKey: GeneratedEquipmentInstanceKey) => {
+      const inventory = getScene()?.inventoryUI;
+      if (!inventory?.isOpen()) return null;
+      const index = inventory.getCellIndexForEntry({ kind: 'generated-instance', instanceKey });
+      return index === null ? null : inventory.getCellScreenBounds(index);
+    },
+    getGeneratedEquipmentBagCellBounds: (instanceKey: GeneratedEquipmentInstanceKey) => {
+      const equipment = getScene()?.equipmentUI;
+      return equipment?.isOpen() ? equipment.getGeneratedBagCellScreenBounds(instanceKey) : null;
+    },
+    getEquippedGeneratedInstanceKeys: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      if (!world || playerEid < 0) return [];
+      return Object.values(getEquipmentState(world, playerEid)?.equipped ?? {}).filter(
+        (instanceId): instanceId is GeneratedEquipmentInstanceKey => typeof instanceId === 'string',
+      );
+    },
+
+    getInventoryVisibleItemIds: (): readonly string[] => {
+      return getScene()?.inventoryUI?.getVisibleItemIds?.() ?? [];
+    },
+
+    openFirstAvailableBossChest: () => {
       const scene = getScene();
       const world = scene?.world;
       if (!world) return { ok: false, reason: 'no-world' };
       const playerEid = playerEidOf(scene);
       if (playerEid < 0) return { ok: false, reason: 'no-player' };
-      const views = getQuartermasterOfferViews(world, playerEid);
-      const purchasable = views.find((v) => v.canPurchase);
-      if (!purchasable) return { ok: false, reason: 'none-purchasable' };
-      const result = purchaseQuartermasterOffer(world, playerEid, {
-        stockId: purchasable.stockId,
-        offerId: purchasable.offerId,
-        quantity: 1,
+      const chest = [...world.bossChests.values()]
+        .filter((candidate) => candidate.state === 'available')
+        .sort((left, right) => left.chestId.localeCompare(right.chestId))[0];
+      if (!chest) return { ok: false, reason: 'no-available-chest' };
+      const opened = openBossChest(world, chest.chestId, playerEid);
+      if (!opened.ok) return { ok: false, reason: opened.reason };
+      const acknowledged = acknowledgeBossChestReveal(world, chest.chestId);
+      if (!acknowledged.ok) return { ok: false, reason: acknowledged.reason };
+      scene.bossChestUI?.refresh(world);
+      scene.inventoryUI?.refresh(world);
+      return { ok: true };
+    },
+
+    spawnAndPickupFloorDrop: (itemId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) return { ok: false, reason: 'no-world' };
+      const playerEid = playerEidOf(scene);
+      if (playerEid < 0) return { ok: false, reason: 'no-player' };
+      const itemIndex = getItemIndex(itemId);
+      if (itemIndex < 0) return { ok: false, reason: 'unknown-item' };
+      const x = world.stores.position.x[playerEid] ?? 0;
+      const y = world.stores.position.y[playerEid] ?? 0;
+      const dropEid = spawnDroppedItem(world, x, y, itemIndex);
+      itemPickupSystem(world, {
+        pairs: [{ a: playerEid, b: dropEid }],
+        grid: {
+          clear() {},
+          insert() {},
+          queryPairs: () => [],
+          queryRadius: () => [],
+        },
       });
-      scene?.quartermasterUI?.refresh(world);
-      if (result.ok) {
-        return { ok: true, goldSpent: result.goldSpent };
-      }
-      return { ok: false, reason: result.reason };
+      scene.inventoryUI?.refresh(world);
+      return { ok: true };
     },
 
     getRewardAudioCueLog: (): readonly RewardAudioCueLogEntryProbe[] => {
@@ -1408,3 +1536,6 @@ registerLab(LAB_ID, {
     'Characterization harness that boots the real MainGameScene via the shipped floor bootstrap (fixed seed) and exposes window.__mainSceneProbe for boot-wiring + camera-follow e2e guards.',
   create: createMainSceneProbeLab,
 });
+function displayNameForSettlementShopItem(itemId: string): string | null {
+  return getItemById(itemId)?.name ?? getWeaponDef(itemId)?.name ?? null;
+}

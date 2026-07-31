@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-30",
+  "session_slug": "theme-set-unified-mirror-slots",
+  "task_title": "Themed sets default to unified mirror-pair items",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "minor",
+      "notes": "blocking1 gate-bypass->schema.superRefine + build-every-committed-plan test; blocking2 assets/plans->migrate data/ + gh api re-sync both copies; blocking3 fixtures->migrate validRoster+minimalPlan; blocking4 no-mirror coverage->test validator directly. nb5 invariant accepted (no-split satisfies gate); nb6 prompt from constant; nb7 stable code mirror-slot-unpaired path [equipment,i,slots]; nb8 legacy-state load compat test.",
+      "verdict": "approve-with-changes",
+      "summary": "Reviewer approved-with-changes; 4 blocking + 4 non-blocking concerns all resolved. Key change: enforce mirror rule via themeEquipmentSetPlanSchema.superRefine so build/load/validateRosterProposal/readAuthoredPlans index all enforce it (unbypassable); migrate canonical data/ plans AND re-sync assets/plans copies; migrate test fixtures; unit-test the pure validator directly (no-mirror plan cannot meet coverage via full build); add legacy split-state load compat test; derive prompt pair list from MIRROR_SLOT_PAIRS; repair-friendly error code+path."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "summary": "Separate-model (gpt-5.6-sol) review over HEAD diff. Round 1: one blocking finding — authoritative assets/plans branch still held legacy split items so a fresh init of classic-fantasy/edo-samurai would be rejected once validation deploys. Resolved by publishing the migrated unified plans to origin/assets/plans via contents API (new head dd7bdb87e); safe pre-merge since unified items are valid under both old+new schema and state-load path is unchanged. Round 2: reviewer confirmed no blocking concerns remain — APPROVE. Clean focus areas: validator correctness (lone/two-item/unified), superRefine on plan schema only (state schema distinct), legacy split-state load compat, coverage math unchanged, no dangling legacy ids, meaningful tests, no determinism/layer violations."
+    }
+  }
+}

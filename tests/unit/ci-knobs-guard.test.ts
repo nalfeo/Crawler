@@ -190,6 +190,8 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'DEFAULT_LEASE_TTL_MINUTES', // automation lease time-to-live
   'DEFAULT_LEASE_GRACE_MINUTES', // grace period after lease expiry
   'AUTOMATION_STALE_MINUTES', // age after which an automation comment is stale
+  // ci-recovery/harvest-liveness.mjs
+  'DEFAULT_HARVEST_THRESHOLD_MINUTES', // default stale-session harvest liveness alarm threshold
   // ci-recovery/issue-intake-lib.mjs
   'RECOVERY_PLAN_CHECKLIST_MAX_ITEMS', // max checklist items in a recovery plan
   'RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH', // max length per checklist item

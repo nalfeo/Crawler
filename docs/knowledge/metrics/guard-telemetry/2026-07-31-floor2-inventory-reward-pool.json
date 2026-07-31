@@ -1,0 +1,41 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "floor2-inventory-reward-pool",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 1185,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 1185
+    }
+  },
+  "tools": {
+    "apply_patch": 12,
+    "ask_user": 1,
+    "edit": 35,
+    "extensions_reload": 4,
+    "get_changes_overview": 1,
+    "glob": 12,
+    "grep": 89,
+    "invoke_canvas_action": 16,
+    "list_canvas_capabilities": 2,
+    "open_canvas": 2,
+    "powershell": 436,
+    "read_agent": 16,
+    "read_powershell": 37,
+    "rename_branch": 1,
+    "rg": 105,
+    "send_session_message": 3,
+    "skill": 3,
+    "sql": 3,
+    "stop_powershell": 4,
+    "str_replace": 1,
+    "task": 7,
+    "view": 390,
+    "write_agent": 5
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

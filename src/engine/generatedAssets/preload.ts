@@ -26,10 +26,16 @@
  *   Kenney sprites + procedural fallbacks.
  */
 import {
-  buildGeneratedSpriteRegistry,
   emptyGeneratedSpriteRegistry,
+  GENERATED_MANIFEST_VERSION,
+  loadGeneratedManifest,
+  parseGeneratedManifest,
+  type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
 } from '../../shared/generated-assets.js';
+import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from '../../shared/data/floor2-basic-leather-bases.js';
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../shared/data/floor2-equipment-art.js';
+import { isPlaceholderEntry } from '../../shared/item-sprites.js';
 import { createLogger } from '../../shared/logger.js';
 
 const logger = createLogger('engine:generated-assets');
@@ -135,8 +141,13 @@ export async function fetchGeneratedSpriteRegistry(
   }
 
   try {
-    const registry = buildGeneratedSpriteRegistry(raw);
-    logger.info('Loaded generated sprite manifest', { url, count: registry.size });
+    const manifest = parseGeneratedManifest(raw);
+    const registry = loadGeneratedManifest(manifest);
+    logger.info('Loaded generated sprite manifest', {
+      url,
+      count: registry.size,
+      version: GENERATED_MANIFEST_VERSION,
+    });
     return registry;
   } catch (err) {
     logger.warn('Generated sprite manifest failed schema validation; using empty registry', {
@@ -155,6 +166,39 @@ export interface PreloadOptions {
    * `"/assets/generated/iron-sword.png"`. Tests can override.
    */
   readonly assetsBaseUrl?: string;
+}
+
+const BASIC_LEATHER_STABLE_ID_SET = new Set<string>(FLOOR2_BASIC_LEATHER_STABLE_IDS);
+
+function conceptVersion(briefId: string, concept: string): number | null {
+  if (briefId === concept) return 0;
+  const prefix = `${concept}-v`;
+  if (!briefId.startsWith(prefix)) return null;
+  const digits = briefId.slice(prefix.length);
+  if (digits.length === 0 || !/^\d+$/.test(digits)) return null;
+  return Number(digits);
+}
+
+function resolveBasicLeatherAliasEntry(
+  registry: GeneratedSpriteRegistry,
+  stableId: string,
+): GeneratedSpriteEntry | null {
+  const slug = stableId.slice(stableId.indexOf('.') + 1);
+  const concept = `classic-fantasy-basic-leather-${slug}`;
+  return (
+    registry
+      .entries()
+      .filter(
+        (entry) => conceptVersion(entry.briefId, concept) !== null && !isPlaceholderEntry(entry),
+      )
+      .sort((a, b) => {
+        const versionDiff =
+          conceptVersion(a.briefId, concept)! - conceptVersion(b.briefId, concept)!;
+        if (versionDiff !== 0) return versionDiff;
+        if (a.variantIndex !== b.variantIndex) return a.variantIndex - b.variantIndex;
+        return a.textureKey.localeCompare(b.textureKey);
+      })[0] ?? null
+  );
 }
 
 /**
@@ -192,6 +236,15 @@ export function preloadGeneratedSprites(
       queued.push({ textureKey: entry.textureKey, url, kind: 'image' });
     }
     seen.add(entry.textureKey);
+  }
+  for (const definition of FLOOR2_EQUIPMENT_ART_DEFINITIONS) {
+    if (!BASIC_LEATHER_STABLE_ID_SET.has(definition.stableId)) continue;
+    const entry = resolveBasicLeatherAliasEntry(registry, definition.stableId);
+    if (entry === null || seen.has(definition.runtimeKey)) continue;
+    const url = `${base}${stripLeadingSlash(entry.assetPath)}`;
+    loader.image(definition.runtimeKey, url);
+    queued.push({ textureKey: definition.runtimeKey, url, kind: 'image' });
+    seen.add(definition.runtimeKey);
   }
   if (queued.length > 0) {
     logger.info('Queued generated sprite loads', { count: queued.length });

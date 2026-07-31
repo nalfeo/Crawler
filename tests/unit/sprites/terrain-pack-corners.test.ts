@@ -201,7 +201,6 @@ describe('validateCompatibleCorners', () => {
       },
       floorPool: [],
       corridorPool: [],
-      doorSet: [],
     } as unknown as TerrainPackDef;
     return { manifest, atlas: encodePng(image) };
   }

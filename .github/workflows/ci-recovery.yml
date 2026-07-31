@@ -1,4 +1,5 @@
 name: CI Recovery
+run-name: CI Recovery (${{ inputs.operation }}) for PR #${{ inputs.pr_number }}
 
 on:
   workflow_dispatch:

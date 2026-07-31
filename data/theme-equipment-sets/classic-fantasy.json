@@ -33,23 +33,16 @@
     },
     { "id": "cinched-leather-belt", "displayName": "Cinched Leather Belt", "slots": ["belt"] },
     { "id": "steel-sabatons", "displayName": "Steel Sabatons", "slots": ["feet"] },
-    { "id": "banded-vambrace-left", "displayName": "Banded Vambrace (Left)", "slots": ["leftArm"] },
     {
-      "id": "banded-vambrace-right",
-      "displayName": "Banded Vambrace (Right)",
-      "slots": ["rightArm"]
+      "id": "banded-vambraces",
+      "displayName": "Banded Vambraces",
+      "slots": ["leftArm", "rightArm"]
     },
     {
-      "id": "oiled-leather-bracer-left",
-      "displayName": "Oiled Leather Bracer (Left)",
-      "slots": ["leftWrist"]
+      "id": "oiled-leather-bracers",
+      "displayName": "Oiled Leather Bracers",
+      "slots": ["leftWrist", "rightWrist"]
     },
-    {
-      "id": "oiled-leather-bracer-right",
-      "displayName": "Oiled Leather Bracer (Right)",
-      "slots": ["rightWrist"]
-    },
-    { "id": "signet-ring-left", "displayName": "Signet Ring (Left)", "slots": ["ringLeft"] },
-    { "id": "signet-ring-right", "displayName": "Signet Ring (Right)", "slots": ["ringRight"] }
+    { "id": "signet-ring", "displayName": "Signet Ring", "slots": ["ringLeft", "ringRight"] }
   ]
 }

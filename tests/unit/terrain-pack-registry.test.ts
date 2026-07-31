@@ -20,12 +20,10 @@ describe('terrain-pack-registry', () => {
       expect(pack.wallAutotile.masks).toHaveLength(47);
       expect(pack.floorPool.length).toBeGreaterThanOrEqual(3);
       expect(pack.corridorPool.length).toBeGreaterThanOrEqual(3);
-      expect(Object.keys(pack.doorSet)).toEqual([
-        'openHorizontal',
-        'openVertical',
-        'closedHorizontal',
-        'closedVertical',
-      ]);
+      // INVERTED: packs used to be required to declare all four doorSet keys.
+      // Door art is now owned by the one unified renderer, so a pack carrying
+      // door art is a regression, not a requirement.
+      expect(pack).not.toHaveProperty('doorSet');
     }
   });
 
