@@ -25,7 +25,7 @@ const validBrief: Brief = {
   variations: [],
   minVariations: 4,
   judge: { enabled: false, maxVariants: 16 },
-  postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'strict' },
+  postprocessing: { trimAndFit: false, minDimension: 256, paletteMode: 'strict' },
   frameSequence: { enabled: false, frameCount: 3, frameRate: 8, loop: true },
 };
 
@@ -100,6 +100,15 @@ describe('briefSchema', () => {
     expect(briefSchema.safeParse({ ...validBrief, minVariations: -1 }).success).toBe(false);
     expect(briefSchema.safeParse({ ...validBrief, minVariations: 21 }).success).toBe(false);
     expect(briefSchema.safeParse({ ...validBrief, minVariations: 4.5 }).success).toBe(false);
+  });
+
+  it('defaults postprocessing.minDimension to 256 when postprocessing is entirely absent', () => {
+    // Guards the schema default: a regression to 64 would pass the `validBrief`
+    // fixture (which supplies minDimension explicitly), but fails here.
+    const { postprocessing: _omit, ...withoutPostprocessing } = validBrief;
+    void _omit;
+    const parsed = briefSchema.parse(withoutPostprocessing);
+    expect(parsed.postprocessing.minDimension).toBe(256);
   });
 
   it('defaults floor to 1 and accepts only integers from 1 through 20', () => {

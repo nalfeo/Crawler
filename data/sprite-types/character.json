@@ -1,8 +1,8 @@
 {
   "$comment": "Default brief settings for neutral or player-facing character sprites outside the hostile enemy family.",
-  "size": { "width": 64, "height": 64 },
+  "size": { "width": 256, "height": 256 },
   "palette": { "id": "kenney-roguelike" },
-  "anchor": { "x": 32, "y": 63 },
+  "anchor": { "x": 128, "y": 255 },
   "tags": ["character", "npc"],
   "generation": {
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
