@@ -118,15 +118,27 @@ function makeRoutes() {
         handler: ({ url }) => {
           const m = url.pathname.match(/^\/icon\/(.+)$/);
           if (!m)
-            return { status: 404, headers: { 'Content-Type': 'text/plain' }, body: Buffer.from('not found') };
+            return {
+              status: 404,
+              headers: { 'Content-Type': 'text/plain' },
+              body: Buffer.from('not found'),
+            };
           const iconId = decodeURIComponent(m[1]);
           // Basic sanitization: only allow safe filename chars.
           if (!/^[a-z0-9][a-z0-9-]*$/.test(iconId)) {
-            return { status: 400, headers: { 'Content-Type': 'text/plain' }, body: Buffer.from('invalid id') };
+            return {
+              status: 400,
+              headers: { 'Content-Type': 'text/plain' },
+              body: Buffer.from('invalid id'),
+            };
           }
           const buf = bridge.getIconPng(iconId);
           if (!buf)
-            return { status: 404, headers: { 'Content-Type': 'text/plain' }, body: Buffer.from('not found') };
+            return {
+              status: 404,
+              headers: { 'Content-Type': 'text/plain' },
+              body: Buffer.from('not found'),
+            };
           return { status: 200, headers: { 'Content-Type': 'image/png' }, body: buf };
         },
       },
@@ -172,64 +184,83 @@ async function startInstance(instanceId) {
 
 const canvas = createCanvas({
   id: 'icon-batch-review',
-  name: 'Icon Batch Review',
+  displayName: 'Icon Batch Review',
   description: 'Review and dispatch icon batch generation for achievements and abilities.',
-});
-
-canvas.onOpen(async ({ instanceId, session }) => {
-  sessionRef = session;
-  log(`onOpen instanceId=${instanceId}`);
-  try {
-    const url = await startInstance(instanceId);
-    return { type: 'iframe', url };
-  } catch (err) {
-    log(`onOpen failed: ${err?.message ?? err}`, 'error');
-    throw new CanvasError(err?.message ?? String(err));
-  }
-});
-
-canvas.onAction(async ({ instanceId, action, payload }) => {
-  log(`onAction instanceId=${instanceId} action=${action}`);
-
-  if (action === 'get_state') {
-    const state = await buildState();
-    return state;
-  }
-
-  if (action === 'dispatch_generate_briefs') {
-    const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
-    await bridge.dispatchWorkflow('generate-briefs');
-    return { ok: true };
-  }
-
-  if (action === 'dispatch_run') {
-    const batchIds = payload?.batchIds;
-    if (!batchIds) throw new CanvasError('dispatch_run requires payload.batchIds');
-    const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
-    await bridge.dispatchWorkflow('run', batchIds);
-    return { ok: true };
-  }
-
-  if (action === 'dispatch_run_all') {
-    const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
-    await bridge.dispatchWorkflow('run-all');
-    return { ok: true };
-  }
-
-  throw new CanvasError(`Unknown action: ${action}`);
-});
-
-canvas.onClose(async ({ instanceId }) => {
-  log(`onClose instanceId=${instanceId}`);
-  const server = instances.get(instanceId);
-  if (server) {
-    instances.delete(instanceId);
+  inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  actions: [
+    {
+      name: 'get_state',
+      description: 'Return current batch status (briefs, approved counts, errors).',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      handler: async (_ctx) => {
+        return await buildState();
+      },
+    },
+    {
+      name: 'dispatch_generate_briefs',
+      description: 'Trigger workflow_dispatch for generate-briefs action.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      handler: async (_ctx) => {
+        const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
+        await bridge.dispatchWorkflow('generate-briefs');
+        return { ok: true };
+      },
+    },
+    {
+      name: 'dispatch_run',
+      description: 'Trigger workflow_dispatch to run specific batches.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['batchIds'],
+        properties: {
+          batchIds: { type: 'array', items: { type: 'string' }, description: 'Batch IDs to run.' },
+        },
+      },
+      handler: async (ctx) => {
+        const batchIds = ctx.input?.batchIds;
+        if (!batchIds?.length)
+          throw new CanvasError('missing_batch_ids', 'dispatch_run requires batchIds');
+        const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
+        await bridge.dispatchWorkflow('run', batchIds);
+        return { ok: true };
+      },
+    },
+    {
+      name: 'dispatch_run_all',
+      description: 'Trigger workflow_dispatch to run all pending batches.',
+      inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+      handler: async (_ctx) => {
+        const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
+        await bridge.dispatchWorkflow('run-all');
+        return { ok: true };
+      },
+    },
+  ],
+  open: async (ctx) => {
+    sessionRef = ctx.session ?? sessionRef;
+    log(`open instanceId=${ctx.instanceId}`);
     try {
-      await server.close();
-    } catch {
-      /* ignore */
+      const url = await startInstance(ctx.instanceId);
+      return { title: 'Icon Batch Review', url };
+    } catch (err) {
+      log(`open failed: ${err?.message ?? err}`, 'error');
+      throw new CanvasError('open_failed', err?.message ?? String(err));
     }
-  }
+  },
+  onClose: async (ctx) => {
+    log(`onClose instanceId=${ctx.instanceId}`);
+    const server = instances.get(ctx.instanceId);
+    if (server) {
+      instances.delete(ctx.instanceId);
+      try {
+        await server.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  },
 });
 
-joinSession(canvas);
+sessionRef = await joinSession({ canvases: [canvas] });
+log('icon-batch-review canvas provider registered');
