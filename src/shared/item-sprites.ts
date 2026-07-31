@@ -33,6 +33,7 @@ import type { GeneratedSpriteEntry, GeneratedSpriteRegistry } from './generated-
 import { HARVESTABLE_DEFS } from './harvestableDefs.js';
 import { ITEM_CATALOG } from './items.js';
 import { SeededRandom } from './random.js';
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from './data/floor2-equipment-art.js';
 
 /** Quality tiers for a candidate entry; lower is preferred. */
 const TIER_BARE_REAL = 0;
@@ -92,13 +93,80 @@ function matchConcept(
 }
 
 /**
- * Candidate concepts for an item, in preference order: the item id first, then
- * its equipment `weaponId` alias (e.g. `bone-club` → `baseball-bat`) when it
- * differs. Weapon-less items resolve by id alone.
+ * Lazy map from item identifier to its Floor 2 equipment `runtimeKey`
+ * (e.g. `'equipment/weapon/iron-cleaver'`). Indexed by BOTH the bare slug
+ * (e.g. `'iron-cleaver'`) AND the full stableId (e.g. `'weapon.iron-cleaver'`)
+ * so that all three production ID shapes resolve correctly:
+ *
+ *  - Wave A: `id = 'weapon.iron-cleaver'`; Wave A equipment defs are NOT
+ *    registered in `getEquipmentDefForItem`, so resolution relies on the
+ *    stableId → runtimeKey entry here.
+ *  - Wave B: `id = weaponId = 'weapon.moon-scythe'`; same stableId path.
+ *  - Non-weapon: `id = 'torso.chain-hauberk'`, no weaponId; stableId path.
+ */
+let floor2SlugToRuntimeKey: ReadonlyMap<string, string> | null = null;
+
+function getFloor2SlugToRuntimeKey(): ReadonlyMap<string, string> {
+  if (floor2SlugToRuntimeKey !== null) {
+    return floor2SlugToRuntimeKey;
+  }
+  const map = new Map<string, string>();
+  for (const def of FLOOR2_EQUIPMENT_ART_DEFINITIONS) {
+    const dot = def.stableId.indexOf('.');
+    const slug = def.stableId.slice(dot + 1);
+    map.set(slug, def.runtimeKey);
+    // Also index by the full stableId so Wave B items (whose EquipmentItemDef.id
+    // IS the stableId, e.g. `weapon.moon-scythe`) and non-weapon gear (e.g.
+    // `torso.chain-hauberk`) resolve their runtimeKey from the itemId path.
+    map.set(def.stableId, def.runtimeKey);
+  }
+  floor2SlugToRuntimeKey = map;
+  return map;
+}
+
+/**
+ * Candidate concepts for an item, in preference order:
+ *  1. The item id itself (e.g. `weapon.moon-scythe` for a Wave B weapon,
+ *     `torso.chain-hauberk` for non-weapon gear).
+ *  2. Its equipment `weaponId` alias (e.g. `bone-club` → `baseball-bat`) when
+ *     it differs from the item id.
+ *  3. For any concept that maps to a Floor 2 base, the bare slug derived from
+ *     the runtimeKey (e.g. `moon-scythe` from `equipment/weapon/moon-scythe`)
+ *     so that legacy versioned entries keyed by slug (e.g. `moon-scythe-v2`)
+ *     are still found.
+ *  4. The Floor 2 `runtimeKey` itself (e.g. `equipment/weapon/moon-scythe`) so
+ *     wiring entries whose `briefId` is the full path are matched. These are
+ *     bare-real (TIER_BARE_REAL) and outrank any slug-keyed versioned entry in
+ *     the same pool, so priority remains correct without needing a special order.
+ *
+ * Duplicates are suppressed so slug and stableId both resolving the same key
+ * don't produce two identical concepts.
  */
 export function itemSpriteConcepts(itemId: string): readonly string[] {
   const weaponId = getEquipmentDefForItem(itemId)?.weaponId;
-  return weaponId !== undefined && weaponId !== itemId ? [itemId, weaponId] : [itemId];
+  const base: readonly string[] =
+    weaponId !== undefined && weaponId !== itemId ? [itemId, weaponId] : [itemId];
+
+  const f2 = getFloor2SlugToRuntimeKey();
+  const extra: string[] = [];
+  const seen = new Set<string>(base);
+  for (const concept of base) {
+    const runtimeKey = f2.get(concept);
+    if (runtimeKey !== undefined) {
+      // Also push the bare slug (last path segment of runtimeKey) so legacy
+      // versioned entries are still found (e.g. `chain-hauberk` for `chain-hauberk-v3`).
+      const slug = runtimeKey.slice(runtimeKey.lastIndexOf('/') + 1);
+      if (!seen.has(slug)) {
+        extra.push(slug);
+        seen.add(slug);
+      }
+      if (!seen.has(runtimeKey)) {
+        extra.push(runtimeKey);
+        seen.add(runtimeKey);
+      }
+    }
+  }
+  return extra.length > 0 ? [...base, ...extra] : base;
 }
 
 /**

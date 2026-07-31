@@ -1,0 +1,43 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "fix-equipment-art-placeholders",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 379,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 378,
+      "crash": 1
+    }
+  },
+  "tools": {
+    "apply_patch": 1,
+    "chrome-devtools-click": 4,
+    "chrome-devtools-evaluate_script": 27,
+    "chrome-devtools-list_pages": 2,
+    "chrome-devtools-navigate_page": 8,
+    "chrome-devtools-new_page": 1,
+    "chrome-devtools-press_key": 2,
+    "chrome-devtools-scroll_page": 1,
+    "chrome-devtools-take_screenshot": 21,
+    "chrome-devtools-take_snapshot": 3,
+    "chrome-devtools-wait_for": 6,
+    "edit": 4,
+    "glob": 22,
+    "grep": 63,
+    "playwright-browser_navigate": 6,
+    "playwright-browser_run_code_unsafe": 18,
+    "playwright-browser_take_screenshot": 5,
+    "playwright-browser_wait_for": 1,
+    "powershell": 86,
+    "read_powershell": 5,
+    "rename_branch": 2,
+    "rename_session": 1,
+    "rg": 4,
+    "view": 86
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
