@@ -609,15 +609,30 @@ async function discoverLinkedAssetRequestIssueNumbers(
     ],
     { cwd: repoRoot },
   );
-  if (listed.code !== 0) return [];
+  if (listed.code !== 0) {
+    const detail = listed.stderr.trim() || `gh issue list exited with code ${listed.code}`;
+    throw new CheckinError(
+      'gh-failed',
+      `Failed to list open ${ASSET_REQUEST_LABEL} issues: ${detail}`,
+    );
+  }
 
   let raw: unknown;
   try {
     raw = JSON.parse(listed.stdout);
-  } catch {
-    return [];
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'invalid JSON';
+    throw new CheckinError(
+      'gh-failed',
+      `Failed to parse open ${ASSET_REQUEST_LABEL} issues from gh output: ${detail}`,
+    );
   }
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    throw new CheckinError(
+      'gh-failed',
+      `Failed to parse open ${ASSET_REQUEST_LABEL} issues from gh output: expected an array.`,
+    );
+  }
 
   const matches: number[] = [];
   for (const item of raw as RawIssueRequestItem[]) {

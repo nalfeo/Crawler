@@ -10,7 +10,7 @@
       "reviewer_model": "parallel_validation",
       "concerns_count": 0,
       "resolved_count": 0,
-      "notes": "CI recovery on the rebased asset-request auto-close PR. GitHub Actions MCP traced the listed blockers to Lightweight Checks on the old head; current branch fix is a Prettier-only wrap in scripts/sprites/checkin.ts. parallel_validation reported 0 review findings."
+      "notes": "Review recovery on the asset-request auto-close PR. Separate code-review agents validated the listed threads: restored package.json/package-lock.json/npm-audit files to origin/main to remove unrelated dependency rollback diff, and tightened scripts/sprites/checkin.ts to fail closed when asset-request provenance lookup fails. parallel_validation reported 0 review findings."
     }
   }
 }

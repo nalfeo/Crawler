@@ -18,25 +18,27 @@ sprite-pipeline, ci-policy
 
 ## Summary
 
-- Recovered the rebased asset-request auto-close PR by tracing the reported `ci`, `Lightweight Checks`, and `Merge gate` failures back to one concrete `Lightweight Checks` formatting error in `scripts/sprites/checkin.ts`.
-- Confirmed the aggregate `ci` and `Merge gate` jobs were only red because `Lightweight Checks` failed.
-- Confirmed the stale dead-code finding from the older failing head (`src/shared/generated-assets.test-seams.ts`) no longer exists after preflight rebased the branch onto current `main`.
-- Applied the smallest code change: Prettier-compatible wrapping for `FLOOR2_RUNTIME_BRIEF_IDS` with no logic change.
+- Recovered the asset-request auto-close PR after the initial CI-only repair exposed three follow-up review blockers.
+- Restored `package.json`, `package-lock.json`, `scripts/agent/security/npm-audit.mjs`, and `scripts/agent/security/npm-audit.test.mjs` to their exact `origin/main` contents so the unrelated PostCSS rollback / temporary dependency-exception changes are no longer part of this PR.
+- Tightened `scripts/sprites/checkin.ts` to fail closed when `gh issue list` cannot be executed or parsed while discovering linked `asset-request` issues, preventing permanent loss of close-keyword provenance.
+- Added focused regression coverage that proves those provenance lookup failures abort before any branch push or issue creation.
 
 ## Files touched
 
 - `scripts/sprites/checkin.ts`
+- `tests/unit/sprites/checkin.test.ts`
 - `docs/knowledge/handoffs/2026-07-31-asset-request-ci-recovery.md`
 - `docs/knowledge/review-ledgers/2026-07-31-asset-request-ci-recovery.review-ledger.json`
 
 ## Verification
 
-- GitHub Actions MCP: inspected run `30610439984` and jobs `91094391056` (`ci`), `91091844627` (`Lightweight Checks`), and `91094173302` (`Merge gate`).
-- `npx prettier --check scripts/sprites/checkin.ts`
+- GitHub Actions MCP: inspected the prior failing `ci`, `Lightweight Checks`, and `Merge gate` jobs, then validated the three listed review threads with separate code-review agents.
+- `node --test scripts/agent/security/npm-audit.test.mjs`
+- `npx prettier --check scripts/sprites/checkin.ts tests/unit/sprites/checkin.test.ts scripts/agent/security/npm-audit.mjs scripts/agent/security/npm-audit.test.mjs package.json`
 - `parallel_validation` → code review: 0 findings; CodeQL: 0 alerts reported
-- `npm ci` *(environment-blocked: `getaddrinfo ENOTFOUND ms-feed-25.pkgs.visualstudio.com` for `postcss-8.5.22.tgz`)*
-- `npm run format:check` *(environment-blocked: project `prettier` binary unavailable because dependencies are not installed in this sandbox)*
+- `npm ci` _(environment-blocked: mirrored package-host DNS failure, e.g. `getaddrinfo ENOTFOUND ms-feed-12.pkgs.visualstudio.com` while resolving locked tarballs)_
+- `npm exec --yes --package=vitest@4.1.10 --package=vite@8.0.16 --package=typescript@6.0.3 -- vitest run tests/unit/sprites/checkin.test.ts` _(environment-blocked: repo-local `vitest.config.ts` resolves `vitest/config` from the project install, which is unavailable without a successful dependency install)_
 
 ## Unresolved / next steps
 
-- Branch CI rerun is the authoritative full verification path because this sandbox still cannot install the locked dependencies from the mirrored package host.
+- Branch CI rerun remains the authoritative full verification path for the touched Vitest suite because this sandbox still cannot complete the project dependency install from the mirrored package hosts.

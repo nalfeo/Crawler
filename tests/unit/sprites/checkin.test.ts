@@ -451,6 +451,92 @@ describe('runAssetCheckin', () => {
     expect(payload?.assetRequestIssueNumbers).toEqual([2428]);
   });
 
+  it('fails closed before push when listing open asset-request issues fails', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/butcher-hook-var-2.png\n' };
+      }
+      if (
+        command === 'gh' &&
+        args[0] === 'issue' &&
+        args[1] === 'list' &&
+        args.includes('asset-request')
+      ) {
+        return { code: 1, stderr: 'rate limit exceeded' };
+      }
+      return {};
+    });
+
+    await expect(
+      runAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'butcher-hook-var-2': {
+                assetPath: 'generated/butcher-hook-var-2.png',
+                briefId: 'butcher-hook',
+                variantIndex: 2,
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'gh-failed',
+      message: expect.stringContaining('Failed to list open asset-request issues'),
+    });
+
+    const commandLine = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    expect(
+      commandLine.some((line) => line.startsWith('git push --no-verify -u origin assets/')),
+    ).toBe(false);
+    expect(commandLine.some((line) => line.startsWith('gh issue create'))).toBe(false);
+  });
+
+  it('fails closed before push when gh issue list returns malformed JSON', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/butcher-hook-var-2.png\n' };
+      }
+      if (
+        command === 'gh' &&
+        args[0] === 'issue' &&
+        args[1] === 'list' &&
+        args.includes('asset-request')
+      ) {
+        return { stdout: '{not-json' };
+      }
+      return {};
+    });
+
+    await expect(
+      runAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'butcher-hook-var-2': {
+                assetPath: 'generated/butcher-hook-var-2.png',
+                briefId: 'butcher-hook',
+                variantIndex: 2,
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'gh-failed',
+      message: expect.stringContaining('Failed to parse open asset-request issues from gh output'),
+    });
+
+    const commandLine = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    expect(
+      commandLine.some((line) => line.startsWith('git push --no-verify -u origin assets/')),
+    ).toBe(false);
+    expect(commandLine.some((line) => line.startsWith('gh issue create'))).toBe(false);
+  });
+
   it('cuts a branch, pushes (no PR), and files the issue', async () => {
     const { exec, calls } = makeFakeExec((command, args) => {
       if (command === 'git' && args[0] === 'diff') {
