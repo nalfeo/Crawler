@@ -4,25 +4,25 @@ import {
   getGeneratedEquipmentInstance,
 } from '../../src/core/generated-equipment-registry.js';
 import {
-  REWARD_BUNDLE_AFFINITY_PROB,
-  REWARD_BUNDLE_RARITIES,
+  _REWARD_BUNDLE_AFFINITY_PROB as REWARD_BUNDLE_AFFINITY_PROB,
+  _REWARD_BUNDLE_RARITIES as REWARD_BUNDLE_RARITIES,
   RewardBundleResolutionError,
-  alignmentFromRoll,
+  _alignmentFromRoll as alignmentFromRoll,
   resolveEquipmentRewardBundle,
-  resolvePlayerBuildAffinity,
-  rollAffinityAlignment,
-  rollTierRarity,
-  computeFloor2RewardPoolTierEligibility,
-  validateFloor2RewardPoolTierEligibility,
-  rarityEligibleBaseIds,
-  Floor2RewardPoolAuthoringError,
-  assertGeneratedRewardInstanceLegal,
+  _resolvePlayerBuildAffinity as resolvePlayerBuildAffinity,
+  _rollAffinityAlignment as rollAffinityAlignment,
+  _rollTierRarity as rollTierRarity,
+  _computeFloor2RewardPoolTierEligibility as computeFloor2RewardPoolTierEligibility,
+  _validateFloor2RewardPoolTierEligibility as validateFloor2RewardPoolTierEligibility,
+  _rarityEligibleBaseIds as rarityEligibleBaseIds,
+  _Floor2RewardPoolAuthoringError as Floor2RewardPoolAuthoringError,
+  _assertGeneratedRewardInstanceLegal as assertGeneratedRewardInstanceLegal,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
   getGeneratedEquipmentBaseAffinity,
   generatedEquipmentBaseHasNonArmorStatBonus,
-  GeneratedEquipmentGeneratorError,
+  _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
 import {

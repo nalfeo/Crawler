@@ -38,13 +38,13 @@ export type RewardBundleBuildAffinity = 'magic' | 'physical';
 
 /**
  * The three generated-equipment rarities the affinity-alignment contract
- * ({@link REWARD_BUNDLE_AFFINITY_PROB}) is defined over. A single tiered
+ * ({@link _REWARD_BUNDLE_AFFINITY_PROB}) is defined over. A single tiered
  * bundle resolves exactly ONE of these rarities (per its tier's allowed pool,
  * see {@link EQUIPMENT_REWARD_TIER_RARITIES}) — this constant is retained for
  * the affinity-probability contract and threshold tests, not to imply every
  * bundle contains all three.
  */
-export const REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
+export const _REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
   GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES;
 
 /**
@@ -52,7 +52,7 @@ export const REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
  * base pool (vs the non-aligned pool). Exactly Common 25% / Uncommon 50% /
  * Rare 75% per the Floor 2 equipment spec.
  */
-export const REWARD_BUNDLE_AFFINITY_PROB: Readonly<Record<GeneratedEquipmentRarity, number>> =
+export const _REWARD_BUNDLE_AFFINITY_PROB: Readonly<Record<GeneratedEquipmentRarity, number>> =
   Object.freeze({
     common: 0.25,
     uncommon: 0.5,
@@ -74,7 +74,7 @@ export class RewardBundleResolutionError extends Error {
   }
 }
 
-export function assertGeneratedRewardInstanceLegal(
+export function _assertGeneratedRewardInstanceLegal(
   instance: GeneratedEquipmentInstanceV1,
   rarity: GeneratedEquipmentRarity,
 ): void {
@@ -91,20 +91,20 @@ export function assertGeneratedRewardInstanceLegal(
  * threshold behaviour (`< prob`) can be asserted deterministically at the exact
  * boundary values — an empirical frequency test can never prove exactness.
  */
-export function alignmentFromRoll(roll: number, rarity: GeneratedEquipmentRarity): boolean {
-  return roll < REWARD_BUNDLE_AFFINITY_PROB[rarity];
+export function _alignmentFromRoll(roll: number, rarity: GeneratedEquipmentRarity): boolean {
+  return roll < _REWARD_BUNDLE_AFFINITY_PROB[rarity];
 }
 
 /** Draw a single affinity-alignment decision for `rarity` from `rng`. */
-export function rollAffinityAlignment(
+export function _rollAffinityAlignment(
   rng: SeededRandom,
   rarity: GeneratedEquipmentRarity,
 ): boolean {
-  return alignmentFromRoll(rng.next(), rarity);
+  return _alignmentFromRoll(rng.next(), rarity);
 }
 
 /** Snapshot the player's current build affinity from the active weapon. */
-export function resolvePlayerBuildAffinity(world: GameWorld): RewardBundleBuildAffinity {
+export function _resolvePlayerBuildAffinity(world: GameWorld): RewardBundleBuildAffinity {
   const weapon = getActiveWeapon(world);
   if (weapon === undefined) return 'physical';
   return weapon.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
@@ -166,7 +166,7 @@ export type Floor2RewardPoolTierEligibilityReport = Readonly<
  * rarity contract comment above). Exported so authoring validation and tests
  * both derive eligibility from the SAME rule the resolver actually uses —
  * never a second, hand-maintained copy of the filter. */
-export function rarityEligibleBaseIds(
+export function _rarityEligibleBaseIds(
   bases: readonly string[],
   rarity: GeneratedEquipmentRarity,
 ): readonly string[] {
@@ -190,7 +190,7 @@ export function rarityEligibleBaseIds(
  * `resolveGeneratedEquipmentBase`) the moment this function runs — bad/unknown
  * content fails loudly here, not silently.
  */
-export function computeFloor2RewardPoolTierEligibility(
+export function _computeFloor2RewardPoolTierEligibility(
   bases: readonly string[],
   weaponIds: ReadonlySet<string>,
 ): Floor2RewardPoolTierEligibilityReport {
@@ -201,7 +201,7 @@ export function computeFloor2RewardPoolTierEligibility(
   for (const tier of ACHIEVEMENT_EQUIPMENT_REWARD_TIERS) {
     const rarityRow = {} as Record<GeneratedEquipmentRarity, Floor2RewardPoolRarityComposition>;
     for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
-      const eligible = rarityEligibleBaseIds(bases, rarity);
+      const eligible = _rarityEligibleBaseIds(bases, rarity);
       let weapons = 0;
       let physicalAligned = 0;
       let magicAligned = 0;
@@ -227,7 +227,7 @@ export function computeFloor2RewardPoolTierEligibility(
   return Object.freeze(report);
 }
 
-export class Floor2RewardPoolAuthoringError extends Error {
+export class _Floor2RewardPoolAuthoringError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'Floor2RewardPoolAuthoringError';
@@ -267,25 +267,25 @@ export class Floor2RewardPoolAuthoringError extends Error {
  * throw or, worse, a narrowed-but-still-selectable pool that quietly
  * recreates the old repeated-four-bases defect.
  */
-export function validateFloor2RewardPoolTierEligibility(
+export function _validateFloor2RewardPoolTierEligibility(
   bases: readonly string[] = FLOOR2_REWARD_POOL_STABLE_IDS,
   weaponIds: ReadonlySet<string> = new Set(FLOOR2_REWARD_POOL_WEAPON_IDS),
 ): Floor2RewardPoolTierEligibilityReport {
-  const report = computeFloor2RewardPoolTierEligibility(bases, weaponIds);
+  const report = _computeFloor2RewardPoolTierEligibility(bases, weaponIds);
 
   for (const tier of ACHIEVEMENT_EQUIPMENT_REWARD_TIERS) {
     for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
-      const eligible = rarityEligibleBaseIds(bases, rarity);
+      const eligible = _rarityEligibleBaseIds(bases, rarity);
       for (const playerAffinity of BUILD_AFFINITIES) {
         const { aligned, nonAligned } = partitionBases(eligible, playerAffinity);
         if (aligned.length === 0) {
-          throw new Floor2RewardPoolAuthoringError(
+          throw new _Floor2RewardPoolAuthoringError(
             `Floor 2 reward pool authoring check failed: tier ${tier} rarity ${rarity} has no ` +
               `${playerAffinity}-aligned candidate (pool size ${bases.length}, eligible ${eligible.length})`,
           );
         }
         if (nonAligned.length === 0) {
-          throw new Floor2RewardPoolAuthoringError(
+          throw new _Floor2RewardPoolAuthoringError(
             `Floor 2 reward pool authoring check failed: tier ${tier} rarity ${rarity} has no ` +
               `non-${playerAffinity} candidate (pool size ${bases.length}, eligible ${eligible.length})`,
           );
@@ -300,10 +300,10 @@ export function validateFloor2RewardPoolTierEligibility(
   // exactly `bases` itself — this loop exists so a FUTURE filter change
   // (e.g. an uncommon-scoped exclusion) cannot silently bench a base without
   // this check catching it, not because today's rule could ever fail it.
-  const uncommonEligible = new Set(rarityEligibleBaseIds(bases, 'uncommon'));
+  const uncommonEligible = new Set(_rarityEligibleBaseIds(bases, 'uncommon'));
   const neverEligible = bases.filter((baseId) => !uncommonEligible.has(baseId));
   if (neverEligible.length > 0) {
-    throw new Floor2RewardPoolAuthoringError(
+    throw new _Floor2RewardPoolAuthoringError(
       `Floor 2 reward pool authoring check failed: base(s) permanently ineligible for every ` +
         `achievement rarity/tier: ${neverEligible.join(', ')}`,
     );
@@ -332,7 +332,7 @@ function substreamRng(
  * always resolves to that one rarity with zero RNG consumption, so tier1 stays
  * fully deterministic even before the RNG substream is touched.
  */
-export function rollTierRarity(
+export function _rollTierRarity(
   rng: SeededRandom,
   tier: EquipmentRewardTier,
 ): GeneratedEquipmentRarity {
@@ -417,11 +417,11 @@ export function resolveEquipmentRewardBundle(
   // `validateFloor2RewardPoolTierEligibility` (the authoring-time proof that
   // this filter never empties an achievement-reachable pool).
   const rarityRng = substreamRng(runKey, achievementId, tier, 'tier-rarity');
-  const rarity = rollTierRarity(rarityRng, tier);
+  const rarity = _rollTierRarity(rarityRng, tier);
 
-  const rarityEligibleBases = rarityEligibleBaseIds(bases, rarity);
+  const rarityEligibleBases = _rarityEligibleBaseIds(bases, rarity);
 
-  const playerAffinity = resolvePlayerBuildAffinity(world);
+  const playerAffinity = _resolvePlayerBuildAffinity(world);
   const { aligned, nonAligned } = partitionBases(rarityEligibleBases, playerAffinity);
   if (aligned.length === 0) {
     throw new RewardBundleResolutionError(
@@ -439,7 +439,7 @@ export function resolveEquipmentRewardBundle(
   const itemLevel = Math.max(1, Math.floor(world.playerLevel.level));
 
   const transaction = createGeneratedEquipmentRegistryTransaction(world);
-  const aligns = rollAffinityAlignment(
+  const aligns = _rollAffinityAlignment(
     substreamRng(runKey, achievementId, rarity, 'alignment'),
     rarity,
   );
@@ -458,7 +458,7 @@ export function resolveEquipmentRewardBundle(
   // filter silently — a future data change (e.g. a base's `statBonuses`
   // changing) should fail loudly here instead of shipping an illegal Common
   // item.
-  assertGeneratedRewardInstanceLegal(instance, rarity);
+  _assertGeneratedRewardInstanceLegal(instance, rarity);
 
   // Generated successfully — publish the registry state, then record the
   // bundle. Both are no-throw so the pair is effectively atomic.
@@ -479,4 +479,4 @@ export function resolveEquipmentRewardBundle(
 // tier/rarity/build combination left with an empty aligned or non-aligned
 // pool) throws the instant this module is imported, not only when a specific
 // achievement/seed/build happens to exercise it at runtime.
-validateFloor2RewardPoolTierEligibility();
+_validateFloor2RewardPoolTierEligibility();

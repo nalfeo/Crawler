@@ -17,7 +17,7 @@ import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import {
   generateEquipmentInstance,
   generatedEquipmentBaseHasNonArmorStatBonus,
-  getGeneratedEquipmentBaseV1,
+  _getGeneratedEquipmentBaseV1 as getGeneratedEquipmentBaseV1,
 } from '../../src/game/generated-equipment-generator.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { getEquippableItemIds } from '../../src/shared/equipmentDefs.js';

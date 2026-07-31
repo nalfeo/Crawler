@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  getGeneratedEquipmentBaseV1,
+  _getGeneratedEquipmentBaseV1 as getGeneratedEquipmentBaseV1,
   generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
 import { WeaponType } from '../../src/shared/constants.js';

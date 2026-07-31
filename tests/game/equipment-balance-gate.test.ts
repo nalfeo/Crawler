@@ -8,7 +8,7 @@ import {
   runGeneratedEquipmentDistributionFixtures,
 } from '../../src/bootstrap/equipment-balance-harness.js';
 import {
-  GeneratedEquipmentGeneratorError,
+  _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
 } from '../../src/game/generated-equipment-generator.js';
 import type {

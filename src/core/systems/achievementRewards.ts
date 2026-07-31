@@ -212,20 +212,6 @@ export function claimAchievementReward(
   return { ok: true, reward: achievement.reward };
 }
 
-/**
- * True while a `lootBox`/`equipment` achievement claim has a resolved
- * presentation snapshot still waiting to be shown/acknowledged by the UI
- * (e.g. the game was reloaded mid-sequence). `directorMessage`/`item`/`none`
- * rewards never populate this map — they remain today's unchanged
- * instant-reveal claim.
- */
-export function hasPendingAchievementRewardPresentation(
-  world: GameWorld,
-  achievementId: string,
-): boolean {
-  return world.achievements.pendingPresentations.has(achievementId);
-}
-
 /** Read (without consuming) the pending presentation snapshot, if any. */
 export function getPendingAchievementRewardPresentation(
   world: GameWorld,

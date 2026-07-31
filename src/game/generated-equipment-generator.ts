@@ -35,7 +35,7 @@ export type GeneratedEquipmentGeneratorErrorCode =
   | 'registry-unconfigured'
   | 'unknown-base';
 
-export class GeneratedEquipmentGeneratorError extends Error {
+export class _GeneratedEquipmentGeneratorError extends Error {
   constructor(
     readonly code: GeneratedEquipmentGeneratorErrorCode,
     message: string,
@@ -46,7 +46,7 @@ export class GeneratedEquipmentGeneratorError extends Error {
   }
 }
 
-export interface GenerateEquipmentInstanceRequest {
+export interface _GenerateEquipmentInstanceRequest {
   readonly baseId: string;
   readonly itemLevel: number;
   readonly rarity: GeneratedEquipmentRarity;
@@ -163,7 +163,7 @@ const EFFECT_CATALOG: readonly GeneratedEquipmentEffectDefinition[] = deepFreeze
 ]);
 
 function fail(code: GeneratedEquipmentGeneratorErrorCode, message: string, path: string): never {
-  throw new GeneratedEquipmentGeneratorError(code, message, path);
+  throw new _GeneratedEquipmentGeneratorError(code, message, path);
 }
 
 function validateEffectCatalog(): void {
@@ -299,7 +299,7 @@ function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipme
   });
 }
 
-export function getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentBaseV1 {
+export function _getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentBaseV1 {
   return resolveGeneratedEquipmentBase(baseId).base;
 }
 
@@ -474,7 +474,7 @@ export interface GenerateEquipmentInstanceWorld {
 
 export function generateEquipmentInstance(
   world: GenerateEquipmentInstanceWorld,
-  request: GenerateEquipmentInstanceRequest,
+  request: _GenerateEquipmentInstanceRequest,
   options: GenerateEquipmentInstanceOptions = {},
 ): GeneratedEquipmentInstanceV1 {
   if (world.generatedEquipmentRegistry.runKey === null) {

@@ -10,7 +10,7 @@ import { RARITY_EFFECT_BUDGET } from '../../src/shared/generated-equipment-types
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   generateEquipmentInstance,
-  getGeneratedEquipmentBaseV1,
+  _getGeneratedEquipmentBaseV1 as getGeneratedEquipmentBaseV1,
 } from '../../src/game/generated-equipment-generator.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
