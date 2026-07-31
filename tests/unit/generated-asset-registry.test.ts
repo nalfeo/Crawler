@@ -9,9 +9,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildGeneratedSpriteRegistry,
   emptyGeneratedSpriteRegistry,
+  loadGeneratedManifest,
+  parseGeneratedManifest,
   pickGeneratedVariant,
+  GENERATED_MANIFEST_VERSION,
 } from '../../src/shared/generated-assets.js';
-import generatedAssetsTestSeams from '../../src/shared/generated-assets.test-seams.js';
 import { hashStringToSeed } from '../../src/shared/random.js';
 
 const baseEntry = {
@@ -26,53 +28,46 @@ const baseEntry = {
   judgeScore: '4',
 };
 
-const emptyManifestJson = {
-  version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
-  entries: {},
-};
+const emptyManifestJson = { version: GENERATED_MANIFEST_VERSION, entries: {} };
 
-describe('generatedAssetsTestSeams.parseGeneratedManifest', () => {
+describe('parseGeneratedManifest', () => {
   it('accepts the canonical empty manifest', () => {
-    const manifest = generatedAssetsTestSeams.parseGeneratedManifest(emptyManifestJson);
-    expect(manifest.version).toBe(generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION);
+    const manifest = parseGeneratedManifest(emptyManifestJson);
+    expect(manifest.version).toBe(GENERATED_MANIFEST_VERSION);
     expect(Object.keys(manifest.entries)).toHaveLength(0);
   });
 
   it('accepts a populated manifest with a brief-sourced anchor', () => {
-    const manifest = generatedAssetsTestSeams.parseGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'iron-sword': baseEntry },
     });
     expect(manifest.entries['iron-sword']?.anchor).toEqual({ x: 8, y: 13, source: 'brief' });
   });
 
   it('rejects an unsupported version number', () => {
-    expect(() =>
-      generatedAssetsTestSeams.parseGeneratedManifest({ version: 2, entries: {} }),
-    ).toThrow();
+    expect(() => parseGeneratedManifest({ version: 2, entries: {} })).toThrow();
   });
 
   it('rejects a manifest missing a required entry field', () => {
     const broken = {
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+      version: GENERATED_MANIFEST_VERSION,
       entries: {
         'iron-sword': { ...baseEntry, spriteName: undefined },
       },
     };
-    expect(() => generatedAssetsTestSeams.parseGeneratedManifest(broken)).toThrow();
+    expect(() => parseGeneratedManifest(broken)).toThrow();
   });
 
   it('rejects a malformed top-level shape', () => {
-    expect(() =>
-      generatedAssetsTestSeams.parseGeneratedManifest({ entries: { foo: baseEntry } }),
-    ).toThrow();
-    expect(() => generatedAssetsTestSeams.parseGeneratedManifest('not an object')).toThrow();
+    expect(() => parseGeneratedManifest({ entries: { foo: baseEntry } })).toThrow();
+    expect(() => parseGeneratedManifest('not an object')).toThrow();
   });
 });
 
-describe('generatedAssetsTestSeams.loadGeneratedManifest', () => {
+describe('loadGeneratedManifest', () => {
   it('returns an empty registry for the canonical empty manifest', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest(emptyManifestJson);
+    const registry = loadGeneratedManifest(emptyManifestJson);
     expect(registry.size).toBe(0);
     expect(registry.lookup('anything')).toBeNull();
     expect(registry.has('anything')).toBe(false);
@@ -80,8 +75,8 @@ describe('generatedAssetsTestSeams.loadGeneratedManifest', () => {
   });
 
   it('exposes a single entry via lookup and entries()', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'iron-sword': baseEntry },
     });
     expect(registry.size).toBe(1);
@@ -95,29 +90,29 @@ describe('generatedAssetsTestSeams.loadGeneratedManifest', () => {
   });
 
   it('returns null from lookup for an unknown briefId', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'iron-sword': baseEntry },
     });
     expect(registry.lookup('not-a-thing')).toBeNull();
     expect(registry.has('not-a-thing')).toBe(false);
   });
 
-  it('falls back to generatedAssetsTestSeams.DEFAULT_GENERATED_ANCHOR when the entry anchor is null', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+  it('falls back to { x: 8, y: 8 } (DEFAULT_GENERATED_ANCHOR) when the entry anchor is null', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: {
         'throwing-star': { ...baseEntry, briefId: 'throwing-star', anchor: null },
       },
     });
     const found = registry.lookup('throwing-star');
-    expect(found?.anchor).toEqual(generatedAssetsTestSeams.DEFAULT_GENERATED_ANCHOR);
+    expect(found?.anchor).toEqual({ x: 8, y: 8 });
     expect(found?.anchorIsDefault).toBe(true);
   });
 
   it('preserves derived-source anchors verbatim', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: {
         'baseball-bat': {
           ...baseEntry,
@@ -134,8 +129,8 @@ describe('generatedAssetsTestSeams.loadGeneratedManifest', () => {
   });
 
   it('builds a registry over multiple entries', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: {
         'iron-sword': baseEntry,
         'throwing-star': { ...baseEntry, briefId: 'throwing-star', spriteName: 'throwing-star' },
@@ -147,12 +142,12 @@ describe('generatedAssetsTestSeams.loadGeneratedManifest', () => {
   });
 });
 
-describe('generatedAssetsTestSeams.loadGeneratedManifest — multiple variants per brief', () => {
+describe('loadGeneratedManifest — multiple variants per brief', () => {
   // Mirrors what current approve.ts writes: per-variant manifest KEY
   // (`<brief>-var-<N>`) but historically a brief-wide `spriteName`. The
   // registry must key textures off the unique map key, not `spriteName`.
   const variantManifest = {
-    version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    version: GENERATED_MANIFEST_VERSION,
     entries: {
       'skull-mace-var-5': {
         ...baseEntry,
@@ -172,7 +167,7 @@ describe('generatedAssetsTestSeams.loadGeneratedManifest — multiple variants p
   };
 
   it('derives a unique textureKey per variant from the manifest key', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest(variantManifest);
+    const registry = loadGeneratedManifest(variantManifest);
     const keys = registry
       .entries()
       .map((e) => e.textureKey)
@@ -181,26 +176,26 @@ describe('generatedAssetsTestSeams.loadGeneratedManifest — multiple variants p
   });
 
   it('counts every variant in size and flattens entries()', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest(variantManifest);
+    const registry = loadGeneratedManifest(variantManifest);
     expect(registry.size).toBe(2);
     expect(registry.entries()).toHaveLength(2);
     expect(registry.briefIds()).toEqual(['skull-mace']);
   });
 
   it('exposes all variants for a brief sorted by variantIndex', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest(variantManifest);
+    const registry = loadGeneratedManifest(variantManifest);
     const variants = registry.variants('skull-mace');
     expect(variants.map((v) => v.variantIndex)).toEqual([2, 5]);
     expect(variants.map((v) => v.textureKey)).toEqual(['skull-mace-var-2', 'skull-mace-var-5']);
   });
 
   it('lookup returns the first variant (lowest variantIndex) deterministically', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest(variantManifest);
+    const registry = loadGeneratedManifest(variantManifest);
     expect(registry.lookup('skull-mace')?.textureKey).toBe('skull-mace-var-2');
   });
 
   it('variants() returns an empty list for an unknown brief', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest(variantManifest);
+    const registry = loadGeneratedManifest(variantManifest);
     expect(registry.variants('nope')).toEqual([]);
     expect(registry.has('nope')).toBe(false);
   });
@@ -222,8 +217,8 @@ describe('manifest entry animation descriptor', () => {
   };
 
   it('parses an entry with an animation descriptor', () => {
-    const manifest = generatedAssetsTestSeams.parseGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'player-walk-v1-var-0': animatedEntry },
     });
     expect(manifest.entries['player-walk-v1-var-0']?.animation).toEqual({
@@ -236,21 +231,21 @@ describe('manifest entry animation descriptor', () => {
   });
 
   it('leaves animation undefined for an entry without the field', () => {
-    const manifest = generatedAssetsTestSeams.parseGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'iron-sword': baseEntry },
     });
     expect(manifest.entries['iron-sword']?.animation).toBeUndefined();
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'iron-sword': baseEntry },
     });
     expect(registry.lookup('iron-sword')?.animation).toBeUndefined();
   });
 
   it('surfaces the animation descriptor on the registry entry', () => {
-    const registry = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'player-walk-v1-var-0': animatedEntry },
     });
     expect(registry.lookup('player-walk')?.animation).toEqual({
@@ -263,8 +258,8 @@ describe('manifest entry animation descriptor', () => {
   });
 
   it('defaults loop to true when omitted', () => {
-    const manifest = generatedAssetsTestSeams.parseGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: {
         'player-walk-v1-var-0': {
           ...animatedEntry,
@@ -277,8 +272,8 @@ describe('manifest entry animation descriptor', () => {
 
   it('rejects a frameCount below 2', () => {
     expect(() =>
-      generatedAssetsTestSeams.parseGeneratedManifest({
-        version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+      parseGeneratedManifest({
+        version: GENERATED_MANIFEST_VERSION,
         entries: {
           'player-walk-v1-var-0': {
             ...animatedEntry,
@@ -291,8 +286,8 @@ describe('manifest entry animation descriptor', () => {
 
   it('rejects a non-positive frameRate', () => {
     expect(() =>
-      generatedAssetsTestSeams.parseGeneratedManifest({
-        version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+      parseGeneratedManifest({
+        version: GENERATED_MANIFEST_VERSION,
         entries: {
           'player-walk-v1-var-0': {
             ...animatedEntry,
@@ -305,8 +300,8 @@ describe('manifest entry animation descriptor', () => {
 
   it('rejects non-positive frame dimensions', () => {
     expect(() =>
-      generatedAssetsTestSeams.parseGeneratedManifest({
-        version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+      parseGeneratedManifest({
+        version: GENERATED_MANIFEST_VERSION,
         entries: {
           'player-walk-v1-var-0': {
             ...animatedEntry,
@@ -321,7 +316,7 @@ describe('manifest entry animation descriptor', () => {
 describe('buildGeneratedSpriteRegistry', () => {
   it('parses raw JSON and returns a lookup registry', () => {
     const registry = buildGeneratedSpriteRegistry({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'iron-sword': baseEntry },
     });
     expect(registry.lookup('iron-sword')?.textureKey).toBe('iron-sword');
@@ -351,8 +346,8 @@ describe('pickGeneratedVariant', () => {
     assetPath,
   });
 
-  const multi = generatedAssetsTestSeams.loadGeneratedManifest({
-    version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+  const multi = loadGeneratedManifest({
+    version: GENERATED_MANIFEST_VERSION,
     entries: {
       'skull-mace-var-1': make('skull-mace', 'skull-mace', 1, 'generated/skull-mace-var-1.png'),
       'skull-mace-var-2': make('skull-mace', 'skull-mace', 2, 'generated/skull-mace-var-2.png'),
@@ -365,8 +360,8 @@ describe('pickGeneratedVariant', () => {
   });
 
   it('returns the only variant without depending on the seed', () => {
-    const single = generatedAssetsTestSeams.loadGeneratedManifest({
-      version: generatedAssetsTestSeams.GENERATED_MANIFEST_VERSION,
+    const single = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
       entries: { 'iron-sword-var-0': baseEntry },
     });
     expect(pickGeneratedVariant(single, 'iron-sword', 1)?.textureKey).toBe('iron-sword-var-0');
