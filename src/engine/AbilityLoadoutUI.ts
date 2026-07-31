@@ -38,6 +38,8 @@ const ROW_HEIGHT = 102;
 const ROW_GAP = 8;
 const VISIBLE_ROWS = 3;
 const DEPTH = 5000;
+const SECTION_HEADER_HEIGHT = 18;
+const SECTION_HEADER_LABEL = 'PASSIVE ABILITIES';
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -75,6 +77,13 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
   getVisibleRowScreenBounds(): ScreenBounds[];
   getVisibleAbilityIds(): string[];
   getVisibleEntries(): readonly AbilityLoadoutEntry[];
+  /**
+   * Label of the non-equippable-passives section header currently rendered
+   * in the visible row list (e.g. "PASSIVE ABILITIES"), or `null` when no
+   * passive rows are visible. Reflects the real rendered UI, not internal
+   * `AbilityLoadoutEntry` data.
+   */
+  getVisibleSectionHeaderLabel(): string | null;
   getFooterScreenBounds(): ScreenBounds;
   getSelectedAbilityId(): string | null;
   scrollRows(delta: number): boolean;
@@ -98,6 +107,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
   let feedback = '';
   let feedbackTone: AbilityLoadoutToggleResult['tone'] = 'success';
   let rowBounds: ScreenBounds[] = [];
+  let visibleSectionHeaderLabel: string | null = null;
 
   const overlay = scene.add.container(0, 0).setDepth(DEPTH).setScrollFactor(0).setVisible(false);
   const persistent: Phaser.GameObjects.GameObject[] = [];
@@ -274,11 +284,38 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
 
     const viewport = listViewportBounds();
     const visibleEntries = entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS);
+    visibleSectionHeaderLabel = null;
+    let extraOffset = 0;
     for (let localIndex = 0; localIndex < visibleEntries.length; localIndex += 1) {
       const entry = visibleEntries[localIndex]!;
       const entryIndex = scrollIndex + localIndex;
       const selected = entryIndex === selectedIndex;
-      const rowY = viewport.y + localIndex * (ROW_HEIGHT + ROW_GAP);
+
+      // Non-equippable passive abilities render in a distinct section, set
+      // off by a compact header, rather than being appended silently to the
+      // active/equippable rows above. Passives are always grouped
+      // contiguously at the end of `entries`, so at most one boundary can be
+      // visible in any given scroll window.
+      const previousEntry = entryIndex > 0 ? entries[entryIndex - 1] : undefined;
+      const isSectionBoundary = entry.canToggle === false && previousEntry?.canToggle !== false;
+      if (isSectionBoundary) {
+        const headerY = viewport.y + localIndex * (ROW_HEIGHT + ROW_GAP) + extraOffset;
+        const headerLabel = text(viewport.x, headerY + 1, SECTION_HEADER_LABEL, {
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          fontStyle: 'bold',
+          color: hex(COLORS.textMuted),
+        });
+        const headerRuleLine = scene.add
+          .rectangle(viewport.x, headerY + 15, viewport.width, 1, COLORS.sectionHeader, 1)
+          .setOrigin(0, 0);
+        dynamic.push(headerLabel, headerRuleLine);
+        overlay.add([headerLabel, headerRuleLine]);
+        extraOffset += SECTION_HEADER_HEIGHT;
+        visibleSectionHeaderLabel = SECTION_HEADER_LABEL;
+      }
+
+      const rowY = viewport.y + localIndex * (ROW_HEIGHT + ROW_GAP) + extraOffset;
       const row = scene.add
         .rectangle(
           viewport.x,
@@ -472,6 +509,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     config = null;
     entries = [];
     feedback = '';
+    visibleSectionHeaderLabel = null;
     clearDynamic();
   };
 
@@ -560,6 +598,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
     getVisibleAbilityIds: () =>
       entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS).map((entry) => entry.id),
     getVisibleEntries: () => entries.slice(scrollIndex, scrollIndex + VISIBLE_ROWS),
+    getVisibleSectionHeaderLabel: () => visibleSectionHeaderLabel,
     getFooterScreenBounds: () => scaledBounds(footerBounds()),
     getSelectedAbilityId: () => entries[selectedIndex]?.id ?? null,
     scrollRows,

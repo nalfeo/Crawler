@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { addComponent } from 'bitecs';
 import { Health, SkillHolder } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnEnemy } from '../../src/core/spawners/combatants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
 import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
@@ -368,7 +369,108 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
 
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.appliedPassiveAbilityIds.has(abilityId)).toBe(true);
+  });
+
+  it('does NOT push activation VFX for a no-prerequisite passive applied via applyPassive directly', () => {
+    // applyPassive's VFX is scoped to weapon-prerequisite passives only (the
+    // "equip flash"). A general passive granted and applied outside the
+    // level-5 milestone flow (e.g. equipment/carryover re-sync) must not
+    // produce misleading repeated unlock feedback.
+    const { world, player } = setupPlayerWithSkills();
+    clearActiveWeaponDef(world);
+
+    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('swordsmanship')!; // combat-flow (no prereq)
+    grantPassiveAbility(world, player, abilityId);
+    abilitySystem(world);
+
+    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(false);
+  });
+
+  it('DOES push activation VFX for a weapon-prerequisite passive applied via applyPassive', () => {
+    const { world, player } = setupPlayerWithSkills();
+    const swordWeapon = WEAPON_DEFS.get('sword')!;
+    setActiveWeaponDef(world, swordWeapon);
+
+    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman (weapon prereq)
+    grantPassiveAbility(world, player, abilityId);
+    abilitySystem(world);
+
     expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Level-5 milestone unlock feedback: VFX scoping + skillPassiveUnlocked
+// announcement (source-scoped to the skillSystem grant site only)
+// ---------------------------------------------------------------------------
+
+describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
+  it('pushes exactly one activation VFX and one skillPassiveUnlocked announcement for a general passive', () => {
+    const { world, player } = setupPlayerWithSkills();
+    clearActiveWeaponDef(world);
+    const sprintDef = getSkillDefinition('sprint')!; // grants ever-vigilant (no prereq)
+    const threshold = sprintDef.usageThresholds[4]!;
+
+    fireSkillUsageEvents(world, player, 'sprint', 'distance_dodged_near_threat', threshold);
+    skillSystem(world);
+
+    const vfxCount = world.vfxEvents.filter(
+      (event) => event.kind === 'weaponAbilityActivate',
+    ).length;
+    expect(vfxCount).toBe(1);
+
+    const announcement = world.announcements.find((event) => event.kind === 'skillPassiveUnlocked');
+    expect(announcement).toBeDefined();
+    expect(announcement?.text).toContain('Passive Unlocked:');
+  });
+
+  it('pushes a skillPassiveUnlocked announcement but NO activation VFX for a weapon-gated passive at grant time', () => {
+    // The weapon-gated passive's own "equip flash" VFX comes from
+    // applyPassive() when abilitySystem next runs with a matching weapon
+    // equipped — the milestone site itself must not also fire VFX, or the
+    // player would see two flashes for one unlock.
+    const { world, player } = setupPlayerWithSkills();
+    clearActiveWeaponDef(world);
+    const swordDef = getSkillDefinition('sword')!; // grants keen-swordsman (sword prereq)
+    const threshold = swordDef.usageThresholds[4]!;
+
+    fireSkillUsageEvents(world, player, 'sword', 'weapon_fired', threshold);
+    skillSystem(world);
+
+    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(false);
+
+    const announcement = world.announcements.find((event) => event.kind === 'skillPassiveUnlocked');
+    expect(announcement).toBeDefined();
+    expect(announcement?.text).toContain('Passive Unlocked:');
+  });
+
+  it('does not push unlock feedback for a mob (non-Player) reaching a skill milestone', () => {
+    const world = createTestWorld({ seed: 7 });
+    const mob = spawnEnemy(world, 0, 0, 50); // Enemy-tagged, not Player-tagged
+    initializeBaseStats(world, mob);
+    const skillMap = new Map<string, SkillState>();
+    for (const skill of getAllSkillDefinitions()) {
+      skillMap.set(skill.id, { level: 0, usage: 0, itemBonus: 0, triggeredMilestones: new Set() });
+    }
+    world.skillStatesByEntity.set(mob, skillMap);
+
+    const sprintDef = getSkillDefinition('sprint')!;
+    const threshold = sprintDef.usageThresholds[4]!;
+    world.skillUsageEvents.push({
+      holderEid: mob,
+      skillId: 'sprint',
+      metric: 'distance_dodged_near_threat',
+      amount: threshold,
+    });
+    skillSystem(world);
+
+    // The passive is still granted (mobs can level skills via the v2 path)...
+    const abilityState = world.abilityStatesByEntity.get(mob);
+    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sprint')!;
+    expect(abilityState?.passiveAbilityIds).toContain(expectedAbilityId);
+    // ...but no player-facing HUD feedback is produced for a non-Player holder.
+    expect(world.vfxEvents.some((event) => event.kind === 'weaponAbilityActivate')).toBe(false);
+    expect(world.announcements.some((event) => event.kind === 'skillPassiveUnlocked')).toBe(false);
   });
 });
 

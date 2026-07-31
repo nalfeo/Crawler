@@ -65,6 +65,12 @@ export function createHudUI(scene: Phaser.Scene): {
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   getEncounterProbeBounds(): HudEncounterProbeBounds;
+  /**
+   * The currently-rendered announcement banner content (kind + exact text),
+   * or `null` when no banner is showing. Real rendered projection — the same
+   * content the player sees — for e2e probes to assert on directly.
+   */
+  getCurrentAnnouncement(): { kind: string; text: string } | null;
   setVisible(visible: boolean): void;
   getNavigationBounds(): NavigationHudBounds;
   getFamilyRelationshipsLayout(): FamilyRelationshipsLayout;
@@ -276,6 +282,7 @@ export function createHudUI(scene: Phaser.Scene): {
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getEncounterProbeBounds,
+    getCurrentAnnouncement: announcementBanner.getCurrentAnnouncement,
     setVisible,
     getNavigationBounds,
     getFamilyRelationshipsLayout: familyRelationships.getLayout,

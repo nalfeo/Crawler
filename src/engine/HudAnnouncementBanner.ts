@@ -40,6 +40,7 @@ const COLORS = {
   start: '#f5f5f5',
   end: '#a7f3d0',
   boss: '#fca5a5',
+  unlock: '#fde68a',
   fallback: '#e5e7eb',
 } as const;
 
@@ -57,6 +58,9 @@ function verbForKind(kind: AnnouncementKind): string {
     case 'bossAbilityCast':
       // The full authored announcement is the label; no subtitle verb.
       return '';
+    case 'skillPassiveUnlocked':
+      // The full authored announcement is the label; no subtitle verb.
+      return '';
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled announcement kind: ${String(unreachable)}`);
@@ -72,6 +76,8 @@ function colorForKind(kind: AnnouncementKind): string {
       return COLORS.end;
     case 'bossAbilityCast':
       return COLORS.boss;
+    case 'skillPassiveUnlocked':
+      return COLORS.unlock;
     default:
       return COLORS.fallback;
   }
@@ -84,6 +90,14 @@ export function createHudAnnouncementBanner(
   sync(world: GameWorld): void;
   setTop(top: number): void;
   getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } | null;
+  /**
+   * The currently-rendered banner content (kind + exact text), or `null` when
+   * the banner is hidden. This is the real, player-visible projection — the
+   * same content the player is looking at — so e2e probes can assert on it
+   * without reaching into `world.announcements` or internal ability/skill
+   * state.
+   */
+  getCurrentAnnouncement(): { kind: AnnouncementKind; text: string } | null;
   destroy(): void;
 } {
   const outerParent = options.parent;
@@ -181,19 +195,20 @@ export function createHudAnnouncementBanner(
   }
 
   function show(event: AnnouncementEvent): void {
-    // Boss-ability casts carry a full authored string that must render exactly
-    // (never ellipsized or rebuilt from an archetype index). The panel is 420px
-    // wide; authored strings can exceed the 44-char single-line budget, so we
-    // enable word wrap and vertically re-center the label in the full panel.
-    const BOSS_ABILITY_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
-    if (event.kind === 'bossAbilityCast') {
+    // Boss-ability casts and skill-passive-unlock milestones both carry a full
+    // authored string that must render exactly (never ellipsized or rebuilt
+    // from an archetype index). The panel is 420px wide; authored strings can
+    // exceed the 44-char single-line budget, so we enable word wrap and
+    // vertically re-center the label in the full panel.
+    const FULL_TEXT_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
+    if (event.kind === 'bossAbilityCast' || event.kind === 'skillPassiveUnlocked') {
       labelText
-        .setWordWrapWidth(BOSS_ABILITY_WRAP_WIDTH, true)
+        .setWordWrapWidth(FULL_TEXT_WRAP_WIDTH, true)
         .setText(event.text)
         .setY(ANNOUNCEMENT_PANEL_HEIGHT / 2)
         .setColor(colorForKind(event.kind));
       verbText.setText('');
-      accent.setFillStyle(0xef4444);
+      accent.setFillStyle(event.kind === 'bossAbilityCast' ? 0xef4444 : 0x22c55e);
     } else {
       const label = event.displayName ?? 'Spawner';
       // Disable word wrap for the standard single-line path.
@@ -279,10 +294,19 @@ export function createHudAnnouncementBanner(
     };
   }
 
+  function getCurrentAnnouncement(): { kind: AnnouncementKind; text: string } | null {
+    if (hidden || !currentEvent) return null;
+    if (currentEvent.kind === 'bossAbilityCast' || currentEvent.kind === 'skillPassiveUnlocked') {
+      return { kind: currentEvent.kind, text: currentEvent.text };
+    }
+    return { kind: currentEvent.kind, text: currentEvent.displayName ?? '' };
+  }
+
   return {
     sync,
     setTop: (top: number) => wrapper.setY(top),
     getLayoutBounds,
+    getCurrentAnnouncement,
     destroy,
   };
 }
