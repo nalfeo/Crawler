@@ -87,29 +87,14 @@ describe('HUD panel UX consistency', () => {
     expect(source).toContain('isCornerButtonHit(this.abilitiesButton)');
   });
 
-  it('boss chest touch button is wired, hit-tested, and can stay visible as a dismiss affordance', () => {
-    expect(source).toContain('this.bossChestButton = makeCornerButton(');
-    expect(source).toContain("'💎 Chests'");
-    expect(source).toContain('isCornerButtonHit(this.bossChestButton)');
-    expect(source).toContain('bossChestsOpen || canOpenNew');
-    expect(source).toContain('this.bossChestButton?.setDepth(');
-  });
-
   it('abilities touch button is scaled and destroyed with the other corner buttons', () => {
     expect(source).toContain('this.abilitiesButton?.setScale(buttonScale);');
     expect(source).toContain('this.abilitiesButton?.destroy();');
     expect(source).toContain('this.abilitiesButton = undefined;');
   });
 
-  it('boss chest touch button is scaled and destroyed with the other corner buttons', () => {
-    expect(source).toContain('this.bossChestButton?.setScale(buttonScale);');
-    expect(source).toContain('this.bossChestButton?.destroy();');
-    expect(source).toContain('this.bossChestButton = undefined;');
-  });
-
-  it('reward-opening visibility changes clear queued keyboard latches, including boss chests', () => {
+  it('reward-opening visibility changes clear queued keyboard latches', () => {
     expect(source).toContain('onVisibilityChange: (open) => {');
     expect(source).toContain('this.clearPendingInteractionInput();');
-    expect(source).toContain('this.keyBossChests,');
   });
 });

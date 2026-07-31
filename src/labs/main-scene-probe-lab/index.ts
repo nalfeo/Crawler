@@ -192,7 +192,6 @@ interface MainSceneInternals {
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
-  bossChestButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   modalPicker?: {
     isOpen(): boolean;
@@ -206,7 +205,6 @@ interface MainSceneInternals {
   requestInventoryToggle?(): void;
   requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
-  requestBossChestsToggle?(): void;
   requestQuartermasterToggle?(): void;
   getSettlementShopOfferSnapshot?(): ReadonlyArray<{
     readonly stockId?: string;
@@ -351,7 +349,7 @@ export interface MainSceneState {
   readonly equipmentOpen: boolean;
   /** True when achievements is open. */
   readonly achievementsOpen: boolean;
-  /** True when the boss chest panel is open. */
+  /** True when the boss chest panel is open. Always false — chests now drop in-world. */
   readonly bossChestOpen: boolean;
   /** True when the Quartermaster shop panel is open. */
   readonly quartermasterOpen: boolean;
@@ -364,7 +362,6 @@ export interface MainSceneState {
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
-  readonly bossChestButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
   /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
@@ -590,8 +587,6 @@ export interface MainSceneProbeApi {
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
   requestInventoryToggle(): void;
   requestEquipToggle(): void;
-  /** Queue Boss Chests ([C]) through the scene request path. */
-  requestBossChestsToggle(): void;
   /** Queue Quartermaster ([Q]) through the scene request path. */
   requestQuartermasterToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
@@ -602,8 +597,6 @@ export interface MainSceneProbeApi {
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
-  /** Emit a pointer tap on the Chests corner button. Returns false if unavailable/hidden. */
-  tapBossChestButton(): boolean;
   /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
   tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
@@ -829,7 +822,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
-      const bossChestOpen = scene?.bossChestUI?.isOpen() ?? false;
+      const bossChestOpen = false; // chests now drop in-world; panel removed
       const quartermasterOpen = scene?.quartermasterUI?.isOpen() ?? false;
       const conversationNpcEid = scene?.conversationNpcEid ?? null;
       const conversationLineIndex =
@@ -856,7 +849,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
-        bossChestButtonVisible: scene?.bossChestButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         primarySurfaceCount: [
           modalOpen,
@@ -1116,10 +1108,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.requestAchievementsToggle?.();
     },
 
-    requestBossChestsToggle: () => {
-      getScene()?.requestBossChestsToggle?.();
-    },
-
     requestQuartermasterToggle: () => {
       getScene()?.requestQuartermasterToggle?.();
     },
@@ -1149,15 +1137,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapAbilitiesButton: () => {
       const button = getScene()?.abilitiesButton;
-      if (!button?.visible) {
-        return false;
-      }
-      button.emit('pointerdown');
-      return true;
-    },
-
-    tapBossChestButton: () => {
-      const button = getScene()?.bossChestButton;
       if (!button?.visible) {
         return false;
       }

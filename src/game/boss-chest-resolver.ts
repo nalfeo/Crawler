@@ -21,6 +21,7 @@ import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.
 import { resolveEquipmentRewardBundle } from './floor2-reward-bundle-resolver.js';
 import type { EquipmentRewardTier } from '../shared/generated-equipment-types.js';
 import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../shared/data/floor2-weapon-bases.js';
+import { spawnBossChestEntity } from '../core/spawners/world-objects.js';
 
 /**
  * Candidate base pool for boss chest reward bundles. Reuses the Floor 2
@@ -48,26 +49,17 @@ export type SpawnBossChestResult =
 
 /**
  * Spawn (or idempotently no-op on) the boss chest for `familyId`'s defeat.
- *
- * Fail-closed / Floor 1 exclusion: refuses to create a chest off Floor 2 or
- * with the Floor 2 equipment economy disabled — this is the same
- * `getFloor2EquipmentEconomyAccess` gate the Quartermaster uses (its doc
- * explicitly calls out boss chests as its second consumer), so Floor 1 stays
- * equipment-free regardless of flag values.
- *
- * Resolve-before-mutate: the reward bundle is resolved BEFORE the chest
- * record is created, mirroring `unlockAchievement`. A thrown
- * `RewardBundleResolutionError` (catalog/config integrity bug) propagates
- * rather than being swallowed, matching the achievement-unlock convention.
- *
- * Idempotent: calling this again for an already-chested family is a no-op
- * (`created: false, reason: 'alreadyExists'`) — the boss-defeat call site
- * (`floor2Scenario.ts`) already guards on a per-family "defeated once" set,
- * but this function is defensively idempotent on its own regardless.
+ * When `x` and `y` are provided, a physical ECS entity is spawned at that
+ * position so the player can walk up to open it. When omitted (legacy /
+ * secondary victory-sweep path where boss position is unknown) no entity
+ * is spawned — the chest is still available but has no physical world
+ * presence until a reload restores it via `BossChestCarryoverEntry`.
  */
 export function spawnBossChestForDefeatedBoss(
   world: GameWorld,
   familyId: string,
+  x?: number,
+  y?: number,
 ): SpawnBossChestResult {
   if (world.floor !== 2) {
     return { created: false, reason: 'notFloor2' };
@@ -94,6 +86,10 @@ export function spawnBossChestForDefeatedBoss(
     throw new Error(
       `Boss chest ${chestId} record creation failed unexpectedly after bundle resolution`,
     );
+  }
+  // Spawn the physical world entity when coordinates are available.
+  if (x !== undefined && y !== undefined) {
+    spawnBossChestEntity(world, x, y, chestId);
   }
   return { created: true, chest: result.chest };
 }
