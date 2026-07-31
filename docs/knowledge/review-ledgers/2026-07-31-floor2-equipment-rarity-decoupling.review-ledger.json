@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "floor2-equipment-rarity-decoupling",
+  "task_title": "Decouple Floor 2 generated equipment rarity from base non-armor stats",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Plan review by gpt-5.6-sol. The core separation (base-driven armor, affix-driven non-armor power) was found sound. 3 blocking concerns identified and resolved: (1) unused import of generatedEquipmentBaseHasNonArmorStatBonus — fixed by removing from import; (2) illegal-base error code removed from union type but still thrown — fixed by adding illegal-base back to the error union as a defense-in-depth tripwire code; (3) floor2-reward-pool.test.ts still tested the old source-independent contract — fixed by rewriting to assert the new affix-only model (zero non-armor at Common, effect-sum equality at Uncommon/Rare). Also fixed: travelers-cloak rarity assertion in resolver test (incorrectly assumed Common draws never happened after decoupling). 2 non-blocking items: coverage suggestion and explicit inherentArmor field suggestion — not acted on as the current contract is fully covered by updated tests and the suggestion adds indirection with no second consumer."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.8"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Code review by claude-opus-4.8. Two critical build-breaking findings: (1) unused import generatedEquipmentBaseHasNonArmorStatBonus causing TS6133 under noUnusedLocals — fixed by removing from import; (2) illegal-base error code thrown in _assertGeneratedRewardInstanceLegal but not in error union TS2345 — fixed by adding illegal-base back to union as post-generation tripwire. Reviewer confirmed armor-only copy logic is correct for all targetKind values (weapon/armor/accessory) and that downstream frozen.statBonuses consumers use Object.entries or ?? 0 so fewer keys cause no crashes."
+        }
+      ]
+    }
+  }
+}
