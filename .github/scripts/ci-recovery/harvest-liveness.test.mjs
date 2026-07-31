@@ -168,6 +168,7 @@ test('collectRecentWorkflowDispatchRuns paginates only until cutoff and supports
     repo: 'Crawler',
     workflowId: 'ci-recovery.yml',
     cutoffMs: new Date('2026-07-30T08:00:00Z').getTime(),
+    perPage: 2,
     filter: (item) => item.display_title.includes('(reconcile)'),
     listWorkflowRuns: async (params) => {
       calls.push(params);
