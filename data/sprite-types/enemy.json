@@ -1,8 +1,8 @@
 {
   "$comment": "Default brief settings for hostile mob sprites. Keeps enemy briefs minimal while anchoring them to the shared Kenney palette. Reference images are no longer declared here — generation now selects our own approved enemy/character sprites at run time (scripts/sprites/reference-selector.ts).",
-  "size": { "width": 64, "height": 64 },
+  "size": { "width": 256, "height": 256 },
   "palette": { "id": "kenney-roguelike" },
-  "anchor": { "x": 32, "y": 32 },
+  "anchor": { "x": 128, "y": 128 },
   "tags": ["enemy", "mob"],
   "generation": {
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
