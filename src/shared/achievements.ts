@@ -612,7 +612,9 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * at the claim/unlock call sites. `rare` never resolves above Rare rarity
  * (Common/Uncommon/Rare per {@link EQUIPMENT_REWARD_TIER_RARITIES}'s
  * `tier1`-`tier3` pools); Unique is intentionally never used (deferred from
- * this epic).
+ * this epic). Generated non-armor power is affix-driven: Common draws carry
+ * zero non-armor bonuses (zero effect units), while Uncommon/Rare bonuses come
+ * exclusively from rarity effects — the pool is not pre-filtered by base stats.
  *
  * `tier4` (boss chests' 85% Uncommon / 15% Rare pool) is reserved EXCLUSIVELY
  * for boss chests and never appears in this content — a deliberate tightening

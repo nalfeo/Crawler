@@ -87,7 +87,7 @@ const CANONICAL_ENCOUNTER_FIXTURE: EquipmentEncounterFixture = Object.freeze({
   durationSeconds: 60,
   enemyCount: 6,
   clusteredEnemyCount: 3,
-  incomingHitDamage: 10,
+  incomingHitDamage: 25,
   incomingHitsPerSecond: 1,
   lowHealthUptime: 0.1,
   skillTriggerRatePerSecond: 1,
