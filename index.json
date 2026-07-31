@@ -1,5 +1,16 @@
 [
   {
+    "commit": "36826783a68d2c492190b35f709324f1810a1fc1",
+    "commitDate": "2026-07-31T07:24:35Z",
+    "commitSubject": "Guard InventoryBag lanes with accessor-only reads (#2365)",
+    "capturedAt": "2026-07-31T08:35:36.699Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30613401090",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/36826783a68d2c492190b35f709324f1810a1fc1.json"
+  },
+  {
     "commit": "339c42b80b93ca7c6fb4f8106987e68e0d71a3b1",
     "commitDate": "2026-07-31T07:05:05Z",
     "commitSubject": "Decouple Floor 2 generated equipment rarity from base non-armor stats (#2404)",
