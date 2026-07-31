@@ -1,5 +1,16 @@
 [
   {
+    "commit": "64b200826a41cfe06968af90e92bad0a41b99b21",
+    "commitDate": "2026-07-31T19:55:59Z",
+    "commitSubject": "fix(icons): retry icon-batch grid mismatches and show active runs in canvas (#2493)",
+    "capturedAt": "2026-07-31T20:58:33.383Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30661520272",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/64b200826a41cfe06968af90e92bad0a41b99b21.json"
+  },
+  {
     "commit": "9692bf4ac86b8730fc8f627251ca126235f27aec",
     "commitDate": "2026-07-31T18:41:42Z",
     "commitSubject": "feat(sprites): default core sprite outputs to 256x256 (#2483)",
