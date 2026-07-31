@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9692bf4ac86b8730fc8f627251ca126235f27aec",
+    "commitDate": "2026-07-31T18:41:42Z",
+    "commitSubject": "feat(sprites): default core sprite outputs to 256x256 (#2483)",
+    "capturedAt": "2026-07-31T19:50:10.713Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30656973706",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/9692bf4ac86b8730fc8f627251ca126235f27aec.json"
+  },
+  {
     "commit": "c23abf1cc80639449ef2988b2d37c1b7ed98641a",
     "commitDate": "2026-07-31T18:21:14Z",
     "commitSubject": "fix: exempt asset PRs from substantive-copilot-review gate and allow docs/* in art_only (#2485)",
