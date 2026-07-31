@@ -204,6 +204,12 @@ test('candidate pre-filter excludes draft, closed, armed and blocked-label PRs',
 // auto-merge was dropped).  The watchdog dispatching for such a PR provides the
 // durable backstop that the post-update-branch one-shot dispatch cannot
 // guarantee.
+//
+// However, a waiting PR that also carries an active owner-lease label
+// (`ci-owner-pr-*`) or an interrupted waiting-transition label
+// (`ci-recovery-waiting-transition`) is already being handled by a live
+// reconcile session; dispatching for it would be a no-op at best and lease
+// contention at worst.  Those PRs are excluded by isWaitingAndOwned().
 
 test('ci-recovery-waiting is NOT in UNARMED_WATCHDOG_BLOCKED_LABELS', () => {
   assert.equal(
@@ -213,17 +219,55 @@ test('ci-recovery-waiting is NOT in UNARMED_WATCHDOG_BLOCKED_LABELS', () => {
   );
 });
 
-test('detectUnarmedMergeablePrs includes a PR labelled ci-recovery-waiting', () => {
+test('detectUnarmedMergeablePrs includes a PR labelled ci-recovery-waiting (no owner, no transition)', () => {
   const result = detectUnarmedMergeablePrs([
     pr({ labels: [{ name: 'ci-recovery-waiting' }] }),
   ]);
   assert.equal(result.length, 1, 'stale WAIT_ADMISSION PR must be detected as dormant-unarmed');
 });
 
-test('candidate pre-filter accepts a PR labelled ci-recovery-waiting', () => {
+test('candidate pre-filter accepts a PR labelled ci-recovery-waiting (no owner, no transition)', () => {
   assert.equal(
     isUnarmedWatchdogCandidate({ state: 'open', draft: false, auto_merge: null, labels: [{ name: 'ci-recovery-waiting' }] }),
     true,
-    'ci-recovery-waiting must not prevent pre-filter pass-through',
+    'ci-recovery-waiting with no owner or transition must pass pre-filter',
+  );
+});
+
+// Owned/transitioning ci-recovery-waiting PRs must be excluded (live session owns them).
+
+test('detectUnarmedMergeablePrs excludes a ci-recovery-waiting PR that also has an owner lease label', () => {
+  const result = detectUnarmedMergeablePrs([
+    pr({ labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-owner-pr-42' }] }),
+  ]);
+  assert.equal(result.length, 0, 'owned waiting PR must not be dispatched — live session already owns it');
+});
+
+test('detectUnarmedMergeablePrs excludes a ci-recovery-waiting PR that also has ci-recovery-waiting-transition', () => {
+  const result = detectUnarmedMergeablePrs([
+    pr({ labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-recovery-waiting-transition' }] }),
+  ]);
+  assert.equal(result.length, 0, 'transitioning waiting PR must not be dispatched');
+});
+
+test('candidate pre-filter excludes a ci-recovery-waiting PR with owner lease label', () => {
+  assert.equal(
+    isUnarmedWatchdogCandidate({
+      state: 'open', draft: false, auto_merge: null,
+      labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-owner-pr-99' }],
+    }),
+    false,
+    'ci-recovery-waiting + owner label must be excluded at pre-filter stage',
+  );
+});
+
+test('candidate pre-filter excludes a ci-recovery-waiting PR with ci-recovery-waiting-transition', () => {
+  assert.equal(
+    isUnarmedWatchdogCandidate({
+      state: 'open', draft: false, auto_merge: null,
+      labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-recovery-waiting-transition' }],
+    }),
+    false,
+    'ci-recovery-waiting + transition label must be excluded at pre-filter stage',
   );
 });

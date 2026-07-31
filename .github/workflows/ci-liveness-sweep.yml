@@ -407,6 +407,18 @@ jobs:
                 `(hydrated=${hydrated.length}/${candidates.length}) dormant-unarmed cap=${cap}`,
             );
 
+            // Sort by staleness: oldest updated_at (or created_at as fallback)
+            // first so no-op-reconcile candidates that bump updated_at on each
+            // cycle cannot crowd out genuinely disarmed PRs that received no
+            // recent activity.  This mirrors the router's own ageOrder fairness
+            // used in selectRepairWindowPulls (router.mjs:340-345).
+            dormant.sort((a, b) => {
+              const tA = Date.parse(a.updated_at || a.created_at || '') || 0;
+              const tB = Date.parse(b.updated_at || b.created_at || '') || 0;
+              if (tA !== tB) return tA - tB; // oldest first
+              return (a.number || 0) - (b.number || 0); // stable tiebreak
+            });
+
             const toDispatch = dormant.slice(0, cap);
             let dispatched = 0;
             for (const pull of toDispatch) {

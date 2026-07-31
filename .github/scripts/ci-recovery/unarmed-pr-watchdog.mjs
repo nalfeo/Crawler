@@ -37,6 +37,17 @@
 /**
  * Labels that indicate CI Recovery should NOT arm auto-merge for a PR.
  * A PR carrying any of these labels is legitimately unarmed.
+ *
+ * Note: `ci-recovery-waiting` is intentionally absent here.  A PR in
+ * WAIT_ADMISSION that has its push/check event dropped will sit forever
+ * with `mergeable_state === 'clean'` and `auto_merge === null` — the
+ * watchdog dispatching for it IS the durable backstop.  However, a
+ * waiting PR that also carries an active owner lease (`ci-owner-pr-*`)
+ * or an interrupted waiting-transition (`ci-recovery-waiting-transition`)
+ * is already being handled by a live reconcile session; dispatching for
+ * it is guaranteed no-op at best and lease contention at worst.  Those
+ * are filtered by `isWaitingAndOwned` below.  See also the router's
+ * `isRepairWakeEligible` predicate, which applies the same distinction.
  */
 export const UNARMED_WATCHDOG_BLOCKED_LABELS = new Set([
   'merge-train', // PR is in the merge-train queue; the train owns its merge
@@ -49,6 +60,29 @@ export const UNARMED_WATCHDOG_BLOCKED_LABELS = new Set([
   'ci-lifecycle-abandoned', // PR lifecycle: abandoned by automation
   'ci-recovery-opt-out', // PR explicitly opted out of CI Recovery
 ]);
+
+/** Prefix for the per-PR owner lease label applied by reconcile. */
+const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
+/** Transition label applied while reconcile exits a waiting state. */
+const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
+
+/**
+ * Returns true if the PR carries `ci-recovery-waiting` AND also has an
+ * active owner-lease (`ci-owner-pr-*`) or an interrupted
+ * waiting-transition (`ci-recovery-waiting-transition`), indicating that
+ * a live reconcile session already owns this PR.  Dispatching for it
+ * would be a guaranteed no-op or cause lease contention.
+ *
+ * @param {Array<{name: string}>} labelNames - resolved label name strings
+ * @returns {boolean}
+ */
+function isWaitingAndOwned(labelNames) {
+  if (!labelNames.includes('ci-recovery-waiting')) return false;
+  return (
+    labelNames.some((name) => name.startsWith(OWNER_LABEL_PREFIX)) ||
+    labelNames.includes(WAITING_TRANSITION_LABEL)
+  );
+}
 
 /**
  * Cheap pre-filter over the SIMPLE pull request representation returned by
@@ -71,7 +105,11 @@ export function isUnarmedWatchdogCandidate(pr) {
   if (pr.draft) return false;
   if (pr.auto_merge !== null && pr.auto_merge !== undefined) return false;
   const labelNames = (pr.labels || []).map((l) => String(l.name || ''));
-  return !labelNames.some((name) => UNARMED_WATCHDOG_BLOCKED_LABELS.has(name));
+  if (labelNames.some((name) => UNARMED_WATCHDOG_BLOCKED_LABELS.has(name))) return false;
+  // Exclude ci-recovery-waiting PRs that are already owned by a live reconcile
+  // session; dispatching for them is a no-op or causes lease contention.
+  if (isWaitingAndOwned(labelNames)) return false;
+  return true;
 }
 
 /**
@@ -85,6 +123,9 @@ export function isUnarmedWatchdogCandidate(pr) {
  *   3. `mergeable_state === 'clean'`
  *   4. `auto_merge` is null or undefined (not armed)
  *   5. No label in UNARMED_WATCHDOG_BLOCKED_LABELS
+ *   6. Not a `ci-recovery-waiting` PR that is already owned by a live
+ *      reconcile session (i.e. also carries `ci-owner-pr-*` or
+ *      `ci-recovery-waiting-transition`)
  *
  * @param {Array<{
  *   number: number,
@@ -105,6 +146,8 @@ export function detectUnarmedMergeablePrs(pulls) {
     if (pr.auto_merge !== null && pr.auto_merge !== undefined) return false;
     const labelNames = (pr.labels || []).map((l) => String(l.name || ''));
     if (labelNames.some((name) => UNARMED_WATCHDOG_BLOCKED_LABELS.has(name))) return false;
+    // Exclude ci-recovery-waiting PRs already owned by a live reconcile session.
+    if (isWaitingAndOwned(labelNames)) return false;
     return true;
   });
 }
