@@ -67,7 +67,7 @@ formatting error.
   clearance math already consumes, so keeping ours would have meant re-deriving the
   direction vector at every consumer. Renamed `endpointX`/`endpointY` → `endX`/`endY`
   everywhere instead.
-- **Preserve the mob-ability dodge for *every* live cue phase, not just `telegraph`.**
+- **Preserve the mob-ability dodge for _every_ live cue phase, not just `telegraph`.**
   `preserveMobAbilityDodge` in `bt-ai-provider.ts` guarded on `cue.phase === 'telegraph'`.
   Travel steering deliberately zeroes `dodgeVecX/Y` when it drives the frame (to avoid
   the oscillation that widening the dodge caused in `f4f538d7`), preserving it only for
@@ -120,7 +120,7 @@ branch is unreachable today because the only `follows-caster` ability
   producing formatting churn that then had to be reverted in a follow-up commit. Use
   `git commit --no-verify` for merge commits.
 
-### Opportunities
+### Opportunities for Future Improvement
 
 - `MobAbilityLaneGeometry` being independently invented twice suggests the mob-ability
   geometry contract is under-documented for parallel agents. ADR 0076 now pins the

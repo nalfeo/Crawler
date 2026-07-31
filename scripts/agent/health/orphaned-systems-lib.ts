@@ -32,10 +32,12 @@
  * ## What this guard asserts
  *
  * Every `*System` function exported from `src/core/**` or `src/game/**` must be
- * referenced by at least one REAL pipeline entry point (see `WIRING_SITES`) — as
- * a call expression `fooSystem(world)` or as an element of a pipeline array
- * (`preSystems: [fooSystem, …]`) — OR appear on the documented `ALLOWLIST`.
- * Lab and test references, imports, strings, and comments do NOT count.
+ * referenced by at least one sim-side/shared pipeline entry point (see
+ * `WIRING_SITES`) — as a call expression `fooSystem(world)` (including an
+ * invoked nullish fallback such as `(override ?? fooSystem)(world)`) or as an
+ * element of a pipeline array (`preSystems: [fooSystem, …]`) — OR appear on the
+ * documented `ALLOWLIST`. Visual-scene-only, lab, and test references, imports,
+ * strings, comments, and bare assignments do NOT count.
  */
 
 import ts from 'typescript';
@@ -78,11 +80,12 @@ export const SYSTEM_SOURCE_ROOTS: ReadonlyArray<string> = ['src/core', 'src/game
 export const MIN_EXPECTED_SYSTEMS = 10;
 
 /**
- * The REAL runtime pipeline entry points. A system referenced from any of these
- * is considered wired into the shipped game and/or the headless win-rate gate.
+ * The trusted sim-side/shared runtime pipeline entry points. A system referenced
+ * from any of these is considered reachable below the visual scene boundary.
  *
- * - `src/bootstrap/floor-main-scene-options.ts` — defines the visual game's
- *   Floor 1 `preSystems`/`postSystems` arrays (fed to the engine sim step).
+ * - `src/bootstrap/floor-main-scene-options.ts` — canonical floor
+ *   `preSystems`/`postSystems` arrays consumed by BOTH the visual scene and
+ *   `headless-runner.ts`.
  * - `src/core/simulation-core-step.ts` — shared deterministic core ECS step used
  *   by both visual and headless wrappers.
  * - `src/engine/sim/simulation-step.ts` — visual wrapper around the shared core
@@ -91,11 +94,11 @@ export const MIN_EXPECTED_SYSTEMS = 10;
  *   step used by the Floor 1 win-rate gate + headless runner.
  * - `src/game/ai/headless-runner.ts` — the headless AI driver (auto-progression
  *   / auto-NPC systems live here, not in the sim steps).
- * - `src/engine/scenes/MainGameScene.ts` — the scene itself; a few systems are
- *   invoked here directly (e.g. `fovSystem`).
  *
- * Deliberately EXCLUDES `src/labs/**` and `tests/**`: a lab or test that
- * force-calls a system proves nothing about whether the real game calls it.
+ * Deliberately EXCLUDES `src/engine/scenes/MainGameScene.ts`, `src/labs/**`, and
+ * `tests/**`: a scene-only reference does not prove the AI/headless simulation
+ * reaches a system, while a lab or test force-call proves nothing about runtime
+ * wiring.
  *
  * NOTE: the guard only follows two structural wiring forms — a direct call
  * (`fooSystem(world)`) and a pipeline-array element (`[…, fooSystem, …]`). If a
@@ -109,7 +112,6 @@ export const WIRING_SITES: ReadonlyArray<string> = [
   'src/engine/sim/simulation-step.ts',
   'src/game/ai/simulation-step.ts',
   'src/game/ai/headless-runner.ts',
-  'src/engine/scenes/MainGameScene.ts',
 ];
 
 /**
@@ -170,7 +172,7 @@ export const ALLOWLIST: Readonly<Record<string, AllowlistEntry>> = {
   // ordering relative to victory/timer evaluation.
   floor2EnemyDirectorSystem: {
     reason:
-      'Intentionally called from floor2ObjectiveTick (world.floorObjectiveTick) so Floor 2 objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
+      'Intentionally called from floor2ObjectiveTick, which Floor 2 assigns to world.floorObjectiveTick and floorObjectiveSystem invokes each frame, so objective progression and ambient pressure stay in one deterministic tick path; not wired as a standalone pipeline stage.',
     trackedIssue: '#816',
     trackedIssuePolicy: 'reference-only',
     owner: 'enemies/floor2',
@@ -293,7 +295,7 @@ export function extractSystemDefs(file: SourceFile): SystemDef[] {
 /**
  * Extract the set of `*System` identifiers *wired* in one file via AST. A name
  * counts only when used as one of two structural forms:
- *   1. a direct call:            `fooSystem(world)`
+ *   1. a direct call:            `fooSystem(world)` or `(hook ?? fooSystem)(world)`
  *   2. a pipeline-array element: `preSystems: [fooSystem, …]`
  * Identifiers inside imports, strings, comments, type positions, or bare
  * assignments do NOT count — matching how systems are actually wired and
@@ -316,10 +318,25 @@ export function extractReferencedSystems(file: SourceFile): Set<string> {
   const sf = parse(file);
   const refs = new Set<string>();
 
+  const collectInvokedCalleeSystems = (expression: ts.Expression): void => {
+    if (ts.isParenthesizedExpression(expression)) {
+      collectInvokedCalleeSystems(expression.expression);
+    } else if (ts.isIdentifier(expression)) {
+      if (isSystemName(expression.text)) refs.add(expression.text);
+    } else if (
+      ts.isBinaryExpression(expression) &&
+      expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+    ) {
+      collectInvokedCalleeSystems(expression.left);
+      collectInvokedCalleeSystems(expression.right);
+    }
+  };
+
   const visit = (node: ts.Node): void => {
-    // Form 1: direct call expression with an identifier callee.
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      if (isSystemName(node.expression.text)) refs.add(node.expression.text);
+    // Form 1: direct call expression. Nullish fallback callees count because the
+    // selected branch is invoked; the same expression as a value/argument does not.
+    if (ts.isCallExpression(node)) {
+      collectInvokedCalleeSystems(node.expression);
     }
     // Form 2: identifier used as an array-literal element (pipeline arrays).
     if (ts.isArrayLiteralExpression(node)) {
