@@ -60,7 +60,7 @@ jobs:
             const workflowsToCheck = ['ci.yml', 'security-review.yml'];
             const scanModes = [
               { label: 'action_required', status: 'action_required' },
-              { label: 'cancelled', status: 'completed' },
+              { label: 'cancelled', status: 'cancelled' },
             ];
             // Bound per sweep to prevent burst-dispatching when many runs are parked.
             const cap = 3;
@@ -84,7 +84,6 @@ jobs:
                 }
                 for (const run of runs.data.workflow_runs) {
                   if (dispatched >= cap) break;
-                  if (scanMode.label === 'cancelled' && run.conclusion !== 'cancelled') continue;
                   const linkedPrNumber = run.pull_requests?.[0]?.number;
                   if (!linkedPrNumber) {
                     core.notice(`skip ${scanMode.label} run=${run.id}: no-linked-pr`);

@@ -19,7 +19,7 @@ jobs:
   retrigger:
     if: >-
       ${{
-        (github.event_name == 'workflow_run' && contains(fromJson('[\"action_required\",\"cancelled\"]'), github.event.workflow_run.conclusion)) ||
+        (github.event_name == 'workflow_run' && contains(fromJson('["action_required","cancelled"]'), github.event.workflow_run.conclusion)) ||
         github.event_name == 'workflow_dispatch'
       }}
     runs-on: ubuntu-latest
