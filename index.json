@@ -1,5 +1,16 @@
 [
   {
+    "commit": "cba1e86f273a244df27ad841aa47ac21b925a614",
+    "commitDate": "2026-07-31T13:13:53Z",
+    "commitSubject": "docs(handoff): add e2e consumer-boundary revert witness for #2469 VFX/announcement hunk (#2474)",
+    "capturedAt": "2026-07-31T14:10:57.445Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30633667470",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/cba1e86f273a244df27ad841aa47ac21b925a614.json"
+  },
+  {
     "commit": "cddbeea76102657daa11dd1aba436568c9fdface",
     "commitDate": "2026-07-31T12:57:52Z",
     "commitSubject": "Level-5 passive UX: distinct PASSIVE section, unlock announcement, VFX rescoping (#2469)",
