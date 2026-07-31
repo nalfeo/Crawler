@@ -167,6 +167,15 @@ export function createHudAnnouncementBanner(
   // Track which announcement is currently on-screen so we correctly cross-fade
   // to the next one when the head advances mid-lifetime.
   let currentEvent: AnnouncementEvent | undefined;
+  // World time at which the current event started showing. Used to compute
+  // expiry from display-start rather than creation-time, so simultaneous
+  // announcements each get their full durationMs regardless of when they were
+  // originally pushed.
+  let displayStartMs = 0;
+  // The actual rendered text for the current event — set in show() so that
+  // getCurrentAnnouncement() returns what the player literally sees (including
+  // any ellipsization applied to spawner labels).
+  let currentRenderedText = '';
 
   function drainWorldAnnouncements(world: GameWorld): void {
     for (const event of world.announcements) {
@@ -194,7 +203,7 @@ export function createHudAnnouncementBanner(
     }
   }
 
-  function show(event: AnnouncementEvent): void {
+  function show(event: AnnouncementEvent, nowMs: number): void {
     // Boss-ability casts and skill-passive-unlock milestones both carry a full
     // authored string that must render exactly (never ellipsized or rebuilt
     // from an archetype index). The panel is 420px wide; authored strings can
@@ -209,16 +218,19 @@ export function createHudAnnouncementBanner(
         .setColor(colorForKind(event.kind));
       verbText.setText('');
       accent.setFillStyle(event.kind === 'bossAbilityCast' ? 0xef4444 : 0x22c55e);
+      currentRenderedText = event.text;
     } else {
       const label = event.displayName ?? 'Spawner';
       // Disable word wrap for the standard single-line path.
+      const renderedLabel = ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS);
       labelText
         .setWordWrapWidth(0)
-        .setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS))
+        .setText(renderedLabel)
         .setY(16)
         .setColor(colorForKind(event.kind));
       verbText.setText(verbForKind(event.kind).toUpperCase());
       accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
+      currentRenderedText = renderedLabel;
     }
     activeTween?.remove();
     activeTween = scene.tweens.add({
@@ -229,6 +241,7 @@ export function createHudAnnouncementBanner(
     });
     hidden = false;
     currentEvent = event;
+    displayStartMs = nowMs;
   }
 
   function hide(): void {
@@ -242,17 +255,21 @@ export function createHudAnnouncementBanner(
     });
     hidden = true;
     currentEvent = undefined;
+    currentRenderedText = '';
   }
 
   function sync(world: GameWorld): void {
     drainWorldAnnouncements(world);
     pruneCanceledBossAbilityAnnouncements(world);
-    // Drop expired heads until we find one still in its lifespan.
-    while (queue.length > 0) {
-      const head = queue[0]!;
-      const expiresAt = head.elapsedMs + head.durationMs;
-      if (world.elapsedMs <= expiresAt) break;
-      queue.shift();
+    // Expire the head only when its display duration has fully elapsed from
+    // the moment it *started showing* (displayStartMs). Using the creation
+    // time (event.elapsedMs) would expire all simultaneously-pushed events at
+    // the same wall-clock instant, preventing the second from ever appearing.
+    if (queue.length > 0 && currentEvent === queue[0]) {
+      // queue[0]! is safe: we just checked queue.length > 0.
+      if (world.elapsedMs > displayStartMs + queue[0]!.durationMs) {
+        queue.shift();
+      }
     }
     if (queue.length === 0) {
       hide();
@@ -260,7 +277,7 @@ export function createHudAnnouncementBanner(
     }
     const head = queue[0]!;
     if (currentEvent !== head) {
-      show(head);
+      show(head, world.elapsedMs);
     }
   }
 
@@ -296,10 +313,7 @@ export function createHudAnnouncementBanner(
 
   function getCurrentAnnouncement(): { kind: AnnouncementKind; text: string } | null {
     if (hidden || !currentEvent) return null;
-    if (currentEvent.kind === 'bossAbilityCast' || currentEvent.kind === 'skillPassiveUnlocked') {
-      return { kind: currentEvent.kind, text: currentEvent.text };
-    }
-    return { kind: currentEvent.kind, text: currentEvent.displayName ?? '' };
+    return { kind: currentEvent.kind, text: currentRenderedText };
   }
 
   return {

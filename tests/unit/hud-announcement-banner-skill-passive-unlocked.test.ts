@@ -207,4 +207,48 @@ describe('HudAnnouncementBanner — skillPassiveUnlocked', () => {
 
     expect(() => banner.sync(world)).not.toThrow();
   });
+
+  it('shows both unlocks sequentially when two passives unlock in the same tick', async () => {
+    // Regression for the simultaneous-expiry bug: when two events are pushed at
+    // the same elapsedMs with the same durationMs, the old code computed the
+    // same expiresAt for both and dropped them together, so the second was never
+    // shown. The fix anchors expiry to displayStartMs (when the event first
+    // reaches the head), not to event creation time.
+    const { createHudAnnouncementBanner } =
+      await import('../../src/engine/HudAnnouncementBanner.js');
+    const { scene } = createSceneStub();
+    const banner = createHudAnnouncementBanner(scene);
+
+    const world = createTestWorld();
+    world.elapsedMs = 100;
+    const durationMs = 2600;
+    world.announcements.push({
+      kind: 'skillPassiveUnlocked',
+      archetypeIndex: -1,
+      text: 'Passive Unlocked: Combat Flow',
+      durationMs,
+      elapsedMs: world.elapsedMs,
+    });
+    world.announcements.push({
+      kind: 'skillPassiveUnlocked',
+      archetypeIndex: -1,
+      text: 'Passive Unlocked: Iron Skin',
+      durationMs,
+      elapsedMs: world.elapsedMs,
+    });
+
+    // First sync: first event is shown.
+    banner.sync(world);
+    expect(banner.getCurrentAnnouncement()?.text).toBe('Passive Unlocked: Combat Flow');
+
+    // Advance past the first event's display duration — second must now show.
+    world.elapsedMs = 100 + durationMs + 1;
+    banner.sync(world);
+    expect(banner.getCurrentAnnouncement()?.text).toBe('Passive Unlocked: Iron Skin');
+
+    // Advance past the second event's display duration — banner should clear.
+    world.elapsedMs = 100 + durationMs + 1 + durationMs + 1;
+    banner.sync(world);
+    expect(banner.getCurrentAnnouncement()).toBeNull();
+  });
 });

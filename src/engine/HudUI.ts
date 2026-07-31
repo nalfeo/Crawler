@@ -282,7 +282,7 @@ export function createHudUI(scene: Phaser.Scene): {
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getEncounterProbeBounds,
-    getCurrentAnnouncement: announcementBanner.getCurrentAnnouncement,
+    getCurrentAnnouncement: () => (hidden ? null : announcementBanner.getCurrentAnnouncement()),
     setVisible,
     getNavigationBounds,
     getFamilyRelationshipsLayout: familyRelationships.getLayout,

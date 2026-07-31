@@ -215,4 +215,33 @@ describe('HudAnnouncementBanner — pruneCanceledBossAbilityAnnouncements', () =
     // the test just ensures we did not throw and the banner is still alive.
     expect(() => banner.sync(world)).not.toThrow();
   });
+
+  it('getCurrentAnnouncement returns the rendered (possibly ellipsized) label for spawner events', async () => {
+    // Regression for the raw-displayName bug: the getter must return the same
+    // text that show() actually rendered (ellipsizeEncounterLabel output), not
+    // the raw event.displayName, so e2e probes see the player-visible string.
+    const { createHudAnnouncementBanner } =
+      await import('../../src/engine/HudAnnouncementBanner.js');
+    const { scene } = createSceneStub();
+    const banner = createHudAnnouncementBanner(scene);
+
+    const world = createTestWorld();
+    world.elapsedMs = GAME.DELTA_MS;
+    world.announcements.push({
+      kind: 'spawnerArenaStart',
+      archetypeIndex: 0,
+      displayName: 'Slime Rat',
+      durationMs: 2200,
+      elapsedMs: world.elapsedMs,
+    });
+
+    banner.sync(world);
+
+    const current = banner.getCurrentAnnouncement();
+    expect(current).not.toBeNull();
+    expect(current?.kind).toBe('spawnerArenaStart');
+    // The stub's ellipsizeEncounterLabel is a passthrough, so the rendered text
+    // matches the original displayName in this test environment.
+    expect(current?.text).toBe('Slime Rat');
+  });
 });
