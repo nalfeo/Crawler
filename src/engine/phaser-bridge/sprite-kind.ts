@@ -3,6 +3,7 @@ import npcSpriteMap from '../../shared/data/npc-sprite-map.json';
 import {
   AoeOnImpact,
   AreaDamage,
+  BossChestEntity,
   Enemy,
   EnemyProjectile,
   Gold,
@@ -78,6 +79,7 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Player)) return 'player';
   if (hasComponent(world.ecs, eid, Npc)) return 'npc';
   if (hasComponent(world.ecs, eid, Harvestable)) return 'harvestable';
+  if (hasComponent(world.ecs, eid, BossChestEntity)) return 'boss_chest';
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, Gold)) return 'gold';

@@ -71,7 +71,7 @@ reward uses the shared reward-opening overlay, and save/load preserves the physi
 - `tests/e2e/main-game-scene-ui-exclusivity.test.ts`
 - `tests/e2e/reward-opening-ux.test.ts`
 - `tests/unit/boss-chest-resolver.test.ts`
-- `tests/unit/bossChestPickupSystem.test.ts`
+- `tests/ecs/bossChestPickupSystem.test.ts`
 - `tests/unit/main-game-scene-mobile-ui.test.ts`
 - `tests/unit/player-carryover.test.ts`
 - `docs/knowledge/game-design/entity-sizing.md`
@@ -81,7 +81,7 @@ reward uses the shared reward-opening overlay, and save/load preserves the physi
 
 ## Verification
 
-- `npx vitest run tests/e2e/reward-opening-ux.test.ts -t "opens the reward overlay when the player walks into a live physical boss chest" tests/unit/boss-chest-resolver.test.ts tests/unit/player-carryover.test.ts tests/unit/bossChestPickupSystem.test.ts`
+- `npx vitest run tests/e2e/reward-opening-ux.test.ts -t "opens the reward overlay when the player walks into a live physical boss chest" tests/unit/boss-chest-resolver.test.ts tests/unit/player-carryover.test.ts tests/ecs/bossChestPickupSystem.test.ts`
 - `npm run verify:fast`
 - `npm run review:ledger -- validate`
 - `npm run verify:pr-prereqs`

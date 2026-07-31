@@ -464,6 +464,7 @@ describe('findOrphanedSystems', () => {
         sceneOnlySystem: {
           reason: 'intentionally not wired',
           trackedIssue: '#1',
+          trackedIssuePolicy: 'reference-only' as const,
           owner: 'tests',
         },
       };

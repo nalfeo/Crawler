@@ -6,10 +6,12 @@
  * player on top of the chest and trigger auto-open.
  */
 import { registerLab } from '../registry.js';
+import { entityExists, removeEntity } from 'bitecs';
 import { createGameWorld, spawnPlayer } from '../../core/index.js';
-import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
+import { clearEntityStores } from '../../core/helpers.js';
 import { bossChestPickupSystem } from '../../core/systems/bossChestPickupSystem.js';
-import { createBossChestRecord, createBossChestId } from '../../core/systems/bossChestRewards.js';
+import { createBossChestId } from '../../core/systems/bossChestRewards.js';
+import { spawnBossChestForDefeatedBoss } from '../../game/boss-chest-resolver.js';
 
 const CHEST_X = 20;
 const CHEST_Y = 20;
@@ -17,7 +19,7 @@ const PLAYER_START_X = 40;
 const PLAYER_START_Y = 40;
 const FAMILY_ID = 'ratfolk';
 
-registerLab('bosschestpickup', {
+registerLab('bosschestpickup-lab', {
   name: 'Boss Chest Pickup',
   description:
     'Proximity-based boss chest auto-open. Teleport the player to the chest to trigger pickup.',
@@ -40,14 +42,23 @@ registerLab('bosschestpickup', {
     function spawnChest(): void {
       const id = createBossChestId(FAMILY_ID);
       chestId = id;
-      createBossChestRecord(world, id, FAMILY_ID);
-      chestEid = spawnBossChestEntity(world, CHEST_X, CHEST_Y, id);
+      const spawned = spawnBossChestForDefeatedBoss(world, FAMILY_ID, CHEST_X, CHEST_Y);
+      if (!spawned.created) {
+        throw new Error(`bosschestpickup-lab failed to spawn chest: ${spawned.reason}`);
+      }
+      chestEid = world.bossChestEids.get(id) ?? -1;
     }
 
     function reset(): void {
       if (chestId) {
+        const existingEid = world.bossChestEids.get(chestId);
+        if (existingEid !== undefined && entityExists(world.ecs, existingEid)) {
+          clearEntityStores(world, existingEid);
+          removeEntity(world.ecs, existingEid);
+        }
         world.bossChestEids.delete(chestId);
         world.bossChests.delete(chestId);
+        world.generatedEquipmentRewardBundles.delete(chestId);
       }
       const pos = world.stores.position;
       pos.x[playerEid] = PLAYER_START_X;
@@ -64,6 +75,7 @@ registerLab('bosschestpickup', {
 
     function renderStatus(): void {
       const chest = world.bossChests.get(chestId);
+      chestEid = world.bossChestEids.get(chestId) ?? chestEid;
       const pos = world.stores.position;
       const px = (pos.x[playerEid] ?? 0).toFixed(1);
       const py = (pos.y[playerEid] ?? 0).toFixed(1);
