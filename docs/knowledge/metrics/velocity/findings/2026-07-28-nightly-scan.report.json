@@ -1,29 +1,29 @@
 {
-  "schema": "crawler-velocity-bottlenecks/v1",
+  "schema": "crawler-velocity-bottlenecks/observation-v2",
   "generatedAt": "2026-07-28T10:46:00Z",
-  "note": "Produced by nightly bottleneck scan (issue #2192). gh GraphQL blocked in sandbox; PR data fetched via GitHub MCP REST. Stage timings computed from 5 slow PRs (>48h) with full review+commit timestamp data; median stage estimates for the full 60-PR cohort use 0h approximations for the 20 fast (<1h) PRs (review_q≈0.5h, rework≈0h, merge_q≈0.5h).",
+  "note": "Produced by nightly bottleneck scan (issue #2192). gh GraphQL blocked in sandbox; PR data fetched via GitHub MCP REST. This observational artifact uses a custom schema because only 5 slow PRs (>48h) had the review+commit timestamps needed for stage decomposition. The stages below describe that observed slow-tail subset only; no full-cohort stage medians are inferred.",
   "prsAnalyzed": 60,
   "stages": [
     {
       "name": "open → first review",
       "kind": "queue",
-      "medianHours": 0.5,
-      "shareOfLeadTime": 0.19,
-      "note": "Automated Copilot reviewer fires within minutes for agent PRs; human PRs trigger on push."
+      "medianHours": 0.7,
+      "shareOfLeadTime": 0.01,
+      "note": "Observed median for the 5 slow PRs with full stage data."
     },
     {
       "name": "first review → last push",
-      "kind": "active",
-      "medianHours": 0.0,
-      "shareOfLeadTime": 0.0,
-      "note": "Median is near-zero because 71% of PRs merge within 12h with minimal rework. For the slow tail (>48h, n=7), median rework is 67.0h."
+      "kind": "queue",
+      "medianHours": 67.0,
+      "shareOfLeadTime": 0.98,
+      "note": "Observed median for the 5 slow PRs with full stage data. This is a post-review interval measured from timestamps only; the incident evidence points primarily to queueing behind coordination, not active rework."
     },
     {
       "name": "last push → merge",
       "kind": "queue",
-      "medianHours": 0.5,
-      "shareOfLeadTime": 0.19,
-      "note": "CI gate + merge-train admission. Fast when no coordination wait label."
+      "medianHours": 0.4,
+      "shareOfLeadTime": 0.01,
+      "note": "Observed median for the 5 slow PRs with full stage data."
     }
   ],
   "medianLeadTimeH": 2.7,
@@ -56,34 +56,54 @@
       "prNumber": 2003,
       "title": "fix: pin direct deps to exact versions; fix check-exact-deps",
       "leadTimeH": 71.9,
+      "reviewQueueH": 1.7,
+      "reworkH": 69.8,
+      "mergeQueueH": 0.4,
+      "reviewRounds": null,
       "churn": 922,
-      "stageNote": "review_q=1.7h rework=69.8h merge_q=0.4h — 70h gap: CI-recovery stall (model unavailability) + coordination deadlock"
+      "stageNote": "70h post-review gap: CI-recovery stall (model unavailability) + coordination deadlock"
     },
     {
       "prNumber": 1976,
       "title": "feat(ci-health): expose asset request pipeline progress",
       "leadTimeH": 70.0,
+      "reviewQueueH": 0.1,
+      "reworkH": 69.1,
+      "mergeQueueH": 0.8,
+      "reviewRounds": null,
       "churn": 947,
-      "stageNote": "review_q=0.1h rework=69.1h merge_q=0.8h — branch contamination locked into coordination group for 3 days"
+      "stageNote": "Branch contamination locked the PR into coordination for 3 days; 28/30 commits were subject-matched duplicates and 45/48 were patch-identical to main by git cherry."
     },
     {
       "prNumber": 2016,
       "title": "Implement Don Paco's THE BIG GOB on the typed mob-ability runtime",
       "leadTimeH": 69.7,
+      "reviewQueueH": 2.5,
+      "reworkH": 67.0,
+      "mergeQueueH": 0.3,
+      "reviewRounds": null,
       "churn": 2844,
-      "stageNote": "review_q=2.5h rework=67.0h merge_q=0.3h — 21-file conflict resolution + coordination deadlock"
+      "stageNote": "21-file conflict resolution + coordination deadlock"
     },
     {
       "prNumber": 1996,
       "title": "fix: remove useless null initializer in beginTelegraph",
       "leadTimeH": 62.3,
+      "reviewQueueH": 0.7,
+      "reworkH": 54.8,
+      "mergeQueueH": 16.8,
+      "reviewRounds": null,
       "churn": 139,
-      "stageNote": "review_q=0.7h rework=54.8h merge_q=16.8h — docs-adjacent PR caught in coordination queue behind blocked head-of-line"
+      "stageNote": "Docs-adjacent PR caught in coordination queue behind the blocked head-of-line"
     },
     {
       "prNumber": 2015,
       "title": "Blocked: unable to start Nana SCRAP-CART STAMPEDE implementation",
       "leadTimeH": 60.2,
+      "reviewQueueH": null,
+      "reworkH": null,
+      "mergeQueueH": null,
+      "reviewRounds": null,
       "churn": 0,
       "stageNote": "Docs/investigation PR, low churn but stuck behind coordination deadlock"
     }
@@ -120,25 +140,25 @@
     }
   ],
   "findings": [
-    "TOP BOTTLENECK: 'first review → last push' (active/rework) stage. Median 2.7h overall, but the slowest 12% of PRs (7/60) each take >48h — dominated by a 67h median rework window. These 7 PRs collectively drove P90 to 55.5h.",
-    "ROOT CAUSE: Branch contamination + CI conflict coordination deadlock. Measured (not assumed): 8/11 PRs in a coordination group carried contaminated CI-file diffs (squash-merge relands under new SHAs). The group serialized 18 PRs for up to 64h while head-of-line PR #1976 (28/30 commits patch-identical to main) could not move. Emergency fix PR #2168 (coordination default-off) landed 2026-07-28 and drained the blockage.",
+    "TOP BOTTLENECK: the slow tail's post-review interval. For the 5 slow PRs with full stage data, the median first-review-to-last-push interval was 67.0h. In this incident the evidence points primarily to queueing behind the coordinator, and the timestamps alone do not justify classifying that time as active rework.",
+    "ROOT CAUSE: Branch contamination + CI conflict coordination deadlock. Measured (not assumed): 8/11 PRs touching reconcile.mjs were contaminated (squash-merge relands under new SHAs). The group serialized 18 PRs for up to 64h while head-of-line PR #1976 carried 28/30 subject-matched duplicates and 45/48 patch-identical commits relative to main by git cherry. Emergency fix PR #2168 (coordination default-off) landed 2026-07-28 and drained the blockage.",
     "SECONDARY ROOT CAUSE: Model-unavailability CI-recovery stalls. PR #2003 had a 70h gap where CI recovery was attempting to dispatch but the model was unavailable; the sweep retried on the same broken model instead of backing off. The new dispatch observability (PR #2129) will make future stalls diagnosable in seconds.",
     "Guard friction is low and catch-correct. pr-preflight and pr-review-ledger each have 5 denies / 155 events (3.2%) — all verified as genuine policy violations, not mis-fires. authoring-main-sync: 2,757 allows / 0 denies — nominal.",
     "Apple estimation is excellent: 89% exact, median |error| = 0.0 🍎 across 557 sessions. No systematic under-estimation.",
-    "PROPOSED SMALLEST FIX (see below): Add cherry-based contamination detection to the CI conflict coordinator so that the coordination fence can be safely re-enabled without deadlocking innocent PRs."
+    "PROPOSED SMALLEST FIX (see below): gate coordination on the effective current CI tree diff against main, while using patch-equivalence only as contamination diagnostics."
   ],
   "proposedFix": {
-    "title": "Cherry-based contamination detection in CI conflict coordinator",
+    "title": "Effective CI tree-diff admission gate in CI conflict coordinator",
     "targetFile": ".github/scripts/ci-conflict-coordinator/reconcile.mjs",
     "currentBehavior": "isCiCoordinationPath() flags a PR as touching CI files if ANY diff file matches the path pattern. Branch contamination (squash-merge carries prior-session commits under new SHAs) causes innocent art/docs PRs to match, creating false-positive coordination groups.",
-    "proposedChange": "Before adding a PR to a coordination group, run `git cherry -v origin/main <branch-head>` (or equivalent via GitHub Commits API) to count genuinely NEW commits (marked '+') that touch CI paths. A PR with 0 new CI-touching commits is contaminated and should be excluded from the coordination group (or labelled for passive observation only, not blocking).",
-    "measurability": "Contamination rate: PRs in coordination groups with 0 genuine CI-path changes / total PRs in group. Before fix: ~73% (8/11 measured 2026-07-28). After fix: target 0%. Would allow CI_CONFLICT_COORDINATION_ENFORCE to be re-enabled safely.",
+    "proposedChange": "Use patch-equivalence (`git cherry`) only to report suspected relocated history. Decide coordination from the path-limited tree diff instead: if `git diff --quiet origin/main...<head> -- .github/workflows .github/scripts/ci-*` is empty, keep the PR out of CI coordination as a CI no-op. If the diff is non-empty—or cannot be evaluated—keep the PR coordinated (or require a rebase/escalation) so #2137-style real CI reverts do not bypass the fence.",
+    "measurability": "Primary metric: coordinated PRs whose effective CI diff against main is empty. Before fix: observed false positives in the 2026-07-28 deadlock. After fix: target 0. Secondary monitoring metric: contaminated PRs among PRs touching reconcile.mjs (8/11 measured on 2026-07-28) should trend toward 0 after branch hygiene improves. Would allow CI_CONFLICT_COORDINATION_ENFORCE to be re-enabled safely.",
     "scope": "Tooling-only — no gameplay or runtime change. Cap: 3🍎 per tooling-only ceiling.",
-    "effort": "2–3🍎 estimated. Requires: (1) a cherry-check helper, (2) coordinator integration, (3) unit tests with real-git fixtures, (4) a contamination-rate metric reported in the CI-health canvas.",
+    "effort": "2–3🍎 estimated. Requires: (1) a path-limited effective-diff helper, (2) coordinator integration, (3) unit tests with real-git fixtures, (4) a false-positive metric reported in the CI-health canvas.",
     "alternativesConsidered": [
       "Keep coordination default-off permanently — accepted risk: when re-enabled for any reason, the false-positive problem recurs silently.",
       "Rebase all agent branches before grouping — heavier (requires write access per PR), still doesn't prevent new contamination on long-lived PRs.",
-      "Filter by commit count (skip PRs with >50% patch-identical commits) — proxy only; `git cherry` is authoritative and not significantly more expensive."
+      "Filter by commit count (skip PRs with >50% patch-identical commits) — useful contamination evidence, but not authoritative for whether the resulting CI tree still changes main."
     ]
   }
 }
