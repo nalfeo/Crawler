@@ -458,6 +458,7 @@ test('rejects temporary dependency exceptions with impossible expiresOn date', (
   );
 });
 
+
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.
 // New entries: add the advisory URL, expiry date, and the reason text here.
