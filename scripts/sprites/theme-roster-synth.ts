@@ -33,10 +33,12 @@ import {
   themeEquipmentSetPlanSchema,
   type ThemeEquipmentSetPlan,
 } from './theme-equipment-set.js';
-import { MIRROR_SLOT_PAIRS } from '../../src/shared/equipment-slots.js';
+import { _MIRROR_SLOT_PAIRS_FOR_TESTS } from '../../src/shared/equipment-slots.js';
 
 /** Human-readable "leftArm+rightArm" list for the roster prompt, from the canonical pairs. */
-const MIRROR_PAIR_PROMPT_LIST = MIRROR_SLOT_PAIRS.map(([a, b]) => `${a}+${b}`).join(', ');
+const MIRROR_PAIR_PROMPT_LIST = _MIRROR_SLOT_PAIRS_FOR_TESTS
+  .map(([a, b]) => `${a}+${b}`)
+  .join(', ');
 
 /**
  * Minimal chat surface this module needs: a single structured-JSON

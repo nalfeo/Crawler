@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MIRROR_SLOT_IDS,
-  MIRROR_SLOT_PAIRS,
-  VALID_SLOT_IDS,
-  getMirrorSlot,
+  _getMirrorSlotForTests,
+  _MIRROR_SLOT_IDS_FOR_TESTS,
+  _MIRROR_SLOT_PAIRS_FOR_TESTS,
+  _VALID_SLOT_IDS_FOR_TESTS,
   getSlotLabel,
 } from '../../src/shared/equipment-slots.js';
 
@@ -20,39 +20,39 @@ describe('getSlotLabel', () => {
 
 describe('mirror slot metadata', () => {
   it('every mirror-pair id is a real registry slot', () => {
-    for (const [a, b] of MIRROR_SLOT_PAIRS) {
-      expect(VALID_SLOT_IDS.has(a)).toBe(true);
-      expect(VALID_SLOT_IDS.has(b)).toBe(true);
+    for (const [a, b] of _MIRROR_SLOT_PAIRS_FOR_TESTS) {
+      expect(_VALID_SLOT_IDS_FOR_TESTS.has(a)).toBe(true);
+      expect(_VALID_SLOT_IDS_FOR_TESTS.has(b)).toBe(true);
     }
   });
 
   it('pairs are disjoint — no slot appears in two pairs', () => {
     const seen = new Set<string>();
-    for (const [a, b] of MIRROR_SLOT_PAIRS) {
+    for (const [a, b] of _MIRROR_SLOT_PAIRS_FOR_TESTS) {
       for (const id of [a, b]) {
         expect(seen.has(id)).toBe(false);
         seen.add(id);
       }
     }
-    expect(seen).toEqual(new Set(MIRROR_SLOT_IDS));
+    expect(seen).toEqual(new Set(_MIRROR_SLOT_IDS_FOR_TESTS));
   });
 
   it('getMirrorSlot is symmetric for paired slots', () => {
-    for (const [a, b] of MIRROR_SLOT_PAIRS) {
-      expect(getMirrorSlot(a)).toBe(b);
-      expect(getMirrorSlot(b)).toBe(a);
+    for (const [a, b] of _MIRROR_SLOT_PAIRS_FOR_TESTS) {
+      expect(_getMirrorSlotForTests(a)).toBe(b);
+      expect(_getMirrorSlotForTests(b)).toBe(a);
     }
   });
 
   it('getMirrorSlot returns undefined for non-mirror and unknown slots', () => {
-    expect(getMirrorSlot('mainHand')).toBeUndefined();
-    expect(getMirrorSlot('offHand')).toBeUndefined();
-    expect(getMirrorSlot('head')).toBeUndefined();
-    expect(getMirrorSlot('gloves')).toBeUndefined();
-    expect(getMirrorSlot('mystery-slot')).toBeUndefined();
+    expect(_getMirrorSlotForTests('mainHand')).toBeUndefined();
+    expect(_getMirrorSlotForTests('offHand')).toBeUndefined();
+    expect(_getMirrorSlotForTests('head')).toBeUndefined();
+    expect(_getMirrorSlotForTests('gloves')).toBeUndefined();
+    expect(_getMirrorSlotForTests('mystery-slot')).toBeUndefined();
   });
 
   it('MIRROR_SLOT_IDS contains exactly the paired slot ids', () => {
-    expect(MIRROR_SLOT_IDS.size).toBe(MIRROR_SLOT_PAIRS.length * 2);
+    expect(_MIRROR_SLOT_IDS_FOR_TESTS.size).toBe(_MIRROR_SLOT_PAIRS_FOR_TESTS.length * 2);
   });
 });

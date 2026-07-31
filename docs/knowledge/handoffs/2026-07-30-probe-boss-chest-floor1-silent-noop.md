@@ -1,8 +1,8 @@
 # Probe lab: fix seedAvailableBossChest Floor 1 silent no-op
 
-**Date:** 2026-07-30  
-**Session slug:** probe-boss-chest-floor1-silent-noop  
-**Apple estimate:** 🍎  
+**Date:** 2026-07-30
+**Session slug:** probe-boss-chest-floor1-silent-noop
+**Apple estimate:** 🍎
 **PR:** closes #2385
 
 ## Summary

@@ -14,7 +14,7 @@ import {
   emitQuestEvent,
 } from '../../src/core/systems/questSystem.js';
 import { equip, initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
-import { addItem } from '../../src/shared/inventory.js';
+import { addItem, createInventoryBag } from '../../src/shared/inventory.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -106,18 +106,18 @@ describe('questSystem', () => {
     expect(world.featureUnlocks.inventory).toBe(true);
 
     // Step 3: return the prize (goal flag).
-    bag.slots.length = 0;
+    world.inventories.set(player, createInventoryBag());
     world.goalFlags.set('floor1-shop-prize-returned', true);
     questSystem(world);
 
     // Step 4: acquire the equippable → equipment unlocks.
-    addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+    addItem(world.inventories.get(player)!, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
     questSystem(world);
     expect(world.featureUnlocks.equipment).toBe(true);
 
     // Step 5: equip it (removes it from the bag, but the buy-gear step stays latched).
     equip(world, player, MERCHANTS_CHARM_DEF, { force: true });
-    bag.slots.length = 0;
+    world.inventories.set(player, createInventoryBag());
     questSystem(world);
 
     expect(isQuestComplete(world, FLOOR1_SHOP_QUEST_ID)).toBe(true);
@@ -135,7 +135,7 @@ describe('questSystem', () => {
     expect(shop.done['buy-gear']).toBe(true);
 
     // Item leaves the bag on equip; the latch must hold.
-    bag.slots.length = 0;
+    world.inventories.set(player, createInventoryBag());
     questSystem(world);
     expect(shop.done['buy-gear']).toBe(true);
   });
