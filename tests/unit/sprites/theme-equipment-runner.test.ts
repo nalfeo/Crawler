@@ -23,6 +23,7 @@ import {
   createThemeEquipmentRunnerDeps,
   selectCollectionTileSources,
   ThemeEquipmentRunner,
+  ThemeEquipmentRunnerError,
   ThemeEquipmentSetPhasePartialError,
 } from '../../../scripts/sprites/theme-equipment-runner.js';
 import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
@@ -540,6 +541,80 @@ describe('ThemeEquipmentRunner roster production adapter', () => {
     const savedItem = partial.state.items[0]!;
     expect(savedItem.phases.roster.artifacts.length).toBeGreaterThan(0);
     expect(partial.state.phases.roster.collectionJudge).toBeNull();
+  });
+
+  it('checkpoints the marked item then rethrows a fatal item error verbatim', async () => {
+    const store = memoryStore();
+    const { runner: subject } = runner(store);
+    const initialized = await subject.init('data/theme-equipment-sets/classic-fantasy.json');
+    const briefsState = parseThemeEquipmentSetState({ ...initialized, phase: 'briefs' });
+    store.mem.set(
+      themeEquipmentSetStateKey(briefsState.id),
+      Buffer.from(`${JSON.stringify(briefsState)}\n`),
+    );
+    store.puts = 0;
+
+    // A non-recoverable throw from item execution is fatal: the item must be
+    // marked (checkpoint intent), the state saved once, and the ORIGINAL error
+    // object rethrown verbatim — never swallowed, wrapped, or re-created.
+    const sentinel = new Error('sentinel fatal item failure');
+    const executeSpy = vi
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- exercise the private per-item executor seam
+      .spyOn(ThemeEquipmentRunner.prototype as any, 'executeItem')
+      .mockRejectedValue(sentinel);
+    try {
+      const error = await subject.runPhase(briefsState.id).then(
+        () => {
+          throw new Error('expected runPhase to reject');
+        },
+        (rejection: unknown) => rejection,
+      );
+
+      // Verbatim rethrow: the exact original instance, not a partial error or a
+      // re-created copy with the same message.
+      expect(error).toBe(sentinel);
+      expect(error).not.toBeInstanceOf(ThemeEquipmentSetPhasePartialError);
+
+      // The checkpoint was persisted exactly once, before the rethrow.
+      expect(store.puts).toBe(1);
+      const saved = parseThemeEquipmentSetState(
+        JSON.parse(store.mem.get(themeEquipmentSetStateKey(briefsState.id))!.toString()),
+      );
+      // The failing (first) item carries a durable generationError marker so a
+      // re-run regenerates only it.
+      expect(saved.items[0]!.phases.briefs.generationError?.message).toBe(
+        'sentinel fatal item failure',
+      );
+    } finally {
+      executeSpy.mockRestore();
+    }
+  });
+
+  it('rethrows a fatal runner error verbatim when no item executor is wired', async () => {
+    const store = memoryStore();
+    // No brief-selector provider is wired, so brief synthesis throws a
+    // non-recoverable ThemeEquipmentRunnerError for the first briefs item —
+    // covering the real (unspied) fatal path end to end.
+    const { runner: subject } = runner(store);
+    const initialized = await subject.init('data/theme-equipment-sets/classic-fantasy.json');
+    const briefsState = parseThemeEquipmentSetState({ ...initialized, phase: 'briefs' });
+    store.mem.set(
+      themeEquipmentSetStateKey(briefsState.id),
+      Buffer.from(`${JSON.stringify(briefsState)}\n`),
+    );
+    store.puts = 0;
+
+    const error = await subject.runPhase(briefsState.id).then(
+      () => {
+        throw new Error('expected runPhase to reject');
+      },
+      (rejection: unknown) => rejection,
+    );
+
+    expect(error).toBeInstanceOf(ThemeEquipmentRunnerError);
+    expect(error).not.toBeInstanceOf(ThemeEquipmentSetPhasePartialError);
+    expect((error as Error).message).toMatch(/brief synthesis requires/i);
+    expect(store.puts).toBe(1);
   });
 
   it('publishes one combined staged asset list, saves only after success, and cleans the stage root', async () => {
