@@ -3,7 +3,11 @@
 import path from 'node:path';
 import process from 'node:process';
 import { canAdvanceThemeSet, type ThemeEquipmentSetState } from './theme-equipment-set.js';
-import { createThemeEquipmentRunnerDeps, ThemeEquipmentRunner } from './theme-equipment-runner.js';
+import {
+  createThemeEquipmentRunnerDeps,
+  ThemeEquipmentRunner,
+  ThemeEquipmentSetPhasePartialError,
+} from './theme-equipment-runner.js';
 
 export type ThemeEquipmentCliAction = 'init' | 'run-phase' | 'advance' | 'status' | 'publish';
 
@@ -72,6 +76,7 @@ export function sanitizeStatus(state: ThemeEquipmentSetState): Record<string, un
           phase,
           {
             review: record.review.verdict,
+            generationError: record.generationError ? record.generationError.message : null,
             artifacts: record.artifacts.map(({ id, kind, briefId, runId, variantIndex }) => ({
               id,
               kind,
@@ -118,6 +123,17 @@ export async function main(
     process.stdout.write(`${JSON.stringify(sanitizeStatus(state), null, 2)}\n`);
     return 0;
   } catch (error) {
+    // A partial phase pass DID checkpoint the accepted work: emit the sanitized
+    // persisted state on stdout (so the driver/canvas sees exactly what
+    // survived, including per-item generationError markers) and the actionable
+    // re-run guidance on stderr, then exit non-zero to signal "not fully done".
+    if (error instanceof ThemeEquipmentSetPhasePartialError) {
+      process.stdout.write(`${JSON.stringify(sanitizeStatus(error.state), null, 2)}\n`);
+      process.stderr.write(
+        `theme-equipment ${args.action} partially completed: ${error.message}\n`,
+      );
+      return 1;
+    }
     process.stderr.write(
       `theme-equipment ${args.action} failed: ${error instanceof Error ? error.message : String(error)}\n`,
     );
