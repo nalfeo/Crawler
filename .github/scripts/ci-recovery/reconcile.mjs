@@ -2922,12 +2922,14 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
   if (pr.mergeable_state === 'behind') {
     if (live) {
+      let updateBranchSucceeded = false;
       try {
         await request(pat || readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
           method: 'PUT',
           body: { expected_head_sha: pr.head.sha },
         });
         process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+        updateBranchSucceeded = true;
       } catch (err) {
         // 422 covers "already up-to-date" and stale expected_head_sha — log
         // it so stale-head races are visible and not silently swallowed.
@@ -2936,8 +2938,24 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
         );
       }
+      // Issue #2453: GitHub silently clears auto-merge when the head SHA changes
+      // via update-branch. Dispatch a fresh reconcile so the PR is re-armed after
+      // CI passes on the new head — even if the push event is dropped or
+      // budget-gated by the router.
+      if (updateBranchSucceeded) {
+        await dispatchWorkflow('ci-recovery.yml', {
+          operation: 'reconcile',
+          pr_number: String(prNumber),
+          trigger: 'post-update-branch',
+          lease_id: '',
+        });
+        process.stdout.write(`dispatch-post-update-branch pr=#${prNumber}\n`);
+      }
     } else {
       process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+      // Dry-run: show that live mode would also dispatch a follow-up reconcile
+      // to re-arm auto-merge after the head advance clears it.
+      process.stdout.write(`dry-run would-dispatch-post-update-branch pr=#${prNumber}\n`);
     }
   }
   await closeLoopIncidentOnConvergence();
