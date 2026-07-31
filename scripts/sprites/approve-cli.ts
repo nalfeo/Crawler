@@ -194,8 +194,8 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         const briefRaw = readFileSync(briefAbsPath, 'utf8');
         // Fast YAML extraction: parse iconBatch array from brief YAML.
         // We use a dynamic import of js-yaml which is already a dep of the pipeline.
-        const { load } = await import('js-yaml');
-        const brief = load(briefRaw) as Record<string, unknown>;
+        const { parse } = await import('yaml');
+        const brief = parse(briefRaw) as Record<string, unknown>;
         const raw = brief['iconBatch'];
         if (!Array.isArray(raw) || raw.length === 0) {
           process.stderr.write(`approve failed: brief at ${briefAbsPath} has no iconBatch array\n`);

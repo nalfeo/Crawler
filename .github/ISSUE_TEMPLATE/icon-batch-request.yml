@@ -1,0 +1,34 @@
+name: Icon batch request
+description: Request icon generation for achievement or ability icons.
+title: 'Icon batch: <action>'
+labels: ['icon-batch']
+body:
+  - type: dropdown
+    id: action
+    attributes:
+      label: Action
+      description: What the pipeline should do.
+      options:
+        - generate-briefs
+        - run
+        - run-all
+        - status
+    validations:
+      required: true
+  - type: input
+    id: batch_ids
+    attributes:
+      label: Batch IDs (run only)
+      description: >-
+        Space-separated batch IDs to generate. Only used for action=run.
+        Example: `achv-icons-batch-01 achv-icons-batch-02`
+      placeholder: achv-icons-batch-01
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes (optional)
+      description: Any additional context for this request.
+    validations:
+      required: false

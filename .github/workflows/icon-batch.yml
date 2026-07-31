@@ -1,0 +1,167 @@
+# Icon Batch Generation Pipeline
+#
+# Generates and approves batched icon sheets (achievements + abilities). Icons
+# are 128×128 pixel-art symbols on a transparent background — frames are
+# composed separately as deterministic UI elements at render time.
+#
+# ─── Security posture (public repo!) ─────────────────────────────────────────
+# Same model as asset-request.yml: issue-event runs require OWNER/MEMBER/
+# COLLABORATOR author_association; workflow_dispatch is the maintainer escape
+# hatch. Azure keys are wired only to the steps that need them.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Icon Batch Pipeline
+
+on:
+  issues:
+    types: [labeled, edited, reopened]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - generate-briefs
+          - run
+          - run-all
+          - status
+      batch_ids:
+        description: 'Space-separated batch IDs to run (e.g. "achv-icons-batch-01 achv-icons-batch-02"). Only used for action=run.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-worker
+  cancel-in-progress: false
+  queue: single
+
+jobs:
+  icon-batch:
+    name: Icon batch — ${{ github.event_name == 'issues' && 'issue' || inputs.action }}
+    runs-on: ubuntu-latest
+
+    if: |
+      github.event_name != 'issues' ||
+      (
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'icon-batch' &&
+        (
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) ||
+          (github.event.issue.user.type == 'Bot' && contains(fromJSON('["Copilot","github-actions[bot]"]'), github.event.issue.user.login))
+        )
+      )
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      # ── Generate briefs ─────────────────────────────────────────────────────
+      - name: Generate icon briefs
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.action == 'generate-briefs') ||
+          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: generate-briefs'))
+        run: |
+          npm run sprites:gen-achievement-icon-briefs
+          npm run sprites:gen-ability-icon-briefs
+          echo "generate-briefs: done" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Status ──────────────────────────────────────────────────────────────
+      - name: Status
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.action == 'status') ||
+          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: status'))
+        run: npm run sprites:icon-batch -- status | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # ── Run specific batches ────────────────────────────────────────────────
+      - name: Run specified batches
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.action == 'run') ||
+          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: run'))
+        env:
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
+          SPRITES_PROVIDER: azure-openai
+          SPRITES_TEXT_PROVIDER: azure-openai
+          SPRITES_VISION_PROVIDER: azure-openai
+          SPRITES_ALLOW_CI_PIPELINE: 'true'
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Parse batch_ids from workflow_dispatch input or issue body.
+          BATCH_IDS="${{ inputs.batch_ids }}"
+          if [ -z "$BATCH_IDS" ] && [ "${{ github.event_name }}" = "issues" ]; then
+            BATCH_IDS=$(node -e "
+              const body = process.env.ISSUE_BODY || '';
+              const m = body.match(/batch_ids:\s*(.+)/);
+              process.stdout.write(m ? m[1].trim() : '');
+            " ISSUE_BODY="${{ github.event.issue.body }}")
+          fi
+          if [ -z "$BATCH_IDS" ]; then
+            echo "ERROR: action=run requires batch_ids (workflow_dispatch input or 'batch_ids: ...' in issue body)" >&2
+            exit 1
+          fi
+
+          BRIEF_ARGS=""
+          for BATCH_ID in $BATCH_IDS; do
+            BRIEF=$(find briefs/icons -name "${BATCH_ID}.yaml" 2>/dev/null | head -1)
+            if [ -z "$BRIEF" ]; then
+              echo "WARNING: brief not found for batch_id=${BATCH_ID} — skipping" >&2
+              continue
+            fi
+            BRIEF_ARGS="${BRIEF_ARGS} --brief ${BRIEF}"
+          done
+          if [ -z "$BRIEF_ARGS" ]; then
+            echo "ERROR: no valid briefs found for the specified batch_ids" >&2
+            exit 1
+          fi
+
+          npm run sprites:icon-batch -- run $BRIEF_ARGS
+          echo "run: completed for batch_ids: $BATCH_IDS" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Run all pending batches ─────────────────────────────────────────────
+      - name: Run all batches
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.action == 'run-all') ||
+          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: run-all'))
+        env:
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_IMAGE_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_IMAGE_DEPLOYMENT }}
+          AZURE_OPENAI_CHAT_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
+          SPRITES_PROVIDER: azure-openai
+          SPRITES_TEXT_PROVIDER: azure-openai
+          SPRITES_VISION_PROVIDER: azure-openai
+          SPRITES_ALLOW_CI_PIPELINE: 'true'
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm run sprites:icon-batch -- run-all
+          echo "run-all: completed" >> "$GITHUB_STEP_SUMMARY"
