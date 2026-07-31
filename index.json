@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3e0aa6f4a37457a3c7a69cb9504ffaf1148d0d96",
+    "commitDate": "2026-07-31T08:45:56Z",
+    "commitSubject": "CI recovery: add periodic full-inventory dormant PR reconciliation (#2436)",
+    "capturedAt": "2026-07-31T09:59:43.882Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30618271346",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/3e0aa6f4a37457a3c7a69cb9504ffaf1148d0d96.json"
+  },
+  {
     "commit": "06dc9d9ef886736687f982f967c3b6bf869c91d7",
     "commitDate": "2026-07-31T08:25:13Z",
     "commitSubject": "Handle cancelled required CI runs as retriggerable blockers in CI recovery (#2438)",
