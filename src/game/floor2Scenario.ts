@@ -518,6 +518,8 @@ export function initializeFloor2Bosses(
       defeated: false,
       displayName: bossArchetype?.name ?? `${familyId} Boss`,
       lootTableId: 'boss',
+      bossSpawnX: spawnWorld.x,
+      bossSpawnY: spawnWorld.y,
     });
 
     objectives.push({
@@ -672,7 +674,10 @@ export function floor2ObjectiveTick(world: GameWorld): void {
     // "defeated" with no chest ever created. No-op (never throws) on Floor 1
     // (structurally unreachable here anyway), with the economy flag
     // disabled, or on re-entry for an already-chested family.
-    spawnBossChestForDefeatedBoss(world, familyId);
+    // Spawn the chest at the boss's position so it drops in-world.
+    const bossX = world.stores.position.x[eid] ?? 0;
+    const bossY = world.stores.position.y[eid] ?? 0;
+    spawnBossChestForDefeatedBoss(world, familyId, bossX, bossY);
 
     decapitated.add(familyId);
     setGoalFlag(world, bossDefeatGoalId(familyId), true);
@@ -751,7 +756,9 @@ export function floor2VictorySystem(world: GameWorld): void {
       // `spawnBossChestForDefeatedBoss` is idempotent (checks
       // `world.bossChests.has(chestId)` first), so it is safe to call here
       // even for families already chested via the primary path.
-      spawnBossChestForDefeatedBoss(world, familyId);
+      // Use the stored spawn position from the encounter state when available.
+      const enc = world.floorExtendedState?.familyState?.bossEncounters?.get(familyId);
+      spawnBossChestForDefeatedBoss(world, familyId, enc?.bossSpawnX, enc?.bossSpawnY);
       decapitated.add(familyId);
       setGoalFlag(world, bossDefeatGoalId(familyId), true);
     }

@@ -2,24 +2,22 @@
  * Reward Opening UX Lab — Phaser sandbox for the deterministic
  * anticipation -> reveal -> summary -> claimed sequence
  * (`createRewardOpeningUI`) wired up exactly like `MainGameScene`: a real
- * `AchievementsUI` + `BossChestUI` sharing one `RewardOpeningUI` instance.
+ * `AchievementsUI` sharing one `RewardOpeningUI` instance.
  *
- * Buttons unlock real achievements (lootBox + equipment rewards at different
- * tiers) and spawn a real Floor 2 boss chest via the same
- * `spawnBossChestForDefeatedBoss` game-layer entry point the real boss-defeat
- * hook calls, so every claim/grant/reveal in this lab runs through the exact
- * shared, exact-once core APIs the real game uses — this lab never
- * hand-rolls a reward.
+ * Boss chests now drop in-world and auto-open via proximity; the panel
+ * toggle path (`BossChestUI`) has been removed. The "Defeat boss → open
+ * chest" button in the Boss chest folder goes straight to `openBossChest`
+ * and then starts the reveal presentation, exercising the same
+ * reward path the real game uses after proximity pickup.
  *
  * A "Simulate reload" button demonstrates save/load-safe presentation: it
- * tears down and recreates the Phaser UI trio against the SAME `GameWorld`
+ * tears down and recreates the Phaser UI against the SAME `GameWorld`
  * (which still holds any unacknowledged `pendingPresentations`/
  * `revealedGrant`), then the scene's `create()` calls
- * `resumePendingPresentation` on both panels — exactly what
+ * `resumePendingPresentation` on the achievements panel — exactly what
  * `MainGameScene.create()` does after `configureWorld` restores a save. The
  * world (and its player entity) is created ONCE per "Reset" click and reused
- * across every "Simulate reload", matching a real save/load resume, which
- * never re-spawns the player.
+ * across every "Simulate reload".
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
@@ -27,10 +25,10 @@ import { GAME } from '../../shared/constants.js';
 import { createGameWorld, spawnPlayer, type GameWorld } from '../../core/index.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { spawnBossChestForDefeatedBoss } from '../../game/boss-chest-resolver.js';
+import { openBossChest, createBossChestId } from '../../core/systems/bossChestRewards.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { createRewardOpeningUI, type RewardOpeningUI } from '../../engine/RewardOpeningUI.js';
 import { createAchievementsUI } from '../../engine/AchievementsUI.js';
-import { createBossChestUI, type BossChestUIApi } from '../../engine/BossChestUI.js';
 import { createLogger } from '../../shared/logger.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -100,7 +98,6 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
   let playerEid = -1;
   let rewardOpeningUI: RewardOpeningUI | undefined;
   let achievementsUI: ReturnType<typeof createAchievementsUI> | undefined;
-  let bossChestUI: BossChestUIApi | undefined;
 
   function renderStatus(): void {
     const phase = rewardOpeningUI?.getPhase() ?? null;
@@ -129,7 +126,7 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
 
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
       this.add
-        .text(GAME.WIDTH / 2, 40, 'Reward Opening UX Lab — [V] Achievements · [C] Boss Chests', {
+        .text(GAME.WIDTH / 2, 40, 'Reward Opening UX Lab — [V] Achievements', {
           fontFamily: 'monospace',
           fontSize: '16px',
           color: '#4b5563',
@@ -138,18 +135,12 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
 
       rewardOpeningUI = createRewardOpeningUI(this, {});
       achievementsUI = createAchievementsUI(this, rewardOpeningUI);
-      bossChestUI = createBossChestUI(this, rewardOpeningUI, {
-        getPlayerEid: () => (playerEid >= 0 ? playerEid : undefined),
-      });
 
       // Mirrors MainGameScene.create(): resume any reveal left unacknowledged
-      // by a prior game/scene instance against this same world (simulating a
-      // save/load restore landing on an unclaimed/unacknowledged reward).
+      // by a prior game/scene instance against this same world.
       achievementsUI.resumePendingPresentation(world);
-      bossChestUI.resumePendingPresentation(world);
 
       const keyV = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
-      const keyC = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
       this.events.on('update', (_time: number, delta: number) => {
         if (rewardOpeningUI?.isOpen()) {
           rewardOpeningUI.tick(delta);
@@ -157,19 +148,14 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
         if (keyV && Phaser.Input.Keyboard.JustDown(keyV) && !rewardOpeningUI?.isOpen()) {
           achievementsUI?.toggle(world);
         }
-        if (keyC && Phaser.Input.Keyboard.JustDown(keyC) && !rewardOpeningUI?.isOpen()) {
-          bossChestUI?.toggle(world);
-        }
         renderStatus();
       });
 
       this.events.once('shutdown', () => {
         rewardOpeningUI?.destroy();
         achievementsUI?.destroy();
-        bossChestUI?.destroy();
         rewardOpeningUI = undefined;
         achievementsUI = undefined;
-        bossChestUI = undefined;
       });
 
       renderStatus();
@@ -223,20 +209,22 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
         spawn: () => {
           const result = spawnBossChestForDefeatedBoss(world, BOSS_FAMILY_ID);
           logger.info('Lab spawnBossChestForDefeatedBoss', result);
+          if (result.created && playerEid >= 0) {
+            const chestId = createBossChestId(BOSS_FAMILY_ID);
+            openBossChest(world, chestId, playerEid);
+            logger.info('Lab openBossChest triggered (proximity simulation)');
+          }
           renderStatus();
         },
       },
       'spawn',
     )
-    .name('Defeat boss → spawn chest');
+    .name('Defeat boss → spawn + open chest');
 
   const panelsFolder = gui.addFolder('Panels');
   panelsFolder
     .add({ toggle: () => achievementsUI?.toggle(world) }, 'toggle')
     .name('Toggle Achievements [V]');
-  panelsFolder
-    .add({ toggle: () => bossChestUI?.toggle(world) }, 'toggle')
-    .name('Toggle Boss Chests [C]');
 
   const sequenceFolder = gui.addFolder('Reveal sequence');
   sequenceFolder.add({ skip: () => rewardOpeningUI?.skip() }, 'skip').name('Skip to summary');
@@ -286,6 +274,6 @@ registerLab(LAB_ID, {
   category: 'Progression' as LabCategory,
   name: 'Reward Opening UX Lab',
   description:
-    'Real anticipation→reveal→summary→claimed sequence for achievement boxes and boss chests, driven through the same AchievementsUI/BossChestUI/RewardOpeningUI trio MainGameScene wires up. Exercises intensity scaling, skip, and save/load-safe resume.',
+    'Real anticipation→reveal→summary→claimed sequence for achievement boxes and boss chests, driven through AchievementsUI/RewardOpeningUI. Boss chests now auto-open via proximity pickup; the lab simulates this by calling openBossChest directly. Exercises intensity scaling, skip, and save/load-safe resume.',
   create: createRewardOpeningUxLab,
 });

@@ -1,5 +1,6 @@
 import { addComponent, set } from 'bitecs';
 import {
+  BossChestEntity,
   Harvestable,
   Invincible,
   Npc,
@@ -324,6 +325,48 @@ export function spawnHarvestableNode(
     `harvestable-appearance:${world.seed}:${eid}:${world.frameCount}:${world.elapsedMs}:${x}:${y}`,
   );
   world.stores.sprite.variantRoll[eid] = new SeededRandom(appearanceSeed).next();
+
+  return eid;
+}
+
+/**
+ * Spawn a physical boss-chest entity at the given world-space position.
+ *
+ * The chest renders as a world object the player can walk near to open.
+ * `bossChestPickupSystem` detects player proximity, calls `openBossChest`,
+ * and removes the entity once the chest transitions to `revealed`.
+ *
+ * The `chestId` → `eid` reverse-lookup is stored in `world.bossChestEids`
+ * so the pickup system can match the ECS entity back to the lifecycle record
+ * without scanning the entire entity list.
+ *
+ * @param chestId - The canonical chest ID (e.g. `boss-chest:serpents`)
+ * @returns The new entity id
+ */
+export function spawnBossChestEntity(
+  world: GameWorld,
+  x: number,
+  y: number,
+  chestId: string,
+): number {
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES['boss-chest'].radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Weight, { value: PHYSICS_BODIES['boss-chest'].weight }));
+  addComponent(world.ecs, eid, BossChestEntity);
+
+  world.bossChestEids.set(chestId, eid);
 
   return eid;
 }

@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "level5-passive-section-and-unlock",
+  "task_title": "Level-5 passive UX: PASSIVE section, unlock announcement, VFX rescoping",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adversarial-lite review (gpt-5.4, high effort) verdict: approved_with_changes, no blocking issues. Alt A: put all unlock feedback (VFX+announcement) at the level-5 grant site only, remove applyPassive VFX entirely -- rejected, loses the equip-time activation cue for weapon-gated passives. Alt B: keep all VFX in applyPassive with new first-activation bookkeeping state -- rejected, adds persistent simulation state just for cosmetics, more invasive than this issue warrants. Alt C: split unlocked vs activated into two distinct VFX/announcement kinds -- rejected, larger scope than the issue requires; chosen unconditional-announcement + conditional-VFX split already satisfies the UX goal. divergence=minor: reviewer confirmed constraint compliance (no grant/prerequisite/stat/threshold/slot changes) and raised test-robustness/API-contract points, no re-architecture. Resolutions: (1) e2e single-frame sample now polls via waitForState for skillPassiveUnlocked kind, avoiding FIFO-ordering flakiness; (2) added double-fire regression test (weapon-gated milestone with matching weapon already equipped at grant time) proving exactly one VFX + one announcement; (3) getCurrentAnnouncement scope and announcement replay-on-HUD-reconstruction accepted as out-of-scope trade-offs consistent with existing bossAbilityCast precedent; (4) FIFO starvation under burst traffic accepted as an existing property of the shared queue, not introduced by this change."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

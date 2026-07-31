@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "boss-chest-ground-drop",
+  "task_title": "Replace BossChestUI with physical ground-drop boss chests",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "convergent",
+      "notes": "Initial plan review found two blocking issues: live boss-chest reveals were not surfaced during active play, and boss chests created without stored boss coordinates could become permanently unreachable. Addressed by resuming pending reward presentations after live simulation sync and by falling back to the live player position when boss coordinates are unavailable. Second pass reported no remaining high-confidence design/correctness issues."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "model": "claude-sonnet-5",
+          "models": ["claude-sonnet-5"],
+          "timestamp": "2026-07-31T09:04:27Z",
+          "clean": false,
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "verdict": "approve_after_fixes",
+          "summary": "Code review required one additional live regression: prove the physical proximity pickup path opens the shared reward overlay in the real MainGameScene without a manual resume hook."
+        },
+        {
+          "round": 2,
+          "model": "claude-sonnet-5",
+          "models": ["claude-sonnet-5"],
+          "timestamp": "2026-07-31T09:04:27Z",
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "verdict": "approve",
+          "summary": "Follow-up e2e coverage now proves a live physical boss chest opens the reward overlay on proximity in the real probe lab; no remaining high-confidence concerns."
+        }
+      ],
+      "model": "claude-sonnet-5",
+      "timestamp": "2026-07-31T09:04:27Z",
+      "summary": "Code review approved after landing the live proximity pickup regression.",
+      "concerns": []
+    }
+  }
+}

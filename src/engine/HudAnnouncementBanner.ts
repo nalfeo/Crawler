@@ -40,6 +40,7 @@ const COLORS = {
   start: '#f5f5f5',
   end: '#a7f3d0',
   boss: '#fca5a5',
+  unlock: '#fde68a',
   fallback: '#e5e7eb',
 } as const;
 
@@ -57,6 +58,9 @@ function verbForKind(kind: AnnouncementKind): string {
     case 'bossAbilityCast':
       // The full authored announcement is the label; no subtitle verb.
       return '';
+    case 'skillPassiveUnlocked':
+      // The full authored announcement is the label; no subtitle verb.
+      return '';
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled announcement kind: ${String(unreachable)}`);
@@ -72,6 +76,8 @@ function colorForKind(kind: AnnouncementKind): string {
       return COLORS.end;
     case 'bossAbilityCast':
       return COLORS.boss;
+    case 'skillPassiveUnlocked':
+      return COLORS.unlock;
     default:
       return COLORS.fallback;
   }
@@ -84,6 +90,14 @@ export function createHudAnnouncementBanner(
   sync(world: GameWorld): void;
   setTop(top: number): void;
   getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } | null;
+  /**
+   * The currently-rendered banner content (kind + exact text), or `null` when
+   * the banner is hidden. This is the real, player-visible projection — the
+   * same content the player is looking at — so e2e probes can assert on it
+   * without reaching into `world.announcements` or internal ability/skill
+   * state.
+   */
+  getCurrentAnnouncement(): { kind: AnnouncementKind; text: string } | null;
   destroy(): void;
 } {
   const outerParent = options.parent;
@@ -153,6 +167,15 @@ export function createHudAnnouncementBanner(
   // Track which announcement is currently on-screen so we correctly cross-fade
   // to the next one when the head advances mid-lifetime.
   let currentEvent: AnnouncementEvent | undefined;
+  // World time at which the current event started showing. Used to compute
+  // expiry from display-start rather than creation-time, so simultaneous
+  // announcements each get their full durationMs regardless of when they were
+  // originally pushed.
+  let displayStartMs = 0;
+  // The actual rendered text for the current event — set in show() so that
+  // getCurrentAnnouncement() returns what the player literally sees (including
+  // any ellipsization applied to spawner labels).
+  let currentRenderedText = '';
 
   function drainWorldAnnouncements(world: GameWorld): void {
     for (const event of world.announcements) {
@@ -180,30 +203,34 @@ export function createHudAnnouncementBanner(
     }
   }
 
-  function show(event: AnnouncementEvent): void {
-    // Boss-ability casts carry a full authored string that must render exactly
-    // (never ellipsized or rebuilt from an archetype index). The panel is 420px
-    // wide; authored strings can exceed the 44-char single-line budget, so we
-    // enable word wrap and vertically re-center the label in the full panel.
-    const BOSS_ABILITY_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
-    if (event.kind === 'bossAbilityCast') {
+  function show(event: AnnouncementEvent, nowMs: number): void {
+    // Boss-ability casts and skill-passive-unlock milestones both carry a full
+    // authored string that must render exactly (never ellipsized or rebuilt
+    // from an archetype index). The panel is 420px wide; authored strings can
+    // exceed the 44-char single-line budget, so we enable word wrap and
+    // vertically re-center the label in the full panel.
+    const FULL_TEXT_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
+    if (event.kind === 'bossAbilityCast' || event.kind === 'skillPassiveUnlocked') {
       labelText
-        .setWordWrapWidth(BOSS_ABILITY_WRAP_WIDTH, true)
+        .setWordWrapWidth(FULL_TEXT_WRAP_WIDTH, true)
         .setText(event.text)
         .setY(ANNOUNCEMENT_PANEL_HEIGHT / 2)
         .setColor(colorForKind(event.kind));
       verbText.setText('');
-      accent.setFillStyle(0xef4444);
+      accent.setFillStyle(event.kind === 'bossAbilityCast' ? 0xef4444 : 0x22c55e);
+      currentRenderedText = event.text;
     } else {
       const label = event.displayName ?? 'Spawner';
       // Disable word wrap for the standard single-line path.
+      const renderedLabel = ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS);
       labelText
         .setWordWrapWidth(0)
-        .setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS))
+        .setText(renderedLabel)
         .setY(16)
         .setColor(colorForKind(event.kind));
       verbText.setText(verbForKind(event.kind).toUpperCase());
       accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
+      currentRenderedText = renderedLabel;
     }
     activeTween?.remove();
     activeTween = scene.tweens.add({
@@ -214,6 +241,7 @@ export function createHudAnnouncementBanner(
     });
     hidden = false;
     currentEvent = event;
+    displayStartMs = nowMs;
   }
 
   function hide(): void {
@@ -227,17 +255,21 @@ export function createHudAnnouncementBanner(
     });
     hidden = true;
     currentEvent = undefined;
+    currentRenderedText = '';
   }
 
   function sync(world: GameWorld): void {
     drainWorldAnnouncements(world);
     pruneCanceledBossAbilityAnnouncements(world);
-    // Drop expired heads until we find one still in its lifespan.
-    while (queue.length > 0) {
-      const head = queue[0]!;
-      const expiresAt = head.elapsedMs + head.durationMs;
-      if (world.elapsedMs <= expiresAt) break;
-      queue.shift();
+    // Expire the head only when its display duration has fully elapsed from
+    // the moment it *started showing* (displayStartMs). Using the creation
+    // time (event.elapsedMs) would expire all simultaneously-pushed events at
+    // the same wall-clock instant, preventing the second from ever appearing.
+    if (queue.length > 0 && currentEvent === queue[0]) {
+      // queue[0]! is safe: we just checked queue.length > 0.
+      if (world.elapsedMs > displayStartMs + queue[0]!.durationMs) {
+        queue.shift();
+      }
     }
     if (queue.length === 0) {
       hide();
@@ -245,7 +277,7 @@ export function createHudAnnouncementBanner(
     }
     const head = queue[0]!;
     if (currentEvent !== head) {
-      show(head);
+      show(head, world.elapsedMs);
     }
   }
 
@@ -279,10 +311,16 @@ export function createHudAnnouncementBanner(
     };
   }
 
+  function getCurrentAnnouncement(): { kind: AnnouncementKind; text: string } | null {
+    if (hidden || !currentEvent) return null;
+    return { kind: currentEvent.kind, text: currentRenderedText };
+  }
+
   return {
     sync,
     setTop: (top: number) => wrapper.setY(top),
     getLayoutBounds,
+    getCurrentAnnouncement,
     destroy,
   };
 }

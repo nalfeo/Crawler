@@ -2,6 +2,7 @@ import { addComponent, addEntity, removeComponent, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BossChestEntity,
   DeathTimer,
   Enemy,
   Gold,
@@ -739,6 +740,22 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toMatch(/^__cw_/);
     expect(images[0]?.frame).toBeUndefined();
     expect(images[0]?.scaleX).toBe(1);
+  });
+
+  it('renders boss chest entities with the dedicated chest fallback texture', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 5, y: 6 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+    addComponent(world.ecs, eid, BossChestEntity);
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('__cw_boss_chest');
   });
 
   it('prefers Kenney sprite + frame when the sheet texture exists', () => {

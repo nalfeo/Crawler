@@ -378,6 +378,38 @@ describe('real reward-opening UX (achievement path)', () => {
     }
   });
 
+  it('opens the reward overlay when the player walks into a live physical boss chest', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      await mainSceneProbe.resolveLoadout(page);
+      await waitForState(page, (s) => s.worldState === 'playing' && s.simulationPaused, {
+        label: 'paused playing state after loadout resolution',
+      });
+      await mainSceneProbe.setPlayerFeet(page, 10, 10);
+      const chest = await mainSceneProbe.seedAvailableBossChest(page, 18, 10);
+      expect(chest, 'probe should seed a physical boss chest entity').toEqual({ x: 18, y: 10 });
+
+      await mainSceneProbe.advanceSimulationFrames(page, 1);
+      expect(await mainSceneProbe.getRewardOpeningState(page)).toEqual({
+        open: false,
+        phase: null,
+        bucket: null,
+        revealed: 0,
+        total: 0,
+      });
+
+      await mainSceneProbe.setPlayerFeet(page, 18, 10);
+      await mainSceneProbe.advanceSimulationFrames(page, 1);
+      const opened = await waitForRewardOpeningState(page, (s) => s.open, {
+        label: 'live boss chest proximity reveal to open without manual resume',
+      });
+      expect(opened.phase).toBe('anticipation');
+      expect(opened.total).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+
   it('does not leak queued E interactions after the reward overlay closes', async () => {
     const { context, page } = await newPage(browser);
     try {
