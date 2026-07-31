@@ -30,16 +30,16 @@ Full regeneration of all 17 disliked Floor 2 boss sprites. Started from 20 disli
 
 batfolk, beetlefolk, geese, goblin, llama, panda, kobold, myconid
 
-| Boss            | Variant | Sensors | Judge   |
-| --------------- | ------- | ------- | ------- |
-| batfolk-boss    | var-0   | 7/7     | 5/5/5/5 |
-| geese-boss      | var-0   | 7/7     | 5/5/5/5 |
-| goblin-boss     | var-0   | 7/7     | 5/5/5/5 |
-| llama-boss      | var-0   | 7/7     | 5/5/5/5 |
-| panda-boss      | var-0   | 7/7     | 5/5/5/5 |
-| kobold-boss     | var-2   | 7/7     | 5/5/5/5 |
-| beetlefolk-boss | var-1   | 7/7     | 5/5/5/5 |
-| myconid-boss    | var-2   | 7/7     | 5/5/5/5 |
+| Boss            | Variant | Sensors | Judge   | Notes                                                                                     |
+| --------------- | ------- | ------- | ------- | ----------------------------------------------------------------------------------------- |
+| batfolk-boss    | var-0   | 7/7     | 4/5/4/5 | **Re-generated** — original was bust/portrait; replaced with full body (see Wave 3 below) |
+| geese-boss      | var-0   | 7/7     | 5/5/5/5 |                                                                                           |
+| goblin-boss     | var-0   | 7/7     | 5/5/5/5 |                                                                                           |
+| llama-boss      | var-0   | 7/7     | 5/5/5/5 |                                                                                           |
+| panda-boss      | var-0   | 7/7     | 5/5/5/5 |                                                                                           |
+| kobold-boss     | var-2   | 7/7     | 5/5/5/5 |                                                                                           |
+| beetlefolk-boss | var-1   | 7/7     | 5/5/5/5 |                                                                                           |
+| myconid-boss    | var-2   | 7/7     | 5/5/5/5 |                                                                                           |
 
 ### Wave 2 (8 bosses)
 
@@ -129,3 +129,29 @@ npm run sprites:placeholder-audit -- --all
 - `7c1e25941` — art: approve wave 2 + crabfolk floor 2 boss sprites (8 new bosses)
 - `596d23cb8` — fix(sprites): use --no-verify in temp worktree commit for asset-pr
 - `d06c49f82` — fix(sprites): also skip pre-push hook in asset-pr temp worktree
+- `2cf0c79b2` — art: approve batfolk-boss var-0 full-body regen (7/7 sensors, judge 4/5/4/5) [brief rewrite]
+
+---
+
+## Wave 3: batfolk-boss full-body regen
+
+**Problem:** original batfolk-boss-var-0 (from Wave 1 run `cf814bd5`) was a bust/portrait crop — face + shoulders only. The "folded cloak-wings wrapped into body" design caused the model to fill the lower frame with wing-mass, reading as a complete bust shot.
+
+**Root cause sequence:**
+
+1. Run 1 (`f4804594`): brief had full-body language but not explicit enough — all 4 variants bust shots
+2. Run 2 (`e3b71033`): added anatomical prose "digitigrade bat-claw legs, back-cape opens at front" — framing improved but art style drifted to painted/illustrated (prose too elaborate)
+3. Run 3 (`bf58df91`): rewrote brief in goblin-boss pattern — shorter description, silhouette paragraph with explicit "legs and feet visible at bottom", back-cape behind (not wrapping legs) — **3/4 variants PASS**
+
+**Fix applied:** replaced batfolk-boss-var-0 in batch branch `assets/batch-20260731-143419` (PR #2499, commit `e1672549`) with the full-body version. No separate checkin needed.
+
+| Boss         | Variant | Run        | Sensors | Judge   |
+| ------------ | ------- | ---------- | ------- | ------- |
+| batfolk-boss | var-0   | `bf58df91` | 7/7     | 4/5/4/5 |
+
+**Key brief lessons (batfolk / full-body figures):**
+
+- "Cloak-wings wrapped into body" = model generates bust. Design must keep cloak/cape BEHIND the figure.
+- Anatomical prose causes style drift to illustrated. Keep descriptions short and mechanical.
+- "legs and feet visible at bottom of frame" in the silhouette paragraph is the reliable full-body anchor.
+- YAML colon-in-string bug: variation strings with `: ` must use em-dashes (`—`) or double-quotes.
