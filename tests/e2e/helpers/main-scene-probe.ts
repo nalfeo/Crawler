@@ -179,13 +179,28 @@ export const mainSceneProbe = {
     page: Page,
   ): Promise<
     ReadonlyArray<{
-      stockId: string;
+      stockId?: string;
       offerId: string;
       quantity: number;
       unitPrice: number;
       displayName: string | null;
     }>
   > => page.evaluate(() => window.__mainSceneProbe!.getQuartermasterStockSnapshot()),
+  getSettlementShopInventorySnapshot: (
+    page: Page,
+    npcEid: number,
+  ): Promise<
+    ReadonlyArray<{
+      itemId: string;
+      quantity: number;
+      unitPrice: number;
+      displayName: string | null;
+    }>
+  > =>
+    page.evaluate(
+      (eid) => window.__mainSceneProbe!.getSettlementShopInventorySnapshot(eid),
+      npcEid,
+    ),
   purchaseFirstQuartermasterOffer: (
     page: Page,
   ): Promise<{

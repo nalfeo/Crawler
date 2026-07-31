@@ -313,9 +313,8 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
 
 /**
  * Item slugs of every placeholder wearable gear def, in slot-registry-ish
- * order. Exported so labs/tests can seed a bag with gear for every non-weapon
- * slot without re-deriving the list. Weapons and the charm are intentionally
- * excluded (weapons occupy hand slots the paper-doll fills separately).
+ * order. Weapons and the charm are intentionally excluded (weapons occupy hand
+ * slots the paper-doll fills separately).
  */
 export const GEAR_ITEM_IDS: readonly string[] = GEAR_EQUIPMENT_DEFS.filter(
   (definition) => !definition.tags?.includes('wave-b'),
