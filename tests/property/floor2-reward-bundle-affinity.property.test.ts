@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import * as fc from 'fast-check';
 import {
-  REWARD_BUNDLE_AFFINITY_PROB,
-  REWARD_BUNDLE_RARITIES,
-  alignmentFromRoll,
+  _REWARD_BUNDLE_AFFINITY_PROB as REWARD_BUNDLE_AFFINITY_PROB,
+  _REWARD_BUNDLE_RARITIES as REWARD_BUNDLE_RARITIES,
+  _alignmentFromRoll as alignmentFromRoll,
   resolveEquipmentRewardBundle,
-  resolvePlayerBuildAffinity,
+  _resolvePlayerBuildAffinity as resolvePlayerBuildAffinity,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { getGeneratedEquipmentBaseAffinity } from '../../src/game/generated-equipment-generator.js';
 import { getGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';

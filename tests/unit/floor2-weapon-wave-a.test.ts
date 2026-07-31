@@ -10,7 +10,7 @@ import { RARITY_EFFECT_BUDGET } from '../../src/shared/generated-equipment-types
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   generateEquipmentInstance,
-  getGeneratedEquipmentBaseV1,
+  _getGeneratedEquipmentBaseV1 as getGeneratedEquipmentBaseV1,
 } from '../../src/game/generated-equipment-generator.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
@@ -46,7 +46,13 @@ const EXPECTED_BASE_IDS = [
   'weapon.oil-lantern',
 ] as const;
 
-const EXPECTED_FAMILY_COUNTS: Readonly<Record<Floor2WeaponBaseFamily, number>> = {
+// Wave A's ten canonical families only — Classic Fantasy [Basic Leather]'s
+// weapons (family `basic-leather`) live in a separate roster
+// (`floor2-basic-leather-bases.ts`) and are asserted elsewhere; intentionally
+// `Partial` (not a full `Record<Floor2WeaponBaseFamily, number>`) so adding a
+// new non-wave-A family to `Floor2WeaponBaseFamily` never forces this
+// wave-A-only fixture to enumerate it.
+const EXPECTED_FAMILY_COUNTS: Readonly<Partial<Record<Floor2WeaponBaseFamily, number>>> = {
   blade: 3,
   axe: 3,
   bludgeon: 3,
@@ -74,14 +80,20 @@ describe('Floor 2 weapon content wave A', () => {
     ).toEqual(EXPECTED_FAMILY_COUNTS);
   });
 
-  it('preserves the full 50-ID manifest with five entries per family', () => {
+  it('preserves the full 56-ID manifest with five entries per Wave A/B family', () => {
+    // 50 Wave A + Wave B weapon entries (five per canonical family) plus the
+    // 6 Classic Fantasy [Basic Leather] weapons (family `basic-leather`,
+    // asserted separately in floor2-reward-pool.test.ts) = 56 total.
     const weapons = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter(
       (definition) => definition.category === 'weapon',
     );
-    expect(weapons).toHaveLength(50);
+    expect(weapons).toHaveLength(56);
+    const waveAAndBWeapons = weapons.filter((definition) => definition.family !== 'basic-leather');
+    expect(waveAAndBWeapons).toHaveLength(50);
     for (const family of Object.keys(EXPECTED_FAMILY_COUNTS)) {
-      expect(weapons.filter((definition) => definition.family === family)).toHaveLength(5);
+      expect(waveAAndBWeapons.filter((definition) => definition.family === family)).toHaveLength(5);
     }
+    expect(weapons.filter((definition) => definition.family === 'basic-leather')).toHaveLength(6);
   });
 
   it('normalizes stable base IDs without leaking generated-only bases into inventory items', () => {
