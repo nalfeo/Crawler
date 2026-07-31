@@ -1,5 +1,16 @@
 [
   {
+    "commit": "13b173c2da43df7ab88f0d6657d880f2e6b68409",
+    "commitDate": "2026-07-31T04:39:43Z",
+    "commitSubject": "feat(sprites): add approved tile-door-open-side-v1 asset (checkin-20260731-015341-e3a009) (#2413)",
+    "capturedAt": "2026-07-31T05:38:42.896Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30604766083",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/13b173c2da43df7ab88f0d6657d880f2e6b68409.json"
+  },
+  {
     "commit": "e8313117b46ddb1bc6faf476063521dcd43bb060",
     "commitDate": "2026-07-31T04:12:40Z",
     "commitSubject": "feat(sprites): harvest orphaned assets/checkin-* branches in asset-pr and reconciler (#2416)",
