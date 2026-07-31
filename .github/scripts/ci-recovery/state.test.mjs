@@ -307,6 +307,38 @@ test('automationStallAction treats a same-fingerprint, different-url retry as wa
   );
 });
 
+test('automationStallAction returns progressed when head SHA changes for an automation-owned state', () => {
+  const oldHead = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const newHead = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const fingerprint = blockerFingerprint([
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: 'https://github.com/nalfeo/Crawler/actions/runs/1/job/1',
+    },
+  ]);
+  const now = new Date('2026-07-30T21:04:27.293Z');
+  const state = makeState({
+    prNumber: 2373,
+    headSha: oldHead,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [],
+    attempt: 2,
+    progressKey: automationProgressKey(oldHead, fingerprint),
+    progressAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
+    updatedAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
+  });
+
+  assert.equal(
+    automationStallAction({ state, headSha: newHead, fingerprint, now }),
+    'progressed',
+    'head drift must be treated as progress so retry budget can reset on the new head',
+  );
+});
+
 test('ci-failure copilot is excluded from the blocker fingerprint so its first appearance after a dispatch cannot trigger blocker-progressed', () => {
   // Production incident regression (PR #1939 / issue #2268, 2026-07-29): when
   // CI Recovery dispatches @copilot to fix a PR and the session fails at
@@ -762,7 +794,7 @@ test('rejects duplicate dispatches for the same blocker fingerprint regardless o
   );
 });
 
-test('automation staleness waits, retries once, then releases without treating writes as progress', () => {
+test('automation staleness waits, retries once, then releases; head drift is treated as progress', () => {
   const fingerprint = blockerFingerprint([
     { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
   ]);
@@ -814,11 +846,11 @@ test('automation staleness waits, retries once, then releases without treating w
       fingerprint,
       now: new Date('2026-07-17T13:00:00.000Z'),
     }),
-    'retry',
+    'progressed',
   );
 });
 
-test('automation staleness keeps retry budget when only headSha changes', () => {
+test('automation staleness marks progressed when only headSha changes', () => {
   const fingerprint = blockerFingerprint([
     { kind: 'review-thread', id: 'review-thread:PRRT_test:abcd', summary: 'Review finding' },
   ]);
@@ -844,7 +876,7 @@ test('automation staleness keeps retry budget when only headSha changes', () => 
       fingerprint,
       now: new Date('2026-07-17T13:00:00.000Z'),
     }),
-    'release',
+    'progressed',
   );
 });
 

@@ -7189,17 +7189,17 @@ test('queue admission finds a concurrently attached merge-train label on the sec
 });
 
 // ---------------------------------------------------------------------------
-// Regression: head-only drift with unchanged blockers must carry the stale
-// retry budget instead of resetting it as "progressed".
+// Regression: head-only drift with unchanged blockers must be treated as
+// progressed so the new head gets a fresh retry budget.
 // ---------------------------------------------------------------------------
 
-test('stale automation increments attempt without reset when only headSha changes', async (t) => {
+test('stale automation resets attempt when only headSha changes', async (t) => {
   // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
   // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
-  // the blockers fingerprint is unchanged (same CI failure). This must stay on
-  // the stale-retry path:
-  //   - release trigger is 'stale-automation-retry' (not 'blocker-progressed')
-  //   - final attempt is carried and incremented to 2 (not reset to 1)
+  // the blockers fingerprint is unchanged (same CI failure). This must classify
+  // as progress for the new head:
+  //   - release trigger is 'blocker-progressed'
+  //   - final attempt resets to 1
   const PROG_FINGERPRINT = blockerFingerprint([
     {
       kind: 'ci-failure',
@@ -7313,36 +7313,32 @@ test('stale automation increments attempt without reset when only headSha change
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  // Must stay on stale-retry path, never classify as blocker-progressed.
+  // Must classify as blocker-progressed on head drift.
   const releasePatch = capturedPatches.find((patch) => {
     const parsed = parseStateComment(patch.body);
-    return parsed?.trigger === 'stale-automation-retry';
+    return parsed?.trigger === 'blocker-progressed';
   });
   assert.ok(
     releasePatch,
-    'the release state must carry trigger=stale-automation-retry for unchanged blockers',
+    'the release state must carry trigger=blocker-progressed when headSha changes',
   );
   assert.ok(
     !mutatingCalls.some((call) => {
       if (call.method !== 'PATCH') return false;
       try {
-        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
+        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
       } catch {
         return false;
       }
     }),
-    'must not use blocker-progressed when only headSha changed',
+    'must not use stale-automation-retry when the head has changed',
   );
 
-  // Final dispatched state must carry attempt=2 (carried + incremented), not 1.
+  // Final dispatched state must reset attempt to 1 for the new head.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
-  assert.equal(
-    finalState?.attempt,
-    2,
-    'unchanged-blocker dispatch must carry attempt budget: stored attempt must be 2 (1+1), not reset',
-  );
+  assert.equal(finalState?.attempt, 1, 'head drift must reset the retry budget for the new head');
   assert.equal(finalState?.trigger, 'workflow_run:completed');
   assert.equal(finalState?.owner, 'automation');
   assert.equal(finalState?.status, 'dispatched');
@@ -12706,8 +12702,7 @@ test('fresh ci-failure copilot first appearing after an initial dispatch does no
       // Include path as reconcile.mjs would when it first builds this blocker
       // from the live GraphQL thread data (path is fingerprint-relevant).
       path: thread.path,
-      summary:
-        'copilot-pull-request-reviewer: Exemption is keyed only on field+name, not version.',
+      summary: 'copilot-pull-request-reviewer: Exemption is keyed only on field+name, not version.',
       url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3649391364`,
     },
   ];
@@ -13003,8 +12998,7 @@ test('ci-failure copilot as the only remaining blocker (all review threads resol
 
   // Stale lock must be released (label deleted).
   const labelDeleteCall = mutatingCalls.find(
-    (call) =>
-      call.method === 'DELETE' && call.url.includes(`/labels/${encodeURIComponent(LABEL)}`),
+    (call) => call.method === 'DELETE' && call.url.includes(`/labels/${encodeURIComponent(LABEL)}`),
   );
   assert.ok(
     labelDeleteCall,
