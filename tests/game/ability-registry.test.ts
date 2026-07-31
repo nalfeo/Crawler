@@ -159,6 +159,19 @@ describe('ability registry', () => {
       ).not.toThrow();
     });
 
+    it('accepts optional passive presentation summaries for passive abilities', () => {
+      expect(() =>
+        parseAbilityCatalog([
+          {
+            ...basePassive,
+            shortLabel: 'OK',
+            passiveEffectSummary: 'Damage +10%',
+            passiveRequirementSummary: 'a sword',
+          },
+        ]),
+      ).not.toThrow();
+    });
+
     it('rejects a blank iconBriefId when provided', () => {
       expect(() =>
         parseAbilityCatalog([{ ...basePassive, shortLabel: 'OK', iconBriefId: '' }]),
