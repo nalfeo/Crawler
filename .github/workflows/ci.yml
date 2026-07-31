@@ -306,6 +306,8 @@ jobs:
       # shipped inert because only its lab force-called it.
       - name: Orphaned-system wiring guard
         if: env.DOCS_ONLY != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run check:wired-systems
 
       # Test-only exports guard: flags src/ exports whose only consumers are in

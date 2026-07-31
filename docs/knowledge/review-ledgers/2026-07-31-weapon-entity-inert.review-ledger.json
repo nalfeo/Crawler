@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "weapon-entity-inert",
+  "task_title": "Remove inert weapon entity path and harden allowlist tracking",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "convergent",
+      "notes": "Concern 1: fixed by exporting GITHUB_TOKEN to the orphaned-system wiring guard step in .github/workflows/ci.yml so closed open-required tracked issues are audited in CI. Concern 2: doc cleanup stayed on live surfaces only (current system docs + architecture), leaving ADR/handoff/archive provenance intact. Concern 3: removed only dead-path tests while preserving active weaponSystem coverage; no shipped weapon behavior lost test coverage. Concern 4: will carry an explicit #666 disposition summary in the PR/handoff/final report; issue-comment publication itself was attempted but blocked by GitHub 403 in this session."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
