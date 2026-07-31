@@ -24,7 +24,10 @@ import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
-import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
+import {
+  generatedEquipmentRunKeyFromSeed,
+  type GeneratedEquipmentInstanceKey,
+} from '../../shared/generated-equipment-types.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
@@ -1432,6 +1435,7 @@ export class MainGameScene extends Phaser.Scene {
     reason?: string;
     goldSpent?: number;
     itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
   } {
     if (this.playerEid < 0) {
       return { ok: false, reason: 'no-player' };
@@ -1451,7 +1455,7 @@ export class MainGameScene extends Phaser.Scene {
     this.inventoryUI?.refresh(this.world);
     if ('stockId' in offer) {
       const itemId = getGeneratedEquipmentInstance(this.world, offer.instanceId)?.baseId;
-      return itemId ? { ...result, itemId } : result;
+      return itemId ? { ...result, itemId, instanceId: offer.instanceId } : result;
     }
     return result;
   }

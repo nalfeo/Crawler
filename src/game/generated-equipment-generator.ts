@@ -20,6 +20,10 @@ import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { WeaponType } from '../shared/constants.js';
 import { getFloor2WeaponWaveABase } from '../shared/data/floor2-weapon-bases.js';
+import {
+  getFloor2BasicLeatherNonWeaponBase,
+  getFloor2BasicLeatherWeaponBase,
+} from '../shared/data/floor2-basic-leather-bases.js';
 import type { SeededRandom } from '../shared/random.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 
@@ -31,7 +35,7 @@ export type GeneratedEquipmentGeneratorErrorCode =
   | 'registry-unconfigured'
   | 'unknown-base';
 
-export class GeneratedEquipmentGeneratorError extends Error {
+export class _GeneratedEquipmentGeneratorError extends Error {
   constructor(
     readonly code: GeneratedEquipmentGeneratorErrorCode,
     message: string,
@@ -42,7 +46,7 @@ export class GeneratedEquipmentGeneratorError extends Error {
   }
 }
 
-export interface GenerateEquipmentInstanceRequest {
+export interface _GenerateEquipmentInstanceRequest {
   readonly baseId: string;
   readonly itemLevel: number;
   readonly rarity: GeneratedEquipmentRarity;
@@ -159,7 +163,7 @@ const EFFECT_CATALOG: readonly GeneratedEquipmentEffectDefinition[] = deepFreeze
 ]);
 
 function fail(code: GeneratedEquipmentGeneratorErrorCode, message: string, path: string): never {
-  throw new GeneratedEquipmentGeneratorError(code, message, path);
+  throw new _GeneratedEquipmentGeneratorError(code, message, path);
 }
 
 function validateEffectCatalog(): void {
@@ -231,8 +235,18 @@ function baseTags(
 }
 
 function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipmentBase {
-  const floor2WeaponBase = getFloor2WeaponWaveABase(baseId);
-  const equipmentDef = floor2WeaponBase?.equipmentDef ?? getEquipmentDefForItem(baseId);
+  // Resolution order: Floor 2 Wave A weapon bases -> Classic Fantasy Basic
+  // Leather weapon bases -> Basic Leather non-weapon bases -> the shared
+  // equipment catalog (which already carries Wave B, per ADR 0068). This is
+  // the sole bridge from a stable/base ID to a resolvable equipment def —
+  // Basic Leather bases are deliberately NOT added to `equipmentDefs.ts`
+  // (unlike Wave B, which predates this slice and is left untouched).
+  const floor2WeaponBase =
+    getFloor2WeaponWaveABase(baseId) ?? getFloor2BasicLeatherWeaponBase(baseId);
+  const equipmentDef =
+    floor2WeaponBase?.equipmentDef ??
+    getFloor2BasicLeatherNonWeaponBase(baseId) ??
+    getEquipmentDefForItem(baseId);
   if (equipmentDef === undefined) {
     fail('unknown-base', `Unknown generated-equipment base ${baseId}`, '$.request.baseId');
   }
@@ -285,7 +299,7 @@ function resolveGeneratedEquipmentBase(baseId: string): ResolvedGeneratedEquipme
   });
 }
 
-export function getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentBaseV1 {
+export function _getGeneratedEquipmentBaseV1(baseId: string): GeneratedEquipmentBaseV1 {
   return resolveGeneratedEquipmentBase(baseId).base;
 }
 
@@ -305,17 +319,52 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
 }
 
 /**
- * Whether a base carries any inherent NON-armor stat bonus. The reward-bundle
- * resolver asserts this is `false` for every candidate base so the Common item
- * (which spreads the base's inherent stat bonuses verbatim and is generated with
- * zero effect units) satisfies the Common rarity contract: no non-armor stat
- * bonus. Pure and registry-free.
+ * Pure predicate: does this stat-bonus map carry any non-zero, non-armor
+ * entry? Extracted so both the base-level check
+ * ({@link generatedEquipmentBaseHasNonArmorStatBonus}) and the instance-level
+ * check ({@link generatedEquipmentInstanceHasNonArmorStatBonus}) share one
+ * definition of "non-armor stat bonus".
+ */
+function hasNonArmorStatBonus(statBonuses: Partial<Record<StatId, number>>): boolean {
+  return Object.entries(statBonuses).some(
+    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
+  );
+}
+
+/**
+ * Whether a base carries any inherent NON-armor stat bonus. Pure and
+ * registry-free. A base's inherent stat bonuses never change based on who is
+ * generating an instance from it — the SAME base always produces the SAME
+ * `statBonuses` at a given rarity, regardless of caller (reward resolver,
+ * Quartermaster, or anything else). This predicate exists so a caller that
+ * needs Common-rarity output to carry no non-armor bonus (Common contributes
+ * zero rarity-effect units, see {@link RARITY_EFFECT_BUDGET}`.common === 0`,
+ * so a base's inherent bonus is the only possible non-armor source at Common)
+ * can filter such bases out of *candidacy* before generation, rather than
+ * generating and then mutating the output. The reward-bundle resolver is the
+ * only current caller that does this, and only for a Common draw specifically
+ * — the base remains fully eligible (with its bonus intact) for Uncommon/Rare
+ * draws, and for any other caller (e.g. Quartermaster) at any rarity.
  */
 export function generatedEquipmentBaseHasNonArmorStatBonus(baseId: string): boolean {
   const resolved = resolveGeneratedEquipmentBase(baseId);
-  return Object.entries(resolved.equipmentDef.statBonuses).some(
-    ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
-  );
+  return hasNonArmorStatBonus(resolved.equipmentDef.statBonuses);
+}
+
+/**
+ * Whether a *generated instance's* final, frozen stat-bonus map carries any
+ * non-armor entry. Unlike {@link generatedEquipmentBaseHasNonArmorStatBonus}
+ * (which inspects a base's inherent bonuses before generation), this checks
+ * the actual output — used as a defense-in-depth, post-generation tripwire by
+ * callers that pre-filtered candidacy (see above) so a future data-authoring
+ * mistake (a base's `statBonuses` changing after the candidate list was
+ * built, or a rarity-effect budget misconfiguration) still fails loudly
+ * instead of silently shipping a Common item with a non-armor bonus.
+ */
+export function generatedEquipmentInstanceHasNonArmorStatBonus(
+  instance: GeneratedEquipmentInstanceV1,
+): boolean {
+  return hasNonArmorStatBonus(instance.frozen.statBonuses);
 }
 
 function effectsAreCompatible(
@@ -425,7 +474,7 @@ export interface GenerateEquipmentInstanceWorld {
 
 export function generateEquipmentInstance(
   world: GenerateEquipmentInstanceWorld,
-  request: GenerateEquipmentInstanceRequest,
+  request: _GenerateEquipmentInstanceRequest,
   options: GenerateEquipmentInstanceOptions = {},
 ): GeneratedEquipmentInstanceV1 {
   if (world.generatedEquipmentRegistry.runKey === null) {
@@ -465,6 +514,13 @@ export function generateEquipmentInstance(
     options.allowedEffectKinds,
   );
   const resolvedEffects = materializeEffects(effectDefinitions);
+  // The base's inherent stat bonuses are spread verbatim, identically for
+  // every caller and every rarity — a base's own stats never depend on who is
+  // generating an instance from it (see
+  // {@link generatedEquipmentBaseHasNonArmorStatBonus}'s doc comment). Callers
+  // that need a Common draw to carry no non-armor bonus must filter such
+  // bases out of candidacy *before* calling this function; this function
+  // itself never mutates a base's stats based on rarity or caller.
   const statBonuses: Partial<Record<StatId, number>> = {
     ...resolvedBase.equipmentDef.statBonuses,
   };

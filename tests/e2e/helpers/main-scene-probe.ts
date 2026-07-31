@@ -24,6 +24,8 @@ import type {
   TerrainRenderSummary,
   DoorRenderSummary,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
+import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
+import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
 
 declare global {
   interface Window {
@@ -148,7 +150,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getDoorRenderSummary()),
-  claimAchievementReward: (page: Page, achievementId: string): Promise<void> =>
+  claimAchievementReward: (
+    page: Page,
+    achievementId: string,
+  ): Promise<readonly GeneratedEquipmentInstanceKey[]> =>
     page.evaluate((id) => window.__mainSceneProbe!.claimAchievementReward(id), achievementId),
   seedPendingRewardResumeScenario: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.seedPendingRewardResumeScenario()),
@@ -198,8 +203,13 @@ export const mainSceneProbe = {
     ),
   purchaseFirstQuartermasterOffer: (
     page: Page,
-  ): Promise<{ ok: boolean; reason?: string; goldSpent?: number; itemId?: string }> =>
-    page.evaluate(() => window.__mainSceneProbe!.purchaseFirstQuartermasterOffer()),
+  ): Promise<{
+    ok: boolean;
+    reason?: string;
+    goldSpent?: number;
+    itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
+  }> => page.evaluate(() => window.__mainSceneProbe!.purchaseFirstQuartermasterOffer()),
   getInventoryVisibleItemIds: (page: Page): Promise<readonly string[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getInventoryVisibleItemIds()),
   openFirstAvailableBossChest: (page: Page): Promise<{ ok: boolean; reason?: string }> =>
@@ -209,6 +219,26 @@ export const mainSceneProbe = {
     itemId: string,
   ): Promise<{ ok: boolean; reason?: string }> =>
     page.evaluate((id) => window.__mainSceneProbe!.spawnAndPickupFloorDrop(id), itemId),
+  getGeneratedInventoryCellBounds: (
+    page: Page,
+    instanceKey: GeneratedEquipmentInstanceKey,
+  ): Promise<ScreenBounds | null> =>
+    page.evaluate(
+      (key) => window.__mainSceneProbe!.getGeneratedInventoryCellBounds(key),
+      instanceKey,
+    ),
+  getGeneratedEquipmentBagCellBounds: (
+    page: Page,
+    instanceKey: GeneratedEquipmentInstanceKey,
+  ): Promise<ScreenBounds | null> =>
+    page.evaluate(
+      (key) => window.__mainSceneProbe!.getGeneratedEquipmentBagCellBounds(key),
+      instanceKey,
+    ),
+  getEquippedGeneratedInstanceKeys: (
+    page: Page,
+  ): Promise<readonly GeneratedEquipmentInstanceKey[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getEquippedGeneratedInstanceKeys()),
   getRewardAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>
