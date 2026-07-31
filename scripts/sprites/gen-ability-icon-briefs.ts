@@ -35,33 +35,54 @@ interface IconBatchEntry {
   description?: string;
 }
 
-interface IconBatchBrief {
-  id: string;
-  name: string;
-  description: string;
-  type: string;
-  variantCount: number;
-  iconBatch: IconBatchEntry[];
+/** Returns `[[row,col],...]` empty-cell list to pad a 4×4 grid for a partial batch. */
+function trailingEmptyCells(batchSize: number): readonly (readonly [number, number])[] {
+  if (batchSize >= 16) return [];
+  const empty: [number, number][] = [];
+  for (let i = batchSize; i < 16; i++) {
+    empty.push([Math.floor(i / 4), i % 4]);
+  }
+  return empty;
 }
 
-function buildBriefYaml(brief: IconBatchBrief): string {
-  const entries = brief.iconBatch
-    .map((e) => {
-      const desc = e.description ? `\n      description: >-\n        ${e.description}` : '';
-      return `    - id: ${e.id}\n      concept: "${e.concept}"${desc}`;
-    })
-    .join('\n');
-  return [
-    `id: ${brief.id}`,
-    `name: "${brief.name}"`,
+function buildBriefYaml(
+  briefName: string,
+  batchNum: string,
+  chunkSize: number,
+  iconBatch: IconBatchEntry[],
+): string {
+  const emptyCells = trailingEmptyCells(chunkSize);
+  const lines: string[] = [
+    `name: "${briefName}"`,
     `description: >-`,
-    `  ${brief.description}`,
+    `  Icon batch for ${chunkSize} abilities missing art (batch ${batchNum}).`,
+    `  Pixel-art symbols on transparent background; frames are composited separately.`,
     `type: icon`,
-    `variantCount: ${brief.variantCount}`,
-    `iconBatch:`,
-    entries,
-    '',
-  ].join('\n');
+  ];
+
+  // For partial batches, emit generation.sheet so iconBatch.length == rows*cols - emptyCells.length.
+  if (emptyCells.length > 0) {
+    lines.push(`generation:`);
+    lines.push(`  sheet:`);
+    lines.push(`    rows: 4`);
+    lines.push(`    cols: 4`);
+    lines.push(`    emptyCells:`);
+    for (const [r, c] of emptyCells) {
+      lines.push(`      - [${r}, ${c}]`);
+    }
+    lines.push(`    nativeCanvas: 1024`);
+  }
+
+  lines.push(`iconBatch:`);
+  for (const e of iconBatch) {
+    lines.push(`  - id: ${e.id}`);
+    lines.push(`    concept: "${e.concept}"`);
+    if (e.description) {
+      lines.push(`    description: "${e.description.replace(/"/g, '\\"')}"`);
+    }
+  }
+  lines.push('');
+  return lines.join('\n');
 }
 
 function run(): void {
@@ -78,12 +99,11 @@ function run(): void {
 
   mkdirSync(OUT_DIR, { recursive: true });
 
-  // All unbrief-ed abilities fit in a single batch (well under 16).
   const BATCH_SIZE = 16;
   for (let batchIndex = 0; batchIndex < needsBrief.length; batchIndex += BATCH_SIZE) {
     const chunk = needsBrief.slice(batchIndex, batchIndex + BATCH_SIZE);
     const batchNum = String(Math.floor(batchIndex / BATCH_SIZE) + 1).padStart(2, '0');
-    const briefId = `ability-icons-batch-${batchNum}`;
+    const briefName = `ability-icons-batch-${batchNum}`;
 
     const iconBatch: IconBatchEntry[] = chunk.map((a) => ({
       id: abilityIconId(a.id),
@@ -91,17 +111,9 @@ function run(): void {
       description: `${a.kind.toUpperCase()} ability — ${a.description}`,
     }));
 
-    const brief: IconBatchBrief = {
-      id: briefId,
-      name: `Ability Icons — Batch ${batchNum}`,
-      description: `Icon batch for ${chunk.length} abilities missing art (batch ${batchNum}).`,
-      type: 'icon',
-      variantCount: chunk.length,
-      iconBatch,
-    };
-
-    const yamlPath = path.join(OUT_DIR, `${briefId}.yaml`);
-    writeFileSync(yamlPath, buildBriefYaml(brief), 'utf8');
+    const yamlContent = buildBriefYaml(briefName, batchNum, chunk.length, iconBatch);
+    const yamlPath = path.join(OUT_DIR, `${briefName}.yaml`);
+    writeFileSync(yamlPath, yamlContent, 'utf8');
     process.stdout.write(
       `gen-ability-icon-briefs: wrote ${path.relative(REPO_ROOT, yamlPath)} (${chunk.length} icons)\n`,
     );

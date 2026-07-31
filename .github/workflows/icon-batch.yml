@@ -64,28 +64,53 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      # ── Generate briefs ─────────────────────────────────────────────────────
+      # ── Parse issue body ─────────────────────────────────────────────────────
+      # GitHub issue forms render fields as "### Label\n\nvalue\n". We extract
+      # action + batch_ids here so downstream steps never interpolate raw issue
+      # body text into shell strings (eliminates the injection surface).
+      - name: Parse issue body
+        if: github.event_name == 'issues'
+        id: parse_issue
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          ACTION=$(node -e "
+            const body = process.env.ISSUE_BODY || '';
+            const m = body.match(/###\s*Action\s*\n+([^\n#]+)/);
+            process.stdout.write(m ? m[1].trim() : '');
+          ")
+          BATCH_IDS=$(node -e "
+            const body = process.env.ISSUE_BODY || '';
+            const m = body.match(/###\s*Batch IDs[^\n]*\n+([\s\S]*?)(?:\n###|$)/);
+            const raw = m ? m[1].replace(/_No response_/g,'').trim() : '';
+            process.stdout.write(raw);
+          ")
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "batch_ids=$BATCH_IDS" >> "$GITHUB_OUTPUT"
+          echo "Parsed from issue body — action=$ACTION batch_ids=$BATCH_IDS"
+
+      # ── Generate briefs ──────────────────────────────────────────────────────
       - name: Generate icon briefs
         if: |
           (github.event_name == 'workflow_dispatch' && inputs.action == 'generate-briefs') ||
-          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: generate-briefs'))
+          (github.event_name == 'issues' && steps.parse_issue.outputs.action == 'generate-briefs')
         run: |
           npm run sprites:gen-achievement-icon-briefs
           npm run sprites:gen-ability-icon-briefs
           echo "generate-briefs: done" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Status ──────────────────────────────────────────────────────────────
+      # ── Status ───────────────────────────────────────────────────────────────
       - name: Status
         if: |
           (github.event_name == 'workflow_dispatch' && inputs.action == 'status') ||
-          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: status'))
+          (github.event_name == 'issues' && steps.parse_issue.outputs.action == 'status')
         run: npm run sprites:icon-batch -- status | tee -a "$GITHUB_STEP_SUMMARY"
 
-      # ── Run specific batches ────────────────────────────────────────────────
+      # ── Run specific batches ─────────────────────────────────────────────────
       - name: Run specified batches
         if: |
           (github.event_name == 'workflow_dispatch' && inputs.action == 'run') ||
-          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: run'))
+          (github.event_name == 'issues' && steps.parse_issue.outputs.action == 'run')
         env:
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
@@ -107,17 +132,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Parse batch_ids from workflow_dispatch input or issue body.
+          # batch_ids: workflow_dispatch input takes precedence; fall back to
+          # parsed issue output (never raw issue body interpolation).
           BATCH_IDS="${{ inputs.batch_ids }}"
           if [ -z "$BATCH_IDS" ] && [ "${{ github.event_name }}" = "issues" ]; then
-            BATCH_IDS=$(node -e "
-              const body = process.env.ISSUE_BODY || '';
-              const m = body.match(/batch_ids:\s*(.+)/);
-              process.stdout.write(m ? m[1].trim() : '');
-            " ISSUE_BODY="${{ github.event.issue.body }}")
+            BATCH_IDS="${{ steps.parse_issue.outputs.batch_ids }}"
           fi
           if [ -z "$BATCH_IDS" ]; then
-            echo "ERROR: action=run requires batch_ids (workflow_dispatch input or 'batch_ids: ...' in issue body)" >&2
+            echo "ERROR: action=run requires batch_ids (workflow_dispatch input or Batch IDs field in issue body)" >&2
             exit 1
           fi
 
@@ -138,11 +160,11 @@ jobs:
           npm run sprites:icon-batch -- run $BRIEF_ARGS
           echo "run: completed for batch_ids: $BATCH_IDS" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Run all pending batches ─────────────────────────────────────────────
+      # ── Run all pending batches ──────────────────────────────────────────────
       - name: Run all batches
         if: |
           (github.event_name == 'workflow_dispatch' && inputs.action == 'run-all') ||
-          (github.event_name == 'issues' && contains(github.event.issue.body, 'action: run-all'))
+          (github.event_name == 'issues' && steps.parse_issue.outputs.action == 'run-all')
         env:
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}

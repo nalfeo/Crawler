@@ -146,16 +146,21 @@ async function startInstance(instanceId) {
     const { jsonRoutes, binaryRoutes } = makeRoutes();
 
     const server = await startCanvasServer({
-      buildHtml: ({ baseUrl }) => renderHtml({ batches: state.batches, baseUrl }),
+      instanceId,
+      // The harness calls renderHtml(instanceId) lazily at request time.
+      // Close over `serverUrl` which is set after the server resolves below.
+      renderHtml: (_id) => renderHtml({ batches: state.batches, baseUrl: serverUrl }),
       jsonRoutes,
       binaryRoutes,
-      onError: (err) => log(`server error: ${err?.message ?? err}`, 'warn'),
+      log: (msg, level) => log(`[canvas-server] ${msg}`, level),
     });
+
+    let serverUrl = server.url;
 
     instances.set(instanceId, server);
     pendingStartups.delete(instanceId);
-    log(`instance ${instanceId} started at ${server.url}`);
-    return server.url;
+    log(`instance ${instanceId} started at ${serverUrl}`);
+    return serverUrl;
   })();
 
   pendingStartups.set(instanceId, startPromise);

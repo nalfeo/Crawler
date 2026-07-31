@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "icon-batch-pipeline",
+  "task_title": "Icon batch generation pipeline (CLI + GH Actions + canvas)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "",
+      "notes": ""
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

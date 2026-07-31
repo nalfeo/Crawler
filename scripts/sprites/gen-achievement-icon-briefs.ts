@@ -46,17 +46,41 @@ function yamlString(s: string): string {
   return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+/** Returns the `[[row,col],...]` empty-cell list to fill a 4×4 grid when the batch is smaller than 16. */
+function trailingEmptyCells(batchSize: number): readonly (readonly [number, number])[] {
+  if (batchSize >= 16) return [];
+  const empty: [number, number][] = [];
+  for (let i = batchSize; i < 16; i++) {
+    empty.push([Math.floor(i / 4), i % 4]);
+  }
+  return empty;
+}
+
 function renderBrief(batchIndex: number, entries: IconBatchEntry[], floor: number): string {
   const num = String(batchIndex + 1).padStart(2, '0');
   const name = `achv-icons-batch-${num}`;
+  const emptyCells = trailingEmptyCells(entries.length);
   const lines: string[] = [
     `name: ${name}`,
     `type: icon`,
-    `description: "Achievement icons — batch ${batchIndex + 1}. Pixel-art symbols for dungeon achievements."`,
+    `description: "Achievement icon batch ${batchIndex + 1}: pixel-art symbols for dungeon achievements on Floor ${floor}."`,
     `floor: ${floor}`,
-    `variantCount: ${entries.length}`,
-    `iconBatch:`,
   ];
+
+  // Emit generation.sheet for partial batches so iconBatch.length == rows*cols - emptyCells.length.
+  if (emptyCells.length > 0) {
+    lines.push(`generation:`);
+    lines.push(`  sheet:`);
+    lines.push(`    rows: 4`);
+    lines.push(`    cols: 4`);
+    lines.push(`    emptyCells:`);
+    for (const [r, c] of emptyCells) {
+      lines.push(`      - [${r}, ${c}]`);
+    }
+    lines.push(`    nativeCanvas: 1024`);
+  }
+
+  lines.push(`iconBatch:`);
   for (const e of entries) {
     lines.push(`  - id: ${e.id}`);
     lines.push(`    concept: ${yamlString(e.concept)}`);
