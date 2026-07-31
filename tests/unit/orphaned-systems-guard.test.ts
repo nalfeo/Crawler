@@ -415,6 +415,8 @@ describe('findMalformedAllowlistEntries', () => {
       },
       // @ts-expect-error deliberately missing owner for the test
       noOwner: { reason: 'x', trackedIssue: '#1', trackedIssuePolicy: 'reference-only' },
+      // @ts-expect-error deliberately missing trackedIssuePolicy for the test
+      noPolicy: { reason: 'x', trackedIssue: '#1', owner: 'me' },
       blankReason: {
         reason: '   ',
         trackedIssue: '#1',
@@ -423,8 +425,9 @@ describe('findMalformedAllowlistEntries', () => {
       },
     };
     const bad = findMalformedAllowlistEntries(allowlist);
-    expect(bad.map((b) => b.name)).toEqual(['blankReason', 'noOwner']);
+    expect(bad.map((b) => b.name)).toEqual(['blankReason', 'noOwner', 'noPolicy']);
     expect(bad.find((b) => b.name === 'noOwner')?.missing).toContain('owner');
+    expect(bad.find((b) => b.name === 'noPolicy')?.missing).toContain('trackedIssuePolicy');
     expect(bad.find((b) => b.name === 'blankReason')?.missing).toContain('reason');
   });
 });

@@ -140,6 +140,7 @@ export interface AllowlistEntry {
 export const REQUIRED_ALLOWLIST_FIELDS: ReadonlyArray<keyof AllowlistEntry> = [
   'reason',
   'trackedIssue',
+  'trackedIssuePolicy',
   'owner',
 ];
 
