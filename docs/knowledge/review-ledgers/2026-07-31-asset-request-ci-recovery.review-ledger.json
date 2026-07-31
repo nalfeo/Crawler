@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "asset-request-ci-recovery",
+  "task_title": "Recover asset-request auto-close PR CI",
+  "estimated_apples": 2,
+  "stages": {}
+}

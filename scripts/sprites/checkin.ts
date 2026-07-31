@@ -572,7 +572,9 @@ interface RawIssueRequestItem {
 }
 
 const FLOOR2_RUNTIME_BRIEF_IDS = new Set(
-  FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => entry.stableId.slice(entry.stableId.indexOf('.') + 1)),
+  FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) =>
+    entry.stableId.slice(entry.stableId.indexOf('.') + 1),
+  ),
 );
 
 async function discoverLinkedAssetRequestIssueNumbers(
