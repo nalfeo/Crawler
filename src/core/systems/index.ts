@@ -30,7 +30,7 @@ export { doorSystem } from './doorSystem.js';
 export { npcSystem } from './npcSystem.js';
 export { safeRoomSystem, isInSafeContext } from '../safe-space.js';
 export { harvestSystem, HARVEST_RANGE_FT } from './harvestSystem.js';
-export { bossChestPickupSystem, BOSS_CHEST_RANGE_FT } from './bossChestPickupSystem.js';
+export { bossChestPickupSystem } from './bossChestPickupSystem.js';
 export {
   familyRelationshipSystem,
   type FamilyRelationshipSystemOptions,

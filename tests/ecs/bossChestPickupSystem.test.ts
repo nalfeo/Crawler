@@ -4,7 +4,6 @@ import { spawnPlayer } from '../../src/core/helpers.js';
 import { spawnBossChestEntity } from '../../src/core/spawners/world-objects.js';
 import {
   bossChestPickupSystem,
-  BOSS_CHEST_RANGE_FT,
 } from '../../src/core/systems/bossChestPickupSystem.js';
 import {
   createBossChestId,
@@ -19,6 +18,7 @@ const FAMILY_ID = 'mirekin';
 const BASES = ['weapon.iron-cleaver', 'weapon.ember-wand'] as const;
 const CHEST_X = 10;
 const CHEST_Y = 10;
+const BOSS_CHEST_RANGE_FT = 4;
 
 function makeWorld(runKey = 'boss-chest-pickup-test') {
   return createTestWorld({ seed: 11, floor: 2, generatedEquipmentRunKey: runKey });
