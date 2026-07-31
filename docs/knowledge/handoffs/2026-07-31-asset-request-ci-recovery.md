@@ -33,7 +33,9 @@ sprite-pipeline, ci-policy
 
 - GitHub Actions MCP: inspected run `30610439984` and jobs `91094391056` (`ci`), `91091844627` (`Lightweight Checks`), and `91094173302` (`Merge gate`).
 - `npx prettier --check scripts/sprites/checkin.ts`
+- `parallel_validation` → code review: 0 findings; CodeQL: 0 alerts reported
 - `npm ci` *(environment-blocked: `getaddrinfo ENOTFOUND ms-feed-25.pkgs.visualstudio.com` for `postcss-8.5.22.tgz`)*
+- `npm run format:check` *(environment-blocked: project `prettier` binary unavailable because dependencies are not installed in this sandbox)*
 
 ## Unresolved / next steps
 

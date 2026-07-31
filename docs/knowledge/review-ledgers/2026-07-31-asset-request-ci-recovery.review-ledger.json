@@ -4,5 +4,13 @@
   "session_slug": "asset-request-ci-recovery",
   "task_title": "Recover asset-request auto-close PR CI",
   "estimated_apples": 2,
-  "stages": {}
+  "stages": {
+    "code_review": {
+      "completed": true,
+      "reviewer_model": "parallel_validation",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "CI recovery on the rebased asset-request auto-close PR. GitHub Actions MCP traced the listed blockers to Lightweight Checks on the old head; current branch fix is a Prettier-only wrap in scripts/sprites/checkin.ts. parallel_validation reported 0 review findings."
+    }
+  }
 }
