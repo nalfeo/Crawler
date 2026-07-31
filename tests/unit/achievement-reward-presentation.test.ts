@@ -7,7 +7,6 @@ import {
 import {
   acknowledgeAchievementRewardPresentation,
   getPendingAchievementRewardPresentation,
-  hasPendingAchievementRewardPresentation,
 } from '../../src/core/systems/achievementRewards.js';
 import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -26,12 +25,12 @@ describe('achievement reward presentation snapshot (pendingPresentations)', () =
     spawnPlayer(world, 0, 0);
     unlockAchievement(world, 'first-bonk');
 
-    expect(hasPendingAchievementRewardPresentation(world, 'first-bonk')).toBe(false);
+    expect(getPendingAchievementRewardPresentation(world, 'first-bonk')).toBeUndefined();
     const result = claimAchievementReward(world, 'first-bonk');
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(hasPendingAchievementRewardPresentation(world, 'first-bonk')).toBe(true);
+    expect(getPendingAchievementRewardPresentation(world, 'first-bonk')).toBeDefined();
     const presentation = getPendingAchievementRewardPresentation(world, 'first-bonk');
     expect(presentation).toEqual({
       kind: 'lootBox',
@@ -65,14 +64,14 @@ describe('achievement reward presentation snapshot (pendingPresentations)', () =
     spawnPlayer(world, 0, 0);
     unlockAchievement(world, 'first-bonk');
     claimAchievementReward(world, 'first-bonk');
-    expect(hasPendingAchievementRewardPresentation(world, 'first-bonk')).toBe(true);
+    expect(getPendingAchievementRewardPresentation(world, 'first-bonk')).toBeDefined();
 
     acknowledgeAchievementRewardPresentation(world, 'first-bonk');
-    expect(hasPendingAchievementRewardPresentation(world, 'first-bonk')).toBe(false);
+    expect(getPendingAchievementRewardPresentation(world, 'first-bonk')).toBeUndefined();
 
     // Duplicate acknowledge input is a safe no-op — never throws, never re-grants.
     expect(() => acknowledgeAchievementRewardPresentation(world, 'first-bonk')).not.toThrow();
-    expect(hasPendingAchievementRewardPresentation(world, 'first-bonk')).toBe(false);
+    expect(getPendingAchievementRewardPresentation(world, 'first-bonk')).toBeUndefined();
   });
 
   it('acknowledging an achievement that never had a presentation (directorMessage reward) is a safe no-op', () => {
@@ -82,7 +81,7 @@ describe('achievement reward presentation snapshot (pendingPresentations)', () =
     const result = claimAchievementReward(world, 'safe-room-breather');
     expect(result.ok).toBe(true);
 
-    expect(hasPendingAchievementRewardPresentation(world, 'safe-room-breather')).toBe(false);
+    expect(getPendingAchievementRewardPresentation(world, 'safe-room-breather')).toBeUndefined();
     expect(() =>
       acknowledgeAchievementRewardPresentation(world, 'safe-room-breather'),
     ).not.toThrow();

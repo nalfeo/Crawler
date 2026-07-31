@@ -67,6 +67,8 @@ import {
   getQuartermasterOfferViews,
   purchaseQuartermasterOffer,
 } from '../../core/quartermaster-purchase.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
+import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -136,9 +138,19 @@ interface MainSceneInternals {
   inventoryUI?: {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
-    getVisibleItemIds?(): string[];
+    getVisibleItemIds?(): readonly string[];
+    getCellScreenBounds(index: number): ScreenBounds | null;
+    getCellIndexForEntry(entry: {
+      readonly kind: 'generated-instance';
+      readonly instanceKey: GeneratedEquipmentInstanceKey;
+    }): number | null;
   };
-  equipmentUI?: { isOpen(): boolean };
+  equipmentUI?: {
+    isOpen(): boolean;
+    getGeneratedBagCellScreenBounds(
+      instanceKey: GeneratedEquipmentInstanceKey,
+    ): ScreenBounds | null;
+  };
   achievementsUI?: {
     isOpen(): boolean;
     refresh(world: GameWorld): void;
@@ -598,7 +610,7 @@ export interface MainSceneProbeApi {
    * `RewardOpeningUI.open()` call a player's "Open reward" click drives. A
    * no-op unlock if the achievement is already unlocked/claimed (idempotent).
    */
-  claimAchievementReward(achievementId: string): void;
+  claimAchievementReward(achievementId: string): readonly GeneratedEquipmentInstanceKey[];
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
@@ -640,6 +652,7 @@ export interface MainSceneProbeApi {
     reason?: string;
     goldSpent?: number;
     itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
   };
   /** Visible rendered inventory item ids from the live InventoryUI grid. */
   getInventoryVisibleItemIds(): readonly string[];
@@ -647,6 +660,14 @@ export interface MainSceneProbeApi {
   openFirstAvailableBossChest(): { ok: boolean; reason?: string };
   /** Spawn a floor drop at the player and advance the real sim enough to pick it up. */
   spawnAndPickupFloorDrop(itemId: string): { ok: boolean; reason?: string };
+  /** Bounds for an exact generated instance's rendered inventory cell. */
+  getGeneratedInventoryCellBounds(instanceKey: GeneratedEquipmentInstanceKey): ScreenBounds | null;
+  /** Bounds for an exact generated instance's rendered Gear-panel bag cell. */
+  getGeneratedEquipmentBagCellBounds(
+    instanceKey: GeneratedEquipmentInstanceKey,
+  ): ScreenBounds | null;
+  /** Exact generated instance keys currently equipped by the player. */
+  getEquippedGeneratedInstanceKeys(): readonly GeneratedEquipmentInstanceKey[];
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -1258,8 +1279,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const world = scene?.world;
       const achievementsUI = scene?.achievementsUI;
       if (!world || !achievementsUI) {
-        return;
+        return [];
       }
+      const playerEid = playerEidOf(scene);
+      const before = new Set(
+        world.inventories.get(playerEid)?.generatedEquipment?.map((entry) => entry.instanceKey) ??
+          [],
+      );
       // Use the REAL unlock path (`unlockAchievement`) rather than mutating
       // `unlockedIds` directly — for `lootBox`/`equipment` rewards, unlocking
       // is what resolves the immutable reward bundle into
@@ -1275,6 +1301,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       achievementsUI.refresh(world);
       achievementsUI.claimReward(achievementId);
       scene.inventoryUI?.refresh(world);
+      return (
+        world.inventories
+          .get(playerEid)
+          ?.generatedEquipment?.map((entry) => entry.instanceKey)
+          .filter((instanceKey) => !before.has(instanceKey)) ?? []
+      );
     },
 
     seedPendingRewardResumeScenario: () => {
@@ -1408,9 +1440,29 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           ok: true,
           goldSpent: result.goldSpent,
           itemId: purchased?.baseId,
+          instanceId: result.instanceId,
         };
       }
       return { ok: false, reason: result.reason };
+    },
+    getGeneratedInventoryCellBounds: (instanceKey: GeneratedEquipmentInstanceKey) => {
+      const inventory = getScene()?.inventoryUI;
+      if (!inventory?.isOpen()) return null;
+      const index = inventory.getCellIndexForEntry({ kind: 'generated-instance', instanceKey });
+      return index === null ? null : inventory.getCellScreenBounds(index);
+    },
+    getGeneratedEquipmentBagCellBounds: (instanceKey: GeneratedEquipmentInstanceKey) => {
+      const equipment = getScene()?.equipmentUI;
+      return equipment?.isOpen() ? equipment.getGeneratedBagCellScreenBounds(instanceKey) : null;
+    },
+    getEquippedGeneratedInstanceKeys: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      if (!world || playerEid < 0) return [];
+      return Object.values(getEquipmentState(world, playerEid)?.equipped ?? {}).filter(
+        (instanceId): instanceId is GeneratedEquipmentInstanceKey => typeof instanceId === 'string',
+      );
     },
 
     getInventoryVisibleItemIds: (): readonly string[] => {
