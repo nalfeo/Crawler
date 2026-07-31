@@ -183,7 +183,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
           severity: 'high',
           via: [
             {
-              source: 1124334,
+              source: 1130591,
               url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
               severity: 'high',
             },
@@ -457,7 +457,6 @@ test('rejects temporary dependency exceptions with impossible expiresOn date', (
     /is not a real calendar date/,
   );
 });
-
 
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.
