@@ -1,5 +1,16 @@
 [
   {
+    "commit": "92c9e62c431a61ef87a0cfadd6a362ce1132fbb4",
+    "commitDate": "2026-07-31T03:36:50Z",
+    "commitSubject": "Fix Floor 2 generated-equipment reward variety and inventory flow (#2415)",
+    "capturedAt": "2026-07-31T04:33:04.295Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30602459605",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/92c9e62c431a61ef87a0cfadd6a362ce1132fbb4.json"
+  },
+  {
     "commit": "1fb7e11274a8a5d7b43e250fac0e0efdf205802d",
     "commitDate": "2026-07-31T01:45:21Z",
     "commitSubject": "fix(ci): resolve test-only-exports guard failures triggered by generated-assets.ts changes (#2400)",
