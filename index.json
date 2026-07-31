@@ -11,6 +11,17 @@
     "path": "by-sha/06dc9d9ef886736687f982f967c3b6bf869c91d7.json"
   },
   {
+    "commit": "d9f08dfed1ef852efcc5504c80efc5fde1144e1a",
+    "commitDate": "2026-07-31T08:02:51Z",
+    "commitSubject": "feat(sprites): gender-matched player walk-cycle sheets (female/male/other) (#2361)",
+    "capturedAt": "2026-07-31T09:17:34.880Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30615851610",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/d9f08dfed1ef852efcc5504c80efc5fde1144e1a.json"
+  },
+  {
     "commit": "da2adafab291b358dbdec3fc8aa4486aadb1e33e",
     "commitDate": "2026-07-31T07:43:01Z",
     "commitSubject": "Restore tier1 Floor 2 accessory reward eligibility (#2406)",
