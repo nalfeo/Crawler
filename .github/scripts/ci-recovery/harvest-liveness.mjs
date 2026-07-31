@@ -114,6 +114,61 @@ export async function collectRecentReconcileHarvestRuns({
 }
 
 /**
+ * Collect workflow_dispatch runs for a workflow and stop pagination once runs
+ * fall older than the requested cutoff.
+ *
+ * @param {{
+ *   listWorkflowRuns: (params: {
+ *     owner: string,
+ *     repo: string,
+ *     workflow_id: string,
+ *     event: string,
+ *     per_page: number,
+ *     page: number,
+ *   }) => Promise<{data?: {workflow_runs?: Array<any>}}>,
+ *   owner: string,
+ *   repo: string,
+ *   workflowId?: string,
+ *   cutoffMs: number,
+ *   perPage?: number,
+ *   filter?: (run: any) => boolean,
+ * }} opts
+ */
+export async function collectRecentWorkflowDispatchRuns({
+  listWorkflowRuns,
+  owner,
+  repo,
+  workflowId = 'ci-recovery.yml',
+  cutoffMs,
+  perPage = 100,
+  filter = () => true,
+}) {
+  const collected = [];
+  for (let page = 1; ; page += 1) {
+    const response = await listWorkflowRuns({
+      owner,
+      repo,
+      workflow_id: workflowId,
+      event: 'workflow_dispatch',
+      per_page: perPage,
+      page,
+    });
+    const runs = response?.data?.workflow_runs || [];
+    collected.push(...runs.filter((run) => filter(run)));
+
+    const oldestRunAt = runs.reduce((oldest, run) => {
+      const at = parseRunTimestamp(run);
+      if (at === null) return oldest;
+      return oldest === null || at < oldest ? at : oldest;
+    }, null);
+    if (runs.length === 0) break;
+    if (oldestRunAt !== null && oldestRunAt <= cutoffMs) break;
+    if (runs.length < perPage) break;
+  }
+  return collected;
+}
+
+/**
  * Reduce a list of workflow runs to the liveness facts we care about.
  *
  * `success` is the right health signal even though most reconciler runs exit
@@ -167,8 +222,12 @@ export function parseDecisionRecords(logText) {
   return String(logText || '')
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line.startsWith(`${DECISION_LOG_MARKER} `))
-    .map((line) => line.slice(DECISION_LOG_MARKER.length + 1))
+    .map((line) => {
+      const marker = `${DECISION_LOG_MARKER} `;
+      const index = line.indexOf(marker);
+      return index >= 0 ? line.slice(index + marker.length) : null;
+    })
+    .filter(Boolean)
     .map((json) => {
       try {
         const parsed = JSON.parse(json);

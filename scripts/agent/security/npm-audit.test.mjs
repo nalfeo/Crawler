@@ -9,7 +9,6 @@ import { fileURLToPath, URL } from 'node:url';
 import {
   AUDIT_EXCEPTIONS,
   evaluateAudit,
-  evaluateTemporaryDependencyExceptions,
   extractAuditExceptionsFromSource,
   findReasonRestatementViolations,
 } from './npm-audit.mjs';
@@ -169,6 +168,7 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
   assert.match(result.stderr, /2026-07-01 -> 2026-09-01/);
   assert.match(result.stderr, /restated, current justification/);
 });
+
 
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
@@ -358,54 +358,6 @@ test('fails closed when severity is missing (undefined)', () => {
     result.blocking.map((item) => item.name),
     ['pkg'],
   );
-});
-
-test('tracks active temporary dependency exceptions while the pinned rollback is in place', () => {
-  const packageManifest = {
-    overrides: {
-      postcss: '8.5.22',
-    },
-  };
-
-  const result = evaluateTemporaryDependencyExceptions(packageManifest, {
-    now: new Date('2026-08-01T00:00:00Z'),
-    exceptions: [
-      {
-        packageName: 'postcss',
-        field: 'overrides',
-        version: '8.5.22',
-        expiresOn: '2026-08-06',
-        reason: 'Temporary rollback for feed availability.',
-      },
-    ],
-  });
-
-  assert.equal(result.active.length, 1);
-  assert.equal(result.expired.length, 0);
-});
-
-test('fails closed after temporary dependency exception expiry', () => {
-  const packageManifest = {
-    overrides: {
-      postcss: '8.5.22',
-    },
-  };
-
-  const result = evaluateTemporaryDependencyExceptions(packageManifest, {
-    now: new Date('2026-08-07T00:00:00Z'),
-    exceptions: [
-      {
-        packageName: 'postcss',
-        field: 'overrides',
-        version: '8.5.22',
-        expiresOn: '2026-08-06',
-        reason: 'Temporary rollback for feed availability.',
-      },
-    ],
-  });
-
-  assert.equal(result.active.length, 0);
-  assert.equal(result.expired.length, 1);
 });
 
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and

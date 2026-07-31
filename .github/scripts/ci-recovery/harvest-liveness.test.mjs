@@ -6,6 +6,7 @@ import YAML from 'yaml';
 
 import {
   buildDispatchLivenessIncidentBody,
+  collectRecentWorkflowDispatchRuns,
   collectRecentReconcileHarvestRuns,
   DEFAULT_HARVEST_THRESHOLD_MINUTES,
   DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
@@ -142,6 +143,45 @@ test('collectRecentReconcileHarvestRuns filters to reconcile runs and paginates 
   );
 });
 
+test('collectRecentWorkflowDispatchRuns paginates only until cutoff and supports filtering', async () => {
+  const calls = [];
+  const pages = {
+    1: [
+      run({
+        display_title: 'CI Recovery (reconcile) for PR #10',
+        updated_at: '2026-07-30T16:58:00Z',
+      }),
+      run({
+        display_title: 'CI Recovery (lease-heartbeat) for PR #10',
+        updated_at: '2026-07-30T16:57:00Z',
+      }),
+    ],
+    2: [
+      run({
+        display_title: 'CI Recovery (reconcile) for PR #11',
+        updated_at: '2026-07-30T07:58:00Z',
+      }),
+    ],
+  };
+  const collected = await collectRecentWorkflowDispatchRuns({
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    workflowId: 'ci-recovery.yml',
+    cutoffMs: new Date('2026-07-30T08:00:00Z').getTime(),
+    filter: (item) => item.display_title.includes('(reconcile)'),
+    listWorkflowRuns: async (params) => {
+      calls.push(params);
+      return { data: { workflow_runs: pages[params.page] || [] } };
+    },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    collected.map((item) => item.display_title),
+    ['CI Recovery (reconcile) for PR #10', 'CI Recovery (reconcile) for PR #11'],
+  );
+});
+
 test('evaluateHarvestLiveness stays quiet when there is no open backlog', () => {
   const summary = summarizeHarvestRuns([], NOW);
   const verdict = evaluateHarvestLiveness({ summary, backlogCount: 0 });
@@ -215,6 +255,18 @@ test('parseDecisionRecords extracts structured CI_RECOVERY_DECISION lines', () =
   assert.equal(records.length, 2);
   assert.equal(records[0].pr, 2414);
   assert.equal(records[1].action, 'dispatch-copilot');
+});
+
+test('parseDecisionRecords accepts timestamp-prefixed workflow log lines', () => {
+  const records = parseDecisionRecords(
+    [
+      '2026-07-31T00:00:00.1234567Z CI_RECOVERY_DECISION {"pr":2414,"ts":"2026-07-31T00:00:00.000Z","stage":"terminal","action":"wait-admission"}',
+      '2026-07-31T00:00:01.1234567Z CI_RECOVERY_DECISION {"pr":2415,"ts":"2026-07-31T00:05:00.000Z","stage":"terminal","action":"dispatch-copilot"}',
+    ].join('\n'),
+  );
+  assert.equal(records.length, 2);
+  assert.equal(records[0].action, 'wait-admission');
+  assert.equal(records[1].pr, 2415);
 });
 
 test('summarizeDispatchLiveness alarms when only skip/no-op decisions exist while blocked PRs are open', () => {
@@ -500,6 +552,7 @@ test('CI Liveness Sweep runs the harvest liveness alarm', () => {
   assert.ok(ALARM_STEP, 'sweep must contain the harvest liveness alarm step');
   assert.match(ALARM_STEP.with.script, /harvest-liveness\.mjs/);
   assert.match(ALARM_STEP.with.script, /collectRecentReconcileHarvestRuns/);
+  assert.match(ALARM_STEP.with.script, /collectRecentWorkflowDispatchRuns/);
   assert.match(ALARM_STEP.with.script, /summarizeDispatchLiveness/);
   assert.match(ALARM_STEP.with.script, /reconcileDispatchLivenessIncident/);
   assert.ok(
