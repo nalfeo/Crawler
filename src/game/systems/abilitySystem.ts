@@ -809,7 +809,7 @@ function applyPassive(
   if (def.weaponPrerequisite !== undefined && hasComponent(world.ecs, holderEid, Player)) {
     const px = world.stores.position.x[holderEid] ?? 0;
     const py = world.stores.position.y[holderEid] ?? 0;
-    pushVfxEvent(world.vfxEvents, { kind: 'weaponAbilityActivate', x: px, y: py });
+    pushVfxEvent(world.vfxEvents, { kind: 'abilityActivateFlash', x: px, y: py });
   }
 }
 
