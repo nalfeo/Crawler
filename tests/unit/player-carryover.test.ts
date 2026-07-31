@@ -1497,6 +1497,55 @@ describe('player floor carryover', () => {
     );
   });
 
+  it('does not re-emit weaponAbilityActivate VFX for a general passive across a floor carryover round trip', () => {
+    // Regression guard for a hypothesis raised in review: does restoring
+    // carryover reset appliedPassiveAbilityIds (it does — persistentStatModifiers
+    // deliberately excludes passive-ability modifiers, see the test above) in a
+    // way that causes applyPassive() to re-fire VFX for every owned general
+    // passive on every floor transition? It must not, because applyPassive()
+    // only emits weaponAbilityActivate for weapon-gated passives
+    // (def.weaponPrerequisite !== undefined) — general passives get their
+    // one-time unlock VFX from the level-5 skill milestone site instead.
+    const source = createTestWorld({ seed: 4242 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+
+    grantPassiveAbility(source, sourcePlayer, 'combat-flow');
+    abilitySystem(source);
+    expect(
+      source.abilityStatesByEntity.get(sourcePlayer)?.appliedPassiveAbilityIds.has('combat-flow'),
+    ).toBe(true);
+    // First application (via abilitySystem's synchronizeAbilityPassives pass)
+    // must not have emitted VFX for this no-prerequisite passive.
+    expect(source.vfxEvents.filter((e) => e.kind === 'weaponAbilityActivate')).toHaveLength(0);
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    // Confirmed exclusion: combat-flow's stat modifier is never carried as a
+    // persistentStatModifier, so appliedPassiveAbilityIds is reset on restore.
+    expect(snapshot.persistentStatModifiers).not.toContainEqual(
+      expect.objectContaining({ sourceId: `combat-flow:passive:${sourcePlayer}:0` }),
+    );
+
+    const destination = createTestWorld({ seed: 4242, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, snapshot);
+    // restorePlayerCarryover already runs one synchronizeAbilityPassives pass
+    // internally; run the full system once more (mirroring a real floor tick)
+    // to make sure no delayed/second-pass VFX slips through either.
+    abilitySystem(destination);
+
+    expect(
+      destination.abilityStatesByEntity
+        .get(destinationPlayer)
+        ?.appliedPassiveAbilityIds.has('combat-flow'),
+    ).toBe(true);
+    expect(
+      destination.statModifiers.filter((modifier) =>
+        modifier.sourceId.startsWith(`combat-flow:passive:${destinationPlayer}:`),
+      ),
+    ).toHaveLength(2);
+    expect(destination.vfxEvents.filter((e) => e.kind === 'weaponAbilityActivate')).toHaveLength(0);
+  });
+
   it('fails closed with PlayerCarryoverSnapshotError on malformed array-typed fields', () => {
     const source = createTestWorld({ seed: 42 });
     const player = spawnPlayer(source, 0, 0);

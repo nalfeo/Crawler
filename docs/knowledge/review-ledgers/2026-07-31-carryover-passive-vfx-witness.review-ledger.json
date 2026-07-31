@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "carryover-passive-vfx-witness",
+  "task_title": "Carryover passive VFX-burst regression witness",
+  "estimated_apples": 1,
+  "stages": {}
+}
