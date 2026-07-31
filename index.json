@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c772f276f949270100a2a0158facdc82a23eabe2",
+    "commitDate": "2026-07-31T10:36:08Z",
+    "commitSubject": "fix(extensions): repair workflow extension + add bare-import detection guard (#2450)",
+    "capturedAt": "2026-07-31T11:43:45.500Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30624751366",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/c772f276f949270100a2a0158facdc82a23eabe2.json"
+  },
+  {
     "commit": "cbfd53b1d811c38e4e2508db574f3689b6a545c3",
     "commitDate": "2026-07-31T10:09:36Z",
     "commitSubject": "Surface level-5 passive abilities in Abilities UI and add unlock feedback (#2440)",
