@@ -51,9 +51,12 @@ import {
   MERCHANTS_CHARM_DEF,
 } from '../../shared/equipmentDefs.js';
 import { GAME } from '../../shared/constants.js';
-import type { GeneratedEquipmentInventoryEntry } from '../../shared/inventory.js';
+import {
+  addItem,
+  createInventoryBag,
+  type GeneratedEquipmentInventoryEntry,
+} from '../../shared/inventory.js';
 import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
-import { addItem, createInventoryBag } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../../shared/equipment-slots.js';
 import { registerLab, type LabCategory } from '../registry.js';

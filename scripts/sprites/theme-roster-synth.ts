@@ -36,9 +36,9 @@ import {
 import { _MIRROR_SLOT_PAIRS_FOR_TESTS } from '../../src/shared/equipment-slots.js';
 
 /** Human-readable "leftArm+rightArm" list for the roster prompt, from the canonical pairs. */
-const MIRROR_PAIR_PROMPT_LIST = _MIRROR_SLOT_PAIRS_FOR_TESTS.map(([a, b]) => `${a}+${b}`).join(
-  ', ',
-);
+const MIRROR_PAIR_PROMPT_LIST = _MIRROR_SLOT_PAIRS_FOR_TESTS
+  .map(([a, b]) => `${a}+${b}`)
+  .join(', ');
 
 /**
  * Minimal chat surface this module needs: a single structured-JSON

@@ -26,7 +26,13 @@ import {
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
-import { ItemRarity, type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
+import {
+  ItemRarity,
+  type ItemDef,
+  type ItemTag,
+  RARITY_COLORS,
+  getItemById,
+} from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -209,8 +215,7 @@ export function createInventoryUI(
    */
   const getGeneratedRegistry = (): GeneratedSpriteRegistry => {
     const registry = scene.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
-      | GeneratedSpriteRegistry
-      | undefined;
+      GeneratedSpriteRegistry | undefined;
     return registry ?? emptyGeneratedSpriteRegistry();
   };
 

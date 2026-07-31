@@ -83,9 +83,7 @@ export interface SourceFile {
 }
 
 function isProductionConsumerPath(path: string): boolean {
-  return (
-    (path.startsWith('src/') && !path.startsWith('src/labs/')) || path.startsWith('scripts/')
-  );
+  return (path.startsWith('src/') && !path.startsWith('src/labs/')) || path.startsWith('scripts/');
 }
 
 function isExplicitTestScaffoldingExport(name: string): boolean {
