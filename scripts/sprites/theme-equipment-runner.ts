@@ -24,6 +24,8 @@ import {
   materializeAndLoadBrief,
   selectedBriefKey,
   selectedBriefRevision,
+  THEME_EQUIPMENT_JUDGE_CONCURRENCY,
+  THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS,
 } from './theme-equipment-brief.js';
 import { generateOne } from './generate-one.js';
 import { loadRecordedReferencePngs } from './load-reference-pngs.js';
@@ -59,7 +61,9 @@ import {
   judgeThemeEquipmentCollectionWithText,
   judgeThemeEquipmentCollectionWithVision,
   publishThemeEquipmentSet,
+  RecoverableThemeSetItemError,
   runThemeEquipmentSetPhase,
+  type ThemeEquipmentSetPhaseRunResult,
   type ThemeEquipmentTextJudgeProvider,
 } from './theme-equipment-pipeline.js';
 import type { CheckinAsset } from './checkin.js';
@@ -68,7 +72,28 @@ import type { QueueCommitDeps } from './queue-commit.js';
 const STAGE_PREFIX = 'theme-equipment-stage-';
 
 export class ThemeEquipmentRunnerError extends Error {
-  override readonly name = 'ThemeEquipmentRunnerError';
+  override readonly name: string = 'ThemeEquipmentRunnerError';
+}
+
+/**
+ * Thrown by `init`/`runPhase` when a phase pass CHECKPOINTED successfully
+ * (every accepted item was persisted) but at least one item recoverably failed
+ * or the collection judge threw. Carries the persisted state and per-item
+ * failure detail so the CLI can surface a machine-readable status and a
+ * driver-facing "re-run to regenerate only the failures" message. This is a
+ * partial success — the accepted work is safe on disk — NOT a fatal.
+ */
+export class ThemeEquipmentSetPhasePartialError extends ThemeEquipmentRunnerError {
+  override readonly name = 'ThemeEquipmentSetPhasePartialError';
+  constructor(
+    message: string,
+    readonly state: ThemeEquipmentSetState,
+    readonly succeededItemIds: readonly string[],
+    readonly itemFailures: ThemeEquipmentSetPhaseRunResult['itemFailures'],
+    readonly collectionJudgeError: string | null,
+  ) {
+    super(message);
+  }
 }
 
 export interface ThemeEquipmentRunnerDeps {
@@ -91,6 +116,34 @@ export interface ThemeEquipmentRunnerDeps {
   ) => Promise<CheckinAsset[]>;
   /** Test seam; production performs the one queue-backed atomic publish. */
   readonly publishSet?: typeof publishThemeEquipmentSet;
+}
+
+/**
+ * Build the driver-facing message for a partial phase pass: what was
+ * checkpointed, what failed and why, and the workflow command to re-run so
+ * only up-reviewed/frozen items are skipped (every other item regenerates).
+ */
+function formatPartialMessage(setId: string, result: ThemeEquipmentSetPhaseRunResult): string {
+  const parts: string[] = [];
+  if (result.succeededItemIds.length > 0) {
+    parts.push(
+      `Checkpointed ${result.succeededItemIds.length} item(s): ${result.succeededItemIds.join(', ')}.`,
+    );
+  }
+  if (result.itemFailures.length > 0) {
+    const failures = result.itemFailures
+      .map((failure) => `${failure.itemId} (${failure.message})`)
+      .join('; ');
+    parts.push(`Failed ${result.itemFailures.length} item(s): ${failures}.`);
+  }
+  if (result.collectionJudgeError) {
+    parts.push(`Collection judge did not run: ${result.collectionJudgeError}.`);
+  }
+  parts.push(
+    `Re-run: gh workflow run theme-equipment.yml -f action=run-phase -f set_id=${setId} ` +
+      `(up-reviewed/frozen items are skipped; every other item regenerates).`,
+  );
+  return parts.join(' ');
 }
 
 /**
@@ -160,15 +213,18 @@ export class ThemeEquipmentRunner {
     const state = buildThemeEquipmentSetStateFromPlan(plan, {
       updatedAt: this.deps.now().toISOString(),
     });
-    const judged = await runThemeEquipmentSetPhase(
+    const runResult = await runThemeEquipmentSetPhase(
       state,
       async (item) => this.rosterArtifacts(state, item),
       async (collection) => this.judgeTextCollection(collection, 'roster'),
     );
-    return saveThemeEquipmentSetState(this.deps.store, judged, {
+    // `init` always creates the doc (expectedRevision:null), so ALWAYS persist
+    // the checkpoint — even a partial/fatal pass must not vanish.
+    const persisted = await saveThemeEquipmentSetState(this.deps.store, runResult.state, {
       expectedRevision: null,
       now: this.deps.now,
     });
+    return this.finishPhaseRun(plan.id, persisted, runResult);
   }
 
   async runPhase(setId: string): Promise<ThemeEquipmentSetState> {
@@ -179,31 +235,67 @@ export class ThemeEquipmentRunner {
       );
     }
     const expectedRevision = loaded.stateRevision;
-    let revisable = loaded;
-    for (const item of loaded.items) {
-      if (
-        item.phases[loaded.phase].review.verdict !== 'down' ||
-        item.frozenPhases.includes(loaded.phase)
-      ) {
-        continue;
-      }
-      const revision = reviseRejectedThemeSetItem(revisable, item.id);
-      if (!revision.ok) {
-        throw new ThemeEquipmentRunnerError(
-          `Cannot revise rejected item "${item.id}": ${JSON.stringify(revision.reasons)}`,
-        );
-      }
-      revisable = revision.state;
-    }
-    const executed = await runThemeEquipmentSetPhase(
-      revisable,
+    const runResult = await runThemeEquipmentSetPhase(
+      loaded,
       (item, state) => this.executeItem(state, item),
       (state) => this.judgePhaseCollection(state),
+      // Lazy per-item revision: revise a down-reviewed item immediately before
+      // its own execution so a fatal error on item N never clears the artifacts
+      // or bumps the revision of items N+1…M that were never attempted.
+      (state, itemId) => {
+        if (!isReviewPhase(state.phase)) return null;
+        const item = state.items.find((c) => c.id === itemId);
+        if (
+          !item ||
+          item.phases[state.phase].review.verdict !== 'down' ||
+          item.frozenPhases.includes(state.phase)
+        ) {
+          return null;
+        }
+        return reviseRejectedThemeSetItem(state, itemId);
+      },
     );
-    return saveThemeEquipmentSetState(this.deps.store, executed, {
-      expectedRevision,
-      now: this.deps.now,
-    });
+    // Persist only if something actually changed since we loaded (lazy
+    // per-item revisions bump the revision, so any real work — or a failure
+    // marker — makes this true). A truly no-op pass avoids a needless
+    // same-revision write that would only churn the store.
+    const mutated = runResult.state.stateRevision !== expectedRevision;
+    const persisted = mutated
+      ? await saveThemeEquipmentSetState(this.deps.store, runResult.state, {
+          expectedRevision,
+          now: this.deps.now,
+        })
+      : loaded;
+    return this.finishPhaseRun(setId, persisted, runResult);
+  }
+
+  /**
+   * Shared tail for `init`/`runPhase`: given the persisted checkpoint and the
+   * graceful-run result, either (a) rethrow the original fatal error verbatim
+   * (checkpoint already saved), (b) throw a `ThemeEquipmentSetPhasePartialError`
+   * when the accepted work was saved but some items failed or the judge threw,
+   * or (c) return the clean persisted state.
+   */
+  private finishPhaseRun(
+    setId: string,
+    persisted: ThemeEquipmentSetState,
+    runResult: ThemeEquipmentSetPhaseRunResult,
+  ): ThemeEquipmentSetState {
+    if (runResult.fatalError) {
+      // Checkpoint is saved; surface the ORIGINAL error unchanged so callers can
+      // still distinguish e.g. a provider error from a pipeline error.
+      throw runResult.fatalError.error;
+    }
+    if (runResult.itemFailures.length > 0 || runResult.collectionJudgeError) {
+      throw new ThemeEquipmentSetPhasePartialError(
+        formatPartialMessage(setId, runResult),
+        persisted,
+        runResult.succeededItemIds,
+        runResult.itemFailures,
+        runResult.collectionJudgeError,
+      );
+    }
+    return persisted;
   }
 
   async advance(setId: string): Promise<ThemeEquipmentSetState> {
@@ -479,13 +571,22 @@ export class ThemeEquipmentRunner {
       styleGuide: loadStyleGuide(this.deps.repoRoot),
       visionProvider: vision,
       force: true,
+      // Speed the variant-approval rejudge (the maintainer-facing wait): cap the
+      // judged set to at most 6 (never raising a brief that already asks for
+      // fewer) and fan out 4-at-a-time. This path passes no judge budget/cache,
+      // so bounded concurrency is race-free (see `runJudgePass`).
+      judgeMaxVariants: Math.min(
+        THEME_EQUIPMENT_REJUDGE_MAX_VARIANTS,
+        loaded.brief.judge.maxVariants,
+      ),
+      concurrency: THEME_EQUIPMENT_JUDGE_CONCURRENCY,
       env: this.deps.env,
       now: this.deps.now,
     });
     const judged = await loadRunSummary(this.deps.store, sheet.briefId, sheet.runId);
     const selection = autoSelectVariants(judged.candidates, { maxVariants: 3 });
     if (selection.selected.length < 1 || selection.selected.length > 3) {
-      throw new ThemeEquipmentRunnerError(
+      throw new RecoverableThemeSetItemError(
         `Variant approval found ${selection.selected.length} acceptable variants for "${item.id}"; required 1-3.`,
       );
     }
@@ -529,47 +630,11 @@ export class ThemeEquipmentRunner {
     if (state.phase === 'roster' || state.phase === 'briefs') {
       return this.judgeTextCollection(state, state.phase);
     }
+    const sources = selectCollectionTileSources(state);
     const tiles = await Promise.all(
-      state.items.flatMap((item) => {
-        if (state.phase === 'sprite-sheets') {
-          const artifact = requiredArtifact(item, 'sprite-sheets', 'raw-sheet');
-          if (!artifact.briefId || !artifact.runId) {
-            throw new ThemeEquipmentRunnerError(
-              `Collection artifact metadata is incomplete for "${item.id}".`,
-            );
-          }
-          return [
-            this.deps.store
-              .get(`${artifact.briefId}/${artifact.runId}/${artifact.summary}`)
-              .then((png) => ({ label: item.displayName, png })),
-          ];
-        }
-        // variant-approval: include ALL approved variants so the collection
-        // judge scores every selected variant, not just the first one.
-        const approvedArtifacts = item.phases['variant-approval'].artifacts.filter(
-          (a) => a.kind === THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
-        );
-        if (approvedArtifacts.length === 0) {
-          throw new ThemeEquipmentRunnerError(
-            `Item "${item.id}" has no approved-variant artifacts for collection judging.`,
-          );
-        }
-        return approvedArtifacts.map((artifact) => {
-          if (!artifact.briefId || !artifact.runId || artifact.variantIndex === undefined) {
-            throw new ThemeEquipmentRunnerError(
-              `Collection artifact metadata is incomplete for "${item.id}".`,
-            );
-          }
-          const filename = `processed/${String(artifact.variantIndex).padStart(2, '0')}.png`;
-          const label =
-            approvedArtifacts.length > 1
-              ? `${item.displayName} v${artifact.variantIndex}`
-              : item.displayName;
-          return this.deps.store
-            .get(`${artifact.briefId}/${artifact.runId}/${filename}`)
-            .then((png) => ({ label, png }));
-        });
-      }),
+      sources.map((source) =>
+        this.deps.store.get(source.key).then((png) => ({ label: source.label, png })),
+      ),
     );
     return judgeThemeEquipmentCollectionWithVision({
       state,
@@ -741,6 +806,101 @@ function requiredArtifact(
   return artifact;
 }
 
+/**
+ * One PNG tile to fetch for a vision collection-cohesion contact sheet: the
+ * run-store key of the image and the label the judge prompt uses to refer to
+ * it.
+ */
+export interface CollectionTileSource {
+  readonly key: string;
+  readonly label: string;
+}
+
+/**
+ * Choose the contact-sheet tiles for the collection-cohesion vision judge at
+ * the `sprite-sheets` or `variant-approval` phase. Returns EXACTLY ONE tile
+ * per item, in `state.items` order.
+ *
+ * Collection cohesion is a cross-item judgment — whether the items read as a
+ * single coherent set — so one representative image per item is the right
+ * granularity. Per-variant quality was already judged during variant
+ * selection/approval. One tile per item also keeps the sheet within
+ * `CONTACT_SHEET_MAX_TILES` for large sets (N items = N tiles, never
+ * N × variants — an 18-item set with 3 approved variants each previously
+ * assembled 54 tiles and overflowed the 32 cap at the very end of a paid run)
+ * and keeps each sprite large enough for the vision model to read.
+ *
+ * For `variant-approval` the representative is the approved variant with the
+ * LOWEST `variantIndex` — a deterministic tiebreak that does not depend on the
+ * durable artifact array's order. Every approved variant is by definition
+ * acceptable, so any is a valid stand-in. The metadata of EVERY approved
+ * variant is validated before selection, so a malformed unselected artifact
+ * fails loudly here rather than surviving to a later publish step.
+ *
+ * Throws `ThemeEquipmentRunnerError` for an unsupported phase, an item with no
+ * approved variants, or incomplete artifact metadata.
+ */
+export function selectCollectionTileSources(state: ThemeEquipmentSetState): CollectionTileSource[] {
+  switch (state.phase) {
+    case 'sprite-sheets':
+      return state.items.map((item) => {
+        const artifact = requiredArtifact(item, 'sprite-sheets', 'raw-sheet');
+        if (!artifact.briefId || !artifact.runId || !artifact.summary) {
+          throw new ThemeEquipmentRunnerError(
+            `Collection artifact metadata is incomplete for "${item.id}".`,
+          );
+        }
+        return {
+          key: `${artifact.briefId}/${artifact.runId}/${artifact.summary}`,
+          label: item.displayName,
+        };
+      });
+    case 'variant-approval':
+      return state.items.map((item) => {
+        const approved = item.phases['variant-approval'].artifacts.filter(
+          (artifact) => artifact.kind === THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
+        );
+        if (approved.length === 0) {
+          throw new ThemeEquipmentRunnerError(
+            `Item "${item.id}" has no approved-variant artifacts for collection judging.`,
+          );
+        }
+        for (const artifact of approved) {
+          if (!artifact.briefId || !artifact.runId || artifact.variantIndex === undefined) {
+            throw new ThemeEquipmentRunnerError(
+              `Collection artifact metadata is incomplete for "${item.id}".`,
+            );
+          }
+        }
+        const representative = approved.reduce((lowest, candidate) => {
+          const candidateIndex = candidate.variantIndex ?? Number.POSITIVE_INFINITY;
+          const lowestIndex = lowest.variantIndex ?? Number.POSITIVE_INFINITY;
+          return candidateIndex < lowestIndex ? candidate : lowest;
+        });
+        const filename = `processed/${String(representative.variantIndex).padStart(2, '0')}.png`;
+        return {
+          key: `${representative.briefId}/${representative.runId}/${filename}`,
+          label: item.displayName,
+        };
+      });
+    default:
+      throw new ThemeEquipmentRunnerError(
+        `selectCollectionTileSources does not support phase "${state.phase}".`,
+      );
+  }
+}
+
+/**
+ * Bounded concurrency for the publish stager's Azure blob downloads. Each key
+ * writes to its own distinct path with an idempotent recursive mkdir, so the
+ * reads are independent — the only shared coupling is the outer cleanup of
+ * `stageRoot` on failure, which is why a rejecting batch must fully settle
+ * before it throws (below). 4 matches THEME_EQUIPMENT_JUDGE_CONCURRENCY; the
+ * installed Azure retry policy does not retry HTTP 429, so a higher fan-out
+ * would raise burst/throttle risk without a matching benefit.
+ */
+export const THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY = 4;
+
 export async function __stageThemeEquipmentRun(
   store: RunStore,
   stageRoot: string,
@@ -753,11 +913,21 @@ export async function __stageThemeEquipmentRun(
     throw new ThemeEquipmentRunnerError(`No stored run artifacts found under ${prefix}`);
   }
   const runDir = path.join(stageRoot, 'generated', 'runs', briefId, runId);
-  for (const key of keys) {
+  const downloadKey = async (key: string): Promise<void> => {
     const relative = key.slice(prefix.length);
     const destination = path.join(runDir, ...relative.split('/'));
     mkdirSync(path.dirname(destination), { recursive: true });
     writeFileSync(destination, await store.get(key));
+  };
+  for (let index = 0; index < keys.length; index += THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY) {
+    const batch = keys.slice(index, index + THEME_EQUIPMENT_STAGE_DOWNLOAD_CONCURRENCY);
+    // Settle the whole batch before propagating a failure: the caller deletes
+    // `stageRoot` on rejection, so no in-flight write may outlive this throw.
+    const results = await Promise.allSettled(batch.map(downloadKey));
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure && failure.status === 'rejected') {
+      throw failure.reason;
+    }
   }
 }
 

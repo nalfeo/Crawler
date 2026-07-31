@@ -15,6 +15,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
+import { MERGE_TRAIN_EMPTY_INCIDENT_MARKER as EMPTY_TRAIN_INCIDENT_MARKER } from '../ci-recovery/markers.mjs';
 import { coordinationEnforcementEnabled } from '../ci-conflict-coordinator/state.mjs';
 import { ciConflictOrderReasonForPromotion } from './ci-conflict-order.mjs';
 import {
@@ -27,7 +28,7 @@ import {
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
-  mainHealthReason,
+  mainAttributionVerdict,
   mergeTrainGitEnvironment,
   planLandedRecovery,
   promoteExactBatch,
@@ -35,6 +36,8 @@ import {
   queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
+  EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  stalledAdmissionEligiblePulls,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
@@ -52,7 +55,7 @@ import {
   NOOP_LABEL,
   parseEnabledFlag,
   parseMergeTrainPrNumber,
-  planPrefixPromotion,
+  planAttributedPrefixPromotion,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
   RECOVERY_PENDING_LABEL,
@@ -71,11 +74,17 @@ import { LIFECYCLE_MARKER, parseLifecycleComment } from '../ci-recovery/pr-lifec
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
-const { promotionToken: token, workflowDispatchToken } = resolveMergeTrainTokens(process.env);
+const {
+  promotionToken: token,
+  workflowDispatchToken,
+  updateBranchToken,
+} = resolveMergeTrainTokens(process.env);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
 const { trainCap: resolvedTrainCap } = resolveGlobalDispatchCaps(process.env);
+const EMPTY_TRAIN_INCIDENT_LABEL = 'ci-incident';
+const EMPTY_TRAIN_INCIDENT_TITLE = 'CI incident: Merge train empty with admission-eligible backlog';
 
 if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
   throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
@@ -185,6 +194,80 @@ async function removeLabel(prNumber, name) {
   } catch (error) {
     if (error.status !== 404) throw error;
   }
+}
+
+function renderEmptyTrainIncidentBody({ now, stalledPulls }) {
+  const numbers = stalledPulls.map((pull) => `#${pull.number}`).join(', ');
+  return [
+    EMPTY_TRAIN_INCIDENT_MARKER,
+    '## Merge train liveness alarm',
+    '',
+    `- Observed: ${now.toISOString()}`,
+    `- Condition: merge train reported \`Merge train is empty\``,
+    `- Admission-eligible open PRs stalled >= 60m: ${stalledPulls.length}`,
+    `- PRs: ${numbers}`,
+    '',
+    'This issue is managed by `.github/scripts/merge-train/reconcile.mjs`.',
+  ].join('\n');
+}
+
+async function listOpenIncidentIssues() {
+  const encodedLabel = encodeURIComponent(EMPTY_TRAIN_INCIDENT_LABEL);
+  return paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodedLabel}&per_page=100`,
+  );
+}
+
+function findManagedEmptyTrainIncident(openIncidents) {
+  return openIncidents.find(
+    (issue) =>
+      issue.title === EMPTY_TRAIN_INCIDENT_TITLE &&
+      String(issue.body || '').includes(EMPTY_TRAIN_INCIDENT_MARKER),
+  );
+}
+
+async function closeManagedEmptyTrainIncidentIfAny(reason) {
+  const openIncidents = await listOpenIncidentIssues();
+  const existing = findManagedEmptyTrainIncident(openIncidents);
+  if (!existing) return;
+  const suffix = String(reason || '').trim();
+  const body = suffix
+    ? `${String(existing.body || '').trim()}\n\n- Auto-resolved: ${suffix}`
+    : existing.body;
+  await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+    method: 'PATCH',
+    body: { state: 'closed', body },
+  });
+  process.stdout.write(`closed empty-train incident issue=#${existing.number}\n`);
+}
+
+async function upsertEmptyTrainIncident(stalledPulls, now = new Date()) {
+  if (stalledPulls.length === 0) return;
+  const openIncidents = await listOpenIncidentIssues();
+  const body = renderEmptyTrainIncidentBody({ now, stalledPulls });
+  const existing = findManagedEmptyTrainIncident(openIncidents);
+  if (existing) {
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      body: { body },
+    });
+    process.stdout.write(
+      `updated empty-train incident issue=#${existing.number} stalled=${stalledPulls.length}\n`,
+    );
+    return;
+  }
+  const created = await request(token, `/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    body: {
+      title: EMPTY_TRAIN_INCIDENT_TITLE,
+      labels: [EMPTY_TRAIN_INCIDENT_LABEL],
+      body,
+    },
+  });
+  process.stdout.write(
+    `created empty-train incident issue=#${created.data.number} stalled=${stalledPulls.length}\n`,
+  );
 }
 
 async function updateStatus(prNumber, status) {
@@ -345,7 +428,12 @@ const dispatchRecoveryGated = buildGatedDispatchRecovery({
 // keeps the check-run fan-out small and predictable either way.
 const MAIN_HEALTH_PUSH_RUN_LOOKBACK = 5;
 
-async function mainHealthAllowsPromotion() {
+// Failure-ATTRIBUTION probe. This is NOT a promotion gate (ADR 0077): the
+// validated composite prefix is the sole promotion gate, and a green composite
+// promotes onto a red `main` -- that is exactly how a PR that FIXES `main`
+// lands. The verdict is consulted only to decide whether a RED composite is
+// attributable to a queued PR, and only a positive 'red' pauses.
+async function mainAttributionSignal() {
   const currentMainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
     .object.sha;
   const [scheduleResponse, pushResponse] = await Promise.all([
@@ -361,15 +449,14 @@ async function mainHealthAllowsPromotion() {
   const scheduleRuns = [];
   for (const run of scheduleResponse.data.workflow_runs || []) {
     if (run.head_sha !== currentMainSha) {
-      // Runs for other SHAs are filtered by mainHealthReason; no need to
+      // Runs for other SHAs are filtered by mainAttributionVerdict; no need to
       // fetch jobs for them.
       scheduleRuns.push({ ...run, isTrainFastPath: false });
       continue;
     }
     // For schedule runs on the current main SHA, verify they ran the full CI
-    // gate. When MERGE_TRAIN_ENABLED=false, ci.yml skips the `changes` job on
-    // schedule events, so the run completes as success without real CI work.
-    // Such a no-op run must not be treated as authoritative health evidence.
+    // gate. A scheduled run whose `changes` job is absent/skipped did no real
+    // CI work, so it is not authoritative evidence either way.
     const jobs = await workflowRunJobs(run.id);
     scheduleRuns.push({ ...run, isTrainFastPath: isDisabledTrainScheduleRun(jobs) });
   }
@@ -381,15 +468,11 @@ async function mainHealthAllowsPromotion() {
     const runs = await checkRuns(run.head_sha);
     pushRuns.push({ ...run, isTrainFastPath: isTrainFastPathPushRun(run, trustedAppId, runs) });
   }
-  const reason = mainHealthReason({
+  const verdict = mainAttributionVerdict({
     mainSha: currentMainSha,
     runs: [...scheduleRuns, ...pushRuns],
   });
-  if (reason) {
-    process.stdout.write(`paused merge train; ${reason}\n`);
-    return false;
-  }
-  return true;
+  return verdict;
 }
 
 // Real GitHub squash-merge promotion. `mergePullRequest` merges each admitted
@@ -422,7 +505,7 @@ async function fetchCommit(sha) {
 // always a real GitHub commit, never a candidate SHA. Deliberately named
 // PROMOTION_POSTCONDITION_CHECK_NAME, never `merge-train`: a `merge-train`
 // check on a real landed main commit would masquerade as the fast-path
-// attestation ci.yml/mainHealthReason key on.
+// attestation ci.yml/mainAttributionVerdict key on.
 async function publishPostconditionCheck(sha, fingerprint, entries) {
   await createTrainCheck(
     sha,
@@ -647,6 +730,11 @@ await ensureLabel(
   'First failing addition isolated by merge-train validation',
 );
 await ensureLabel(LANDED_LABEL, '0e8a16', "This PR's change landed on main via the merge train");
+await ensureLabel(
+  EMPTY_TRAIN_INCIDENT_LABEL,
+  'b60205',
+  'Automated merge-train liveness or CI incident',
+);
 
 // Crash-after-merge recovery runs first, every reconcile: it backfills the
 // durable landed signal for any PR that was really merged but whose
@@ -657,18 +745,103 @@ await reconcileLandedSignals();
 const pulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`);
 const queued = queueEntries(pulls, repository);
 if (queued.length === 0) {
+  const now = new Date();
+  const staleCandidates = pulls.filter((pull) => {
+    if (pull.state !== 'open' || pull.draft) return false;
+    if (pull.base?.ref !== 'main') return false;
+    if (pull.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) return false;
+    const updatedAtMs = Date.parse(String(pull.updated_at || pull.created_at || ''));
+    return (
+      Number.isFinite(updatedAtMs) &&
+      now.getTime() - updatedAtMs >= EMPTY_TRAIN_LIVENESS_THRESHOLD_MS
+    );
+  });
+  const admissionByNumber = new Map();
+  for (const pull of staleCandidates) {
+    const admission = await eligible(pull);
+    admissionByNumber.set(pull.number, admission.ok);
+  }
+  const stalled = stalledAdmissionEligiblePulls({
+    pulls: staleCandidates,
+    admissionByNumber,
+    now,
+    thresholdMs: EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
+  });
+  if (stalled.length > 0) {
+    await upsertEmptyTrainIncident(stalled, now);
+  } else {
+    await closeManagedEmptyTrainIncidentIfAny('queue empty condition cleared before threshold');
+  }
   process.stdout.write('Merge train is empty\n');
   process.exit(0);
 }
+await closeManagedEmptyTrainIncidentIfAny('merge train has queued entries again');
 
 const admitted = [];
 for (const pr of queued) {
-  const admission = await eligible(pr);
+  // D2 fix: fetch the authoritative per-PR payload BEFORE calling eligible(),
+  // so both the BEHIND check and the conflict check (hasMergeConflict in
+  // eligible) draw from the same authoritative snapshot.  The list-pulls
+  // simplified response may cache a stale mergeable / mergeable_state, which
+  // could reject a clean-BEHIND PR before this update path, or admit a
+  // now-DIRTY PR.
+  const livePr = (await request(token, `/repos/${owner}/${repo}/pulls/${pr.number}`)).data;
+  const admission = await eligible(livePr);
   if (admission.ok) {
-    // Fence the legacy auto-merge path before this PR can be sequentially
-    // squash-merged, so it cannot land out of order underneath the promotion.
-    await disableAutoMerge(pr);
-    admitted.push(pr);
+    // D2 fix: if the PR is clean-BEHIND main, call the update-branch API so
+    // the strict up-to-date merge policy does not block it from merging.
+    // Use updateBranchToken (CRAWLER_CI_PAT || GITHUB_TOKEN): CRAWLER_CI_PAT
+    // emits normal push events that re-trigger required CI; GITHUB_TOKEN is
+    // recursion-suppressed for push events and would leave the updated head
+    // without check runs.
+    //
+    // Use `break` after the first non-fork BEHIND PR to preserve FIFO queue
+    // ordering: newer PRs must not leapfrog an older BEHIND PR. Fork PRs that
+    // got dequeued (403) fall through naturally so later entries can still be
+    // admitted this cycle.
+    if (livePr.mergeable_state === 'behind') {
+      let dequeuedFork = false;
+      try {
+        await request(
+          updateBranchToken,
+          `/repos/${owner}/${repo}/pulls/${pr.number}/update-branch`,
+          {
+            method: 'PUT',
+            body: { expected_head_sha: livePr.head.sha },
+          },
+        );
+        process.stdout.write(`update-branch pr=#${pr.number} reason=clean-behind\n`);
+      } catch (err) {
+        if (err.status === 403) {
+          // The token cannot update a fork's head branch. Dequeue the PR so
+          // it does not poison every subsequent reconcile cycle. A human must
+          // manually rebase the fork branch, then re-add the merge-train label.
+          process.stderr.write(
+            `update-branch pr=#${pr.number} fork/no-permission (403): dequeuing to unblock queue\n`,
+          );
+          await removeLabel(pr.number, QUEUE_LABEL);
+          dequeuedFork = true;
+        } else if (err.status !== 422) {
+          // 422 covers "already up-to-date" and stale expected_head_sha — log
+          // it so stale-head races are visible and not silently swallowed.
+          throw err;
+        } else {
+          process.stderr.write(
+            `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
+          );
+        }
+      }
+      // Stop admitting further PRs this pass so newer PRs cannot leapfrog.
+      // The BEHIND PR will re-enter on the next reconcile once its branch is
+      // current and required CI passes. Skip the break for dequeued forks: the
+      // blocking PR is gone from the queue so later entries can still be admitted.
+      if (!dequeuedFork) break;
+    } else {
+      // Fence the legacy auto-merge path before this PR can be sequentially
+      // squash-merged, so it cannot land out of order underneath the promotion.
+      await disableAutoMerge(pr);
+      admitted.push(pr);
+    }
   } else {
     await removeLabel(pr.number, QUEUE_LABEL);
     await updateStatus(
@@ -778,7 +951,6 @@ const loopResult = await runTrainBuildLoop({
 });
 
 async function promotePrefix(prefixLength, validationIndex) {
-  if (!(await mainHealthAllowsPromotion())) return { promoted: false, landedCount: 0 };
   const provenanceEntries = train.slice(0, prefixLength);
   const validationCandidate = candidates[validationIndex];
   if (!validationCandidate) {
@@ -817,7 +989,6 @@ async function promotePrefix(prefixLength, validationIndex) {
     recordMapping: () => {
       landedCount += 1;
     },
-    reattestHealth: mainHealthAllowsPromotion,
     // Coordinator slot ordering is recomputed LIVE from filenames here, so it
     // survives label removal — it must be gated on the same kill switch or the
     // train would keep enforcing an order nothing else is enforcing.
@@ -859,8 +1030,20 @@ if (loopResult.action === 'retryable-build-failure') {
 }
 
 // Validate the maximal candidate first. Only a genuine terminal maximal failure
-// asks the bisection planner for a smaller prefix.
-const plan = planPrefixPromotion(candidates.map((candidate) => candidate.state));
+// asks the bisection planner for a smaller prefix -- and only when `main` is not
+// itself known-red, so an unrelated broken `main` cannot be misattributed to a
+// queued PR and eject it (ADR 0077).
+const plan = await planAttributedPrefixPromotion({
+  prefixStates: candidates.map((candidate) => candidate.state),
+  mainVerdict: mainAttributionSignal,
+});
+
+if (plan.action === 'pause') {
+  process.stdout.write(
+    `paused merge train attribution; ${plan.reason}; the failed composite is not attributable to any queued PR, so no PR was ejected and no bisection round was spent\n`,
+  );
+  process.exit(0);
+}
 
 if (plan.action === 'validate') {
   await Promise.all(
@@ -915,6 +1098,16 @@ if (plan.firstFailure !== -1) {
   await dispatchRecoveryGated(failingEntry.number, 'merge-train-validation-failure');
   process.stdout.write(
     `isolated first failing pr=#${failingEntry.number} green_prefix=${plan.greenPrefixLength}\n`,
+  );
+}
+
+if (plan.attribution) {
+  // Red-`main` attribution suppressed the ejection (`firstFailure: -1`), so the
+  // isolation block above logged nothing. Without this line an operator sees a
+  // failed composite, a partial prefix landing, and no explanation for why the
+  // failing PR was left in the queue.
+  process.stdout.write(
+    `main red attribution; ${plan.attribution}; ejected nothing, promoting proven-green prefix=${plan.greenPrefixLength}\n`,
   );
 }
 

@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import * as fc from 'fast-check';
 import {
-  REWARD_BUNDLE_AFFINITY_PROB,
-  REWARD_BUNDLE_RARITIES,
-  alignmentFromRoll,
+  _REWARD_BUNDLE_AFFINITY_PROB as REWARD_BUNDLE_AFFINITY_PROB,
+  _REWARD_BUNDLE_RARITIES as REWARD_BUNDLE_RARITIES,
+  _alignmentFromRoll as alignmentFromRoll,
   resolveEquipmentRewardBundle,
-  resolvePlayerBuildAffinity,
+  _resolvePlayerBuildAffinity as resolvePlayerBuildAffinity,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { getGeneratedEquipmentBaseAffinity } from '../../src/game/generated-equipment-generator.js';
 import { getGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { SeededRandom } from '../../src/shared/random.js';
-import { EQUIPMENT_REWARD_TIERS } from '../../src/shared/generated-equipment-types.js';
+import {
+  ACHIEVEMENT_EQUIPMENT_REWARD_TIERS,
+  EQUIPMENT_REWARD_TIERS,
+  EQUIPMENT_REWARD_TIER_RARITIES,
+} from '../../src/shared/generated-equipment-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const MIXED_BASES = [
@@ -28,9 +32,9 @@ const MIXED_BASES = [
  * unit test; here we prove the monotonic/threshold contract holds for arbitrary
  * rolls and confirm the empirical alignment frequency tracks the exact
  * Common 25% / Uncommon 50% / Rare 75% targets. These pure-function checks
- * cover `rare` too even though no achievement tier can resolve a `rare`
- * instance (the resolver-routing check below only exercises the tiers that
- * are actually reachable — common/uncommon).
+ * cover `rare` too, since `tier4` (see {@link EQUIPMENT_REWARD_TIER_RARITIES})
+ * is Rare-capable — the resolver-routing check below asserts every tier only
+ * ever resolves rarities within its own declared pool.
  */
 describe('reward bundle affinity — threshold properties', () => {
   it('is exactly `roll < prob` for every rarity and roll', () => {
@@ -130,12 +134,12 @@ describe('reward bundle resolution — determinism property', () => {
       fc.property(
         fc.integer({ min: 0, max: 100_000 }).map((n) => `run-${n}`),
         fc.integer({ min: 0, max: 100_000 }).map((n) => `ach-${n}`),
-        fc.constantFrom(...EQUIPMENT_REWARD_TIERS),
+        fc.constantFrom(...ACHIEVEMENT_EQUIPMENT_REWARD_TIERS),
         (runKey, achievementId, tier) => {
           const world = createTestWorld({ seed: 7, floor: 2, generatedEquipmentRunKey: runKey });
           const bundle = resolveEquipmentRewardBundle(world, achievementId, MIXED_BASES, tier);
           const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
-          expect(instance.rarity).not.toBe('rare');
+          expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).toContain(instance.rarity);
         },
       ),
       { numRuns: 60 },

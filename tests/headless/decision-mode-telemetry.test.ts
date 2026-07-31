@@ -3,8 +3,7 @@
  *
  * Verifies that the headless runner threads the AI's decision mode + run-plan
  * slack/urgency into sample events when the provider exposes them:
- *   - Every sample from a BehaviorTreeAI carries `decisionMode` ('legacy' or
- *     'slackAware').
+ *   - Every sample from a BehaviorTreeAI carries `decisionMode` ('legacy').
  *   - Travelling samples (run plan present) carry numeric `slackMs` + `urgency`.
  *   - A scripted provider WITHOUT the getters emits none of the new fields
  *     (present-only spread — no LEGACY-provider regression).
@@ -47,14 +46,6 @@ describe('headless decision-mode telemetry', () => {
       expect(typeof s.slackMs).toBe('number');
       expect(typeof s.urgency).toBe('number');
     }
-  });
-
-  it('emits decisionMode "slackAware" for a SLACK_AWARE BehaviorTreeAI', async () => {
-    const samples = await captureSamples(
-      new BehaviorTreeAI({ seed: 42, decisionMode: AIDecisionMode.SLACK_AWARE }),
-    );
-    expect(samples.length).toBeGreaterThan(0);
-    expect(samples.every((s) => s.decisionMode === AIDecisionMode.SLACK_AWARE)).toBe(true);
   });
 
   it('omits the new fields entirely for a provider without the A/B getters', async () => {

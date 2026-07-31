@@ -1,0 +1,150 @@
+# FLOOR DECAL (Asset Forge, 2026-07-25). Square 64x64 canvas because this is a
+# top-down floor decal laid on a 1x1 tile, not an upright prop — a square canvas
+# IS its true proportions. Palette-locked to data/palettes/welcome-room-carpet.json
+# with postprocessing.paletteMode: strict; see welcome-room-floor-tape.yaml for
+# why prose colour direction does not work here and quantization is the only
+# lever that does. Keeping the lock ALSO activates the palette-membership sensor,
+# so this tightens the gate rather than loosening it.
+type: prop
+name: welcome-room-floor-path
+description: |
+  A segment of a WORN WALKING ROUTE gouged into the carpet by years of foot
+  traffic — the same three people walking the same line, day after day, season
+  after season, until the nap is scuffed flat along a continuous track. Top-down
+  floor decal, pixel art, readable at 16px.
+
+  Rendered in the game at approximately 2 x 2 feet (1 tile = 16px = 2 feet).
+  Keep detail count low enough to survive at 16px and do not over-detail.
+
+  REQUIREMENT A — DO NOT DRAW A SHAPE. DRAW SCATTERED GRAIN.
+  Two previous rounds both failed the same way: they drew a solid filled
+  rectangle (round 2 even gave it a dark outline, so it read as a wooden plank).
+  The mark is not an object and has no body. It is an ABSENCE — the carpet is
+  simply more scuffed along one line — and the only way to draw that here is as
+  LOOSE, DISCONNECTED SPECKLE:
+  - Draw individual scuff specks: single pixels, and occasional two- or
+    three-pixel flecks. Nothing larger.
+  - THERE MUST BE NO SOLID AREA ANYWHERE ON THE CANVAS. No solid run of opaque
+    pixels may be more than about three pixels across. If you can see a filled
+    block, a slab, a bar, a plank or a panel, it is wrong.
+  - Most of the canvas — including most of the middle of the track — stays
+    TRANSPARENT between the specks. The carpet shows through everywhere; you are
+    sprinkling grain over it, not painting on top of it.
+  - Think: sprinkled sand, scattered grit, a stippled halftone shadow, pepper on
+    a table. Not a stripe, not a strip, not a band of paint.
+  - ABSOLUTELY NO OUTLINE, RIM, KEYLINE, BORDER OR CONTOUR OF ANY KIND anywhere.
+    Round 2 was rejected for exactly this. A speckle field has no edges by
+    construction — do not give it any.
+
+  REQUIREMENT B — THE GRAIN IS ARRANGED INTO A TRACK.
+  Picture the tile divided into three equal vertical columns:
+  - THE LEFT COLUMN IS COMPLETELY EMPTY. Every pixel transparent.
+  - THE RIGHT COLUMN IS COMPLETELY EMPTY. Every pixel transparent.
+  - The speckle lives only in the MIDDLE COLUMN, and it runs the FULL HEIGHT of
+    the tile — specks reach the very top row and the very bottom row, so copies
+    laid end to end read as one continuous unbroken track.
+  - Density is highest along the centre line of that column and thins out
+    steadily toward its two sides until it fades to nothing well before the left
+    and right edges.
+  - A few flecks elongate slightly ALONG the direction of travel (vertically) —
+    heel drags and scuffs — never across it. That is what gives it direction.
+
+  IT IS NOT: a stain, a spill, a puddle, a bloodstain, a crack, a hole, a rug, a
+  mat, a plank, a board, a piece of tape, a rope, debris, rubble, bones, gravel,
+  scattered litter, or any discrete object. It is an ABSENCE — the carpet is
+  simply more worn along this line. Nothing is lying on the floor.
+
+  SUBTLETY — IT MUST BLEND INTO THE FLOOR, NOT SIT ON TOP OF IT. The correct
+  result looks ALMOST INVISIBLE against the carpet: a viewer should have to look
+  twice to notice it. If it is clearly legible as a distinct object, it is too
+  strong. Err far on the side of too subtle. Low contrast. No drama.
+
+  COLOUR: the floor underneath is a pale, light, sandy warm orange, approximately
+  #eaa56c (luma 175). Draw using only these tones and blends between adjacent
+  ones:
+    #f2b681  — lifted / bleached nap, the lightest tone
+    #eaa56c  — the untouched floor colour itself
+    #dc9a67  — very slightly shaded
+    #cb8f63  — the darkest ordinary tone
+    #b8825c  — reserved for the single deepest accent, used sparingly
+  #b8825c is the DARKEST PIXEL PERMITTED ANYWHERE. Nothing darker. No pixel may
+  have a luma below about 130. Banned outright: black, near-black, dark brown,
+  chocolate, coffee, walnut, maroon, brick, rust, gold, yellow, cream, white,
+  silver, teal, cyan, blue, green, magenta, red speckle. A saturated brown result
+  with cyan or red speckle is exactly the failure this palette lock exists to
+  prevent, and is an automatic rejection.
+
+  ABSOLUTELY NO OUTLINE. The house prop style calls for a hard dark contour; that
+  rule is SUSPENDED for this asset and must not be applied. Do not draw a dark
+  keyline, a black or brown contour, a rim, or any darkened boundary around the
+  worn band. The wear has no outline at all — it is defined purely by a slight
+  tonal shift against the floor. A dark contour is the single fastest way to make
+  this read as a sticker, and is an automatic rejection.
+
+  HOW TO FEATHER IN PIXEL ART (the pipeline forces alpha to be binary — every
+  pixel ends up either fully transparent or fully opaque, never half). Do NOT
+  rely on a soft gradient alpha ramp; it will be thresholded away. Instead
+  feather the way pixel artists do: DITHER AND STIPPLE. Break the two long sides
+  of the band into scattered, irregular, single-pixel speckle that thins out with
+  distance, so the wear dissolves into loose grains rather than ending on a
+  defined contour. There must be no continuous closed outline anywhere. Interior
+  speckle and pinholes are wanted, not faults.
+
+  BACKGROUND: fully transparent (alpha 0). Do NOT paint a carpet base. Do NOT
+  fill the canvas. Do NOT paint a backing colour "close to" the floor — the floor
+  is already painted underneath this art. Paint ONLY the worn band. No border, no
+  frame, no outline, no vignette, no panel edge, no backing plate.
+
+  MOOD: a grimy reality-TV dungeon set, threadbare and over-used. Three bored
+  NPCs have been stuck living in this reception room for many seasons; this is
+  the groove they have walked into the floor.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the mark's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, and do not draw any panel, border or frame behind the mark.
+palette:
+  id: welcome-room-carpet
+postprocessing:
+  paletteMode: strict
+tags:
+  - welcome-room
+  - floor
+  - decal
+  - reality-show
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 8
+sensors:
+  # A decal has no grounded base, so bottom-center grip is meaningless here.
+  anchor:
+    mode: center-of-mass
+  # TIGHTENED HARD, twice. The prop default is [0.10, 0.65]; round 1 was capped
+  # at 0.45 and round 2 at 0.36, and BOTH still came back as a solid filled
+  # rectangle. A genuine speckle field a third of the tile wide, with the carpet
+  # showing through between the grains, lands near 0.10-0.16 — so the cap is
+  # dropped to 0.20, which mechanically forbids the solid-shape failure instead
+  # of relying on the prompt. The floor of 0.05 is a little above an empty tile
+  # so a blank cell cannot pass either.
+  opaqueRatio:
+    min: 0.05
+    max: 0.20
+  # Deliberate subject-level override with a justification (same as the approved
+  # welcome-room-floor-tape brief): alpha is binary in this pipeline, so the
+  # required feathering can only be expressed as dithered stipple, which by
+  # construction leaves many interior transparent pixels. The default of 0 would
+  # reject exactly the art this brief asks for. The sensor's real job — catching
+  # wholesale background bleed-through — is still covered by the opaqueRatio cap.
+  interiorHoles:
+    maxPixels: 512
+  # This decal is REQUIRED to run edge to edge so copies tile into a continuous
+  # route; that is the whole point of the brief and the fix for the previous
+  # "isolated blob" defect. The edge sensor's default (no main-silhouette edge
+  # contact) would reject the correct art. Detached edge fragments — the real
+  # bleed-from-adjacent-cell failure — stay banned.
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+    maxDetachedEdgePixels: 0
+minVariations: 0

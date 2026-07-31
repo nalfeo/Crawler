@@ -8,20 +8,19 @@
  * asset-issues.ts) and copies every approved PNG, then opens one PR that closes
  * the source issues.
  *
+ * It also picks up orphaned `assets/checkin-*` branches that have no open PR —
+ * these represent approved art checked in locally but never consolidated. Both
+ * issue-backed and orphaned branches are unioned into the same batch PR.
+ *
  * Split, like checkin.ts, into a PURE planner/parser (this file's
  * `parseOpenAssetIssues` + `planConsolidation`) and an injected-IO executor
  * (`runAssetPrConsolidation`) so the decision logic is unit-tested without git.
  */
 
-import {
-  mergeCatalogs,
-  mergeManifests,
-  parseAssetIssueBody,
-  type CatalogEntry,
-  type GeneratedManifest,
-} from './asset-issues.js';
+import { parseAssetIssueBody } from './asset-issues.js';
 import {
   ASSET_CHECKIN_LABEL,
+  ASSET_SURFACE_PATHS,
   CheckinError,
   type AssetCheckinPayload,
   type CheckinAsset,
@@ -83,24 +82,33 @@ export interface ConsolidationPlan {
   readonly issueNumbers: readonly number[];
   /** Every approved asset across all issues (deduped by assetPath). */
   readonly assets: readonly CheckinAsset[];
+  /**
+   * Orphaned `assets/checkin-*` branches that have no open PR and no issue
+   * payload. Their art surface is unioned in alongside the issue-backed
+   * branches during the worktree step.
+   */
+  readonly orphanedBranches: readonly string[];
 }
 
 export interface PlanConsolidationInput {
   readonly issues: readonly AssetIssue[];
+  /** Orphaned checkin branches without any open PR or issue payload. */
+  readonly orphanedBranches?: readonly string[];
   readonly now: Date;
   readonly baseBranch?: string;
   readonly slug?: string;
 }
 
 /**
- * Build the single-PR consolidation plan from the open issues. Pure. Throws if
- * there are no issues (callers should special-case the empty queue first).
+ * Build the single-PR consolidation plan from open issues and/or orphaned
+ * branches. Pure. Throws if there is nothing to consolidate.
  */
 export function planConsolidation(input: PlanConsolidationInput): ConsolidationPlan {
-  if (input.issues.length === 0) {
+  const orphanedBranches = input.orphanedBranches ?? [];
+  if (input.issues.length === 0 && orphanedBranches.length === 0) {
     throw new Error('planConsolidation: no asset-checkin issues to consolidate');
   }
-  const baseBranch = input.issues[0]!.payload.baseBranch ?? input.baseBranch ?? 'main';
+  const baseBranch = input.issues[0]?.payload.baseBranch ?? input.baseBranch ?? 'main';
   const slug = input.slug ?? `batch-${formatStamp(input.now)}`;
   const batchBranch = `assets/${slug}`;
 
@@ -108,10 +116,18 @@ export function planConsolidation(input: PlanConsolidationInput): ConsolidationP
   const issueNumbers = input.issues.map((i) => i.number);
   const assets = dedupeAssets(input.issues.flatMap((i) => i.payload.assets));
 
+  const totalSources = sourceBranches.length + orphanedBranches.length;
   const noun = assets.length === 1 ? 'asset' : 'assets';
-  const commitMessage = `feat(sprites): consolidate ${assets.length} approved ${noun} from ${input.issues.length} check-in(s)`;
-  const prTitle = `feat(sprites): add ${assets.length} approved ${noun} (${input.issues.length} check-in${input.issues.length === 1 ? '' : 's'})`;
-  const prBody = renderPrBody(input.issues, assets, baseBranch);
+  const checkinLabel = totalSources === 1 ? 'check-in' : 'check-ins';
+  const commitMessage =
+    assets.length > 0
+      ? `feat(sprites): consolidate ${assets.length} approved ${noun} from ${totalSources} ${checkinLabel}`
+      : `feat(sprites): consolidate ${totalSources} orphaned ${checkinLabel}`;
+  const prTitle =
+    assets.length > 0
+      ? `feat(sprites): add ${assets.length} approved ${noun} (${totalSources} ${checkinLabel})`
+      : `feat(sprites): consolidate ${totalSources} orphaned check-in${totalSources === 1 ? '' : 's'}`;
+  const prBody = renderPrBody(input.issues, assets, baseBranch, orphanedBranches);
 
   return {
     batchBranch,
@@ -122,6 +138,7 @@ export function planConsolidation(input: PlanConsolidationInput): ConsolidationP
     sourceBranches,
     issueNumbers,
     assets,
+    orphanedBranches,
   };
 }
 
@@ -129,6 +146,7 @@ function renderPrBody(
   issues: readonly AssetIssue[],
   assets: readonly CheckinAsset[],
   baseBranch: string,
+  orphanedBranches: readonly string[] = [],
 ): string {
   const lines: string[] = [];
   lines.push('## Consolidated asset check-ins');
@@ -137,12 +155,25 @@ function renderPrBody(
     `Folds ${assets.length} approved generated sprite(s) from ${issues.length} ` +
       `\`${ASSET_CHECKIN_LABEL}\` issue(s) into one branch off \`${baseBranch}\`.`,
   );
+  if (orphanedBranches.length > 0) {
+    lines.push(
+      `Also includes art from **${orphanedBranches.length}** orphaned ` +
+        `\`assets/checkin-*\` branch(es) with no open PR.`,
+    );
+  }
   lines.push('');
   lines.push('### Source check-ins');
   for (const issue of issues) {
     lines.push(
       `- #${issue.number} — \`${issue.payload.branch}\` (${issue.payload.assets.length} asset(s))`,
     );
+  }
+  if (orphanedBranches.length > 0) {
+    lines.push('');
+    lines.push('### Orphaned branches (no issue)');
+    for (const branch of orphanedBranches) {
+      lines.push(`- \`${branch}\``);
+    }
   }
   lines.push('');
   lines.push('### Assets');
@@ -204,16 +235,20 @@ export interface AssetPrResult {
   readonly plan: ConsolidationPlan;
 }
 
-const MANIFEST_REL = 'public/assets/generated/manifest.json';
-const CATALOG_REL = 'src/shared/data/sprite-catalog.json';
-
 /**
  * Execute the consolidation: list open issues, union their art surfaces into a
  * fresh batch branch, push it, and open one PR. Side effects are injected.
  *
- * Binary safety: PNGs are materialized with `git checkout <branch> -- <path>`
- * (object-store → worktree, never through stdout); only the JSON manifest +
- * catalog are read as text and unioned with the pure helpers.
+ * Binary safety + conflict-free union: both PNGs AND per-asset manifest shards
+ * are materialized with `git checkout <branch> -- <path>` (object-store →
+ * worktree, never through stdout). Because each shard is a self-contained file
+ * keyed by manifestKey, disjoint check-ins never share a path, so the union is a
+ * plain per-file overlay with no JSON merge and no aggregate/catalog write.
+ *
+ * Orphaned branches (assets/checkin-* on the remote with no open PR) are also
+ * folded in: their art surface (--diff-filter=AM paths within ASSET_SURFACE_PATHS)
+ * is overlaid on top of the issue-backed sources, with later branches winning on
+ * collision.
  */
 export async function runAssetPrConsolidation(
   repoRoot: string,
@@ -232,7 +267,6 @@ export async function runAssetPrConsolidation(
   const remote = options.remote ?? 'origin';
   const baseBranch = options.baseBranch ?? 'main';
   const now = deps.now ?? (() => new Date());
-  const join = deps.joinPath ?? ((...s: string[]) => s.join('/'));
 
   const listed = await exec(deps.exec, repoRoot, 'gh', [
     'issue',
@@ -247,13 +281,54 @@ export async function runAssetPrConsolidation(
     '200',
   ]);
   const issues = parseOpenAssetIssues(listed.stdout);
-  if (issues.length === 0) return null;
 
-  const plan = planConsolidation({ issues, now: now(), baseBranch, slug: options.slug });
+  const orphanedBranches = await scanOrphanedCheckinBranches(deps.exec, repoRoot, remote);
+
+  if (issues.length === 0 && orphanedBranches.length === 0) return null;
+
+  const plan = planConsolidation({
+    issues,
+    orphanedBranches,
+    now: now(),
+    baseBranch,
+    slug: options.slug,
+  });
 
   await exec(deps.exec, repoRoot, 'git', ['fetch', remote, baseBranch]);
   for (const branch of plan.sourceBranches) {
     await exec(deps.exec, repoRoot, 'git', ['fetch', remote, branch]);
+  }
+  for (const branch of orphanedBranches) {
+    await exec(deps.exec, repoRoot, 'git', ['fetch', remote, branch]).catch(() => undefined);
+  }
+
+  // Pre-compute the AM paths for each orphaned branch vs current main.
+  // Two-dot (not three-dot): comparing tips directly ensures an orphan whose art
+  // already landed on main via a previous batch merge shows an empty delta and is
+  // skipped, preventing stale re-replay. --no-renames matches the reconciler.
+  // Legacy aggregate manifest.json (pre-shard-migration) is filtered out; only
+  // per-asset entries/*.json shards and PNGs are safe to harvest.
+  const orphanedPathsByBranch = new Map<string, string[]>();
+  for (const branch of orphanedBranches) {
+    const ref = `${remote}/${branch}`;
+    const diffResult = await exec(deps.exec, repoRoot, 'git', [
+      'diff',
+      '--no-renames',
+      '--name-only',
+      '--diff-filter=AM',
+      `${remote}/${baseBranch}`,
+      ref,
+    ]).catch(() => ({ stdout: '', stderr: '', code: 0 }));
+    const paths = diffResult.stdout
+      .split('\n')
+      .map((p) => p.trim())
+      .filter(
+        (p) =>
+          p.length > 0 &&
+          ASSET_SURFACE_PATHS.some((prefix) => p.startsWith(prefix)) &&
+          !isLegacyAggregateManifestPath(p),
+      );
+    if (paths.length > 0) orphanedPathsByBranch.set(branch, paths);
   }
 
   const worktree = await deps.makeTempDir();
@@ -267,32 +342,40 @@ export async function runAssetPrConsolidation(
       `${remote}/${baseBranch}`,
     ]);
 
-    // Start from the base art surface, then union each source branch on top.
-    const manifests: GeneratedManifest[] = [];
-    const catalogs: CatalogEntry[][] = [];
+    // File-level union: materialize each source branch's approved PNGs AND
+    // their per-asset manifest shards into the worktree. Because every shard is
+    // a self-contained file keyed by manifestKey, disjoint check-ins never touch
+    // the same path, so a plain per-file checkout unions them with no
+    // manifest/catalog merge (the aggregate + catalog rows are derived).
     for (const branch of plan.sourceBranches) {
       const ref = `${remote}/${branch}`;
-      manifests.push(await readJsonFromRef(deps, repoRoot, ref, MANIFEST_REL));
-      catalogs.push(await readCatalogFromRef(deps, repoRoot, ref, CATALOG_REL));
-      // Materialize that branch's approved PNGs into the worktree (binary-safe).
       for (const asset of plan.assets) {
-        const repoRel = `public/assets/${asset.assetPath}`;
-        await exec(deps.exec, worktree, 'git', ['checkout', ref, '--', repoRel]).catch(() => ({
-          stdout: '',
-          stderr: '',
-          code: 0,
-        }));
+        const repoRels = [`public/assets/${asset.assetPath}`];
+        if (typeof asset.manifestKey === 'string' && asset.manifestKey.length > 0) {
+          repoRels.push(`public/assets/generated/entries/${asset.manifestKey}.json`);
+        }
+        for (const repoRel of repoRels) {
+          await exec(deps.exec, worktree, 'git', ['checkout', ref, '--', repoRel]).catch(() => ({
+            stdout: '',
+            stderr: '',
+            code: 0,
+          }));
+        }
       }
     }
 
-    const baseManifest = await deps.readJson<GeneratedManifest>(join(worktree, MANIFEST_REL));
-    const baseCatalog = await deps.readJson<CatalogEntry[]>(join(worktree, CATALOG_REL));
-    const mergedManifest = mergeManifests(baseManifest, ...manifests);
-    const mergedCatalog = mergeCatalogs(baseCatalog, ...catalogs);
-    await deps.writeJson(join(worktree, MANIFEST_REL), mergedManifest);
-    await deps.writeJson(join(worktree, CATALOG_REL), mergedCatalog);
+    // Overlay orphaned branches: checkout only the AM-scoped paths identified
+    // above. Later branches win on collision (last-writer semantics).
+    for (const branch of orphanedBranches) {
+      const paths = orphanedPathsByBranch.get(branch);
+      if (!paths || paths.length === 0) continue;
+      const ref = `${remote}/${branch}`;
+      for (const p of paths) {
+        await exec(deps.exec, worktree, 'git', ['checkout', ref, '--', p]).catch(() => undefined);
+      }
+    }
 
-    await exec(deps.exec, worktree, 'git', ['add', '--', 'public/assets/generated', CATALOG_REL]);
+    await exec(deps.exec, worktree, 'git', ['add', '--', 'public/assets/generated']);
     await exec(deps.exec, worktree, 'git', ['commit', '-m', plan.commitMessage]);
     await exec(deps.exec, worktree, 'git', ['push', '-u', remote, plan.batchBranch]);
 
@@ -309,6 +392,18 @@ export async function runAssetPrConsolidation(
       plan.prBody,
     ]);
     const prUrl = created.stdout.trim().split('\n').filter(Boolean).pop() ?? '';
+
+    // Delete the orphan source branches that were folded into this batch so
+    // subsequent invocations don't re-open a duplicate PR for the same content.
+    // Non-fatal: a delete failure is not a reason to fail the whole operation.
+    for (const branch of orphanedBranches) {
+      if (orphanedPathsByBranch.has(branch)) {
+        await exec(deps.exec, repoRoot, 'git', ['push', remote, '--delete', branch]).catch(
+          () => undefined,
+        );
+      }
+    }
+
     return { prUrl, plan };
   } finally {
     await exec(deps.exec, repoRoot, 'git', ['worktree', 'remove', worktree, '--force']).catch(
@@ -318,35 +413,51 @@ export async function runAssetPrConsolidation(
   }
 }
 
-async function readJsonFromRef(
-  deps: AssetPrRunnerDeps,
-  repoRoot: string,
-  ref: string,
-  relPath: string,
-): Promise<GeneratedManifest> {
-  const result = await deps.exec('git', ['show', `${ref}:${relPath}`], { cwd: repoRoot });
-  if (result.code !== 0) return { entries: {} };
-  try {
-    return JSON.parse(result.stdout) as GeneratedManifest;
-  } catch {
-    return { entries: {} };
-  }
+/**
+ * Returns true for top-level JSON files directly under `public/assets/generated/`
+ * that predate the shard migration (e.g. the aggregate `manifest.json`).
+ * Shard files live under `entries/` and are safe to harvest; those are NOT matched.
+ */
+function isLegacyAggregateManifestPath(p: string): boolean {
+  return /^public\/assets\/generated\/[^/]+\.json$/.test(p);
 }
 
-async function readCatalogFromRef(
-  deps: AssetPrRunnerDeps,
+/**
+ * Return `assets/checkin-*` branches on `remote` that have no open PR pointing
+ * at them. Non-fatal: on any query failure returns `[]` (conservative — the
+ * trust-boundary guard in the worktree step validates paths regardless).
+ */
+async function scanOrphanedCheckinBranches(
+  run: Exec,
   repoRoot: string,
-  ref: string,
-  relPath: string,
-): Promise<CatalogEntry[]> {
-  const result = await deps.exec('git', ['show', `${ref}:${relPath}`], { cwd: repoRoot });
-  if (result.code !== 0) return [];
+  remote: string,
+): Promise<string[]> {
+  const lsResult = await run('git', ['ls-remote', '--heads', remote, 'assets/checkin-*'], {
+    cwd: repoRoot,
+  }).catch(() => ({ stdout: '', stderr: '', code: 0 }));
+  const remoteBranches = lsResult.stdout
+    .split('\n')
+    .map((line) => line.split('\t')[1]?.replace('refs/heads/', '').trim() ?? '')
+    .filter((b) => b.startsWith('assets/checkin-'));
+
+  if (remoteBranches.length === 0) return [];
+
+  const prResult = await run(
+    'gh',
+    ['pr', 'list', '--state', 'open', '--json', 'headRefName', '--limit', '500'],
+    { cwd: repoRoot },
+  ).catch(() => ({ stdout: '[]', stderr: '', code: 0 }));
+
+  let openHeads = new Set<string>();
   try {
-    const parsed = JSON.parse(result.stdout);
-    return Array.isArray(parsed) ? (parsed as CatalogEntry[]) : [];
+    const parsed = JSON.parse(prResult.stdout) as Array<{ headRefName: string }>;
+    openHeads = new Set(parsed.map((p) => p.headRefName));
   } catch {
+    // If parse fails, treat all branches as potentially in-PR (conservative).
     return [];
   }
+
+  return remoteBranches.filter((b) => !openHeads.has(b));
 }
 
 async function exec(

@@ -675,3 +675,37 @@ describe('pickContrastingBackgroundColor — hue-aware selection', () => {
     expect(out).toContain('Prefer neon lime (#39ff14)');
   });
 });
+
+describe('buildSheetPrompt — frameSequence (walk-cycle) mode', () => {
+  function makeWalkCycleBrief(overrides: Partial<Brief> = {}): Brief {
+    return makeBrief({
+      type: 'character',
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 63 },
+      generation: { sheet: { rows: 1, cols: 3, emptyCells: [], nativeCanvas: 384 } },
+      frameSequence: { enabled: true, frameCount: 3, frameRate: 8, loop: true },
+      ...overrides,
+    } as Partial<Brief>);
+  }
+
+  it('emits ordered-frame instructions instead of the independent-variant exploration line', () => {
+    const out = buildSheetPrompt(makeWalkCycleBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toContain('ORDERED FRAMES of a single side-view walk-cycle animation');
+    expect(out).not.toContain('Treat each cell as a separate exploration');
+  });
+
+  it('instructs identity/palette/outfit to stay identical across frames', () => {
+    const out = buildSheetPrompt(makeWalkCycleBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toContain('Keep identity strictly IDENTICAL across every frame');
+    expect(out).toContain('leg/arm pose progresses between cells');
+  });
+
+  it('a normal (non-sequence) brief with the same grid still gets the exploration line', () => {
+    const brief = makeWalkCycleBrief({
+      frameSequence: { enabled: false, frameCount: 3, frameRate: 8, loop: true },
+    } as Partial<Brief>);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('Treat each cell as a separate exploration');
+    expect(out).not.toContain('ORDERED FRAMES');
+  });
+});

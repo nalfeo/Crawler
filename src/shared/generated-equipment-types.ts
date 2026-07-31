@@ -31,27 +31,26 @@ export const RARITY_EFFECT_BUDGET: Readonly<Record<GeneratedEquipmentRarity, num
   uncommon: 1,
   rare: 2,
 } as const;
-/**
- * Canonical rarity sequence of every resolved Floor 2 equipment reward bundle:
- * exactly one Common, one Uncommon, one Rare, in this order. A persisted, loaded,
- * or claimed bundle whose instances do not match this shape (wrong count or wrong
- * per-index rarity) is malformed and MUST fail closed. Shared so the game-layer
- * resolver/carryover and the core-layer claim path all validate against one
- * source of truth (the core layer cannot import the game-layer resolver).
- */
+/** Canonical rarity ladder used by Floor 2 reward affinity probability contracts. */
 export const GENERATED_EQUIPMENT_REWARD_BUNDLE_RARITIES: readonly GeneratedEquipmentRarity[] =
   Object.freeze(['common', 'uncommon', 'rare']);
 
 /**
- * Achievement equipment-reward tiers (Floor 2 reward-content slice). `tier1` is
- * the lowest tier (unlocked earliest), `tier3` the highest currently defined.
- * Each tier resolves to a SINGLE generated-equipment instance (not the legacy
- * fixed 3-item Common+Uncommon+Rare bundle) whose rarity is drawn from
- * {@link EQUIPMENT_REWARD_TIER_RARITIES}. No tier may ever draw `rare` — only a
- * canonical higher tier (not yet defined) could unlock Rare-item drops.
+ * Equipment-reward tiers (Floor 2 reward-content slice). `tier1` is the lowest
+ * tier (unlocked earliest); `tier4` is the highest and is Rare-capable (85%
+ * Uncommon / 15% Rare per PLAN.md §E3-C). Each tier resolves to a SINGLE
+ * generated-equipment instance (not the legacy fixed 3-item
+ * Common+Uncommon+Rare bundle) whose rarity is drawn from
+ * {@link EQUIPMENT_REWARD_TIER_RARITIES}. `tier1`-`tier3` never draw `rare` —
+ * that is a deliberate content decision, not a technical limit. `tier4` is
+ * reserved for boss chests and uses the epic's best non-Unique rarity pool.
  */
-export const EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3'] as const;
+export const EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3', 'tier4'] as const;
 export type EquipmentRewardTier = (typeof EQUIPMENT_REWARD_TIERS)[number];
+
+/** Internal generator tiers reachable from achievement-authored loot-box rewards. */
+export const ACHIEVEMENT_EQUIPMENT_REWARD_TIERS = ['tier1', 'tier2', 'tier3'] as const;
+export type AchievementEquipmentRewardTier = (typeof ACHIEVEMENT_EQUIPMENT_REWARD_TIERS)[number];
 
 export function isEquipmentRewardTier(value: string): value is EquipmentRewardTier {
   return (EQUIPMENT_REWARD_TIERS as readonly string[]).includes(value);
@@ -67,7 +66,9 @@ export function isEquipmentRewardTier(value: string): value is EquipmentRewardTi
  * affinity contract (Common 25% / Uncommon 50%), with no separate "tier bonus"
  * needed. This directly reuses — never replaces — the canonical
  * `REWARD_BUNDLE_AFFINITY_PROB` contract from the Floor 2 reward-bundle
- * resolver.
+ * resolver. `tier4` draws {uncommon, rare} at 85%/15% per PLAN.md §E3-C —
+ * the one tier that can resolve the epic's best non-Unique rarity, reserved
+ * for boss chests.
  */
 export const EQUIPMENT_REWARD_TIER_RARITIES: Readonly<
   Record<EquipmentRewardTier, readonly GeneratedEquipmentRarity[]>
@@ -75,17 +76,23 @@ export const EQUIPMENT_REWARD_TIER_RARITIES: Readonly<
   tier1: Object.freeze(['common'] as const),
   tier2: Object.freeze(['common', 'uncommon'] as const),
   tier3: Object.freeze(['uncommon', 'common'] as const),
+  tier4: Object.freeze(['uncommon', 'rare'] as const),
 });
 
 /**
- * Weighted-draw probability for the FIRST-listed rarity in a tier's pool (see
- * {@link EQUIPMENT_REWARD_TIER_RARITIES}); the remaining probability mass goes
- * to the second-listed rarity, if any. `tier1` is deterministic (100% common,
- * only one rarity in its pool). Documented assumption (not specified
- * numerically by the design brief): a 75/25 split, matching the shape of the
- * existing Common/Uncommon/Rare affinity contract.
+ * Per-tier weighted-draw probability for the FIRST-listed rarity in each
+ * tier's pool (see {@link EQUIPMENT_REWARD_TIER_RARITIES}); the remaining
+ * probability mass goes to the second-listed rarity, if any. `tier1` is
+ * deterministic (single entry, weight unused). `tier2` and `tier3` use a
+ * 75/25 split. `tier4` (boss chests) uses 85/15 per PLAN.md §E3-C.
  */
-export const EQUIPMENT_REWARD_TIER_PRIMARY_RARITY_WEIGHT = 0.75;
+export const EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS: Readonly<Record<EquipmentRewardTier, number>> =
+  Object.freeze({
+    tier1: 1.0, // single-entry pool — weight unused (deterministic)
+    tier2: 0.75, // 75% common, 25% uncommon
+    tier3: 0.75, // 75% uncommon, 25% common
+    tier4: 0.85, // 85% uncommon, 15% rare (PLAN.md §E3-C)
+  });
 
 export const ENHANCEMENT_MIN = 0 as const;
 export const ENHANCEMENT_MAX = 5 as const;

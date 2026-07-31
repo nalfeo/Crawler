@@ -49,7 +49,6 @@ import {
   renderCoordinatorComment,
   selectCoordination,
   shouldDispatchActiveSlot,
-  whoMustLandFirst,
 } from './state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -688,6 +687,9 @@ const commentEntries = await mapLimit(stateCandidateNumbers, 8, async (number) =
 const commentsByNumber = new Map(commentEntries);
 const existingStates = [];
 const commentedManagedNumbers = [];
+// Track coordinator comment ids so dissolved groups can have their durable
+// comment deleted (not just label-stripped) during out-of-scope cleanup below.
+const coordinatorCommentIdByNumber = new Map();
 for (const [number, comments] of commentEntries) {
   const managed = singleManagedComment(
     comments,
@@ -699,6 +701,7 @@ for (const [number, comments] of commentEntries) {
   if (managed) {
     existingStates.push(managed.state);
     commentedManagedNumbers.push(number);
+    coordinatorCommentIdByNumber.set(number, managed.comment.id);
   }
 }
 const managedNumbers = [...new Set([...labeledManagedNumbers, ...commentedManagedNumbers])];
@@ -729,6 +732,23 @@ for (const number of managedNumbers) {
   process.stdout.write(
     `released orphaned coordinator labels pr=#${number} reason=out-of-scope-or-stale\n`,
   );
+  // Delete the durable coordinator comment so the stale state blob is not
+  // re-parsed on the next sweep and re-queued for indefinite cleanup. Labels
+  // are already gone; the comment is the only surviving artifact.
+  const commentId = coordinatorCommentIdByNumber.get(number);
+  if (commentId) {
+    try {
+      await request(token, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
+        method: 'DELETE',
+      });
+      process.stdout.write(`deleted coordinator comment pr=#${number} comment_id=${commentId}\n`);
+    } catch (error) {
+      // Non-fatal: a 404 means it was already deleted; log and continue.
+      process.stdout.write(
+        `skip coordinator comment delete pr=#${number} comment_id=${commentId} error=${error?.message || error}\n`,
+      );
+    }
+  }
 }
 if (groups.length === 0) {
   process.stdout.write('No CI conflict clusters found after cleanup\n');
@@ -741,6 +761,7 @@ if (git(['rev-parse', 'refs/remotes/origin/main']) !== mainSha) {
   throw new Error('Fetched main does not match the API-observed main SHA');
 }
 
+const enforceCoordination = coordinationEnforcementEnabled(process.env);
 for (const group of groups) {
   const groupComments = new Map();
   for (const pull of group.pulls) {
@@ -769,9 +790,61 @@ for (const group of groups) {
   // PRs entirely (D11 structural guarantee in the coordinator runtime).
   const nbPhases = new Set(nonBlockingPhases());
   const blockingPulls = group.pulls.filter((pull) => !nbPhases.has(pull.lifecyclePhase));
+  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   if (blockingPulls.length === 0) {
+    const recoveryByNumber = new Map(
+      group.pulls.map((pull) => [
+        pull.number,
+        recoveryContext(pull, groupComments.get(pull.number)),
+      ]),
+    );
+    const humanApprovalByNumber = new Map(
+      await mapLimit(group.pulls, 4, async (pull) => [
+        pull.number,
+        humanApprovalRejection({
+          pullRequest: {
+            labels: [...pull.labelNames].map((name) => ({ name })),
+            head: { ref: pull.headRef },
+          },
+          closingIssues: await listClosingIssues(token, owner, repo, pull.number),
+          comments: groupComments.get(pull.number) || [],
+          ownerLogin: owner,
+        }),
+      ]),
+    );
+
+    for (const pull of group.pulls) {
+      const ownershipGated =
+        Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
+        Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
+        Boolean(humanApprovalByNumber.get(pull.number));
+      await removeLabel(pull, ORDER_WAIT_LABEL);
+      await removeLabel(pull, COORDINATED_LABEL);
+      await removeLabel(pull, LEADER_LABEL);
+      if (ownershipGated) {
+        await addLabel(pull, ESCALATION_LABEL);
+        await disableAutoMerge(pull);
+      } else {
+        await removeLabel(pull, ESCALATION_LABEL);
+      }
+    }
+
     // All pulls in this group are non-blocking (quarantined/abandoned). Nothing to
     // coordinate — skip proof collection and selection for this group entirely.
+    //
+    // These PRs stay in groupedNumbers, so the orphan-drain loop above never sees
+    // them. Reconcile the grouping-derived labels here or they strand forever.
+    // ESCALATION_LABEL is deliberately left alone: it can encode a real ownership
+    // gate, and this path returns before ownership is evaluated. Removing it would
+    // also re-expose the PR to CI-recovery dispatch, which a quarantined/abandoned
+    // PR should not receive.
+    if (!enforceCoordination) {
+      for (const pull of group.pulls) {
+        await removeLabel(pull, ORDER_WAIT_LABEL);
+        await removeLabel(pull, COORDINATED_LABEL);
+        await removeLabel(pull, LEADER_LABEL);
+      }
+    }
     process.stdout.write(
       `skip group=${group.groupId} reason=all-pulls-non-blocking members=${group.pulls.map((p) => p.number).join(',')}\n`,
     );
@@ -844,8 +917,9 @@ for (const group of groups) {
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
   //
-  // With enforcement disabled (the default) we keep discovery/reporting but
-  // actively UNFENCE: ORDER_WAIT is removed from every member. Removing (rather
+  // With enforcement disabled (the default) we keep discovery/reporting via the
+  // coordinator comment, but actively UNFENCE and UNLABEL: ORDER_WAIT,
+  // COORDINATED and LEADER are all removed from every member. Removing (rather
   // than merely not-adding) is what drains labels stranded by a previous
   // enforcing run — no manual cleanup pass is needed.
   //
@@ -856,23 +930,36 @@ for (const group of groups) {
   // already-armed auto-merge in place would let GitHub merge the PR the moment
   // its checks pass — before any of those reconcilers next run. Serialization
   // is what we are switching off here; human/agent ownership gates are not.
-  const enforceCoordination = coordinationEnforcementEnabled(process.env);
   for (const pull of group.pulls) {
-    await addLabel(pull, COORDINATED_LABEL);
     const ownershipGated =
       Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
       Boolean(recoveryByNumber.get(pull.number)?.shepherdLease) ||
       Boolean(humanApprovalByNumber.get(pull.number));
     if (enforceCoordination) {
+      await addLabel(pull, COORDINATED_LABEL);
       await addLabel(pull, ORDER_WAIT_LABEL);
       await disableAutoMerge(pull);
+      if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
+      else await removeLabel(pull, LEADER_LABEL);
     } else {
+      // Unenforced (the default): grouping is advisory only, and the grouping
+      // predicate keys on CI-filename identity rather than any real conflict
+      // test (issue #2180), so these labels routinely assert conflicts that do
+      // not exist. Publishing them marks non-conflicting PRs as conflict-managed
+      // and misleads both humans and other reconcilers. Remove (rather than
+      // merely not-add) so labels stranded by an earlier enforcing run drain
+      // without a manual cleanup pass.
       await removeLabel(pull, ORDER_WAIT_LABEL);
+      await removeLabel(pull, COORDINATED_LABEL);
+      await removeLabel(pull, LEADER_LABEL);
       if (ownershipGated) await disableAutoMerge(pull);
     }
-    if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
-    else await removeLabel(pull, LEADER_LABEL);
-    const escalated = proofByNumber.get(pull.number)?.status === 'ambiguous' || ownershipGated;
+    // Ownership escalation is a real, grouping-independent signal and is never
+    // switched off. An `ambiguous` supersession proof, by contrast, is derived
+    // from group-mates, so it only escalates while enforcement is on.
+    const escalated =
+      ownershipGated ||
+      (enforceCoordination && proofByNumber.get(pull.number)?.status === 'ambiguous');
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }
@@ -886,8 +973,16 @@ for (const group of groups) {
     } else {
       selectionBindingDrift = bindingCheck.reason;
       escalations.push(bindingCheck.reason);
-      for (const pull of group.pulls) {
-        await addLabel(pull, ESCALATION_LABEL);
+      // Binding drift is a group-derived signal: it means a group-mate's head
+      // moved out from under the selection. With enforcement off there is no
+      // fence to protect, so escalating here would re-apply the very label the
+      // member loop above just drained (and would withhold CI-recovery dispatch
+      // from PRs that are not actually blocked). Keep the reason in `escalations`
+      // so the coordinator comment still reports it.
+      if (enforceCoordination) {
+        for (const pull of group.pulls) {
+          await addLabel(pull, ESCALATION_LABEL);
+        }
       }
       process.stdout.write(`retain fenced group=${group.groupId} reason=${bindingCheck.reason}\n`);
     }

@@ -74,12 +74,16 @@ jobs:
       - name: Check if any new approvals
         id: check_changes
         run: |
-          if git diff --quiet HEAD -- public/assets/generated/ src/shared/data/sprite-catalog.json; then
+          # New approvals create untracked per-asset shards + PNGs under
+          # public/assets/generated/ (the aggregate manifest.json is a gitignored
+          # build artifact), so use `git status --porcelain` which reports
+          # untracked files — `git diff HEAD` would miss them.
+          CHANGED=$(git status --porcelain -- public/assets/generated/ | wc -l)
+          if [ "$CHANGED" -eq 0 ]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             echo "No new approvals — nothing to commit."
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            CHANGED=$(git diff --name-only HEAD -- public/assets/generated/ src/shared/data/sprite-catalog.json | wc -l)
             echo "Found $CHANGED changed files."
           fi
 
@@ -96,9 +100,10 @@ jobs:
 
           git checkout -b "${BRANCH}"
 
-          # Stage all generated art + manifest + catalog
+          # Stage all generated art + per-asset manifest shards. The aggregate
+          # manifest.json is a gitignored build artifact and the generated:
+          # catalog rows are now derived, so nothing else needs staging.
           git add public/assets/generated/
-          git add src/shared/data/sprite-catalog.json
           # Also stage g2b-harvest-results.json as a workflow artifact reference
           git add g2b-harvest-results.json || true
 
@@ -131,7 +136,7 @@ jobs:
           - **Harvest run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           ### Contents
-          Art-only PR: new \`public/assets/generated/*.png\` sprites and updated \`manifest.json\` + \`sprite-catalog.json\`.
+          Art-only PR: new \`public/assets/generated/*.png\` sprites and their per-asset \`entries/<key>.json\` manifest shards.
           No gameplay code, no stats, no wiring patches (wiring deferred to post-merge step).
 
           ### Stacking note

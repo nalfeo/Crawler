@@ -244,11 +244,7 @@ describe('runQueueCommit (control flow)', () => {
     expect(
       line.some((l) => l === 'git worktree add /tmp/qc-xyz --detach refs/queue-commit/base-qc-xyz'),
     ).toBe(true);
-    expect(
-      line.some(
-        (l) => l === 'git add -- public/assets/generated src/shared/data/sprite-catalog.json',
-      ),
-    ).toBe(true);
+    expect(line.some((l) => l === 'git add -- public/assets/generated')).toBe(true);
     expect(line.some((l) => l === 'git diff --cached --quiet')).toBe(true);
     expect(line.some((l) => l.startsWith('git commit --no-verify -m'))).toBe(true);
     expect(
@@ -570,11 +566,8 @@ function toUrl(p: string): string {
   return p.split(path.sep).join('/');
 }
 
-function manifestPath(repo: string): string {
-  return path.join(repo, 'public', 'assets', 'generated', 'manifest.json');
-}
-function catalogPath(repo: string): string {
-  return path.join(repo, 'src', 'shared', 'data', 'sprite-catalog.json');
+function shardFilePath(repo: string, key: string): string {
+  return path.join(repo, 'public', 'assets', 'generated', 'entries', `${key}.json`);
 }
 
 function writeJson(file: string, value: unknown): void {
@@ -598,34 +591,47 @@ function setupRepos(): Repos {
   gitSync(liveDir, 'config', 'commit.gpgsign', 'false');
   gitSync(liveDir, 'remote', 'add', 'origin', toUrl(originDir));
   // Seed an asset-free base on main so the queue branch's diff is asset-only.
-  writeJson(manifestPath(liveDir), { version: 1, entries: {} });
-  writeJson(catalogPath(liveDir), []);
+  // The aggregate manifest + catalog are derived/gitignored now, so the base
+  // just carries an empty shards dir (kept via .gitkeep).
+  const keepPath = path.join(liveDir, 'public', 'assets', 'generated', 'entries', '.gitkeep');
+  mkdirSync(path.dirname(keepPath), { recursive: true });
+  writeFileSync(keepPath, '');
   gitSync(liveDir, 'add', '-A');
   gitSync(liveDir, 'commit', '-m', 'base');
   gitSync(liveDir, 'push', 'origin', 'main');
   return { root, originDir, liveDir };
 }
 
-/** Write an asset's PNG + manifest entry + catalog entry into the live working tree (uncommitted). */
+/** Write an asset's PNG + manifest shard into the live working tree (uncommitted). */
 function stageAssetOnDisk(liveDir: string, key: string, png: Buffer): void {
   const genDir = path.join(liveDir, 'public', 'assets', 'generated');
   mkdirSync(genDir, { recursive: true });
   writeFileSync(path.join(genDir, `${key}.png`), png);
-  const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(
-    manifestPath(liveDir),
-  );
-  manifest.entries[key] = { assetPath: `generated/${key}.png`, spriteName: key };
-  writeJson(manifestPath(liveDir), manifest);
-  const catalog = readJson<Array<Record<string, unknown>>>(catalogPath(liveDir));
-  catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
-  writeJson(catalogPath(liveDir), catalog);
+  writeJson(shardFilePath(liveDir, key), { assetPath: `generated/${key}.png`, spriteName: key });
 }
 
-/** Read the manifest committed on origin's assets/queue branch. */
-function queueManifest(liveDir: string): { version?: number; entries: Record<string, unknown> } {
+/**
+ * Compose the manifest from the per-asset shards committed on origin's
+ * assets/queue branch (the aggregate manifest.json is no longer committed).
+ */
+function queueManifest(liveDir: string): { entries: Record<string, unknown> } {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
-  const raw = gitSync(liveDir, 'show', 'FETCH_HEAD:public/assets/generated/manifest.json');
-  return JSON.parse(raw) as { version?: number; entries: Record<string, unknown> };
+  const listing = gitSync(
+    liveDir,
+    'ls-tree',
+    '-r',
+    '--name-only',
+    'FETCH_HEAD',
+    'public/assets/generated/entries',
+  );
+  const entries: Record<string, unknown> = {};
+  for (const relPath of listing.split('\n').map((l) => l.trim())) {
+    if (!relPath.endsWith('.json')) continue;
+    const key = relPath.slice('public/assets/generated/entries/'.length, -'.json'.length);
+    const raw = gitSync(liveDir, 'show', `FETCH_HEAD:${relPath}`);
+    entries[key] = JSON.parse(raw);
+  }
+  return { entries };
 }
 
 /** Out-of-band writer: add `key` to assets/queue and push it, simulating a concurrent writer. */
@@ -637,10 +643,7 @@ function advanceQueueOutOfBand(liveDir: string, key: string, png: Buffer): void 
     const genDir = path.join(wt, 'public', 'assets', 'generated');
     mkdirSync(genDir, { recursive: true });
     writeFileSync(path.join(genDir, `${key}.png`), png);
-    const mPath = path.join(wt, 'public', 'assets', 'generated', 'manifest.json');
-    const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(mPath);
-    manifest.entries[key] = { assetPath: `generated/${key}.png`, spriteName: key };
-    writeJson(mPath, manifest);
+    writeJson(shardFilePath(wt, key), { assetPath: `generated/${key}.png`, spriteName: key });
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `oob ${key}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
@@ -764,6 +767,72 @@ describe('runQueueCommit (real git)', () => {
   );
 
   it(
+    'durably lands a Tag/metadata edit (shard catalog override) on assets/queue',
+    async () => {
+      // Replaces the retired `catalogEntryIds`-opt-in durability test. Under the
+      // shard design a Tag edit is a `catalog` override written ONTO the existing
+      // per-asset shard (exactly what the sidecar /api/workflow/metadata route
+      // does via writeShard), so it stages naturally under public/assets/generated
+      // and must reach assets/queue with NO separate catalog write path. This
+      // proves the durability GUARANTEE (the edit lands on the queue), only the
+      // mechanism changed from the sibling's catalog-only flow.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+
+      // 1) Seed the queue with the base asset (PNG + minimal shard).
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      const deps = realGitDeps(liveDir);
+      const first = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        deps,
+        { message: 'chore(assets): add alpha' },
+      );
+      expect(first.status).toBe('committed');
+
+      // 2) The Tag edit: rewrite alpha's shard with a `catalog` override (same
+      //    PNG). This is a metadata-only change to a file already under the art
+      //    surface — no sprite-catalog.json touched, no opt-in list.
+      writeJson(shardFilePath(liveDir, 'alpha'), {
+        assetPath: 'generated/alpha.png',
+        spriteName: 'alpha',
+        catalog: { description: 'Hand-tuned alpha blade.', tags: ['weapon', 'generated'] },
+      });
+
+      // 3) Re-queue: a metadata-only shard change IS a change, so it commits.
+      const edit = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        deps,
+        { message: 'chore(assets): metadata for alpha' },
+      );
+      expect(edit.status).toBe('committed');
+
+      // 4) The override is DURABLE: it is present on the assets/queue branch, not
+      //    just the local working tree.
+      const queued = queueManifest(liveDir);
+      const alpha = queued.entries.alpha as { catalog?: { description?: string; tags?: string[] } };
+      expect(alpha.catalog?.description).toBe('Hand-tuned alpha blade.');
+      expect(alpha.catalog?.tags).toEqual(['weapon', 'generated']);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
     "preserves a concurrent writer's entry across a forced push-rejection retry (no clobber)",
     async () => {
       const { root, liveDir } = setupRepos();
@@ -856,14 +925,11 @@ describe('runQueueCommit (real git)', () => {
       expect(first.status).toBe('committed');
 
       // Writer B overwrites the SAME key from stale content (alpha=PNG_BYTES),
-      // with a distinguishing manifest field so we can prove whose entry wins.
+      // with a distinguishing shard field so we can prove whose entry wins.
       stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
-      const localManifest = readJson<{
-        version: number;
-        entries: Record<string, Record<string, unknown>>;
-      }>(manifestPath(liveDir));
-      localManifest.entries.alpha!.editor = 'writer-B';
-      writeJson(manifestPath(liveDir), localManifest);
+      const localShard = readJson<Record<string, unknown>>(shardFilePath(liveDir, 'alpha'));
+      localShard.editor = 'writer-B';
+      writeJson(shardFilePath(liveDir, 'alpha'), localShard);
 
       const result = await runQueueCommit(
         liveDir,

@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "player-walk-animation-layer",
+  "task_title": "Add Phaser animation layer and player walk cycle",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Separate-model rubber-duck plan review (gpt-5.4) of the shared animation schema, spritesheet routing, animation registration, and PhaserBridge wiring. 2 must-fix blocking concerns: (1) idle-frame semantics undefined after anims.stop() risking a frozen mid-stride pose -> fixed via explicit setFrame(0) snap-back plus test assertion; (2) sheet layout semantics under-specified -> fixed via explicit JSDoc contract (single-row, left-to-right, frame 0..N-1, frame 0 = idle). 5 non-blocking suggestions (velocity-threshold jitter, stale-config on re-registration, shared flip helper, dedicated player switch case, frame-count tiebreaker) noted as acceptable for this slice and left as follow-up opportunities, not required for this PR."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "High-severity finding: player flip logic collapsed 'moving left' and 'stationary'/'moving vertically' into the same mirrored case (movingRight = vx > epsilon), causing the player to snap to a mirrored idle pose every time they stopped or walked straight up/down. Fixed by only re-deriving facing when |vx| exceeds the flip epsilon, otherwise preserving the sprite's current flipX. Added 3 new test assertions (moving-right no-mirror, vertical/stationary facing-preservation, left-then-right re-mirror) to tests/unit/player-walk-animation.test.ts."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Fresh full review of the current diff state (schema, spritesheet routing, animation registration, PhaserBridge wiring, flip fix, idle-frame-0 snap). Confirmed the flip fix's guard and its 3 new test assertions are all correct and load-bearing. All categories (correctness, data flow/lifecycle, API/contracts, security, runtime wiring, regression coverage) reported clean. No further concerns."
+        }
+      ]
+    }
+  }
+}

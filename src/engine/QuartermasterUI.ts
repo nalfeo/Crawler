@@ -1,0 +1,511 @@
+/**
+ * QuartermasterUI — Floor 2 settlement purchase panel.
+ *
+ * Presents the player-facing merchant surface for `floorExtendedState.settlement.
+ * quartermasterStock`. Stock is generated at floor-load time by
+ * `quartermaster-stock.ts`; purchase logic is `quartermaster-purchase.ts`.
+ *
+ * Pattern: mirrors BossChestUI — a Phaser container panel with toggle/refresh/
+ * destroy API, signature-based dirty checking, and a resize handler. Does NOT
+ * use RewardOpeningUI (purchases have no reveal sequence).
+ *
+ * Rarity cues are conveyed as labelled text (not colour alone), satisfying the
+ * shared item-presentation contract: keyboard + pointer + touch parity, focus
+ * management (per-offer Buy button, disabled visually when unpurchasable),
+ * readable rarity labels, and deterministic item details.
+ *
+ * Layer note: imports only from core + shared (never game/labs), mirroring
+ * BossChestUI / AchievementsUI.
+ */
+import Phaser from 'phaser';
+import type { GameWorld } from '../core/world.js';
+import { fitUiScale } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
+import { GAME } from '../shared/constants.js';
+import {
+  getQuartermasterOfferViews,
+  purchaseQuartermasterOffer,
+  type QuartermasterOfferView,
+} from '../core/quartermaster-purchase.js';
+import type { SettlementShopOfferView } from '../core/settlement-shop-purchase.js';
+import type { GeneratedEquipmentRarity } from '../shared/generated-equipment-types.js';
+
+const PANEL_PADDING = 16;
+const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
+const ROW_HEIGHT = 72;
+const ROW_GAP = 8;
+const HEADER_HEIGHT = 48;
+
+const COLORS = {
+  panelBg: 0x0d0d1a,
+  panelBorder: 0x2a2a4a,
+  rowBg: 0x15152a,
+  rowBorder: 0x333355,
+  rowBgSoldOut: 0x111118,
+  textPrimary: 0xf8fafc,
+  textSecondary: 0x9ca3af,
+  textDisabled: 0x4b5563,
+  goldColor: 0xfbbf24,
+  btnBg: 0x1e4620,
+  btnHover: 0x276c2b,
+  btnFocus: 0x2f7d35,
+  btnDisabledBg: 0x2a2a3a,
+  btnDisabledFocus: 0x3a3a4f,
+  rarityCommon: 0x9e9e9e,
+  rarityUncommon: 0x4caf50,
+  rarityRare: 0x2196f3,
+} as const;
+
+function hex(value: number): string {
+  return `#${value.toString(16).padStart(6, '0')}`;
+}
+
+function rarityLabel(rarity: GeneratedEquipmentRarity): string {
+  switch (rarity) {
+    case 'common':
+      return '[Common]';
+    case 'uncommon':
+      return '[Uncommon]';
+    case 'rare':
+      return '[Rare]';
+  }
+}
+
+function rarityColor(rarity: GeneratedEquipmentRarity): number {
+  switch (rarity) {
+    case 'common':
+      return COLORS.rarityCommon;
+    case 'uncommon':
+      return COLORS.rarityUncommon;
+    case 'rare':
+      return COLORS.rarityRare;
+  }
+}
+
+export type ShopPanelOfferView = QuartermasterOfferView | SettlementShopOfferView;
+
+function offerSignature(offers: readonly ShopPanelOfferView[]): string {
+  return offers
+    .map(
+      (o) =>
+        `${o.offerId}:${o.quantity}:${o.affordable}:${'capacityAvailable' in o ? o.capacityAvailable : true}:${o.canPurchase}`,
+    )
+    .join('|');
+}
+
+function goldSignature(world: GameWorld): string {
+  return String(world.playerGold);
+}
+
+export interface QuartermasterUIConfig {
+  width?: number;
+  height?: number;
+  title?: string;
+  /** Resolves the entity that receives purchased equipment. */
+  getPlayerEid: () => number | undefined;
+  getTitle?: (world: GameWorld) => string;
+  getOffers?: (world: GameWorld, playerEid: number) => readonly ShopPanelOfferView[];
+  purchaseOffer?: (
+    world: GameWorld,
+    playerEid: number,
+    offer: ShopPanelOfferView,
+  ) => { ok: boolean; reason?: string; goldSpent?: number };
+  /**
+   * Called after every completed purchase attempt so the caller can refresh
+   * other dependent UI (inventory, equipment panel, HUD gold display, etc.).
+   */
+  onPurchaseResult?: (result: { ok: boolean; reason?: string; goldSpent?: number }) => void;
+  onPanelClosed?: () => void;
+}
+
+export interface QuartermasterUIApi {
+  toggle(world: GameWorld): void;
+  refresh(world: GameWorld): void;
+  isOpen(): boolean;
+  destroy(): void;
+}
+
+export function createQuartermasterUI(
+  scene: Phaser.Scene,
+  config: QuartermasterUIConfig,
+): QuartermasterUIApi {
+  const snap = (value: number): number => Math.round(value);
+  const baseResolution = getRenderScale(scene);
+  let textResolution = baseResolution;
+  const crispText = (
+    x: number,
+    y: number,
+    text: string,
+    style: Phaser.Types.GameObjects.Text.TextStyle,
+  ): Phaser.GameObjects.Text =>
+    scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
+
+  const panelWidth = config.width ?? 560;
+  const panelHeight = config.height ?? 440;
+
+  let uiScale = fitUiScale(scene, panelWidth, panelHeight);
+  textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+  const viewWidth = (): number => GAME.WIDTH / uiScale;
+  const viewHeight = (): number => GAME.HEIGHT / uiScale;
+
+  let visible = false;
+  let lastSignature: string | null = null;
+  let focusedOfferId: string | null = null;
+
+  const container = scene.add.container(0, 0).setDepth(1000).setVisible(false);
+
+  let panelX = snap((viewWidth() - panelWidth) / 2);
+  let panelY = snap((viewHeight() - panelHeight) / 2);
+
+  const bg = scene.add.rectangle(0, 0, panelWidth, panelHeight, COLORS.panelBg, 0.96);
+  bg.setStrokeStyle(2, COLORS.panelBorder);
+  container.add(bg);
+
+  const title = crispText(0, 0, '🛒 QUARTERMASTER', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '20px',
+    color: hex(COLORS.textPrimary),
+  });
+  container.add(title);
+
+  const hint = crispText(0, 0, '[Q] Close  ↑↓ Select  Enter Buy', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '12px',
+    color: hex(COLORS.textSecondary),
+  });
+  hint.setOrigin(1, 0);
+  container.add(hint);
+
+  const goldLabel = crispText(0, 0, '', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '14px',
+    color: hex(COLORS.goldColor),
+  });
+  container.add(goldLabel);
+
+  const rowObjects: Phaser.GameObjects.GameObject[] = [];
+  interface BuyRowControl {
+    offerId: string;
+    canBuy: boolean;
+    button: Phaser.GameObjects.Text;
+    activate: () => void;
+  }
+  const buyRowControls: BuyRowControl[] = [];
+  let focusedBuyRowIndex = -1;
+
+  function resolveTitle(world: GameWorld): string {
+    return config.getTitle?.(world) ?? config.title ?? '🛒 QUARTERMASTER';
+  }
+
+  function resolveOffers(world: GameWorld, playerEid: number): readonly ShopPanelOfferView[] {
+    return config.getOffers?.(world, playerEid) ?? getQuartermasterOfferViews(world, playerEid);
+  }
+
+  function clearRows(): void {
+    for (const obj of rowObjects) obj.destroy();
+    rowObjects.length = 0;
+    buyRowControls.length = 0;
+    focusedBuyRowIndex = -1;
+  }
+
+  function computeSignature(world: GameWorld, playerEid: number): string {
+    const offers = resolveOffers(world, playerEid);
+    return `${resolveTitle(world)}::${offerSignature(offers)}::${goldSignature(world)}`;
+  }
+
+  function applyBuyFocusVisual(control: BuyRowControl, focused: boolean): void {
+    if (control.canBuy) {
+      control.button.setBackgroundColor(hex(focused ? COLORS.btnFocus : COLORS.btnBg));
+    } else {
+      control.button.setBackgroundColor(
+        hex(focused ? COLORS.btnDisabledFocus : COLORS.btnDisabledBg),
+      );
+    }
+  }
+
+  function refreshBuyFocusVisuals(): void {
+    for (let i = 0; i < buyRowControls.length; i += 1) {
+      const control = buyRowControls[i];
+      if (control) {
+        applyBuyFocusVisual(control, i === focusedBuyRowIndex);
+      }
+    }
+  }
+
+  function makeRow(
+    world: GameWorld,
+    playerEid: number,
+    offer: ShopPanelOfferView,
+    x: number,
+    y: number,
+    w: number,
+  ): void {
+    const soldOut = offer.quantity === 0;
+    const boxColor = soldOut ? COLORS.rowBgSoldOut : COLORS.rowBg;
+
+    const box = scene.add.rectangle(x + w / 2, y + ROW_HEIGHT / 2, w, ROW_HEIGHT, boxColor, 0.9);
+    box.setStrokeStyle(1, COLORS.rowBorder);
+    container.add(box);
+    rowObjects.push(box);
+
+    // Item name + rarity label (rarity label uses distinct text color, not color alone)
+    const rarity = offer.utility?.rarity;
+    const nameColor = soldOut ? COLORS.textDisabled : COLORS.textPrimary;
+    const itemName = offer.displayName ?? offer.offerId;
+    const nameText = crispText(x + 12, y + 8, itemName, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: hex(nameColor),
+    });
+    container.add(nameText);
+    rowObjects.push(nameText);
+
+    if (rarity) {
+      const rarityText = crispText(x + 12 + (nameText.width + 8), y + 10, rarityLabel(rarity), {
+        fontFamily: FONT_FAMILY,
+        fontSize: '12px',
+        color: soldOut ? hex(COLORS.textDisabled) : hex(rarityColor(rarity)),
+      });
+      container.add(rarityText);
+      rowObjects.push(rarityText);
+    }
+
+    // Item level and stat summary
+    const utilityParts: string[] = [];
+    if (offer.utility) {
+      utilityParts.push(`Lvl ${offer.utility.itemLevel}`);
+      const slots = offer.utility.slots.join(', ');
+      if (slots) utilityParts.push(`Slot: ${slots}`);
+    }
+    const utilityLine = utilityParts.join(' · ');
+    if (utilityLine) {
+      const utilText = crispText(x + 12, y + 30, utilityLine, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '11px',
+        color: hex(soldOut ? COLORS.textDisabled : COLORS.textSecondary),
+      });
+      container.add(utilText);
+      rowObjects.push(utilText);
+    }
+
+    // Price
+    const priceColor = soldOut
+      ? COLORS.textDisabled
+      : offer.affordable
+        ? COLORS.goldColor
+        : 0xef4444;
+    const priceText = crispText(x + 12, y + 48, `${offer.unitPrice}g`, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: hex(priceColor),
+    });
+    container.add(priceText);
+    rowObjects.push(priceText);
+
+    const purchaseOffer = (): void => {
+      const result =
+        config.purchaseOffer?.(world, playerEid, offer) ??
+        ('stockId' in offer
+          ? purchaseQuartermasterOffer(world, playerEid, {
+              stockId: offer.stockId,
+              offerId: offer.offerId,
+              quantity: 1,
+            })
+          : { ok: false, reason: 'unknown-offer' });
+      lastSignature = null;
+      refresh(world);
+      if (result.ok) {
+        config.onPurchaseResult?.({
+          ok: true,
+          goldSpent: result.goldSpent,
+        });
+      } else {
+        config.onPurchaseResult?.({ ok: false, reason: result.reason });
+      }
+    };
+
+    // Buy button
+    if (!soldOut) {
+      const canBuy = offer.canPurchase;
+      const btnTextColor = canBuy ? COLORS.textPrimary : COLORS.textDisabled;
+      const btnLabel = canBuy ? 'Buy' : unavailableLabel(offer);
+      const btn = crispText(x + w - 12, y + ROW_HEIGHT / 2, btnLabel, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: hex(btnTextColor),
+        backgroundColor: hex(canBuy ? COLORS.btnBg : COLORS.btnDisabledBg),
+        padding: { x: 10, y: 6 },
+      });
+      btn.setOrigin(1, 0.5);
+      const control: BuyRowControl = {
+        offerId: offer.offerId,
+        canBuy,
+        button: btn,
+        activate: purchaseOffer,
+      };
+      buyRowControls.push(control);
+      applyBuyFocusVisual(control, false);
+      btn.setInteractive({ useHandCursor: canBuy });
+      btn.on('pointerover', () => {
+        const hoveredIndex = buyRowControls.indexOf(control);
+        if (hoveredIndex >= 0) {
+          focusedBuyRowIndex = hoveredIndex;
+          focusedOfferId = control.offerId;
+          refreshBuyFocusVisuals();
+        }
+      });
+      btn.on('pointerout', () => {
+        refreshBuyFocusVisuals();
+      });
+      if (canBuy) {
+        btn.on('pointerdown', purchaseOffer);
+      }
+      container.add(btn);
+      rowObjects.push(btn);
+    } else {
+      const soldOutText = crispText(x + w - 12, y + ROW_HEIGHT / 2, 'Sold out', {
+        fontFamily: FONT_FAMILY,
+        fontSize: '12px',
+        color: hex(COLORS.textDisabled),
+      });
+      soldOutText.setOrigin(1, 0.5);
+      container.add(soldOutText);
+      rowObjects.push(soldOutText);
+    }
+  }
+
+  function unavailableLabel(offer: ShopPanelOfferView): string {
+    switch (offer.purchaseFailure) {
+      case 'insufficient-funds':
+        return 'No gold';
+      case 'inventory-capacity':
+        return 'Inv. full';
+      default:
+        return 'N/A';
+    }
+  }
+
+  function render(world: GameWorld, playerEid: number): void {
+    clearRows();
+    title.setText(resolveTitle(world)).setResolution(textResolution);
+    const offers = resolveOffers(world, playerEid);
+
+    goldLabel
+      .setText(`Gold: ${world.playerGold}g`)
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 28)
+      .setResolution(textResolution);
+
+    const x = panelX + PANEL_PADDING;
+    const w = panelWidth - PANEL_PADDING * 2;
+
+    if (offers.length === 0) {
+      const empty = crispText(
+        x,
+        panelY + PANEL_PADDING + HEADER_HEIGHT + 12,
+        'No items in stock.',
+        {
+          fontFamily: FONT_FAMILY,
+          fontSize: '14px',
+          color: hex(COLORS.textSecondary),
+        },
+      );
+      container.add(empty);
+      rowObjects.push(empty);
+      return;
+    }
+
+    let currentY = panelY + PANEL_PADDING + HEADER_HEIGHT;
+    for (const offer of offers) {
+      makeRow(world, playerEid, offer, x, currentY, w);
+      currentY += ROW_HEIGHT + ROW_GAP;
+    }
+    if (buyRowControls.length > 0) {
+      const restoredIndex =
+        focusedOfferId === null
+          ? 0
+          : buyRowControls.findIndex((control) => control.offerId === focusedOfferId);
+      focusedBuyRowIndex = restoredIndex >= 0 ? restoredIndex : 0;
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? null;
+      refreshBuyFocusVisuals();
+    }
+  }
+
+  function applyLayout(): void {
+    uiScale = fitUiScale(scene, panelWidth, panelHeight);
+    textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+    container.setScale(uiScale);
+    panelX = snap((viewWidth() - panelWidth) / 2);
+    panelY = snap((viewHeight() - panelHeight) / 2);
+    bg.setPosition(panelX + panelWidth / 2, panelY + panelHeight / 2);
+    title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING).setResolution(textResolution);
+    hint
+      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
+      .setResolution(textResolution);
+    goldLabel.setResolution(textResolution);
+    if (visible) lastSignature = null;
+  }
+
+  function refresh(world: GameWorld): void {
+    if (!visible) return;
+    const playerEid = config.getPlayerEid();
+    if (playerEid === undefined || playerEid < 0) return;
+    const signature = computeSignature(world, playerEid);
+    if (signature !== lastSignature) {
+      render(world, playerEid);
+      lastSignature = signature;
+    }
+  }
+
+  function toggle(world: GameWorld): void {
+    visible = !visible;
+    container.setVisible(visible);
+    if (visible) {
+      applyLayout();
+      lastSignature = null;
+      refresh(world);
+    } else {
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? focusedOfferId;
+      config.onPanelClosed?.();
+    }
+  }
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (!visible || buyRowControls.length === 0) return;
+    if (event.code === 'ArrowDown' || event.code === 'KeyS') {
+      event.preventDefault();
+      focusedBuyRowIndex = (focusedBuyRowIndex + 1 + buyRowControls.length) % buyRowControls.length;
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? null;
+    } else if (event.code === 'ArrowUp' || event.code === 'KeyW') {
+      event.preventDefault();
+      focusedBuyRowIndex = (focusedBuyRowIndex - 1 + buyRowControls.length) % buyRowControls.length;
+      focusedOfferId = buyRowControls[focusedBuyRowIndex]?.offerId ?? null;
+    } else if (event.code === 'Enter' || event.code === 'Space') {
+      event.preventDefault();
+      const focused = buyRowControls[focusedBuyRowIndex];
+      if (focused?.canBuy) {
+        focused.activate();
+      }
+    } else {
+      return;
+    }
+    refreshBuyFocusVisuals();
+  };
+
+  scene.scale.on('resize', applyLayout);
+  scene.input.keyboard?.on('keydown', onKeyDown);
+
+  return {
+    toggle,
+    refresh,
+    isOpen: () => visible,
+    destroy() {
+      scene.scale.off('resize', applyLayout);
+      scene.input.keyboard?.off('keydown', onKeyDown);
+      clearRows();
+      container.destroy();
+    },
+  };
+}

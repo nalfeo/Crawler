@@ -10,6 +10,8 @@ import {
 } from '../../shared/sprite-catalog.js';
 import { getRepoWriteCapability, saveTuning } from '../lab-tuning.js';
 import { registerLab } from '../registry.js';
+import { deriveGeneratedCatalogRows } from '../../shared/generated-catalog.js';
+import type { GeneratedManifest } from '../../shared/generated-assets.js';
 import { generatedSpritePreviewUrl, sheetImageUrl } from './asset-urls.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -985,42 +987,22 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   renderList();
   renderDetails();
 
-  // Fetch and merge approved generated sprites from the manifest (async, fire and forget)
+  // Fetch and merge approved generated sprites from the manifest (async, fire and forget).
+  // Derivation goes through the SINGLE shared composer (src/shared/generated-catalog.ts)
+  // so the lab, the engine, the Vite plugin, and CI all produce byte-identical
+  // generated rows — correct tag order (semantic type first), override support,
+  // and placeholder exclusion. Never re-derive rows inline here.
   fetch(DEFAULT_MANIFEST_URL)
     .then((res) => res.json())
-    .then(
-      (manifest: {
-        version?: number;
-        entries?: Record<
-          string,
-          { briefId: string; spriteName: string; assetPath: string; [key: string]: unknown }
-        >;
-      }) => {
-        if (manifest.entries) {
-          for (const [key, entry] of Object.entries(manifest.entries)) {
-            // `key` is the unique per-variant manifest key (e.g.
-            // `bent-pipe-v1-var-1`). Use it for both id and spriteId/label so
-            // each approved variant shows as a distinct catalog row even when
-            // legacy `spriteName` was written brief-wide.
-            entries.push({
-              id: `generated:${key}`,
-              kind: 'sprite',
-              label: key,
-              description: `Generated sprite from brief: ${entry.briefId}.`,
-              tags: ['generated', 'pipeline-approved'],
-              spriteId: key,
-              sheetKey: 'generated-manifest',
-              assetPath: entry.assetPath,
-              frame: 0,
-              col: 0,
-              row: 0,
-            } as unknown as SpriteCatalogEntry);
-          }
-          // Trigger UI refresh if we've loaded generated sprites
-          renderList();
+    .then((manifest: GeneratedManifest) => {
+      if (manifest?.entries) {
+        for (const row of deriveGeneratedCatalogRows(manifest)) {
+          entries.push(row as unknown as SpriteCatalogEntry);
         }
-      },
-    )
+        // Trigger UI refresh if we've loaded generated sprites
+        renderList();
+      }
+    })
     .catch(() => {
       // Silently ignore manifest load errors
     });

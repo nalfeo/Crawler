@@ -1,0 +1,20 @@
+{
+  "briefId": "harpoon-gun",
+  "spriteName": "harpoon-gun",
+  "assetPath": "generated/harpoon-gun-placeholder.png",
+  "approvedAt": "2026-07-18T03:16:24.697Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "opaqueBounds": {
+    "x": 3,
+    "y": 2,
+    "width": 10,
+    "height": 12,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

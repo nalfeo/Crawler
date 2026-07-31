@@ -11,7 +11,10 @@ import {
   formatLifecycleOutcome,
   formatRawLabelOutcome,
   isNonBlocking,
+  isTerminal,
+  makeDuplicateCloseComment,
   makeLifecycleRecord,
+  makeQuarantineComment,
   parseLifecycleComment,
   renderLifecycleComment,
 } from './pr-lifecycle.mjs';
@@ -362,7 +365,11 @@ test('applyRawLabelDecision: removes label when desired=false and present', asyn
 
 test('formatRawLabelOutcome: no-op and acted variants', () => {
   assert.equal(
-    formatRawLabelOutcome(42, { noOp: true, label: 'ci-conflict-order-wait', reason: 'already-present' }),
+    formatRawLabelOutcome(42, {
+      noOp: true,
+      label: 'ci-conflict-order-wait',
+      reason: 'already-present',
+    }),
     'coordinator no-op: pr=#42 label=ci-conflict-order-wait reason=already-present',
   );
   assert.equal(
@@ -388,9 +395,7 @@ test('D11 integration: isAdmissible rejects quarantined phase parsed from lifecy
   assert.equal(parsed?.phase, PHASE.QUARANTINED);
 
   // Now feed the parsed phase into isAdmissible — even a fully green PR must fail.
-  const admission = isAdmissible(
-    greenPrFacts({ prNumber: 9000, lifecyclePhase: parsed.phase }),
-  );
+  const admission = isAdmissible(greenPrFacts({ prNumber: 9000, lifecyclePhase: parsed.phase }));
   assert.deepEqual(admission, {
     eligible: false,
     reasons: ['lifecycle-phase:quarantined'],
@@ -421,7 +426,10 @@ test('applyLifecycleDecision: force-push in same phase updates lifecycle comment
   assert.equal(outcome.acted, true);
   assert.equal(outcome.noOp, false);
   assert.equal(comments.length, 1, 'lifecycle comment must be written on force-push');
-  assert.ok(String(comments[0]).includes('new-head-after-force-push'), 'comment must contain new headSha');
+  assert.ok(
+    String(comments[0]).includes('new-head-after-force-push'),
+    'comment must contain new headSha',
+  );
 });
 
 test('applyLifecycleDecision: same phase + same headSha is still a no-op', async () => {
@@ -438,4 +446,100 @@ test('applyLifecycleDecision: same phase + same headSha is still a no-op', async
   });
   assert.equal(outcome.acted, false);
   assert.equal(outcome.noOp, true);
+});
+
+// ---------------------------------------------------------------------------
+// QUARANTINED phase: revivable (not terminal), non-blocking
+// ---------------------------------------------------------------------------
+
+test('QUARANTINED is NOT terminal (revivable via KEEP → QUEUED)', () => {
+  // QUARANTINED must NOT be in TERMINAL_PHASES because it can transition to
+  // QUEUED via a human's "KEEP" command.  ABANDONED and DONE are terminal.
+  assert.equal(isTerminal(PHASE.QUARANTINED), false, 'quarantined is not terminal');
+  assert.equal(isTerminal(PHASE.ABANDONED), true, 'abandoned is terminal');
+  assert.equal(isTerminal(PHASE.DONE), true, 'done is terminal');
+});
+
+test('QUARANTINED is non-blocking (isNonBlocking)', () => {
+  assert.equal(isNonBlocking(PHASE.QUARANTINED), true);
+  assert.equal(isNonBlocking(PHASE.ABANDONED), true);
+  assert.equal(isNonBlocking(PHASE.QUEUED), false);
+});
+
+test('QUARANTINED can transition to QUEUED (revival via applyLifecycleDecision)', async () => {
+  const added = [];
+  const removed = [];
+  const comments = [];
+
+  const outcome = await applyLifecycleDecision({
+    prNumber: 1900,
+    currentPhase: PHASE.QUARANTINED,
+    currentHeadSha: HEAD,
+    targetPhase: PHASE.QUEUED,
+    headSha: HEAD,
+    mode: 'live',
+    writeComment: (_, body) => comments.push(body),
+    addLabel: (_, label) => added.push(label),
+    removeLabel: (_, label) => removed.push(label),
+    now: new Date('2026-07-28T00:00:00Z'),
+  });
+
+  assert.equal(outcome.acted, true, 'revival must act');
+  assert.equal(outcome.phase, PHASE.QUEUED);
+  // Quarantine label must be removed, QUEUED label (merge-train) must be added
+  assert.ok(removed.includes('ci-lifecycle-quarantined'), 'quarantine label removed');
+  assert.ok(added.includes('merge-train'), 'merge-train label added');
+  assert.equal(comments.length, 1, 'lifecycle comment updated');
+});
+
+// ---------------------------------------------------------------------------
+// makeQuarantineComment rendering
+// ---------------------------------------------------------------------------
+
+test('makeQuarantineComment contains the quarantine marker', () => {
+  const body = makeQuarantineComment(1900, {
+    reason: 'dead-session-14-days',
+    lastActivity: '2026-07-14T00:00:00Z',
+    thresholdDays: 14,
+  });
+  assert.ok(body.includes('<!-- crawler-ci-quarantine:v1 -->'), 'must carry quarantine marker');
+  assert.ok(body.includes('KEEP'), 'must mention KEEP command');
+  assert.ok(body.includes('ABANDON'), 'must mention ABANDON command');
+  assert.ok(body.includes('1900'), 'must reference the PR number');
+  assert.ok(body.includes('14 days'), 'must mention threshold');
+});
+
+test('makeQuarantineComment is non-blocking: states PR blocks nothing while quarantined', () => {
+  const body = makeQuarantineComment(1900, { reason: 'abandon-candidate-label' });
+  assert.ok(
+    body.toLowerCase().includes('excluded from all train-blocking'),
+    'must state that the quarantined PR is non-blocking',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// makeDuplicateCloseComment rendering
+// ---------------------------------------------------------------------------
+
+test('makeDuplicateCloseComment cites superseder and proof rule', () => {
+  const body = makeDuplicateCloseComment(1630, {
+    proofRule: 'linked-issue-closed-by-sibling',
+    supersederPr: 1575,
+    reason: 'sibling-pr-#1575-merged-closing-closed-issue-#1568',
+  });
+  assert.ok(body.includes('<!-- crawler-ci-disposition:v1 -->'), 'must carry disposition marker');
+  assert.ok(body.includes('1575'), 'must cite superseder PR #1575');
+  assert.ok(body.includes('linked-issue-closed-by-sibling'), 'must cite proof rule');
+  assert.ok(body.includes('1630'), 'must reference the closed PR');
+});
+
+test('makeDuplicateCloseComment for empty-diff has no superseder reference', () => {
+  const body = makeDuplicateCloseComment(42, {
+    proofRule: 'empty-diff',
+    supersederPr: null,
+    reason: 'zero-additions-zero-deletions',
+  });
+  assert.ok(body.includes('empty-diff'), 'must cite proof rule');
+  assert.ok(body.includes('main'), 'must mention main branch');
+  assert.ok(!body.includes('Superseded by'), 'no superseder for empty-diff');
 });

@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-crate-single",
+  "spriteName": "welcome-room-crate-single-var-0",
+  "assetPath": "generated/welcome-room-crate-single-var-0.png",
+  "approvedAt": "2026-07-25T06:47:52.394Z",
+  "sourceRun": "generated/runs/welcome-room-crate-single/2026-07-25T05-54-32-af1cfd8e",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 35,
+    "y": 56,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 35,
+      "y": 56,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 35,
+        "y": 56
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:55:31.088Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The crate has a clear identity as a worn, pried-open wooden box with straw spilling out, fitting the dark-fantasy dungeon aesthetic. The dusty, slightly grimy look aligns with the 'worn by decades of syndication' theme. However, the showbiz red and tarnished gold accents are subtle and could be more pronounced to enhance the connection to the welcome-room theme."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar palette and shading style to the references, with hard outlines and muted tones. However, the wood texture is slightly more detailed than the references, which could be simplified for better consistency."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a similar palette and shading style to the references, with hard outlines and muted tones. However, the wood texture is slightly more detailed than the references, which could be simplified for better consistency."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the brief well, depicting a squat wooden crate with a pried-open lid, split board, and straw spilling out. The proportions and details are appropriate for the described size and setting."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with the pried-open lid and spilling straw immediately recognizable. The contact shadow is well-placed and enhances the readability on a dark floor tile."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a grounded, single object with a clear top-down perspective and appropriate tile footprint. It fits well within the game world and does not appear as a floating icon or scene."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2793,
+      "completionTokens": 420,
+      "totalTokens": 3213
+    }
+  },
+  "type": "prop",
+  "contentHash": "191206f3683cc19b2df09a05df6ffafddcc185a3e3ee3ee14a7ad825cdd459b6",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-crate-single\\2026-07-25T05-54-32-af1cfd8e\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-crate-single\\2026-07-25T05-54-32-af1cfd8e\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-crate-single\\2026-07-25T05-54-32-af1cfd8e\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 6,
+    "width": 56,
+    "height": 51,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

@@ -3742,10 +3742,193 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // A clean-BEHIND PR with pending CI ends up at WAIT_ADMISSION (not ARM_AUTO_MERGE),
+  // so no would-update-branch is emitted until CI passes.
   assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
   assert.doesNotMatch(stdout, /dry-run would-assign copilot/);
   assert.doesNotMatch(stdout, /merge-conflict/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND PR', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    // Provide passing required checks so the PR reaches ARM_AUTO_MERGE.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /dry-run would-arm-auto-merge pr=#42/);
+  // D2 fix: an admissible clean-BEHIND PR must also emit would-update-branch in dry-run.
+  assert.match(stdout, /dry-run would-update-branch pr=#42 reason=clean-behind/);
+  assert.doesNotMatch(stdout, /merge-conflict/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Provide passing required checks so the PR reaches ARM_AUTO_MERGE.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /auto-merge armed pr=#42/);
+  // D2 fix: update-branch must be called for a clean-BEHIND PR to unblock the
+  // strict up-to-date merge policy without force-pushing (D7 avoided).
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  const updateBranchCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PUT' && call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`,
+  );
+  assert.ok(updateBranchCall, 'update-branch PUT must be called for a clean-BEHIND PR');
+  // Assert the exact request body to lock the update-branch API contract.
+  // The field is expected_head_sha (not expected_head_oid) per GitHub REST API.
+  assert.deepEqual(
+    updateBranchCall.body,
+    { expected_head_sha: HEAD_SHA },
+    'update-branch body must use expected_head_sha',
+  );
+});
+
+test('live reconcile calls update-branch for a clean-BEHIND PR at QUEUE_MERGE_TRAIN', async (t) => {
+  // Exercises the update-branch path independently implemented in QUEUE_MERGE_TRAIN
+  // (separate from ARM_AUTO_MERGE). The QUEUE_MERGE_TRAIN path adds the merge-train
+  // label + dispatch BEFORE calling update-branch; this test verifies the PUT body
+  // and that the call occurs after the label mutations.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    // Provide passing required checks so the PR reaches QUEUE_MERGE_TRAIN.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /queued merge-train pr=#42/);
+  // D2 fix: update-branch must be called for a clean-BEHIND PR at QUEUE_MERGE_TRAIN.
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  const updateBranchCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'PUT' && call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`,
+  );
+  assert.ok(
+    updateBranchCall,
+    'update-branch PUT must be called for a clean-BEHIND PR at QUEUE_MERGE_TRAIN',
+  );
+  assert.deepEqual(
+    updateBranchCall.body,
+    { expected_head_sha: HEAD_SHA },
+    'QUEUE_MERGE_TRAIN update-branch body must use expected_head_sha',
+  );
+  // update-branch must occur after the merge-train label is attached.
+  const labelAttachIdx = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  const updateBranchIdx = mutatingCalls.indexOf(updateBranchCall);
+  assert.ok(
+    labelAttachIdx >= 0 && updateBranchIdx > labelAttachIdx,
+    'update-branch must be called after the merge-train label is attached',
+  );
 });
 
 test('human-gated balance PR cannot keep merge-train or armed auto-merge before owner approval', async (t) => {
@@ -7006,17 +7189,17 @@ test('queue admission finds a concurrently attached merge-train label on the sec
 });
 
 // ---------------------------------------------------------------------------
-// Regression: head-only drift with unchanged blockers must carry the stale
-// retry budget instead of resetting it as "progressed".
+// Regression: head-only drift with unchanged blockers must be treated as
+// progressed so the new head gets a fresh retry budget.
 // ---------------------------------------------------------------------------
 
-test('stale automation increments attempt without reset when only headSha changes', async (t) => {
+test('stale automation resets attempt when only headSha changes', async (t) => {
   // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
   // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
-  // the blockers fingerprint is unchanged (same CI failure). This must stay on
-  // the stale-retry path:
-  //   - release trigger is 'stale-automation-retry' (not 'blocker-progressed')
-  //   - final attempt is carried and incremented to 2 (not reset to 1)
+  // the blockers fingerprint is unchanged (same CI failure). This must classify
+  // as progress for the new head:
+  //   - release trigger is 'blocker-progressed'
+  //   - final attempt resets to 1
   const PROG_FINGERPRINT = blockerFingerprint([
     {
       kind: 'ci-failure',
@@ -7130,36 +7313,32 @@ test('stale automation increments attempt without reset when only headSha change
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  // Must stay on stale-retry path, never classify as blocker-progressed.
+  // Must classify as blocker-progressed on head drift.
   const releasePatch = capturedPatches.find((patch) => {
     const parsed = parseStateComment(patch.body);
-    return parsed?.trigger === 'stale-automation-retry';
+    return parsed?.trigger === 'blocker-progressed';
   });
   assert.ok(
     releasePatch,
-    'the release state must carry trigger=stale-automation-retry for unchanged blockers',
+    'the release state must carry trigger=blocker-progressed when headSha changes',
   );
   assert.ok(
     !mutatingCalls.some((call) => {
       if (call.method !== 'PATCH') return false;
       try {
-        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
+        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
       } catch {
         return false;
       }
     }),
-    'must not use blocker-progressed when only headSha changed',
+    'must not use stale-automation-retry when the head has changed',
   );
 
-  // Final dispatched state must carry attempt=2 (carried + incremented), not 1.
+  // Final dispatched state must reset attempt to 1 for the new head.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
-  assert.equal(
-    finalState?.attempt,
-    2,
-    'unchanged-blocker dispatch must carry attempt budget: stored attempt must be 2 (1+1), not reset',
-  );
+  assert.equal(finalState?.attempt, 1, 'head drift must reset the retry budget for the new head');
   assert.equal(finalState?.trigger, 'workflow_run:completed');
   assert.equal(finalState?.owner, 'automation');
   assert.equal(finalState?.status, 'dispatched');
@@ -12179,8 +12358,8 @@ test('same check rerun with only a new run URL stays on stale-retry path and car
   const persistedBlockers = [
     {
       kind: 'ci-failure',
-      id: 'copilot',
-      summary: 'copilot concluded failure.',
+      id: 'ci',
+      summary: 'ci concluded failure.',
       url: `https://github.com/${OWNER}/${REPO}/actions/runs/3000042805/job/8918406660`,
     },
   ];
@@ -12206,21 +12385,11 @@ test('same check rerun with only a new run URL stays on stale-retry path and car
   // The live check-run for the SAME logical check (same name, same
   // conclusion) has been rerun since dispatch: same failure, but GitHub
   // minted a brand-new run/job ID and therefore a brand-new `html_url`.
-  //
-  // This reproduces PR #1809's ACTUAL live incident report verbatim at the
-  // data-model level: CI Recovery's own dispatched Copilot cloud-agent run
-  // (run id 30003316280) failed at `session.create` with
-  // `Model "claude-sonnet-4.5" is not available` -- a self-generated failure
-  // surfaced to GitHub as a check-run literally named "copilot" that
-  // concludes `failure`. `reconcile.mjs` never reads a check-run's own
-  // output/summary text (only `check.name` + `check.conclusion`), so the
-  // specific human-readable model-unavailable error text never enters the
-  // blocker's `id`/`summary` fields -- only `url` (the check-run permalink)
-  // differs between the identical failing retries, which is exactly the
-  // fingerprint-churn class this fix (and this test) covers.
+  // Only `url` differs between the identical failing retries, which is
+  // exactly the fingerprint-churn class this fix (and this test) covers.
   const rerunCheck = {
     id: 2,
-    name: 'copilot',
+    name: 'ci',
     status: 'completed',
     conclusion: 'failure',
     html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/3000099999/job/8918499999`,
@@ -12340,8 +12509,8 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
   const persistedBlockers = [
     {
       kind: 'ci-failure',
-      id: 'copilot',
-      summary: 'copilot concluded failure.',
+      id: 'ci',
+      summary: 'ci concluded failure.',
       url: `https://github.com/${OWNER}/${REPO}/actions/runs/3000099999/job/8918499999`,
     },
   ];
@@ -12368,15 +12537,13 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
   };
   // Yet another rerun of the SAME logical check -- a third distinct run/job
   // URL for the exact same failing check name and conclusion. This is cycle
-  // 3/3 of PR #1809's real incident: CI Recovery's own dispatched Copilot
-  // cloud-agent run keeps failing at `session.create` (observed cause:
-  // `Model "claude-sonnet-4.5" is not available`), minting a fresh run URL
-  // each time. The ceiling must fire here regardless of *why* the check kept
-  // failing, since `reconcile.mjs` never inspects the check's own output
-  // text -- only `check.name` + `check.conclusion`, both stable across retries.
+  // 3/3 of the URL-drift scenario. The ceiling must fire here regardless of
+  // *why* the check kept failing, since `reconcile.mjs` never inspects the
+  // check's own output text -- only `check.name` + `check.conclusion`, both
+  // stable across retries.
   const rerunCheck = {
     id: 3,
-    name: 'copilot',
+    name: 'ci',
     status: 'completed',
     conclusion: 'failure',
     html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/3000111111/job/8918511111`,
@@ -12491,6 +12658,360 @@ test('same check rerun with only a new run URL still reaches the stale-retry cei
   // repository owner label is gone and a new dispatch or a human/shepherd can
   // freely acquire ownership on the next reconcile pass.
   assert.equal(repositoryLabelExists, false);
+});
+
+// ---------------------------------------------------------------------------
+// #1939 / #2268 regression: fresh ci-failure copilot first appearing after
+// a failed dispatch must NOT trigger blocker-progressed
+// ---------------------------------------------------------------------------
+//
+// This reproduces the exact loop observed in production incident #2268:
+// - PR #1939 had two unresolved review-thread blockers
+// - CI Recovery dispatched @copilot (attempt=1) to fix them
+// - @copilot failed at session.create (model "claude-sonnet-4.5" deprecated)
+// - GitHub created a check named "copilot" that concluded `failure`
+// - On the next reconcile sweep the `ci-failure copilot` blocker FIRST APPEARED
+// - Before the fix: new blocker → new fingerprint → 'progressed' → attempt reset to 1
+// - After the fix: copilot excluded from fingerprint → same fingerprint → stale-retry
+//   → attempt increments to 2 as intended
+
+test('fresh ci-failure copilot first appearing after an initial dispatch does not trigger blocker-progressed (PR #1939 / #2268 regression)', async (t) => {
+  const thread = {
+    id: 'PRRT_kwDOSvo2Ms6Tt_4M',
+    isResolved: false,
+    isOutdated: false,
+    path: 'scripts/agent/security/check-exact-deps.mjs',
+    line: 106,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_r3649391364',
+          body: 'Exemption is keyed only on field+name, not version.',
+          author: { login: 'copilot-pull-request-reviewer' },
+          authorAssociation: 'COLLABORATOR',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3649391364`,
+        },
+      ],
+    },
+  };
+  const persistedBlockers = [
+    {
+      kind: 'review-thread',
+      id: reviewThreadBlockerId(thread),
+      threadId: thread.id,
+      // Include path as reconcile.mjs would when it first builds this blocker
+      // from the live GraphQL thread data (path is fingerprint-relevant).
+      path: thread.path,
+      summary: 'copilot-pull-request-reviewer: Exemption is keyed only on field+name, not version.',
+      url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3649391364`,
+    },
+  ];
+  const persistedFingerprint = blockerFingerprint(persistedBlockers);
+  const staleAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 960,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: persistedFingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: persistedBlockers,
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, persistedFingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  // The dispatched @copilot session failed at session.create (model deprecated).
+  // GitHub created a check-run literally named "copilot" that concludes `failure`.
+  const copilotFailureCheck = {
+    id: 99,
+    name: 'copilot',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/30410219329/job/90444419451`,
+  };
+  const capturedPatches = [];
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 961 } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      // Return the review thread still unresolved (same as before the failed dispatch).
+      return { body: gqlReviewThreads([thread]) };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [copilotFailureCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  // The fresh ci-failure copilot must NOT be classified as a new fingerprint
+  // (blocker-progressed). Before the fix this would have reset attempt to 1.
+  assert.ok(
+    !mutatingCalls.some((call) => {
+      if (call.method !== 'PATCH') return false;
+      try {
+        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
+      } catch {
+        return false;
+      }
+    }),
+    'the first appearance of ci-failure copilot must never be classified as blocker-progressed',
+  );
+
+  // The state must use the stale-automation-retry path, not reset to attempt=1.
+  const retryPatch = capturedPatches.find(
+    (patch) => parseStateComment(patch.body)?.trigger === 'stale-automation-retry',
+  );
+  assert.ok(
+    retryPatch,
+    'must carry trigger=stale-automation-retry when ci-failure copilot first appears alongside existing blockers',
+  );
+
+  const finalPatch = capturedPatches.at(-1);
+  assert.ok(finalPatch, 'a final state PATCH must be issued');
+  const finalState = parseStateComment(finalPatch.body);
+  assert.equal(
+    finalState?.attempt,
+    2,
+    'attempt must carry forward and increment (1 -> 2), not reset to 1 on the first appearance of ci-failure copilot',
+  );
+  assert.equal(finalState?.owner, 'automation');
+  assert.equal(finalState?.status, 'dispatched');
+});
+
+// ---------------------------------------------------------------------------
+// PR #2010 / incident #2326 regression: ci-failure copilot as the ONLY
+// remaining blocker must be skipped and the PR admitted to merge, not re-
+// dispatched into an endless session.create failure loop.
+// ---------------------------------------------------------------------------
+
+test('ci-failure copilot as the only remaining blocker (all review threads resolved) skips re-dispatch and arms auto-merge (PR #2010 / incident #2326 regression)', async (t) => {
+  // After the near-typo SHA promotion auto-resolved the ADR review thread on PR
+  // #2010, the self-generated `ci-failure copilot` check (produced when Copilot
+  // failed at session.create due to the deprecated claude-sonnet-4.5 model)
+  // remained as the only "blocker". Before this fix the terminal table evaluated
+  // blockersPresent=true (ci-failure copilot counted as a real blocker) and
+  // dispatched Copilot again, which failed again, repeating the cycle until the
+  // stale-retry ceiling filed loop incident #2326.
+  //
+  // After the fix: effectiveBlockers excludes ci-failure copilot, so
+  // blockersPresent=false and the PR is admitted to ARM_AUTO_MERGE instead.
+
+  const staleAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  // The persisted fingerprint uses blockerFingerprint([]) because ci-failure
+  // copilot is excluded from the fingerprint — same exclusion as this fix.
+  const persistedFingerprint = blockerFingerprint([]);
+  const stateComment = {
+    id: 970,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: persistedFingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [
+          {
+            kind: 'ci-failure',
+            id: 'copilot',
+            summary:
+              'Request session.create failed with message: Model "claude-sonnet-4.5" is not available.',
+            url: `https://github.com/${OWNER}/${REPO}/actions/runs/30475922485/job/90657475101`,
+          },
+        ],
+        attempt: 1,
+        progressKey: automationProgressKey(HEAD_SHA, persistedFingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+
+  // The failed Copilot session created a check-run named "copilot" that
+  // concluded failure (session.create error with deprecated model).
+  const copilotFailureCheck = {
+    id: 99,
+    name: 'copilot',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/30475922485/job/90657475101`,
+  };
+
+  let repositoryLabelPresent = true;
+  const capturedPatches = [];
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelPresent
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelPresent = false;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id } };
+    },
+    // closeLoopIncidentOnConvergence searches for an open loop incident to close.
+    // Return an empty list so it exits with action=not-found (no mutation needed).
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-29T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      // All review threads are resolved — return no unresolved threads.
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          copilotFailureCheck,
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The fix: ci-failure copilot is the only remaining blocker, so the
+  // reconciler must log the self-skip and NOT dispatch Copilot.
+  assert.match(
+    stdout,
+    /skipping-copilot-self-failure pr=#42 blockers-effective=0 ci-failure-copilot=self-generated/,
+    'must log the self-skip when ci-failure copilot is the only remaining blocker',
+  );
+
+  // Must NOT dispatch Copilot — the only "blocker" is self-generated noise.
+  assert.doesNotMatch(
+    stdout,
+    /assigned copilot pr=#42/,
+    'must NOT dispatch Copilot when ci-failure copilot is the only remaining blocker',
+  );
+
+  // Must arm auto-merge (PR is effectively clean).
+  assert.match(
+    stdout,
+    /auto-merge armed pr=#42/,
+    'must arm auto-merge when ci-failure copilot is the only remaining blocker',
+  );
+
+  // Stale lock must be released (label deleted).
+  const labelDeleteCall = mutatingCalls.find(
+    (call) => call.method === 'DELETE' && call.url.includes(`/labels/${encodeURIComponent(LABEL)}`),
+  );
+  assert.ok(
+    labelDeleteCall,
+    'must delete the repository fence label when releasing the stale automation lock',
+  );
+
+  // The enablePullRequestAutoMerge GraphQL mutation must have been called.
+  const autoMergeCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('enablePullRequestAutoMerge'),
+  );
+  assert.ok(autoMergeCall, 'enablePullRequestAutoMerge mutation must be called for ARM_AUTO_MERGE');
 });
 
 // ---------------------------------------------------------------------------
@@ -13310,4 +13831,286 @@ test('dry-run: R06 merge-train-owned exit still runs outdated-thread cleanup', a
   assert.match(stdout, /skip pr=#42 reason=merge-train-owned/);
   // No mutations in dry-run mode.
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+// ---------------------------------------------------------------------------
+// Auto-close loop incident on convergence (regression for incident #2196)
+// ---------------------------------------------------------------------------
+
+test('converged PR (ARM_AUTO_MERGE) automatically closes an open loop incident in live mode', async (t) => {
+  // Simulates a PR that previously exhausted the CI recovery retry budget
+  // (incident filed), then had its CI failures fixed and passed all checks.
+  // The reconciler must close the incident when it converges.
+  const loopIncidentIssue = {
+    number: 501,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nThis is a loop incident.',
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Return passing check runs for ci + Security checks so admission is satisfied.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Loop incident list and close routes:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/501`]: () => ({ body: { number: 501 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#501/,
+    'converged PR must auto-close the open loop incident',
+  );
+
+  const closeCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/501`,
+  );
+  assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
+  assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
+  assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
+});
+
+test('converged PR (ARM_AUTO_MERGE) must not close loop incident when arm-auto-merge metadata guard fails', async (t) => {
+  const movedHead = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  let pullFetches = 0;
+  const loopIncidentIssue = {
+    number: 502,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nThis is a loop incident.',
+    pull_request: undefined,
+  };
+  const priorMarkerComment = {
+    id: 500,
+    body: reviewRequestMarker({ headSha: HEAD_SHA, reason: 'ready' }),
+    author_association: 'OWNER',
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const head = pullFetches < 3 ? HEAD_SHA : movedHead;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          head: { ...trustedReviewWakePr().head, sha: head },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [priorMarkerComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/502`]: () => ({ body: { number: 502 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=arm-auto-merge expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'stale metadata must abort before arm-auto-merge mutations',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#502/,
+    'must not close the loop incident when the arm-auto-merge metadata guard fails',
+  );
+  assert.equal(
+    pullFetches,
+    3,
+    'state-comment and arm-auto-merge guards must re-fetch live metadata',
+  );
+  const closeCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/502`,
+  );
+  assert.equal(
+    closeCall,
+    undefined,
+    'must not PATCH-close the loop incident on metadata-guard skip',
+  );
+});
+test('converged PR (ARM_AUTO_MERGE) skips loop-incident close when no incident exists', async (t) => {
+  // No open loop incident for this PR — closeLoopIncident must be a no-op.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    // Return passing check runs for ci + Security checks so admission is satisfied.
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Empty incident list:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.doesNotMatch(
+    stdout,
+    /loop-incident-closed/,
+    'must not log loop-incident-closed when no incident exists',
+  );
+  const closeCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'PATCH' &&
+      /\/issues\/\d+$/.test(call.url.split('?')[0]) &&
+      !call.url.includes('/comments/'),
+  );
+  assert.equal(closeCalls.length, 0, 'must not PATCH any issue when no loop incident exists');
+});
+
+// Regression: merged-PR cleanup path.
+//
+// Simulates the race where closeLoopIncident failed at the ARM_AUTO_MERGE
+// convergence point and the PR then merged.  The pull_request_target:closed
+// trigger reaches reconcile with pr.state='closed' + merged=true, hits the
+// early-exit block,
+// and must close the incident there before exiting.
+test('merged PR event closes an open loop incident even when ARM_AUTO_MERGE path already exited', async (t) => {
+  const loopIncidentIssue = {
+    number: 503,
+    title: `CI recovery loop: PR #${PR_NUM}`,
+    body: '<!-- crawler-pr-loop-incident:v1 -->\nLoop incident that was not closed at convergence.',
+    pull_request: undefined,
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed', merged: true },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    // Loop incident list and close routes:
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [loopIncidentIssue] }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/503`]: () => ({ body: { number: 503 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  // The script exits 0 (the merged-PR skip path is a clean exit).
+  if (!assertSuccessfulExit(t, code, stderr, 'merged-pr loop-incident cleanup', true)) return;
+
+  assert.match(
+    stdout,
+    /loop-incident-closed pr=#42 issue=#503 reason=pr-closed/,
+    'merged-PR path must close the open loop incident',
+  );
+
+  const closeCall = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/503`,
+  );
+  assert.ok(closeCall, 'must PATCH the loop incident issue to close it');
+  assert.equal(closeCall.body?.state, 'closed', 'state must be closed');
+  assert.equal(closeCall.body?.state_reason, 'completed', 'state_reason must be completed');
 });

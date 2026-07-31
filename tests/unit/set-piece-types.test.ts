@@ -13,6 +13,7 @@ import {
   installDefaultSetPiecePacks,
   installSetPiecePacks,
   isCustomSpriteRef,
+  resolveSetPieceDoorSlots,
   setPiecePackSchema,
 } from '../../src/shared/set-piece-types.js';
 
@@ -537,10 +538,10 @@ describe('welcome-room authored set piece', () => {
   const chebyshev = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
-  it('is a fixed 10x9 reality-show room', () => {
+  it('is a fixed 7x7 reality-show room', () => {
     const room = getSetPieceDef('welcome-room')!;
     expect(room.sizing).toBe('exact');
-    expect(getSetPieceFootprint(room)).toEqual({ width: 10, height: 9 });
+    expect(getSetPieceFootprint(room)).toEqual({ width: 7, height: 7 });
     expect(room.theme).toBe('reality-show');
   });
 
@@ -551,6 +552,19 @@ describe('welcome-room authored set piece', () => {
     expect(findSetPieceNpcByAnchor(room, 'spell')?.npcTypeId).toBe('spell-quest-giver');
   });
 
+  /**
+   * A tile is 4 ft, so 3 tiles is 12 ft — deliberately wider than
+   * `NPC_INTERACT_RANGE_FT` (10 ft). `npcSystem` sets `nearbyPlayer`
+   * independently per NPC with no nearest-NPC arbitration, so two NPCs closer
+   * than the interact range would both light up at once and the player could
+   * not tell which one they are about to talk to.
+   *
+   * This is also what forces the room to be at least 7x7: an NPC is 6.6 ft =
+   * 1.65 tiles and `stampSetPiece` requires its whole footprint inside the
+   * interior, leaving a usable span of `size - 3.65` per axis. Three points
+   * pairwise 3 apart need >= 3 of span on BOTH axes, so both sides need
+   * >= 6.65 tiles. Do not shrink the room to make a dressing pass fit.
+   */
   it('spaces the three NPCs at least 3 tiles apart (Chebyshev)', () => {
     const room = getSetPieceDef('welcome-room')!;
     const goon = findSetPieceNpcByAnchor(room, 'welcome')!;
@@ -605,23 +619,29 @@ describe('welcome-room authored set piece', () => {
 
   it('wires the hero props to their shipped generated catalog art', () => {
     const room = getSetPieceDef('welcome-room')!;
-    // The three Kenney-sourced cozy decor props (plant, side table, stool) are
-    // placeholders: they render as honest labeled boxes and sit in the custom
-    // art-request queue until bespoke art is generated — never as arbitrary
-    // Kenney tile frames masquerading as furniture.
+    // Every prop's art has now been generated, approved and wired, so the room
+    // has no outstanding custom art-request left: it must render entirely as
+    // real art, never as labeled pending-art boxes. Props must also never fall
+    // back to arbitrary Kenney tile frames masquerading as furniture, nor to a
+    // plausible-but-wrong catalog reuse.
     const requestIds = collectCustomArtRequests([room])
       .map((req) => req.requestId)
       .sort();
-    expect(requestIds).toEqual([
-      'welcome-room-lounge-stool',
-      'welcome-room-potted-plant',
-      'welcome-room-side-table',
-    ]);
-    // Those three queued decor props must NOT resolve to raw Kenney sheet
-    // frames anymore — each base layer is now an honest custom request.
-    for (const id of ['potted-plant', 'broker-side-table', 'lounge-stool']) {
-      const base = room.props.find((p) => p.id === id)!.layers[0]!.sprite;
-      expect(base.source).toBe('custom');
+    expect(requestIds).toEqual([]);
+    // The formerly-queued decor props now resolve to their own bespoke,
+    // approved generated art — keyed by the bare request id they were briefed
+    // under, which is what keeps generated art from orphaning.
+    const wiredDecor: ReadonlyArray<readonly [string, string]> = [
+      ['potted-plant', 'welcome-room-potted-plant'],
+      ['broker-side-table', 'welcome-room-side-table'],
+      ['lounge-stool', 'welcome-room-lounge-stool'],
+    ];
+    for (const [propId, requestId] of wiredDecor) {
+      const base = room.props.find((p) => p.id === propId)!.layers[0]!.sprite;
+      expect(base.source).toBe('catalog');
+      expect((base as { spriteId: string }).spriteId).toMatch(
+        new RegExp(`^${requestId}-var-\\d+$`),
+      );
     }
     // No hero prop is a placeholder — the reception/hero furniture is all shipped.
     for (const id of [
@@ -805,5 +825,146 @@ describe('set-piece placement schema', () => {
     expect(() =>
       setPiecePackSchema.parse(packWithPlacement({ verticalAlign: 'middle' })),
     ).toThrow();
+  });
+});
+
+describe('set-piece door slots', () => {
+  afterEach(() => {
+    installDefaultSetPiecePacks();
+  });
+
+  const layers = [{ sprite: { source: 'sheet', sheetKey: 'k', col: 0, row: 0 } }];
+
+  // 4×4 room; the ring is every tile with x/y at 0 or 3. A door prop sits on the
+  // bottom-centre ring tile (1,3); an optional interior floor keeps the interior valid.
+  const packWith = (opts: {
+    doorAt?: { x: number; y: number };
+    doorSlots?: unknown;
+    extraProps?: unknown[];
+  }) => {
+    const door = opts.doorAt ?? { x: 1, y: 3 };
+    return {
+      version: 1,
+      packId: 'door-slot-test',
+      setPieces: [
+        {
+          id: 'door-room',
+          name: 'Door Room',
+          theme: 'test',
+          sizing: 'exact',
+          width: 4,
+          height: 4,
+          description: 'Exercises the door-slot schema + resolver.',
+          props: [
+            { id: 'entrance', kind: 'door', x: door.x, y: door.y, layers },
+            ...(opts.extraProps ?? []),
+          ],
+          ...(opts.doorSlots !== undefined ? { doorSlots: opts.doorSlots } : {}),
+        },
+      ],
+    };
+  };
+
+  it('treats a ring door prop with no slot as an implicit fixed door', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(packWith({}))]);
+    const slots = resolveSetPieceDoorSlots(getSetPieceDef('door-room')!);
+    expect(slots).toEqual([{ propId: 'entrance', mode: 'fixed', x: 1, y: 3, width: 1, height: 1 }]);
+  });
+
+  it('upgrades a door to dynamic with eligible edges via a slot', () => {
+    installSetPiecePacks([
+      setPiecePackSchema.parse(
+        packWith({
+          doorSlots: [{ propId: 'entrance', mode: 'dynamic', edges: ['bottom', 'left'] }],
+        }),
+      ),
+    ]);
+    const slots = resolveSetPieceDoorSlots(getSetPieceDef('door-room')!);
+    expect(slots).toEqual([
+      {
+        propId: 'entrance',
+        mode: 'dynamic',
+        edges: ['bottom', 'left'],
+        x: 1,
+        y: 3,
+        width: 1,
+        height: 1,
+      },
+    ]);
+  });
+
+  it('excludes door props that sit off the ring (interior doors)', () => {
+    installSetPiecePacks([setPiecePackSchema.parse(packWith({ doorAt: { x: 2, y: 2 } }))]);
+    expect(resolveSetPieceDoorSlots(getSetPieceDef('door-room')!)).toEqual([]);
+  });
+
+  it('rejects a dynamic slot with no eligible edges', () => {
+    expect(() =>
+      setPiecePackSchema.parse(packWith({ doorSlots: [{ propId: 'entrance', mode: 'dynamic' }] })),
+    ).toThrow(/at least one eligible edge/);
+  });
+
+  it('rejects a fixed slot that declares edges', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({ doorSlots: [{ propId: 'entrance', mode: 'fixed', edges: ['top'] }] }),
+      ),
+    ).toThrow(/must not declare edges/);
+  });
+
+  it('rejects a slot referencing a non-door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({
+          extraProps: [{ id: 'shelf', kind: 'furniture', x: 1, y: 1, layers }],
+          doorSlots: [{ propId: 'shelf', mode: 'fixed' }],
+        }),
+      ),
+    ).toThrow(/unknown door prop/);
+  });
+
+  it('rejects a slot referencing an off-ring door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({ doorAt: { x: 2, y: 2 }, doorSlots: [{ propId: 'entrance', mode: 'fixed' }] }),
+      ),
+    ).toThrow(/must be a 1×1 door with origin on the .* footprint ring/);
+  });
+
+  it('rejects a slot referencing a multi-tile door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({
+          extraProps: [{ id: 'wide-door', kind: 'door', x: 1, y: 3, width: 2, layers }],
+          doorSlots: [{ propId: 'wide-door', mode: 'fixed' }],
+        }),
+      ),
+    ).toThrow(/must be a 1×1 door with origin on the .* footprint ring/);
+  });
+
+  it('rejects duplicate slots for the same door prop', () => {
+    expect(() =>
+      setPiecePackSchema.parse(
+        packWith({
+          doorSlots: [
+            { propId: 'entrance', mode: 'fixed' },
+            { propId: 'entrance', mode: 'dynamic', edges: ['top'] },
+          ],
+        }),
+      ),
+    ).toThrow(/Duplicate door slot/);
+  });
+
+  it('excludes implicit multi-tile door props from resolved slots', () => {
+    installSetPiecePacks([
+      setPiecePackSchema.parse(
+        packWith({
+          extraProps: [{ id: 'wide-door', kind: 'door', x: 1, y: 3, width: 2, layers }],
+        }),
+      ),
+    ]);
+    expect(resolveSetPieceDoorSlots(getSetPieceDef('door-room')!)).toEqual([
+      { propId: 'entrance', mode: 'fixed', x: 1, y: 3, width: 1, height: 1 },
+    ]);
   });
 });

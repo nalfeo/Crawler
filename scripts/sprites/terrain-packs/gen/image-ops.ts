@@ -20,6 +20,7 @@
  */
 import { createImage, nearestNeighborResize, setPixel, type RgbaImage } from '../png-buffer.js';
 import { SeededRandom } from '../../../../src/shared/random.js';
+import { WALL_OPACITY_THRESHOLD, isWallAlpha } from '../wall-opacity.js';
 
 function pixelAt(img: RgbaImage, x: number, y: number): [number, number, number, number] {
   const idx = (y * img.width + x) * 4;
@@ -642,7 +643,7 @@ export function toPixelArtGround(src: RgbaImage, style: PixelArtGroundStyle): Rg
           b += px[2];
           a += px[3];
           n++;
-          if (px[3] >= 128) {
+          if (isWallAlpha(px[3])) {
             or_ += px[0];
             og += px[1];
             ob += px[2];
@@ -656,7 +657,7 @@ export function toPixelArtGround(src: RgbaImage, style: PixelArtGroundStyle): Rg
       // Alpha is thresholded rather than averaged: ground tiles are opaque, and
       // a partially-transparent block on silhouetted art would soften an edge
       // the pack validator reads as authored geometry.
-      const aa = a / n >= 128 ? 255 : 0;
+      const aa = a / n >= WALL_OPACITY_THRESHOLD ? 255 : 0;
       for (let y = by; y < Math.min(by + style.blockPx, src.height); y++) {
         for (let x = bx; x < Math.min(bx + style.blockPx, src.width); x++) {
           setPixel(blocked, x, y, ar, ag, ab, aa);

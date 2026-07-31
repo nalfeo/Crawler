@@ -1,0 +1,27 @@
+{
+  "$comment": [
+    "Pinned generated texture key per NPC def id. THE source of truth - imported",
+    "by src/engine/phaser-bridge/sprite-kind.ts (the game) and served over",
+    "/npc-sprites to the Set Piece Editor extension, which is standalone .mjs and",
+    "cannot import TypeScript.",
+    "",
+    "This file exists because the editor kept a private copy of this map and it",
+    "went stale: the Goon and Merchant were regenerated to -v3- and the game was",
+    "repointed, but the editor still drew the old npc-*-var-0 sprites. Anyone",
+    "reviewing the room in the editor was looking at art that had already been",
+    "replaced - and screenshots taken from it were quietly wrong.",
+    "",
+    "Values are BARE manifest keys, which preload as individual Phaser textures,",
+    "so a caller only needs scene.textures.exists(key) to gate on availability.",
+    "Pinned per def id rather than by variant roll because the approved variant",
+    "differs per NPC; a roll-derived index would mis-pick every one of them.",
+    "",
+    "tests/unit/npc-sprite-map.test.ts asserts every value is actually present in",
+    "the generated manifest, so a pointer at art that was never approved fails."
+  ],
+  "byNpcDefId": {
+    "tutorial-goon": "welcome-goon-v3-var-1",
+    "shopkeeper": "sweaty-merchant-v3-var-3",
+    "spell-quest-giver": "npc-spell-broker-var-1"
+  }
+}

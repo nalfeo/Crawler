@@ -1,0 +1,42 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "ci-conflict-false-labelling",
+  "task_title": "Stop labelling non-conflicting PRs as conflict-managed",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewer rejected the original pairwise-conflict-probe plan as a second conflict oracle. Decisive finding (F1): mergeCoordinationGroups seeds from every persisted state and merges seeds on any shared PR number, so a predicate-only fix would be neutralised by the existing 12-member blob. F4 correctly flagged my fail-closed probe as backwards. Design forked to retirement; subsequent verification then showed enforcement was already default-off via merged PR #2168, so scope was reduced again to draining the false labels only. F2/F3/F5/F7 concerned the probe design and are moot under the shipped change.",
+      "models": ["gpt-5.6-sol"]
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 1,
+          "resolved_count": 0,
+          "clean": false
+        }
+      ],
+      "escalated_to_human": {
+        "after_round": 2,
+        "reason": "Round 2 surfaced a valid Medium finding whose correct fix changes CI-recovery DISPATCH ELIGIBILITY (adding ci-lifecycle-quarantined/-abandoned to DISPATCH_BLOCKED_LABEL_NAMES in router.mjs), outside the scope of this deliberately-minimal patch and deserving its own review. Verified pre-existing, not a regression: before this change the all-non-blocking early-exit path drained no labels at all. Tracked in issue #2183.",
+        "unresolved_concerns": 1
+      }
+    }
+  }
+}

@@ -147,6 +147,61 @@ test('proxies only artifact identities through the trusted command bridge', asyn
   }
 });
 
+test('serves artifacts from the in-process reader without spawning a command', async () => {
+  const reads = [];
+  const server = await fixture({
+    readArtifact: async (command) => {
+      reads.push(command);
+      return { contentType: 'image/png', base64: Buffer.from('warm').toString('base64') };
+    },
+  });
+  try {
+    const response = await fetch(
+      `${server.url}api/artifact?itemId=iron-sword&artifactId=iron-sword-sheet-r0-raw`,
+      { headers: { 'X-Canvas-Token': server.token } },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'warm');
+    assert.deepEqual(reads.at(-1), {
+      action: 'artifact',
+      setId: 'classic-fantasy',
+      itemId: 'iron-sword',
+      artifactId: 'iron-sword-sheet-r0-raw',
+    });
+    // The warm path must NOT fall through to the child-process command.
+    assert.equal(
+      server.commands.some((command) => command.action === 'artifact'),
+      false,
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test('falls back to the command bridge when the in-process reader fails', async () => {
+  const server = await fixture({
+    readArtifact: async () => {
+      throw new Error('reader boom');
+    },
+  });
+  try {
+    const response = await fetch(
+      `${server.url}api/artifact?itemId=iron-sword&artifactId=iron-sword-sheet-r0-raw`,
+      { headers: { 'X-Canvas-Token': server.token } },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'png');
+    assert.deepEqual(server.commands.at(-1), {
+      action: 'artifact',
+      setId: 'classic-fantasy',
+      itemId: 'iron-sword',
+      artifactId: 'iron-sword-sheet-r0-raw',
+    });
+  } finally {
+    await server.close();
+  }
+});
+
 test('opens with no set selected and refuses state until one is chosen', async () => {
   const server = await fixture({ setId: null });
   const headers = {
@@ -265,6 +320,7 @@ test('save-plan forwards only the plan and overwrite flag, never a path', async 
       action: 'save-plan',
       plan: { id: 'pirate' },
       overwrite: true,
+      retryPublish: false,
     });
   } finally {
     await server.close();
@@ -486,6 +542,53 @@ test('watches the set that was dispatched even if the selection changes mid-flig
     await new Promise((done) => setTimeout(done, 40));
     assert.ok(watched.length > 0, 'the watch must actually run');
     assert.deepEqual([...new Set(watched)], ['classic-fantasy']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('run-status route reports not-wired when no runStatus provider is configured', async () => {
+  const server = await fixture();
+  try {
+    const res = await fetch(`${server.url}api/run-status`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { available: false, errorKind: 'not-wired' });
+  } finally {
+    await server.close();
+  }
+});
+
+test('run-status route forwards the server-side set id to the provider', async () => {
+  const seen = [];
+  const server = await fixture({
+    runStatus: async (id) => {
+      seen.push(id);
+      return { available: true, run: null, ref: 'refs/heads/feature' };
+    },
+  });
+  try {
+    // A caller-supplied ?setId is ignored — the server uses its own selection.
+    const res = await fetch(`${server.url}api/run-status?setId=spoofed`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { available: true, run: null, ref: 'refs/heads/feature' });
+    assert.deepEqual(seen, ['classic-fantasy']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('run-status route returns 409 when no set is selected', async () => {
+  const server = await fixture({ setId: null });
+  try {
+    const res = await fetch(`${server.url}api/run-status`, {
+      headers: { 'X-Canvas-Token': server.token },
+    });
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), { error: 'no-set-selected' });
   } finally {
     await server.close();
   }

@@ -17,7 +17,11 @@ import {
 import { composeWallCellOutput } from '../compose-wall-cell.js';
 import { compositeInto, createImage, cropImage, encodePng, type RgbaImage } from '../png-buffer.js';
 import { generateQuadrantKit } from '../quadrant-kit.js';
-import { renderDoorTile, type DoorOrientation } from '../procedural-surfaces.js';
+import {
+  DEFAULT_WALL_CORNER_STYLE,
+  wallCornerStyleForPack,
+  type WallCornerStyle,
+} from '../wall-corner-style.js';
 import {
   TERRAIN_PACK_CELL_PX,
   type TerrainPackDef,
@@ -63,11 +67,14 @@ export function deriveVariantTiles(
 }
 
 /** Build the 512×384 wall atlas by re-texturing every blob47 silhouette. */
-export function composeWallAtlas(wallTile: RgbaImage): {
+export function composeWallAtlas(
+  wallTile: RgbaImage,
+  cornerStyle: WallCornerStyle = DEFAULT_WALL_CORNER_STYLE,
+): {
   readonly atlas: RgbaImage;
   readonly masks: readonly { readonly maskId: number; readonly frameIndex: number }[];
 } {
-  const quadrantKit = generateQuadrantKit();
+  const quadrantKit = generateQuadrantKit(cornerStyle);
   const assignments = buildMaskFrameAssignments();
   const atlas = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
   for (const { maskId, frameIndex } of assignments) {
@@ -81,53 +88,6 @@ export function composeWallAtlas(wallTile: RgbaImage): {
 }
 
 /** The two flat colors `renderDoorTile` paints, used as re-texture keys. */
-const DOOR_JAMB_RGB = [58, 56, 64] as const;
-const DOOR_SLAB_RGB = [120, 84, 48] as const;
-
-function sameRgb(img: RgbaImage, idx: number, rgb: readonly [number, number, number]): boolean {
-  return img.data[idx] === rgb[0] && img.data[idx + 1] === rgb[1] && img.data[idx + 2] === rgb[2];
-}
-
-/**
- * Re-texture a procedural door tile: jamb pixels take the wall material, slab
- * pixels take the wood material. Alpha is preserved, so open doors keep their
- * clear passage.
- */
-export function composeDoorTile(
-  isOpen: boolean,
-  orientation: DoorOrientation,
-  wallTile: RgbaImage,
-  woodTile: RgbaImage,
-): RgbaImage {
-  const base = renderDoorTile(isOpen, orientation);
-  const out = createImage(base.width, base.height);
-  for (let y = 0; y < base.height; y++) {
-    for (let x = 0; x < base.width; x++) {
-      const idx = (y * base.width + x) * 4;
-      const alpha = base.data[idx + 3]!;
-      if (alpha === 0) continue;
-      const source = sameRgb(base, idx, DOOR_SLAB_RGB)
-        ? woodTile
-        : sameRgb(base, idx, DOOR_JAMB_RGB)
-          ? wallTile
-          : undefined;
-      if (!source) {
-        out.data[idx] = base.data[idx]!;
-        out.data[idx + 1] = base.data[idx + 1]!;
-        out.data[idx + 2] = base.data[idx + 2]!;
-        out.data[idx + 3] = alpha;
-        continue;
-      }
-      const sIdx = ((y % source.height) * source.width + (x % source.width)) * 4;
-      out.data[idx] = source.data[sIdx]!;
-      out.data[idx + 1] = source.data[sIdx + 1]!;
-      out.data[idx + 2] = source.data[sIdx + 2]!;
-      out.data[idx + 3] = alpha;
-    }
-  }
-  return applyRimShading(out, { rimPx: 2, rimDarken: 0.3, topLift: 0.35 });
-}
-
 export interface SpecialFloorPoolInput {
   /** Manifest key under `specialFloorPools`. */
   readonly key: 'welcome' | 'safe' | 'bossStair';
@@ -143,8 +103,7 @@ export interface ComposePackInput {
   readonly wallTile: RgbaImage;
   readonly floorVariants: readonly RgbaImage[];
   readonly corridorVariants: readonly RgbaImage[];
-  readonly woodTile: RgbaImage;
-  /** Role-keyed floor pools (welcome/safe/boss-stair); walls + doors are shared. */
+  /** Role-keyed floor pools (welcome/safe/boss-stair); walls are shared. */
   readonly specialFloorPools?: readonly SpecialFloorPoolInput[];
 }
 
@@ -162,9 +121,19 @@ export function composePack(input: ComposePackInput): ComposePackResult {
   const packDir = `assets/terrain-packs/${input.id}`;
   const files: PackOutputFile[] = [];
 
-  const { atlas, masks } = composeWallAtlas(input.wallTile);
+  const { atlas, masks } = composeWallAtlas(input.wallTile, wallCornerStyleForPack(input.id));
   const atlasRelPath = `${packDir}/wall-atlas.png`;
   files.push({ relativePath: atlasRelPath, buffer: encodePng(atlas) });
+
+  // DURABLE REBUILD INPUT. The pool tiles below are terminal outputs, so they
+  // are their own source, but `wallTile` is consumed into the atlas and would
+  // otherwise survive only in the gitignored Azure cache. Committing it means a
+  // fresh clone can recompose this pack byte-for-byte with no Azure access —
+  // which is what a canonical-geometry change (as in #2189) requires.
+  // Deliberately NOT referenced by the manifest; it is a build input, not a
+  // runtime asset. `industrial-cave` ships `wall-material.png` for the same
+  // reason.
+  files.push({ relativePath: `${packDir}/wall-material.png`, buffer: encodePng(input.wallTile) });
 
   const buildPool = (
     kind: string,
@@ -188,24 +157,6 @@ export function composePack(input: ComposePackInput): ComposePackResult {
     specialFloorPools[pool.key] = buildPool(`special-${pool.slug}`, pool.variants);
   }
 
-  const doorSpecs = [
-    { key: 'openHorizontal', isOpen: true, orientation: 'horizontal' as const },
-    { key: 'openVertical', isOpen: true, orientation: 'vertical' as const },
-    { key: 'closedHorizontal', isOpen: false, orientation: 'horizontal' as const },
-    { key: 'closedVertical', isOpen: false, orientation: 'vertical' as const },
-  ];
-  const doorEntries: Record<string, { imagePath: string; textureKey: string }> = {};
-  for (const spec of doorSpecs) {
-    const img = composeDoorTile(spec.isOpen, spec.orientation, input.wallTile, input.woodTile);
-    const state = spec.isOpen ? 'open' : 'closed';
-    const relPath = `${packDir}/door-${state}-${spec.orientation}.png`;
-    files.push({ relativePath: relPath, buffer: encodePng(img) });
-    doorEntries[spec.key] = {
-      imagePath: relPath,
-      textureKey: `terrain-pack-${input.id}-door-${state}-${spec.orientation}`,
-    };
-  }
-
   const manifest: TerrainPackDef = {
     id: input.id,
     name: input.name,
@@ -224,7 +175,6 @@ export function composePack(input: ComposePackInput): ComposePackResult {
     },
     floorPool,
     corridorPool,
-    doorSet: doorEntries as TerrainPackDef['doorSet'],
     ...(Object.keys(specialFloorPools).length > 0
       ? { specialFloorPools: specialFloorPools as TerrainPackDef['specialFloorPools'] }
       : {}),

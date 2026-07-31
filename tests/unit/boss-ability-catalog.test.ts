@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ import {
   formatBossAbilityStatusReport,
   loadFloor2BossAbilityStatus,
 } from '../../scripts/agent/boss-ability-status-lib.js';
+import { loadShippedManifest } from '../helpers/generated-manifest.js';
 
 const manifestSchema = z
   .object({
@@ -319,7 +320,8 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(stageCounts).toMatchObject({ blocked: 17, 'in-progress': 1 });
     expect(Object.keys(stageCounts).sort()).toEqual(['blocked', 'in-progress']);
 
-    // Queen Mab, Big Panda Wei, and Sovereign Cap runtime/telegraph/arena slices are verified,
+    // Queen Mab, Squick, Big Panda Wei, Sovereign Cap, Big Mama Bufo, and
+    // Overseer Fizzwick runtime/telegraph/arena slices are verified,
     // but all stay blocked overall behind the separate production-enable gate
     // for real-game enablement/balance.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
@@ -335,6 +337,14 @@ describe('Floor 2 boss ability delivery status', () => {
     expect(panda?.status.arenaLabState).toBe('verified');
     expect(panda?.status.runtimeState).toBe('verified');
     expect(panda?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    const fizzwick = records.find((record) => record.ability.bossArchetypeId === 'gnome-boss');
+    expect(fizzwick?.status.arenaLabState).toBe('verified');
+    expect(fizzwick?.status.runtimeState).toBe('verified');
+    expect(fizzwick?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
+    const bufo = records.find((record) => record.ability.bossArchetypeId === 'toadkin-boss');
+    expect(bufo?.status.arenaLabState).toBe('verified');
+    expect(bufo?.status.runtimeState).toBe('verified');
+    expect(bufo?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     const sovereign = records.find((record) => record.ability.bossArchetypeId === 'myconid-boss');
     expect(sovereign?.status.arenaLabState).toBe('verified');
     expect(sovereign?.status.runtimeState).toBe('verified');
@@ -346,7 +356,9 @@ describe('Floor 2 boss ability delivery status', () => {
         candidate.ability.bossArchetypeId !== 'faerie-boss' &&
         candidate.ability.bossArchetypeId !== 'ratfolk-boss' &&
         candidate.ability.bossArchetypeId !== 'panda-boss' &&
-        candidate.ability.bossArchetypeId !== 'myconid-boss',
+        candidate.ability.bossArchetypeId !== 'gnome-boss' &&
+        candidate.ability.bossArchetypeId !== 'myconid-boss' &&
+        candidate.ability.bossArchetypeId !== 'toadkin-boss',
     )) {
       expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }
@@ -583,14 +595,7 @@ describe('Floor 2 boss ability delivery status', () => {
 
 describe('Floor 2 boss ability art evidence', () => {
   it('matches the real runtime art resolver and shipped manifest for all 18 bosses', () => {
-    const manifest = manifestSchema.parse(
-      JSON.parse(
-        readFileSync(
-          fileURLToPath(new URL('../../public/assets/generated/manifest.json', import.meta.url)),
-          'utf8',
-        ),
-      ),
-    );
+    const manifest = manifestSchema.parse(loadShippedManifest());
     const bossesById = new Map(
       floor2EnemyPack.archetypes
         .filter((archetype) => archetype.isBoss === true)

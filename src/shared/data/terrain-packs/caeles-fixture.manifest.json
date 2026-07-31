@@ -11,7 +11,7 @@
     "license": "CC0",
     "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
     "sha256": "34f07db7bb4872406f35507c515e2fca78bbabbf5a112a20c995bcf554992d76",
-    "derivationNote": "Sliced into 48 32px cells (8x6 grid, row-major). The 48th (last) cell is reserved as a spare, used only to derive floor/corridor/door art and as a bootstrap \"solid\" reference (the source template has no dedicated art for those surfaces). The remaining 47 cells are assigned to the 47 canonical blob47 masks via a deterministic two-phase greedy content-aware match (see assignPoolCellsToMasks in build-caeles-fixture.ts): phase 1 classifies edges against the bootstrap open (cell 0) / solid (spare) references and locks in masks 0 and 255 first; phase 2 reclassifies the remaining cells against those two actually-assigned cells (self-consistent with what validate.ts's compatible-boundary check will later sample from the atlas) and greedily assigns every other mask in ascending mask-value order, breaking ties by lowest cell index. Each assigned cell is nearest-neighbor upscaled 32x32 -> 64x64 (factor 2, explicit source/destination size, no implicit resizing). Floor/corridor/door pool images are derived by deterministically cropping/recoloring the spare cell (documented here, not literal additional vendored artwork) because the source template has no dedicated floor/corridor/door art."
+    "derivationNote": "Sliced into 48 32px cells (8x6 grid, row-major). Cell -> mask assignment is DERIVED from the artwork rather than guessed: the template is alpha-clean (opaque = wall, transparent = floor), so each cell's own blob47 signature is read directly off its pixels - the midpoint of each edge for the 4 cardinal bits, the extreme corner pixel for each of the 4 diagonal bits - and normalized through the shared normalizeBlob47Mask (see deriveTemplateCellMasks in build-caeles-fixture.ts). Every raw signature is already canonical, the 48 cells yield exactly the 47 canonical masks, and mask 255 appears twice; the second fully-solid cell is the spare. The derivation asserts all of that and throws if the vendored source ever stops matching. Each assigned cell is nearest-neighbor upscaled 32x32 -> 64x64 (factor 2, explicit source/destination size, no implicit resizing). Floor/corridor/door pool images are derived by deterministically cropping/recoloring the spare cell (documented here, not literal additional vendored artwork) because the source template has no dedicated floor/corridor/door art."
   },
   "wallAutotile": {
     "imagePath": "assets/terrain-packs/caeles-fixture/wall-atlas.png",
@@ -250,24 +250,6 @@
       "allowedTransforms": ["none"]
     }
   ],
-  "doorSet": {
-    "openHorizontal": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-open-horizontal.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-open-horizontal"
-    },
-    "openVertical": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-open-vertical.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-open-vertical"
-    },
-    "closedHorizontal": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-closed-horizontal.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-closed-horizontal"
-    },
-    "closedVertical": {
-      "imagePath": "assets/terrain-packs/caeles-fixture/door-closed-vertical.png",
-      "textureKey": "terrain-pack-caeles-fixture-door-closed-vertical"
-    }
-  },
   "wallAccents": [
     {
       "id": "crack",

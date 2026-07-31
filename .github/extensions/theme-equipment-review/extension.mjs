@@ -6,8 +6,10 @@ import {
   dispatchThemeEquipmentWorkflow,
   resolveThemeSetId,
   runThemeEquipmentReviewCommand,
+  themeEquipmentRunStatus,
 } from './lib/bridge.mjs';
 import { startThemeEquipmentReviewServer } from './lib/server.mjs';
+import { createInProcessArtifactReader } from './lib/artifact-reader.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +29,13 @@ function log(message, level = 'info') {
 const runCommand = createSerializedThemeEquipmentReviewRunner((command) =>
   runThemeEquipmentReviewCommand(command, REPO_ROOT, log),
 );
+
+/**
+ * Serves read-only preview images in-process from a warm RunStore instead of
+ * spawning a fresh Azure-SDK-loading `node` process per image. Best-effort: the
+ * server falls back to `runCommand` on any failure.
+ */
+const readArtifact = createInProcessArtifactReader({ repoRoot: REPO_ROOT, log });
 
 async function ensureServer(ctx) {
   const requestedSetId = ctx.input?.setId;
@@ -51,8 +60,10 @@ async function ensureServer(ctx) {
     repoRoot: REPO_ROOT,
     renderHtml,
     runCommand,
+    readArtifact,
     dispatchWorkflow: (action, currentSetId) =>
       dispatchThemeEquipmentWorkflow(REPO_ROOT, currentSetId, action),
+    runStatus: (currentSetId) => themeEquipmentRunStatus(REPO_ROOT, currentSetId),
     log,
   }).then((server) => {
     instances.set(ctx.instanceId, server);

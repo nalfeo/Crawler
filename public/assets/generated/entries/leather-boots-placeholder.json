@@ -1,0 +1,21 @@
+{
+  "briefId": "leather-boots",
+  "spriteName": "leather-boots",
+  "assetPath": "generated/leather-boots-placeholder.png",
+  "approvedAt": "2026-07-06T00:00:00.000Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "equipment",
+  "opaqueBounds": {
+    "x": 24,
+    "y": 4,
+    "width": 95,
+    "height": 120,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
+  "placeholder": true
+}

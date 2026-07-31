@@ -29,49 +29,30 @@ export type AIStateValue = (typeof AIState)[keyof typeof AIState];
 /**
  * A/B axis 1 — how the AI turns a Track A movement goal into a heading.
  *
- * Both axes default to LEGACY so, unless explicitly overridden, the AI is
- * byte-for-byte identical to main.
+ * Promoted winner from the 2026-07-21 AI Sweep (294/300 vs 286/300):
+ * `RISK_REWARD_FUSED` is the sole current member. Additional arms may be added
+ * for future floor tuning.
  */
 export const AIPathingMode = {
-  /** Existing behavior: main's movement path, unchanged. */
-  LEGACY: 'legacy',
   /**
-   * Danger/reward-fused grid pathing (default-OFF). Scores candidate headings by
-   * objective progress, reward pull, and sampled overlap-danger so the AI prefers
-   * low-risk seams under enemy pressure, then executes through the same grid
-   * travel steering + additive Track-B blend as LEGACY.
+   * Danger/reward-fused grid pathing. Scores candidate headings by objective
+   * progress, reward pull, and sampled overlap-danger so the AI prefers low-risk
+   * seams under enemy pressure, then executes through grid travel steering.
+   * Promoted as the DEFAULT from the 2026-07-21 AI Sweep.
    */
   RISK_REWARD_FUSED: 'riskRewardFused',
-  /**
-   * Deterministic recast-navigation navmesh pathing (default-OFF). The behavior
-   * tree still picks the goal; a solo navmesh computes a plain shortest-path
-   * waypoint route to it (NO danger/reward weighting — pure locomotion).
-   * Cross-platform byte-identical under the pinned config in
-   * `src/game/ai/navmesh/`. Requires `initNavmesh()` to be awaited before the
-   * simulation runs.
-   */
-  NAVMESH: 'navmesh',
-  /**
-   * Navmesh route + fused follow layer (default-OFF). Combines NAVMESH's
-   * deterministic recast waypoint route to the BT-chosen goal with
-   * RISK_REWARD_FUSED's danger/reward follow layer (fused candidate-heading
-   * scorer → predictive travel steering → conditional additive Track-B blend)
-   * applied on TOP of that route. The recast query stays pure — danger/reward is
-   * a FOLLOW-time layer only, never a geometry or query-cost change. Same
-   * `initNavmesh()` requirement as NAVMESH.
-   */
-  NAVMESH_FUSED: 'navmeshFused',
 } as const;
 export type AIPathingModeValue = (typeof AIPathingMode)[keyof typeof AIPathingMode];
 
 /**
  * A/B axis 2 — how the AI decides which Track A goal is eligible.
+ *
+ * `LEGACY` is the sole current member (fixed-priority ladder, time-blind).
+ * Additional arms may be added for future floor tuning.
  */
 export const AIDecisionMode = {
-  /** Existing behavior: fixed-priority Track A ladder, time-blind. */
+  /** Fixed-priority Track A ladder, time-blind. The 2026-07-21 AI Sweep winner. */
   LEGACY: 'legacy',
-  /** Experimental: Track A goal eligibility gated by run-plan slack/urgency, as MONOTONE filters only (removes optional goals / forces the exit target) so a winning seed can never be reshuffled into a loss. */
-  SLACK_AWARE: 'slackAware',
 } as const;
 export type AIDecisionModeValue = (typeof AIDecisionMode)[keyof typeof AIDecisionMode];
 
@@ -203,37 +184,13 @@ export interface AIConfig {
   farmPullWeight?: number;
   /**
    * A/B axis 1: how a Track A goal becomes a heading. Defaults to
-   * {@link AIPathingMode.RISK_REWARD_FUSED} — promoted from the AI Sweep
-   * winner (2026-07-21, GitHub Actions run 29893475612: 294/300 vs the
-   * legacy+legacy incumbent's 286/300). Pass
-   * {@link AIPathingMode.LEGACY} explicitly for the pre-promotion movement path.
-   * Full pre-promotion config parity also requires `retreatThreshold: 0.15` and
-   * `farmPullWeight: 0.07`.
+   * {@link AIPathingMode.RISK_REWARD_FUSED} — the 2026-07-21 AI Sweep winner
+   * (294/300 vs 286/300).
    */
   pathingMode?: AIPathingModeValue;
   /**
-   * Slice 4b seam-following weight for {@link AIPathingMode.NAVMESH_FUSED} ONLY.
-   * Adds a tangential-to-danger-gradient bonus on top of the fused fan so the
-   * agent travels ALONG danger boundaries (seams) toward the goal while farmable
-   * reward lies along them, instead of taking the pure shortest path or hiding in
-   * corners. At seamWeight 0 the seam block is fully skipped and NAVMESH_FUSED is
-   * byte-identical to Slice 4a. This defaults to NAVMESH_FUSED_SEAM_WEIGHT (=2, the
-   * human-adjudicated production weight), so an AI in NAVMESH_FUSED with no explicit
-   * seamWeight runs the seam term at 2 — NOT off. The shipped game stays
-   * byte-identical to 4a because the default pathingMode is RISK_REWARD_FUSED
-   * (not NAVMESH_FUSED) and the call site forces seamWeight to 0 for every
-   * non-NAVMESH_FUSED mode, not because this defaults to 0. Ignored by every
-   * other pathing mode. Clamped to a finite value
-   * ≥ 0 at construction; the production value is human-adjudicated via the two-stage
-   * tuning sweep (`npm run ai:navmesh-seam-sweep`).
-   */
-  seamWeight?: number;
-  /**
    * A/B axis 2: how Track A goal eligibility is decided. Defaults to
-   * {@link AIDecisionMode.LEGACY} — with the default the Track A ladder is
-   * byte-identical to main. {@link AIDecisionMode.SLACK_AWARE} applies monotone
-   * run-plan slack/urgency filters that only remove optional goals or force the
-   * exit target (never reshuffle scores).
+   * {@link AIDecisionMode.LEGACY} — fixed-priority Track A ladder, time-blind.
    */
   decisionMode?: AIDecisionModeValue;
   /** Enable debug logging */
@@ -442,6 +399,20 @@ export interface Floor2ProgressionMetrics {
   exitCompleted: boolean;
 }
 
+/** End-of-run equipment usability + reward-resolution invariants. */
+export interface EquipmentPlayabilityMetrics {
+  /** Total Quartermaster equipment gold observed as spent this run. */
+  goldSpentOnEquipment: number;
+  /** Generated equipment entries still bagged at run end. */
+  baggedGeneratedCount: number;
+  /** Generated equipment instances equipped at run end (de-duplicated). */
+  equippedGeneratedCount: number;
+  /** Unclaimed achievement rewards + non-claimed boss chests at run end. */
+  unopenedRewardBoxes: number;
+  /** Bagged generated instances that could fill an empty matching slot. */
+  unequippedWithEmptySlotCount: number;
+}
+
 /**
  * Run statistics for performance tracking.
  */
@@ -509,4 +480,6 @@ export interface RunStats {
    * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
    */
   weaponTelemetry?: WeaponTelemetrySummary;
+  /** End-of-run deterministic equipment/reward playability metrics. */
+  equipmentPlayability?: EquipmentPlayabilityMetrics;
 }

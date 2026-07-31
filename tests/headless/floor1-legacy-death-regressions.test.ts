@@ -24,7 +24,7 @@ describe('Floor 1 legacy weapon-sweep death regressions', () => {
       const stats = await runHeadless(
         new BehaviorTreeAI({
           seed,
-          pathingMode: AIPathingMode.LEGACY,
+          pathingMode: AIPathingMode.RISK_REWARD_FUSED,
           decisionMode: AIDecisionMode.LEGACY,
         }),
         {

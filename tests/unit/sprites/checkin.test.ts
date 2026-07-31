@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ASSET_CHECKIN_LABEL,
   ASSET_CHECKIN_MARKER,
+  ART_SURFACE_ALLOWLIST,
   ASSET_SURFACE_PATHS,
   CheckinError,
   detectApprovedAssets,
@@ -33,6 +34,27 @@ function asset(overrides: Partial<CheckinAsset> = {}): CheckinAsset {
     ...overrides,
   };
 }
+
+describe('art surface constants', () => {
+  it('never writes the sprite catalog, so parallel art check-ins cannot conflict on it', () => {
+    // Every art check-in used to append to BOTH the generated manifest and
+    // `src/shared/data/sprite-catalog.json`, whose `generated:` rows merely
+    // restate manifest data. Two files meant every pair of concurrent art PRs
+    // conflicted by construction. Writing only the manifest halves that surface.
+    expect([...ASSET_SURFACE_PATHS]).toEqual(['public/assets/generated']);
+    expect(ASSET_SURFACE_PATHS).not.toContain('src/shared/data/sprite-catalog.json');
+  });
+
+  it('still TOLERATES catalog edits, so in-flight branches keep reconciling', () => {
+    // The guard list must stay a superset of what we write and must match
+    // `detect-art-only.sh`, or a branch created before this change would be
+    // rejected as a non-art diff.
+    expect([...ART_SURFACE_ALLOWLIST]).toContain('src/shared/data/sprite-catalog.json');
+    for (const written of ASSET_SURFACE_PATHS) {
+      expect([...ART_SURFACE_ALLOWLIST]).toContain(written);
+    }
+  });
+});
 
 describe('planAssetCheckin', () => {
   it('derives a deterministic branch, commit, and issue title from the assets', () => {

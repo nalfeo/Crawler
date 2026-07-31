@@ -250,6 +250,43 @@ describe('TileMap', () => {
       expect(map.lineOfSight(1, 1, 3, 3)).toBe(false);
       expect(map.lineOfSight(3, 3, 1, 1)).toBe(false);
     });
+
+    // HARD GATE: an interior room corner is the wall block diagonally across
+    // the seam formed by the two wall runs that meet at it. The light field
+    // gates source illumination on lineOfSight (light-field.ts calls
+    // FloorMap.hasLineOfSight for every cell it lights, wall cells included),
+    // so if this returns false the corner renders at ambient only — revealed
+    // but black. Regression for "room corners don't get lighting".
+    it('reaches an opaque tile across the seam formed by its own two walls', () => {
+      const map = openMap();
+      map.setFlags(2, 1, TilePresets.WALL);
+      map.setFlags(1, 2, TilePresets.WALL);
+      map.setFlags(2, 2, TilePresets.WALL);
+      expect(map.lineOfSight(1, 1, 2, 2)).toBe(true);
+    });
+
+    // HARD GATE: the exemption covers ONLY the terminal step. An opaque tile
+    // sitting behind a seam crossed EARLIER on the ray must stay blocked,
+    // otherwise a wall genuinely peeked at through a diagonal gap becomes
+    // visible and lit.
+    it('does not reach an opaque tile behind an earlier blocked corner seam', () => {
+      const map = openMap();
+      map.setFlags(2, 1, TilePresets.WALL);
+      map.setFlags(1, 2, TilePresets.WALL);
+      map.setFlags(3, 3, TilePresets.WALL);
+      expect(map.lineOfSight(1, 1, 3, 3)).toBe(false);
+    });
+
+    // HARD GATE: the exemption keys off the TARGET being opaque, never the
+    // origin. A wall-mounted light source must not shine through a diagonal
+    // gap just because it sits on an opaque tile.
+    it('does not exempt the seam when only the origin is opaque', () => {
+      const map = openMap();
+      map.setFlags(2, 1, TilePresets.WALL);
+      map.setFlags(1, 2, TilePresets.WALL);
+      map.setFlags(2, 2, TilePresets.WALL);
+      expect(map.lineOfSight(2, 2, 1, 1)).toBe(false);
+    });
   });
 
   describe('tile flag bitfield correctness', () => {

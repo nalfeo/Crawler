@@ -1,0 +1,21 @@
+{
+  "briefId": "bronze-vambrace",
+  "spriteName": "bronze-vambrace",
+  "assetPath": "generated/bronze-vambrace-placeholder.png",
+  "approvedAt": "2026-07-06T00:00:00.000Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "type": "equipment",
+  "opaqueBounds": {
+    "x": 19,
+    "y": 6,
+    "width": 90,
+    "height": 116,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
+  "placeholder": true
+}

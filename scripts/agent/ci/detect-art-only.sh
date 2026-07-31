@@ -5,7 +5,9 @@
 # surfaces, and security-impact flags).
 #
 # art_only=true  — every changed file is under the approved-art surface:
-#   - public/assets/generated/**        (sprites + manifest.json)
+#   - public/assets/generated/**        (sprite PNGs + per-asset manifest shards
+#                                        under entries/; the aggregate manifest.json
+#                                        is a gitignored build artifact, never in a diff)
 #   - src/shared/data/sprite-catalog.json
 # When art-only, CI skips heavy gameplay gates (integration, headless, e2e, build)
 # but still runs typecheck/lint/format/unit.
@@ -453,7 +455,7 @@ sprite_pipeline_touched="$sprites_touched"
 # dependencies_touched: at least one changed file is a dependency manifest
 # (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json), the
 # dependency-allowlist security script, or the npm-audit wrapper (which hosts
-# the temporary fast-uri exception). Consumed by security-review.yml to gate
+# temporary audit exceptions). Consumed by security-review.yml to gate
 # npm audit and the dep-allowlist check.
 dependencies_touched=false
 while IFS= read -r file; do

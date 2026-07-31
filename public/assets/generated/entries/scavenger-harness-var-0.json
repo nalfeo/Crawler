@@ -1,0 +1,45 @@
+{
+  "briefId": "scavenger-harness",
+  "spriteName": "scavenger-harness-var-0",
+  "assetPath": "generated/scavenger-harness-var-0.png",
+  "approvedAt": "2026-07-18T05:02:55.273Z",
+  "sourceRun": "generated/runs/scavenger-harness/2026-07-18T04-52-00-manual",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 56,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 56,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": null,
+  "type": "equipment",
+  "contentHash": "bc35e930fdba78610e2c49c1286e1b254c9f62730c6888d9e03fc7523ee4360b",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 8,
+    "width": 49,
+    "height": 49,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "catalog": {
+    "tags": ["item", "generated", "pipeline-approved"]
+  }
+}

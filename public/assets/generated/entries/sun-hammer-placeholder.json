@@ -1,0 +1,20 @@
+{
+  "briefId": "sun-hammer",
+  "spriteName": "sun-hammer",
+  "assetPath": "generated/sun-hammer-placeholder.png",
+  "approvedAt": "2026-07-18T02:44:38.898Z",
+  "sourceRun": "placeholder",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "placeholder",
+  "judgeScore": null,
+  "opaqueBounds": {
+    "x": 2,
+    "y": 4,
+    "width": 12,
+    "height": 9,
+    "canvasWidth": 16,
+    "canvasHeight": 16
+  },
+  "placeholder": true
+}

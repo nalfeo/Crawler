@@ -135,6 +135,9 @@ function runPromotion(overrides = {}) {
     },
     recordMapping: (number, sha) => records.mapping.push({ number, sha }),
     reattestHealth: overrides.reattestHealth || (async () => true),
+    // ^ Removed from promoteExactBatch by ADR 0077 (main health is no longer on
+    // the promotion path). Kept here deliberately so the regression below can
+    // prove a legacy caller passing it cannot block a validated merge.
     verifyMergeSlot: overrides.verifyMergeSlot || (async () => null),
     proofSleep: async () => {},
   });
@@ -364,10 +367,15 @@ test('promoteExactBatch does nothing in dry-run mode', async () => {
   assert.equal(records.landedLabels.length, 0);
 });
 
-test('promoteExactBatch pauses when main health regresses at final reattestation', async () => {
+test('promoteExactBatch promotes a validated candidate regardless of main-alone health (ADR 0077)', async () => {
+  // BEFORE: `reattestHealth` was a final main-health re-check immediately before
+  // the merge API call, so a green composite on a red `main` was refused --
+  // deadlocking any PR that FIXES `main`. AFTER: main health is not consulted on
+  // the promotion path at all. A legacy caller still passing the removed option
+  // must not be able to block the merge.
   const { promise, records } = runPromotion({ reattestHealth: async () => false });
-  assert.equal(await promise, false);
-  assert.equal(records.merges.length, 0);
+  assert.equal(await promise, true);
+  assert.equal(records.merges.length, 2);
 });
 
 test('promoteExactBatch blocks a merge when the final merge-slot recheck fails', async () => {
@@ -422,7 +430,6 @@ test('promoteExactBatch fails closed when main moves during the coordinator slot
     postLandedComment: async () => {},
     publishPostconditionCheck: async () => {},
     recordMapping: () => {},
-    reattestHealth: async () => true,
     verifyCandidateEvidence: async () => true,
     verifyMergeSlot: async () => {
       // Simulate main advancing while the coordinator scan was running.
@@ -480,7 +487,6 @@ test('promoteExactBatch fails closed when admission policy changes during the co
     postLandedComment: async () => {},
     publishPostconditionCheck: async () => {},
     recordMapping: () => {},
-    reattestHealth: async () => true,
     verifyCandidateEvidence: async () => true,
     verifyMergeSlot: async () => {
       // Simulate admission state changing while the coordinator scan ran.
@@ -533,7 +539,6 @@ test('promoteExactBatch fails closed when auto_merge is re-armed during the coor
     postLandedComment: async () => {},
     publishPostconditionCheck: async () => {},
     recordMapping: () => {},
-    reattestHealth: async () => true,
     verifyCandidateEvidence: async () => true,
     verifyMergeSlot: async () => {
       // Simulate auto_merge being re-armed during the coordinator scan.
@@ -594,7 +599,6 @@ test('promoteExactBatch fails closed and publishes postcondition when final main
       postconditions.push(sha);
     },
     recordMapping: () => {},
-    reattestHealth: async () => true,
     // Zero-delay poll: one attempt in both the per-PR proof and the final guard.
     proofPollDelaysMs: [],
     proofSleep: async () => {},
@@ -651,7 +655,6 @@ test('promoteExactBatch final main guard tolerates a transient fetchCurrentMain 
     postLandedComment: async () => {},
     publishPostconditionCheck: async () => {},
     recordMapping: () => {},
-    reattestHealth: async () => true,
     // One retry delay so the guard retries after the transient error.
     proofPollDelaysMs: [0],
     proofSleep: async () => {},
@@ -692,7 +695,6 @@ test('promoteExactBatch still returns true when a post-merge label/comment updat
     postLandedComment: async () => {},
     publishPostconditionCheck: async () => {},
     recordMapping: () => {},
-    reattestHealth: async () => true,
   });
   assert.equal(result, true);
   void records;

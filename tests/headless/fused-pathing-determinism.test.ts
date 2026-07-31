@@ -90,16 +90,9 @@ describe('RISK_REWARD_FUSED — determinism + non-inertness guard', () => {
     );
   }
 
-  it('fused materially diverges from LEGACY on \u22651 seed (path is active, not a silent delegate)', async () => {
-    let anyDiffer = false;
-    for (const seed of SEEDS) {
-      const fused = fingerprint(await runSlice(seed, AIPathingMode.RISK_REWARD_FUSED));
-      const legacy = fingerprint(await runSlice(seed, AIPathingMode.LEGACY));
-      if (JSON.stringify(fused) !== JSON.stringify(legacy)) {
-        anyDiffer = true;
-        break;
-      }
-    }
-    expect(anyDiffer).toBe(true);
-  });
+  // NOTE: the "non-inertness" guard (fused diverges from LEGACY) was removed
+  // when AIPathingMode.LEGACY was retired as a dead arm. RISK_REWARD_FUSED is
+  // now the sole pathing mode, so there is no LEGACY baseline to compare
+  // against. The determinism tests above (byte-identical across two invocations
+  // + non-vacuity on damageDealt) remain the primary in-CI fused-path guard.
 });

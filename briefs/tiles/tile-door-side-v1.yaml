@@ -1,0 +1,136 @@
+# ORIENTATION NOTE (Set Piece Designer, 2026-07-28) -- CONTRACT CHANGED IN ROUND 4
+#
+# THIS BRIEF NO LONGER ASKS FOR A QUARTER-TURNED DOOR. Draw an ordinary FACE-ON
+# door. The RENDERER turns it (`resolveDoorRenderMode` -> `quarterTurnsCcw: 1`,
+# applied as `setAngle(-90)`), so a pre-rotated sprite would be turned twice.
+#
+# Why the change: rounds 1-3 asked for the quarter-turn in increasingly explicit,
+# falsifiable prose and got face-on art every single time -- 3 for 3, ~40
+# variants. Sensors scored 7/7 and the VLM judge scored brief_match 5/5 on that
+# art, because NEITHER GATE CAN SEE WHICH WAY THE PLANKS RUN. Rather than spend a
+# fourth round on an instruction the generator does not follow, the turn moved to
+# the one place it is exact and free: the renderer.
+#
+# That is not a workaround, it is the packs' own convention. Measured against the
+# shipped terrain packs, `door-closed-vertical.png` IS `door-closed-horizontal.png`
+# rotated 90 degrees counter-clockwise -- the horizontal tile's TOP edge row is
+# byte-identical to the vertical tile's LEFT edge column reversed (mean
+# per-channel diff 0.0 on both industrial-cave and caeles-fixture; the identity
+# mapping differs by 20.8). The packs then hand-retouch the interior (~22% of
+# pixels) so the LIGHT does not rotate with the art.
+#
+# Two consequences the prose below encodes, both derived from that rotation
+# (dst(x,y) = src(w-1-y, x)):
+#   - The source's RIGHT edge becomes the rendered TOP edge, and the source's
+#     LEFT edge becomes the rendered BOTTOM edge. So the wall stone belongs on the
+#     LEFT and RIGHT edges here, and lands top/bottom in game -- correct for a
+#     wall that runs up-down.
+#   - The source's UPPER-RIGHT corner becomes the rendered UPPER-LEFT corner. So
+#     this art must be lit from the UPPER RIGHT to read as upper-left in game.
+#     This is the ONLY brief in the repo that inverts the lighting rule, and it is
+#     inverted precisely so the shipped result obeys it.
+#
+# It stays a tile-filling 4 ft x 4 ft square rather than a 7 ft leaf: a tall door
+# cannot occupy this slot, because 4x7 rotated is 7x4 and does not fit a 4 ft tile.
+# Mixed door heights between the two orientations is CORRECT in this projection.
+#
+# FAMILY MATCH IS A HARD REQUIREMENT. Measured at true game scale (both sprites
+# box-downsampled to the real 32 px tile), the previous side art read
+# grey-dominant, cold and busy next to the approved `tile-door-v1-var-1`, which
+# reads warm walnut with clear iron banding. 69 of 104 Floor 1 doors are vertical,
+# so that mismatch would have been the majority look. It was rejected for family
+# mismatch alone, with every sensor green.
+#
+# `type: tile` selects the 'stretch' resize strategy: exact 64x64, edge to edge,
+# no transparent gutters. That is why this brief needs no aspect prose.
+type: tile
+name: tile-door-side-v1
+description: |
+  A heavy CLOSED DUNGEON DOOR seen FACE-ON, filling a square cell. Modern
+  high-quality pixel art. The cell is 256 x 256 source pixels and the artwork
+  FILLS IT EDGE TO EDGE -- there is no transparency anywhere.
+
+  Draw it UPRIGHT and FACE-ON, exactly as you would draw any front-facing door:
+  plank seams running TOP TO BOTTOM, iron straps running LEFT TO RIGHT across
+  them. Do NOT rotate, tilt, or turn the door -- the game engine turns this
+  sprite a quarter turn itself, so a pre-turned image would come out turned
+  twice and land on its head.
+
+  IT MUST LOOK LIKE THE SAME DOOR as the tall arched dungeon door already in the
+  game -- same workshop, same timber, same ironmongery, same age. Warm walnut
+  timber that clearly reads as WOOD, not as grey stone with wood between it. This
+  is the single most important requirement after the layout: a cold, grey,
+  busy-looking door is a REJECT even if everything else is right.
+
+  LAYOUT, left to right:
+  - The LEFT ~12% of the cell is dungeon WALL -- cool grey blocky stone, the wall
+    carrying on past the doorway.
+  - The MIDDLE ~76% is the DOOR, filling the full height of the cell: heavy
+    timber with THREE plank seams running top-to-bottom, deep grain, and TWO
+    broad HORIZONTAL iron straps running the full width of the door, riveted with
+    fat round studs. Keep the timber the dominant colour of the whole cell.
+  - The RIGHT ~12% of the cell is dungeon WALL again, matching the left.
+  - A heavy IRON RING HANDLE on a round backplate sits on the door, a little
+    BELOW centre and toward the left stile. Big enough to read at 16px.
+
+  IT IS NOT: an open doorway, a dark archway, a portcullis, a gate, a double
+  door, a hatch, a crate lid, a wooden bridge, a raft, a ladder, or a bookshelf.
+  It is one closed timber door filling a square gap in a stone wall.
+
+  MOOD -- a grimy reality-TV dungeon. Heavy, permanent and unwelcoming. Tired,
+  worn, long shut, never ornate and never fantasy-decorative.
+
+  COLOUR -- the TIMBER DOMINATES: a warm walnut-brown, rich rather than muddy,
+  with 4-5 tone stops so the planks separate clearly. It should read as warm wood
+  from across the room. The iron straps, rivets and ring are dull dark grey-black
+  metal with tarnished rust-brown streaks; the wall stone at the two side edges is
+  cool grey with a hint of blue-green in its shadows, and is a NARROW ACCENT, not
+  a co-star. Clear tonal separation between stone, timber and iron. BANNED: neon,
+  pure white, pure black, saturated red, saturated yellow, orange, teal, cyan,
+  blue, green, magenta, purple, gold leaf, gemstones, glowing runes, magical glow,
+  and any ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER RIGHT. This is deliberate and it is the
+  opposite of the usual rule -- the engine turns this sprite a quarter turn
+  counter-clockwise, which carries the upper-right corner around to the
+  upper-left, so lighting it from the upper right here is what makes it lit from
+  the upper left on screen. Highlights sit on the upper-RIGHT side of every plank,
+  strap, rivet and stone; shadow falls down and to the LEFT.
+
+  RENDERING: hard dark outlines where materials meet, 3-5 tone stops per
+  material, restrained dithering for stone and timber grain -- no mushy
+  gradients, no airbrush.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils, labels,
+  captions, watermarks or signatures anywhere.
+
+  BACKGROUND: none. This is an opaque tile that fills its whole cell edge to
+  edge. No transparency, no drop shadow, no vignette, no border, no frame around
+  the cell.
+
+  SHEET BACKGROUND: every cell is fully painted; cells butt directly against each
+  other with no dividers, borders or gutters between them.
+size:
+  width: 64
+  height: 64
+anchor:
+  x: 32
+  y: 63
+sensors:
+  # Full-bleed opaque tile: occupancy is 1.0 by definition, so the ratio sensor
+  # has nothing to say and is disabled rather than given a meaningless bound.
+  opaqueRatio:
+    disabled: true
+  # The artwork intentionally runs to all four edges.
+  edge:
+    allowMainTouch: true
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 2

@@ -44,6 +44,7 @@ import {
   markThemeEquipmentSetPublished,
   parseThemeEquipmentSetState,
   recordThemeSetItemPhaseArtifacts,
+  recordThemeSetItemPhaseFailure,
   THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
   THEME_EQUIPMENT_MAX_APPROVED_VARIANTS,
   THEME_EQUIPMENT_MIN_APPROVED_VARIANTS,
@@ -52,6 +53,7 @@ import {
   type ThemeEquipmentCollectionJudgeResult,
   type ThemeEquipmentSetItem,
   type ThemeEquipmentSetState,
+  type ThemeSetMutationResult,
 } from './theme-equipment-set.js';
 
 /**
@@ -84,7 +86,58 @@ export class ThemeEquipmentPipelineError extends Error {
   }
 }
 
-/** One item's freshly-produced current-phase artifacts/evidence. */
+/**
+ * A per-item executor failure the phase runner is allowed to RECOVER from:
+ * the item is marked failed (a durable `generationError` marker) and the pass
+ * continues with the remaining items, so paid work already accepted this pass
+ * is never discarded. Only this exact type is treated as recoverable — every
+ * other throw is fatal and aborts the pass (after checkpointing the state so
+ * far). Executors that produce a genuinely per-item, retryable failure (e.g.
+ * "0 acceptable variants") must throw THIS; anything unexpected must not.
+ */
+export class RecoverableThemeSetItemError extends Error {
+  override readonly name = 'RecoverableThemeSetItemError';
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+  }
+}
+
+/** One item that recoverably failed its executor during a phase pass. */
+export interface ThemeEquipmentSetPhaseItemFailure {
+  readonly itemId: string;
+  readonly message: string;
+  readonly cause: unknown;
+}
+
+/**
+ * A fatal condition that aborted the pass. `error` is rethrown VERBATIM by the
+ * runner after it checkpoints the state so far. `itemId` is the item being
+ * processed when it occurred, or `null` for a non-item-scoped fatal (e.g. a
+ * rejected collection-judge mutation).
+ */
+export interface ThemeEquipmentSetPhaseFatal {
+  readonly itemId: string | null;
+  readonly error: unknown;
+}
+
+/**
+ * Outcome of one graceful phase pass. `state` always reflects every mutation
+ * applied so far (recorded artifacts, failure markers, and — only on a fully
+ * clean pass — the collection judge), so the caller can persist it regardless
+ * of whether the pass succeeded, partially failed, or hit a fatal.
+ */
+export interface ThemeEquipmentSetPhaseRunResult {
+  readonly state: ThemeEquipmentSetState;
+  /** Items whose artifacts were successfully recorded this pass. */
+  readonly succeededItemIds: readonly string[];
+  /** Items that recoverably failed (marked, pass continued). */
+  readonly itemFailures: readonly ThemeEquipmentSetPhaseItemFailure[];
+  /** Set when the collection judge itself threw (never reached, no judge recorded). */
+  readonly collectionJudgeError: string | null;
+  /** Set when a fatal aborted the pass; `error` must be rethrown by the caller. */
+  readonly fatalError: ThemeEquipmentSetPhaseFatal | null;
+}
+
 export interface ThemeEquipmentItemExecutionResult {
   readonly artifacts: readonly ThemeEquipmentArtifactEvidence[];
   readonly evidence: readonly ThemeEquipmentArtifactEvidence[];
@@ -113,31 +166,56 @@ export type ThemeEquipmentCollectionJudgeFn = (
 ) => Promise<ThemeEquipmentCollectionJudgeResult>;
 
 /**
- * Run one phase pass over `state`:
+ * Optional per-item pre-mutation hook. Called immediately before each
+ * unresolved item's executor, with the current accumulated state and the
+ * item id. Return `null` for no-op (item needs no pre-mutation). Return a
+ * `ThemeSetMutationResult`: `{ ok: true, state }` replaces `current` and
+ * re-fetches the live item before calling `executeItem`; `{ ok: false }` is
+ * treated as a fatal mutation-rejected error and aborts the pass.
+ *
+ * Used by the runner to revise down-reviewed items lazily — one at a time,
+ * immediately before execution — so a fatal error on item N never clears
+ * the artifacts or bumps the revision of items N+1…M that were never
+ * attempted.
+ */
+export type ThemeEquipmentItemPreMutator = (
+  state: ThemeEquipmentSetState,
+  itemId: string,
+) => ThemeSetMutationResult | null;
+
+/**
+ * Run one graceful phase pass over `state`:
  *
  *   1. For every item NOT already resolved for `state.phase` (see
  *      `isThemeSetItemResolvedForPhase` — up-reviewed or frozen items are
- *      skipped, never re-executed or clobbered), call `executeItem` and
- *      record its result via `recordThemeSetItemPhaseArtifacts`.
- *   2. Call `judgeCollection` exactly once against the resulting state
- *      (which now reflects every newly-recorded item AND every untouched
- *      frozen/up item) and record the result via
- *      `applyThemeSetPhaseCollectionJudge`.
+ *      skipped, never re-executed or clobbered), optionally apply
+ *      `preItemMutate` (e.g. a lazy revision bump for down-reviewed items),
+ *      then call `executeItem` and record its result via
+ *      `recordThemeSetItemPhaseArtifacts`.
+ *   2. Call `judgeCollection` exactly once against the resulting state — but
+ *      ONLY if the pass was fully clean (no item failures, no fatal), so a
+ *      collection score is never computed over a knowingly-incomplete set.
  *
- * Never mutates `state` — every step produces a new state object via the
- * pure mutations in `theme-equipment-set.ts`. Fails closed: an executor or
- * judge callback that throws propagates its ORIGINAL error unchanged (so
- * callers can still distinguish e.g. a `VisionProviderError` from a
- * `ThemeEquipmentPipelineError`); a mutation that returns `{ ok: false }`
- * (a gate rejection, not a thrown error) is converted to a thrown
- * `ThemeEquipmentPipelineError('mutation-rejected', ...)` so this function
- * never returns a half-applied result.
+ * Graceful degradation (partial-persist recovery): a `RecoverableThemeSetItemError`
+ * thrown by `executeItem` does NOT abort the pass — the item is marked failed
+ * via `recordThemeSetItemPhaseFailure` (a durable `generationError` marker) and
+ * the loop continues, so every item accepted earlier this pass is preserved.
+ * Any OTHER throw is fatal: the runner still marks the offending item failed
+ * (to checkpoint intent) and then stops, surfacing the original error via
+ * `fatalError` for the caller to rethrow verbatim after it persists the state.
+ * A mutation that returns `{ ok: false }` is likewise fatal.
+ *
+ * Never mutates `state` — every step produces a new state object via the pure
+ * mutations in `theme-equipment-set.ts`. The returned `state` always reflects
+ * every mutation applied so far, so the caller can persist a checkpoint on any
+ * outcome.
  */
 export async function runThemeEquipmentSetPhase(
   state: ThemeEquipmentSetState,
   executeItem: ThemeEquipmentItemExecutor,
   judgeCollection: ThemeEquipmentCollectionJudgeFn,
-): Promise<ThemeEquipmentSetState> {
+  preItemMutate?: ThemeEquipmentItemPreMutator,
+): Promise<ThemeEquipmentSetPhaseRunResult> {
   if (!isReviewPhase(state.phase)) {
     throw new ThemeEquipmentPipelineError(
       'not-a-review-phase',
@@ -147,12 +225,44 @@ export async function runThemeEquipmentSetPhase(
   }
   const phase = state.phase;
   let current = state;
+  const succeededItemIds: string[] = [];
+  const itemFailures: ThemeEquipmentSetPhaseItemFailure[] = [];
+  let fatalError: ThemeEquipmentSetPhaseFatal | null = null;
+
+  /**
+   * Record a durable failure marker for `itemId`, appending to `itemFailures`.
+   * Returns the checkpointed state plus a fatal if the marker mutation itself
+   * was rejected (which must abort the pass — we could not even record intent).
+   */
+  const applyFailureMarker = (
+    from: ThemeEquipmentSetState,
+    itemId: string,
+    error: unknown,
+  ): { state: ThemeEquipmentSetState; fatal: ThemeEquipmentSetPhaseFatal | null } => {
+    const message = error instanceof Error ? error.message : String(error);
+    itemFailures.push({ itemId, message, cause: error });
+    const marker = recordThemeSetItemPhaseFailure(from, itemId, message);
+    if (!marker.ok) {
+      return {
+        state: from,
+        fatal: {
+          itemId,
+          error: new ThemeEquipmentPipelineError(
+            'mutation-rejected',
+            `Recording generation failure for item "${itemId}" was itself rejected: ` +
+              marker.reasons.map((reason) => reason.message).join('; '),
+          ),
+        },
+      };
+    }
+    return { state: marker.state, fatal: null };
+  };
 
   for (const original of state.items) {
     // Re-fetch the item from the running state: an earlier iteration in
     // this same loop cannot change ANOTHER item's resolved-ness, but this
     // keeps the executor input honest if that ever changes.
-    const live = current.items.find((candidate) => candidate.id === original.id);
+    let live = current.items.find((candidate) => candidate.id === original.id);
     if (!live) {
       // Items are never added/removed by any mutation this runner drives;
       // this can only happen if the caller handed us a state whose item
@@ -164,7 +274,51 @@ export async function runThemeEquipmentSetPhase(
       continue;
     }
 
-    const result = await executeItem(live, current);
+    // Apply the optional per-item pre-mutation (e.g. lazy revision bump for
+    // down-reviewed items) immediately before execution, so a fatal error on
+    // this item never clears the artifacts or bumps the revision of items
+    // that follow and are never attempted.
+    if (preItemMutate) {
+      const preMutation = preItemMutate(current, live.id);
+      if (preMutation !== null) {
+        if (!preMutation.ok) {
+          fatalError = {
+            itemId: live.id,
+            error: new ThemeEquipmentPipelineError(
+              'mutation-rejected',
+              `Pre-item mutation for "${live.id}" was rejected: ` +
+                preMutation.reasons.map((reason) => reason.message).join('; '),
+            ),
+          };
+          break;
+        }
+        current = preMutation.state;
+        const updatedLive = current.items.find((c) => c.id === original.id);
+        if (!updatedLive) continue;
+        live = updatedLive;
+      }
+    }
+
+    let result: ThemeEquipmentItemExecutionResult;
+    try {
+      result = await executeItem(live, current);
+    } catch (error) {
+      const marked = applyFailureMarker(current, live.id, error);
+      current = marked.state;
+      if (marked.fatal) {
+        fatalError = marked.fatal;
+        break;
+      }
+      if (error instanceof RecoverableThemeSetItemError) {
+        // Recoverable: item is marked, keep going with the rest of the pass.
+        continue;
+      }
+      // Any other throw is fatal — checkpoint intent, then abort with the
+      // ORIGINAL error so the caller can rethrow it verbatim.
+      fatalError = { itemId: live.id, error };
+      break;
+    }
+
     const mutation = recordThemeSetItemPhaseArtifacts(
       current,
       live.id,
@@ -172,25 +326,61 @@ export async function runThemeEquipmentSetPhase(
       result.evidence,
     );
     if (!mutation.ok) {
-      throw new ThemeEquipmentPipelineError(
+      const rejection = new ThemeEquipmentPipelineError(
         'mutation-rejected',
         `Recording phase artifacts for item "${live.id}" was rejected: ` +
           mutation.reasons.map((reason) => reason.message).join('; '),
       );
+      const marked = applyFailureMarker(current, live.id, rejection);
+      current = marked.state;
+      fatalError = marked.fatal ?? { itemId: live.id, error: rejection };
+      break;
     }
     current = mutation.state;
+    succeededItemIds.push(live.id);
   }
 
-  const judgeResult = await judgeCollection(current);
-  const judgeMutation = applyThemeSetPhaseCollectionJudge(current, judgeResult);
-  if (!judgeMutation.ok) {
-    throw new ThemeEquipmentPipelineError(
-      'mutation-rejected',
-      `Recording collection judge result was rejected: ` +
-        judgeMutation.reasons.map((reason) => reason.message).join('; '),
-    );
+  // Judge only a fully clean pass — never score a knowingly-incomplete set.
+  if (!fatalError && itemFailures.length === 0) {
+    let judgeResult: ThemeEquipmentCollectionJudgeResult;
+    try {
+      judgeResult = await judgeCollection(current);
+    } catch (error) {
+      return {
+        state: current,
+        succeededItemIds,
+        itemFailures,
+        collectionJudgeError: error instanceof Error ? error.message : String(error),
+        fatalError: null,
+      };
+    }
+    const judgeMutation = applyThemeSetPhaseCollectionJudge(current, judgeResult);
+    if (!judgeMutation.ok) {
+      return {
+        state: current,
+        succeededItemIds,
+        itemFailures,
+        collectionJudgeError: null,
+        fatalError: {
+          itemId: null,
+          error: new ThemeEquipmentPipelineError(
+            'mutation-rejected',
+            `Recording collection judge result was rejected: ` +
+              judgeMutation.reasons.map((reason) => reason.message).join('; '),
+          ),
+        },
+      };
+    }
+    current = judgeMutation.state;
   }
-  return judgeMutation.state;
+
+  return {
+    state: current,
+    succeededItemIds,
+    itemFailures,
+    collectionJudgeError: null,
+    fatalError,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -347,15 +537,24 @@ function refuseUnbypassedCi(env: NodeJS.ProcessEnv): void {
  * two-part ask — overall cohesion AND any individual outlier(s) — so the
  * model cannot satisfy the prompt by only ever reporting an aggregate
  * score.
+ *
+ * The prompt is deliberately grounded to suppress hallucinated
+ * false-negatives: the judge must score only what is clearly visible, must
+ * not infer unseen surface properties (polish, reflectivity, sheen) or
+ * penalize an item's inherent form (a bow is curved), and may only flag an
+ * outlier that contradicts a named clause of the design language with visible
+ * evidence. Scoring is graduated (a single minor deviation must not drop below
+ * 3) rather than hard-capping at 2 on any claimed outlier — the old cap turned
+ * one hallucinated defect into a full-collection veto.
  */
 function buildCollectionJudgeInstructions(
   state: ThemeEquipmentSetState,
   order: readonly string[],
 ): { readonly systemInstructions: string; readonly userPrompt: string } {
   const systemInstructions =
-    'You are a strict art director scoring one themed equipment/weapon collection for a ' +
-    'top-down action game. Score 1 (incoherent) to 5 (flawless, ship-ready) as an integer. ' +
-    'Always return a single JSON object of the exact shape {"score": <integer 1-5>, ' +
+    'You are a fair but rigorous art director scoring one themed equipment/weapon collection ' +
+    'for a top-down action game. Score 1 (incoherent) to 5 (flawless, ship-ready) as an ' +
+    'integer. Always return a single JSON object of the exact shape {"score": <integer 1-5>, ' +
     '"rationale": <string>} and nothing else — no markdown, no surrounding prose.';
   const userPrompt =
     `Theme: "${state.displayName}" (set id "${state.id}").\n` +
@@ -364,8 +563,26 @@ function buildCollectionJudgeInstructions(
     'Judge the collection as a whole against the design language above. Your rationale MUST ' +
     'explicitly address BOTH: (1) overall theme cohesion across every item, and (2) any ' +
     'individual item(s) that read as outliers breaking the design language (name them by ' +
-    'label/position, or state plainly that none do). A collection with even one glaring ' +
-    'outlier must not score above 2, regardless of how cohesive the rest is.';
+    'label/position, or state plainly that none do).\n\n' +
+    'Grounding rules — follow all of them:\n' +
+    '- Judge ONLY what is clearly and unambiguously visible. Do NOT infer material or surface ' +
+    'properties you cannot directly see — finish, polish, reflectivity, sheen, gloss, ' +
+    'weight, temperature, or wear. A normal metallic highlight on a small sprite is not ' +
+    '"polished" or "reflective"; matte-vs-glossy is usually indeterminable at this scale, so ' +
+    'do not treat it as a defect.\n' +
+    "- Do NOT penalize an item's inherent, correct form. A bow is curved, a blade tapers, a " +
+    'ring is round, an axe has a wide head — these are the natural shapes of the objects and ' +
+    'are NOT deviations unless the design language explicitly forbids them.\n' +
+    '- Flag an item as an outlier ONLY when it clearly and specifically contradicts a stated ' +
+    'clause of the authored design language above. Name the clause it violates and the ' +
+    'visible evidence for it. If you cannot point to a specific violated clause backed by ' +
+    'something you can actually see, do NOT flag it.\n' +
+    '- Minor sprite-scale rendering artifacts and anti-aliasing are not design-language ' +
+    'violations.\n\n' +
+    'Scoring guidance: the score should reflect the proportion and severity of genuine, ' +
+    'clearly-visible deviations. A single minor deviation in an otherwise-cohesive set should ' +
+    'not drop the score below 3. Reserve 1-2 for collections where multiple items, or a ' +
+    'dominant central item, plainly and visibly break the design language.';
   return { systemInstructions, userPrompt };
 }
 

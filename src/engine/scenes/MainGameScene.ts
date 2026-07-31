@@ -1,5 +1,6 @@
 import { entityExists, query } from 'bitecs';
 import Phaser from 'phaser';
+import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import {
   createGameWorld,
   Enemy,
@@ -23,26 +24,32 @@ import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
-import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
+import {
+  generatedEquipmentRunKeyFromSeed,
+  type GeneratedEquipmentInstanceKey,
+} from '../../shared/generated-equipment-types.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
-import { getFloorManifest } from '../../shared/floor-registry.js';
-import { getTerrainPack } from '../../shared/terrain-pack-registry.js';
+import { resolveDoorOrientationFromFlanks } from '../../shared/terrain-pack-variants.js';
 import {
-  resolveDoorOrientationFromFlanks,
-  resolveDoorPoolVariant,
-} from '../../shared/terrain-pack-variants.js';
-import { TERRAIN_PACK_CELL_PX } from '../../shared/terrain-pack-types.js';
-import { buildTerrainLayer, type TerrainPackFamily } from '../terrain-renderer.js';
+  buildTerrainLayer,
+  type LineworkRunStats,
+  type TerrainPackFamily,
+} from '../terrain-renderer.js';
 import type { TerrainPackId, TransformId } from '../../shared/terrain-pack-types.js';
 import {
   resolveDoorRenderMode,
-  GENERATED_DOOR_TEXTURE_KEY,
+  GENERATED_DOOR_TEXTURE_KEYS,
   DOOR_SHEET_KEY,
+  DOOR_TARGET_HEIGHT_FT,
   DOOR_CLOSED_FRAME,
   DOOR_OPEN_FRAME,
+  KENNEY_DOOR_FRAME_PX,
+  resolveDoorContainFit,
 } from '../sprites/door-visuals.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from '../generatedAssets/index.js';
+import { type GeneratedSpriteRegistry, type OpaqueBounds } from '../../shared/generated-assets.js';
 import { createBarrierOverlay } from '../BarrierOverlay.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
@@ -69,6 +76,7 @@ import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createBossChestUI } from '../BossChestUI.js';
+import { createQuartermasterUI } from '../QuartermasterUI.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -108,9 +116,21 @@ import { createLogger } from '../../shared/logger.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
+import type { Floor2ShopInstance } from '../../shared/floor-types.js';
+import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 import { getAchievementById } from '../../shared/achievements.js';
+import {
+  getQuartermasterOfferViews,
+  purchaseQuartermasterOffer,
+} from '../../core/quartermaster-purchase.js';
+import {
+  getSettlementShopOfferViews,
+  purchaseSettlementShopOffer,
+  type SettlementShopOfferView,
+} from '../../core/settlement-shop-purchase.js';
+import type { ShopPanelOfferView } from '../QuartermasterUI.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -334,6 +354,23 @@ declare global {
         | { playerName: string; playerGender: 'female' | 'male' | 'other' }
         | undefined;
       getDirectorCommentaryText?: () => string | null;
+      /**
+       * Dev-only: which art each door tile rendered from on the last overlay
+       * pass, in the REAL game (the probe lab has its own copy of this seam).
+       */
+      getDoorRenderSummary?: () => {
+        closedGeneratedCount: number;
+        closedKenneyCount: number;
+        closedColorCount: number;
+        openGeneratedCount: number;
+        openKenneyCount: number;
+        openColorCount: number;
+        crossOrientationCount: number;
+        renderableClosedCount: number;
+        renderableOpenCount: number;
+      };
+      /** Dev-only: is a texture key actually registered in the Phaser cache? */
+      hasTexture?: (key: string) => boolean;
       lighting: {
         getConfig: () => LightingConfig;
         setConfig: (partial: Partial<LightingConfig>) => void;
@@ -427,6 +464,12 @@ export class MainGameScene extends Phaser.Scene {
     packWallAccentedCount: number;
     packWallAccentCounts: Record<string, number>;
     packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+    packLineworkRuns: readonly LineworkRunStats[];
+    packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } = {
     generatedCount: 0,
     spriteCount: 0,
@@ -444,38 +487,51 @@ export class MainGameScene extends Phaser.Scene {
     packWallAccentedCount: 0,
     packWallAccentCounts: {},
     packGroundDecalCount: 0,
+    packLineworkTileCount: 0,
+    packLineworkPropCount: 0,
+    packLineworkBuriedCount: 0,
+    packLineworkBuriedSample: [],
+    packLineworkRuns: [],
+    packLineworkHubs: [],
   };
 
   /**
    * Diagnostic door-render counts from the last `updateDoorOverlay()` pass. Read
    * by the main-scene-probe-lab observe seam (`getDoorRenderSummary`) to prove —
-   * in a REAL booted scene — that CLOSED dungeon doors render the active terrain
-   * pack's doorSet art when a pack is active (`closedPackCount`), while non-pack
-   * floors keep the generated/Kenney/color fallback path. The kind buckets are
-   * mutually exclusive;
-   * `renderableClosedCount` is the sum of the three CLOSED buckets so the e2e can
-   * tell "no eligible closed doors on the map" (0) apart from "wrong branch taken"
-   * (generated !== renderable). Doors are drawn per-frame, so these reflect the
-   * most recent overlay pass.
+   * in a REAL booted scene — that every dungeon door renders from the single
+   * unified door path, on every floor, with no placeholder fallback.
+   *
+   * The kind buckets are mutually exclusive; `renderableClosedCount` is the sum of
+   * the three CLOSED buckets so an e2e can tell "no eligible closed doors on this
+   * map" (0) apart from "wrong branch taken" (generated !== renderable).
+   *
+   * `crossOrientationCount` is deliberately NOT a kind bucket — it counts doors
+   * that rendered generated art authored for the OTHER orientation, which is a
+   * visible projection defect a kind-count gate cannot detect: every E/W doorway
+   * could borrow the face-on N/S leaf while `openGeneratedCount` still equals
+   * `renderableOpenCount`. Doors are drawn per-frame, so these reflect the most
+   * recent overlay pass.
    */
   private doorRenderSummary: {
-    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
-    openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
+    crossOrientationCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   } = {
-    closedPackCount: 0,
     closedGeneratedCount: 0,
     closedKenneyCount: 0,
     closedColorCount: 0,
-    openPackCount: 0,
+    openGeneratedCount: 0,
     openKenneyCount: 0,
     openColorCount: 0,
+    crossOrientationCount: 0,
     renderableClosedCount: 0,
+    renderableOpenCount: 0,
   };
 
   /** Dynamic darkness overlay rendered from a configurable light field. */
@@ -521,12 +577,15 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyBossChests?: Phaser.Input.Keyboard.Key;
 
+  private keyQuartermaster?: Phaser.Input.Keyboard.Key;
+
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
   private equipmentUI?: ReturnType<typeof createEquipmentUI>;
   private achievementsUI?: ReturnType<typeof createAchievementsUI>;
   /** Shared full-screen anticipation->reveal->summary sequence (achievements + boss chests). */
   private rewardOpeningUI?: ReturnType<typeof createRewardOpeningUI>;
   private bossChestUI?: ReturnType<typeof createBossChestUI>;
+  private quartermasterUI?: ReturnType<typeof createQuartermasterUI>;
   /** Procedural WebAudio synth backing the reward-opening audio cues; safe no-op if unavailable. */
   private rewardAudioEngine?: ReturnType<typeof createAudioCueEngine>;
   private rewardAudioController?: ReturnType<typeof createRewardOpeningAudioController>;
@@ -634,11 +693,21 @@ export class MainGameScene extends Phaser.Scene {
   /** Touch button for the boss chest panel. */
   private bossChestButton?: Phaser.GameObjects.Text;
 
+  /** Touch dismiss button for the Quartermaster panel while it is open. */
+  private quartermasterButton?: Phaser.GameObjects.Text;
+
   /** One-frame latch set by tapping the on-screen achievements button. */
   private queuedAchievementsToggle = false;
 
   /** One-frame latch set by tapping the on-screen boss chest button. */
   private queuedBossChestsToggle = false;
+
+  /** One-frame latch set by tapping the on-screen quartermaster dismiss button. */
+  private queuedQuartermasterToggle = false;
+  /** One-frame latch set by interacting with any settlement shop NPC. */
+  private queuedSettlementShopNpcEid: number | null = null;
+  /** NPC identity whose settlement stock is currently being shown in the shared shop panel. */
+  private activeSettlementShopNpcEid: number | null = null;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -795,6 +864,7 @@ export class MainGameScene extends Phaser.Scene {
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.keyBossChests = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+    this.keyQuartermaster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
@@ -803,9 +873,9 @@ export class MainGameScene extends Phaser.Scene {
       // Double-click an equippable item to equip it (safe-room gated by
       // equipFromBag). Both panes refresh so the paper-doll and bag stay in
       // sync after the swap.
-      onEquipItem: (itemId) => {
+      onEquipItem: (inventoryEntry) => {
         if (this.playerEid < 0) return;
-        const result = equipFromBag(this.world, this.playerEid, itemId);
+        const result = equipFromBag(this.world, this.playerEid, inventoryEntry);
         if (result.ok) {
           this.inventoryUI?.refresh(this.world);
           this.equipmentUI?.refresh(this.world);
@@ -870,6 +940,30 @@ export class MainGameScene extends Phaser.Scene {
       },
       onPresentationQueueDrained: () => {
         this.resumePendingRewardPresentations();
+      },
+    });
+    this.quartermasterUI = createQuartermasterUI(this, {
+      getPlayerEid: () => (this.playerEid >= 0 ? this.playerEid : undefined),
+      getTitle: (world) => this.resolveSettlementShopPanelTitle(world),
+      getOffers: (world, playerEid) => this.getSettlementShopPanelOffers(world, playerEid),
+      purchaseOffer: (world, playerEid, offer) =>
+        this.purchaseSettlementShopPanelOffer(world, playerEid, offer),
+      onPurchaseResult: (result) => {
+        if (result.ok) {
+          this.hudUi?.sync(this.world, this.playerEid);
+          this.inventoryUI?.refresh(this.world);
+        } else {
+          this.flashHint(
+            result.reason === 'inventory-capacity'
+              ? 'Purchase failed — inventory is full.'
+              : result.reason === 'insufficient-funds'
+                ? 'Purchase failed — not enough gold.'
+                : 'Purchase failed — shop stock changed.',
+          );
+        }
+      },
+      onPanelClosed: () => {
+        this.activeSettlementShopNpcEid = null;
       },
     });
     this.gameOverUI = createGameOverUI(this, {
@@ -946,6 +1040,13 @@ export class MainGameScene extends Phaser.Scene {
                   | { playerName: string; playerGender: 'female' | 'male' | 'other' }
                   | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
+              // Door-art provenance for the REAL game, not just the probe lab.
+              // Without this the only instrument for "which door art actually
+              // rendered" lived in main-scene-probe-lab, so a lab-green door
+              // e2e could coexist with the game drawing placeholder art and
+              // nothing would disagree.
+              getDoorRenderSummary: () => this.getDoorRenderSummary(),
+              hasTexture: (key: string) => this.textures.exists(key),
             }
           : {}),
         lighting: {
@@ -1002,6 +1103,8 @@ export class MainGameScene extends Phaser.Scene {
       this.equipButton = undefined;
       this.bossChestButton?.destroy();
       this.bossChestButton = undefined;
+      this.quartermasterButton?.destroy();
+      this.quartermasterButton = undefined;
       this.offMobileButtonScale?.();
       this.offMobileButtonScale = undefined;
       this.dialogueBox?.destroy();
@@ -1023,6 +1126,8 @@ export class MainGameScene extends Phaser.Scene {
       this.rewardAudioCueLog.length = 0;
       this.bossChestUI?.destroy();
       this.bossChestUI = undefined;
+      this.quartermasterUI?.destroy();
+      this.quartermasterUI = undefined;
       this.achievementsButton?.destroy();
       this.achievementsButton = undefined;
       this.abilitiesButton?.destroy();
@@ -1107,7 +1212,8 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
-      isCornerButtonHit(this.bossChestButton)
+      isCornerButtonHit(this.bossChestButton) ||
+      isCornerButtonHit(this.quartermasterButton)
     ) {
       return;
     }
@@ -1135,6 +1241,7 @@ export class MainGameScene extends Phaser.Scene {
       this.keyAchievements,
       this.keyAbilities,
       this.keyBossChests,
+      this.keyQuartermaster,
       this.keyEsc,
     ]) {
       if (key) {
@@ -1201,6 +1308,168 @@ export class MainGameScene extends Phaser.Scene {
     this.tappedInteraction = false;
     this.queuedInteraction = false;
     this.queuedBossChestsToggle = true;
+  }
+
+  public requestQuartermasterToggle(): void {
+    this.tappedInteraction = false;
+    this.queuedInteraction = false;
+    this.queuedQuartermasterToggle = true;
+  }
+
+  private resolveSettlementShopByNpc(
+    npcEid: number,
+  ): { kind: 'quartermaster' | 'shop'; shop: Floor2ShopInstance } | null {
+    const settlement = this.world.floorExtendedState?.settlement;
+    if (!settlement) {
+      return null;
+    }
+    if (settlement.quartermasterShop.npcEid === npcEid) {
+      return { kind: 'quartermaster', shop: settlement.quartermasterShop };
+    }
+    const shop = settlement.shops.find((entry) => entry.npcEid === npcEid);
+    return shop ? { kind: 'shop', shop } : null;
+  }
+
+  private isSettlementShopNpc(npcEid: number): boolean {
+    return this.resolveSettlementShopByNpc(npcEid) !== null;
+  }
+
+  private tryQueueSettlementShopOpenFromNpc(npcEid: number): boolean {
+    if (!this.isSettlementShopNpc(npcEid)) {
+      return false;
+    }
+    this.queuedSettlementShopNpcEid = npcEid;
+    return true;
+  }
+
+  private resolveActiveSettlementShop(): {
+    kind: 'quartermaster' | 'shop';
+    shop: Floor2ShopInstance;
+  } | null {
+    if (this.activeSettlementShopNpcEid !== null) {
+      const active = this.resolveSettlementShopByNpc(this.activeSettlementShopNpcEid);
+      if (active) {
+        return active;
+      }
+    }
+    const settlement = this.world.floorExtendedState?.settlement;
+    return settlement ? { kind: 'quartermaster', shop: settlement.quartermasterShop } : null;
+  }
+
+  private resolveSettlementShopPanelTitle(_world: GameWorld): string {
+    const selection = this.resolveActiveSettlementShop();
+    if (!selection) {
+      return '🛒 SHOP';
+    }
+    if (selection.kind === 'quartermaster') {
+      return '🛒 QUARTERMASTER';
+    }
+    const archetypeName = getShopArchetype(selection.shop.archetypeId)?.name ?? 'Shop';
+    return `🛒 ${archetypeName.toUpperCase()}`;
+  }
+
+  private getSettlementShopPanelOffers(
+    world: GameWorld,
+    playerEid: number,
+  ): readonly ShopPanelOfferView[] {
+    const selection = this.resolveActiveSettlementShop();
+    if (!selection) {
+      return Object.freeze([]);
+    }
+    if (selection.kind === 'quartermaster') {
+      return getQuartermasterOfferViews(world, playerEid);
+    }
+    return getSettlementShopOfferViews(world, playerEid, selection.shop.npcEid);
+  }
+
+  private purchaseSettlementShopPanelOffer(
+    world: GameWorld,
+    playerEid: number,
+    offer: ShopPanelOfferView,
+  ): { ok: boolean; reason?: string; goldSpent?: number } {
+    const selection = this.resolveActiveSettlementShop();
+    if (!selection) {
+      return { ok: false, reason: 'unknown-shop' };
+    }
+    if (selection.kind === 'quartermaster') {
+      if (!('stockId' in offer)) {
+        return { ok: false, reason: 'invalid-stock-identity' };
+      }
+      return purchaseQuartermasterOffer(world, playerEid, {
+        stockId: offer.stockId,
+        offerId: offer.offerId,
+        quantity: 1,
+      });
+    }
+    const shopOffer = offer as SettlementShopOfferView;
+    return purchaseSettlementShopOffer(world, playerEid, selection.shop.npcEid, {
+      itemId: shopOffer.itemId,
+      quantity: 1,
+    });
+  }
+
+  public getSettlementShopOfferSnapshot(): ReadonlyArray<{
+    stockId?: string;
+    offerId: string;
+    quantity: number;
+    unitPrice: number;
+    displayName: string | null;
+  }> {
+    if (this.playerEid < 0) {
+      return [];
+    }
+    return this.getSettlementShopPanelOffers(this.world, this.playerEid).map((offer) => ({
+      ...('stockId' in offer ? { stockId: offer.stockId } : {}),
+      offerId: offer.offerId,
+      quantity: offer.quantity,
+      unitPrice: offer.unitPrice,
+      displayName: offer.displayName,
+    }));
+  }
+
+  public purchaseFirstSettlementShopOffer(): {
+    ok: boolean;
+    reason?: string;
+    goldSpent?: number;
+    itemId?: string;
+    instanceId?: GeneratedEquipmentInstanceKey;
+  } {
+    if (this.playerEid < 0) {
+      return { ok: false, reason: 'no-player' };
+    }
+    const offer = this.getSettlementShopPanelOffers(this.world, this.playerEid).find(
+      (entry) => entry.canPurchase,
+    );
+    if (!offer) {
+      return { ok: false, reason: 'none-purchasable' };
+    }
+    const result = this.purchaseSettlementShopPanelOffer(this.world, this.playerEid, offer);
+    this.quartermasterUI?.refresh(this.world);
+    if (!result.ok) {
+      return result;
+    }
+    this.hudUi?.sync(this.world, this.playerEid);
+    this.inventoryUI?.refresh(this.world);
+    if ('stockId' in offer) {
+      const itemId = getGeneratedEquipmentInstance(this.world, offer.instanceId)?.baseId;
+      return itemId ? { ...result, itemId, instanceId: offer.instanceId } : result;
+    }
+    return result;
+  }
+
+  public getActiveSettlementShopNpcEid(): number | null {
+    return this.resolveActiveSettlementShop()?.shop.npcEid ?? null;
+  }
+
+  private openSettlementShopPanel(npcEid: number): void {
+    this.activeSettlementShopNpcEid = npcEid;
+    this.closeMapOverlayIfOpen();
+    this.closeCharacterPanels({ keepQuartermaster: true });
+    if (this.quartermasterUI?.isOpen()) {
+      this.quartermasterUI.refresh(this.world);
+    } else {
+      this.quartermasterUI?.toggle(this.world);
+    }
   }
 
   private resumePendingRewardPresentations(): void {
@@ -1280,6 +1549,7 @@ export class MainGameScene extends Phaser.Scene {
       keepEquipment?: boolean;
       keepAchievements?: boolean;
       keepBossChests?: boolean;
+      keepQuartermaster?: boolean;
     } = {},
   ): void {
     const {
@@ -1287,12 +1557,16 @@ export class MainGameScene extends Phaser.Scene {
       keepEquipment = false,
       keepAchievements = false,
       keepBossChests = false,
+      keepQuartermaster = false,
     } = options;
     if (!keepAchievements && this.achievementsUI?.isOpen()) {
       this.achievementsUI.toggle(this.world);
     }
     if (!keepBossChests && this.bossChestUI?.isOpen()) {
       this.bossChestUI.toggle(this.world);
+    }
+    if (!keepQuartermaster && this.quartermasterUI?.isOpen()) {
+      this.quartermasterUI.toggle(this.world);
     }
     if (!keepEquipment && this.equipmentUI?.isOpen()) {
       this.equipmentUI.toggle(this.world);
@@ -1313,6 +1587,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
       (this.bossChestUI?.isOpen() ?? false) ||
+      (this.quartermasterUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false)
     );
   }
@@ -1604,6 +1879,7 @@ export class MainGameScene extends Phaser.Scene {
     const equipOpen = this.equipmentUI?.isOpen() ?? false;
     const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
     const bossChestsOpen = this.bossChestUI?.isOpen() ?? false;
+    const quartermasterOpen = this.quartermasterUI?.isOpen() ?? false;
     const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
 
     // A "hard blocker" prevents all touch-button navigation (conversation,
@@ -1622,6 +1898,7 @@ export class MainGameScene extends Phaser.Scene {
       !equipOpen &&
       !achievementsOpen &&
       !bossChestsOpen &&
+      !quartermasterOpen &&
       !abilitiesOpen;
 
     // Toggle the on-screen touch buttons in step with the key affordances.
@@ -1638,6 +1915,9 @@ export class MainGameScene extends Phaser.Scene {
     this.bossChestButton
       ?.setDepth(bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(this.world.bossChests.size > 0 && (bossChestsOpen || canOpenNew));
+    this.quartermasterButton
+      ?.setDepth(quartermasterOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+      .setVisible(quartermasterOpen);
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
@@ -1753,6 +2033,25 @@ export class MainGameScene extends Phaser.Scene {
       this.bossChestUI?.toggle(this.world);
     } else if (bossChestsOpen) {
       this.bossChestUI?.refresh(this.world);
+    }
+
+    const quartermasterToggleRequested = Boolean(
+      this.queuedQuartermasterToggle ||
+      (this.keyQuartermaster && Phaser.Input.Keyboard.JustDown(this.keyQuartermaster)),
+    );
+    const settlementShopNpcEidRequested = this.queuedSettlementShopNpcEid;
+    this.queuedQuartermasterToggle = false;
+    this.queuedSettlementShopNpcEid = null;
+    if (quartermasterOpen && quartermasterToggleRequested) {
+      this.quartermasterUI?.toggle(this.world);
+    } else if (settlementShopNpcEidRequested !== null && safeCtx && !isUiLockOpen()) {
+      this.openSettlementShopPanel(settlementShopNpcEidRequested);
+    } else if (this.quartermasterUI?.isOpen()) {
+      if (safeCtx) {
+        this.quartermasterUI.refresh(this.world);
+      } else {
+        this.quartermasterUI.toggle(this.world);
+      }
     }
 
     this.processAchievementUnlocks();
@@ -1892,25 +2191,32 @@ export class MainGameScene extends Phaser.Scene {
     packWallAccentedCount: number;
     packWallAccentCounts: Record<string, number>;
     packGroundDecalCount: number;
+    packLineworkTileCount: number;
+    packLineworkPropCount: number;
+    packLineworkBuriedCount: number;
+    packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+    packLineworkRuns: readonly LineworkRunStats[];
+    packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
   } {
     return this.terrainRenderSummary;
   }
 
   /**
    * Diagnostic door-render provenance counts from the last `updateDoorOverlay()`
-   * pass. Lets the main-scene-probe-lab prove — in a REAL booted scene — that a
-   * pack-using floor stamps `doorSet` textures (`closedPackCount`) and non-pack
-   * floors preserve the generated/Kenney/color fallback chain.
+   * pass. Lets the main-scene-probe-lab prove — in a REAL booted scene — that every
+   * floor renders doors from the one unified path with correct per-orientation art
+   * and no placeholder fallback.
    */
   getDoorRenderSummary(): {
-    closedPackCount: number;
     closedGeneratedCount: number;
     closedKenneyCount: number;
     closedColorCount: number;
-    openPackCount: number;
+    openGeneratedCount: number;
     openKenneyCount: number;
     openColorCount: number;
+    crossOrientationCount: number;
     renderableClosedCount: number;
+    renderableOpenCount: number;
   } {
     return this.doorRenderSummary;
   }
@@ -2010,6 +2316,9 @@ export class MainGameScene extends Phaser.Scene {
     this.bossChestButton = makeCornerButton(240, '💎 Chests', () => {
       this.queuedBossChestsToggle = true;
     });
+    this.quartermasterButton = makeCornerButton(296, '✕ Shop', () => {
+      this.queuedQuartermasterToggle = true;
+    });
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -2017,6 +2326,7 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.bossChestButton?.setScale(buttonScale);
+      this.quartermasterButton?.setScale(buttonScale);
       // Keep buttons clear of each other when scaled.
       const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
       this.equipButton?.setY(16 + bagH);
@@ -2026,6 +2336,8 @@ export class MainGameScene extends Phaser.Scene {
       this.abilitiesButton?.setY(16 + bagH + gearH + awardsH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
       this.bossChestButton?.setY(16 + bagH + gearH + awardsH + skillsH);
+      const chestsH = (this.bossChestButton?.height ?? 44) * buttonScale + 8;
+      this.quartermasterButton?.setY(16 + bagH + gearH + awardsH + skillsH + chestsH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -2181,6 +2493,12 @@ export class MainGameScene extends Phaser.Scene {
       packWallAccentedCount,
       packWallAccentCounts,
       packGroundDecalCount,
+      packLineworkTileCount,
+      packLineworkPropCount,
+      packLineworkBuriedCount,
+      packLineworkBuriedSample,
+      packLineworkRuns,
+      packLineworkHubs,
     } = buildTerrainLayer(this, floorMap, {
       terrainPackId: this.options.terrainPackId,
       terrainPacks: this.options.terrainPacks,
@@ -2204,6 +2522,12 @@ export class MainGameScene extends Phaser.Scene {
       packWallAccentedCount,
       packWallAccentCounts,
       packGroundDecalCount,
+      packLineworkTileCount,
+      packLineworkPropCount,
+      packLineworkBuriedCount,
+      packLineworkBuriedSample,
+      packLineworkRuns,
+      packLineworkHubs,
     };
 
     if (colorCount > 0) {
@@ -2775,14 +3099,15 @@ export class MainGameScene extends Phaser.Scene {
       // Nothing to render this pass — zero the observe seam so a prior floor's
       // counts can't mislead the probe into a false "closed door rendered".
       this.doorRenderSummary = {
-        closedPackCount: 0,
         closedGeneratedCount: 0,
         closedKenneyCount: 0,
         closedColorCount: 0,
-        openPackCount: 0,
+        openGeneratedCount: 0,
         openKenneyCount: 0,
         openColorCount: 0,
+        crossOrientationCount: 0,
         renderableClosedCount: 0,
+        renderableOpenCount: 0,
       };
       return;
     }
@@ -2794,54 +3119,146 @@ export class MainGameScene extends Phaser.Scene {
     this.doorImages.length = 0;
 
     const tileSize = floorMap.config.tileSizeFt * PIXELS_PER_FOOT;
+    const doorTargetHeightPx = ftToPx(DOOR_TARGET_HEIGHT_FT);
     const hasSheet = this.textures.exists(DOOR_SHEET_KEY);
 
-    // Derive the generated closed-door scale ONCE from the texture's ACTUAL
-    // loaded width (mirrors terrain-renderer's resolveGeneratedScale): a usable
-    // width yields tileSize/width so the single 256² PNG fills exactly one tile;
-    // a missing texture or a zero/undefined width falls through to Kenney.
-    let generatedDoorScale: number | null = null;
-    if (this.textures.exists(GENERATED_DOOR_TEXTURE_KEY)) {
-      const source = this.textures.get(GENERATED_DOOR_TEXTURE_KEY).getSourceImage() as {
-        width?: number;
-      };
-      const srcWidth = typeof source?.width === 'number' ? source.width : 0;
-      if (srcWidth > 0) {
-        generatedDoorScale = tileSize / srcWidth;
+    // Derive each door texture's scale ONCE from its ACTUAL loaded opaque box
+    // (mirrors terrain-renderer's resolveGeneratedScale). Doors are CONTAIN-fitted
+    // into THE DOORWAY BOX — one cell (tileSize) wide × DOOR_TARGET_HEIGHT_FT tall,
+    // floor-anchored — with a single uniform scale = min(tileSize / box.width,
+    // doorHeightPx / box.height) that never exceeds EITHER axis. Whichever term is
+    // smaller binds; the other comes in under its cap. See DOOR_TARGET_HEIGHT_FT.
+    //
+    // ONE FIT, EVERY SOURCE. No draw branch below computes its own scale. This is
+    // the core of the door unification: a per-source scale constant is exactly how
+    // door SIZE came to be decided by asset availability rather than design. The
+    // retired terrain-pack branch drew at `tileSize / TERRAIN_PACK_CELL_PX`, which
+    // is why Floor 1's doors were a square 4 ft × 4 ft against a 5.75 ft player.
+    //
+    // This clamps WIDTH to one cell. Under a HEIGHT-authoritative rule
+    // (`doorHeightPx / box.height` alone) width follows the art's ~1:1.25 aspect and
+    // renders ~5.2 ft in a 4 ft cell, overhanging the doorway. The width cap removes
+    // that. The cost — face-on N/S art binds on width and renders ~4.9–5.1 ft tall
+    // rather than 6.5 ft — was accepted explicitly (a generator ceiling blocks taller
+    // art). Side-on E/W art (aspect ~0.47) binds on HEIGHT instead and renders as a
+    // correct narrow tall strip.
+    //
+    // The art contract this relies on: door textures are bottom-aligned, so the
+    // opaque box's bottom edge is the floor line (anchorBase origins pin the box
+    // bottom to the tile's bottom edge) and any excess height extends NORTH. No
+    // rotation is applied — the vertical key is genuinely side-on art. Pinned
+    // deterministically by tests/unit/generated-door-art.test.ts.
+    //
+    // Degrades safely: an entry with no/mismatched bounds falls back to the whole
+    // canvas, which still yields a correctly contain-fitted door.
+    const rawDoorRegistry = this.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY) as
+      | GeneratedSpriteRegistry
+      | undefined;
+    const generatedDoorRegistry =
+      rawDoorRegistry && typeof rawDoorRegistry.entries === 'function' ? rawDoorRegistry : null;
+    const generatedDoorBounds = new Map<string, OpaqueBounds>();
+    if (generatedDoorRegistry) {
+      for (const entry of generatedDoorRegistry.entries()) {
+        if (entry.opaqueBounds !== undefined) {
+          generatedDoorBounds.set(entry.textureKey, entry.opaqueBounds);
+        }
       }
     }
-    const hasGeneratedClosed = generatedDoorScale !== null;
-    const doorManifest = this.options.floorId ? getFloorManifest(this.options.floorId) : undefined;
-    const terrainPackId =
-      doorManifest?.terrainPacks?.stone ??
-      doorManifest?.terrainPackId ??
-      doorManifest?.terrainPacks?.cave;
-    const activeDoorSet = terrainPackId ? getTerrainPack(terrainPackId).doorSet : null;
+    const generatedDoorFits = new Map<
+      string,
+      {
+        scale: number;
+        originX: number;
+        originY: number;
+      }
+    >();
+    // Use the canonical per-state key map directly so the exported contract is
+    // exercised in runtime code (not tests-only).
+    for (const key of Object.values(GENERATED_DOOR_TEXTURE_KEYS)) {
+      if (!this.textures.exists(key)) {
+        continue;
+      }
+      const source = this.textures.get(key).getSourceImage() as {
+        width?: number;
+        height?: number;
+      };
+      const canvasWidth = typeof source?.width === 'number' ? source.width : 0;
+      const canvasHeight = typeof source?.height === 'number' ? source.height : 0;
+      if (canvasWidth <= 0 || canvasHeight <= 0) {
+        continue;
+      }
+      const bounds = generatedDoorBounds.get(key);
+      // Shared with tests/unit/generated-door-art.test.ts to prevent the
+      // production fit wiring and regression gates from drifting apart.
+      const fit = resolveDoorContainFit({
+        bounds,
+        canvasWidth,
+        canvasHeight,
+        targetWidth: tileSize,
+        targetHeight: doorTargetHeightPx,
+      });
+      generatedDoorFits.set(key, {
+        scale: fit.scale,
+        originX: fit.originX,
+        originY: fit.originY,
+      });
+    }
+    const availableGeneratedKeys: ReadonlySet<string> = new Set(generatedDoorFits.keys());
+
+    // The Kenney placeholder goes through the SAME fit as generated art rather than
+    // a bespoke `tileSize / 16`. Its frame is a 16×16 SQUARE with no opaque-bounds
+    // metadata, so contain-fit necessarily binds on width and lands at exactly one
+    // cell — numerically identical to the old constant. That equivalence is the
+    // point: the constant is gone, so no future change to the doorway box can leave
+    // this branch behind.
+    const kenneyDoorFit = resolveDoorContainFit({
+      bounds: undefined,
+      canvasWidth: KENNEY_DOOR_FRAME_PX,
+      canvasHeight: KENNEY_DOOR_FRAME_PX,
+      targetWidth: tileSize,
+      targetHeight: doorTargetHeightPx,
+    });
 
     // Door images are recreated every frame, AFTER refreshCameraMasks() has
     // already rebuilt the camera ignore lists. Without pinning uiCamera.ignore
     // here, the scroll-locked UI camera renders them at raw world coordinates, so
     // doors appear pinned to the screen and "follow" the player. Centralized here
-    // so every image branch (generated + both Kenney frames) gets it.
+    // so every image branch (pack + generated + both Kenney frames) gets it.
+    //
+    // Anchored BOTTOM-centre on the tile's bottom edge, not centre-centre on the
+    // tile: art taller than one tile then grows UPWARD into the wall above
+    // instead of straddling the doorway. For square art (every Kenney frame)
+    // bottom-anchoring at the tile's bottom edge is pixel-identical to
+    // centre-anchoring at the tile centre.
     const addDoorImage = (
       px: number,
-      py: number,
+      tileBottomY: number,
       key: string,
       frame: number | undefined,
       scale: number,
+      originX = 0.5,
+      originY = 1,
     ): void => {
-      const img = this.add.image(px, py, key, frame).setOrigin(0.5).setDepth(-19).setScale(scale);
+      const img = this.add
+        .image(px, tileBottomY, key, frame)
+        .setOrigin(originX, originY)
+        .setDepth(-19)
+        .setScale(scale);
       this.uiCamera?.ignore(img);
       this.doorImages.push(img);
     };
 
-    let closedPackCount = 0;
     let closedGeneratedCount = 0;
     let closedKenneyCount = 0;
     let closedColorCount = 0;
-    let openPackCount = 0;
+    let openGeneratedCount = 0;
     let openKenneyCount = 0;
     let openColorCount = 0;
+    // Doors that rendered generated art authored for the OTHER orientation. Counted
+    // separately because a plain "all doors are generated" gate cannot see it: every
+    // E/W doorway could borrow the face-on N/S leaf and still satisfy such a gate
+    // while showing the wrong projection.
+    let crossOrientationCount = 0;
 
     const tm = floorMap.tileMap;
     // A wall is an in-bounds tile that is neither passable nor a door.
@@ -2864,55 +3281,66 @@ export class MainGameScene extends Phaser.Scene {
         }
         const isOpen = tm.isPassable(x, y);
         const cx = x * tileSize + tileSize / 2;
-        const cy = y * tileSize + tileSize / 2;
+        const tileBottomY = y * tileSize + tileSize;
         const orientation = resolveDoorOrientationFromFlanks(horizontalDoorway);
-        const packDoorVariant = activeDoorSet
-          ? resolveDoorPoolVariant(activeDoorSet, { isOpen, orientation })
-          : null;
-        const packDoorTextureKey =
-          packDoorVariant && this.textures.exists(packDoorVariant.textureKey)
-            ? packDoorVariant.textureKey
-            : undefined;
         const mode = resolveDoorRenderMode(isOpen, {
-          hasGeneratedClosed,
+          orientation,
+          availableGeneratedKeys,
           hasSheet,
-          packDoorTextureKey,
         });
 
         switch (mode.kind) {
-          case 'pack': {
-            addDoorImage(cx, cy, mode.textureKey, undefined, tileSize / TERRAIN_PACK_CELL_PX);
+          case 'generated': {
+            // 'generated' is only chosen for a key present in
+            // availableGeneratedKeys, which is built from generatedDoorFits, so
+            // the lookup always hits (the ?? branch is unreachable but keeps the
+            // type checker happy without a non-null assertion).
+            //
+            // No rotation: the vertical (E/W) key is genuinely side-on art, and
+            // both N/S and E/W art are contain-fitted and bottom-anchored the same
+            // way. The old quarter-turn branch existed only because the previous
+            // "side" keys were face-on art needing a 90° turn; those keys had no
+            // approved art and the branch was provably dead, so it was removed.
+            const fit = generatedDoorFits.get(mode.textureKey);
+            addDoorImage(
+              cx,
+              tileBottomY,
+              mode.textureKey,
+              undefined,
+              fit?.scale ?? 1,
+              fit?.originX ?? 0.5,
+              fit?.originY ?? 1,
+            );
+            if (mode.orientationMatch === 'cross') {
+              crossOrientationCount += 1;
+            }
             if (isOpen) {
-              openPackCount += 1;
+              openGeneratedCount += 1;
             } else {
-              closedPackCount += 1;
+              closedGeneratedCount += 1;
             }
             break;
           }
-          case 'generated': {
-            // 'generated' is only chosen when hasGeneratedClosed, so
-            // generatedDoorScale is non-null here (?? 1 is unreachable but keeps
-            // the type checker happy without a non-null assertion).
-            addDoorImage(cx, cy, GENERATED_DOOR_TEXTURE_KEY, undefined, generatedDoorScale ?? 1);
-            closedGeneratedCount += 1;
-            break;
-          }
           case 'kenney-closed': {
-            addDoorImage(cx, cy, DOOR_SHEET_KEY, DOOR_CLOSED_FRAME, tileSize / 16);
+            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_CLOSED_FRAME, kenneyDoorFit.scale);
             closedKenneyCount += 1;
             break;
           }
           case 'kenney-open': {
-            addDoorImage(cx, cy, DOOR_SHEET_KEY, DOOR_OPEN_FRAME, tileSize / 16);
+            addDoorImage(cx, tileBottomY, DOOR_SHEET_KEY, DOOR_OPEN_FRAME, kenneyDoorFit.scale);
             openKenneyCount += 1;
             break;
           }
           case 'color': {
-            // Fallback for environments without any door art (e.g. tests).
+            // No art at all (e.g. tests). There is nothing to contain-fit, so this
+            // draws the DOORWAY BOX's own footprint: one cell wide × doorTargetHeightPx
+            // tall, floor-anchored on the same bottom edge every other branch anchors to.
+            const doorH = doorTargetHeightPx;
+            const doorY = tileBottomY - doorH;
             g.fillStyle(mode.open ? 0xd2b48c : 0x6b4423, 1);
-            g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            g.fillRect(x * tileSize, doorY, tileSize, doorH);
             g.lineStyle(1, mode.open ? 0xf5deb3 : 0x3d2615, 0.9);
-            g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+            g.strokeRect(x * tileSize + 0.5, doorY + 0.5, tileSize - 1, doorH - 1);
             if (mode.open) {
               openColorCount += 1;
             } else {
@@ -2925,15 +3353,15 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.doorRenderSummary = {
-      closedPackCount,
       closedGeneratedCount,
       closedKenneyCount,
       closedColorCount,
-      openPackCount,
+      openGeneratedCount,
       openKenneyCount,
       openColorCount,
-      renderableClosedCount:
-        closedPackCount + closedGeneratedCount + closedKenneyCount + closedColorCount,
+      crossOrientationCount,
+      renderableClosedCount: closedGeneratedCount + closedKenneyCount + closedColorCount,
+      renderableOpenCount: openGeneratedCount + openKenneyCount + openColorCount,
     };
   }
 
@@ -3112,12 +3540,14 @@ export class MainGameScene extends Phaser.Scene {
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
       (this.bossChestUI?.isOpen() ?? false) ||
+      (this.quartermasterUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
     const bossChestsOpen = this.bossChestUI?.isOpen() ?? false;
+    const quartermasterOpen2 = this.quartermasterUI?.isOpen() ?? false;
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
       this.hudUi?.setVisible(!panelOpen);
@@ -3129,6 +3559,9 @@ export class MainGameScene extends Phaser.Scene {
         this.bossChestButton
           ?.setDepth(bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(bossChestsOpen);
+        this.quartermasterButton
+          ?.setDepth(quartermasterOpen2 ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+          .setVisible(quartermasterOpen2);
         this.abilitiesButton
           ?.setDepth(abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(abilityLoadoutOpen);
@@ -3136,6 +3569,9 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.bossChestButton?.setDepth(
       bossChestsOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
+    );
+    this.quartermasterButton?.setDepth(
+      quartermasterOpen2 ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
     this.abilitiesButton?.setDepth(
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
@@ -3497,6 +3933,9 @@ export class MainGameScene extends Phaser.Scene {
       this.dialogueBox?.setCloseVisible(false);
 
       if (interactionRequested) {
+        if (this.tryQueueSettlementShopOpenFromNpc(nearNpcEid)) {
+          return;
+        }
         const instance = this.world.npcs.get(nearNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);

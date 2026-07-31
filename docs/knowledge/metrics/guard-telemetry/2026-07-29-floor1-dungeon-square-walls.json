@@ -1,0 +1,40 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "floor1-dungeon-square-walls",
+  "date": "2026-07-29",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 395,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 392,
+      "crash": 3
+    }
+  },
+  "tools": {
+    "ask_user": 3,
+    "create": 4,
+    "edit": 43,
+    "extensions_reload": 1,
+    "glob": 2,
+    "grep": 40,
+    "playwright-browser_click": 1,
+    "playwright-browser_find": 1,
+    "playwright-browser_navigate": 1,
+    "playwright-browser_press_key": 2,
+    "playwright-browser_run_code_unsafe": 19,
+    "playwright-browser_snapshot": 1,
+    "playwright-browser_take_screenshot": 4,
+    "powershell": 100,
+    "read_agent": 3,
+    "read_powershell": 5,
+    "rename_session": 1,
+    "rg": 24,
+    "skill": 1,
+    "task": 3,
+    "view": 136
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

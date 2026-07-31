@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 
-export const STATE_MARKER = '<!-- crawler-ci-state:v1 -->';
-export const STATE_DATA_PREFIX = '<!-- crawler-ci-state-data:';
+import { STATE_DATA_PREFIX, STATE_MARKER } from './markers.mjs';
+
+export { STATE_MARKER, STATE_DATA_PREFIX };
 export const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
 export const WAITING_LABEL = 'ci-recovery-waiting';
 export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
@@ -67,11 +68,10 @@ export const LIFECYCLE_PHASES = {
   ABANDONED: 'abandoned',
 };
 
-export const TERMINAL_PHASES = new Set([
-  LIFECYCLE_PHASES.DONE,
-  LIFECYCLE_PHASES.QUARANTINED,
-  LIFECYCLE_PHASES.ABANDONED,
-]);
+// QUARANTINED is intentionally NOT terminal: a human can revive a quarantined
+// PR to QUEUED by commenting "KEEP" (see parseDispositionCommand). Only DONE
+// and ABANDONED are true dead ends with no further lifecycle transitions.
+export const TERMINAL_PHASES = new Set([LIFECYCLE_PHASES.DONE, LIFECYCLE_PHASES.ABANDONED]);
 
 // Structurally non-blocking phases (D11): a PR in one of these can never be a
 // merge-train admission candidate, a conflict-cluster leader, or an ordering
@@ -201,7 +201,14 @@ export function isTrainFastPathPushRun(run, trustedAppId, checkRuns) {
 }
 
 const validOwners = new Set(['automation', 'shepherd', 'none']);
-const validStatuses = new Set(['active', 'dispatched', 'escalated', 'idle', 'waiting']);
+export const RECOVERY_STATUSES = Object.freeze([
+  'active',
+  'dispatched',
+  'escalated',
+  'idle',
+  'waiting',
+]);
+const validStatuses = new Set(RECOVERY_STATUSES);
 
 export function shouldMutateRecoveryState(mode, operation) {
   return mode === 'live' || (mode === 'dry-run' && operation.startsWith('lease-'));
@@ -254,19 +261,73 @@ export function blockerFingerprint(blockers) {
   // Observed in production on PR #1809 (10:09 / 10:44 / 11:29 UTC cycle): the
   // persisted state's `attempt` stayed pinned at 1 forever because each retry
   // was misclassified as new progress solely due to a new run URL.
-  const fingerprintBlockers = normalized.map(({ line: _line, url: _url, ...rest }) => rest);
+  //
+  // NOTE: `ci-failure copilot` (kind='ci-failure', id='copilot') is also
+  // excluded from the fingerprint. GitHub creates a check named "copilot"
+  // whenever the CI recovery assigns @copilot to a PR (via the dynamic
+  // copilot-swe-agent workflow). When that session fails at session.create
+  // (e.g. a deprecated model), the check concludes `failure` and first
+  // appears as a NEW blocker on the next reconcile sweep. Including this
+  // self-generated blocker in the fingerprint causes `automationStallAction`
+  // to return 'progressed' on the FIRST cycle after a failed dispatch —
+  // resetting the attempt counter and granting exactly one extra dispatch
+  // cycle before the loop incident is filed (3 cycles instead of the
+  // intended 2). Excluding it from
+  // the fingerprint lets the stale-retry path count correctly: the attempt
+  // counter increments normally across cycles where the only new "change" is
+  // this self-generated failure (the underlying blockers that caused the
+  // dispatch are unchanged). The blocker is still persisted to state for
+  // display/evidence; it is only invisible to the fingerprint hash.
+  // Observed in production on PR #1939 / incident #2268 (model
+  // "claude-sonnet-4.5" deprecated 2026-05-06; incident filed 2026-07-29).
+  const fingerprintBlockers = normalized
+    .filter((b) => !(b.kind === 'ci-failure' && b.id === 'copilot'))
+    .map(({ line: _line, url: _url, ...rest }) => rest);
   return createHash('sha256')
     .update(JSON.stringify({ blockers: fingerprintBlockers }))
     .digest('hex');
 }
 
 function normalizeThreadComments(thread) {
-  return (thread?.comments?.nodes ?? []).map((comment) => [
-    compact(comment.id),
-    String(comment.body ?? ''),
-    compact(comment.author?.login),
-    compact(comment.authorAssociation),
+  // Recovery attempts that post non-marker diagnostics in the same review
+  // thread should not count as blocker progress: they can churn comment digests
+  // forever while leaving the underlying blocker unchanged. Keep marker replies
+  // in digest identity, but ignore known recovery-agent replies that do not
+  // carry a resolution marker.
+  const knownRecoveryReplyLogins = new Set([
+    'copilot',
+    'copilot[bot]',
+    'app/copilot',
+    'copilot-swe-agent',
+    'copilot-swe-agent[bot]',
+    'app/copilot-swe-agent',
   ]);
+  const hasResolutionMarker = (body) => {
+    // Strip quoted lines (lines starting with ">") before testing — a recovery
+    // reply may quote a prior task body that itself contains a stale marker SHA,
+    // and testing the raw body would incorrectly classify such a reply as
+    // marker-bearing.  Same normalization as reconcile.mjs:1926-1929.
+    const unquotedText = String(body ?? '')
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('>'))
+      .join('\n');
+    // Use extractAddressedMarkerSha rather than the raw pattern so that a bare
+    // "✅ Addressed in invalid-token" (no parseable SHA/URL) is not treated as
+    // a resolution marker.
+    return Boolean(extractAddressedMarkerSha(unquotedText) || hasNotApplicableMarker(unquotedText));
+  };
+  return (thread?.comments?.nodes ?? [])
+    .filter((comment) => {
+      const authorLogin = String(comment?.author?.login ?? '').toLowerCase();
+      if (!knownRecoveryReplyLogins.has(authorLogin)) return true;
+      return hasResolutionMarker(comment?.body);
+    })
+    .map((comment) => [
+      compact(comment.id),
+      String(comment.body ?? ''),
+      compact(comment.author?.login),
+      compact(comment.authorAssociation),
+    ]);
 }
 
 export function reviewThreadCommentDigest(thread) {
@@ -462,7 +523,7 @@ export function isDuplicateDispatch(state, fingerprint) {
 
 export function automationStallAction({
   state,
-  headSha: _headSha,
+  headSha,
   fingerprint,
   now = new Date(),
   staleMinutes = AUTOMATION_STALE_MINUTES,
@@ -473,6 +534,12 @@ export function automationStallAction({
     !['active', 'dispatched', 'escalated'].includes(state.status)
   ) {
     return 'new';
+  }
+
+  const liveHead = compact(headSha);
+  const stateHead = compact(state.headSha);
+  if (liveHead && stateHead && liveHead !== stateHead) {
+    return 'progressed';
   }
 
   const currentFingerprint = compact(fingerprint);
@@ -669,4 +736,38 @@ export function shouldSkipRepoIncidentWorkflowRun(run) {
     event === 'pull_request_target' ||
     (Array.isArray(run?.pull_requests) && run.pull_requests.length > 0)
   );
+}
+
+// ---------------------------------------------------------------------------
+// Disposition labels and markers
+// ---------------------------------------------------------------------------
+
+/** Label applied to PRs that a human or agent explicitly proposes for abandonment. */
+export const ABANDON_CANDIDATE_LABEL = 'abandon-candidate';
+
+/**
+ * Marker written into the quarantine human-decision comment so the revival
+ * handler can identify it. Different from STATE_MARKER so the two comment
+ * types are never confused.
+ */
+export const QUARANTINE_COMMENT_MARKER = '<!-- crawler-ci-quarantine:v1 -->';
+
+/**
+ * Parse a PR comment body for an exact-match KEEP or ABANDON disposition
+ * command posted by the PR owner.
+ *
+ * Rules (acceptance criterion: "human-gated revival is exact-match"):
+ *   - Comment body trimmed must equal "KEEP" or "ABANDON" (case-sensitive,
+ *     standalone — no quoted text, no substrings, no other authors).
+ *   - Returns 'KEEP', 'ABANDON', or null.
+ *   - A non-owner comment, a substring match, or any other text returns null.
+ *
+ * @param {string} commentBody - raw comment body text
+ * @returns {'KEEP' | 'ABANDON' | null}
+ */
+export function parseDispositionCommand(commentBody) {
+  const trimmed = String(commentBody ?? '').trim();
+  if (trimmed === 'KEEP') return 'KEEP';
+  if (trimmed === 'ABANDON') return 'ABANDON';
+  return null;
 }

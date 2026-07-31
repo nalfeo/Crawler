@@ -1,0 +1,28 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "harvest-liveness-alarm",
+  "date": "2026-07-30",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 195,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 195
+    }
+  },
+  "tools": {
+    "create": 4,
+    "edit": 10,
+    "glob": 1,
+    "grep": 4,
+    "powershell": 151,
+    "read_powershell": 4,
+    "rename_session": 1,
+    "sql": 3,
+    "stop_powershell": 1,
+    "view": 16
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

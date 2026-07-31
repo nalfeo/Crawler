@@ -10,6 +10,8 @@ import {
   loadRepoEnv,
   resolveDispatchRef,
   resolveThemeSetId,
+  selectThemeEquipmentRun,
+  themeEquipmentRunStatus,
 } from '../lib/bridge.mjs';
 
 function repoWithSets(setIds) {
@@ -133,6 +135,36 @@ test('refuses to initialize when the remote ref cannot be fetched', async () => 
   }
 });
 
+test('returns the freshly fetched remote tip sha so the dispatch can pin an immutable commit', async () => {
+  const remote = mkdtempSync(path.join(tmpdir(), 'theme-review-remote-sha-'));
+  const root = repoWithSets(['classic-fantasy']);
+  const planPath = 'data/theme-equipment-sets/classic-fantasy.json';
+  const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'gitconfig') };
+  const run = (args, cwd = root) =>
+    execFileSync('git', args, { cwd, stdio: 'ignore', env: gitEnv });
+  try {
+    writeFileSync(path.join(root, 'gitconfig'), '[user]\n  name = t\n  email = t@example.com\n');
+    execFileSync('git', ['init', '--quiet', '--bare', remote], { stdio: 'ignore', env: gitEnv });
+    run(['init', '--quiet', '--initial-branch', 'feature-branch']);
+    run(['remote', 'add', 'origin', remote]);
+    run(['add', '.']);
+    run(['commit', '--quiet', '-m', 'seed']);
+    run(['push', '--quiet', 'origin', 'feature-branch']);
+
+    const sha = await assertPlanOnRef(root, 'feature-branch', planPath, gitEnv);
+    const expected = execFileSync('git', ['rev-parse', 'feature-branch'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: gitEnv,
+    }).trim();
+    assert.match(sha, /^[0-9a-f]{40}$/);
+    assert.equal(sha, expected);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
 test('judges the plan against the freshly fetched remote tip, not a stale tracking ref', async () => {
   const remote = mkdtempSync(path.join(tmpdir(), 'theme-review-remote-'));
   const root = repoWithSets(['classic-fantasy']);
@@ -169,7 +201,7 @@ test('judges the plan against the freshly fetched remote tip, not a stale tracki
   }
 });
 
-test('rejects when the working-tree plan differs from the remote blob', async () => {
+test('returns the pinned remote sha when the working-tree plan differs from the durable remote blob', async () => {
   const remote = mkdtempSync(path.join(tmpdir(), 'theme-review-remote-stale-'));
   const root = repoWithSets(['classic-fantasy']);
   const planPath = 'data/theme-equipment-sets/classic-fantasy.json';
@@ -188,14 +220,110 @@ test('rejects when the working-tree plan differs from the remote blob', async ()
     // Overwrite the local working-tree plan without committing or pushing.
     writeFileSync(path.join(root, planPath), `{"id":"classic-fantasy","updated":true}\n`);
 
-    // The remote still has the old content, so the working tree and the
-    // remote blob diverge — initialization must be refused.
-    await assert.rejects(
-      () => assertPlanOnRef(root, 'feature-branch', planPath, gitEnv),
-      /does not match the local working-tree file/,
-    );
+    // The durable remote copy is authoritative for init, even when a stale
+    // local working-tree file differs.
+    const sha = await assertPlanOnRef(root, 'feature-branch', planPath, gitEnv);
+    const expected = execFileSync('git', ['rev-parse', 'feature-branch'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: gitEnv,
+    }).trim();
+    assert.equal(sha, expected);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(remote, { recursive: true, force: true });
   }
+});
+
+test('correlates a run to its set by the exact anchored "Theme Equipment <action> · <setId>" title (prefix-collision safe)', () => {
+  const runs = [
+    {
+      databaseId: 11,
+      status: 'in_progress',
+      conclusion: null,
+      url: 'u11',
+      createdAt: 't11',
+      displayTitle: 'Theme Equipment run-phase · classic-fantasy',
+    },
+    {
+      databaseId: 22,
+      status: 'completed',
+      conclusion: 'success',
+      url: 'u22',
+      createdAt: 't22',
+      displayTitle: 'Theme Equipment run-phase · classic-fantasy-basic-leather',
+    },
+  ];
+  // The shorter id must NOT match the longer id's run even though it is a prefix.
+  const match = selectThemeEquipmentRun(runs, 'classic-fantasy');
+  assert.equal(match.databaseId, 11);
+  assert.equal(match.status, 'in_progress');
+  assert.equal(match.conclusion, null);
+
+  const longer = selectThemeEquipmentRun(runs, 'classic-fantasy-basic-leather');
+  assert.equal(longer.databaseId, 22);
+  assert.equal(longer.conclusion, 'success');
+});
+
+test('does not correlate a run whose crafted set_id merely ends with the requested set id (suffix-spoof safe)', () => {
+  const runs = [
+    // A manual dispatch with set_id = "other · classic-fantasy" produces a title
+    // ending in " · classic-fantasy"; the old suffix match would have shown it as
+    // the latest run for "classic-fantasy". The anchored, single-separator match
+    // rejects it because the action segment cannot contain a second "·".
+    {
+      databaseId: 99,
+      status: 'in_progress',
+      conclusion: null,
+      url: 'u99',
+      createdAt: 't99',
+      displayTitle: 'Theme Equipment run-phase · other · classic-fantasy',
+    },
+  ];
+  assert.equal(selectThemeEquipmentRun(runs, 'classic-fantasy'), null);
+
+  // A legitimate single-separator title for that same id still matches.
+  const legit = [
+    {
+      databaseId: 7,
+      status: 'completed',
+      conclusion: 'success',
+      url: 'u7',
+      createdAt: 't7',
+      displayTitle: 'Theme Equipment status · classic-fantasy',
+    },
+  ];
+  assert.equal(selectThemeEquipmentRun(legit, 'classic-fantasy').databaseId, 7);
+});
+
+test('returns null when no run title carries the set suffix, or the payload is not an array', () => {
+  const runs = [{ databaseId: 1, displayTitle: 'Theme Equipment run-phase · other-set' }];
+  assert.equal(selectThemeEquipmentRun(runs, 'classic-fantasy'), null);
+  assert.equal(selectThemeEquipmentRun(null, 'classic-fantasy'), null);
+  assert.equal(selectThemeEquipmentRun('nope', 'classic-fantasy'), null);
+});
+
+test('normalizes malformed run fields to null rather than surfacing junk', () => {
+  const runs = [
+    {
+      databaseId: -5, // not a positive integer
+      status: 42, // not a string
+      conclusion: '', // empty string → null
+      url: null,
+      createdAt: undefined,
+      displayTitle: 'Theme Equipment run-phase · classic-fantasy',
+    },
+  ];
+  const match = selectThemeEquipmentRun(runs, 'classic-fantasy');
+  assert.equal(match.databaseId, null);
+  assert.equal(match.status, null);
+  assert.equal(match.conclusion, null);
+  assert.equal(match.url, null);
+  assert.equal(match.createdAt, null);
+  assert.equal(match.displayTitle, 'Theme Equipment run-phase · classic-fantasy');
+});
+
+test('rejects an invalid set id before shelling out to gh', async () => {
+  const result = await themeEquipmentRunStatus(process.cwd(), 'not a valid id!!');
+  assert.deepEqual(result, { available: false, errorKind: 'invalid-set-id' });
 });

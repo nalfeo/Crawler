@@ -1,0 +1,161 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): 1 map tile = 4 ft, renderer is
+# height-authoritative. This is a FLAT, FRONT-FACING wall fixture seen dead-on —
+# a flat plane, so the drawn bounding box equals the flat elevation aspect and no
+# receding side face adds width. Intended real size is 2.5 ft wide x 1 ft tall.
+# The physically meaningful dimension here is the 2.5 ft WIDTH (it must span a
+# doorway head), so width is declared (80) and height is DERIVED: 80 * 1 / 2.5 =
+# 32. 80 >= 2*32, so resizeSpriteStrategy() returns 'width': the width is locked
+# at 80 and the shipped height follows the DRAWN subject's aspect, so it is
+# aspect-true by construction with no `fit` letterboxing.
+#
+# `sizeVariant: wide` is deliberately NOT used: reshaping the sheet cells is the
+# same class of risk that made `sizeVariant: tall` produce stacked-object slices
+# (2026-07-27 living-area handoff). Default square cells slice reliably; the
+# 2.5:1 proportion is driven in PROSE inside the square cell instead.
+#
+# WHY THIS EXISTS: welcome-room-exit-sign-var-0 is drawn at an oblique angle, so
+# in-game it reads as a placard lying on the floor rather than a fixture bolted
+# to a wall. This one is flat-on to the viewer. It also drops the lettering: the
+# repo no-text rule wins, so the meaning is carried by the universal running-
+# figure-and-arrow glyph instead of the word.
+type: prop
+name: welcome-room-exit-sign-wall
+description: |
+  A small illuminated EXIT SIGN bolted to the wall above a doorway. Drawn FLAT-ON
+  / DEAD-ON to the viewer — a pure front elevation, looking straight at the face
+  of the sign with NO tilt, NO rotation, NO oblique angle and NO perspective. The
+  face of the sign is exactly parallel to the screen. Modern high-quality pixel
+  art, silhouette readable at 16px.
+
+  IT MUST READ AS A WALL FIXTURE, NOT AS A PLACARD LYING ON THE FLOOR. This is
+  the single most important instruction in the brief. An earlier version of this
+  sprite was drawn at an oblique three-quarter angle and in-game it looked like a
+  sign that had fallen face-up on the ground. Draw it perfectly square-on, with a
+  short MOUNTING BRACKET or two small BOLTS visible at its TOP edge where it is
+  fixed to the wall above, so the eye immediately reads "hanging on a wall".
+
+  ROUND 2 STILL FAILED ON PROPORTION — READ THE NEXT PARAGRAPH TWICE. Round 1
+  came back at 1.23 : 1 and round 2 at 1.41 : 1 — still an almost square
+  lantern-shaped box. The housing keeps being drawn far too deep top-to-bottom.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The sign's
+  drawn bounding box INCLUDING the bracket must be approximately 240 PIXELS WIDE
+  and 96 PIXELS TALL. Round 2 drew about 240 x 170 — the width was right, the
+  HEIGHT WAS NEARLY DOUBLE what it should be. Cut the height almost in half:
+  - Take the height of the sign in your sketch and check it fits TWO AND A HALF
+    times inside its own width. Round 2 fitted only 1.4 times.
+  - The HOUSING is a SHALLOW letterbox slab. Its frame is a THIN border — a few
+    pixels of dark metal on each side — not a thick chunky bezel, and there is no
+    second inner frame inside the first.
+  - The glowing PANEL fills nearly the whole housing and is itself a long thin
+    letterbox: the running figure's full height is about the height of the panel,
+    and there is very little empty panel above or below the glyph.
+  - The BRACKET is a LOW-PROFILE TAB: it may rise no more than about 14 pixels
+    above the top of the housing — a small flat lug or two bolt heads, never a
+    tall handle, never a hanging loop, never a chain.
+
+  REAL-WORLD SIZE / PROPORTIONS.
+  The sign is approximately 2.5 FEET WIDE x 1 FOOT TALL. Its bounding box must be
+  TWO AND A HALF TIMES AS WIDE AS IT IS TALL (width : height = 2.5 : 1) — a long,
+  flat, letterbox slab. Compose it inside the square cell like this:
+  - The sign spans the FULL WIDTH of the cell, hard edge to hard edge, leaving
+    only the small standard margin at left and right.
+  - VERTICALLY IT IS SHORT. Every painted pixel — including the mounting bracket
+    at the top and any drip of grime at the bottom — must sit inside the MIDDLE
+    THIRD of the cell's height. Leave a wide band of EMPTY transparent background
+    across the top third and the bottom third of the cell.
+  - If it looks squarish, or like a lantern, or like a box, it is WRONG. If it
+    looks almost too long and too thin, it is RIGHT.
+  - EXACTLY ONE SIGN PER CELL. Never stack two signs in a column.
+
+  WHAT IT IS: a shallow rectangular boxy light fitting with a grubby translucent
+  panel across its face, back-lit dully from inside so the panel glows faintly.
+  The housing is a thin dark metal frame around that panel.
+
+  THE GLYPH — NO LETTERS. The panel carries the universal EXIT PICTOGRAM and
+  nothing else: a simple blocky RUNNING FIGURE (head, torso, one arm forward, legs
+  mid-stride) beside a plain ARROW pointing sideways toward the door. Both are
+  drawn as chunky few-pixel solid shapes so they survive at small size, knocked
+  back dark against the dimly lit panel. There are NO letters, NO words, NO
+  numbers, NO digits, NO labels of any kind anywhere on the sign — a figure and an
+  arrow only.
+
+  IT IS FILTHY AND HALF DEAD:
+  - The glow is DIM, not bright — a dull, dirty, amber-cream light with no bloom,
+    no halo, no light spilling off the sign onto anything.
+  - One end of the panel is noticeably darker than the other, as if half the lamp
+    inside has died.
+  - The housing is scuffed, dented on one corner, its casing cracked; years of
+    dust and greasy smoke have furred the top edge and streaked down the face; a
+    dark drip stain runs off the bottom edge.
+
+  IT IS NOT: a lantern, a torch, a sconce, a candle, a window, a picture frame, a
+  nameplate, a road sign, a shop sign, a banner, a book, or a crate. It is one
+  small wall-mounted lit sign. One object. Nothing else.
+
+  MOOD — a grimy reality-TV dungeon set, threadbare and over-used. Three NPCs are
+  stuck living in this reception room, forbidden by dungeon rules from leaving.
+  This sign points at a door they are not allowed to use, and nobody has cleaned
+  or repaired it in years. Tired, dusty, dim, faintly cruel. Nothing crisp,
+  nothing new, nothing bright.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit beside
+  welcome-room-desk, welcome-room-bookcase, welcome-room-show-poster and
+  prop-wall-sconce-v1 without clashing: deep maroon, dark walnut, tarnished brass,
+  cool grey stone — muted and dusty, never bright, never saturated. The housing is
+  a dark walnut-brown metal with tarnished brass bolts; the lit panel is a dulled,
+  dirty off-cream gone amber with grime; the running figure and arrow read as a
+  knocked-back dark shape against it; the dead end of the panel is a flat greyed
+  brown. BANNED: neon, pure white, pure black, saturated red, saturated green,
+  emergency green, saturated yellow, orange, teal, cyan, blue, magenta, purple,
+  any glow bloom or halo, and any hue outside the maroon / walnut / brass /
+  dirty-cream family. A bright saturated green or red modern emergency-exit look
+  is an automatic rejection — this is a dungeon set dressed to look like one.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The top and left edges
+  of the housing carry the highlight; the lower and right edges carry the shadow.
+  Every prop in this wave shares that one light direction.
+
+  RENDERING: hard 1-pixel dark contour around the housing in the house prop style,
+  muted interior shading, 3-5 tone stops per material, restrained dithering for
+  grime. This prop is WALL-MOUNTED: it hangs above a doorway and does not rest on
+  the floor.
+
+  BACKGROUND: fully transparent. Draw ONLY the sign and its bracket. Do NOT paint
+  the stone wall behind it, the doorway below it, a backing panel, frame, border,
+  vignette, or any glow spill onto the wall — the wall is already painted
+  underneath this art in the game. Every pixel that is not sign must be fully
+  transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the sign's colours so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 80
+  height: 32
+anchor:
+  x: 40
+  y: 28
+sensors:
+  # A boxy sign is a deliberately near-rectangular flat object and fills far more
+  # of its bounding box than the `prop` default [0.10, 0.65], which is tuned for
+  # irregular grounded props. Identical cap and reasoning to the already-approved
+  # welcome-room-exit-sign and welcome-room-show-poster: a genuine
+  # background-removal failure lands at ~0.95-1.0 and is still caught.
+  opaqueRatio:
+    min: 0.40
+    max: 0.88
+  # Wall-mounted: it hangs, so a bottom-centre grip anchor is meaningless.
+  anchor:
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - wall-mounted
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

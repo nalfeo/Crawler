@@ -17,10 +17,10 @@
 import type { GameWorld } from '../world.js';
 
 /** Internal phase of an in-flight ability cast (per caster). */
-export type MobAbilityPhase = 'cooldown' | 'telegraph';
+export type MobAbilityPhase = 'cooldown' | 'telegraph' | 'active';
 
 /** Public cue phase surfaced to the renderer. */
-export type MobAbilityCuePhase = 'telegraph' | 'resolved';
+export type MobAbilityCuePhase = 'telegraph' | 'outbound' | 'hold' | 'return';
 
 /** Danger-cue colour, mirrored from the catalog. */
 export type MobAbilityDangerColor = 'ability-theme' | 'hostile-red';
@@ -40,6 +40,18 @@ export interface MobAbilityCircleGeometry {
 export interface MobAbilitySpawnCirclesGeometry {
   readonly kind: 'spawn-circles';
   readonly circles: readonly MobAbilityCircleGeometry[];
+}
+
+export interface MobAbilityLaneGeometry {
+  readonly kind: 'lane';
+  readonly originX: number;
+  readonly originY: number;
+  readonly endX: number;
+  readonly endY: number;
+  readonly dirX: number;
+  readonly dirY: number;
+  readonly widthFt: number;
+  readonly lengthFt: number;
 }
 
 /** Multi-circle geometry committed by a custom `commitGeometry` hook (e.g. Sovereign Cap triangle). */
@@ -94,6 +106,7 @@ export interface MobAbilityProjectileFanGeometry {
 export type MobAbilityGeometry =
   | MobAbilityCircleGeometry
   | MobAbilitySpawnCirclesGeometry
+  | MobAbilityLaneGeometry
   | MobAbilityMultiCircleGeometry
   | MobAbilityRadialProjectilesGeometry
   | MobAbilityProjectileFanGeometry;
@@ -117,6 +130,13 @@ export interface MobAbilitySelfBuffDefinition {
  * from arbitrary catalog values.
  */
 export type MobAbilityResolveHandler = (world: GameWorld, ctx: MobAbilityResolveContext) => void;
+
+export interface MobAbilityReturningLaneEffectDefinition {
+  readonly kind: 'returning-lane';
+  readonly speedFtPerTick: number;
+  readonly holdMs: number;
+  readonly damageAmount: number;
+}
 
 /** Everything a resolve handler needs, all committed at telegraph start. */
 export interface MobAbilityResolveContext {
@@ -155,6 +175,12 @@ export interface MobAbilityRuntimeDefinition {
   /** Committed geometry footprint authored by this ability. */
   readonly geometry:
     | { readonly kind: 'circle'; readonly radiusFt: number }
+    | { readonly kind: 'lane'; readonly widthFt: number; readonly maxRangeFt: number }
+    | {
+        readonly kind: 'lane';
+        readonly widthFt: number;
+        readonly maxRangeFt: number;
+      }
     | {
         readonly kind: 'spawn-circles';
         readonly count: number;
@@ -198,6 +224,8 @@ export interface MobAbilityRuntimeDefinition {
   readonly lockCasterDuringTelegraph?: boolean;
   /** Optional self-buff payload consumed by runtime helper seams. */
   readonly selfBuff?: MobAbilitySelfBuffDefinition;
+  /** Optional active projectile/effect lifecycle driven after telegraph resolution. */
+  readonly activeEffect?: MobAbilityReturningLaneEffectDefinition;
   /** Named typed effect handler run at resolution. */
   readonly resolve: MobAbilityResolveHandler;
 }
@@ -218,7 +246,35 @@ export interface MobAbilityCue {
   readonly geometry: MobAbilityGeometry;
   readonly dangerColor: MobAbilityDangerColor;
   readonly announcementText: string;
+  readonly projectileX?: number;
+  readonly projectileY?: number;
 }
+
+export interface MobAbilityReturningLaneActiveState {
+  readonly kind: 'returning-lane';
+  readonly speedFtPerTick: number;
+  readonly holdMs: number;
+  readonly damageAmount: number;
+  phase: 'outbound' | 'hold' | 'return';
+  projectileX: number;
+  projectileY: number;
+  holdRemainingMs: number;
+  readonly hitKeys: Set<string>;
+}
+
+export type MobAbilityActiveState = MobAbilityReturningLaneActiveState;
+
+export type MobAbilityBurstEvent =
+  | {
+      readonly kind: 'resolution';
+      readonly abilityId: string;
+      readonly geometry: MobAbilityGeometry;
+    }
+  | {
+      readonly kind: 'recatch';
+      readonly x: number;
+      readonly y: number;
+    };
 
 /** Per-caster runtime instance state driven by the executor. */
 export interface MobAbilityInstanceState {
@@ -239,8 +295,6 @@ export interface MobAbilityInstanceState {
   resolvedCasts: number;
   /** Count of announcements emitted (must equal `resolvedCasts + inFlight`). */
   announcementsEmitted: number;
-  /** Owned summoned entities for this caster's ability instance (eid -> generation). */
-  readonly ownedEntityGenerations: Map<number, number>;
   /**
    * Per-registration generation token. Monotonically increases with each
    * `registerMobAbility` call. The runtime validates this against
@@ -249,6 +303,10 @@ export interface MobAbilityInstanceState {
    * instance's token no longer matches — preventing false-positive liveness.
    */
   registrationToken: number;
+  /** Optional in-flight active effect after telegraph resolution. */
+  activeState: MobAbilityActiveState | null;
+  /** Owned summoned entities for this caster's ability instance (eid -> generation). */
+  readonly ownedEntityGenerations: Map<number, number>;
 }
 
 /**
@@ -278,9 +336,11 @@ export interface MobAbilityRuntime {
    * the caster died in the same simulation step that called `clearMobAbility`
    * (which would remove the caster from `byEntity` before `PhaserBridge.sync`).
    */
-  readonly pendingBursts: Array<MobAbilityBurst>;
+  readonly pendingBursts: Array<MobAbilityBurstEvent>;
   /** Active self-buffs authored by ability handlers and ticked by the runtime. */
   readonly activeBuffsByEntity: Map<number, MobAbilityActiveBuffState>;
+  /** Active recovery windows that temporarily suppress caster movement/attacks. */
+  readonly recoveriesByEntity: Map<number, MobAbilityRecoveryState>;
   /** In-flight ability projectiles authored by typed handlers and ticked by the runtime. */
   readonly activeProjectiles: MobAbilityActiveProjectileState[];
   /** Persistent ability zones authored by typed handlers and ticked by the runtime. */
@@ -346,6 +406,12 @@ export interface MobAbilityOwnedZone {
   readonly tick: MobAbilityOwnedZoneTick;
 }
 
+export interface MobAbilityRecoveryState {
+  readonly abilityId: string;
+  readonly sourceId: string;
+  remainingMs: number;
+}
+
 /** Create the default-off, empty runtime state for a fresh world. */
 export function createMobAbilityRuntime(): MobAbilityRuntime {
   return {
@@ -355,6 +421,7 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     cues: [],
     pendingBursts: [],
     activeBuffsByEntity: new Map(),
+    recoveriesByEntity: new Map(),
     activeProjectiles: [],
     activeZones: [],
     ownedZones: [],
@@ -362,11 +429,6 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     nextToken: 0,
     nextZoneId: 0,
   };
-}
-
-export interface MobAbilityBurst {
-  readonly abilityId: string;
-  readonly geometry: MobAbilityGeometry;
 }
 
 /** Stable per-cast source key for status effects owned by a caster's ability. */
@@ -387,8 +449,18 @@ const MOB_ABILITY_BURST_CAP = 256;
  * when full). Follows the same bounded-queue pattern as `pushVfxEvent` and
  * `pushAnnouncement`.
  */
-export function pushMobAbilityBurst(bursts: MobAbilityBurst[], burst: MobAbilityBurst): void {
-  bursts.push(burst);
+export function pushMobAbilityBurst(
+  bursts: MobAbilityBurstEvent[],
+  event: MobAbilityBurstEvent,
+): void {
+  bursts.push(event);
+  if (bursts.length > MOB_ABILITY_BURST_CAP) {
+    bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
+  }
+}
+
+export function pushMobAbilityRecatch(bursts: MobAbilityBurstEvent[], x: number, y: number): void {
+  bursts.push({ kind: 'recatch', x, y });
   if (bursts.length > MOB_ABILITY_BURST_CAP) {
     bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
   }
@@ -400,6 +472,8 @@ export function circlesForMobAbilityGeometry(
   switch (geometry.kind) {
     case 'circle':
       return [geometry];
+    case 'lane':
+      return [];
     case 'spawn-circles':
     case 'multi-circle':
       return geometry.circles;

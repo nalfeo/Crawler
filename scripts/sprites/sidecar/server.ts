@@ -131,7 +131,13 @@ import {
   toRepoRelativePath,
 } from '../brief-durability.js';
 import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
-import { writeCatalogJson } from '../catalog-io.js';
+import { formatJsonFilesSync, writeCatalogJson } from '../catalog-io.js';
+import {
+  composeFullCatalog,
+  GENERATED_ID_PREFIX,
+  isGeneratedCatalogId,
+} from '../../../src/shared/generated-catalog.js';
+import { composeManifestFromShards, readShard, writeShard } from '../generated-shards.js';
 import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../store/types.js';
@@ -500,7 +506,9 @@ function mapApproveError(reply: FastifyReply, err: unknown): { error: string; me
         ? 404
         : err.kind === 'already-approved'
           ? 409
-          : 500;
+          : err.kind === 'hard-blocked'
+            ? 422
+            : 500;
     reply.code(status);
     return { error: err.kind, message: err.message };
   }
@@ -1998,31 +2006,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           }
         }
       } catch (err) {
-        if (err instanceof ApproveError) {
-          // variant-not-found / processed-missing -> 404 (resource missing).
-          // already-approved                      -> 409 (conflict; exact dup).
-          // summary-invalid / manifest-invalid    -> 500 (server-side data corruption).
-          // run-not-found                          -> 404.
-          let status: number;
-          if (
-            err.kind === 'variant-not-found' ||
-            err.kind === 'processed-missing' ||
-            err.kind === 'run-not-found'
-          ) {
-            status = 404;
-          } else if (err.kind === 'already-approved') {
-            status = 409;
-          } else {
-            status = 500;
-          }
-          reply.code(status);
-          return { error: err.kind, message: err.message };
-        }
-        reply.code(500);
-        return {
-          error: 'approve-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
+        return mapApproveError(reply, err);
       } finally {
         hydrated?.cleanup();
       }
@@ -2875,116 +2859,134 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
     try {
       const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
-      const manifestPath =
-        deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+      const generatedDir = path.join(publicAssetsDir, 'generated');
       const catalogAbs = path.resolve(deps.repoRoot, DEFAULT_CATALOG_PATH);
-      const catalog = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
+      // Feed the pipeline the FULL catalog: the committed rows PLUS the
+      // `generated:` rows DERIVED from the manifest shards. Those generated rows
+      // are no longer committed to sprite-catalog.json (they are derived, see
+      // src/shared/generated-catalog.ts), so we must compose them here or the
+      // pipeline would have no generated sprite to edit.
+      const baseCatalog = parseSpriteCatalog(
+        JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown,
+      );
+      const fullCatalog = composeFullCatalog(baseCatalog, composeManifestFromShards(generatedDir));
       const provider = await resolveProvider(providerMode);
-      const result = await runMetadataPipeline(catalog, { provider, ids, force, minScore });
+      const result = await runMetadataPipeline(fullCatalog, { provider, ids, force, minScore });
 
-      // Persist the catalog AND durably re-queue the changed generated entries.
-      // Serialized with /approve and /checkin (same catalog surface) under the
-      // shared mutation lock. Without this queue-commit the Tag step would leave
-      // the assets/queue branch on the PRE-Tag catalog, silently dropping the
-      // metadata edit across worktrees/sessions (concern #1).
+      // Persist the edits under the shared mutation lock, serialized with
+      // /approve and /checkin (same asset surface). `generated:` edits are
+      // durably persisted as a `catalog` override ON THE MANIFEST SHARD — the
+      // single per-asset source of truth — and the changed shards are re-queued.
+      // Non-generated edits go to the committed catalog exactly as before.
       const env = deps.env ?? process.env;
       const queueCommit = await withCheckinMutationLock(async () => {
-        // Re-read the catalog INSIDE the lock and overlay ONLY the entries this
-        // run changed, rather than writing the run's stale full snapshot. A
-        // concurrent /approve or /checkin (which mutate the same catalog under
-        // this lock) can add or edit a DIFFERENT entry between our pre-lock read
-        // (above, outside the lock so the slow provider call does not hold it)
-        // and this write; the merge preserves that change instead of clobbering
-        // it (read-modify-write race, concern #1a).
-        let mergedCatalog: SpriteCatalog;
-        try {
-          const fresh = parseSpriteCatalog(JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown);
-          mergedCatalog = parseSpriteCatalog(
-            mergeChangedCatalogEntries(fresh, result.updated, result.changedIds),
-          );
-        } catch (err) {
-          // A fresh re-read/parse failure means we cannot safely determine
-          // which concurrent rows might have landed since our pre-lock read.
-          // Writing the stale snapshot (result.updated) would clobber those
-          // concurrent entries, so we abort the mutation entirely and surface
-          // a route failure instead.
-          const message = err instanceof Error ? err.message : String(err);
-          req.log.warn(`metadata queue-commit: catalog re-read failed: ${message}`);
-          return { status: 'failed' as const, error: `catalog re-read failed: ${message}` };
+        const generatedChangedIds = result.changedIds.filter((id) => isGeneratedCatalogId(id));
+        const nonGeneratedChangedIds = result.changedIds.filter((id) => !isGeneratedCatalogId(id));
+
+        // Non-generated rows: merge into the committed catalog. Re-read INSIDE
+        // the lock and overlay ONLY the non-generated ids this run changed, so a
+        // concurrent /approve or /checkin edit to a DIFFERENT row is preserved
+        // rather than clobbered (read-modify-write race, concern #1a).
+        if (nonGeneratedChangedIds.length > 0) {
+          let mergedCatalog: SpriteCatalog;
+          try {
+            const fresh = parseSpriteCatalog(
+              JSON.parse(readFileSync(catalogAbs, 'utf8')) as unknown,
+            );
+            mergedCatalog = parseSpriteCatalog(
+              mergeChangedCatalogEntries(fresh, result.updated, nonGeneratedChangedIds),
+            );
+          } catch (err) {
+            // A fresh re-read/parse failure means we cannot safely determine
+            // which concurrent rows might have landed since our pre-lock read.
+            // Writing a stale snapshot would clobber those, so abort entirely.
+            const message = err instanceof Error ? err.message : String(err);
+            req.log.warn(`metadata queue-commit: catalog re-read failed: ${message}`);
+            return { status: 'failed' as const, error: `catalog re-read failed: ${message}` };
+          }
+          await writeCatalogJson(catalogAbs, mergedCatalog);
         }
-        await writeCatalogJson(catalogAbs, mergedCatalog);
 
-        // A `generated:<key>` catalog entry that this run changed AND that still
-        // survives the merge (concurrently-deleted ids were dropped above) MUST
-        // be durably re-queued. Non-generated rows (terrain/mob/etc.) are not
-        // queue-managed, and a concurrently-deleted id is genuinely gone — both
-        // are correctly excluded here.
-        const survivingIds = new Set(mergedCatalog.map((record) => record.id));
-        const changedGeneratedIds = result.changedIds.filter(
-          (id) => id.startsWith('generated:') && survivingIds.has(id),
-        );
-        // The ONLY honest `null`: nothing queue-managed changed, so there is
-        // genuinely no durable re-queue to do and the client PRESERVES its prior
-        // durability (#1c/#7). Reaching `null` any other way would fabricate a
-        // green "ready to use" the tag never earned.
-        if (changedGeneratedIds.length === 0) return null;
-
-        // Map each surviving changed generated id back to its manifest entry so
-        // the queue-commit stages the PNG + manifest + updated catalog together.
-        let manifestReadFailed = false;
-        let manifestEntries: Record<string, ManifestEntry> = {};
-        try {
-          const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-            entries?: Record<string, ManifestEntry>;
+        // Generated rows: write the LLM description/tags as a `catalog` override
+        // onto each changed shard (local durability lands here), then durably
+        // re-queue the shards whose PNG asset resolves on disk.
+        //
+        // Two "unresolvable" cases both mean the edit could NOT be durably
+        // re-queued and MUST surface as status:'failed' (never null, which the
+        // client reads as "preserve prior durability" — a false green, #1c/#7):
+        //   (a) the shard vanished between compose and this locked write
+        //       (concurrently unapproved), so there is nothing to persist; or
+        //   (b) the shard exists (so the local override write lands) but its PNG
+        //       asset is missing, so it cannot be staged onto assets/queue.
+        const updatedById = new Map(result.updated.map((row) => [row.id, row]));
+        const changedAssets: Array<{
+          assetPath: string;
+          manifestKey: string;
+          briefId: string | null;
+          variantIndex: number | null;
+        }> = [];
+        const unresolvedGeneratedIds: string[] = [];
+        const writtenShardPaths: string[] = [];
+        for (const id of generatedChangedIds) {
+          const key = id.slice(GENERATED_ID_PREFIX.length);
+          const entry = readShard(generatedDir, key);
+          if (!entry) {
+            unresolvedGeneratedIds.push(id); // (a) shard concurrently removed
+            continue;
+          }
+          const row = updatedById.get(id);
+          if (!row) continue;
+          const nextEntry = {
+            ...entry,
+            catalog: { description: row.description, tags: [...row.tags] },
           };
-          manifestEntries = parsed.entries ?? {};
-        } catch (err) {
-          manifestReadFailed = true;
-          req.log.warn(
-            `metadata queue-commit: manifest read failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-        const changedAssetsMaybeNull = changedGeneratedIds.map((id) => {
-          const key = id.slice('generated:'.length);
-          const entry = manifestEntries[key];
-          if (!entry) return null;
-          return {
+          writtenShardPaths.push(writeShard(generatedDir, key, nextEntry));
+          const assetAbs = path.join(publicAssetsDir, entry.assetPath);
+          if (!existsSync(assetAbs)) {
+            unresolvedGeneratedIds.push(id); // (b) PNG missing — can't stage
+            continue;
+          }
+          changedAssets.push({
             assetPath: entry.assetPath,
             manifestKey: key,
             briefId: entry.briefId ?? null,
             variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
-          };
-        });
-        // Every changed generated id MUST resolve to a manifest entry so the
-        // durable re-queue stages the complete set. A partial resolve (some ids
-        // missing) is still a failure: the assets/queue branch would be missing
-        // entries, silently under-reporting durability (#6-followup). If ANY id
-        // fails to resolve — or the manifest read itself failed — abort and
-        // surface a failure rather than committing a partial update.
-        const unresolvedCount = changedAssetsMaybeNull.filter((a) => a === null).length;
-        if (unresolvedCount > 0) {
-          const reason = manifestReadFailed
-            ? 'manifest read failed'
-            : `${unresolvedCount} of ${changedGeneratedIds.length} changed generated sprite(s) had no manifest entry`;
-          const message = `metadata changed for ${changedGeneratedIds.length} generated sprite(s) but could not be durably re-queued: ${reason}`;
-          req.log.warn(`metadata queue-commit failed: ${message}`);
-          return { status: 'failed' as const, error: message };
+          });
         }
-        // All changed ids resolved — safe to cast (no nulls remain).
-        const changedAssets = changedAssetsMaybeNull as NonNullable<
-          (typeof changedAssetsMaybeNull)[number]
-        >[];
+        // Keep the shard on-disk format Prettier-identical to the committed
+        // style so a metadata edit is a value-only diff (no `tags` reflow).
+        if (writtenShardPaths.length > 0) {
+          formatJsonFilesSync(writtenShardPaths);
+        }
+
+        // A changed generated edit that could not be resolved to a stageable
+        // asset failed to become durable — report it so the client shows red.
+        if (unresolvedGeneratedIds.length > 0) {
+          const label = unresolvedGeneratedIds.length === 1 ? 'entry' : 'entries';
+          return {
+            status: 'failed' as const,
+            error: `${unresolvedGeneratedIds.length} changed generated ${label} could not be durably re-queued: ${unresolvedGeneratedIds.join(', ')}`,
+          };
+        }
+
+        // The ONLY honest `null`: nothing queue-managed changed, so there is
+        // genuinely no durable re-queue to do and the client PRESERVES its prior
+        // durability (#1c/#7).
+        if (changedAssets.length === 0) return null;
+
         try {
           return await runQueueCommit(
             deps.repoRoot,
             changedAssets,
             createDefaultQueueCommitDeps(deps.repoRoot, env),
-            { message: `chore(assets): metadata for ${changedAssets.length} sprite(s)` },
+            {
+              message: `chore(assets): metadata for ${changedAssets.length} sprite(s)`,
+            },
           );
         } catch (err) {
           // ci-refused is EXPECTED on CI (the primitive is local-only) — surface
           // it as a skip, not a failure. Any other error is best-effort: the
-          // local catalog write already succeeded.
+          // local shard writes already succeeded.
           if (err instanceof QueueCommitError && err.kind === 'ci-refused') {
             return { status: 'skipped' as const, reason: 'ci-refused' as const };
           }
@@ -3529,40 +3531,39 @@ interface ApprovedBriefInfo {
  */
 function readApprovedVariantsByBrief(manifestPath: string): ReadonlyMap<string, ApprovedBriefInfo> {
   const result = new Map<string, ApprovedBriefInfo>();
-  if (!existsSync(manifestPath)) return result;
+  // The aggregate manifest.json is a gitignored build artifact and may be
+  // absent; compose the entries from the per-asset shards instead.
+  let entries: Record<string, { briefId?: unknown; variantIndex?: unknown; sourceRun?: unknown }>;
   try {
-    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      entries?: Record<string, { briefId?: unknown; variantIndex?: unknown; sourceRun?: unknown }>;
-    };
-    const entries = parsed?.entries ?? {};
-    for (const entry of Object.values(entries)) {
-      if (!entry || typeof entry.briefId !== 'string') continue;
-      const variantIndex = typeof entry.variantIndex === 'number' ? entry.variantIndex : null;
-      let runId: string | null = null;
-      if (typeof entry.sourceRun === 'string') {
-        const parts = entry.sourceRun
-          .replace(/\\/g, '/')
-          .split('/')
-          .filter((segment) => segment !== '');
-        runId = parts.length >= 1 ? (parts[parts.length - 1] ?? null) : null;
-      }
-      const current = result.get(entry.briefId) ?? {
-        count: 0,
-        firstRunId: null,
-        firstVariantIndex: null,
-      };
-      current.count += 1;
-      if (
-        variantIndex !== null &&
-        (current.firstVariantIndex === null || variantIndex < current.firstVariantIndex)
-      ) {
-        current.firstVariantIndex = variantIndex;
-        current.firstRunId = runId;
-      }
-      result.set(entry.briefId, current);
-    }
+    entries = composeManifestFromShards(path.dirname(manifestPath)).entries as typeof entries;
   } catch {
     return result;
+  }
+  for (const entry of Object.values(entries)) {
+    if (!entry || typeof entry.briefId !== 'string') continue;
+    const variantIndex = typeof entry.variantIndex === 'number' ? entry.variantIndex : null;
+    let runId: string | null = null;
+    if (typeof entry.sourceRun === 'string') {
+      const parts = entry.sourceRun
+        .replace(/\\/g, '/')
+        .split('/')
+        .filter((segment) => segment !== '');
+      runId = parts.length >= 1 ? (parts[parts.length - 1] ?? null) : null;
+    }
+    const current = result.get(entry.briefId) ?? {
+      count: 0,
+      firstRunId: null,
+      firstVariantIndex: null,
+    };
+    current.count += 1;
+    if (
+      variantIndex !== null &&
+      (current.firstVariantIndex === null || variantIndex < current.firstVariantIndex)
+    ) {
+      current.firstVariantIndex = variantIndex;
+      current.firstRunId = runId;
+    }
+    result.set(entry.briefId, current);
   }
   return result;
 }
@@ -3589,15 +3590,14 @@ async function isBriefStored(
 }
 
 function readPromotedRunsFromManifest(manifestPath: string): ReadonlySet<string> {
-  if (!existsSync(manifestPath)) {
-    return new Set<string>();
-  }
+  const promoted = new Set<string>();
   try {
-    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      entries?: Record<string, { sourceRun?: unknown }>;
-    };
-    const entries = parsed?.entries ?? {};
-    const promoted = new Set<string>();
+    // The aggregate manifest.json is a gitignored build artifact and may be
+    // absent; compose the entries from the per-asset shards instead.
+    const entries = composeManifestFromShards(path.dirname(manifestPath)).entries as Record<
+      string,
+      { sourceRun?: unknown }
+    >;
     for (const entry of Object.values(entries)) {
       if (!entry || typeof entry.sourceRun !== 'string') continue;
       const normalized = entry.sourceRun.replace(/\\/g, '/');

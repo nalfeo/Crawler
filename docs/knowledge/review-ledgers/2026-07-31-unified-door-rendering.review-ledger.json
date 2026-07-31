@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "unified-door-rendering",
+  "task_title": "Unify door rendering: one geometry rule, art as per-tileset lookup",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review (gpt-5.6-sol) of the unified-door design. Verdict SOUND-WITH-CHANGES; plan_divergence minor - the core architecture (one geometry path, art as a per-tileset lookup, retire the top-down hatch art) survived, but 8 blocking/migration defects were found and all are accepted. B1: Floor 2 is ALL open doors (cave_system stamps every room connector DOOR_OPEN; renderableClosedCount === 0) and tile-door-open-side-v1-var-0 does not exist, so retiring pack art regresses every E/W open door to face-on art. Resolved by commissioning the missing side-on OPEN art rather than accepting the regression; if generation fails this escalates to the maintainer instead of shipping silently. B2: contain-fit is one ALGORITHM, not one physical geometry - a square Kenney frame still yields 4x4 ft and the color fallback is a raw one-cell rect - so the design was reframed around a shared doorway BOX contract that the color fallback also honours. B3: the proposed art gate was TAUTOLOGICAL (a full-cell hatch trivially passes width <= 1 cell and height <= 6.5 ft); replaced with a real projection proxy - door art must have transparent side margins (not full-bleed) plus portrait aspect and exact state/orientation coverage - which the retired hatch (0 transparent px) fails and the generated art passes. B4: making doorSet optional breaks the pack validator, the runtime preloader, the terrain-pack lab and three test suites, so full removal was chosen over optional-but-unused. B5: all three pack builders still GENERATE the retired art and their tests require four door PNGs, so builder door emission is retired too or the next build undoes the deletion. B6: the two door-material.png files are durable --from-source build inputs, not runtime textures, so only the 16 rendered variants are deleted (my 20-PNG figure was wrong). B7: optional-but-unused is the worst middle state, so doorSet, DoorSetDef and resolveDoorPoolVariant are fully removed. B8: inverting the e2e assertions is insufficient because openGeneratedCount === renderableOpenCount passes even when every vertical door renders horizontal art, so door telemetry is extended to report exact-vs-cross-orientation selection per texture. The reviewer also corrected two of my measured claims: there are 18 tracked door PNGs (16 rendered + 2 material) not 20, and 8 distinct decoded variants across the 4 packs (floor1-dungeon duplicates floor1-cave, industrial-cave duplicates caeles-fixture) not 2 - the low-differentiation diagnosis stands but the literal two-file claim was wrong. Alternatives argued: (1) keep doorSet canonical but regenerate the art side-on and route it through the shared fit; (2) a first-class door-theme registry referenced by doorThemeId carrying texture, projection and opaque-bounds metadata; (3) transitional generated-first precedence that deletes pack art only once all four generated variants exist. Chosen design retained because (1) and (3) both preserve the two-system split that caused the defect, and (2) adds a registry indirection with no second consumer today.",
+      "models": ["gpt-5.6-sol"]
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Two independent exhaustive reviews of the committed diff. All 4 findings accepted and fixed; the two models were complementary — each caught a genuine defect the other rated clean. HIGH (gpt-5.6-sol): door orientation was INVERTED end-to-end. resolveDoorOrientationFromFlanks returned the PASSAGE axis (the convention of the now-deleted top-down renderDoorTile hatch) while DoorOrientation and the texture-key table are indexed by the WALL RUN, so every unambiguous doorway drew its sibling's art — narrow side-on leaves in face-on N/S openings and wide face-on leaves in E/W ones. It was latent because pack art won selection unconditionally on the shipped floors, so the orientation-sensitive generated keys were never reached; retiring the pack path made it live. crossOrientationCount cannot detect it (a mislabelled orientation still resolves its own nominal exact key, so the counter reads 0 either way). Verified independently in source and confirmed visually in the running artifact. Fixed by making the helper return the wall run; the passage convention has no remaining consumer. HIGH (claude-opus-4.8): the new DOOR_ART_CONTRACT_NOTE export had no consumer (a JSDoc {@link} does not count), so knip exited 1 and the blocking lint:dead-code CI job would have failed — verify:fast does not run knip, which is why local green did not surface it. Fixed by consuming the constant as the assertion failure message in the projection-contract block that enforces it. MEDIUM (gpt-5.6-sol): the shared-fit wiring guard was not actually falsifiable for the Kenney branch — reintroducing tileSize / KENNEY_DOOR_FRAME_PX would still pass because the generated branch keeps the symbol present. Fixed with assertions that the frame size may only ever be passed as a canvas dimension, never used in arithmetic. LOW (claude-opus-4.8): TerrainPackPreloadEntry still declared kind 'pool' | 'door' with no producer or consumer after the door preload loop was deleted, plus stale JSDoc promising 'all four door textures'. Fixed. Opus additionally re-derived the fit math and confirmed the Kenney branch is numerically identical to the retired tileSize / 16 constant, verified no stale doorSet reader survives the .strict() schema, and confirmed the projection-contract block and comment-stripping source guard are both non-vacuous. Two new regression gates were added for the root causes that unit tests structurally could not see: an end-to-end topology-to-texture-key matrix (doorway flank geometry through both helpers to the resolved key) pinning the orientation composition, and the Kenney fit-wiring assertions. Post-fix: 116 targeted unit tests pass, knip exits 0, verify:fast passes, and the fix was re-observed in the running artifact (terrain-wall-junctions scenario) with the face-on and side-on leaves now in the correct openings."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.6-sol"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Two distinct models reviewed the same committed diff in parallel with no shared context, and this session adjudicated. The result argues strongly for the multi-model tier: neither review alone was sufficient, and each declared clean the exact area where the other found a real defect. gpt-5.6-sol found the HIGH orientation inversion (resolveDoorOrientationFromFlanks returning the passage axis while the texture-key table is indexed by the wall run, so every doorway drew its sibling's art once the pack path stopped masking it) and the MEDIUM non-falsifiable Kenney fit guard, but rated the deleted-asset, doorSet-removal and telemetry surfaces clean. claude-opus-4.8 found the HIGH knip CI-breaker (DOOR_ART_CONTRACT_NOTE exported with no consumer, since a JSDoc link is not a usage for knip or eslint, which would have failed the blocking lint:dead-code job that verify:fast does not run) and the LOW dead 'door' preload union member, and independently verified the fit math, the schema strictness and the non-vacuity of the projection gate — but missed the orientation inversion entirely. Adjudication: all 4 findings accepted as valid on independent verification, none disputed, none deferred; no finding was rejected so there was nothing to arbitrate between the models. The orientation fix was applied to the helper (returning the wall run) rather than to the key table, because the passage-axis convention belonged to the deleted top-down hatch renderer and has no remaining consumer, so correcting the producer removes the ambiguity instead of relocating it. Because both HIGH findings were invisible to the existing gates — crossOrientationCount structurally cannot see a mislabelled orientation, and verify:fast does not run knip — two durable regression gates were added rather than relying on future review consistency: an end-to-end topology-to-texture-key matrix pinning the full composition from doorway flank geometry to the resolved key, and assertions that the Kenney frame constant may only be passed as a canvas dimension and never used in arithmetic. Post-fix verification: 116 targeted unit tests pass, knip exits 0, verify:fast passes, and the orientation fix was re-observed in the running artifact with the corrected leaves visually confirmed. Round 1 closed clean; no second round was required.",
+          "valid_count": 4
+        }
+      ]
+    }
+  }
+}

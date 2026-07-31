@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "sweep-budget-dead-opt-out-guard",
+  "task_title": "Remove dead ci-recovery-opt-out guard from countLatentBacklog",
+  "estimated_apples": 1,
+  "stages": {}
+}

@@ -23,7 +23,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -37,6 +37,7 @@ import {
   isArtSurfacePath,
   ReconcileError,
   runReconcile,
+  scanOrphanedCheckinBranches,
   type ReconcileDeps,
 } from '../../../scripts/sprites/reconcile-queue.js';
 
@@ -211,15 +212,19 @@ function makeClosingExec(
       : promotedPaths
           .filter((p) => p.startsWith('public/assets/'))
           .map((p) => p.slice('public/assets/'.length));
-  const manifest = {
-    version: 1,
-    entries: Object.fromEntries(
-      inferredManifestAssetPaths.map((assetPath, i) => [
-        `k${i}`,
-        { assetPath, contentHash: TEST_CONTENT_HASH },
-      ]),
-    ),
-  };
+  // In the sharded world the promoted tree carries one self-contained shard per
+  // asset under entries/<key>.json (the aggregate manifest.json is gitignored).
+  // Build a shardPath -> entry map so `git show <ref>:<shardPath>` can return the
+  // single entry the reconciler reads, and expose the shard paths via ls-tree.
+  const shardEntries = new Map<string, { assetPath: string; contentHash: string }>();
+  for (const assetPath of inferredManifestAssetPaths) {
+    const key = assetPath.replace('generated/', '').replace('.png', '');
+    shardEntries.set(`public/assets/generated/entries/${key}.json`, {
+      assetPath,
+      contentHash: TEST_CONTENT_HASH,
+    });
+  }
+  const lsTreePaths = [...promotedPaths, ...shardEntries.keys()];
   return (command, args) => {
     if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
       if (issueListFails) return Promise.resolve({ stdout: '', stderr: 'error', code: 1 });
@@ -237,10 +242,18 @@ function makeClosingExec(
     }
     if (command === 'git' && args[0] === 'ls-tree') {
       if (lsTreeFails) return Promise.resolve({ stdout: '', stderr: 'error', code: 1 });
-      return Promise.resolve({ stdout: promotedPaths.join('\n'), stderr: '', code: 0 });
+      return Promise.resolve({ stdout: lsTreePaths.join('\n'), stderr: '', code: 0 });
     }
     if (command === 'git' && args[0] === 'show') {
-      return Promise.resolve({ stdout: JSON.stringify(manifest), stderr: '', code: 0 });
+      // args[1] is `<ref>:<shardPath>`; the first colon separates them and shard
+      // paths never contain a colon.
+      const spec = typeof args[1] === 'string' ? args[1] : '';
+      const shardPath = spec.slice(spec.indexOf(':') + 1);
+      const entry = shardEntries.get(shardPath);
+      if (entry === undefined) {
+        return Promise.resolve({ stdout: '', stderr: 'missing', code: 1 });
+      }
+      return Promise.resolve({ stdout: JSON.stringify(entry), stderr: '', code: 0 });
     }
     return Promise.resolve({ stdout: '', stderr: `unexpected ${command} ${args[0]}`, code: 1 });
   };
@@ -604,6 +617,108 @@ describe('runReconcile (control-flow)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Layer 2b: scanOrphanedCheckinBranches (faked exec)
+// ---------------------------------------------------------------------------
+
+type FakeCall = { command: string; args: string[] };
+
+function makeScanExec(
+  lsRemoteOutput: string,
+  prListOutput: string,
+  lsCode = 0,
+  prCode = 0,
+): { exec: Exec; calls: FakeCall[] } {
+  const calls: FakeCall[] = [];
+  const exec: Exec = async (command, args, _opts) => {
+    calls.push({ command, args: [...args] });
+    if (command === 'git' && args[0] === 'ls-remote') {
+      return { stdout: lsRemoteOutput, stderr: '', code: lsCode };
+    }
+    if (command === 'gh' && args[0] === 'pr') {
+      return { stdout: prListOutput, stderr: '', code: prCode };
+    }
+    return { stdout: '', stderr: '', code: 0 };
+  };
+  return { exec, calls };
+}
+
+describe('scanOrphanedCheckinBranches', () => {
+  const REMOTE = 'origin';
+  const REPO_ROOT = '/fake/root';
+
+  it('returns empty array when ls-remote returns nothing', async () => {
+    const { exec } = makeScanExec('', '[]');
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('returns all checkin branches when no open PRs exist', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' + 'def456\trefs/heads/assets/checkin-bar\n';
+    const { exec } = makeScanExec(lsRemote, '[]');
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-bar']);
+  });
+
+  it('excludes branches that are the head of an open PR', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' +
+      'def456\trefs/heads/assets/checkin-bar\n' +
+      'ghi789\trefs/heads/assets/checkin-baz\n';
+    const prList = JSON.stringify([{ headRefName: 'assets/checkin-bar' }]);
+    const { exec } = makeScanExec(lsRemote, prList);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-baz']);
+  });
+
+  it('returns empty when all branches have open PRs', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' + 'def456\trefs/heads/assets/checkin-bar\n';
+    const prList = JSON.stringify([
+      { headRefName: 'assets/checkin-foo' },
+      { headRefName: 'assets/checkin-bar' },
+    ]);
+    const { exec } = makeScanExec(lsRemote, prList);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty when ls-remote fails', async () => {
+    const { exec } = makeScanExec('', '[]', 1);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] when gh pr list returns invalid JSON (fail-closed)', async () => {
+    const lsRemote = 'abc123\trefs/heads/assets/checkin-foo\n';
+    const { exec } = makeScanExec(lsRemote, 'not-json', 0, 0);
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    // Fail-closed: invalid PR list → treat as unknown PR state → return [] to avoid
+    // harvesting branches that might have active PRs.
+    expect(result).toEqual([]);
+  });
+
+  it('does not include non-checkin branches from ls-remote', async () => {
+    const lsRemote =
+      'abc123\trefs/heads/assets/checkin-foo\n' +
+      '111222\trefs/heads/assets/batch-123456\n' +
+      '333444\trefs/heads/main\n';
+    const { exec } = makeScanExec(lsRemote, '[]');
+    const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
+    expect(result).toEqual(['assets/checkin-foo']);
+  });
+
+  it('passes --repo flag when repo param is provided', async () => {
+    const lsRemote = 'abc123\trefs/heads/assets/checkin-foo\n';
+    const { exec, calls } = makeScanExec(lsRemote, '[]');
+    await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, 'owner/repo');
+    const prCall = calls.find((c) => c.command === 'gh');
+    expect(prCall?.args).toContain('--repo');
+    expect(prCall?.args).toContain('owner/repo');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Layer 3: real git (temp bare origin + live clone, mocked gh)
 // ---------------------------------------------------------------------------
 
@@ -619,18 +734,12 @@ function toUrl(p: string): string {
   return p.split(path.sep).join('/');
 }
 
-function manifestPath(repo: string): string {
-  return path.join(repo, 'public', 'assets', 'generated', 'manifest.json');
-}
 function catalogPath(repo: string): string {
   return path.join(repo, 'src', 'shared', 'data', 'sprite-catalog.json');
 }
 function writeJson(file: string, value: unknown): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
-}
-function readJson<T>(file: string): T {
-  return JSON.parse(readFileSync(file, 'utf8')) as T;
 }
 
 interface Repos {
@@ -652,7 +761,9 @@ function setupRepos(): Repos {
   gitSync(liveDir, 'config', 'commit.gpgsign', 'false');
   gitSync(liveDir, 'remote', 'add', 'origin', toUrl(originDir));
   // Seed an art-free base on main so the queue branch's diff is art-only.
-  writeJson(manifestPath(liveDir), { version: 1, entries: {} });
+  // The aggregate manifest.json is a gitignored build artifact in the sharded
+  // world, so the committed base carries only the (empty) catalog. Art lands
+  // later as per-asset shards under public/assets/generated/entries/.
   writeJson(catalogPath(liveDir), []);
   gitSync(liveDir, 'add', '-A');
   gitSync(liveDir, 'commit', '--no-verify', '-m', 'base');
@@ -672,23 +783,18 @@ function seedQueueWithArt(
     // Base the queue on main so its non-art files match main (art-only diff).
     gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
     const genDir = path.join(wt, 'public', 'assets', 'generated');
-    mkdirSync(genDir, { recursive: true });
-    const mPath = path.join(wt, 'public', 'assets', 'generated', 'manifest.json');
-    const cPath = path.join(wt, 'src', 'shared', 'data', 'sprite-catalog.json');
-    const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(mPath);
-    const catalog = readJson<Array<Record<string, unknown>>>(cPath);
+    const entriesDir = path.join(genDir, 'entries');
+    mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
       writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
-      manifest.entries[key] = {
+      // One self-contained shard per asset — the sharded source of truth.
+      writeJson(path.join(entriesDir, `${key}.json`), {
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
-      };
-      catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
+      });
     }
-    writeJson(mPath, manifest);
-    writeJson(cPath, catalog);
-    gitSync(wt, 'add', '--', 'public/assets/generated', 'src/shared/data/sprite-catalog.json');
+    gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue art: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
     gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${queueBranch}`);
@@ -708,23 +814,17 @@ function addArtDirectlyToMain(liveDir: string, keys: readonly string[]): void {
   try {
     gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
     const genDir = path.join(wt, 'public', 'assets', 'generated');
-    mkdirSync(genDir, { recursive: true });
-    const mPath = path.join(wt, 'public', 'assets', 'generated', 'manifest.json');
-    const cPath = path.join(wt, 'src', 'shared', 'data', 'sprite-catalog.json');
-    const manifest = readJson<{ version: number; entries: Record<string, unknown> }>(mPath);
-    const catalog = readJson<Array<Record<string, unknown>>>(cPath);
+    const entriesDir = path.join(genDir, 'entries');
+    mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
       writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
-      manifest.entries[key] = {
+      writeJson(path.join(entriesDir, `${key}.json`), {
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
-      };
-      catalog.push({ id: `generated:${key}`, kind: 'sprite', assetPath: `generated/${key}.png` });
+      });
     }
-    writeJson(mPath, manifest);
-    writeJson(cPath, catalog);
-    gitSync(wt, 'add', '--', 'public/assets/generated', 'src/shared/data/sprite-catalog.json');
+    gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `direct-to-main art: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
     gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/main`);
@@ -758,6 +858,39 @@ function simulateSquashMerge(liveDir: string, gh: FakeGh, prNumber: number): voi
   }
   const pr = gh.prs.find((p) => p.number === prNumber);
   if (pr) pr.state = 'merged';
+}
+
+/**
+ * Seed a pre-sharding check-in branch on origin. This branch carries an
+ * aggregate `manifest.json` at `public/assets/generated/manifest.json` (the
+ * layout that predates the July-29 shard migration) instead of per-asset
+ * shards under `entries/`. The test verifies that `runReconcile` filters out
+ * the legacy manifest and only promotes the PNGs.
+ */
+function seedLegacyCheckinBranch(
+  liveDir: string,
+  branchName: string,
+  keys: readonly string[],
+): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-legacy-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const genDir = path.join(wt, 'public', 'assets', 'generated');
+    mkdirSync(genDir, { recursive: true });
+    for (const key of keys) {
+      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+    }
+    // Simulate the pre-shard aggregate manifest.json (no entries/ shards).
+    writeJson(path.join(genDir, 'manifest.json'), { version: 1, assets: keys });
+    gitSync(wt, 'add', '--', 'public/assets/generated');
+    gitSync(wt, 'commit', '--no-verify', '-m', `legacy checkin: ${keys.join(', ')}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${branchName}`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
 }
 
 interface FakePr {
@@ -1391,5 +1524,66 @@ describe('runReconcile (real git)', () => {
     expect(result.status).toBe('pr-open');
     expect(result.closingIssueNumbers).toEqual([]);
     expect(gh.prs[0]!.body).not.toContain('Closes #88');
+  });
+
+  it('(s) harvests orphan checkin branch when queue branch is absent', async () => {
+    // No assets/queue branch — only an orphaned assets/checkin-* branch.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-orphan-only', ['orphan-sprite-var-1']);
+    const gh = new FakeGh();
+    // No open PRs for the orphan branch.
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+    // Should reconcile (not noop) because the orphan branch contributes art.
+    expect(result.status).toBe('pr-open');
+    expect(gh.prs).toHaveLength(1);
+    // The PNG path should be in the promote commit; manifest.json must NOT be.
+    const promotedFiles = gitSync(
+      liveDir,
+      'ls-tree',
+      '--name-only',
+      '-r',
+      'origin/assets/promote',
+      '--',
+      'public/assets/generated',
+    )
+      .split('\n')
+      .filter(Boolean);
+    expect(promotedFiles.some((f) => f.endsWith('orphan-sprite-var-1.png'))).toBe(true);
+    expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
+  });
+
+  it('(t) filters pre-sharding aggregate manifest from legacy checkin branch — idempotent on re-run', async () => {
+    // A legacy orphan branch (aggregate manifest, no shards) plus a queue branch.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['queue-sprite-var-1']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-legacy-123', ['legacy-sprite-var-1']);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+
+    // Verify: legacy manifest.json must not have landed in the promote commit.
+    const promotedFiles = gitSync(
+      liveDir,
+      'ls-tree',
+      '--name-only',
+      '-r',
+      'origin/assets/promote',
+      '--',
+      'public/assets/generated',
+    )
+      .split('\n')
+      .filter(Boolean);
+    expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
+    expect(promotedFiles.some((f) => f.endsWith('legacy-sprite-var-1.png'))).toBe(true);
+    expect(promotedFiles.some((f) => f.endsWith('queue-sprite-var-1.png'))).toBe(true);
+
+    // Re-run: idempotent — same PR reused, no duplicate.
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('pr-open');
+    expect(gh.prs).toHaveLength(1);
   });
 });

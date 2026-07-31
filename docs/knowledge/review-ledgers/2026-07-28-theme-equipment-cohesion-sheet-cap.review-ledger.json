@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "theme-equipment-cohesion-sheet-cap",
+  "task_title": "Theme-equipment cohesion sheet: one tile per item",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Separate-model (gpt-5.6-sol) plan review: approved-with-changes. 2 blocking (validate every approved artifact before min-reduce; add real judgePhaseCollection->judge runner test), 2 non-blocking (exhaustive phase switch; validate non-empty raw-sheet summary). All 4 folded into implementation. Confirmed lowest-variantIndex representative is sound (scores not durable metadata), sprite-sheets extraction byte-identical if requiredArtifact/key/order/label preserved, dropping v-index labels appropriate for 1-tile-per-item."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true
+    }
+  }
+}

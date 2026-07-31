@@ -105,6 +105,29 @@ export interface FloorScenarioState {
   /** EID of the dropped fetch item, or null once collected/not spawned. */
   questItemEid: number | null;
   /**
+   * Room id of the welcome-office hub (the carved set-piece prefab room), or
+   * null if it could not be resolved. STABLE: unlike `objective.welcomeOfficePos`
+   * — which is tightened to the tutorial-goon's live tile after NPC placement and
+   * is explicitly NOT a room anchor — this is the fixed identity of the hub room,
+   * so consumers (HUD markers, the reachability gate) can resolve the room
+   * without depending on a mutable NPC-target tile.
+   */
+  welcomeRoomId?: number | null;
+  /**
+   * Ground-truth signal that the welcome-room prefab authoritatively CARVED (its
+   * tile-write shell actually ran), persisted straight from
+   * `carveWelcomeRoomPrefab`'s `fitted` result. Consumers (the reachability gate)
+   * MUST use this rather than re-deriving carve success from `room.bounds ==
+   * footprint`: Floor 1's config permits the generator to emit a coincidentally
+   * 10x9 welcome room that `tagRoomAsSafe`/`sealSpecialRooms` then hardens, so a
+   * bounds match can be true even on the render-only no-fit fallback — a false
+   * "carved" that would let a silently-degraded floor pass the gate. `false` (or
+   * absent) ⇒ degraded to the legacy render-only stamp; that is a hard gate
+   * failure and a first-class degradation count, never an acceptable resting
+   * state.
+   */
+  welcomeRoomCarved?: boolean;
+  /**
    * Door entity IDs guarding each boss room, keyed by the same boss ID used in
    * `FloorObjectiveState.bossBattles` ('slime-rat', 'staircase', …).
    */

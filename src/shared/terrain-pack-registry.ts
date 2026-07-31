@@ -11,6 +11,8 @@
  * would reach this registry).
  */
 import industrialCaveManifestJson from './data/terrain-packs/industrial-cave.manifest.json';
+import floor1DungeonManifestJson from './data/terrain-packs/floor1-dungeon.manifest.json';
+import floor1CaveManifestJson from './data/terrain-packs/floor1-cave.manifest.json';
 import caelesFixtureManifestJson from './data/terrain-packs/caeles-fixture.manifest.json';
 import {
   terrainPackDefSchema,
@@ -25,6 +27,10 @@ function loadTerrainPack(id: TerrainPackId): TerrainPackDef {
   let manifestJson: unknown;
   if (id === 'industrial-cave') {
     manifestJson = industrialCaveManifestJson;
+  } else if (id === 'floor1-dungeon') {
+    manifestJson = floor1DungeonManifestJson;
+  } else if (id === 'floor1-cave') {
+    manifestJson = floor1CaveManifestJson;
   } else if (id === 'caeles-fixture') {
     manifestJson = caelesFixtureManifestJson;
   } else {

@@ -1,0 +1,42 @@
+{
+  "briefId": "batfolk-diver",
+  "spriteName": "batfolk-diver-var-3",
+  "assetPath": "generated/batfolk-diver-var-3.png",
+  "approvedAt": "2026-07-08T05:03:21.849Z",
+  "sourceRun": "generated/runs/batfolk-diver/2026-07-08T04-43-49-39b09bdb",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 31,
+    "y": 35,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 35,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": "enemy",
+  "contentHash": "69b288b96ca12251eb17ac1dd2bf7e27022f0d9b7fb8cb57f7e15e301d730ad2",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-diver\\2026-07-08T04-43-49-39b09bdb\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-diver\\2026-07-08T04-43-49-39b09bdb\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\batfolk-diver\\2026-07-08T04-43-49-39b09bdb\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 3,
+    "width": 50,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

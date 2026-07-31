@@ -669,6 +669,7 @@ describe('Verdigris Glamour — pendingBursts durable queue', () => {
     });
     expect(world.mobAbilities.pendingBursts).toHaveLength(1);
     expect(world.mobAbilities.pendingBursts[0]).toMatchObject({
+      kind: 'resolution',
       abilityId: VERDIGRIS_GLAMOUR_ABILITY_ID,
       geometry: { kind: 'circle' },
     });

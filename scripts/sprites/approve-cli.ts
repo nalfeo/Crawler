@@ -17,30 +17,52 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { approveVariant, ApproveError, loadApprovedEntry, type ManifestEntry } from './approve.js';
+import {
+  approveFrameSequence,
+  approveVariant,
+  ApproveError,
+  loadApprovedEntry,
+  loadApprovedFrameSequenceEntry,
+  type ManifestEntry,
+} from './approve.js';
 import { runQueueCommit } from './queue-commit.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 
 interface ParsedArgs {
   readonly runDir: string;
-  readonly variantIndex: number;
+  /** Absent when `--sequence` is set — a frame-sequence run approves as one unit. */
+  readonly variantIndex?: number;
+  /**
+   * Approve the run as a Slice B frame-sequence (walk-cycle) instead of a
+   * single design-candidate variant. Mutually exclusive with `--variant`.
+   */
+  readonly sequence: boolean;
+  readonly allowHardBlocked: boolean;
 }
 
 function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   if (argv.length === 0) {
     throw new Error(
       'Usage: npm run sprites:approve -- <runDir> --variant N\n' +
-        '  <runDir>      Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
-        '  --variant N   Variant index (0-based) to approve',
+        '   or: npm run sprites:approve -- <runDir> --sequence\n' +
+        '  <runDir>              Absolute or repo-relative path to a generated/runs/<brief>/<runId>\n' +
+        '  --variant N           Variant index (0-based) to approve as a standalone sprite\n' +
+        '  --sequence            Approve every ordered frame of a frameSequence run as one\n' +
+        '                        walk-cycle animation sheet (mutually exclusive with --variant)\n' +
+        '  --allow-hard-blocked  Override the judge hard-block veto (use consciously)',
     );
   }
 
   let runDir: string | undefined;
   let variantIndex: number | undefined;
+  let allowHardBlocked = false;
+  let sequence = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === '--variant' || arg === '-v') {
+    if (arg === '--sequence') {
+      sequence = true;
+    } else if (arg === '--variant' || arg === '-v') {
       const next = argv[++i];
       if (next === undefined) {
         throw new Error('--variant requires a numeric argument');
@@ -57,6 +79,8 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
         throw new Error(`--variant must be a non-negative integer, got: ${value}`);
       }
       variantIndex = parsed;
+    } else if (arg === '--allow-hard-blocked') {
+      allowHardBlocked = true;
     } else if (!arg.startsWith('-')) {
       if (runDir !== undefined) {
         throw new Error(`Unexpected positional argument: ${arg} (already have ${runDir})`);
@@ -70,11 +94,14 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   if (runDir === undefined) {
     throw new Error('Missing required positional argument <runDir>');
   }
-  if (variantIndex === undefined) {
-    throw new Error('Missing required --variant N');
+  if (sequence && variantIndex !== undefined) {
+    throw new Error('--sequence and --variant are mutually exclusive');
+  }
+  if (!sequence && variantIndex === undefined) {
+    throw new Error('Missing required --variant N (or pass --sequence for a frame-sequence run)');
   }
 
-  return { runDir, variantIndex };
+  return { runDir, variantIndex, allowHardBlocked, sequence };
 }
 
 function exitCodeForError(kind: ApproveError['kind']): number {
@@ -82,10 +109,19 @@ function exitCodeForError(kind: ApproveError['kind']): number {
     case 'run-not-found':
     case 'processed-missing':
     case 'variant-not-found':
+    case 'frame-missing':
+    case 'not-frame-sequence':
       return 2;
     case 'summary-invalid':
     case 'manifest-invalid':
       return 3;
+    case 'hard-blocked':
+      return 4;
+    case 'frame-incoherent':
+      // Distinct exit code: this is the hard coherence gate refusing to ship
+      // drifted art, not a plain input/config error. Callers/CI should treat
+      // this as "regenerate the sequence", not "fix a path typo".
+      return 4;
     default:
       return 1;
   }
@@ -111,50 +147,99 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
   try {
     let entry: ManifestEntry;
     let alreadyApproved = false;
-    try {
-      entry = approveVariant({
-        runDir,
-        variantIndex: parsed.variantIndex,
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-        repoRoot,
-      });
-      process.stdout.write(
-        `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +
-          `  asset: ${entry.assetPath}\n` +
-          `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
-          `  source: ${entry.sourceRun}\n` +
-          `  sensors: ${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''}\n`,
-      );
-    } catch (err) {
-      // An exact-duplicate re-approve is NOT a terminal failure for durability:
-      // the entry already exists in the manifest, but its earlier best-effort
-      // queue-commit may never have landed on assets/queue. Load the stored
-      // entry and fall through to the SAME queue-commit block below so re-running
-      // the approve genuinely RETRIES the durable push — which is exactly what the
-      // failure warning tells the operator to do. Before this the CLI exited here,
-      // never reaching queue-commit, so that advice was false (concern #6).
-      if (err instanceof ApproveError && err.kind === 'already-approved') {
-        const existing = loadApprovedEntry({
+    if (parsed.sequence) {
+      try {
+        entry = approveFrameSequence({
           runDir,
-          variantIndex: parsed.variantIndex,
           manifestPath,
+          catalogPath,
+          publicAssetsDir,
+          repoRoot,
         });
-        if (!existing) {
-          // No stored entry to retry against — nothing to make durable; keep the
-          // original already-approved error + exit code.
+        process.stdout.write(
+          `Approved ${entry.briefId} frame sequence\n` +
+            `  asset: ${entry.assetPath}\n` +
+            `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
+            `  source: ${entry.sourceRun}\n` +
+            `  animation: ${entry.animation ? JSON.stringify(entry.animation) : '(none)'}\n`,
+        );
+      } catch (err) {
+        // Mirror the `--variant` retry dance below: an exact-duplicate
+        // re-approve is NOT a terminal failure for durability. The manifest
+        // entry already exists, but its earlier best-effort queue-commit may
+        // never have landed on assets/queue. Load the stored entry and fall
+        // through to the SAME queue-commit block below so re-running the
+        // approve genuinely RETRIES the durable push — which is exactly what
+        // the failure warning tells the operator to do. Before this fix the
+        // CLI exited here, never reaching queue-commit, so that advice was
+        // false for `--sequence` (round-1 code review finding).
+        if (err instanceof ApproveError && err.kind === 'already-approved') {
+          const existing = loadApprovedFrameSequenceEntry({ runDir, manifestPath, repoRoot });
+          if (!existing) {
+            process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
+            return exitCodeForError(err.kind);
+          }
+          entry = existing;
+          alreadyApproved = true;
+          process.stdout.write(
+            `Already approved ${entry.briefId} frame sequence \u2014 retrying durable queue-commit\n` +
+              `  asset: ${entry.assetPath}\n`,
+          );
+        } else if (err instanceof ApproveError) {
           process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
           return exitCodeForError(err.kind);
+        } else {
+          throw err;
         }
-        entry = existing;
-        alreadyApproved = true;
+      }
+    } else {
+      const variantIndex = parsed.variantIndex!;
+      try {
+        entry = approveVariant({
+          runDir,
+          variantIndex,
+          manifestPath,
+          catalogPath,
+          publicAssetsDir,
+          repoRoot,
+          allowHardBlocked: parsed.allowHardBlocked,
+        });
         process.stdout.write(
-          `Already approved ${entry.briefId} variant ${entry.variantIndex} \u2014 retrying durable queue-commit\n` +
-            `  asset: ${entry.assetPath}\n`,
+          `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +
+            `  asset: ${entry.assetPath}\n` +
+            `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
+            `  source: ${entry.sourceRun}\n` +
+            `  sensors: ${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''}\n`,
         );
-      } else {
-        throw err;
+      } catch (err) {
+        // An exact-duplicate re-approve is NOT a terminal failure for durability:
+        // the entry already exists in the manifest, but its earlier best-effort
+        // queue-commit may never have landed on assets/queue. Load the stored
+        // entry and fall through to the SAME queue-commit block below so re-running
+        // the approve genuinely RETRIES the durable push — which is exactly what the
+        // failure warning tells the operator to do. Before this the CLI exited here,
+        // never reaching queue-commit, so that advice was false (concern #6).
+        if (err instanceof ApproveError && err.kind === 'already-approved') {
+          const existing = loadApprovedEntry({
+            runDir,
+            variantIndex,
+            manifestPath,
+          });
+          if (!existing) {
+            // No stored entry to retry against — nothing to make durable; keep the
+            // original already-approved error + exit code.
+            process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
+            return exitCodeForError(err.kind);
+          }
+          entry = existing;
+          alreadyApproved = true;
+          process.stdout.write(
+            `Already approved ${entry.briefId} variant ${entry.variantIndex} \u2014 retrying durable queue-commit\n` +
+              `  asset: ${entry.assetPath}\n`,
+          );
+        } else {
+          throw err;
+        }
       }
     }
 

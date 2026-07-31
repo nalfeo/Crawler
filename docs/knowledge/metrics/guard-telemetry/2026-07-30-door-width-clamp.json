@@ -1,0 +1,35 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "door-width-clamp",
+  "date": "2026-07-30",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 132,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 132
+    }
+  },
+  "tools": {
+    "ask_user": 1,
+    "chrome-devtools-list_pages": 1,
+    "chrome-devtools-navigate_page": 1,
+    "create": 2,
+    "edit": 17,
+    "filesystem-write_file": 1,
+    "grep": 16,
+    "playwright-browser_close": 1,
+    "playwright-browser_evaluate": 7,
+    "playwright-browser_navigate": 2,
+    "playwright-browser_take_screenshot": 2,
+    "playwright-browser_wait_for": 2,
+    "powershell": 40,
+    "read_powershell": 7,
+    "rename_branch": 1,
+    "sql": 1,
+    "view": 30
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

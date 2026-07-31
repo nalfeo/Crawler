@@ -40,10 +40,24 @@ export interface SetPiecePropRender {
    * keep a stable order without crossing a depth band boundary.
    */
   readonly depth: number;
-  /** Display width in feet (renderer multiplies by PIXELS_PER_FOOT). */
+  /** True horizontal width in feet (renderer multiplies by PIXELS_PER_FOOT). */
   readonly widthFt: number;
-  /** Display height in feet. */
+  /**
+   * Apparent VERTICAL height in feet — how tall the object stands, not its
+   * depth across the floor. Crawler's prop art is front-elevation, so a
+   * sprite's vertical pixels are the object's height. See `SpriteLayer`.
+   */
   readonly heightFt: number;
+  /**
+   * True when the prop lies IN the floor plane (rug, stain, tape, seam), so both
+   * declared feet are real ground extents and the renderer must honour both via
+   * an aspect-preserving contain-fit. Upright props are height-authoritative
+   * instead: their width follows the art, so a tall object can never be silently
+   * flattened by a conservative declared width.
+   */
+  readonly floorPlane?: boolean;
+  /** Anchor by bottom-centre (object stands on its position) instead of centre. */
+  readonly anchorBase?: boolean;
   /** Optional uniform scale multiplier applied on top of the footprint (1 = native). */
   readonly scale?: number;
   /** Mirror the sprite horizontally / vertically at render time. */

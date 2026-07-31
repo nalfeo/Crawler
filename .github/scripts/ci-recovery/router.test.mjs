@@ -29,6 +29,7 @@ import {
   isRepairWakeEligible,
   isRepairWindowSweepEvent,
   isRetryableError,
+  isPrimaryRateLimitExhausted,
   listRecentOutstandingRunIds,
   MAX_DISPATCH_BUDGET_TRAIN_BUSY,
   MAX_DISPATCH_BUDGET_TRAIN_IDLE,
@@ -51,15 +52,51 @@ import {
   waitForOutstandingCount,
 } from './router.mjs';
 import {
+  CI_INCIDENT_MARKER,
+  COORDINATOR_DATA_PREFIX,
+  MANAGED_COMMENT_MARKERS,
+  MANAGED_COMMENT_PREFIX,
+  LOOP_INCIDENT_FINGERPRINT_PREFIX,
+  LOOP_INCIDENT_MARKER,
+  MERGE_TRAIN_EMPTY_INCIDENT_MARKER,
+  MERGE_TRAIN_LANDED_MARKER,
+  STATE_DATA_PREFIX,
+  TASK_COMMENT_MARKER,
+  LIFECYCLE_DATA_PREFIX,
+} from './markers.mjs';
+import {
   automationProgressKey,
   blockerFingerprint,
   makeState,
+  RECOVERY_STATUSES,
   renderStateComment,
 } from './state.mjs';
 
 const workflowPath = new URL('../../workflows/ci-recovery-router.yml', import.meta.url);
 const workflow = parse(await readFile(workflowPath, 'utf8'));
 const routeJob = workflow.jobs.route;
+
+test('periodic cadence is centralized in ci-liveness-sweep', async () => {
+  assert.equal(
+    workflow.on?.schedule,
+    undefined,
+    'ci-recovery-router.yml should be event-driven + workflow_dispatch only',
+  );
+  const livenessWorkflow = await readFile(
+    new URL('../../workflows/ci-liveness-sweep.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(livenessWorkflow, /cron:\s*'\*\/10 \* \* \* \*'/);
+  assert.match(livenessWorkflow, /workflow_id:\s*'ci-recovery-router\.yml'/);
+  // Closed-fence reclaim is now routed through the router's reaper pass
+  // (selectReaperBatch combined pool) rather than dispatched directly from the
+  // liveness sweep. Verify the router script contains the closed-fence scan.
+  const routerScript = await readFile(
+    new URL('../ci-recovery/router.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(routerScript, /closed.*fence.*candidate|closedFenceCandidates/i);
+});
 
 function pickInvariantDispatchCaps(resolved) {
   return {
@@ -151,6 +188,40 @@ test('flag-off schedule sweeps exclude blocked-labeled PRs from dispatch', () =>
 
   assert.deepEqual(numbers, [1, 2, 3, 4, 5, 6, 7, 8]);
   assert.ok(!numbers.includes(99), 'merge-train-blocked PR must be excluded');
+});
+
+test('flag-off schedule sweeps exclude lifecycle-quarantined/abandoned PRs from dispatch', () => {
+  const scheduledPulls = [
+    {
+      number: 1,
+      draft: false,
+      labels: [{ name: 'ci-lifecycle-quarantined' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [{ name: 'ci-lifecycle-abandoned' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 3,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+  const numbers = collectPrNumbers({
+    payload: { repository: { default_branch: 'main' } },
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 5,
+    trainEnabled: false,
+    now: new Date('1970-01-01T00:00:00Z'),
+  });
+
+  assert.deepEqual(numbers, [3]);
 });
 
 test('collectPrNumbers keeps event-scoped PR dispatch uncapped for non-schedule events', () => {
@@ -434,6 +505,8 @@ test('DISPATCH_BLOCKED_LABEL_NAMES contains all required blocked labels', () => 
   for (const required of [
     'ci-conflict-order-wait',
     'ci-conflict-escalation',
+    'ci-lifecycle-quarantined',
+    'ci-lifecycle-abandoned',
     'merge-train-blocked',
     'merge-train-validation-failed',
     'human-approval-required',
@@ -682,6 +755,214 @@ test('repair window: conflict-fenced PRs do not consume sweep slots', () => {
   });
 
   assert.deepEqual(numbers, [2096]);
+});
+
+test('repair window: broad sweep rotates selection instead of pinning the oldest fixed prefix', () => {
+  const pulls = Array.from({ length: 8 }, (_, index) => ({
+    number: 3001 + index,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+
+  const firstWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:00:00Z'),
+  });
+  const secondWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:11:00Z'),
+  });
+
+  assert.deepEqual(firstWindow, [3001, 3002, 3003, 3004, 3005, 3006]);
+  assert.deepEqual(secondWindow, [3002, 3003, 3004, 3005, 3006, 3007]);
+});
+
+test('invariant: every writable recovery status is dispatch-reachable through some train path', () => {
+  const nowDate = new Date(0); // rotation = 0, deterministic sweep order
+  const created_at = nowDate.toISOString();
+
+  for (const [index, status] of RECOVERY_STATUSES.entries()) {
+    const prNumber = 3100 + index;
+    // `waiting` needs the parking label; others must not have it so they land in
+    // the plain sweep bucket, exercising the eligibility filter for each status.
+    const labels = status === 'waiting' ? [{ name: 'ci-recovery-waiting' }] : [];
+    const pull = {
+      number: prNumber,
+      state: 'open',
+      draft: false,
+      created_at,
+      base: { ref: 'main' },
+      labels,
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      recoveryState: makeState({
+        prNumber,
+        headSha: `head-${prNumber}`,
+        fingerprint: `status-${status}`,
+        owner: 'none',
+        status,
+        trigger: status === 'waiting' ? 'admission-wait' : status,
+        blockers: [],
+        attempt: 0,
+        updatedAt: created_at,
+      }),
+    };
+
+    // Use the schedule (non-direct) path so routing logic for each status is
+    // actually exercised.  If isRepairWakeEligible or the sweep filter is broken
+    // for a given status, the PR is excluded and the assertion below fails.
+    const numbers = collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [pull],
+      trainEnabled: true,
+      now: nowDate,
+    });
+    assert.ok(
+      numbers.includes(prNumber),
+      `status=${status} must be reachable through schedule sweep`,
+    );
+  }
+});
+
+test('repair wake invariant: schedule sweep reaches ownerless idle/waiting states but excludes genuine waiting blockers', () => {
+  const now = '2026-07-27T00:00:00Z';
+  const idle = {
+    number: 3201,
+    state: 'open',
+    draft: false,
+    created_at: now,
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    recoveryState: makeState({
+      prNumber: 3201,
+      headSha: 'head-3201',
+      fingerprint: 'idle',
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: now,
+    }),
+  };
+  const waitingNoBlockers = {
+    ...idle,
+    number: 3202,
+    recoveryState: makeState({
+      prNumber: 3202,
+      headSha: 'head-3202',
+      fingerprint: 'waiting-no-blockers',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'admission-wait',
+      blockers: [],
+      attempt: 0,
+      updatedAt: now,
+    }),
+  };
+  const waitingBlocked = {
+    ...idle,
+    number: 3203,
+    recoveryState: makeState({
+      prNumber: 3203,
+      headSha: 'head-3203',
+      fingerprint: 'waiting-blocked',
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'waiting',
+      blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+      attempt: 1,
+      updatedAt: now,
+    }),
+  };
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [idle, waitingNoBlockers, waitingBlocked],
+    trainEnabled: true,
+    now: new Date(now),
+  });
+
+  assert.ok(numbers.includes(3201), 'idle waiting PR should be repair-sweep reachable');
+  assert.ok(
+    numbers.includes(3202),
+    'ownerless waiting+no-blockers PR should be repair-sweep reachable',
+  );
+  assert.ok(!numbers.includes(3203), 'genuine waiting-with-blockers PR should remain hidden');
+});
+
+test('repair window: waiting-transition PRs stay prioritized even when sweep backlog exceeds window', () => {
+  const transitionA = {
+    number: 3301,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting-transition' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const transitionB = {
+    number: 3302,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-02T00:00:00Z',
+    base: { ref: 'main' },
+    labels: [{ name: 'ci-recovery-waiting-transition' }],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  };
+  const sweep = Array.from({ length: 6 }, (_, index) => ({
+    number: 3310 + index,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(3 + index).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+
+  const earlyWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [transitionA, transitionB, ...sweep],
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:00:00Z'),
+  });
+  const rotatedWindow = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [transitionA, transitionB, ...sweep],
+    trainEnabled: true,
+    now: new Date('2026-07-27T00:14:00Z'),
+  });
+
+  assert.ok(earlyWindow.includes(3301) && earlyWindow.includes(3302));
+  assert.ok(rotatedWindow.includes(3301) && rotatedWindow.includes(3302));
+  // Transitions must appear before sweep PRs regardless of rotation so that
+  // partitionDispatchable() dispatches them first under backpressure.
+  assert.equal(earlyWindow.indexOf(3301), 0, 'transitionA must be at position 0');
+  assert.equal(earlyWindow.indexOf(3302), 1, 'transitionB must be at position 1');
+  assert.equal(rotatedWindow.indexOf(3301), 0, 'transitionA at position 0 under rotation');
+  assert.equal(rotatedWindow.indexOf(3302), 1, 'transitionB at position 1 under rotation');
+  assert.equal(earlyWindow.length, 6);
+  assert.equal(rotatedWindow.length, 6);
 });
 
 test('repair window: an explicitly dispatched conflict-fenced PR is still honored', () => {
@@ -951,6 +1232,7 @@ test('train schedule rechecks owned slots for expiry without widening the window
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date(0),
     }),
     [1, 2, 3, 4, 5, 6],
   );
@@ -974,6 +1256,7 @@ test('train sweeps skip genuine waiting PRs while exact direct events preserve t
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date(0),
     }),
     [1, 2, 3, 4, 5, 6],
   );
@@ -1068,6 +1351,7 @@ test('train undirected sweeps select at most the six oldest eligible PRs', () =>
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date(0),
     }),
     [1, 2, 3, 4, 5, 6],
   );
@@ -1099,18 +1383,20 @@ test('train PR-less default-branch CI sweeps preserve owner slots without redisp
     recoveryState: index === 0 ? automationOwnerState(1, '2026-07-17T12:00:00.000Z') : undefined,
   }));
 
+  const result = collectPrNumbers({
+    payload: {
+      repository: { default_branch: 'main' },
+      workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
+    },
+    eventName: 'workflow_run',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: pulls,
+    trainEnabled: true,
+    now: new Date('2026-07-17T12:10:00.000Z'),
+  });
+  // Verify the healthy-owner PR is excluded; order is rotation-based so compare as a set.
   assert.deepEqual(
-    collectPrNumbers({
-      payload: {
-        repository: { default_branch: 'main' },
-        workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
-      },
-      eventName: 'workflow_run',
-      repository: 'nalfeo/Crawler',
-      scheduledPulls: pulls,
-      trainEnabled: true,
-      now: new Date('2026-07-17T12:10:00.000Z'),
-    }),
+    [...result].sort((a, b) => a - b),
     [2, 3, 4, 5, 6, 7],
   );
 });
@@ -1170,15 +1456,17 @@ test('direct events retain a healthy owner while broad sweeps include stale and 
     recoveryState: null,
   };
 
+  // Order is rotation-based; compare as a sorted set.
+  const scheduleResult = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls: [healthy, stale, inconsistent],
+    trainEnabled: true,
+    now: new Date('2026-07-17T12:10:00.000Z'),
+  });
   assert.deepEqual(
-    collectPrNumbers({
-      payload: {},
-      eventName: 'schedule',
-      repository: 'nalfeo/Crawler',
-      scheduledPulls: [healthy, stale, inconsistent],
-      trainEnabled: true,
-      now: new Date('2026-07-17T12:10:00.000Z'),
-    }),
+    [...scheduleResult].sort((a, b) => a - b),
     [2, 3],
   );
   assert.deepEqual(
@@ -1551,11 +1839,21 @@ test('train sweeps preserve synchronize only for the directly triggered PR', () 
 
 test('managed recovery comments do not feed the recovery router', () => {
   for (const body of [
+    `${STATE_DATA_PREFIX}x -->\nstate-data`,
+    `${TASK_COMMENT_MARKER} fingerprint=x -->\ntask`,
+    `${CI_INCIDENT_MARKER}\nincident`,
     '<!-- crawler-ci-state:v1 -->\nstate',
-    '<!-- crawler-ci-task:v1 fingerprint=x -->\ntask',
     '<!-- crawler-merge-train:v1 -->\nstatus',
+    `${MERGE_TRAIN_LANDED_MARKER}\nlanded`,
+    `${MERGE_TRAIN_EMPTY_INCIDENT_MARKER}\nempty-train-incident`,
     '<!-- crawler-review-request:v1 head=x reason=ready -->',
     '<!-- crawler-review-conflict:v1 episode=x head=y base=z -->',
+    `${LIFECYCLE_DATA_PREFIX}x -->\nlifecycle-data`,
+    '<!-- crawler-pr-lifecycle:v1 -->\nlifecycle',
+    `${COORDINATOR_DATA_PREFIX}x -->\ncoordinator-data`,
+    '<!-- crawler-ci-conflict-coordinator:v1 -->\ncoordinator',
+    `${LOOP_INCIDENT_MARKER}\nloop-incident`,
+    `${LOOP_INCIDENT_FINGERPRINT_PREFIX}x -->\nloop-fingerprint`,
   ]) {
     assert.equal(isManagedCommentEvent({ comment: { body } }, 'issue_comment'), true);
   }
@@ -1570,18 +1868,34 @@ test('managed recovery comments do not feed the recovery router', () => {
 
 test('managed recovery comments are rejected by the workflow job guard', () => {
   assert.equal(typeof routeJob.if, 'string');
-  for (const marker of [
-    '<!-- crawler-ci-state:v1 -->',
-    '<!-- crawler-ci-task:v1',
-    '<!-- crawler-merge-train:v1 -->',
-    '<!-- crawler-review-request:v1',
-    '<!-- crawler-review-conflict:v1',
-  ]) {
+  // All managed-comment markers start with '<!-- crawler-' (MANAGED_COMMENT_PREFIX).
+  // The YAML filter uses a single prefix check so new markers are covered
+  // automatically without editing the workflow file.
+  assert.ok(
+    routeJob.if.includes(`!startsWith(github.event.comment.body, '${MANAGED_COMMENT_PREFIX}')`),
+    `expected job guard to use the shared managed-comment prefix '${MANAGED_COMMENT_PREFIX}'`,
+  );
+  // Every marker in MANAGED_COMMENT_MARKERS must satisfy the shared prefix.
+  for (const marker of MANAGED_COMMENT_MARKERS) {
     assert.ok(
-      routeJob.if.includes(`!startsWith(github.event.comment.body, '${marker}')`),
-      `expected job guard for ${marker}`,
+      marker.startsWith(MANAGED_COMMENT_PREFIX),
+      `marker '${marker}' does not start with MANAGED_COMMENT_PREFIX '${MANAGED_COMMENT_PREFIX}'`,
     );
   }
+});
+
+test('managed marker inventory covers every exported managed marker string exactly once', async () => {
+  const markerModule = await import('./markers.mjs');
+  const exportedManagedMarkers = Object.entries(markerModule)
+    .filter(
+      ([name, value]) =>
+        name !== 'MANAGED_COMMENT_PREFIX' &&
+        typeof value === 'string' &&
+        value.startsWith(MANAGED_COMMENT_PREFIX),
+    )
+    .map(([, value]) => value)
+    .sort();
+  assert.deepEqual([...new Set(MANAGED_COMMENT_MARKERS)].sort(), exportedManagedMarkers);
 });
 
 test('router listens only for completed CI workflow runs', () => {
@@ -1661,6 +1975,62 @@ test('isRetryableError only retries relevant HTTP errors', () => {
   assert.equal(isRetryableError(makeError(403, 'API rate limit exceeded for user')), true);
   assert.equal(isRetryableError(makeError(403, 'Forbidden')), false);
   assert.equal(isRetryableError(makeError(404, 'Not Found')), false);
+});
+
+// Incident 2026-07-30: `CRAWLER_CI_PAT` is a classic user PAT whose 5,000 req/hr
+// core budget is shared across every token owned by that user. Once exhausted,
+// the budget only refills at `x-ratelimit-reset` — up to an hour later. Retrying
+// it 6 times with a 30s cap can never succeed and burns 6 requests per call
+// against an already-empty budget, deepening the outage it is waiting on.
+test('isRetryableError does not retry a primary rate-limit exhaustion', () => {
+  const exhausted = makeError(403, 'API rate limit exceeded for user ID 14006787', {
+    'x-ratelimit-remaining': '0',
+    'x-ratelimit-limit': '5000',
+  });
+  assert.equal(isPrimaryRateLimitExhausted(exhausted), true);
+  assert.equal(isRetryableError(exhausted), false);
+});
+
+test('isRetryableError does not retry a 429 primary rate-limit exhaustion', () => {
+  const exhausted = makeError(429, 'API rate limit exceeded for user ID 14006787', {
+    'x-ratelimit-remaining': '0',
+    'x-ratelimit-limit': '5000',
+  });
+  assert.equal(isPrimaryRateLimitExhausted(exhausted), true);
+  assert.equal(isRetryableError(exhausted), false);
+});
+
+test('isRetryableError still retries a rate-limit 403 that has budget remaining', () => {
+  // Budget left but still 403 => not primary exhaustion; treat as transient.
+  const transient = makeError(403, 'API rate limit exceeded', {
+    'x-ratelimit-remaining': '17',
+  });
+  assert.equal(isPrimaryRateLimitExhausted(transient), false);
+  assert.equal(isRetryableError(transient), true);
+});
+
+test('isRetryableError still retries secondary rate limits even at zero budget', () => {
+  // Secondary limits are short-lived and carry retry-after, so backoff works.
+  const secondary = makeError(403, 'You have exceeded a secondary rate limit', {
+    'x-ratelimit-remaining': '0',
+    'retry-after': '60',
+  });
+  assert.equal(isRetryableError(secondary), true);
+});
+
+test('isPrimaryRateLimitExhausted detects exhausted budget only on 403/429', () => {
+  assert.equal(
+    isPrimaryRateLimitExhausted(
+      makeError(429, 'Too Many Requests', { 'x-ratelimit-remaining': '0' }),
+    ),
+    true,
+  );
+  assert.equal(isPrimaryRateLimitExhausted(makeError(404, 'Not Found')), false);
+  assert.equal(isPrimaryRateLimitExhausted(makeError(403, 'Forbidden')), false);
+  assert.equal(
+    isPrimaryRateLimitExhausted(makeError(500, 'Server Error', { 'x-ratelimit-remaining': '0' })),
+    false,
+  );
 });
 
 test('computeBackoffDelayMs honors Retry-After and caps delay', () => {

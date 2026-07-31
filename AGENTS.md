@@ -130,6 +130,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Check size coverage       | `npm run check:size-coverage`             |
 | Check weight coverage     | `npm run check:weight-coverage`           |
 | Check asset sort order    | `npm run check:sort-assets`               |
+| Check manifest hard-block | `npm run check:manifest-hard-blocked`     |
 | Boss ability status       | `npm run boss-abilities:status`           |
 | Docs index                | `npm run docs:index`                      |
 | Visual review             | `npm run review:visual`                   |
@@ -279,6 +280,14 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   <!-- Source handoff: 2026-06-24-safe-room-zoom-shepherd.md -->
 
 ## Known Environment Quirks
+
+- **`claude-sonnet-4.5` is deprecated (since 2026-05-06) — do NOT use it.** If
+  any task call specifies `model="claude-sonnet-4.5"`, the session will fail
+  immediately at `session.create`. Use `claude-sonnet-4.6` or `claude-sonnet-5`
+  instead. This applies to all `task()` calls in skills and agent sessions.
+  If you need to update a legacy reference, replace `claude-sonnet-4.5` →
+  `claude-sonnet-4.6` everywhere in accessible configuration.
+  <!-- Source issue: #2209, handoffs 2026-07-25-ci-recovery-loop-pr-1886, 2026-07-27-ci-recovery-typo-threshold -->
 
 - **Copilot guards load once per session — `extensions_reload` after syncing
   main.** A guard merged to `main` after your session started is not running in

@@ -1,0 +1,158 @@
+# ASPECT NOTE (Asset Forge, 2026-07-26): 1 map tile = 4 ft, renderer is
+# height-authoritative. This is a FRONT-ELEVATION door leaf seen dead-on — a flat
+# plane, so the drawn bounding box equals the flat elevation aspect (no receding
+# side face to add width, unlike the 3/4 carcass props). Intended real size is
+# 3.5 ft wide x 7 ft tall. The physically meaningful dimension is the 7 ft HEIGHT
+# (a door is sized by how tall a person is: 6.6 ft = 1.65 tiles), so height is
+# declared (128) and width is DERIVED: 128 * 3.5 / 7 = 64. 128 >= 2*64, so
+# resizeSpriteStrategy() returns 'height': the height is locked at 128 and the
+# shipped width follows the DRAWN subject's aspect — aspect-true by construction,
+# no `fit` letterboxing and no hand-typed second dimension.
+#
+# `sizeVariant: tall` is deliberately NOT used (2026-07-27 living-area handoff:
+# the model ignores portrait cells, the slicer cuts on the declared tall grid and
+# each "variant" becomes a column of stacked objects that can pass every gate).
+# Default square cells slice reliably; the 1:2 proportion is driven in PROSE.
+#
+# WHY THIS EXISTS: the welcome-room shell door currently reuses a SQUARE
+# kenney-tiny-dungeon tile stretched to 1:2, which renders as a washed-out pale
+# blob with no readable door detail.
+type: prop
+name: welcome-room-door
+description: |
+  A heavy DUNGEON DOOR, closed, set in a stone frame. Front elevation, looking
+  STRAIGHT AT THE DOOR dead-on — the face of the door is exactly parallel to the
+  screen, with NO tilt, NO rotation, NO oblique angle and NO perspective. Modern
+  high-quality pixel art, silhouette readable at 16px.
+
+  ROUND 2 STILL FAILED ON PROPORTION — READ THE NEXT PARAGRAPH TWICE. Round 1
+  came back at 0.72-0.89 : 1 and round 2 at 0.82 : 1, i.e. a nearly SQUARE
+  doorway both times. At 7 ft tall that is a five-to-six-foot-wide door, which is
+  a gate, not a door.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The door's
+  drawn bounding box INCLUDING its stone frame must be approximately 120 PIXELS
+  WIDE and 240 PIXELS TALL. Round 2 drew about 200 x 240 — the height was right,
+  the WIDTH WAS NEARLY DOUBLE what it should be. Cut the width almost in half:
+  - Take the width of the door in your sketch and check it fits TWICE inside its
+    own height. Round 2 fitted only 1.2 times. If it does not fit twice, the
+    door is too wide and must be pulled in.
+  - The stone JAMBS are SLIM — a narrow band up each side, roughly as wide as ONE
+    timber plank. They are NOT fat pillars, NOT stacked blocks two courses wide,
+    and NOT a chunky architrave.
+  - The LINTEL is a shallow slab, not a deep block, and it does NOT overhang far
+    past the jambs.
+  - The door LEAF itself is a tall narrow slab of only THREE or FOUR planks — not
+    five or six. Fewer, narrower planks is the fastest way to get the width down.
+
+  REAL-WORLD SIZE / PROPORTIONS.
+  The door is approximately 3.5 FEET WIDE x 7 FEET TALL — a person is 6.6 ft
+  tall, so this is a door a person walks through with a little headroom. Its
+  bounding box must be TWICE AS TALL AS IT IS WIDE (width : height = 1 : 2) — a
+  tall narrow portrait rectangle. Compose it inside the square cell like this:
+  - The door runs VERTICALLY, its stone THRESHOLD reaching the BOTTOM margin of
+    the cell and its stone LINTEL nearly touching the TOP margin.
+  - HORIZONTALLY IT IS NARROW. Including the stone frame it occupies only the
+    MIDDLE HALF of the cell's width. The left quarter and the right quarter of
+    the cell are completely EMPTY transparent background.
+  - If it looks square, or like a gate, or like a cupboard, it is WRONG. If it
+    looks almost too tall and too narrow, it is RIGHT.
+  - EXACTLY ONE DOOR PER CELL. Never stack two doors in a column and never draw a
+    double door pair side by side.
+  - NO DROP SHADOW, NO GROUND SHADOW and no floor line. The lowest opaque pixels
+    are the door's own stone threshold.
+
+  WHAT IT IS:
+  - A single CLOSED door LEAF of heavy vertical TIMBER PLANKS — four or five
+    planks with visible seams between them, deep grain, split and dented at the
+    lower corners where boots have kicked it.
+  - IRON BANDING: two or three broad horizontal iron straps running across the
+    leaf, riveted with fat round studs that read clearly at small size. The bands
+    are the strongest readable detail on the door.
+  - A heavy IRON RING HANDLE mounted a little above the middle of the leaf, hanging
+    from a round backplate. Big enough to read at 16px.
+  - A STONE FRAME around the leaf: a chunky jamb up each side, a heavy LINTEL
+    block across the top, and a worn THRESHOLD stone at the bottom. The stonework
+    is blocky, chipped, and cool grey, matching the room's stone floor.
+  - Wear everywhere: rust bleeding down from the rivets, scuffed timber, chipped
+    stone corners, grime settled in the seams.
+
+  IT IS NOT: an open doorway, a dark archway, a portcullis, a gate, a double door,
+  a cupboard, a wardrobe, a bookcase, a crate, a chest, a window, or a shuttered
+  panel. It is one closed timber door leaf in a stone frame.
+
+  MOOD — a grimy reality-TV dungeon set. Three NPCs are stuck living in this
+  reception room, forbidden by dungeon rules from leaving through this door. It is
+  heavy, permanent and unwelcoming: the object that keeps them in. Tired, worn,
+  long shut, never ornate and never fantasy-decorative.
+
+  COLOUR — MATCH THE EXISTING WELCOME-ROOM WAVE. It must sit against the room's
+  cool grey stone floor (tile-stone-floor-v2-var-2) and beside the warm walnut
+  timber of welcome-room-desk and welcome-room-bookcase without clashing: the
+  stone frame is cool grey with a hint of blue-green in its shadows; the door
+  leaf is a warm desaturated walnut-brown with 4-5 tone stops so the planks
+  separate clearly; the iron banding, rivets and ring are a dull dark grey-black
+  metal with tarnished rust-brown streaks. It must NOT be pale, washed out, or
+  low-contrast — the current placeholder fails exactly that way. Keep a clear dark
+  outline and clear tonal separation between stone, timber and iron. BANNED: neon,
+  pure white, pure black, saturated red, saturated yellow, orange, teal, cyan,
+  blue, green, magenta, purple, gold leaf, gemstones, glowing runes, magical glow,
+  and any ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The left jamb, the top
+  of the lintel, the upper edge of each iron band and the left curve of the ring
+  catch the highlight; shadow falls down and to the right, and the leaf sits
+  slightly recessed inside its frame so a soft shadow falls along the inside of
+  the right jamb. Every prop in this wave shares that one light direction.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering for stone and timber grain — no mushy gradients,
+  no airbrush, no floating unsupported elements. This prop is GROUNDED: its
+  threshold rests on the stone floor.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils, labels,
+  captions, watermarks or signatures anywhere on the door or its frame.
+
+  BACKGROUND: fully transparent. Draw ONLY the door and its stone frame. Do NOT
+  paint a wall around the frame, a floor slab, a rectangular backing panel, a
+  border, a vignette, or any cast/contact/drop shadow — the wall and floor are
+  already drawn underneath this art in the game. Every pixel outside the door and
+  frame silhouette must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the door's colours so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 64
+  height: 128
+anchor:
+  x: 32
+  y: 122
+sensors:
+  # A door leaf in its frame is a deliberately near-rectangular object and fills
+  # far more of its bounding box than the `prop` default [0.10, 0.65], which is
+  # tuned for irregular open-silhouette props. Same cap and reasoning as the
+  # already-approved welcome-room-show-poster / welcome-room-exit-sign; a genuine
+  # background-removal failure still lands at ~0.95-1.0 and is caught. Bound set
+  # BEFORE generating from the subject's geometry.
+  opaqueRatio:
+    min: 0.40
+    max: 0.90
+  # Grounded: the threshold stands on the floor, so the default derived
+  # bottom-band anchor is the correct semantics and stays enforced.
+  anchor:
+    derive: true
+    bandRows: 8
+    centerToleranceX: 10
+tags:
+  - welcome-room
+  - reality-show
+  - pixel-dungeon
+  - scene-dressing
+  - door
+  - architecture
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

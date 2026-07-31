@@ -29,7 +29,6 @@ import { approveVariant, ApproveError } from './approve.js';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const generatedRunsDir = path.join(repoRoot, 'generated', 'runs');
 const manifestPath = path.join(repoRoot, 'public', 'assets', 'generated', 'manifest.json');
-const catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 const publicAssetsDir = path.join(repoRoot, 'public', 'assets');
 
 /** All 70 G2-B canonical brief IDs (after -v1 strip). */
@@ -270,7 +269,6 @@ async function main(): Promise<void> {
         runDir,
         variantIndex,
         manifestPath,
-        catalogPath,
         publicAssetsDir,
         repoRoot,
       });

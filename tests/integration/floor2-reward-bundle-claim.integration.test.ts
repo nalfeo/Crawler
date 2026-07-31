@@ -8,15 +8,21 @@ import {
   unlockAchievement,
 } from '../../src/game/systems/achievementSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
-import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
+import {
+  createGeneratedEquipmentInstance,
+  listGeneratedEquipmentInstances,
+} from '../../src/core/generated-equipment-registry.js';
 import { getItemCount, hasGeneratedEquipmentReference } from '../../src/shared/inventory.js';
 import {
   FLOOR1_COMMON_CRAFTING_MATERIALS,
+  LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
   LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
 } from '../../src/shared/achievements.js';
+import { GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
 
 // Floor 2 achievements — all single-instance equipment bundles, tiered.
 const TIER1_ACHIEVEMENT_ID = 'floor2-field-kit';
@@ -44,12 +50,21 @@ function makeFloor2World(runKey = RUN_KEY): { world: GameWorld; playerEid: numbe
   return { world, playerEid };
 }
 
-/** Drive a Floor 2 trash kill so the real achievement tick sees totalKills >= 1. */
+/**
+ * Drive a Floor 2 trash kill so the real achievement tick sees totalKills >= 1.
+ *
+ * Uses a realistic 3-family roster (real Floor 2 always presents 3 or 4 families,
+ * fixed for the whole floor via `selectFloor2Roster` — see floor2Scenario.ts). A
+ * single-family roster is not a reachable production state and would trivially
+ * satisfy "all present families engaged in combat"-style facts, unlocking
+ * unrelated achievements (e.g. floor2-scorched-earth) alongside floor2-field-kit
+ * and floor2-made-an-enemy, breaking this test's deterministic two-unlock assumption.
+ */
 function seedFloor2Kill(world: GameWorld, kills = 1): void {
   world.floorId = 'floor2';
   world.floorExtendedState = {
     familyState: {
-      presentFamilies: [asFamilyId('mirekin')],
+      presentFamilies: [asFamilyId('mirekin'), asFamilyId('chitinous'), asFamilyId('faceless')],
       contestedResource: asResourceId('glimmercap'),
       betrayerFlag: false,
       trashKillsByFamily: new Map([[asFamilyId('mirekin'), kills]]),
@@ -71,7 +86,9 @@ describe('Floor 2 reward bundle — real unlock/claim pipeline (observe real art
     expect(bundle!.tier).toBe('tier1');
     expect(bundle!.instanceKeys).toHaveLength(1);
     const instanceCountAfterUnlock = listGeneratedEquipmentInstances(world).length;
-    expect(instanceCountAfterUnlock).toBe(1);
+    // Two tier1 achievements fire with the first kill: floor2-field-kit (totalKills >= 1)
+    // and floor2-made-an-enemy (familiesEngagedInCombatCount >= 1), one instance each.
+    expect(instanceCountAfterUnlock).toBe(2);
     const bundleKeys = [...bundle!.instanceKeys];
 
     // Claim transfers the bundle to the player's bag WITHOUT invoking the
@@ -245,6 +262,99 @@ describe('Floor 2 reward bundle — Floor 1 exclusion / equipment-free preservat
     claimAchievementReward(world, FLOOR1_LOOT_BOX_ACHIEVEMENT_ID);
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);
+  });
+});
+
+describe('Legacy tier4 achievement bundle — claim usability regression', () => {
+  // These three achievements briefly resolved at tier4 before the tier model
+  // tightened to tier1-tier3. Persisted tier4 bundles must claim successfully,
+  // transferring the exact pre-resolved instance without re-rolling.
+  it.each([...LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS])(
+    'claims a persisted tier4 bundle for legacy achievement %s, transfers the exact instance, consumes the bundle',
+    (achievementId) => {
+      const runKey = `legacy-tier4-claim-${achievementId}`;
+      const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: runKey });
+      enableFloor2Rewards(world);
+      const playerEid = spawnPlayer(world, 0, 0);
+
+      // Inject a pre-existing tier4 bundle as if it was generated before the
+      // tier model migration, using a 'rare' rarity (within tier4's allowed pool).
+      const instance = createGeneratedEquipmentInstance(
+        world,
+        generatedEquipmentInput({ baseId: 'weapon.iron-cleaver', rarity: 'rare' }),
+      );
+      const instanceKey = instance.instanceId;
+      world.achievements.unlockedIds.add(achievementId);
+      world.generatedEquipmentRewardBundles.set(achievementId, {
+        schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+        achievementId,
+        tier: 'tier4',
+        instanceKeys: [instanceKey],
+      });
+
+      const instanceCountBefore = listGeneratedEquipmentInstances(world).length;
+
+      const result = claimAchievementReward(world, achievementId);
+
+      // Claim must succeed.
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      // Exactly the pre-generated instance is transferred — no re-roll.
+      expect(result.grantedEquipment).toHaveLength(1);
+      expect(result.grantedEquipment![0]!.instanceKey).toBe(instanceKey);
+
+      // Instance count unchanged (ownership transferred, not duplicated).
+      expect(listGeneratedEquipmentInstances(world).length).toBe(instanceCountBefore);
+
+      // Instance now in the player's bag.
+      const bag = world.inventories.get(playerEid)!;
+      expect(hasGeneratedEquipmentReference(bag, instanceKey)).toBe(true);
+
+      // Bundle consumed.
+      expect(world.generatedEquipmentRewardBundles.has(achievementId)).toBe(false);
+
+      // Achievement marked claimed.
+      expect(isAchievementClaimed(world, achievementId)).toBe(true);
+
+      // Idempotent: second claim returns alreadyClaimed, bag unchanged.
+      const second = claimAchievementReward(world, achievementId);
+      expect(second).toEqual({ ok: false, reason: 'alreadyClaimed' });
+      expect(hasGeneratedEquipmentReference(bag, instanceKey)).toBe(true);
+    },
+  );
+
+  it('a tier4 bundle on an achievement outside the legacy allowlist fails closed (grantFailed), bundle retained', () => {
+    const runKey = 'legacy-tier4-nonallowlisted-claim';
+    const world = createTestWorld({ seed: 42, floor: 2, generatedEquipmentRunKey: runKey });
+    enableFloor2Rewards(world);
+    spawnPlayer(world, 0, 0);
+
+    // floor2-field-kit is a tier1 achievement — NOT in the legacy tier4 allowlist.
+    const achievementId = TIER1_ACHIEVEMENT_ID;
+    const instance = createGeneratedEquipmentInstance(
+      world,
+      generatedEquipmentInput({ baseId: 'weapon.iron-cleaver', rarity: 'rare' }),
+    );
+    const instanceKey = instance.instanceId;
+    world.achievements.unlockedIds.add(achievementId);
+    world.generatedEquipmentRewardBundles.set(achievementId, {
+      schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+      achievementId,
+      tier: 'tier4',
+      instanceKeys: [instanceKey],
+    });
+
+    const result = claimAchievementReward(world, achievementId);
+
+    // Must fail closed — the tier4 mismatch is not in the allowlist.
+    expect(result).toEqual({ ok: false, reason: 'grantFailed' });
+
+    // Achievement must remain unclaimed.
+    expect(isAchievementClaimed(world, achievementId)).toBe(false);
+
+    // Bundle must be retained so the claim stays retryable.
+    expect(world.generatedEquipmentRewardBundles.has(achievementId)).toBe(true);
   });
 });
 
@@ -615,13 +725,34 @@ describe('Floor 1 lootBox reward bundle — stale/malformed carryover fails clos
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/already-claimed/);
   });
 
-  it('rejects a lootBox bundle for a non-lootBox achievement', () => {
+  it('rejects a lootBox bundle for a non-floor1-materials (Floor 2 generated-equipment) achievement', () => {
     const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
     const tampered = mutableClone(snapshot);
+    // Re-point the bundle at a real `lootBox` achievement that uses the Floor
+    // 2 `floor2-generated-equipment` table rather than `floor1-materials` —
+    // this is the discriminator-aware failure mode now that both Floor 1 and
+    // Floor 2 rewards share the `lootBox` reward type.
     tampered.lootBoxRewardBundles[0]!.achievementId = TIER1_ACHIEVEMENT_ID;
     tampered.achievements.unlockedIds = [
       ...tampered.achievements.unlockedIds,
       TIER1_ACHIEVEMENT_ID,
+    ];
+    expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
+      /non-floor1-materials/,
+    );
+  });
+
+  it('rejects a lootBox bundle for a genuinely non-lootBox achievement', () => {
+    const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
+    const tampered = mutableClone(snapshot);
+    // `safe-room-breather` is a real Floor 1 achievement with a
+    // `directorMessage` reward (no lootBox at all) — the true "wrong reward
+    // type entirely" case, distinct from the "wrong lootTable" case above.
+    const NON_LOOT_BOX_ACHIEVEMENT_ID = 'safe-room-breather';
+    tampered.lootBoxRewardBundles[0]!.achievementId = NON_LOOT_BOX_ACHIEVEMENT_ID;
+    tampered.achievements.unlockedIds = [
+      ...tampered.achievements.unlockedIds,
+      NON_LOOT_BOX_ACHIEVEMENT_ID,
     ];
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/non-lootBox/);
   });

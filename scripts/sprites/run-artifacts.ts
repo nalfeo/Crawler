@@ -223,6 +223,19 @@ export interface RunSummary {
     readonly cols: number;
     readonly emptyCells: ReadonlyArray<readonly [number, number]>;
   };
+  /**
+   * Present only when `brief.frameSequence.enabled` — carries the ordered
+   * animation-cycle intent from the brief through generation to approval, so
+   * `approveFrameSequence` (approve.ts) knows to treat this run's candidates
+   * as ORDERED FRAMES of one animation rather than independent design
+   * alternatives, and what descriptor to stamp on the manifest entry.
+   * Absent (undefined) for every normal (non-sequence) run.
+   */
+  readonly frameSequence?: {
+    readonly frameCount: number;
+    readonly frameRate: number;
+    readonly loop: boolean;
+  };
   /** Candidates ranked best-first: passed first, then by sensor score desc. */
   readonly candidates: ReadonlyArray<RunSummaryEntry>;
   /** Pairwise perceptual-hash diversity across processed variants; null when n < 2. */

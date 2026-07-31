@@ -210,6 +210,7 @@ describe('merge-gate aggregation policy', () => {
       'Unit tests',
       'Integration tests',
       'Sprite pipeline tests',
+      'Set-piece reachability',
       'E2E Visual — Game/UI',
       'E2E Visual — Asset Smoke',
       'E2E Visual — Devtools',
@@ -229,6 +230,7 @@ describe('merge-gate aggregation policy', () => {
     expect(needs).toContain('test-unit');
     expect(needs).toContain('test-integration');
     expect(needs).toContain('test-headless');
+    expect(needs).toContain('set-piece-reachability');
     // E2E split into three surface-targeted jobs (PR #1698).
     expect(needs).toContain('test-e2e-game');
     expect(needs).toContain('test-e2e-assets');

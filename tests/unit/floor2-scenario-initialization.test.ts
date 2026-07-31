@@ -3,6 +3,7 @@ import { query } from 'bitecs';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { DoorState } from '../../src/core/index.js';
 import { getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { safeRoomSystem } from '../../src/core/safe-space.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
@@ -174,6 +175,27 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(denQuestIds.every((questId) => getQuestDef(questId)?.hidden === true)).toBe(true);
   });
 
+  it('treats the Floor 2 entrance room as a safe room while keeping settlement anchor targeting stable', () => {
+    const { world, playerEid } = createScenarioWorld();
+
+    initializeFloor2Scenario(world, playerEid);
+
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(true);
+
+    const settlementAnchor = resolveFloor2SettlementAnchor(world);
+    expect(settlementAnchor).not.toBeNull();
+    const settlementAnchorTile = world.floorMap!.worldToTile(
+      settlementAnchor!.x,
+      settlementAnchor!.y,
+    );
+    const settlementAnchorRoomId = world.floorMap!.roomGraph.getRoomAt(
+      settlementAnchorTile.x,
+      settlementAnchorTile.y,
+    );
+    expect(settlementAnchorRoomId).toBe(world.floorExtendedState?.settlement?.settlementRoomId);
+  });
+
   it('starts a direct Floor 2 run at level 5 with spent stats and the charm equipped', () => {
     const { world, playerEid } = createScenarioWorld();
 
@@ -198,7 +220,7 @@ describe('initializeFloor2Scenario manifest validation', () => {
     ).toBe(MERCHANTS_CHARM_DEF.id);
   });
 
-  it('enables Floor 2 equipment reward flags during scenario initialization', () => {
+  it('enables the real shipped Floor 2 equipment flag closure during scenario initialization', () => {
     const { world, playerEid } = createScenarioWorld();
 
     initializeFloor2Scenario(world, playerEid);
@@ -206,6 +228,16 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(world.floor2EquipmentFlags.floor2EquipmentRegistry).toBe(true);
     expect(world.floor2EquipmentFlags.floor2EquipmentCatalog).toBe(true);
     expect(world.floor2EquipmentFlags.floor2EquipmentRewards).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentEconomy).toBe(true);
+    expect(world.floor2EquipmentFlags.floor2EquipmentAiMaintenance).toBe(true);
+    // `floor2EquipmentUx` and `floor2EquipmentWorld` are declared flags with
+    // zero enforcement sites anywhere in src/ today (no player-facing
+    // Quartermaster UI yet — see issue #2334, and no world-placement
+    // feature gates on `floor2EquipmentWorld`). They are intentionally NOT
+    // asserted true here; the real shipped path correctly leaves them at
+    // their world default until something actually enforces them.
+    expect(world.floor2EquipmentFlags.floor2EquipmentUx).toBe(false);
+    expect(world.floor2EquipmentFlags.floor2EquipmentWorld).toBe(false);
   });
 
   it('completes the starter quest the first time the player enters the settlement area', () => {

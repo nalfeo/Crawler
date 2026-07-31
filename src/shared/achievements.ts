@@ -6,7 +6,8 @@
  */
 import { z } from 'zod';
 import floor1Achievements from './data/achievements.floor1.json';
-import { EQUIPMENT_REWARD_TIERS, type EquipmentRewardTier } from './generated-equipment-types.js';
+import floor2Achievements from './data/achievements.floor2.json';
+import { type EquipmentRewardTier } from './generated-equipment-types.js';
 import { ITEM_CATALOG, ItemRarity } from './items.js';
 
 /**
@@ -35,6 +36,71 @@ export type LootBoxTier = (typeof LOOT_BOX_TIERS)[number];
 export function isLootBoxTier(value: string): value is LootBoxTier {
   return (LOOT_BOX_TIERS as readonly string[]).includes(value);
 }
+
+/**
+ * Named loot-table discriminator for the `lootBox` achievement reward variant
+ * (ADR 0069 amendment). Floor 1's `floor1-materials` table (gold + common
+ * crafting materials, tiered by {@link LootBoxTier}) and Floor 2's
+ * `floor2-generated-equipment` table (a single generated-equipment instance,
+ * tiered by {@link Floor2AchievementLootTier}) are structurally different
+ * payloads that both present to the player as "a loot box" — this
+ * discriminator keeps them distinguishable at the type, schema, routing, and
+ * persistence layers while sharing one player-facing `type: 'lootBox'`
+ * concept, rather than reviving a separate `'equipment'` reward type.
+ */
+export const ACHIEVEMENT_LOOT_TABLES = ['floor1-materials', 'floor2-generated-equipment'] as const;
+export type AchievementLootTable = (typeof ACHIEVEMENT_LOOT_TABLES)[number];
+
+/**
+ * Floor 2 achievement-reward tier vocabulary (ADR 0069 amendment). Player/
+ * content-facing rarity names — NOT the internal `tier1`-`tier4`
+ * {@link EquipmentRewardTier} keyspace the generated-equipment resolver and
+ * boss chests use. `tier4` (the 85% Uncommon / 15% Rare pool) is reserved
+ * exclusively for boss chests; it is deliberately absent here and MUST NEVER
+ * appear in achievement content — see {@link FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER}
+ * for the one-way mapping into the resolver's tier keyspace, applied at the
+ * achievement-reward call sites (never inside the resolver itself).
+ */
+export const FLOOR2_ACHIEVEMENT_LOOT_TIERS = ['common', 'uncommon', 'rare'] as const;
+export type Floor2AchievementLootTier = (typeof FLOOR2_ACHIEVEMENT_LOOT_TIERS)[number];
+
+export function isFloor2AchievementLootTier(value: string): value is Floor2AchievementLootTier {
+  return (FLOOR2_ACHIEVEMENT_LOOT_TIERS as readonly string[]).includes(value);
+}
+
+/**
+ * Translates the player/content-facing {@link Floor2AchievementLootTier}
+ * (`common`/`uncommon`/`rare`) into the internal {@link EquipmentRewardTier}
+ * (`tier1`/`tier2`/`tier3`) the generated-equipment reward-bundle resolver and
+ * claim path speak. Applied exactly once, at each achievement-reward call
+ * site that invokes the resolver/claim functions — the resolver's own
+ * tier keyspace and 85/15 `tier4` boss-chest contract are UNCHANGED by this
+ * mapping (ADR 0068's resolver boundary is not touched).
+ */
+export const FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER: Readonly<
+  Record<Floor2AchievementLootTier, EquipmentRewardTier>
+> = Object.freeze({
+  common: 'tier1',
+  uncommon: 'tier2',
+  rare: 'tier3',
+});
+
+/**
+ * Achievement IDs that briefly resolved at `tier4` before the authored tier
+ * model tightened to tier1–tier3 (see ADR 0069 amendment). Persisted `tier4`
+ * bundles and presentations for these IDs are preserved verbatim at
+ * restore/claim time so the already-generated instances are never re-rolled
+ * or altered. Any achievement ID outside this set rejects a `tier4` bundle or
+ * presentation as tampered/stale state (fail-closed). Shared from
+ * `src/shared/` so both the core claim path (`achievementRewards.ts`) and the
+ * game carryover restore validator (`playerCarryover.ts`) use the single
+ * canonical allowlist without duplication.
+ */
+export const LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS: ReadonlySet<string> = new Set([
+  'floor2-family-annihilator',
+  'floor2-floor-cleared',
+  'floor2-scorched-earth',
+]);
 
 /**
  * Floor 1 achievement loot-box gold grant, monotonically increasing by tier.
@@ -126,8 +192,15 @@ export const ACHIEVEMENT_NUMBER_FACTS = [
   'completedQuestCount',
   'questLogSize',
   'playerGold',
+  'peakGold',
   'unlockedAbilityCount',
   'clearedFloorCount',
+  'familiesAtFriendlyCount',
+  'familiesAtHateCount',
+  'familiesAtNeutralOrBetterCount',
+  'familyBossesDefeated',
+  'familyBossEncounterCount',
+  'familiesEngagedInCombatCount',
 ] as const;
 export type AchievementNumberFact = (typeof ACHIEVEMENT_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
@@ -137,17 +210,26 @@ export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
   'completedQuestCount',
   'questLogSize',
   'playerGold',
+  'peakGold',
   'unlockedAbilityCount',
   'clearedFloorCount',
 ] as const;
 export type AchievementCurrentRunNumberFact = (typeof ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'staircaseBattleStarted',
+  'staircaseSpawned',
   'staircaseUnlocked',
   'safeRoomDiscovered',
   'equipmentUnlocked',
   'staircaseDiscovered',
   'runClearedFloor',
+  'hasBetrayedAlly',
+  'floor2SafeRoomVisited',
+  'hasMetBroker',
+  'allPresentFamiliesFriendly',
+  'allPresentFamiliesNeutralOrBetter',
+  'allPresentFamiliesEngagedInCombat',
+  'allPresentFamilyBossesEngaged',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
@@ -160,24 +242,37 @@ export const ACHIEVEMENT_NUMBER_OPERATORS = ['>=', '>', '<=', '<', '==='] as con
 export type AchievementNumberOperator = (typeof ACHIEVEMENT_NUMBER_OPERATORS)[number];
 
 export type AchievementReward =
-  | { readonly type: 'lootBox'; readonly tier: LootBoxTier }
-  | { readonly type: 'item'; readonly itemId: string }
-  | { readonly type: 'directorMessage'; readonly message: string }
   | {
       /**
-       * Floor 2 generated-equipment reward. Resolved ONCE at unlock into an
-       * immutable, tier-scoped, single-item bundle; `bases` is the authored
-       * candidate pool the resolver draws aligned/non-aligned picks from. It
-       * must span both magic and physical affinity so both pools are non-empty
-       * for any player build (the resolver fails closed otherwise). `tier`
-       * gates the resolvable rarity pool — see
-       * {@link EQUIPMENT_REWARD_TIER_RARITIES} in generated-equipment-types.ts;
-       * NO tier defined here may ever resolve a Rare item.
+       * Floor 1 loot box: gold + common crafting materials, tiered by the
+       * full 7-value {@link LootBoxTier} ladder. Never contains equipment —
+       * structurally guaranteed by this variant having no equipment fields.
        */
-      readonly type: 'equipment';
-      readonly bases: readonly string[];
-      readonly tier: EquipmentRewardTier;
+      readonly type: 'lootBox';
+      readonly lootTable: 'floor1-materials';
+      readonly tier: LootBoxTier;
     }
+  | {
+      /**
+       * Floor 2 generated-equipment reward, presented to the player as a
+       * loot box. Resolved ONCE at unlock into an immutable, tier-scoped,
+       * single-item bundle drawn from the central, catalog-derived
+       * `FLOOR2_REWARD_POOL_STABLE_IDS` pool (never a per-achievement `bases`
+       * array — every Floor 2 achievement shares the one frozen pool). `tier`
+       * is the player-facing {@link Floor2AchievementLootTier}
+       * (`common`/`uncommon`/`rare`); translate via
+       * {@link FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER} before calling the
+       * resolver/claim path, which still speaks the internal `tier1`-`tier3`
+       * {@link EquipmentRewardTier} keyspace. `tier4` (boss chests' 85%
+       * Uncommon / 15% Rare pool) is reserved exclusively for boss chests and
+       * MUST NEVER appear here — see {@link Floor2AchievementLootTier}.
+       */
+      readonly type: 'lootBox';
+      readonly lootTable: 'floor2-generated-equipment';
+      readonly tier: Floor2AchievementLootTier;
+    }
+  | { readonly type: 'item'; readonly itemId: string }
+  | { readonly type: 'directorMessage'; readonly message: string }
   | { readonly type: 'none' };
 
 export type AchievementUnlockRule =
@@ -252,13 +347,34 @@ export interface AchievementFactState {
   readonly completedQuestIds: Set<string>;
 }
 
-const achievementRewardSchema = z.discriminatedUnion('type', [
+/**
+ * `lootBox` reward variant, as a nested discriminated union on `lootTable`
+ * (ADR 0069 amendment). Zod v4 supports nesting a discriminated union as one
+ * member of an outer discriminated union — Floor 1's and Floor 2's `lootBox`
+ * payloads stay structurally distinguishable (different `tier` enum, no
+ * cross-table field leakage via `.strict()`) while both satisfy the single
+ * outer `type: 'lootBox'` literal every other reward variant discriminates
+ * against.
+ */
+const achievementLootBoxRewardSchema = z.discriminatedUnion('lootTable', [
   z
     .object({
       type: z.literal('lootBox'),
+      lootTable: z.literal('floor1-materials'),
       tier: z.enum(LOOT_BOX_TIERS),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('lootBox'),
+      lootTable: z.literal('floor2-generated-equipment'),
+      tier: z.enum(FLOOR2_ACHIEVEMENT_LOOT_TIERS),
+    })
+    .strict(),
+]);
+
+const achievementRewardSchema = z.discriminatedUnion('type', [
+  achievementLootBoxRewardSchema,
   z
     .object({
       type: z.literal('item'),
@@ -269,13 +385,6 @@ const achievementRewardSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('directorMessage'),
       message: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal('equipment'),
-      bases: z.array(z.string().min(1)).min(1),
-      tier: z.enum(EQUIPMENT_REWARD_TIERS),
     })
     .strict(),
   z
@@ -481,111 +590,44 @@ export function createAchievementCatalogRegistry(
 
 export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achievements);
 /**
- * Minimal Floor 2 catalog: one equipment-reward achievement per tier (tier1,
- * tier2, tier3) so the full tiered reward-content contract — real gold/materials
- * on Floor 1, tiered equipment on Floor 2 — is exercisable in-game/headless. The
- * reward `bases` span magic (`ember-wand`, `frost-crook`) and physical
- * (`iron-cleaver`, `ashwood-bow`) Floor 2 weapon bases — all have empty inherent
- * stat bonuses, so the Common item carries no non-armor stat bonus (rarity
- * contract). `iconId` is a placeholder key; no art is generated or required to
- * ship this slice.
+ * Floor 2 catalog, content-driven from `data/achievements.floor2.json` (mirrors
+ * the Floor 1 pattern in ADR-consistent style — a 36-entry content array lives
+ * out of the schema/logic file so content diffs review separately from code
+ * diffs). Contains 30 floor-scoped achievements plus 6 `current_run`-scoped
+ * achievements spanning family reputation, family bosses, the settlement/Broker,
+ * the exit staircase, safe rooms, equipment/ability/stat progression, and gold —
+ * every criterion is driven by facts already emitted by real, shipped Floor 2
+ * systems (see `collectCurrentFloorAchievementFacts` in
+ * `src/game/systems/achievementSystem.ts`).
+ *
+ * Every achievement's reward is `{ type: 'lootBox', lootTable:
+ * 'floor2-generated-equipment', tier }` (ADR 0069 amendment) — a single
+ * generated-equipment instance drawn, at claim time, from the one central,
+ * catalog-derived `FLOOR2_REWARD_POOL_STABLE_IDS` pool (see
+ * `src/shared/data/floor2-reward-pool.ts`), never a per-achievement `bases`
+ * array. `tier` is the player-facing {@link Floor2AchievementLootTier}
+ * (`common`/`uncommon`/`rare`; 13/12/11 respectively across the 36
+ * achievements) — translated to the resolver's internal `tier1`-`tier3`
+ * {@link EquipmentRewardTier} via {@link FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER}
+ * at the claim/unlock call sites. `rare` never resolves above Rare rarity
+ * (Common/Uncommon/Rare per {@link EQUIPMENT_REWARD_TIER_RARITIES}'s
+ * `tier1`-`tier3` pools); Unique is intentionally never used (deferred from
+ * this epic).
+ *
+ * `tier4` (boss chests' 85% Uncommon / 15% Rare pool) is reserved EXCLUSIVELY
+ * for boss chests and never appears in this content — a deliberate tightening
+ * from an earlier draft of this catalog, which had briefly let 3
+ * `brutal`-difficulty achievements (`floor2-family-annihilator`,
+ * `floor2-floor-cleared`, `floor2-scorched-earth`) share boss chests' `tier4`
+ * pool. Those 3 were migrated to `rare` (the resolver's `tier3`) as part of
+ * this tightening, along with promoting `floor2-safe-harbor` (a standalone,
+ * non-laddered "reached the first safe room" milestone with no escalating
+ * follow-up achievement to invert reward-vs-difficulty against) from `common`
+ * to `rare`, to land the catalog on the required exact 13/12/11
+ * common/uncommon/rare distribution. `iconId`s are placeholder keys; no art
+ * is generated or required to ship this slice.
  */
-const FLOOR2_ACHIEVEMENT_DEFS: readonly unknown[] = [
-  {
-    id: 'floor2-field-kit',
-    floor: 2,
-    title: 'Floor 2 Field Kit',
-    popupText: 'New achievement: Floor 2 Field Kit!',
-    unlockCriteria: 'Defeat your first enemy on Floor 2.',
-    details:
-      'Unlock when you defeat your first enemy on Floor 2 to receive a starter equipment piece.',
-    directorFlavor:
-      'The prop department scraped together a starter kit from the discount bin. One piece, guaranteed Common quality, exactly the kind of inventory-management busywork the audience adores.',
-    iconId: 'achv-floor2-field-kit-placeholder',
-    difficulty: 'standard',
-    reward: {
-      type: 'equipment',
-      tier: 'tier1',
-      bases: [
-        'weapon.iron-cleaver',
-        'weapon.ashwood-bow',
-        'weapon.ember-wand',
-        'weapon.frost-crook',
-      ],
-    },
-    unlockRules: [
-      {
-        type: 'numberCompare',
-        fact: 'totalKills',
-        op: '>=',
-        value: 1,
-      },
-    ],
-  },
-  {
-    id: 'floor2-second-wind',
-    floor: 2,
-    title: 'Floor 2 Second Wind',
-    popupText: 'New achievement: Floor 2 Second Wind!',
-    unlockCriteria: 'Defeat 10 enemies on Floor 2.',
-    details:
-      'Unlock by defeating 10 enemies on Floor 2 to receive a Common-or-Uncommon equipment piece.',
-    directorFlavor:
-      'The audience is warming up. So is the prop budget — this one might actually be Uncommon.',
-    iconId: 'achv-floor2-second-wind-placeholder',
-    difficulty: 'standard',
-    reward: {
-      type: 'equipment',
-      tier: 'tier2',
-      bases: [
-        'weapon.iron-cleaver',
-        'weapon.ashwood-bow',
-        'weapon.ember-wand',
-        'weapon.frost-crook',
-      ],
-    },
-    unlockRules: [
-      {
-        type: 'numberCompare',
-        fact: 'totalKills',
-        op: '>=',
-        value: 10,
-      },
-    ],
-  },
-  {
-    id: 'floor2-veteran-cast',
-    floor: 2,
-    title: 'Floor 2 Veteran Cast',
-    popupText: 'New achievement: Floor 2 Veteran Cast!',
-    unlockCriteria: 'Defeat 30 enemies on Floor 2.',
-    details:
-      'Unlock by defeating 30 enemies on Floor 2 to receive an Uncommon-or-Common equipment piece.',
-    directorFlavor:
-      "You've earned top billing. The prop department's best (non-Rare) offering awaits.",
-    iconId: 'achv-floor2-veteran-cast-placeholder',
-    difficulty: 'hard',
-    reward: {
-      type: 'equipment',
-      tier: 'tier3',
-      bases: [
-        'weapon.iron-cleaver',
-        'weapon.ashwood-bow',
-        'weapon.ember-wand',
-        'weapon.frost-crook',
-      ],
-    },
-    unlockRules: [
-      {
-        type: 'numberCompare',
-        fact: 'totalKills',
-        op: '>=',
-        value: 30,
-      },
-    ],
-  },
-];
-export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, FLOOR2_ACHIEVEMENT_DEFS);
+export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, floor2Achievements);
 export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
   FLOOR1_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENT_CATALOG,
@@ -593,6 +635,11 @@ export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
 export const ALL_ACHIEVEMENTS: readonly AchievementDef[] = ACHIEVEMENT_CATALOG_REGISTRY.all;
 export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR1_ACHIEVEMENT_CATALOG.all;
 export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR2_ACHIEVEMENT_CATALOG.all;
+/** Count of Floor 2 floor-scoped achievements (excludes `current_run`-scoped entries). */
+export const FLOOR2_ACHIEVEMENT_COUNT = FLOOR2_ACHIEVEMENT_CATALOG.floorScoped.length;
+/** Count of Floor 2 `current_run`-scoped (run-global) achievements. */
+export const FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT =
+  FLOOR2_ACHIEVEMENT_CATALOG.currentRunGlobal.length;
 
 export function isAchievementFloor(value: number): value is AchievementFloor {
   return value === 1 || value === 2;
@@ -635,16 +682,31 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       completedQuestCount: 0,
       questLogSize: 0,
       playerGold: 0,
+      peakGold: 0,
       unlockedAbilityCount: 0,
       clearedFloorCount: 0,
+      familiesAtFriendlyCount: 0,
+      familiesAtHateCount: 0,
+      familiesAtNeutralOrBetterCount: 0,
+      familyBossesDefeated: 0,
+      familyBossEncounterCount: 0,
+      familiesEngagedInCombatCount: 0,
     },
     booleanFacts: {
       staircaseBattleStarted: false,
+      staircaseSpawned: false,
       staircaseUnlocked: false,
       safeRoomDiscovered: false,
       equipmentUnlocked: false,
       staircaseDiscovered: false,
       runClearedFloor: false,
+      hasBetrayedAlly: false,
+      floor2SafeRoomVisited: false,
+      hasMetBroker: false,
+      allPresentFamiliesFriendly: false,
+      allPresentFamiliesNeutralOrBetter: false,
+      allPresentFamiliesEngagedInCombat: false,
+      allPresentFamilyBossesEngaged: false,
     },
     questIds: [],
     completedQuestIds: [],
@@ -753,7 +815,20 @@ function collectLootBoxBacklogItems(
 ): AchievementArtBacklogItem[] {
   const tierToAchievements = new Map<LootBoxTier, string[]>();
   for (const achievement of achievements) {
-    if (achievement.reward.type !== 'lootBox') continue;
+    // Only Floor 1's `floor1-materials` lootBox achievements need a generic
+    // loot-box icon backlog entry here. Floor 2's `floor2-generated-equipment`
+    // lootBox achievements are DELIBERATELY excluded: (a) their `tier` values
+    // (`common`/`uncommon`/`rare`) lexically collide with 3 of Floor 1's 7
+    // `LootBoxTier` values, which would silently conflate the two tables'
+    // achievements into the same bucket if not filtered out here; and (b)
+    // their art need is already fully covered by the separately-authored
+    // `floor2-equipment-art.ts` manifest, not this generic backlog.
+    if (
+      achievement.reward.type !== 'lootBox' ||
+      achievement.reward.lootTable !== 'floor1-materials'
+    ) {
+      continue;
+    }
     const existing = tierToAchievements.get(achievement.reward.tier);
     if (existing) {
       existing.push(achievement.id);

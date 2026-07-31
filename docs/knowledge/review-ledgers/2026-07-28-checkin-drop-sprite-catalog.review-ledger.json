@@ -1,0 +1,41 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "checkin-drop-sprite-catalog",
+  "task_title": "Stop art check-ins writing the sprite catalog",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "major_fork",
+      "notes": "Reviewed the ORIGINAL plan (derive all 334 generated catalog rows from the manifest and delete them from the committed file). Returned MAJOR_FORK. Three blocking findings were independently re-verified against real repo data and all three were correct, overturning my plan: (1) the placeholder-exclusion rule was wrong - equipment/weapon/crescent-glaive and equipment/weapon/meteor-hammer have normal manifest keys but -placeholder.png asset paths, so derivation would have exposed placeholder art; (2) 7 of the 40 tag deltas are REAL overrides, not stale data - merchant-sandals-var-0 carries manual-authored, twin-katar-var-0 carries hand-authored, and 5 more carry a different semantic type than the manifest, so derivation would have silently falsified provenance; (3) the writer surface is far broader than the plan listed, and asset-request-publisher.ts hard-throws without a catalog entry, so the original change would have broken a live GitHub workflow. Divergence: the full derivation was reclassified as 4 apples and split out to a parallel session doing per-asset manifest sharding. This PR was rescoped to the narrow, contained subset that delivers the entire conflict reduction without the metadata-migration risk.",
+      "models": ["gpt-5.6-sol"]
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer_model": "claude-opus-4.8",
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "notes": "Adversarial review of the diff, focused on the riskiest edits: the ASSET_SURFACE_PATHS / ART_SURFACE_ALLOWLIST split staying in lockstep with detect-art-only.sh, correct read-vs-write constant selection at each reconcile-queue call site, and whether dropping the catalog comparison from the asset-request-publisher collision guard could allow a destination overwrite. Cleared: the allowlist matches detect-art-only.sh:231-232 exactly (independently re-verified); all four reconcile-queue sites are inspection/tolerate paths and correctly use the tolerant list while only staging uses the narrow one; and the publisher guard is not a data-loss hole because the manifest entry plus PNG content hash still fully identify the payload (the removed hard throw was in fact a latent break - stage roots no longer contain a catalog, so the old Array.isArray check would have thrown on every call). ONE BLOCKING FINDING (high severity, high confidence): narrowing ASSET_SURFACE_PATHS silently broke the sidecar POST /api/workflow/metadata (Tag) route. runMetadataPipeline writes ONLY src/shared/data/sprite-catalog.json - never the manifest, never a PNG - so after the change 'git add -- public/assets/generated' staged nothing, the no-op guard fired, and the metadata edit was never committed to assets/queue. That is precisely the cross-worktree durability guarantee the route was engineered to provide. The reviewer also correctly identified WHY the suite stayed green: the existing regression test at sidecar-server.test.ts:3163 runs against a non-git temp root, so it only asserts queueCommit.status === 'failed' and never asserts the catalog edit reaches the queue - it pinned 'the route called queue-commit', not 'the edit is durable'.",
+          "clean": false,
+          "models": ["claude-opus-4.8"]
+        },
+        {
+          "round": 2,
+          "reviewer_model": "claude-opus-4.8",
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Finding independently re-verified before fixing: confirmed metadata-pipeline.ts contains zero manifest writes (only writeCatalogJson at line 586) and that queue-commit.ts stages ASSET_SURFACE_PATHS then returns noop when nothing is staged. Fixed by separating the two flows rather than widening the art-check-in surface back out (which would have reintroduced the by-construction conflict this PR exists to remove): added an opt-in QueueCommitOptions.catalogEntryIds plus a narrow overlayCatalogEntries dep that replaces/inserts exactly the named ids and preserves every other destination row, so it cannot clobber a concurrent writer. runQueueCommit appends the catalog to the staged pathspec only when the caller opts in, and hard-throws if catalogEntryIds is supplied without the dep so the silent-drop failure mode cannot recur. The metadata route now passes catalogEntryIds: changedGeneratedIds; art check-ins are unchanged and still touch exactly one shared file. Added two real-git regression tests: one asserting the catalog-only edit is committed to assets/queue with its description and tags intact, one asserting an ordinary art check-in's diff contains no sprite-catalog.json and touches only public/assets/generated/. The first was proven non-tautological by reverting the fix in place and observing it fail with exactly the reported symptom (expected 'noop' to be 'committed'), then restoring. Full suite green: 1893 passed, 1 skipped, 120 files.",
+          "clean": true,
+          "models": ["claude-opus-4.8"]
+        }
+      ]
+    }
+  }
+}

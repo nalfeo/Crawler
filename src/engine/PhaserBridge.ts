@@ -21,11 +21,18 @@ import { createPlayerTrailVfx } from './PlayerTrailVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
-import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
+import {
+  GENERATED_SPRITE_REGISTRY_KEY,
+  registerGeneratedSpriteAnimations,
+  walkAnimationKey,
+} from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
+  resolveOpaqueFit,
+  type GeneratedSpriteAnimation,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
+  type OpaqueBounds,
 } from '../shared/generated-assets.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
@@ -90,13 +97,30 @@ const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const ENEMY_RIGHTWARD_FLIP_EPSILON = 0.001;
 const ENEMY_MOVEMENT_MOTION_EPSILON = 0.0001;
 const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
+/**
+ * Minimum speed (ft/s) before the player's walk animation plays. Below this,
+ * the player holds its idle (frame-0) pose instead of animating in place —
+ * mirrors the enemy movement-motion threshold's intent but is named
+ * separately since the player's walk cycle is a distinct, newer concern.
+ */
+const PLAYER_WALK_SPEED_EPSILON = 0.05;
+const PLAYER_WALK_SPEED_EPSILON_SQ = PLAYER_WALK_SPEED_EPSILON ** 2;
 const SPEED_STATUS_TINT = 0xaadfff;
 /** Fill tint mode value; kept numeric to preserve Node-safe type-only imports. */
 export const PHASER_TINT_MODE_FILL = 1;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
-  obj: Phaser.GameObjects.Image;
+  /**
+   * Almost every entity renders as a static `Phaser.GameObjects.Image`. The
+   * player is the sole exception once its resolved texture carries an
+   * `animation` descriptor (see `generatedAnimationByTexture` below) — in
+   * that case a `Phaser.GameObjects.Sprite` is created instead so
+   * `.anims.play()` is available. Both share every member this file uses
+   * (position/scale/flip/texture/etc.); only `.anims` is Sprite-only, so
+   * call sites that need it must guard first.
+   */
+  obj: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
   type: string;
   /** Base scale to restore in the default per-frame branch. */
   baseScale: number;
@@ -467,6 +491,20 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const missingTypeWarnings = new Set<string>();
   let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
   const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
+  /**
+   * Animation descriptor per generated texture key, so the player render
+   * branch can decide whether to create a Sprite (animatable) instead of a
+   * plain Image, and which walk-cycle key to play. Rebuilt alongside
+   * `generatedFacingByTexture` whenever the registry identity changes.
+   */
+  const generatedAnimationByTexture = new Map<string, GeneratedSpriteAnimation>();
+  /**
+   * Opaque pixel bounds per texture key, so the set-piece pass can anchor and
+   * scale props by their VISIBLE art instead of the raw canvas. Rebuilt with
+   * `generatedFacingByTexture` whenever the registry identity changes.
+   */
+  const generatedBoundsByTexture = new Map<string, OpaqueBounds>();
+  const playerWalkMovingByEid = new Map<number, boolean>();
   const mobMotionStates = new Map<number, MobMotionRenderState>();
   const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
@@ -502,10 +540,19 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const generatedRegistry = getGeneratedSpriteRegistry(scene);
       if (generatedRegistry !== cachedGeneratedRegistry) {
         generatedFacingByTexture.clear();
+        generatedBoundsByTexture.clear();
+        generatedAnimationByTexture.clear();
         if (generatedRegistry) {
           for (const entry of generatedRegistry.entries()) {
             generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
+            if (entry.opaqueBounds !== undefined) {
+              generatedBoundsByTexture.set(entry.textureKey, entry.opaqueBounds);
+            }
+            if (entry.animation !== undefined) {
+              generatedAnimationByTexture.set(entry.textureKey, entry.animation);
+            }
           }
+          registerGeneratedSpriteAnimations(scene, generatedRegistry);
         }
         cachedGeneratedRegistry = generatedRegistry;
         // Expose the registry to the game layer so projectile-origin helpers can
@@ -537,6 +584,54 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       };
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
+
+      /**
+       * Play (or hold) the player's walk-cycle animation based on current
+       * speed. No-ops for any texture without a registered `animation`
+       * descriptor (e.g. today's Kenney static frame) and for plain
+       * `Image` game objects (no `.anims`), so this is safe to call
+       * unconditionally from the player render branch.
+       */
+      const playPlayerWalkAnimation = (
+        obj: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite,
+        eid: number,
+      ): void => {
+        const animatable = obj as Partial<Phaser.GameObjects.Sprite>;
+        const anims = animatable.anims;
+        if (!anims || typeof anims.play !== 'function') {
+          playerWalkMovingByEid.delete(eid);
+          return;
+        }
+        const walkAnimation = generatedAnimationByTexture.get(obj.texture.key);
+        if (!walkAnimation) {
+          playerWalkMovingByEid.delete(eid);
+          return;
+        }
+        const vx = velocity.x[eid] ?? 0;
+        const vy = velocity.y[eid] ?? 0;
+        const isMoving = vx * vx + vy * vy > PLAYER_WALK_SPEED_EPSILON_SQ;
+        const wasMoving = playerWalkMovingByEid.get(eid) ?? false;
+        if (isMoving) {
+          // `true` (ignoreIfPlaying) avoids restarting looped cycles from frame 0
+          // every render tick while the player keeps moving. For one-shot
+          // (`loop=false`) walk strips, replay only when movement transitions from
+          // rest -> moving; otherwise Phaser marks the anim complete and repeated
+          // `play()` would incorrectly loop the one-shot on every sync.
+          if (walkAnimation.loop || !wasMoving) {
+            anims.play(walkAnimationKey(obj.texture.key), true);
+          }
+        } else if (wasMoving && typeof anims.stop === 'function') {
+          anims.stop();
+          // `stop()` freezes on whatever mid-stride frame the cycle was on —
+          // explicitly snap back to frame 0, the sheet's designated idle
+          // pose, so resting always reads as a clean standing frame rather
+          // than a frozen stride. See `GeneratedSpriteAnimation` contract.
+          if (typeof (animatable as Partial<Phaser.GameObjects.Sprite>).setFrame === 'function') {
+            (animatable as Phaser.GameObjects.Sprite).setFrame(0);
+          }
+        }
+        playerWalkMovingByEid.set(eid, isMoving);
+      };
 
       const ensureMobMotionState = (
         eid: number,
@@ -1032,10 +1127,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                   appearanceKey,
                   variantRoll: world.stores.sprite.variantRoll[eid],
                 });
+          const hasWalkAnimation = generatedAnimationByTexture.has(resolved.key);
           const img =
-            resolved.frame !== undefined
-              ? scene.add.image(x, y, resolved.key, resolved.frame)
-              : scene.add.image(x, y, resolved.key);
+            hasWalkAnimation && typeof scene.add.sprite === 'function'
+              ? resolved.frame !== undefined
+                ? scene.add.sprite(x, y, resolved.key, resolved.frame)
+                : scene.add.sprite(x, y, resolved.key)
+              : resolved.frame !== undefined
+                ? scene.add.image(x, y, resolved.key, resolved.frame)
+                : scene.add.image(x, y, resolved.key);
           if (resolved.scale !== 1) {
             img.setScale(resolved.scale);
           }
@@ -1412,7 +1512,24 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             } else {
               img.setScale(visual.baseScale);
-              if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
+              if (entityType === 'player') {
+                // Unlike the enemy branch (which is nearly always moving toward a
+                // target), the player frequently has vx === 0 — standing still, or
+                // walking straight up/down. Only re-derive facing when there is a
+                // clear horizontal velocity signal; otherwise keep the sprite's
+                // current flip so the player doesn't snap to "face left" every
+                // time they stop or move vertically.
+                const vx = velocity.x[eid] ?? 0;
+                if (Math.abs(vx) > ENEMY_RIGHTWARD_FLIP_EPSILON) {
+                  const movingRight = vx > 0;
+                  const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
+                  const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+                  if (typeof img.setFlipX === 'function') {
+                    img.setFlipX(shouldMirror);
+                  }
+                }
+                playPlayerWalkAnimation(img, eid);
+              } else if (entityType !== 'npc' && typeof img.setFlipX === 'function') {
                 img.setFlipX(false);
               }
             }
@@ -1423,14 +1540,23 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           const npcInstance = world.npcs.get(eid);
           const npcWidthFt = world.stores.sprite.width[eid] ?? 0;
           const npcHeightFt = world.stores.sprite.height[eid] ?? 0;
-          if (
-            Number.isFinite(npcWidthFt) &&
-            npcWidthFt > 0 &&
-            Number.isFinite(npcHeightFt) &&
-            npcHeightFt > 0 &&
-            typeof img.setDisplaySize === 'function'
-          ) {
-            img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+          if (Number.isFinite(npcHeightFt) && npcHeightFt > 0) {
+            // Height-authoritative, aspect-preserving — same rule as set-piece
+            // props. `setDisplaySize` used to STRETCH the character into the
+            // declared box, so a 5.71x5 ft anchor on a square portrait sprite
+            // squashed the NPC 14% wide AND capped its apparent height below the
+            // authored feet. `heightFt` is the human yardstick every prop is
+            // scaled against, so it must survive verbatim.
+            const nativeH = img.height;
+            if (nativeH > 0 && typeof img.setScale === 'function') {
+              img.setScale(ftToPx(npcHeightFt) / nativeH);
+            } else if (
+              Number.isFinite(npcWidthFt) &&
+              npcWidthFt > 0 &&
+              typeof img.setDisplaySize === 'function'
+            ) {
+              img.setDisplaySize(ftToPx(npcWidthFt), ftToPx(npcHeightFt));
+            }
           }
           if (typeof img.setDepth === 'function') {
             if (Number.isFinite(npcInstance?.z ?? NaN) && npcInstance?.z !== undefined) {
@@ -1798,16 +1924,53 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
           }
           img.setPosition(propX, propY);
-          // Contain-fit: a uniform scale that fits the native sprite INSIDE the
-          // feet box while preserving its aspect ratio. No tile in this game is
-          // designed to stretch, so we never call setDisplaySize on real art
-          // (which would distort a 1.26:1 desk into its 3:1 footprint box).
-          // Fall back to setDisplaySize only for a degenerate zero-size frame.
+          // Anchor + scale are both resolved against the sprite's OPAQUE pixel
+          // bounds, not its raw canvas. The pipeline ships a standardized ~5%
+          // per-side transparent safety margin, so measuring against the canvas
+          // (a) pins `anchorBase` props by the canvas bottom rather than the
+          // object's feet — they floated up to 0.42 ft above their floor line —
+          // and (b) makes `heightFt` scale padding-plus-art, rendering every
+          // prop ~10% shorter than its declared feet.
+          //
+          // `heightFt` stays AUTHORITATIVE for upright props: the sprite is
+          // scaled so its apparent vertical height matches the declared feet and
+          // its width follows the art's own aspect. We do NOT contain-fit
+          // upright props, because `Math.min` silently discards whichever
+          // declared dimension is the looser fit: a torch authored at 1.5x3 ft
+          // against a square 64x64 canvas rendered at 1.5 ft, throwing away HALF
+          // its height. 13 of the welcome room's 31 props were losing 5-50% of
+          // their authored height that way, which is what made every room read
+          // as squashed.
+          //
+          // Floor decals (rugs, stains, tape) are the exception: they lie IN the
+          // floor plane, so both declared feet are real ground extents and must
+          // both be honoured. Those keep the aspect-preserving contain-fit.
+          //
+          // `resolveOpaqueFit` degrades to whole-canvas behaviour when the
+          // manifest has no bounds (legacy entries) or they disagree with the
+          // loaded texture, so stale data reverts to the old look, not garbage.
           const nativeW = img.width;
           const nativeH = img.height;
           if (nativeW > 0 && nativeH > 0) {
-            img.setScale(Math.min(spWidthPx / nativeW, spHeightPx / nativeH));
+            const fit = resolveOpaqueFit({
+              bounds: generatedBoundsByTexture.get(textureKey),
+              canvasWidth: nativeW,
+              canvasHeight: nativeH,
+              targetWidthPx: spWidthPx,
+              targetHeightPx: spHeightPx,
+              anchorBase: sp.anchorBase === true,
+              floorPlane: sp.floorPlane === true,
+            });
+            // Set every frame: a visual is reused by list index, so a prop may
+            // change its anchor or art on a room reset.
+            if (typeof img.setOrigin === 'function') {
+              img.setOrigin(fit.originX, fit.originY);
+            }
+            img.setScale(fit.scale);
           } else {
+            if (typeof img.setOrigin === 'function') {
+              img.setOrigin(0.5, sp.anchorBase === true ? 1 : 0.5);
+            }
             img.setDisplaySize(spWidthPx, spHeightPx);
           }
           // Mirror the sprite when the layer requests it (e.g. a right-side wall
@@ -1862,6 +2025,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
         visual.obj.destroy();
         visuals.delete(eid);
+        playerWalkMovingByEid.delete(eid);
         // Remove weapon anchor so dead/despawned entities don't leave stale
         // offsets that could be picked up if the eid is reused later.
         world.entityWeaponAnchors.delete(eid);

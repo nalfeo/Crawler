@@ -15,6 +15,7 @@ import type {
 } from '../../../scripts/sprites/provider/vision-types.js';
 import {
   CONTACT_SHEET_MAX_TILES,
+  RecoverableThemeSetItemError,
   ThemeEquipmentPipelineError,
   ThemeEquipmentPublishError,
   buildThemeEquipmentContactSheet,
@@ -36,7 +37,6 @@ import {
   emptyThemeEquipmentSetPhases,
   emptyThemeEquipmentSetPublication,
   parseThemeEquipmentSetState,
-  type ThemeEquipmentSetItem,
   type ThemeEquipmentSetState,
 } from '../../../scripts/sprites/theme-equipment-set.js';
 
@@ -93,7 +93,7 @@ function makeState(overrides: Partial<ThemeEquipmentSetState> = {}): ThemeEquipm
  */
 function makeCompleteState(countOverrides: Record<string, number> = {}): ThemeEquipmentSetState {
   const base = makeState();
-  const items: ThemeEquipmentSetItem[] = base.items.map((item) => {
+  const items = base.items.map((item) => {
     const count = countOverrides[item.id] ?? 1;
     const approvedArtifacts = Array.from({ length: count }, (_unused, index) => ({
       id: `${item.id}-approved-${index}`,
@@ -238,15 +238,19 @@ describe('runThemeEquipmentSetPhase', () => {
     expect(executed).not.toContain(frozenId);
     expect(executed).toHaveLength(state.items.length - 1);
     expect(judgeCollection).toHaveBeenCalledTimes(1);
+    expect(result.itemFailures).toHaveLength(0);
+    expect(result.fatalError).toBeNull();
+    expect(result.collectionJudgeError).toBeNull();
+    expect(result.succeededItemIds).toEqual(executed);
 
-    const frozenItem = result.items.find((item) => item.id === frozenId)!;
+    const frozenItem = result.state.items.find((item) => item.id === frozenId)!;
     expect(frozenItem.phases.roster.artifacts).toHaveLength(0); // never re-recorded
 
-    const executedItem = result.items.find((item) => item.id === executed[0])!;
+    const executedItem = result.state.items.find((item) => item.id === executed[0])!;
     expect(executedItem.phases.roster.artifacts).toHaveLength(1);
     expect(executedItem.phases.roster.artifacts[0]!.id).toBe(`${executed[0]}-roster-artifact`);
 
-    expect(result.phases.roster.collectionJudge).toEqual({
+    expect(result.state.phases.roster.collectionJudge).toEqual({
       score: 4,
       rationale: 'cohesive',
       provenance: 'unit-test-judge',
@@ -264,48 +268,136 @@ describe('runThemeEquipmentSetPhase', () => {
     expect(JSON.parse(JSON.stringify(state))).toEqual(before);
   });
 
-  it('propagates the executor error unchanged and never calls the judge', async () => {
+  it('recovers from a per-item RecoverableThemeSetItemError: marks it failed, keeps the earlier successes, and never judges', async () => {
+    const state = makeState();
+    const failId = state.items[2]!.id;
+    const executed: string[] = [];
+    const judgeCollection = vi.fn(async () => ({ score: 4, rationale: 'ok', provenance: 'p' }));
+
+    const result = await runThemeEquipmentSetPhase(
+      state,
+      async (item) => {
+        executed.push(item.id);
+        if (item.id === failId) {
+          throw new RecoverableThemeSetItemError(`no acceptable variants for ${item.id}`);
+        }
+        return {
+          artifacts: [
+            { id: `${item.id}-roster`, kind: 'roster', uri: `run://${item.id}`, provenance: 't' },
+          ],
+          evidence: [],
+        };
+      },
+      judgeCollection,
+    );
+
+    // Every item was attempted (the failure did NOT abort the pass).
+    expect(executed).toHaveLength(state.items.length);
+    // The judge never ran because the pass was knowingly incomplete.
+    expect(judgeCollection).not.toHaveBeenCalled();
+    expect(result.fatalError).toBeNull();
+    expect(result.collectionJudgeError).toBeNull();
+    // The failed item is recorded, the others succeeded.
+    expect(result.itemFailures).toHaveLength(1);
+    expect(result.itemFailures[0]!.itemId).toBe(failId);
+    expect(result.itemFailures[0]!.message).toContain('no acceptable variants');
+    expect(result.succeededItemIds).not.toContain(failId);
+    expect(result.succeededItemIds).toHaveLength(state.items.length - 1);
+    // The durable failure marker is on the state.
+    const failed = result.state.items.find((item) => item.id === failId)!;
+    expect(failed.phases.roster.generationError?.message).toContain('no acceptable variants');
+    // A successful sibling kept its recorded artifacts.
+    const okItem = result.state.items.find((item) => item.id !== failId)!;
+    expect(okItem.phases.roster.artifacts).toHaveLength(1);
+    expect(okItem.phases.roster.generationError).toBeNull();
+  });
+
+  it('bumps stateRevision for a recovered failure so the checkpoint is a real mutation', async () => {
+    const state = makeState();
+    const failId = state.items[0]!.id;
+    const result = await runThemeEquipmentSetPhase(
+      state,
+      async (item) => {
+        if (item.id === failId) {
+          throw new RecoverableThemeSetItemError('boom');
+        }
+        return {
+          artifacts: [
+            { id: `${item.id}-roster`, kind: 'roster', uri: `run://${item.id}`, provenance: 't' },
+          ],
+          evidence: [],
+        };
+      },
+      async () => ({ score: 4, rationale: 'ok', provenance: 'p' }),
+    );
+    expect(result.state.stateRevision).toBeGreaterThan(state.stateRevision);
+  });
+
+  it('treats an unknown (non-recoverable) executor throw as fatal: marks the item, aborts, and surfaces the ORIGINAL error, never calling the judge', async () => {
     const state = makeState();
     const boom = new Error('executor blew up');
+    const failId = state.items[1]!.id;
+    const executed: string[] = [];
     const judgeCollection = vi.fn();
-    await expect(
-      runThemeEquipmentSetPhase(
-        state,
-        async () => {
-          throw boom;
-        },
-        judgeCollection,
-      ),
-    ).rejects.toBe(boom);
+
+    const result = await runThemeEquipmentSetPhase(
+      state,
+      async (item) => {
+        executed.push(item.id);
+        if (item.id === failId) throw boom;
+        return {
+          artifacts: [
+            { id: `${item.id}-roster`, kind: 'roster', uri: `run://${item.id}`, provenance: 't' },
+          ],
+          evidence: [],
+        };
+      },
+      judgeCollection,
+    );
+
     expect(judgeCollection).not.toHaveBeenCalled();
+    // Aborted at the failing item — items after it were not attempted.
+    expect(executed[executed.length - 1]).toBe(failId);
+    expect(result.fatalError).not.toBeNull();
+    expect(result.fatalError!.error).toBe(boom); // verbatim, not wrapped
+    expect(result.fatalError!.itemId).toBe(failId);
+    // The offending item was still marked so the checkpoint records intent.
+    const failed = result.state.items.find((item) => item.id === failId)!;
+    expect(failed.phases.roster.generationError?.message).toBe('executor blew up');
+    // The failure is also captured in itemFailures with the cause preserved.
+    expect(result.itemFailures).toHaveLength(1);
+    expect(result.itemFailures[0]!.cause).toBe(boom);
   });
 
-  it('propagates the judge error unchanged', async () => {
+  it('reports a judge throw via collectionJudgeError without throwing', async () => {
     const state = makeState();
     const boom = new Error('judge blew up');
-    await expect(
-      runThemeEquipmentSetPhase(
-        state,
-        async () => ({ artifacts: [], evidence: [] }),
-        async () => {
-          throw boom;
-        },
-      ),
-    ).rejects.toBe(boom);
+    const result = await runThemeEquipmentSetPhase(
+      state,
+      async () => ({ artifacts: [], evidence: [] }),
+      async () => {
+        throw boom;
+      },
+    );
+    expect(result.collectionJudgeError).toBe('judge blew up');
+    expect(result.fatalError).toBeNull();
+    expect(result.itemFailures).toHaveLength(0);
   });
 
-  it('throws a mutation-rejected ThemeEquipmentPipelineError when the executor output fails the artifact schema', async () => {
+  it('surfaces a mutation-rejected artifact-recording failure as a fatal that preserves the original pipeline error', async () => {
     const state = makeState();
-    await expect(
-      runThemeEquipmentSetPhase(
-        state,
-        // Missing required `uri`/`kind` fields — recordThemeSetItemPhaseArtifacts
-        // must reject this, and the runner must surface it as a thrown error
-        // rather than silently returning a half-updated state.
-        async () => ({ artifacts: [{ id: 'bad' } as never], evidence: [] }),
-        async () => ({ score: 3, rationale: 'fine', provenance: 'p' }),
-      ),
-    ).rejects.toMatchObject({ kind: 'mutation-rejected' });
+    const result = await runThemeEquipmentSetPhase(
+      state,
+      // Missing required `uri`/`kind` fields — recordThemeSetItemPhaseArtifacts
+      // must reject this; the runner marks the item failed and reports a fatal
+      // carrying a mutation-rejected ThemeEquipmentPipelineError.
+      async () => ({ artifacts: [{ id: 'bad' } as never], evidence: [] }),
+      async () => ({ score: 3, rationale: 'fine', provenance: 'p' }),
+    );
+    expect(result.fatalError).not.toBeNull();
+    expect(result.fatalError!.error).toBeInstanceOf(ThemeEquipmentPipelineError);
+    expect(result.fatalError!.error).toMatchObject({ kind: 'mutation-rejected' });
+    expect(result.itemFailures).toHaveLength(1);
   });
 
   it('refuses to run outside a review phase', async () => {
@@ -432,6 +524,34 @@ describe('judgeThemeEquipmentCollectionWithVision', () => {
     expect(request.userPrompt).toContain(
       'silver filigree, moth-wing silhouettes, and lunar enamel',
     );
+  });
+
+  it('grounds the collection-judge prompt against hallucinated false-negatives', async () => {
+    const provider = fakeProvider({ score: 4, rationale: 'ok' });
+    await judgeThemeEquipmentCollectionWithVision({
+      state: makeState(),
+      tiles,
+      provider,
+      env: {},
+    });
+    const request = (provider.evaluate as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as EvaluateRequest;
+    const prompt = request.userPrompt;
+    // Still demands the two-part cohesion + outlier answer.
+    expect(prompt).toMatch(/cohesion/i);
+    expect(prompt).toMatch(/outlier/i);
+    // Must not infer unseen surface properties (the "polished iron" failure).
+    expect(prompt).toMatch(/do not infer/i);
+    expect(prompt).toMatch(/polish/i);
+    expect(prompt).toMatch(/reflectivity/i);
+    // Must not penalize inherent form (the "bow is curved" failure).
+    expect(prompt).toMatch(/inherent, correct form/i);
+    expect(prompt).toMatch(/bow is curved/i);
+    // Must tie any outlier to a named design-language clause.
+    expect(prompt).toMatch(/name the clause/i);
+    // The brittle hard cap that turned one claimed outlier into a veto is gone.
+    expect(prompt).not.toMatch(/must not score above 2/i);
+    expect(prompt).toMatch(/should not drop the score below 3/i);
   });
 
   it('throws malformed for a response missing the required shape', async () => {

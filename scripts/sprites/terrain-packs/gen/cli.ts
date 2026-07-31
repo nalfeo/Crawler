@@ -15,6 +15,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { decodePng, type RgbaImage } from '../png-buffer.js';
 import {
   validateAtlasDimensions,
@@ -43,23 +44,86 @@ interface CliOptions {
   readonly packs: readonly string[];
   readonly force: boolean;
   readonly composeOnly: boolean;
+  readonly fromSource: boolean;
 }
 
 function parseArgs(argv: readonly string[]): CliOptions {
   const packs: string[] = [];
   let force = false;
   let composeOnly = false;
+  let fromSource = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === '--force') force = true;
     else if (arg === '--compose-only') composeOnly = true;
+    else if (arg === '--from-source') fromSource = true;
     else if (arg === '--pack') {
       const value = argv[++i];
       if (!value) throw new Error('--pack requires a pack id');
       packs.push(value);
     } else throw new Error(`Unknown argument: ${arg}`);
   }
-  return { packs, force, composeOnly };
+  return { packs, force, composeOnly, fromSource };
+}
+
+/**
+ * Read a committed pack asset as a rebuild input.
+ *
+ * `--from-source` exists so the packs are REPAIRABLY reproducible, not merely
+ * detectably stale. Azure generation is not byte-reproducible and the raw
+ * material cache is gitignored, so without tracked inputs only the original
+ * author's machine could recompose after a canonical-geometry change (#2189).
+ * Every input this reads is committed, so a fresh clone reproduces the pack
+ * byte-for-byte with no Azure access.
+ */
+function readPackAsset(packId: string, fileName: string): RgbaImage {
+  const abs = path.join(REPO_ROOT, 'public', 'assets', 'terrain-packs', packId, fileName);
+  if (!fs.existsSync(abs)) {
+    throw new Error(`--from-source but no committed input at ${abs}. Rebuild the pack first.`);
+  }
+  return decodePng(fs.readFileSync(abs));
+}
+
+/**
+ * Discover and validate the sorted pool indices for `${prefix}-N.png` in `dir`.
+ *
+ * Reads the directory listing so interior gaps are detected: if floor-0.png and
+ * floor-2.png exist but floor-1.png is absent, the sequential-break approach would
+ * silently return a one-variant pool and trigger a destructive rebuild downgrade.
+ * This function requires a strictly contiguous 0..N sequence and throws on any gap.
+ *
+ * Exported for unit testing.
+ */
+export function discoverPoolIndices(dir: string, prefix: string): number[] {
+  const re = new RegExp(`^${prefix}-(\\d+)\\.png$`);
+  const indices: number[] = [];
+  if (fs.existsSync(dir)) {
+    for (const entry of fs.readdirSync(dir)) {
+      const m = re.exec(entry);
+      if (m) indices.push(parseInt(m[1]!, 10));
+    }
+  }
+  if (indices.length === 0) {
+    throw new Error(`--from-source found no ${prefix}-*.png in ${dir}`);
+  }
+  indices.sort((a, b) => a - b);
+  for (let i = 0; i < indices.length; i++) {
+    if (indices[i] !== i) {
+      throw new Error(
+        `--from-source: non-contiguous source pool for "${prefix}" in ${path.basename(dir)}; ` +
+          `found indices [${indices.join(', ')}] but expected 0..${indices.length - 1}. ` +
+          `Restore or regenerate all source files before rebuilding.`,
+      );
+    }
+  }
+  return indices;
+}
+
+/** Read `<prefix>-0.png`, `<prefix>-1.png`, … from the committed pack sources. */
+function readPackPool(packId: string, prefix: string): readonly RgbaImage[] {
+  const dir = path.join(REPO_ROOT, 'public', 'assets', 'terrain-packs', packId);
+  const indices = discoverPoolIndices(dir, prefix);
+  return indices.map((i) => decodePng(fs.readFileSync(path.join(dir, `${prefix}-${i}.png`))));
 }
 
 async function loadMaterial(spec: SurfaceMaterialSpec, options: CliOptions): Promise<RgbaImage> {
@@ -97,31 +161,49 @@ function reportValidation(label: string, results: readonly ValidationResult[]): 
 }
 
 async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolean> {
-  console.log(`\n[${spec.id}] building`);
-  // Serial, never Promise.all: the S0 image tier throttles concurrent
-  // generations, and a 429 storm is slower than issuing them one at a time.
-  const wallRaw = await loadMaterial(spec.wall, options);
-  const floorRaw = await loadMaterial(spec.floor, options);
-  const corridorRaw = await loadMaterial(spec.corridor, options);
-  const woodRaw = await loadMaterial(spec.doorSlab, options);
+  console.log(`\n[${spec.id}] building${options.fromSource ? ' (from committed source)' : ''}`);
 
-  const wallTile = toMaterialTile(wallRaw, spec.wall.tile);
-  const woodTile = toMaterialTile(woodRaw, spec.doorSlab.tile);
-  const floorVariants = deriveVariantTiles(floorRaw, spec.floor.tile);
-  const corridorVariants = deriveVariantTiles(corridorRaw, spec.corridor.tile);
-
-  // Special-room floors ride along with the pack that owns the walls + doors
-  // they are rendered next to, so they land in that pack's manifest rather than
-  // as loose, unreferenced PNGs.
+  let wallTile: RgbaImage;
+  let floorVariants: readonly RgbaImage[];
+  let corridorVariants: readonly RgbaImage[];
   const specialFloorPools: SpecialFloorPoolInput[] = [];
-  if (spec.includeSpecialFloorPools) {
-    for (const special of FLOOR1_SPECIAL_FLOOR_SPECS) {
-      const raw = await loadMaterial(special.material, options);
-      specialFloorPools.push({
-        key: special.manifestKey,
-        slug: special.id,
-        variants: deriveVariantTiles(raw, special.material.tile),
-      });
+
+  if (options.fromSource) {
+    wallTile = readPackAsset(spec.id, 'wall-material.png');
+    floorVariants = readPackPool(spec.id, 'floor');
+    corridorVariants = readPackPool(spec.id, 'corridor');
+    if (spec.includeSpecialFloorPools) {
+      for (const special of FLOOR1_SPECIAL_FLOOR_SPECS) {
+        specialFloorPools.push({
+          key: special.manifestKey,
+          slug: special.id,
+          variants: readPackPool(spec.id, `special-${special.id}`),
+        });
+      }
+    }
+  } else {
+    // Serial, never Promise.all: the S0 image tier throttles concurrent
+    // generations, and a 429 storm is slower than issuing them one at a time.
+    const wallRaw = await loadMaterial(spec.wall, options);
+    const floorRaw = await loadMaterial(spec.floor, options);
+    const corridorRaw = await loadMaterial(spec.corridor, options);
+
+    wallTile = toMaterialTile(wallRaw, spec.wall.tile);
+    floorVariants = deriveVariantTiles(floorRaw, spec.floor.tile);
+    corridorVariants = deriveVariantTiles(corridorRaw, spec.corridor.tile);
+
+    // Special-room floors ride along with the pack that owns the walls they are
+    // rendered next to, so they land in that pack's manifest rather than as loose,
+    // unreferenced PNGs.
+    if (spec.includeSpecialFloorPools) {
+      for (const special of FLOOR1_SPECIAL_FLOOR_SPECS) {
+        const raw = await loadMaterial(special.material, options);
+        specialFloorPools.push({
+          key: special.manifestKey,
+          slug: special.id,
+          variants: deriveVariantTiles(raw, special.material.tile),
+        });
+      }
     }
   }
 
@@ -139,7 +221,6 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
     wallTile,
     floorVariants,
     corridorVariants,
-    woodTile,
     specialFloorPools,
   });
 
@@ -161,10 +242,10 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
   return reportValidation(spec.id, [
-    // Use the gen-specific schema validator: the pack id ('floor1-dungeon',
-    // 'floor1-cave') is intentionally not yet in TERRAIN_PACK_IDS — these are
-    // generation targets that get registered once their manifests are committed.
-    // All non-id fields are validated against the same strict schema.
+    // Use the gen-specific schema validator: floor1-dungeon/floor1-cave are now
+    // registered in RUNTIME_TERRAIN_PACK_IDS, but validateManifestSchema also
+    // validates the id field against the runtime registry, so either validator
+    // works here. All non-id fields are validated against the same strict schema.
     validateGenManifestSchema(manifest),
     validateAtlasDimensions(typed, atlas),
     validateMaskCoverage(typed),
@@ -202,4 +283,16 @@ async function main(): Promise<void> {
   console.log('\nAll packs valid.');
 }
 
-await main();
+const invokedAsScript = (() => {
+  try {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    return path.resolve(entry) === path.resolve(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsScript) {
+  await main();
+}

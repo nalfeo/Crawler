@@ -15,8 +15,6 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import {
   fetchGeneratedSpriteRegistry,
   GENERATED_SPRITE_REGISTRY_KEY,
@@ -26,8 +24,10 @@ import {
   type GeneratedSpriteRegistry,
 } from '../../src/shared/generated-assets.js';
 import { getAbilityIconEntry } from '../../src/engine/ability-icon.js';
-
-const REPO_MANIFEST = path.resolve(__dirname, '../../public/assets/generated/manifest.json');
+import {
+  loadShippedManifestRaw,
+  shippedManifestShardsExist,
+} from '../helpers/generated-manifest.js';
 
 /** The three abilities with approved icon brief IDs in ability-presentation.ts. */
 const ICON_EXPECTATIONS: ReadonlyArray<{ abilityId: string; briefIdLineage: string }> = [
@@ -55,7 +55,7 @@ function makeRecordingScene(registry: GeneratedSpriteRegistry): unknown {
 }
 
 async function loadRealShippedRegistry(): Promise<GeneratedSpriteRegistry> {
-  const raw = readFileSync(REPO_MANIFEST, 'utf8');
+  const raw = loadShippedManifestRaw();
   const fetcher = (async () =>
     new Response(raw, {
       status: 200,
@@ -66,7 +66,7 @@ async function loadRealShippedRegistry(): Promise<GeneratedSpriteRegistry> {
 
 describe('ability-icon real render path over the shipped manifest (observe-before-done)', () => {
   it('resolves Fireball, Heal, and Pulse Shield to real generated entries', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       // Fresh checkout with no generated art on disk — nothing to observe.
       return;
     }
@@ -107,7 +107,7 @@ describe('ability-icon real render path over the shipped manifest (observe-befor
   });
 
   it('returns null when the texture is not loaded even if the registry has the entry', async () => {
-    if (!existsSync(REPO_MANIFEST)) {
+    if (!shippedManifestShardsExist()) {
       return;
     }
     const registry = await loadRealShippedRegistry();

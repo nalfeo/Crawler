@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "floor2-quartermaster-ui",
+  "task_title": "Floor 2 Quartermaster purchase UI",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "convergent",
+      "notes": "Reviewed plan. Blocking: corner-button hit exclusion, nullable offer data, missing purchase test, probe helper update gap, dirty-check must include gold, primarySurfaceCount. Non-blocking: HUD panelOpen, economy gate. All blocking items addressed in implementation. Convergent — no fork needed.",
+      "model": "gpt-5.4"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Thorough review of all 5 changed files. Checked: layering (engine only imports core/shared), no Math.random(), key binding uniqueness (Q unambiguous), panel-exclusivity/toggle wiring symmetry with BossChestUI, auto-close when leaving safeCtx (bug found and fixed: initial else-if chain was dead code; fixed to match inventory pattern with nested if/else refresh-or-toggle), dirty-check correctness, quantity 0|1 sold-out exhaustiveness. No remaining issues."
+        }
+      ]
+    }
+  }
+}

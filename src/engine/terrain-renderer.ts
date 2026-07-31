@@ -52,12 +52,25 @@ import { computeRawMask8, normalizeBlob47Mask } from '../shared/terrain-pack-mas
 import { getTerrainPack } from '../shared/terrain-pack-registry.js';
 import {
   buildGroundDecalStampConfig,
+  buildLineworkPropStampConfig,
+  buildLineworkStampConfig,
   buildPoolStampConfig,
   groundDecalHalfExtentPx,
+  pickLineworkPropFrame,
   pickPoolCombo,
   pickWallAccentSelection,
   pickGroundDecal,
+  shouldPlaceLineworkProp,
 } from '../shared/terrain-pack-variants.js';
+import {
+  lineworkRunAxis,
+  planLinework,
+  LINEWORK_EMPTY,
+  LINEWORK_GROUND,
+  LINEWORK_BURIED,
+  LINEWORK_WALL_ENTRY,
+  type LineworkHub,
+} from '../shared/terrain-linework.js';
 import {
   TERRAIN_PACK_CELL_PX,
   type PoolVariantDef,
@@ -93,6 +106,69 @@ const PACK_FLOOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([
 const PACK_CORRIDOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([TerrainType.CORRIDOR]);
 
 /**
+ * Terrain a wall's blob47 neighbour mask must read as WALL even though the tile
+ * itself is not stamped from the wall atlas.
+ *
+ * The governing rule (maintainer-specified): a wall only insets
+ * (`WALL_INSET_PX`) on a side whose neighbour is WALKABLE. A wall should NOT
+ * inset toward a neighbour that is itself solid/impassable — the wall body
+ * should reach flush to that boundary — because insetting there exposes a
+ * sliver of the wall pack's floor-pool underdraw (stamped so the inset region
+ * of a *walkable*-side quadrant isn't blank) sitting inside what is meant to
+ * read as solid rock/wood/wall. So this set is exactly "wall types ∪
+ * non-walkable-but-not-wall types the mask should still treat as solid",
+ * rather than a literal walkability predicate — there is no existing
+ * TerrainType → walkability helper in the codebase (`TileFlags`/`TilePresets`
+ * are a separate per-tile PHYSICS array from `TerrainType`, which is purely
+ * visual), so each addition here is a deliberate, documented choice:
+ *
+ *   - `STONE_WALL` / `CAVE_WALL` (via `PACK_WALL_TERRAIN_TYPES`): other pack
+ *     walls — a wall run must not inset against its own kind.
+ *   - `DOOR`: a hole punched through a wall line, whose own art (`doorSet`) is
+ *     a full-bleed tile whose jambs run edge to edge. If the mask treated a
+ *     door as floor, the walls flanking it would inset away from the shared
+ *     boundary and leave a visible strip of floor between wall and jamb — the
+ *     wall would stop short of the doorway instead of running into it.
+ *   - `VOID`: solid rock fill outside authored rooms (`TerrainType.VOID = 0`).
+ *     A wall bordering VOID previously insetted away from it, exposing a
+ *     sliver of ROOM FLOOR sitting inside the rock — light bleeding out past
+ *     the wall into what should be solid stone. This is the primary defect
+ *     this set exists to fix.
+ *   - `WOOD_WALL`: a different wall material, but still a wall — same
+ *     "must not inset against another wall" logic as `STONE_WALL`/`CAVE_WALL`.
+ *   - `TREE`: non-walkable, so the rule "only inset toward walkable space"
+ *     puts it here. No generator writes `TREE` today, so this is currently
+ *     inert; it is included so the set matches the stated rule rather than
+ *     only the terrain that happens to exist right now.
+ *
+ * Deliberately EXCLUDED, even though non-walkable:
+ *   - `WATER` / `LAVA`: these are visible-through hazards, not rock — you can
+ *     see across/into them, so a wall should still inset toward them exactly
+ *     as it does toward ordinary floor (you can see the lava through the
+ *     inset gap; that is correct, not a bug).
+ *   - `RUBBLE`: no generator currently places this terrain type and its
+ *     walkability semantics are not defined/authored anywhere, so it is left
+ *     out rather than guessed at; revisit if/when `RUBBLE` is actually used.
+ *
+ * This is a NEIGHBOUR-ONLY rule: none of these additions make the neighbour
+ * tile itself get stamped from the wall atlas — only the silhouette a wall
+ * selects for ITS OWN mask changes based on what borders it.
+ *
+ * See also `computeRawMask8`'s `outOfBoundsMatches` parameter
+ * (`src/shared/terrain-pack-mask.ts`) — the map-edge counterpart of this rule.
+ * A wall on the map boundary has no real neighbour past the edge; that missing
+ * neighbour must also read as solid (not floor), or the wall full-bleeds into
+ * nothing at the border the same way it used to bleed into VOID.
+ */
+export const PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES: ReadonlySet<TerrainType> = new Set([
+  ...PACK_WALL_TERRAIN_TYPES,
+  TerrainType.DOOR,
+  TerrainType.VOID,
+  TerrainType.WOOD_WALL,
+  TerrainType.TREE,
+]);
+
+/**
  * Minimum share of a ground decal's rotated bounding box that must be ground for
  * the decal to be placed. Decals are clipped by the wall pass rather than
  * excluded by it, so this is not a containment rule — it only stops a large set
@@ -104,7 +180,7 @@ const DECAL_MIN_GROUND_FRACTION = 0.35;
 /** Terrain families that a mixed-biome floor may assign to different packs. */
 export type TerrainPackFamily = 'stone' | 'cave';
 
-export function familyForTerrain(terrain: TerrainType): TerrainPackFamily {
+function familyForTerrain(terrain: TerrainType): TerrainPackFamily {
   return terrain === TerrainType.CAVE_WALL || terrain === TerrainType.CAVE_FLOOR ? 'cave' : 'stone';
 }
 
@@ -112,6 +188,66 @@ const SPECIAL_POOL_BY_TERRAIN: ReadonlyMap<TerrainType, 'safe' | 'bossStair'> = 
   [TerrainType.SAFE_ROOM_FLOOR, 'safe'],
   [TerrainType.BOSS_STAIR_FLOOR, 'bossStair'],
 ]);
+
+/**
+ * Rooms the industrial network is *about*: the boss dens and the resource
+ * heart. Both spurs (density) and trunk endpoints (length) are anchored here,
+ * and the placement metric measures concentration against the same set, so the
+ * thing being tuned and the thing being measured cannot drift apart.
+ *
+ * Cave rooms carry `interiorCells` (an irregular blob); rectangular rooms only
+ * carry `bounds`. Using the centre of `interiorCells` when present keeps a hub
+ * inside its own room rather than on the bounding box's centre, which for a
+ * crescent-shaped cavern can land in solid rock.
+ */
+const LINEWORK_HUB_ROLES: ReadonlySet<RoomRole> = new Set([
+  RoomRole.BOSS_DEN,
+  RoomRole.RESOURCE_HEART,
+]);
+
+function collectLineworkHubs(floorMap: FloorMap): LineworkHub[] {
+  const hubs: LineworkHub[] = [];
+  for (const room of floorMap.rooms) {
+    if (!LINEWORK_HUB_ROLES.has(room.role)) continue;
+    const cells = room.interiorCells;
+    if (cells && cells.length > 0) {
+      let sx = 0;
+      let sy = 0;
+      for (const cell of cells) {
+        sx += cell.x;
+        sy += cell.y;
+      }
+      const cx = sx / cells.length;
+      const cy = sy / cells.length;
+      // The arithmetic centroid of a crescent-shaped cavern can land in solid
+      // rock, so snap it to the nearest cell the room actually owns. Ties are
+      // broken by iteration order, which is stable for a given map.
+      let best = cells[0]!;
+      let bestDistance = Infinity;
+      for (const cell of cells) {
+        const distance = (cell.x - cx) * (cell.x - cx) + (cell.y - cy) * (cell.y - cy);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = cell;
+        }
+      }
+      hubs.push({ tx: best.x, ty: best.y });
+      continue;
+    }
+    hubs.push({
+      tx: room.bounds.x + Math.floor(room.bounds.width / 2),
+      ty: room.bounds.y + Math.floor(room.bounds.height / 2),
+    });
+  }
+  return hubs;
+}
+
+/** Per-component linework statistics surfaced for the placement guard. */
+export interface LineworkRunStats {
+  readonly layerId: string;
+  readonly tileCount: number;
+  readonly hubTileCount: number;
+}
 
 function buildSpawnRoomMask(floorMap: FloorMap): Uint8Array | null {
   const spawnRooms = floorMap.rooms.filter((room) => room.role === RoomRole.SPAWN);
@@ -184,6 +320,35 @@ export interface TerrainLayerResult {
   packWallAccentCounts: Record<string, number>;
   /** Number of cross-tile ground decals stamped across all declared sets. */
   packGroundDecalCount: number;
+  /** Number of tiles stamped by the industrial-linework pass (all layers). */
+  packLineworkTileCount: number;
+  /** Number of props (switch stands, carts, valves) placed on linework tiles. */
+  packLineworkPropCount: number;
+  /**
+   * Tiles where a pipe run dives below grade to pass under a track. Counted
+   * because "the pipe goes under the rail" is otherwise invisible to any
+   * headless check — the tile simply is not stamped.
+   */
+  packLineworkBuriedCount: number;
+  /**
+   * A short prefix of those tiles, in TILE coordinates. Purely an observation
+   * aid: it lets a screenshot be aimed at a real crossing instead of hunting
+   * for one by eye.
+   */
+  packLineworkBuriedSample: readonly { readonly tx: number; readonly ty: number }[];
+  /**
+   * One entry per maximal connected component of every linework layer. This is
+   * the seam the placement guard and the probe lab assert against: run count,
+   * per-run length and per-run hub concentration are all derivable from it.
+   */
+  packLineworkRuns: readonly LineworkRunStats[];
+  /**
+   * Hub tiles (boss dens + resource heart) the linework was routed around, in
+   * TILE coordinates. Exposed because the concentration metric is meaningless
+   * without knowing what it was measured against, and because an observer needs
+   * somewhere to point the camera to actually look at the network.
+   */
+  packLineworkHubs: readonly { readonly tx: number; readonly ty: number }[];
 }
 
 /** Optional per-bake terrain-pack selection. */
@@ -205,7 +370,7 @@ export interface TerrainLayerOptions {
  * @param options.terrainPackId  Registry-backed terrain pack id (e.g. Floor
  *   2's `industrial-cave`). When present, WALL/FLOOR/CORRIDOR tiles (per
  *   `PACK_*_TERRAIN_TYPES`) stamp the pack's atlas/pool textures instead of
- *   the legacy `TILE_SPRITES` path. When omitted (e.g. Floor 1), rendering is
+ *   the legacy `TILE_SPRITES` path. When omitted, rendering is
  *   byte-for-byte identical to the pre-terrain-pack behavior.
  */
 export function buildTerrainLayer(
@@ -354,8 +519,19 @@ export function buildTerrainLayer(
           const wallPack = packsByFamily[family];
           const maskFrameLookup = maskFrameLookups.get(family);
           if (wallPack && maskFrameLookup) {
-            const rawMask = computeRawMask8(tx, ty, width, height, (nx, ny) =>
-              PACK_WALL_TERRAIN_TYPES.has(floorMap.terrain[ny * width + nx] as TerrainType),
+            const rawMask = computeRawMask8(
+              tx,
+              ty,
+              width,
+              height,
+              (nx, ny) =>
+                PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(
+                  floorMap.terrain[ny * width + nx] as TerrainType,
+                ),
+              // A map-edge neighbour has no real terrain to inspect — treat it
+              // as solid so a border wall full-bleeds instead of insetting
+              // into nothing (see PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES doc).
+              true,
             );
             const canonicalMask = normalizeBlob47Mask(rawMask);
             const frameIndex = maskFrameLookup.get(canonicalMask);
@@ -589,7 +765,205 @@ export function buildTerrainLayer(
     }
   }
 
+  // --- Industrial linework ------------------------------------------------
+  //
+  // Runs after the ground decals and (for ground tiles) before `paintTiles`
+  // finishes the walls, so a run that touches rock is clipped pixel-exactly by
+  // the wall art — the same free clip the decal pass relies on.
+  //
+  // It is NOT a decal set. A decal is an independent lattice stamp with no
+  // knowledge of any other stamp or of the map; that is right for cracks and
+  // completely wrong for rail and pipe. Linework instead routes over the real
+  // walkable graph and then derives each tile's frame from its OCCUPIED
+  // NEIGHBOURS via the 2-edge Wang mask, so straights, corners, Ts, crosses and
+  // end-caps fall out of the topology rather than being chosen.
+  const lineworkPasses: { pack: TerrainPackDef; families: Set<TerrainPackFamily> }[] = [];
+  for (const family of ['stone', 'cave'] as const) {
+    const pack = packsByFamily[family];
+    if (!pack?.linework?.length) continue;
+    const existing = lineworkPasses.find((p) => p.pack === pack);
+    if (existing) existing.families.add(family);
+    else lineworkPasses.push({ pack, families: new Set([family]) });
+  }
+  let packLineworkTileCount = 0;
+  let packLineworkPropCount = 0;
+  let packLineworkBuriedCount = 0;
+  /** Enough crossings to aim a camera at; not a complete record. */
+  const BURIED_SAMPLE_LIMIT = 8;
+  const packLineworkBuriedSample: { tx: number; ty: number }[] = [];
+  const packLineworkRuns: LineworkRunStats[] = [];
+  let packLineworkHubs: readonly LineworkHub[] = [];
+  /** Wall-entry stamps deferred until after `paintTiles('cover')`. */
+  const deferredWallEntries: {
+    textureKey: string;
+    frame: number;
+    x: number;
+    y: number;
+    scale: number;
+  }[] = [];
+  const lineworkScaleFor = (cellPx: number): number => tileSize / cellPx;
+  const lineworkPropTaken = new Uint8Array(width * height);
+  for (const { pack, families } of lineworkPasses) {
+    const routable = new Uint8Array(width * height);
+    const wall = new Uint8Array(width * height);
+    for (let i = 0; i < width * height; i++) {
+      const t = floorMap.terrain[i] as TerrainType;
+      if (PACK_WALL_TERRAIN_TYPES.has(t)) {
+        wall[i] = 1;
+      } else if (PACK_CORRIDOR_TERRAIN_TYPES.has(t)) {
+        routable[i] = 1;
+      } else if (PACK_FLOOR_TERRAIN_TYPES.has(t) && families.has(familyForTerrain(t))) {
+        routable[i] = 1;
+      }
+    }
+    // Linework is the floor's industrial story, so it is anchored to the rooms
+    // that story is about: the boss dens and the resource heart. Spawn and
+    // ordinary territory rooms are reachable by trunk lines but are not hubs.
+    const hubs = collectLineworkHubs(floorMap);
+    if (hubs.length === 0) continue;
+    packLineworkHubs = hubs;
+    // Accumulated occupancy of layers already planned, so a later layer prefers
+    // its own ground rather than hiding under an earlier one.
+    const lineworkTaken = new Uint8Array(width * height);
+    // Track before pipe, always. Burial is order-dependent — whichever layer
+    // plans first owns the surface — and a rail crossing over a pipe is the
+    // physically right answer. Today's manifest already lists them that way; the
+    // sort makes that a guarantee rather than a coincidence.
+    const orderedLayers = [...(pack.linework ?? [])].sort(
+      (a, b) => (a.kind === 'track' ? 0 : 1) - (b.kind === 'track' ? 0 : 1),
+    );
+    for (const layer of orderedLayers) {
+      if (!scene.textures.exists(layer.textureKey)) continue;
+      const plan = planLinework({
+        width,
+        height,
+        routable,
+        wall,
+        avoid: lineworkTaken,
+        // Only a pipe dives. A rail that vanished under a pipe and reappeared
+        // would read as broken track.
+        buryUnder: layer.kind === 'pipe' ? Uint8Array.from(lineworkTaken) : undefined,
+        hubs,
+        floorSeed,
+        params: {
+          spursPerHub: layer.spursPerHub,
+          trunkRoutes: layer.trunkRoutes,
+          hubRadiusTiles: layer.hubRadiusTiles,
+          awayFromHubCost: layer.awayFromHubCost,
+          turnPenalty: layer.turnPenalty,
+          // Track never leaves the ground — a rail vanishing into rock reads as
+          // a bug. A pipe doing exactly that is the whole point.
+          entersWalls: layer.kind === 'pipe',
+          seedSalt: layer.seedSalt,
+        },
+      });
+      const scale = lineworkScaleFor(layer.cellPx);
+      const propScale = layer.props ? lineworkScaleFor(layer.props.cellPx) : 1;
+      // Hoisted: these are constant for the whole layer, and the loop below runs
+      // once per map tile.
+      const stampConfig = buildLineworkStampConfig(scale);
+      const propStampConfigs = {
+        y: buildLineworkPropStampConfig(propScale, 0),
+        x: buildLineworkPropStampConfig(propScale, Math.PI / 2),
+      } as const;
+      for (let ty = 0; ty < height; ty++) {
+        for (let tx = 0; tx < width; tx++) {
+          const index = ty * width + tx;
+          // `renderOccupancy`/`renderMasks` drive EVERY visual decision. The
+          // topological pair still describes the route, but a tile that has gone
+          // under a crossing must not be stamped, must not claim a prop, and must
+          // not report a run axis its buried neighbours no longer support.
+          const cell = plan.renderOccupancy[index] ?? LINEWORK_EMPTY;
+          if (cell === LINEWORK_EMPTY || cell === LINEWORK_BURIED) {
+            // Still claimed for routing purposes: a later layer should avoid the
+            // corridor even where this one runs below grade.
+            if ((plan.occupancy[index] ?? LINEWORK_EMPTY) !== LINEWORK_EMPTY) {
+              lineworkTaken[index] = 1;
+              if (cell === LINEWORK_BURIED) {
+                packLineworkBuriedCount++;
+                // A short sample makes the burial locatable from a probe, so a
+                // crossing can be screenshotted without guessing coordinates.
+                if (packLineworkBuriedSample.length < BURIED_SAMPLE_LIMIT) {
+                  packLineworkBuriedSample.push({ tx, ty });
+                }
+              }
+            }
+            continue;
+          }
+          lineworkTaken[index] = 1;
+          const mask = plan.renderMasks[index] ?? 0;
+          const x = tx * tileSize + tileSize / 2;
+          const y = ty * tileSize + tileSize / 2;
+          if (cell === LINEWORK_WALL_ENTRY) {
+            // Deferred: the wall for this very tile has not been painted yet,
+            // and it would overpaint the stamp. Drawing it after `'cover'` is
+            // what makes the pipe read as entering the rock face.
+            deferredWallEntries.push({
+              textureKey: layer.textureKey,
+              frame: mask,
+              x,
+              y,
+              scale,
+            });
+          } else {
+            rt.stamp(layer.textureKey, mask, x, y, stampConfig);
+          }
+          packLineworkTileCount++;
+          const props = layer.props;
+          const runAxis = lineworkRunAxis(mask);
+          if (
+            props &&
+            cell === LINEWORK_GROUND &&
+            runAxis !== null &&
+            !lineworkPropTaken[index] &&
+            scene.textures.exists(props.textureKey) &&
+            shouldPlaceLineworkProp(floorSeed, layer.seedSalt, tx, ty, props.density)
+          ) {
+            // Prop art is authored along the vertical axis, so an east-west run
+            // needs a quarter turn. Props carry no Wang edge signature, so
+            // rotating them cannot break the join contract.
+            const propConfig =
+              props.orientToRun && runAxis === 'x' ? propStampConfigs.x : propStampConfigs.y;
+            rt.stamp(
+              props.textureKey,
+              pickLineworkPropFrame(
+                floorSeed,
+                layer.seedSalt,
+                tx,
+                ty,
+                props.frames,
+                props.frameStart,
+              ),
+              x,
+              y,
+              propConfig,
+            );
+            lineworkPropTaken[index] = 1;
+            packLineworkPropCount++;
+          }
+        }
+      }
+      for (const run of plan.renderRuns) {
+        packLineworkRuns.push({
+          layerId: layer.id,
+          tileCount: run.tileCount,
+          hubTileCount: run.hubTileCount,
+        });
+      }
+    }
+  }
+
   paintTiles('cover');
+
+  for (const entry of deferredWallEntries) {
+    rt.stamp(
+      entry.textureKey,
+      entry.frame,
+      entry.x,
+      entry.y,
+      buildLineworkStampConfig(entry.scale),
+    );
+  }
 
   // Phaser 4: flush all buffered fill/stamp commands to the GPU framebuffer.
   // Without this call nothing drawn above will appear on screen.
@@ -611,6 +985,10 @@ export function buildTerrainLayer(
     packWallAccentedCount,
     packWallAccentCounts,
     packGroundDecalCount,
+    packLineworkTileCount,
+    packLineworkPropCount,
+    packLineworkBuriedCount,
+    packLineworkRunCount: packLineworkRuns.length,
     packFloorSourceCounts,
     packFloorTransformCounts,
     packFloorComboCounts,
@@ -656,5 +1034,11 @@ export function buildTerrainLayer(
     packWallAccentedCount,
     packWallAccentCounts,
     packGroundDecalCount,
+    packLineworkTileCount,
+    packLineworkPropCount,
+    packLineworkBuriedCount,
+    packLineworkBuriedSample,
+    packLineworkRuns,
+    packLineworkHubs,
   };
 }

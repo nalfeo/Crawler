@@ -1,6 +1,8 @@
 /**
- * Mob-ability VFX renderer — the procedural presentation layer for Queen Mab's
- * Verdigris Glamour (and future generic mob abilities).
+ * Mob-ability VFX renderer — procedural presentation for currently implemented
+ * boss abilities (Queen Mab Verdigris Glamour, Big Panda Wei Berserk,
+ * Big Mama Bufo Tongue Repossession, Sovereign Cap Spore Bloom,
+ * King Skritt Roman-Candle Coronation, and Don Paco's THE BIG GOB).
  *
  * Reads from committed public state:
  *   - `world.mobAbilities.cues` — the telegraph cue rebuilt each tick by the
@@ -32,6 +34,7 @@ import {
   getMobAbilityActiveAura,
   getStatusEffects,
 } from '../core/index.js';
+import type { MobAbilityCuePhase } from '../core/mob-abilities/types.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
 
@@ -63,20 +66,29 @@ const COLOR_BERSERK_RED = 0xff4d4d;
 const COLOR_BERSERK_DUST = 0xc98b56;
 const COLOR_BERSERK_ENVELOPE = 0xff6b6b;
 const COLOR_BERSERK_LEAF = 0x8bd17c;
+const COLOR_TONGUE_FLESH = 0xff8c82;
+const COLOR_TONGUE_MUCUS = 0xb7f171;
+const COLOR_TONGUE_SWAMP = 0x6ea54d;
+const COLOR_TONGUE_DUST = 0xb98a5c;
 const COLOR_SPORE_RIM = 0xc4f36b;
 const COLOR_SPORE_FOG = 0x5b7f44;
 const COLOR_SPORE_PUFF = 0xe8ffb5;
 const COLOR_GOB_TRAIL = 0x7cff4f;
 const COLOR_GOB_SLIME = 0x39d353;
 const COLOR_GOB_STEAM = 0xb7ff80;
+const COLOR_SAW_ORANGE = 0xff8c42;
+const COLOR_SAW_SMOKE = 0x6b7280;
+const COLOR_SAW_STEAM = 0xd1d5db;
 
 const BURST_LIFETIME_MS = 560;
 const CAST_START_LIFETIME_MS = 320;
 const CLEANUP_LIFETIME_MS = 300;
 const CROWN_RUNE_COUNT = 8;
 const BURST_SPARK_COUNT = 18;
+const SAW_TRAIL_LIFETIME_MS = 180;
 const UNDERCITY_BURST_SPARK_COUNT = 24;
 const CORONATION_BURST_SPARK_COUNT = 28;
+const TONGUE_REPOSSESSION_ABILITY_ID = 'big-mama-bufo-tongue-repossession';
 
 export function createMobAbilityVfx(scene: Phaser.Scene): {
   update(world: GameWorld): void;
@@ -90,6 +102,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const canAddEllipse = typeof scene.add?.ellipse === 'function';
 
   const telegraphGfx = new Map<number, Phaser.GameObjects.Graphics>();
+  const sawGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishLastPos = new Map<number, { x: number; y: number }>();
   const berserkAuraGfx = new Map<number, Phaser.GameObjects.Graphics>();
@@ -99,6 +112,9 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const cloudZoneGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const coronationProjectileLastPos = new Map<number, { x: number; y: number }>();
+  const lastCuePhase = new Map<number, MobAbilityCuePhase>();
+  /** Last pixel position at which continuous saw-trail particles were emitted, per caster EID. */
+  const lastSawTrailPos = new Map<number, { x: number; y: number }>();
   const castStartSeen = new Set<number>();
   let projectileGfx: Phaser.GameObjects.Graphics | undefined;
   let slickGfx: Phaser.GameObjects.Graphics | undefined;
@@ -342,6 +358,48 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
   }
 
+  function drawLaneTelegraph(
+    gfx: Phaser.GameObjects.Graphics,
+    originX: number,
+    originY: number,
+    endX: number,
+    endY: number,
+    widthPx: number,
+    progress: number,
+    dangerColor: 'ability-theme' | 'hostile-red',
+  ): void {
+    const dx = endX - originX;
+    const dy = endY - originY;
+    const len = Math.hypot(dx, dy);
+    if (len <= Number.EPSILON) return;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const halfW = widthPx * 0.5;
+    const left0x = originX + nx * halfW;
+    const left0y = originY + ny * halfW;
+    const right0x = originX - nx * halfW;
+    const right0y = originY - ny * halfW;
+    const left1x = endX + nx * halfW;
+    const left1y = endY + ny * halfW;
+    const right1x = endX - nx * halfW;
+    const right1y = endY - ny * halfW;
+    const fillColor = dangerColor === 'ability-theme' ? COLOR_BERSERK_GREEN : COLOR_HOSTILE_RED;
+    const railColor = dangerColor === 'ability-theme' ? COLOR_BERSERK_RED : COLOR_HOSTILE_RED;
+    gfx.fillStyle(fillColor, 0.12 + 0.28 * progress);
+    gfx.beginPath();
+    gfx.moveTo(left0x, left0y);
+    gfx.lineTo(left1x, left1y);
+    gfx.lineTo(right1x, right1y);
+    gfx.lineTo(right0x, right0y);
+    gfx.closePath();
+    gfx.fillPath();
+    gfx.lineStyle(2 + 2 * progress, railColor, 0.92);
+    gfx.lineBetween(left0x, left0y, left1x, left1y);
+    gfx.lineBetween(right0x, right0y, right1x, right1y);
+    gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.45 + 0.4 * progress);
+    gfx.lineBetween(originX, originY, endX, endY);
+  }
+
   function drawProjectileFanTelegraph(
     gfx: Phaser.GameObjects.Graphics,
     cue: GameWorld['mobAbilities']['cues'][number],
@@ -454,6 +512,170 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       seed = (seed * 16807) % 2147483647;
       return (seed & 0x7fffffff) / 2147483647;
     };
+  }
+
+  /** Render the travelling saw blade at its current lane position. */
+  function drawSaw(
+    gfx: Phaser.GameObjects.Graphics,
+    projectileX: number,
+    projectileY: number,
+    phase: 'outbound' | 'hold' | 'return',
+  ): void {
+    const px = ftToPx(projectileX);
+    const py = ftToPx(projectileY);
+    const radius = ftToPx(1.2);
+    gfx.clear();
+    gfx.fillStyle(COLOR_BRONZE, 0.95);
+    gfx.fillCircle(px, py, radius);
+    gfx.lineStyle(2, COLOR_SAW_ORANGE, phase === 'hold' ? 1 : 0.85);
+    gfx.strokeCircle(px, py, radius + 2);
+    gfx.lineStyle(2, COLOR_HOSTILE_RED, 0.8);
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2;
+      gfx.beginPath();
+      gfx.moveTo(px, py);
+      gfx.lineTo(px + Math.cos(a) * (radius + 3), py + Math.sin(a) * (radius + 3));
+      gfx.strokePath();
+    }
+  }
+
+  /** One-shot ring + smoke puff emitted when the saw changes phase. */
+  function spawnSawFlair(
+    x: number,
+    y: number,
+    radiusPx: number,
+    smokeColor: number,
+    sparkColor: number,
+  ): void {
+    if (!enabled) return;
+    spawnRing(x, y, radiusPx * 0.4, radiusPx * 1.1, sparkColor, SAW_TRAIL_LIFETIME_MS, BURST_DEPTH);
+    const smoke = scene.add.circle(x, y, radiusPx * 0.32, smokeColor, 0.24);
+    smoke.setDepth(BURST_DEPTH);
+    smoke.setBlendMode('ADD');
+    ignoreUi(smoke);
+    transientCircles.add(smoke);
+    const tween = scene.tweens.add({
+      targets: smoke,
+      alpha: { from: 0.24, to: 0 },
+      scale: { from: 1, to: 1.8 },
+      duration: SAW_TRAIL_LIFETIME_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        transientCircles.delete(smoke);
+        transientTweens.delete(smoke);
+        smoke.destroy();
+      },
+    });
+    transientTweens.set(smoke, tween);
+  }
+
+  /**
+   * Emit a small burst of continuous trail particles as the saw travels.
+   * Called every tick during outbound/return; uses a deterministic LCG seeded
+   * by position so that headless / visual runs produce identical emission
+   * patterns.
+   */
+  function spawnSawTrailParticle(x: number, y: number, seed: number): void {
+    if (!enabled) return;
+    const rand = makeDeterministicRand(seed);
+    const spark = scene.add.circle(x, y, 2 + rand() * 2, COLOR_SAW_ORANGE, 0.7 + rand() * 0.25);
+    spark.setDepth(BURST_DEPTH);
+    spark.setBlendMode('ADD');
+    ignoreUi(spark);
+    transientCircles.add(spark);
+    const angle = rand() * Math.PI * 2;
+    const dist = 4 + rand() * 8;
+    const sparkTween = scene.tweens.add({
+      targets: spark,
+      x: x + Math.cos(angle) * dist,
+      y: y + Math.sin(angle) * dist,
+      alpha: { from: 0.9, to: 0 },
+      scale: { from: 1, to: 0.3 },
+      duration: 80 + rand() * 60,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        transientCircles.delete(spark);
+        transientTweens.delete(spark);
+        spark.destroy();
+      },
+    });
+    transientTweens.set(spark, sparkTween);
+    if (rand() < 0.35) {
+      const frag = canAddRectangle
+        ? scene.add.rectangle(x, y, 2 + rand() * 2, 4 + rand() * 3, COLOR_BRONZE)
+        : scene.add.circle(x, y, 1 + rand(), COLOR_BRONZE);
+      frag.setAngle?.(rand() * 360);
+      frag.setDepth(BURST_DEPTH);
+      frag.setBlendMode('ADD');
+      ignoreUi(frag);
+      transientCircles.add(frag);
+      const fragAngle = rand() * Math.PI * 2;
+      const fragDist = 6 + rand() * 14;
+      const fragTween = scene.tweens.add({
+        targets: frag,
+        x: x + Math.cos(fragAngle) * fragDist,
+        y: y + Math.sin(fragAngle) * fragDist,
+        alpha: { from: 0.8, to: 0 },
+        scale: { from: 1, to: 0.2 },
+        duration: 140 + rand() * 100,
+        ease: 'Sine.easeOut',
+        onComplete: () => {
+          transientCircles.delete(frag);
+          transientTweens.delete(frag);
+          frag.destroy();
+        },
+      });
+      transientTweens.set(frag, fragTween);
+    }
+  }
+
+  /** Draw + emit the kill-saw visuals for one lane cue in an active phase. */
+  function updateSawVisuals(cue: {
+    casterEid: number;
+    phase: MobAbilityCuePhase;
+    projectileX?: number;
+    projectileY?: number;
+  }): void {
+    let saw = sawGfx.get(cue.casterEid);
+    const previousPhase = lastCuePhase.get(cue.casterEid);
+    lastCuePhase.set(cue.casterEid, cue.phase);
+    if (cue.phase === 'telegraph') {
+      saw?.clear();
+      lastSawTrailPos.delete(cue.casterEid);
+      return;
+    }
+    if (cue.projectileX === undefined || cue.projectileY === undefined) return;
+    if (!enabled) return;
+    if (saw === undefined) {
+      saw = scene.add.graphics();
+      saw.setDepth(BURST_DEPTH);
+      saw.setBlendMode('ADD');
+      ignoreUi(saw);
+      sawGfx.set(cue.casterEid, saw);
+    }
+    drawSaw(saw, cue.projectileX, cue.projectileY, cue.phase);
+    const px = ftToPx(cue.projectileX);
+    const py = ftToPx(cue.projectileY);
+    if (previousPhase !== cue.phase) {
+      if (cue.phase === 'outbound') {
+        spawnSawFlair(px, py, ftToPx(1.2), COLOR_SAW_STEAM, COLOR_SAW_ORANGE);
+      } else if (cue.phase === 'hold') {
+        spawnSawFlair(px, py, ftToPx(1.5), COLOR_SAW_SMOKE, COLOR_HOSTILE_RED);
+      } else {
+        spawnSawFlair(px, py, ftToPx(1.2), COLOR_SAW_STEAM, COLOR_CROWN_RUNE);
+      }
+    }
+    if (cue.phase === 'outbound' || cue.phase === 'return') {
+      const prior = lastSawTrailPos.get(cue.casterEid);
+      const trailStepPx = ftToPx(0.5);
+      if (prior === undefined || (px - prior.x) ** 2 + (py - prior.y) ** 2 >= trailStepPx ** 2) {
+        const seed = (cue.casterEid * 7919 + Math.round(px) * 31 + Math.round(py)) | 0;
+        spawnSawTrailParticle(px, py, seed);
+        lastSawTrailPos.set(cue.casterEid, { x: px, y: py });
+      }
+    } else {
+      lastSawTrailPos.delete(cue.casterEid);
+    }
   }
 
   function spawnBerserkFlair(x: number, y: number, radiusPx: number, seedBase: number): void {
@@ -611,6 +833,205 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
   }
 
+  function trackTransientShape(shape: Phaser.GameObjects.Shape): void {
+    transientCircles.add(shape);
+  }
+
+  function spawnTongueRepossessionBurst(geom: {
+    originX: number;
+    originY: number;
+    endX: number;
+    endY: number;
+    dirX: number;
+    dirY: number;
+    widthFt: number;
+  }): void {
+    if (!enabled) return;
+    const originX = ftToPx(geom.originX);
+    const originY = ftToPx(geom.originY);
+    const endX = ftToPx(geom.endX);
+    const endY = ftToPx(geom.endY);
+    const widthPx = ftToPx(geom.widthFt);
+    const dx = endX - originX;
+    const dy = endY - originY;
+    const lengthPx = Math.hypot(dx, dy);
+    if (lengthPx <= Number.EPSILON) return;
+
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const centerX = originX + dx * 0.5;
+    const centerY = originY + dy * 0.5;
+    spawnRing(
+      originX,
+      originY,
+      widthPx * 0.25,
+      widthPx * 0.95,
+      COLOR_HOSTILE_RED,
+      220,
+      BURST_DEPTH,
+    );
+    spawnRing(
+      endX,
+      endY,
+      widthPx * 0.35,
+      widthPx * 2.2,
+      COLOR_HOSTILE_RED,
+      BURST_LIFETIME_MS,
+      BURST_DEPTH,
+    );
+
+    if (canAddRectangle) {
+      const tongue = scene.add.rectangle(
+        centerX,
+        centerY,
+        lengthPx,
+        widthPx * 0.82,
+        COLOR_TONGUE_FLESH,
+      );
+      tongue.setAngle?.(angleDeg);
+      tongue.setDepth(BURST_DEPTH);
+      tongue.setBlendMode('ADD');
+      ignoreUi(tongue);
+      trackTransientShape(tongue);
+      const tween = scene.tweens.add({
+        targets: tongue,
+        x: originX + dx * 0.34,
+        y: originY + dy * 0.34,
+        scaleX: { from: 1, to: 0.28 },
+        alpha: { from: 0.78, to: 0 },
+        duration: BURST_LIFETIME_MS,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          transientCircles.delete(tongue);
+          transientTweens.delete(tongue);
+          tongue.destroy();
+        },
+      });
+      transientTweens.set(tongue, tween);
+    }
+
+    if (canAddRectangle) {
+      for (const offset of [0.28, 0.58]) {
+        const strip = scene.add.rectangle(
+          originX + dx * offset,
+          originY + dy * offset,
+          lengthPx * 0.22,
+          Math.max(2, widthPx * 0.18),
+          COLOR_TONGUE_MUCUS,
+        );
+        strip.setAngle?.(angleDeg);
+        strip.setDepth(BURST_DEPTH);
+        strip.setBlendMode('ADD');
+        ignoreUi(strip);
+        trackTransientShape(strip);
+        const tween = scene.tweens.add({
+          targets: strip,
+          alpha: { from: 0.72, to: 0 },
+          scaleX: { from: 1, to: 0.18 },
+          duration: BURST_LIFETIME_MS * 0.8,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            transientCircles.delete(strip);
+            transientTweens.delete(strip);
+            strip.destroy();
+          },
+        });
+        transientTweens.set(strip, tween);
+      }
+    }
+
+    for (let i = 1; i <= 4; i += 1) {
+      const t = i / 5;
+      const dust = scene.add.circle(
+        originX + dx * t,
+        originY + dy * t,
+        Math.max(2, widthPx * 0.16),
+      );
+      dust.setFillStyle(COLOR_TONGUE_DUST, 0.4);
+      dust.setDepth(BURST_DEPTH);
+      dust.setBlendMode('ADD');
+      ignoreUi(dust);
+      trackTransientShape(dust);
+      const tween = scene.tweens.add({
+        targets: dust,
+        x: originX + dx * t - geom.dirY * widthPx * 0.3,
+        y: originY + dy * t + geom.dirX * widthPx * 0.3,
+        alpha: { from: 0.4, to: 0 },
+        scale: { from: 1, to: 0.3 },
+        duration: BURST_LIFETIME_MS * 0.55,
+        ease: 'Sine.easeOut',
+        onComplete: () => {
+          transientCircles.delete(dust);
+          transientTweens.delete(dust);
+          dust.destroy();
+        },
+      });
+      transientTweens.set(dust, tween);
+    }
+
+    if (canAddEllipse) {
+      for (let i = 0; i < 4; i += 1) {
+        const spread = (i - 1.5) * widthPx * 0.25;
+        const spray = scene.add.ellipse(
+          endX,
+          endY,
+          widthPx * 0.45,
+          widthPx * 0.22,
+          COLOR_TONGUE_SWAMP,
+        );
+        spray.setAngle?.(angleDeg + i * 9 - 13.5);
+        spray.setDepth(BURST_DEPTH);
+        spray.setBlendMode('ADD');
+        ignoreUi(spray);
+        trackTransientShape(spray);
+        const tween = scene.tweens.add({
+          targets: spray,
+          x: endX + geom.dirX * widthPx * 0.9 - geom.dirY * spread,
+          y: endY + geom.dirY * widthPx * 0.9 + geom.dirX * spread,
+          alpha: { from: 0.72, to: 0 },
+          scaleX: { from: 1, to: 1.8 },
+          scaleY: { from: 1, to: 0.2 },
+          duration: BURST_LIFETIME_MS * 0.7,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            transientCircles.delete(spray);
+            transientTweens.delete(spray);
+            spray.destroy();
+          },
+        });
+        transientTweens.set(spray, tween);
+      }
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      const t = 0.72 + i * 0.12;
+      const bubble = scene.add.circle(
+        originX + dx * t,
+        originY + dy * t,
+        Math.max(2.2, widthPx * (0.17 - i * 0.02)),
+        COLOR_TONGUE_MUCUS,
+      );
+      bubble.setDepth(BURST_DEPTH);
+      bubble.setBlendMode('ADD');
+      ignoreUi(bubble);
+      trackTransientShape(bubble);
+      const tween = scene.tweens.add({
+        targets: bubble,
+        x: originX + dx * Math.max(0.18, t - 0.38),
+        y: originY + dy * Math.max(0.18, t - 0.38),
+        alpha: { from: 0.9, to: 0 },
+        scale: { from: 1, to: 0.15 },
+        duration: BURST_LIFETIME_MS * 0.65,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          transientCircles.delete(bubble);
+          transientTweens.delete(bubble);
+          bubble.destroy();
+        },
+      });
+      transientTweens.set(bubble, tween);
+    }
+  }
+
   function hasMobAbilityDebuff(world: GameWorld, eid: number): boolean {
     for (const e of getStatusEffects(world, eid)) {
       if (e.sourceId.startsWith(MOB_ABILITY_SOURCE_PREFIX)) return true;
@@ -765,19 +1186,35 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         continue;
       }
 
-      // ── Circle / spawn-circles / projectile-fan ──────────────────────────
-      const circles = circlesForMobAbilityGeometry(cue.geometry);
-      if (circles.length === 0) continue;
       liveCasters.add(cue.casterEid);
-      const first = circles[0]!;
-      const firstCx = ftToPx(first.x);
-      const firstCy = ftToPx(first.y);
-      const firstRadiusPx = ftToPx(first.radiusFt);
-      lastGeom.set(cue.casterEid, { x: firstCx, y: firstCy, r: firstRadiusPx });
+      if (cue.geometry.kind === 'lane') {
+        const midX = (cue.geometry.originX + cue.geometry.endX) * 0.5;
+        const midY = (cue.geometry.originY + cue.geometry.endY) * 0.5;
+        lastGeom.set(cue.casterEid, {
+          x: ftToPx(midX),
+          y: ftToPx(midY),
+          r: ftToPx(cue.geometry.widthFt * 0.5),
+        });
+      } else {
+        const circles = circlesForMobAbilityGeometry(cue.geometry);
+        if (circles.length === 0) continue;
+        const first = circles[0]!;
+        const firstCx = ftToPx(first.x);
+        const firstCy = ftToPx(first.y);
+        const firstRadiusPx = ftToPx(first.radiusFt);
+        lastGeom.set(cue.casterEid, { x: firstCx, y: firstCy, r: firstRadiusPx });
+      }
       if (!castStartSeen.has(cue.casterEid)) {
         castStartSeen.add(cue.casterEid);
-        for (const circle of circles) {
-          spawnCastStart(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        if (cue.geometry.kind === 'lane') {
+          const cx = ftToPx(cue.geometry.originX);
+          const cy = ftToPx(cue.geometry.originY);
+          spawnCastStart(cx, cy, ftToPx(cue.geometry.widthFt));
+        } else {
+          const circles = circlesForMobAbilityGeometry(cue.geometry);
+          for (const circle of circles) {
+            spawnCastStart(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+          }
         }
       }
       if (!enabled) continue;
@@ -790,7 +1227,21 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         telegraphGfx.set(cue.casterEid, gfx);
       }
       gfx.clear();
-      if (cue.geometry.kind === 'projectile-fan') {
+      const circles =
+        cue.geometry.kind === 'lane' ? [] : circlesForMobAbilityGeometry(cue.geometry);
+      if (cue.geometry.kind === 'lane') {
+        drawLaneTelegraph(
+          gfx,
+          ftToPx(cue.geometry.originX),
+          ftToPx(cue.geometry.originY),
+          ftToPx(cue.geometry.endX),
+          ftToPx(cue.geometry.endY),
+          ftToPx(cue.geometry.widthFt),
+          cue.telegraphProgress,
+          cue.dangerColor,
+        );
+        updateSawVisuals(cue);
+      } else if (cue.geometry.kind === 'projectile-fan') {
         drawProjectileFanTelegraph(gfx, cue);
       } else {
         for (const circle of circles) {
@@ -948,6 +1399,14 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // the same simulation step before PhaserBridge.sync runs.
     while (runtime.pendingBursts.length > 0) {
       const burst = runtime.pendingBursts.shift()!;
+      if (burst.kind === 'recatch') {
+        // Kill-saw re-catch: the blade slams back into the caster's housing.
+        const x = ftToPx(burst.x);
+        const y = ftToPx(burst.y);
+        spawnBurst(x, y, ftToPx(2.4));
+        spawnSawFlair(x, y, ftToPx(1.6), COLOR_SAW_SMOKE, COLOR_SAW_ORANGE);
+        continue;
+      }
       const geom = burst.geometry;
       if (geom.kind === 'radial-projectiles') {
         // Coronation burst: spoke-tip cinders + central flash.
@@ -971,9 +1430,15 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         const cy = ftToPx(geom.y);
         const r = ftToPx(geom.radiusFt);
         spawn(cx, cy, r);
-      } else if (geom.kind === 'spawn-circles') {
+      } else if (geom.kind === 'spawn-circles' || geom.kind === 'multi-circle') {
         for (const circle of geom.circles) {
           spawn(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
+      } else if (geom.kind === 'lane') {
+        if (burst.abilityId === TONGUE_REPOSSESSION_ABILITY_ID) {
+          spawnTongueRepossessionBurst(geom);
+        } else {
+          spawn(ftToPx(geom.endX), ftToPx(geom.endY), ftToPx(geom.widthFt * 1.8));
         }
       } else {
         for (const circle of circlesForMobAbilityGeometry(geom)) {
@@ -1020,6 +1485,10 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       if (!liveCasters.has(eid)) {
         gfx.destroy();
         telegraphGfx.delete(eid);
+        sawGfx.get(eid)?.destroy();
+        sawGfx.delete(eid);
+        lastCuePhase.delete(eid);
+        lastSawTrailPos.delete(eid);
         castStartSeen.delete(eid);
       }
     }
@@ -1146,6 +1615,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     transientCircles.clear();
     for (const gfx of telegraphGfx.values()) gfx.destroy();
     telegraphGfx.clear();
+    for (const gfx of sawGfx.values()) gfx.destroy();
+    sawGfx.clear();
     for (const gfx of tarnishGfx.values()) gfx.destroy();
     tarnishGfx.clear();
     for (const gfx of berserkAuraGfx.values()) gfx.destroy();
@@ -1163,6 +1634,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     slickLastGeom.clear();
     lastGeom.clear();
     coronationProjectileLastPos.clear();
+    lastCuePhase.clear();
+    lastSawTrailPos.clear();
     castStartSeen.clear();
   }
 

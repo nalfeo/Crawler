@@ -243,17 +243,49 @@ describe('removeBackground', () => {
         setPixel(img, 3, y, 0, 180, 40);
         setPixel(img, 7, y, 0, 180, 40);
       }
-      // Cavity colour (255,80,255) has dist^2 = 6400 to magenta — within fringe.
+      // Cavity halo (255,80,255) has dist^2 = 6400 to magenta: inside the fringe
+      // tolerance but OUTSIDE the strict seed tolerance, so it cannot seed on its
+      // own. The single pure-magenta pixel at (5,5) is the seed; clearing must
+      // then GROW from it across the halo at the looser fringe tolerance.
       for (let y = 4; y <= 6; y++) {
         for (let x = 4; x <= 6; x++) {
           setPixel(img, x, y, 255, 80, 255);
         }
       }
+      setPixel(img, 5, 5, 255, 0, 255);
 
       const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
-      expect(alphaAt(out, 5, 5)).toBe(0);
-      expect(alphaAt(out, 6, 6)).toBe(0);
+      expect(alphaAt(out, 5, 5)).toBe(0); // the seed itself
+      expect(alphaAt(out, 6, 6)).toBe(0); // fringe-distance halo, reached by growth
       expect(alphaAt(out, 3, 3)).toBe(255);
+    });
+
+    it('preserves warm foreground tones that merely clip the fringe tolerance', () => {
+      // Regression for the enclosed-region false-positive class, using the real
+      // measured colours from the sprite pipeline: the generation background is a
+      // dull magenta rgb(182,51,135), and warm tan/leather rgb(207,127,69) sits
+      // only 10757 away — inside the ~12000 fringe tolerance. Under a single loose
+      // threshold this punched holes straight through skin, leather and cloth on
+      // every character sheet. A component with no strict-tolerance seed must
+      // survive no matter how large it is or how enclosed it is.
+      const img = blank(16, 16, [182, 51, 135]);
+      for (let x = 2; x <= 13; x++) {
+        setPixel(img, x, 2, 0, 180, 40);
+        setPixel(img, x, 13, 0, 180, 40);
+      }
+      for (let y = 2; y <= 13; y++) {
+        setPixel(img, 2, y, 0, 180, 40);
+        setPixel(img, 13, y, 0, 180, 40);
+      }
+      for (let y = 3; y <= 12; y++) {
+        for (let x = 3; x <= 12; x++) {
+          setPixel(img, x, y, 207, 127, 69);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 4000, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 8, 8)).toBe(255);
+      expect(alphaAt(out, 4, 11)).toBe(255);
     });
 
     it('preserves enclosed details when near-background seed coverage is too sparse', () => {

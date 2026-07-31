@@ -37,6 +37,27 @@ export interface GeneratedEquipmentInventoryEntry {
 
 export type InventoryBagEntry = StackableStaticInventoryEntry | GeneratedEquipmentInventoryEntry;
 
+/**
+ * Read-only presentation fields required to query either inventory lane.
+ *
+ * Generated instances deliberately keep their full data in the core registry;
+ * callers supply the narrow resolver instead of teaching the bag about registry
+ * storage. This keeps `listInventoryEntries()` as the one canonical bag traversal
+ * while preserving the core/shared layer boundary.
+ */
+export interface InventoryEntryMetadata {
+  readonly name: string;
+  readonly description: string;
+  readonly tags: readonly ItemTag[];
+  readonly rarity: string;
+  readonly slots: readonly EquipmentSlotId[];
+}
+
+/** Resolves immutable registry-backed metadata for one generated bag reference. */
+export type GeneratedInventoryEntryResolver = (
+  entry: GeneratedEquipmentInventoryEntry,
+) => InventoryEntryMetadata | undefined;
+
 export interface InventoryBag {
   /** Legacy static-item lane. Existing item/count consumers remain unchanged. */
   slots: InventorySlot[];
@@ -235,6 +256,27 @@ export function getItemCount(bag: InventoryBag, itemId: string): number {
 // Querying / filtering
 // ---------------------------------------------------------------------------
 
+function resolveEntryMetadata(
+  entry: InventoryBagEntry,
+  catalog: readonly ItemDef[] | undefined,
+  resolveGenerated: GeneratedInventoryEntryResolver | undefined,
+): InventoryEntryMetadata | undefined {
+  if (entry.kind === 'generated-instance') {
+    return resolveGenerated?.(entry);
+  }
+  const def = catalog
+    ? catalog.find((candidate) => candidate.id === entry.itemId)
+    : getItemById(entry.itemId);
+  if (!def) return undefined;
+  return {
+    name: def.name,
+    description: def.description,
+    tags: def.tags,
+    rarity: def.rarity,
+    slots: getEquipmentDefForItem(entry.itemId)?.slots ?? [],
+  };
+}
+
 /**
  * Search slots by item name or description (case-insensitive substring match).
  * Returns matching slots (references, not copies).
@@ -243,14 +285,26 @@ export function search(
   bag: InventoryBag,
   query: string,
   catalog?: readonly ItemDef[],
-): InventorySlot[] {
+): InventorySlot[];
+export function search(
+  bag: InventoryBag,
+  query: string,
+  catalog: readonly ItemDef[] | undefined,
+  resolveGenerated: GeneratedInventoryEntryResolver,
+): InventoryBagEntry[];
+export function search(
+  bag: InventoryBag,
+  query: string,
+  catalog?: readonly ItemDef[],
+  resolveGenerated?: GeneratedInventoryEntryResolver,
+): unknown[] {
   const lowerQuery = query.toLowerCase();
-  return bag.slots.filter((slot) => {
-    const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);
-    if (!def) return false;
+  return listInventoryEntries(bag).filter((entry) => {
+    const metadata = resolveEntryMetadata(entry, catalog, resolveGenerated);
+    if (!metadata) return false;
     return (
-      def.name.toLowerCase().includes(lowerQuery) ||
-      def.description.toLowerCase().includes(lowerQuery)
+      metadata.name.toLowerCase().includes(lowerQuery) ||
+      metadata.description.toLowerCase().includes(lowerQuery)
     );
   });
 }
@@ -260,19 +314,40 @@ export function filterByTag(
   bag: InventoryBag,
   tag: ItemTag,
   catalog?: readonly ItemDef[],
-): InventorySlot[] {
-  return bag.slots.filter((slot) => {
-    const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);
-    if (!def) return false;
-    return def.tags.includes(tag);
+): InventorySlot[];
+export function filterByTag(
+  bag: InventoryBag,
+  tag: ItemTag,
+  catalog: readonly ItemDef[] | undefined,
+  resolveGenerated: GeneratedInventoryEntryResolver,
+): InventoryBagEntry[];
+export function filterByTag(
+  bag: InventoryBag,
+  tag: ItemTag,
+  catalog?: readonly ItemDef[],
+  resolveGenerated?: GeneratedInventoryEntryResolver,
+): unknown[] {
+  return listInventoryEntries(bag).filter((entry) => {
+    const metadata = resolveEntryMetadata(entry, catalog, resolveGenerated);
+    return metadata?.tags.includes(tag) ?? false;
   });
 }
 
 /** Filter slots to equippable items that can be worn in the given equipment slot. */
-export function filterByEquipmentSlot(bag: InventoryBag, slotId: EquipmentSlotId): InventorySlot[] {
-  return bag.slots.filter((slot) => {
-    const def = getEquipmentDefForItem(slot.itemId);
-    return def !== undefined && def.slots.includes(slotId);
+export function filterByEquipmentSlot(bag: InventoryBag, slotId: EquipmentSlotId): InventorySlot[];
+export function filterByEquipmentSlot(
+  bag: InventoryBag,
+  slotId: EquipmentSlotId,
+  resolveGenerated: GeneratedInventoryEntryResolver,
+): InventoryBagEntry[];
+export function filterByEquipmentSlot(
+  bag: InventoryBag,
+  slotId: EquipmentSlotId,
+  resolveGenerated?: GeneratedInventoryEntryResolver,
+): unknown[] {
+  return listInventoryEntries(bag).filter((entry) => {
+    const metadata = resolveEntryMetadata(entry, undefined, resolveGenerated);
+    return metadata?.slots.includes(slotId) ?? false;
   });
 }
 
@@ -280,8 +355,19 @@ export function filterByEquipmentSlot(bag: InventoryBag, slotId: EquipmentSlotId
  * Filter slots to every equippable item in the bag, regardless of slot. Used by
  * the integrated equipment-panel bag column when no slot filter is active.
  */
-export function filterEquippable(bag: InventoryBag): InventorySlot[] {
-  return bag.slots.filter((slot) => getEquipmentDefForItem(slot.itemId) !== undefined);
+export function filterEquippable(bag: InventoryBag): InventorySlot[];
+export function filterEquippable(
+  bag: InventoryBag,
+  resolveGenerated: GeneratedInventoryEntryResolver,
+): InventoryBagEntry[];
+export function filterEquippable(
+  bag: InventoryBag,
+  resolveGenerated?: GeneratedInventoryEntryResolver,
+): unknown[] {
+  return listInventoryEntries(bag).filter((entry) => {
+    const metadata = resolveEntryMetadata(entry, undefined, resolveGenerated);
+    return (metadata?.slots.length ?? 0) > 0;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -304,27 +390,72 @@ const RARITY_ORDER: Record<string, number> = {
  */
 export function sortSlots(
   bag: InventoryBag,
+  sortBy?: SortField,
+  catalog?: readonly ItemDef[],
+): InventorySlot[];
+export function sortSlots(
+  bag: InventoryBag,
+  sortBy: SortField | undefined,
+  catalog: readonly ItemDef[] | undefined,
+  resolveGenerated: GeneratedInventoryEntryResolver,
+): InventoryBagEntry[];
+export function sortSlots(
+  bag: InventoryBag,
   sortBy: SortField = 'rarity',
   catalog?: readonly ItemDef[],
-): InventorySlot[] {
-  const resolve = (id: string) => (catalog ? catalog.find((d) => d.id === id) : getItemById(id));
+  resolveGenerated?: GeneratedInventoryEntryResolver,
+): unknown[] {
+  // No-resolver path: sort the static lane only to preserve the InventorySlot[]
+  // return contract. Mixed bags contain generated entries that cannot be
+  // resolved without a resolver, so including them would both break the
+  // contract and produce an unresolvable undefined sort key.
+  const entries: InventoryBagEntry[] = resolveGenerated
+    ? [...listInventoryEntries(bag)]
+    : bag.slots.map(
+        (slot): StackableStaticInventoryEntry => ({
+          kind: 'stackable-static-item',
+          itemId: slot.itemId,
+          quantity: slot.quantity,
+        }),
+      );
 
-  return [...bag.slots].sort((a, b) => {
-    const defA = resolve(a.itemId);
-    const defB = resolve(b.itemId);
+  const resolve = (entry: InventoryBagEntry) =>
+    resolveEntryMetadata(entry, catalog, resolveGenerated);
+
+  return entries.sort((a, b) => {
+    const defA = resolve(a);
+    const defB = resolve(b);
     if (!defA || !defB) return 0;
 
     switch (sortBy) {
       case 'rarity': {
         const diff = (RARITY_ORDER[defB.rarity] ?? 0) - (RARITY_ORDER[defA.rarity] ?? 0);
-        return diff !== 0 ? diff : defA.name.localeCompare(defB.name);
+        if (diff !== 0) return diff;
+        return (
+          defA.name.localeCompare(defB.name) ||
+          inventoryEntryIdentity(a).localeCompare(inventoryEntryIdentity(b))
+        );
       }
       case 'name':
-        return defA.name.localeCompare(defB.name);
+        return (
+          defA.name.localeCompare(defB.name) ||
+          inventoryEntryIdentity(a).localeCompare(inventoryEntryIdentity(b))
+        );
       case 'quantity':
-        return b.quantity - a.quantity;
+        return (
+          (b.kind === 'stackable-static-item' ? b.quantity : 1) -
+            (a.kind === 'stackable-static-item' ? a.quantity : 1) ||
+          inventoryEntryIdentity(a).localeCompare(inventoryEntryIdentity(b))
+        );
     }
   });
+}
+
+/** Stable identity for UI keys, pins, selection, and deterministic sort tie-breaks. */
+export function inventoryEntryIdentity(entry: InventoryBagEntry): string {
+  return entry.kind === 'generated-instance'
+    ? `generated:${entry.instanceKey}`
+    : `static:${entry.itemId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -335,12 +466,16 @@ export function sortSlots(
  * Collect all unique tags present in the player's current inventory.
  * Only tags attached to items the player actually holds appear.
  */
-export function getActiveTags(bag: InventoryBag, catalog?: readonly ItemDef[]): ItemTag[] {
+export function getActiveTags(
+  bag: InventoryBag,
+  catalog?: readonly ItemDef[],
+  resolveGenerated?: GeneratedInventoryEntryResolver,
+): ItemTag[] {
   const tags = new Set<ItemTag>();
-  for (const slot of bag.slots) {
-    const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);
-    if (!def) continue;
-    for (const tag of def.tags) {
+  for (const entry of listInventoryEntries(bag)) {
+    const metadata = resolveEntryMetadata(entry, catalog, resolveGenerated);
+    if (!metadata) continue;
+    for (const tag of metadata.tags) {
       tags.add(tag);
     }
   }
@@ -358,8 +493,9 @@ export function getVisibleTabs(
   bag: InventoryBag,
   prefs: TabPreferences,
   catalog?: readonly ItemDef[],
+  resolveGenerated?: GeneratedInventoryEntryResolver,
 ): ItemTag[] {
-  const active = new Set(getActiveTags(bag, catalog));
+  const active = new Set(getActiveTags(bag, catalog, resolveGenerated));
 
   // Remove hidden custom tags
   for (const hidden of prefs.hidden) {

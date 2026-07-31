@@ -57,7 +57,6 @@ import {
 } from '../../../scripts/agent/perf/round-plan.js';
 import {
   baseConfigForCombo,
-  comboId,
   configId,
   LEGACY_COMBO_ID,
   SECONDARY_KNOBS,
@@ -74,15 +73,9 @@ import {
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
 const LEGACY_LEGACY: Combo = {
-  pathing: AIPathingMode.LEGACY,
+  pathing: AIPathingMode.RISK_REWARD_FUSED,
   decision: AIDecisionMode.LEGACY,
 };
-// A non-legacy combo for incumbent-mismatch tests.
-const NAVMESH_LEGACY: Combo = {
-  pathing: AIPathingMode.NAVMESH_FUSED,
-  decision: AIDecisionMode.LEGACY,
-};
-const NAVMESH_LEGACY_COMBO_ID = comboId(NAVMESH_LEGACY); // 'navmeshFused+legacy'
 const KNOBS: TunableKnob[] = ['aggression'];
 
 const META: ShardMeta = {
@@ -106,7 +99,7 @@ function row(
   seed: number,
   score: number,
   win = true,
-  combo = 'legacy+legacy',
+  combo = 'riskRewardFused+legacy',
 ): RunRow {
   return {
     combo,
@@ -162,51 +155,11 @@ function legacyCheckpointWithPanel(seeds: number[], weapons: string[]): RoundChe
  *  arbitrary (config, combo) pair — generalizes `legacyPanelShard` beyond the
  *  canonical LEGACY base config, for building a non-LEGACY checkpoint's OWN
  *  base panel (as distinct from its separate LEGACY incumbent panel). */
-function ownPanelShard(
-  cfg: SweepConfig,
-  cfgId: string,
-  comboIdStr: string,
-  seeds: number[],
-  weapons: string[],
-): ShardArtifact {
-  const rows: RunRow[] = [];
-  for (const s of seeds) {
-    for (const w of weapons) {
-      rows.push(row(cfgId, w, s, 100, true, comboIdStr));
-    }
-  }
-  return shard(rows, { [cfgId]: cfg });
-}
-
-/** A non-LEGACY (`navmeshFused+legacy`) legacy (pre-resume-support) checkpoint
- *  — no `runInputs` — with a SEPARATE LEGACY incumbent (from
- *  `legacyBaseline`). `ownSeeds`/`ownWeapons` and `legacySeeds`/`legacyWeapons`
- *  are independently sized so mismatch-between-panels tests can construct a
- *  deliberately malformed checkpoint (own combo evaluated on a narrower/wider
- *  panel than its LEGACY safety-gate incumbent). */
-function nonLegacyCheckpointWithPanels(
-  ownSeeds: number[],
-  ownWeapons: string[],
-  legacySeeds: number[],
-  legacyWeapons: string[],
-): RoundCheckpoint {
-  const navmeshBase = baseConfigForCombo(NAVMESH_LEGACY);
-  const navmeshBaseId = configId(navmeshBase);
-  const ownShard = ownPanelShard(
-    navmeshBase,
-    navmeshBaseId,
-    NAVMESH_LEGACY_COMBO_ID,
-    ownSeeds,
-    ownWeapons,
-  );
-  const legacyShard = legacyPanelShard(legacySeeds, legacyWeapons);
-  return initCheckpoint(NAVMESH_LEGACY, KNOBS, ownShard, legacyShard);
-}
 
 describe('initCheckpoint', () => {
   it('builds a round-0 checkpoint seeded from the baseline shard', () => {
     const checkpoint = baseCheckpoint(150);
-    expect(checkpoint.combo).toBe('legacy+legacy');
+    expect(checkpoint.combo).toBe('riskRewardFused+legacy');
     expect(checkpoint.round).toBe(0);
     expect(checkpoint.bestConfigId).toBe(BASE_ID);
     expect(checkpoint.bestScore).toBe(150);
@@ -237,251 +190,6 @@ describe('initCheckpoint', () => {
   it("uses the combo's own base as incumbent when no legacyBaseline is provided (legacy+legacy or smoke runs)", () => {
     const checkpoint = baseCheckpoint(150);
     expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
-  });
-
-  it('uses the LEGACY incumbent from legacyBaseline for a non-LEGACY combo, seeding the safety gate correctly', () => {
-    // For a non-LEGACY combo (navmeshFused+legacy), the combo's own base config
-    // would be a wrong reference for the flip check — the graduation gate always
-    // uses legacy+legacy as the incumbent. Providing legacyBaseline fixes this.
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const legacyBaselineShard = baselineShard(80); // LEGACY config rows (combo: 'legacy+legacy')
-
-    const checkpoint = initCheckpoint(
-      NAVMESH_LEGACY,
-      KNOBS,
-      navmeshBaselineShard,
-      legacyBaselineShard,
-    );
-    // bestConfigId is the combo's own base (navmesh), not the LEGACY incumbent.
-    expect(checkpoint.bestConfigId).toBe(navmeshBaseId);
-    // incumbentConfigId is the LEGACY config — matches the graduation gate.
-    expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
-    // incumbentCombo is LEGACY_COMBO_ID so buildLeaderboard finds the incumbent rows.
-    expect(checkpoint.incumbentCombo).toBe(LEGACY_COMBO_ID);
-    // combo is the navmesh combo string, not the legacy one.
-    expect(checkpoint.combo).toBe(NAVMESH_LEGACY_COMBO_ID);
-    // Both configs and both sets of rows are merged in.
-    expect(Object.keys(checkpoint.configs)).toContain(navmeshBaseId);
-    expect(Object.keys(checkpoint.configs)).toContain(BASE_ID);
-  });
-
-  it('throws when legacyBaseline contains more than one config (ambiguous)', () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const other: SweepConfig = { ...BASE, aggression: 1.5 };
-    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
-      [BASE_ID]: BASE,
-      [configId(other)]: other,
-    });
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /legacyBaseline shard must contain exactly one config, got 2/,
-    );
-  });
-
-  it("throws when legacyBaseline's sole config is a TUNED (non-canonical) legacy+legacy candidate — a same-build --stage search-eval shard for a tuned legacy+legacy candidate also has one config, meta.stage='search', LEGACY-tagged rows, and valid row facts, so it would otherwise pass every other check and silently replace the fixed incumbent", () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const tunedLegacy: SweepConfig = { ...BASE, aggression: 1.5 };
-    const tunedLegacyId = configId(tunedLegacy);
-    const badLegacy = shard([row(tunedLegacyId, 'sword', 1, 100)], {
-      [tunedLegacyId]: tunedLegacy,
-    });
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /canonical LEGACY base config/,
-    );
-  });
-
-  it("throws when legacyBaseline's config body is a tuned variant stored under the canonical key — the canonical key alone is insufficient; the stored body must itself compute to the canonical id", () => {
-    // An artifact can be constructed where the dict key equals the canonical
-    // LEGACY ID string but the config BODY carries tuned values (e.g., a
-    // manually edited JSON or a search-eval shard whose key was overwritten).
-    // The key check passes, but configId(body) produces a different id —
-    // both must match before the artifact is trusted as the fixed incumbent.
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const tunedBody: SweepConfig = { ...BASE, aggression: 1.5 }; // tuned body, non-canonical
-    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
-      [BASE_ID]: tunedBody, // canonical key, but tuned body
-    });
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /config body does not match/,
-    );
-  });
-
-  it("throws when legacyBaseline's config body is tuned by LESS than configId's 4-decimal rounding — configId() rounds every knob to 4dp for stable identity, so a body-vs-canonical check that compares configId strings (instead of raw values) would let a sub-4dp-tuned body slip through under the canonical key", () => {
-    // configId(BASE) rounds aggression to 4dp, so a body tuned by 0.00001 —
-    // below that resolution — computes to the IDENTICAL configId as the
-    // canonical base, even though the raw stored value is not exactly
-    // canonical. An id-based body comparison cannot distinguish these; only
-    // an exact (stableStringify) comparison of the raw values can.
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const subDpTunedBody: SweepConfig = { ...BASE, aggression: BASE.aggression! + 0.00001 };
-    expect(configId(subDpTunedBody)).toBe(BASE_ID); // same id despite different raw value
-    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
-      [BASE_ID]: subDpTunedBody, // canonical key AND canonical configId, but non-canonical raw body
-    });
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /config body does not match/,
-    );
-  });
-
-  // A follow-up independent code-review pass on the net-win promotion rule
-  // (PR #1735) found that build-fingerprint provenance checks added to the
-  // legacy/manual `--stage search` path (assertLegacyBaselineProvenance in
-  // sweep-eval.ts) never protected the PRODUCTION round-DAG path — the
-  // `.github/workflows/ai-sweep.yml` `checkpoint-init` job calls
-  // initCheckpoint directly, and it had ZERO provenance validation on
-  // legacyBaseline at all. The tests below close that gap.
-  it('throws when legacyBaseline rows are tagged with a combo other than legacy+legacy', () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    // legacyBaseline rows wrongly tagged with the navmesh combo instead of legacy+legacy.
-    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)], {
-      [BASE_ID]: BASE,
-    });
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /legacyBaseline shard rows must all be tagged combo='legacy\+legacy'/,
-    );
-  });
-
-  it('throws when legacyBaseline is provenance-incompatible with the combo baseline (schemaVersion mismatch)', () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const badLegacy: ShardArtifact = {
-      meta: { ...META, schemaVersion: SHARD_SCHEMA_VERSION + 1 },
-      configs: { [BASE_ID]: BASE },
-      rows: [row(BASE_ID, 'sword', 1, 100)],
-    };
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /schemaVersion .* != checkpoint/,
-    );
-  });
-
-  it('throws when legacyBaseline was produced under a different Node major version than the combo baseline', () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const badLegacy: ShardArtifact = {
-      meta: { ...META, nodeVersion: 'v18' },
-      configs: { [BASE_ID]: BASE },
-      rows: [row(BASE_ID, 'sword', 1, 100)],
-    };
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /node-version .* != checkpoint/,
-    );
-  });
-
-  it('throws when legacyBaseline was produced from a different code revision (workflow SHA) than the combo baseline', () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const badLegacy: ShardArtifact = {
-      meta: { ...META, workflowSha: 'stalesha0000stalesha0000stalesha0' },
-      configs: { [BASE_ID]: BASE },
-      rows: [row(BASE_ID, 'sword', 1, 100)],
-    };
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /workflow-sha .* != checkpoint/,
-    );
-  });
-
-  // A subsequent review round (PR #1735, round 12) found that
-  // assertShardCompatible omitted the `stage` check mergeShards already
-  // applies, and that legacyBaseline's rows were injected with neither a
-  // per-row safeRoomMs sanity check nor a check that every row actually
-  // references the shard's sole declared config — closing the same gap for
-  // the production round-DAG path that assertLegacyBaselineProvenance
-  // already closed for the legacy/manual `--stage search` path.
-  it('throws when legacyBaseline was produced by a different stage than the combo baseline', () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const badLegacy: ShardArtifact = {
-      meta: { ...META, stage: 'validate' },
-      configs: { [BASE_ID]: BASE },
-      rows: [row(BASE_ID, 'sword', 1, 100)],
-    };
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /shard stage 'validate' != checkpoint 'search'/,
-    );
-  });
-
-  it('throws when a legacyBaseline row has an out-of-range safeRoomMs (pre-v2/malformed artifact)', () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    const badRow = { ...row(BASE_ID, 'sword', 1, 100), safeRoomMs: -1 };
-    const badLegacy: ShardArtifact = {
-      meta: { ...META },
-      configs: { [BASE_ID]: BASE },
-      rows: [badRow],
-    };
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /safeRoomMs=-1 must be a finite number in/,
-    );
-  });
-
-  it("throws when a legacyBaseline row references a configId other than the shard's sole declared config", () => {
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard(
-      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    // legacyBaseline declares only BASE_ID as its config, but its row
-    // references a different (stale/mistyped) configId — without this check
-    // buildLeaderboard's (incumbentCombo, incumbentConfigId) lookup would
-    // silently find no incumbent rows, disqualifying every candidate.
-    const badLegacy: ShardArtifact = {
-      meta: { ...META },
-      configs: { [BASE_ID]: BASE },
-      rows: [row('stale-config-id', 'sword', 1, 100)],
-    };
-    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
-      /legacyBaseline shard rows must all reference its sole config/,
-    );
   });
 
   it('stamps the optional runInputs (TRAIN seeds + weapons + secondary) onto the checkpoint verbatim when supplied, and omits the field entirely when not', () => {
@@ -1090,69 +798,6 @@ describe('applyRoundResult', () => {
     );
   });
 
-  it('correctly gates flips for a non-legacy combo when the checkpoint was seeded with a legacyBaseline (regression: incumbentCombo must be LEGACY_COMBO_ID, not the combo itself)', () => {
-    // Regression test for the bug the reviewer identified: if incumbentCombo is
-    // passed as checkpoint.combo ('navmeshFused+legacy') instead of LEGACY_COMBO_ID
-    // ('legacy+legacy'), buildLeaderboard looks for incumbentRows under the navmesh
-    // group key and finds nothing — winsVsIncumbentDelta becomes null for every
-    // candidate, and selectQualifiedWinner disqualifies all of them, preventing
-    // any promotion even from a genuinely qualifying candidate.
-    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
-    const navmeshBaseId = configId(navmeshBase);
-
-    // The navmesh combo's own baseline shard (rows tagged with the navmesh combo).
-    const navmeshBaselineShard = shard(
-      [
-        row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
-        row(navmeshBaseId, 'bow', 2, 100, true, NAVMESH_LEGACY_COMBO_ID),
-      ],
-      { [navmeshBaseId]: navmeshBase },
-    );
-    // The LEGACY incumbent shard (rows tagged with 'legacy+legacy'). Wins 2 of
-    // 3 cells (loses dagger/seed-3) so a same-panel candidate can strictly
-    // exceed its win count without needing a cell the incumbent never ran.
-    const legacyBaselineShard = shard(
-      [
-        row(BASE_ID, 'sword', 1, 80, true),
-        row(BASE_ID, 'bow', 2, 80, true),
-        row(BASE_ID, 'dagger', 3, 80, false),
-      ],
-      { [BASE_ID]: BASE },
-    );
-
-    const checkpoint = initCheckpoint(
-      NAVMESH_LEGACY,
-      KNOBS,
-      navmeshBaselineShard,
-      legacyBaselineShard,
-    );
-    expect(checkpoint.incumbentCombo).toBe(LEGACY_COMBO_ID);
-    expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
-
-    // A navmesh candidate that wins all 3 of the LEGACY incumbent's cells
-    // (same weapon/seed panel: sword/1, bow/2, dagger/3) — 3 total wins,
-    // strictly more than the LEGACY incumbent's 2 — so it must be promoted
-    // when it outscores the current best.
-    const goodCandidate: SweepConfig = { ...navmeshBase, aggression: 1.5 };
-    const goodCandidateId = configId(goodCandidate);
-    const candidateShard = shard(
-      [
-        row(goodCandidateId, 'sword', 1, 500, true, NAVMESH_LEGACY_COMBO_ID),
-        row(goodCandidateId, 'bow', 2, 500, true, NAVMESH_LEGACY_COMBO_ID),
-        row(goodCandidateId, 'dagger', 3, 500, true, NAVMESH_LEGACY_COMBO_ID),
-      ],
-      { [goodCandidateId]: goodCandidate },
-    );
-
-    const updated = applyRoundResult(checkpoint, 1, KNOBS, [candidateShard]);
-    // With the bug, winsVsIncumbentDelta would be null → candidate disqualified
-    // → not promoted. With the fix, winsVsIncumbentDelta is 1 (3 - 2) → candidate
-    // promoted (it also outscores navmeshBase).
-    expect(updated.bestConfigId).toBe(goodCandidateId);
-    expect(updated.incumbentCombo).toBe(LEGACY_COMBO_ID); // preserved across rounds
-    expect(updated.incumbentConfigId).toBe(BASE_ID); // still the LEGACY config
-  });
-
   it('is an idempotent no-op for a round a cross-run resume already completed (checkpoint.round >= round, no shards) — never relabels round backward', () => {
     // The fix for Copilot review finding #4: `round1-select` for a combo
     // resumed at round 2 must not overwrite `checkpoint.round` back to 1 —
@@ -1268,7 +913,7 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
 
   it('throws when checkpoint.combo does not match expected.combo — a mislabeled artifact (wrong combo) must never be silently trusted from its filename alone', () => {
     const exp = expected();
-    exp.combo = NAVMESH_LEGACY_COMBO_ID; // checkpoint is actually 'legacy+legacy'
+    exp.combo = 'some-other-combo+mode'; // must differ from the checkpoint's combo
     expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(
       /checkpoint combo .* != expected combo/,
     );
@@ -1284,7 +929,7 @@ describe('assertResumeCompatible (cross-run resume provenance gate, resume_run_i
 
   it('checks combo/round BEFORE any other provenance field, so a mislabeled artifact fails fast with an unambiguous combo/round error rather than a confusing downstream one', () => {
     const exp = expected();
-    exp.combo = NAVMESH_LEGACY_COMBO_ID;
+    exp.combo = 'some-other-combo+mode'; // mismatched combo
     exp.meta = { ...exp.meta, floorId: 'floor2' }; // would ALSO fail on floorId
     expect(() => assertResumeCompatible(resumedCheckpoint(), exp)).toThrow(/checkpoint combo/);
   });
@@ -1574,65 +1219,20 @@ describe('inferRunInputsFromCheckpoint (legacy checkpoint panel inference, unit-
     );
   });
 
-  // A non-LEGACY combo initialized with a `legacyBaseline` carries a SEPARATE
-  // LEGACY incumbent (`incumbentCombo`/`incumbentConfigId` point at LEGACY,
-  // not the checkpoint's own combo — see `initCheckpoint`). Inference must
-  // derive the checkpoint's OWN train panel from its own combo's rows, never
-  // from the incumbent's — otherwise a malformed checkpoint whose own combo
-  // was evaluated on a narrower/wider panel than its LEGACY incumbent would
-  // silently inherit the WRONG (incumbent's) panel instead of its own.
-  it("infers a non-LEGACY checkpoint's trainSeeds/weapons from its OWN base panel, not its separate LEGACY incumbent's panel", () => {
-    const checkpoint = nonLegacyCheckpointWithPanels(
-      [1, 2, 3],
-      ['sword', 'bow'],
-      [1, 2, 3],
-      ['sword', 'bow'],
-    );
-    expect(inferRunInputsFromCheckpoint(checkpoint)).toEqual({
-      trainSeeds: [1, 2, 3],
-      weapons: ['bow', 'sword'],
-      secondary: false,
-    });
-  });
-
-  it("fails closed when a non-LEGACY checkpoint's own base panel does NOT match its separate LEGACY incumbent's panel — this is the exact gap that let a malformed checkpoint (own combo evaluated on a narrower/wider train space than its safety-gate incumbent) silently infer the WRONG panel from the incumbent instead of its own combo's rows", () => {
-    // Own combo evaluated on seeds 1-3 (kept small for test speed); LEGACY
-    // incumbent evaluated on a WIDER/different panel (seeds 1-4). Before the
-    // fix, inference read `checkpoint.incumbentCombo`/`incumbentConfigId`
-    // (the LEGACY rows) and would have silently returned the LEGACY panel
-    // (seeds 1-4) as if it were this combo's own train space.
-    const checkpoint = nonLegacyCheckpointWithPanels([1, 2, 3], ['sword'], [1, 2, 3, 4], ['sword']);
-    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
-      /own combo's train panel .* does not match its LEGACY incumbent's train panel/,
-    );
-  });
-
-  it("fails closed when a non-LEGACY checkpoint's own base panel and its LEGACY incumbent's panel have the same SEED count but different WEAPON sets", () => {
-    const checkpoint = nonLegacyCheckpointWithPanels(
-      [1, 2],
-      ['sword', 'bow'],
-      [1, 2],
-      ['sword', 'baseball-bat'],
-    );
-    expect(() => inferRunInputsFromCheckpoint(checkpoint)).toThrow(
-      /own combo's train panel .* does not match its LEGACY incumbent's train panel/,
-    );
-  });
-
   it("still requires the OWN panel (not just the incumbent's) to be complete/duplicate-free/rectangular — a non-LEGACY checkpoint whose own combo's rows are ragged fails on its own panel before the incumbent panel is even derived", () => {
-    const navmeshBase = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBase = baseConfigForCombo(LEGACY_LEGACY);
     const navmeshBaseId = configId(navmeshBase);
     // Own combo: ragged (2 seeds x 2 weapons expected = 4 rows, but only 3 present).
     const raggedOwnShard = shard(
       [
-        row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
-        row(navmeshBaseId, 'bow', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
-        row(navmeshBaseId, 'sword', 2, 100, true, NAVMESH_LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'sword', 1, 100, true, LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'bow', 1, 100, true, LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'sword', 2, 100, true, LEGACY_COMBO_ID),
       ],
       { [navmeshBaseId]: navmeshBase },
     );
     const checkpoint = initCheckpoint(
-      NAVMESH_LEGACY,
+      LEGACY_LEGACY,
       KNOBS,
       raggedOwnShard,
       legacyPanelShard([1, 2], ['sword', 'bow']),
@@ -1766,16 +1366,16 @@ describe('extractLegacyBaselineShard (derive a fresh legacy+legacy baseline shar
     expect(Object.keys(extracted.configs)).toEqual([BASE_ID]);
     expect(extracted.configs[BASE_ID]).toEqual(BASE);
     expect(extracted.rows).toHaveLength(2);
-    expect(extracted.rows.every((r) => r.combo === 'legacy+legacy' && r.configId === BASE_ID)).toBe(
-      true,
-    );
+    expect(
+      extracted.rows.every((r) => r.combo === 'riskRewardFused+legacy' && r.configId === BASE_ID),
+    ).toBe(true);
   });
 
-  it('rejects a non-legacy+legacy checkpoint (there is no canonical LEGACY baseline to derive)', () => {
-    const nonLegacyCheckpoint = initCheckpoint(NAVMESH_LEGACY, KNOBS, baselineShard(150));
-    expect(() => extractLegacyBaselineShard(nonLegacyCheckpoint)).toThrow(
-      /checkpoint combo must be 'legacy\+legacy'/,
-    );
+  it('rejects a checkpoint whose combo does not match the canonical LEGACY combo ID', () => {
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baselineShard(150));
+    // Directly set a non-canonical combo to verify the guard fires.
+    const fakeCheckpoint = { ...checkpoint, combo: 'some-other-combo+mode' } as typeof checkpoint;
+    expect(() => extractLegacyBaselineShard(fakeCheckpoint)).toThrow(/checkpoint combo must be/);
   });
 
   it('rejects a legacy+legacy checkpoint whose round-0 config is not the canonical LEGACY base', () => {
@@ -1787,7 +1387,7 @@ describe('extractLegacyBaselineShard (derive a fresh legacy+legacy baseline shar
       shard([row(wrongConfigId, 'sword', 1, 100)], { [wrongConfigId]: wrongConfig }),
     );
     expect(() => extractLegacyBaselineShard(checkpoint)).toThrow(
-      /does not contain the canonical LEGACY base config/,
+      /does not contain the canonical incumbent base config/,
     );
   });
 });

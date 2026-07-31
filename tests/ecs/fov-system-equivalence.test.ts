@@ -7,9 +7,11 @@
  * only legitimate if the resulting visibility state is *byte-identical* to the
  * original allocate-per-frame implementation.
  *
- * The reference below is the pre-optimization algorithm, reproduced verbatim.
- * Each test replays the same walk through both and compares the FULL state —
- * `visible`, `discovered`, and the derived tile-level caches — byte for byte.
+ * The reference below is the pre-optimization algorithm, reproduced verbatim,
+ * plus the whole-tile wall reveal (opaque tiles are filled across every
+ * sub-tile) written in its most naive form. Each test replays the same walk
+ * through both and compares the FULL state — `visible`, `discovered`, and the
+ * derived tile-level caches — byte for byte.
  *
  * The scenarios deliberately cover the cases a Floor-1 walk does NOT reliably
  * hit: map corners and edges, origins outside the map, corner-seam blocking,
@@ -81,6 +83,10 @@ function fovSystemReference(world: GameWorld): void {
     if (visibility <= 0) return;
     const tx = Math.floor(hx / sf);
     const ty = Math.floor(hy / sf);
+    // Seam rule applies to every tile so FOV agrees with lineOfSight. The
+    // interior-room-corner exemption lives inside hasBlockedCornerSeam (it
+    // ignores only the seam formed by the final step into an opaque target),
+    // so nothing special is needed here.
     const key = ty * tileMap.width + tx;
     let seamBlocked = seamCache.get(key);
     if (seamBlocked === undefined) {
@@ -88,6 +94,18 @@ function fovSystemReference(world: GameWorld): void {
       seamCache.set(key, seamBlocked);
     }
     if (seamBlocked) return;
+    if (!tileMap.isTransparent(tx, ty)) {
+      // Whole-tile wall reveal: a seen opaque tile is revealed in full, not
+      // only on the sub-tiles a ray landed on. Written naively here (nested
+      // loop over per-sub-tile setters) against the optimized row-fill path.
+      for (let dy = 0; dy < sf; dy++) {
+        for (let dx = 0; dx < sf; dx++) {
+          floorMap.setVisible(tx * sf + dx, ty * sf + dy);
+          floorMap.setDiscovered(tx * sf + dx, ty * sf + dy);
+        }
+      }
+      return;
+    }
     floorMap.setVisible(hx, hy);
     floorMap.setDiscovered(hx, hy);
   });

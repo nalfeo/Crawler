@@ -1,0 +1,39 @@
+{
+  "briefId": "purple-potion-bottle-v1",
+  "spriteName": "purple-potion-bottle-v1-var-4",
+  "assetPath": "generated/purple-potion-bottle-v1-var-4.png",
+  "approvedAt": "2026-06-19T23:58:53.403Z",
+  "sourceRun": "generated/runs/purple-potion-bottle-v1/2026-06-19T23-50-46-2dc4b366",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 29,
+    "y": 62,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 29,
+      "y": 62,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 29,
+      "y": 36,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "6/6",
+  "judgeScore": "2",
+  "type": "item",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "contentHash": "896360f915fb5c64739129ab5d5a01a76317c3dd3ffffcb84c624a3fbebf90ae",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 4,
+    "width": 48,
+    "height": 59,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

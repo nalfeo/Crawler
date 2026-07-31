@@ -125,6 +125,33 @@ function encodeRowWidths(widths: readonly number[], gutter: number, margin: numb
   return PNG.sync.write(png);
 }
 
+/**
+ * A single row of `cols` equal-width, full-height solid-colour blocks with NO
+ * gutter between them at all — content touches edge-to-edge across the whole
+ * sheet width. Used to confirm that a gutter-free sheet now fails gracefully
+ * (the content-aware slicer collapses it to a single cell) rather than silently
+ * producing misaligned fixed-grid cuts. This is the desired quality-gate
+ * behavior: briefs must provide a visible background gutter between every cell.
+ */
+function encodeGutterFreeRow(cols: number, cellW: number, cellH: number): Buffer {
+  const width = cols * cellW;
+  const height = cellH;
+  const png = new PNG({ width, height });
+  for (let c = 0; c < cols; c++) {
+    const col: Rgb = { r: 10 + c * 50, g: 200 - c * 30, b: 80 + c * 20 };
+    for (let y = 0; y < height; y++) {
+      for (let x = c * cellW; x < (c + 1) * cellW; x++) {
+        const i = (y * width + x) * 4;
+        png.data[i] = col.r;
+        png.data[i + 1] = col.g;
+        png.data[i + 2] = col.b;
+        png.data[i + 3] = 255;
+      }
+    }
+  }
+  return PNG.sync.write(png);
+}
+
 function containsColor(buf: Buffer, color: Rgb): boolean {
   const png = PNG.sync.read(buf);
   for (let i = 0; i < png.data.length; i += 4) {
@@ -484,6 +511,128 @@ describe('sliceSheetFromBrief', () => {
     expect(result.cells).toHaveLength(3);
     expect(result.variantCount).toBe(3);
     expect(result.grid).toEqual({ rows: 1, cols: 3, emptyCells: [] });
+  });
+});
+
+describe('sliceSheetFromBrief: frameSequence uses content-aware slicing', () => {
+  // frameSequence briefs now use the same content-aware slicer as every other
+  // brief type. The prompt requires a visible background gutter between every
+  // cell so the slicer can detect them. A gutter-free sheet "fails loud" —
+  // the slicer collapses it to a single cell — acting as a quality gate that
+  // surfaces model-generated sheets that omit the required gutters, rather than
+  // silently producing misaligned fixed-grid crops that fool per-frame sensors.
+  function frameSequenceBrief(rows: number, cols: number, frameCount: number): Brief {
+    return {
+      generation: {
+        sheet: {
+          rows,
+          cols,
+          emptyCells: [] as ReadonlyArray<readonly [number, number]>,
+          nativeCanvas: 1024,
+        },
+      },
+      frameSequence: { enabled: true, frameCount, frameRate: 8, loop: true },
+    } as unknown as Brief;
+  }
+
+  it('slices a guttered 4-frame 2×2 sheet into 4 clean cells in reading order', () => {
+    const FRAME_COLORS: Rgb[] = [
+      { r: 200, g: 40, b: 40 },
+      { r: 40, g: 200, b: 40 },
+      { r: 40, g: 40, b: 200 },
+      { r: 200, g: 200, b: 40 },
+    ];
+    const sheet = encodeContentGrid(2, 2, {
+      block: 16,
+      gutter: 4,
+      margin: 4,
+      color: (r, c) => FRAME_COLORS[r * 2 + c]!,
+    });
+    const brief = frameSequenceBrief(2, 2, 4);
+
+    const result = sliceSheetFromBrief(sheet, brief);
+
+    expect(result.grid).toEqual({ rows: 2, cols: 2, emptyCells: [] });
+    expect(result.cells).toHaveLength(4);
+    expect(result.variantCount).toBe(4);
+
+    // Cells come back in row-major reading order: (0,0), (0,1), (1,0), (1,1).
+    for (let i = 0; i < 4; i++) {
+      expect(containsColor(result.cells[i]!, FRAME_COLORS[i]!)).toBe(true);
+      // No bleed from neighbouring frame colours.
+      for (let j = 0; j < 4; j++) {
+        if (j === i) continue;
+        expect(containsColor(result.cells[i]!, FRAME_COLORS[j]!)).toBe(false);
+      }
+    }
+  });
+
+  it('also accepts a single-row 1×4 layout when gutters are present', () => {
+    const FRAME_COLORS: Rgb[] = [
+      { r: 10 + 0 * 50, g: 200 - 0 * 30, b: 80 + 0 * 20 },
+      { r: 10 + 1 * 50, g: 200 - 1 * 30, b: 80 + 1 * 20 },
+      { r: 10 + 2 * 50, g: 200 - 2 * 30, b: 80 + 2 * 20 },
+      { r: 10 + 3 * 50, g: 200 - 3 * 30, b: 80 + 3 * 20 },
+    ];
+    const sheet = encodeContentGrid(1, 4, {
+      block: 12,
+      gutter: 4,
+      margin: 4,
+      color: (_r, c) => FRAME_COLORS[c]!,
+    });
+    const brief = frameSequenceBrief(1, 4, 4);
+
+    const result = sliceSheetFromBrief(sheet, brief);
+
+    expect(result.cells).toHaveLength(4);
+    expect(result.variantCount).toBe(4);
+    for (let i = 0; i < 4; i++) {
+      expect(containsColor(result.cells[i]!, FRAME_COLORS[i]!)).toBe(true);
+    }
+  });
+
+  it('collapses a gutter-free sheet to 1 cell (quality gate — model must leave gutters)', () => {
+    // This is the DESIRED behavior: without background gutters the content-aware
+    // slicer cannot find any cut positions and returns 1 cell. This surfaces
+    // model-generated sheets that omit the required gutters rather than
+    // silently shipping split/bled content via a fixed-grid cut.
+    const sheet = encodeGutterFreeRow(4, 16, 16);
+    const brief = frameSequenceBrief(1, 4, 4);
+
+    const result = sliceSheetFromBrief(sheet, brief);
+    // Content-aware detection finds no interior gutters → 1×1 result.
+    expect(result.cells).toHaveLength(1);
+    expect(result.variantCount).toBe(1);
+  });
+
+  it('frameSequence and non-frameSequence briefs behave identically on a guttered sheet', () => {
+    // Both brief types now go through the same content-aware slicer; the only
+    // difference is the schema validation and the walk-cycle prompt, not the
+    // slicing path.
+    const sheet = encodeContentGrid(2, 2, {
+      block: 10,
+      gutter: 4,
+      margin: 4,
+      color: (r, c) => ({ r: 40 + r * 80, g: 40 + c * 80, b: 80 }),
+    });
+    const seqBrief = frameSequenceBrief(2, 2, 4);
+    const nonSeqBrief = {
+      generation: {
+        sheet: {
+          rows: 2,
+          cols: 2,
+          emptyCells: [] as ReadonlyArray<readonly [number, number]>,
+          nativeCanvas: 1024,
+        },
+      },
+      frameSequence: { enabled: false, frameCount: 4, frameRate: 8, loop: true },
+    } as unknown as Brief;
+
+    const seqResult = sliceSheetFromBrief(sheet, seqBrief);
+    const nonSeqResult = sliceSheetFromBrief(sheet, nonSeqBrief);
+
+    expect(seqResult.grid).toEqual(nonSeqResult.grid);
+    expect(seqResult.variantCount).toBe(nonSeqResult.variantCount);
   });
 });
 

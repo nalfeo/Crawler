@@ -1,0 +1,42 @@
+{
+  "briefId": "cactusfolk-needle-gunner-v1",
+  "spriteName": "cactusfolk-needle-gunner-v1-var-10",
+  "assetPath": "generated/cactusfolk-needle-gunner-v1-var-10.png",
+  "approvedAt": "2026-07-09T07:39:36.146Z",
+  "sourceRun": "generated/runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e",
+  "variantIndex": 10,
+  "anchor": {
+    "x": 34,
+    "y": 35,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 34,
+      "y": 35,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 34,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "type": null,
+  "contentHash": "4c6ba95742d299731f526c9ef08114b3cf7b429b0365b54f7768675e1c8d2eb3",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 4,
+    "width": 58,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

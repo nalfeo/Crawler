@@ -1,0 +1,42 @@
+{
+  "briefId": "prop-wall-sconce-v1",
+  "spriteName": "prop-wall-sconce-v1-var-1",
+  "assetPath": "generated/prop-wall-sconce-v1-var-1.png",
+  "approvedAt": "2026-07-06T17:36:26.274Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-jVZfwn/prop-wall-sconce-v1/2026-07-02T21-49-42-6419720f",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 34,
+    "y": 60,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 34,
+      "y": 60,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 34,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "2",
+  "type": "prop",
+  "contentHash": "7a8c699059c5b5a86988d9befb547125bcd8ed679f2f39433496ff4b819b10de",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "left",
+  "opaqueBounds": {
+    "x": 11,
+    "y": 3,
+    "width": 41,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

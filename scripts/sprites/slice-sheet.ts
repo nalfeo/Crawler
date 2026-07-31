@@ -693,6 +693,12 @@ function sliceWithMap(sheetPng: Buffer, options: SliceOptions): BriefSliceResult
  * `expectedGrid` anchor. Returns the ACTUAL data-driven grid the slicer landed on
  * (which may differ from the commanded grid — a runt edge trimmed or a spurious
  * gutter merged) so the caller persists the real grid/count. See `computeSliceMap`.
+ *
+ * Content-aware slicing is used unconditionally for every brief type including
+ * `frameSequence`-enabled ones. The brief's layout prompt (see `build-prompt.ts`)
+ * requires a visible background gutter between every cell, so the gutter detector
+ * keying off that separator is robust and "fails loud" (returns a different
+ * `variantCount` than expected) when the model omits the required gutter.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): BriefSliceResult {
   const { rows, cols, emptyCells } = brief.generation.sheet;

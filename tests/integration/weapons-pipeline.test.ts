@@ -53,6 +53,7 @@ const SWORD_BRIEF: Brief = {
   minVariations: 4,
   judge: { enabled: false, maxVariants: 16 },
   postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'strict' },
+  frameSequence: { enabled: false, frameCount: 3, frameRate: 8, loop: true },
 };
 
 function runAllSensors(

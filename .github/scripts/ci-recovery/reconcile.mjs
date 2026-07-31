@@ -45,7 +45,7 @@ import {
   humanApprovalRejection,
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
-import { fileLoopIncident } from './loop-incident-lib.mjs';
+import { closeLoopIncident, fileLoopIncident } from './loop-incident-lib.mjs';
 import { createUnexpectedErrorHandler } from './unexpected-error.mjs';
 import {
   buildRetroactivePlanComment,
@@ -67,6 +67,7 @@ import {
   LIFECYCLE_MARKER,
   parseLifecycleComment,
 } from './pr-lifecycle.mjs';
+import { MERGE_TRAIN_STATUS_MARKER, TASK_COMMENT_MARKER } from './markers.mjs';
 import { DISPATCH_ACTION, selectEarlyAction, selectTerminalAction } from './dispatch-table.mjs';
 import {
   buildEarlyDecisionRecord,
@@ -84,7 +85,14 @@ const expectedHeadSha = (process.env.EXPECTED_HEAD_SHA || '').trim().toLowerCase
 const expectedBaseRef = (process.env.EXPECTED_BASE_REF || '').trim();
 const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
-const readToken = pat || process.env.GITHUB_TOKEN || '';
+// Reads prefer a dedicated token (the GitHub App installation token supplied by
+// ci-recovery.yml) because every classic PAT belonging to the same user shares a
+// single 5,000 req/hour core bucket. This workflow is the highest-volume REST
+// consumer in the repo, so routing its reads through the PAT exhausted that shared
+// bucket and 403'd every other owner-scoped automation. Falls back to the PAT and
+// then GITHUB_TOKEN so local runs and tests are unchanged.
+const readToken =
+  (process.env.CI_RECOVERY_READ_TOKEN || '').trim() || pat || process.env.GITHUB_TOKEN || '';
 const live = mode === 'live';
 const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
@@ -106,7 +114,10 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
-const TASK_COMMENT_MARKER_PATTERN = /crawler-ci-task:v1 fingerprint=([0-9a-f]+)\b/i;
+const TASK_COMMENT_MARKER_PATTERN = new RegExp(
+  `${TASK_COMMENT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} fingerprint=([0-9a-f]+)\\b`,
+  'i',
+);
 const TASK_REVIEW_THREAD_BLOCKER_PATTERN = /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`/gi;
 const REVIEW_THREAD_BLOCKER_ID_PATTERN = /^review-thread:([^:]+):/;
 const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
@@ -218,7 +229,12 @@ if (mode === 'off') {
 
 const labelName = ownerLabel(prNumber);
 const pr = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data;
-if (pr.draft) {
+// Only skip draft PRs that are still open. A draft PR that was subsequently
+// closed or merged must proceed so the closed-state fence-release path at the
+// pr.state !== 'open' check below has a chance to run and delete the owner
+// fence. Without this guard the liveness-sweep:closed-owner-fence dispatch
+// exits here and the fence leaks until the next orphaned-fence sweep.
+if (pr.draft && String(pr.state || '').toLowerCase() === 'open') {
   process.stdout.write(`skip pr=#${prNumber} state=${pr.state} draft=${pr.draft}\n`);
   process.exit(0);
 }
@@ -900,10 +916,18 @@ async function dispatchWorkflow(workflow, inputs) {
     process.stdout.write(`dry-run would-dispatch workflow=${workflow} pr=#${prNumber}\n`);
     return;
   }
-  await request(readToken, `/repos/${owner}/${repo}/actions/workflows/${workflow}/dispatches`, {
-    method: 'POST',
-    body: { ref: 'main', inputs },
-  });
+  // Dispatch stays on the owner PAT: workflow_dispatch attribution affects whether
+  // the resulting run is scheduled or parked in `action_required`. Dispatches are a
+  // negligible share of this workflow's REST volume, so keeping them on the PAT
+  // costs nothing while preserving proven trigger behavior.
+  await request(
+    pat || readToken,
+    `/repos/${owner}/${repo}/actions/workflows/${workflow}/dispatches`,
+    {
+      method: 'POST',
+      body: { ref: 'main', inputs },
+    },
+  );
 }
 
 async function release(reason, nextState = null) {
@@ -1100,6 +1124,32 @@ if (orphanedOwnershipArtifact) {
 if (pr.state !== 'open') {
   if (labelExists || staleOwningState || hasPrLabel(labelName)) {
     stopIfReleaseConvergedElsewhere(await release(`pr-${pr.state}`));
+  }
+  // Merged/closed PR cleanup: close any open loop-incident that was not
+  // already closed at the ARM_AUTO_MERGE convergence point (e.g. a transient
+  // API failure at that call site).  Non-fatal: skip on error so the label
+  // cleanup and process.exit path are never blocked.
+  if (live) {
+    try {
+      const closeResult = await closeLoopIncident({
+        request,
+        paginate,
+        token: pat,
+        owner,
+        repo,
+        prNumber,
+      });
+      if (closeResult.action === 'closed') {
+        process.stdout.write(
+          `loop-incident-closed pr=#${prNumber} issue=#${closeResult.issueNumber} reason=pr-${pr.state}\n`,
+        );
+      }
+    } catch (err) {
+      const safeMsg = String(err.message || err)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 500);
+      process.stderr.write(`loop-incident-close-failed pr=#${prNumber} err=${safeMsg}\n`);
+    }
   }
   process.stdout.write(`skip pr=#${prNumber} state=${pr.state}\n`);
   process.exit(0);
@@ -2139,7 +2189,7 @@ if (
   (!rebaseDispatchPendingForHead || !rebaseFailureBackoffActive)
 ) {
   const trainComment = comments.find((comment) =>
-    hasLeadingMarker(comment.body, '<!-- crawler-merge-train:v1 -->'),
+    hasLeadingMarker(comment.body, MERGE_TRAIN_STATUS_MARKER),
   );
   const validationBlocker = {
     kind: 'merge-train-validation',
@@ -2177,7 +2227,7 @@ if (
 }
 if (mergeTrainEnabled && validationFailed) {
   const trainComment = comments.find((comment) =>
-    hasLeadingMarker(comment.body, '<!-- crawler-merge-train:v1 -->'),
+    hasLeadingMarker(comment.body, MERGE_TRAIN_STATUS_MARKER),
   );
   blockers.push({
     kind: 'merge-train-validation',
@@ -2552,6 +2602,26 @@ let dispatchProgressAt = now.toISOString();
 // cap turns that reasoning into a runtime assertion instead of leaving an
 // unbounded `for (;;)` relying on the invariant holding forever.
 const MAX_TERMINAL_PASSES = 2;
+// Exclude the self-generated ci-failure copilot blocker from the effective
+// blocker count when deciding whether to dispatch — same exclusion as
+// blockerFingerprint() in state.mjs. When ci-failure copilot is the ONLY
+// remaining blocker (all review threads resolved, e.g. via near-typo
+// promotion), the PR is effectively clean and should be admitted to merge
+// rather than re-dispatching Copilot to "fix" its own failed session.
+// The blocker is still included in `normalized` for logging and task-body
+// context when other real blockers are also present.
+// Observed in production: PR #2010 / incident #2326 — ADR thread was
+// auto-resolved via 2-digit near-typo promotion, but ci-failure copilot
+// (from the prior failed session) remained as the sole blocker, causing an
+// extra unnecessary dispatch cycle.
+const effectiveBlockers = normalized.filter(
+  (b) => !(b.kind === 'ci-failure' && b.id === 'copilot'),
+);
+if (normalized.length > 0 && effectiveBlockers.length === 0) {
+  process.stdout.write(
+    `skipping-copilot-self-failure pr=#${prNumber} blockers-effective=0 ci-failure-copilot=self-generated\n`,
+  );
+}
 let terminalRow;
 // Snapshot the {row, ctx, pass} that produced the FINAL terminal decision so the
 // decision-log line uses the exact context that selected the row (not a
@@ -2564,7 +2634,7 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
   // owner/status/stallAction.
   const stateProgressKey = getOrDeriveProgressKey(state);
   const terminalCtx = {
-    blockersPresent: normalized.length > 0,
+    blockersPresent: effectiveBlockers.length > 0,
     admissionWaitingCount: admissionWaiting.length,
     live,
     mergeTrainEnabled,
@@ -2717,6 +2787,33 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     await completeWaitingExit(waitingTransition);
   }
 
+  const closeLoopIncidentOnConvergence = async () => {
+    // Close any open loop-incident for this PR — it was filed when the retry
+    // budget was exhausted, but the PR has since converged (CI passing, no
+    // blockers). Non-fatal: a failure to close must not block merge actions.
+    if (!live) return;
+    try {
+      const closeResult = await closeLoopIncident({
+        request,
+        paginate,
+        token: pat,
+        owner,
+        repo,
+        prNumber,
+      });
+      if (closeResult.action === 'closed') {
+        process.stdout.write(
+          `loop-incident-closed pr=#${prNumber} issue=#${closeResult.issueNumber}\n`,
+        );
+      }
+    } catch (err) {
+      const safeMsg = String(err.message || err)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 500);
+      process.stderr.write(`loop-incident-close-failed pr=#${prNumber} err=${safeMsg}\n`);
+    }
+  };
+
   if (terminalRow.action === DISPATCH_ACTION.QUEUE_MERGE_TRAIN) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
@@ -2755,8 +2852,38 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
       process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
       await dispatchWorkflow('ci-recovery-router.yml', {});
     } else {
+      await assertExpectedMetadataUnchanged('queue-merge-train');
       process.stdout.write(`queue unchanged merge-train pr=#${prNumber}\n`);
     }
+    // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
+    // strict up-to-date merge policy does not block it forever.  This MUST stay on
+    // CRAWLER_CI_PAT (not the App read token) — CRAWLER_CI_PAT emits normal push events
+    // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
+    if (pr.mergeable_state === 'behind') {
+      if (live) {
+        try {
+          await request(
+            pat || readToken,
+            `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
+            {
+              method: 'PUT',
+              body: { expected_head_sha: pr.head.sha },
+            },
+          );
+          process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+        } catch (err) {
+          // 422 covers "already up-to-date" and stale expected_head_sha — log
+          // it so stale-head races are visible and not silently swallowed.
+          if (err.status !== 422) throw err;
+          process.stderr.write(
+            `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
+          );
+        }
+      } else {
+        process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+      }
+    }
+    await closeLoopIncidentOnConvergence();
     process.exit(0);
   }
 
@@ -2784,6 +2911,31 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   } else {
     process.stdout.write(`dry-run would-arm-auto-merge pr=#${prNumber}\n`);
   }
+  // D2 fix: if the PR is clean-BEHIND, call GitHub's update-branch API so the
+  // strict up-to-date merge policy does not block it forever.  This MUST stay on
+  // CRAWLER_CI_PAT (not the App read token) — CRAWLER_CI_PAT emits normal push events
+  // that re-trigger required CI (GITHUB_TOKEN is recursion-suppressed for push).
+  if (pr.mergeable_state === 'behind') {
+    if (live) {
+      try {
+        await request(pat || readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`, {
+          method: 'PUT',
+          body: { expected_head_sha: pr.head.sha },
+        });
+        process.stdout.write(`update-branch pr=#${prNumber} reason=clean-behind\n`);
+      } catch (err) {
+        // 422 covers "already up-to-date" and stale expected_head_sha — log
+        // it so stale-head races are visible and not silently swallowed.
+        if (err.status !== 422) throw err;
+        process.stderr.write(
+          `update-branch pr=#${prNumber} non-fatal: ${err.status} ${err.message}\n`,
+        );
+      }
+    } else {
+      process.stdout.write(`dry-run would-update-branch pr=#${prNumber} reason=clean-behind\n`);
+    }
+  }
+  await closeLoopIncidentOnConvergence();
   process.exit(0);
 } else if (terminalRow.action === DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED) {
   process.stdout.write(`skip pr=#${prNumber} reason=stale-automation-exhausted\n`);
@@ -2920,7 +3072,7 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     normalized.length > 0 &&
     normalized.every((blocker) => blocker.kind === 'ci-failure' || blocker.kind === 'ci-retrigger');
   const taskBody = [
-    `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,
+    `${TASK_COMMENT_MARKER} fingerprint=${fingerprint} -->`,
     '@copilot Please recover this PR from the exact blockers below.',
     `Branch head at dispatch: \`${headSha}\` (context only${hasReviewThreadBlockers ? '; do not use it in an addressed marker after pushing a repair' : ''}).`,
     '',

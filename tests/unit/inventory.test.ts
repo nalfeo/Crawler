@@ -19,11 +19,18 @@ import {
   getVisibleTabs,
   reorderTab,
   hideTab,
+  inventoryEntryIdentity,
   showTab,
+  type GeneratedInventoryEntryResolver,
   type InventoryBag,
   type TabPreferences,
 } from '../../src/shared/inventory.js';
-import { customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
+import {
+  _customTag as customTag,
+  ItemRarity,
+  normalizeGeneratedInventoryTag,
+  type ItemDef,
+} from '../../src/shared/items.js';
 import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 
 // Small test catalog for deterministic tests
@@ -119,6 +126,63 @@ describe('InventoryBag', () => {
       });
       expect(hasGeneratedEquipmentReference(bag, first)).toBe(false);
       expect(hasGeneratedEquipmentReference(bag, second)).toBe(true);
+    });
+
+    it('uses registry-backed generated metadata across tabs, search, slot filtering, and sorting', () => {
+      addGeneratedEquipmentReference(bag, first);
+      addGeneratedEquipmentReference(bag, second);
+      const resolveGenerated: GeneratedInventoryEntryResolver = (entry) =>
+        entry.instanceKey === first
+          ? {
+              name: 'Twin Blade',
+              description: 'A rare first copy',
+              tags: [normalizeGeneratedInventoryTag('weapon')],
+              rarity: 'Rare',
+              slots: ['mainHand'],
+            }
+          : {
+              name: 'Twin Blade',
+              description: 'A common second copy',
+              tags: [normalizeGeneratedInventoryTag('weapon'), customTag('Generated')],
+              rarity: 'Common',
+              slots: ['offHand'],
+            };
+
+      expect(getVisibleTabs(bag, createTabPreferences(), undefined, resolveGenerated)).toContain(
+        'Weapons',
+      );
+      expect(search(bag, 'second copy', undefined, resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+      expect(filterByTag(bag, customTag('Generated'), undefined, resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+      expect(filterByEquipmentSlot(bag, 'offHand', resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+      expect(sortSlots(bag, 'rarity', undefined, resolveGenerated)).toEqual([
+        { kind: 'generated-instance', instanceKey: first },
+        { kind: 'generated-instance', instanceKey: second },
+      ]);
+    });
+
+    it('keeps entry identities stable across static stack quantity changes and exact for duplicates', () => {
+      addItem(bag, 'test-ore', 2, testCatalog);
+      addGeneratedEquipmentReference(bag, first);
+      addGeneratedEquipmentReference(bag, second);
+      const [staticEntry, firstGenerated, secondGenerated] = listInventoryEntries(bag);
+
+      expect(inventoryEntryIdentity(staticEntry!)).toBe('static:test-ore');
+      expect(inventoryEntryIdentity(firstGenerated!)).toBe(`generated:${first}`);
+      expect(inventoryEntryIdentity(secondGenerated!)).toBe(`generated:${second}`);
+      expect(inventoryEntryIdentity(firstGenerated!)).not.toBe(
+        inventoryEntryIdentity(secondGenerated!),
+      );
+
+      addItem(bag, 'test-ore', 1, testCatalog);
+      expect(inventoryEntryIdentity(listInventoryEntries(bag)[0]!)).toBe(
+        inventoryEntryIdentity(staticEntry!),
+      );
     });
   });
 
@@ -360,6 +424,26 @@ describe('InventoryBag', () => {
       expect(sorted[0]!.itemId).toBe('stinky-bone');
       expect(sorted[1]!.itemId).toBe('test-ore');
       expect(sorted[2]!.itemId).toBe('test-potion');
+    });
+
+    it('no-resolver path on a mixed bag returns only static slots, not generated entries', () => {
+      // Mixed bag: two static items + one generated entry.
+      addItem(bag, 'test-sword', 1, testCatalog); // Rare
+      addItem(bag, 'test-ore', 2, testCatalog); // Common
+      const genKey = 'gei:v1:sort-mixed-test:0' as GeneratedEquipmentInstanceKey;
+      addGeneratedEquipmentReference(bag, genKey);
+
+      // No-resolver overload — must return InventorySlot[] over static lane only.
+      const sorted = sortSlots(bag, 'rarity', testCatalog);
+
+      // Generated entry must be absent; only the 2 static items returned.
+      expect(sorted).toHaveLength(2);
+      expect(sorted[0]!.itemId).toBe('test-sword'); // Rare first
+      expect(sorted[1]!.itemId).toBe('test-ore'); // Common second
+
+      // Ensure the generated key is not lurking in the result under any shape.
+      const keys = sorted.map((s) => ('instanceKey' in s ? s.instanceKey : null));
+      expect(keys).not.toContain(genKey);
     });
   });
 });

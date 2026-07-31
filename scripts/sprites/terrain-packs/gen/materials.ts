@@ -62,11 +62,9 @@ export interface PackGenSpec {
   readonly wall: SurfaceMaterialSpec;
   readonly floor: SurfaceMaterialSpec;
   readonly corridor: SurfaceMaterialSpec;
-  /** Wood material used for the closed-door slab. */
-  readonly doorSlab: SurfaceMaterialSpec;
   /**
    * Compose the Floor 1 role-keyed floor pools (welcome / safe / boss-stair)
-   * into this pack. They share this pack's walls and doors, so only the pack
+   * into this pack. They share this pack's walls, so only the pack
    * that owns those surfaces should carry them.
    */
   readonly includeSpecialFloorPools?: boolean;
@@ -100,20 +98,6 @@ export const FLOOR1_DUNGEON_SPEC: PackGenSpec = {
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },
-  doorSlab: {
-    cacheKey: 'floor1-door-wood',
-    prompt:
-      'Heavy weathered oak plank door surface with dark iron banding and rivets, ' +
-      'vertical plank grain, aged and scarred. ' +
-      SHARED_STYLE,
-    tile: {
-      sizePx: 64,
-      posterizeLevels: 10,
-      targetMeanLuminance: 78,
-      maxLuminance: 150,
-      targetStdDev: 20,
-    },
-  },
 };
 
 export const FLOOR1_CAVE_SPEC: PackGenSpec = {
@@ -143,7 +127,6 @@ export const FLOOR1_CAVE_SPEC: PackGenSpec = {
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },
-  doorSlab: FLOOR1_DUNGEON_SPEC.doorSlab,
 };
 
 /**
@@ -216,6 +199,148 @@ export const FLOOR2_INDUSTRIAL_CAVE_MATERIALS = {
   },
 } as const satisfies Record<string, SurfaceMaterialSpec>;
 
+/**
+ * Floor 2 — INDUSTRIAL LINEWORK source materials.
+ *
+ * These are pure SURFACE textures. All linework geometry (rail head profile,
+ * sleeper spacing, pipe bore and flange rings, the 16 edge-Wang masks and the
+ * stub contract that makes them join) is computed locally and deterministically
+ * in `import-floor2-linework.ts`; Azure only ever supplies the material that is
+ * sampled through those masks. That is the same division of labour as
+ * `buildWallAccents`, which clips a generated facet motif to a locally computed
+ * wall-cell alpha.
+ *
+ * Consequence for the prompts: they must describe a FLAT UNIFORM SURFACE and
+ * explicitly forbid rails, pipes, sleepers and any object silhouette. A
+ * generated rail baked into the texture would fight the geometry mask and read
+ * as a double image.
+ */
+export const FLOOR2_LINEWORK_MATERIALS = {
+  /** Rail heads and switch hardware. */
+  steel: {
+    cacheKey: 'floor2-linework-steel',
+    prompt:
+      'Weathered industrial steel surface, cool blue-grey metal with patches of ' +
+      'orange-brown rust bloom, fine scratches, pitting and old grease staining. ' +
+      'Flat uniform metal surface only — no rails, no pipes, no rivets arranged ' +
+      'in lines, no bolts, no machinery, no edges, no silhouettes. ' +
+      SHARED_STYLE,
+    tile: {
+      sizePx: 64,
+      posterizeLevels: 8,
+      targetMeanLuminance: 80,
+      maxLuminance: 150,
+      targetStdDev: 12,
+    },
+  },
+  /** Sleepers / ties under the rails. */
+  timber: {
+    cacheKey: 'floor2-linework-timber',
+    prompt:
+      'Creosote-soaked railway sleeper timber surface, very dark brown weathered ' +
+      'wood with straight open grain, splits along the grain, and dark oily ' +
+      'staining. Flat uniform wood surface only — no planks arranged as boards, ' +
+      'no nails, no metal, no objects, no edges, no silhouettes. ' +
+      SHARED_STYLE,
+    tile: {
+      sizePx: 64,
+      posterizeLevels: 8,
+      targetMeanLuminance: 56,
+      maxLuminance: 120,
+      targetStdDev: 12,
+    },
+  },
+  /** Pipe runs. */
+  iron: {
+    cacheKey: 'floor2-linework-iron',
+    prompt:
+      'Corroded cast iron surface, dull dark grey-green metal with heavy rust ' +
+      'scale, flaking patches, mineral crust and old verdigris staining. Flat ' +
+      'uniform metal surface only — no pipes, no tubes, no flanges, no bolts, ' +
+      'no valves, no machinery, no edges, no silhouettes. ' +
+      SHARED_STYLE,
+    tile: {
+      sizePx: 64,
+      posterizeLevels: 8,
+      targetMeanLuminance: 74,
+      maxLuminance: 140,
+      targetStdDev: 12,
+    },
+  },
+} as const satisfies Record<string, SurfaceMaterialSpec>;
+
+/**
+ * Floor 2 linework PROP sheet.
+ *
+ * Unlike every other spec in this file this is NOT a tileable material — it is a
+ * 3x2 grid of discrete objects on a flat pure-magenta field that local code keys
+ * out into six square frames. Chroma keying is derivation (the same class of
+ * operation as the crack-mask isolation in `buildGroundDecals`), not texture
+ * synthesis, so it stays on the correct side of the governing law: the object's
+ * shape and surface both come from Azure, only the cut-out is local.
+ *
+ * `tile` is unused for this spec — the sheet is never made seamless — but the
+ * field is kept so it satisfies `SurfaceMaterialSpec` and can flow through the
+ * same generation harness.
+ */
+export const FLOOR2_LINEWORK_PROPS: SurfaceMaterialSpec = {
+  cacheKey: 'floor2-linework-props-v2',
+  prompt:
+    'Six separate mining objects arranged in a 3x2 grid on a plain flat pure ' +
+    'magenta background, one object centred in each cell with a wide magenta ' +
+    'margin around it and no object touching another. Top row, left to right: a ' +
+    'rusty iron mine cart on small wheels seen from directly above; an overturned ' +
+    'empty mine cart seen from directly above; a track switch lever stand, a short ' +
+    'iron lever on a base plate, seen from directly above. Bottom row, left to ' +
+    'right: a chunky bolted iron pipe collar, a thick ring of metal with square ' +
+    'bolt heads around its rim, seen from directly above; a small round pressure ' +
+    'gauge with a dark dial face in a heavy iron bezel, seen from directly above; ' +
+    'a compact iron handwheel with four thick spokes and a solid hub, seen from ' +
+    'directly above. Every bottom-row object must be circular and symmetrical so ' +
+    'it reads the same at any rotation. Top-down orthographic view, flat even ' +
+    'lighting, no cast shadows, no perspective, no ground texture, no pipes, no ' +
+    'rails, no text, no watermark, muted desaturated rusted industrial palette, ' +
+    'dark fantasy dungeon crawler game asset sheet. The background must be a ' +
+    'single uniform magenta colour everywhere it is not an object.',
+  tile: {
+    sizePx: 64,
+    posterizeLevels: 12,
+    targetMeanLuminance: 96,
+    maxLuminance: 190,
+    targetStdDev: 22,
+  },
+};
+
+/**
+ * Floor 2 linework WEAR overlay.
+ *
+ * A tileable field of corrosion damage that local code thresholds into a
+ * darkening mask and multiplies over the pipe body. Only the *damage* comes from
+ * Azure; the decision about which pixels of a frame it may touch (never the
+ * edge-locked border band, never off-silhouette) is geometry, and stays local.
+ *
+ * The prompt asks for high contrast on a mid field precisely because the local
+ * side only keeps the dark tail: a low-contrast material would threshold into
+ * either nothing or a solid blot.
+ */
+export const FLOOR2_LINEWORK_WEAR: SurfaceMaterialSpec = {
+  cacheKey: 'floor2-linework-wear',
+  prompt:
+    'Seamless tileable corrosion damage overlay: long vertical rust streaks ' +
+    'running down a metal surface, dark hairline cracks in the crust, flaking ' +
+    'scale patches and dark pitting, scattered unevenly with plenty of clean ' +
+    'space between them. High contrast, very dark damage on a mid neutral grey ' +
+    'field. No objects, no pipes, no rivets, no edges, no silhouettes, no text. ' +
+    SHARED_STYLE,
+  tile: {
+    sizePx: 64,
+    posterizeLevels: 6,
+    targetMeanLuminance: 120,
+    maxLuminance: 210,
+    targetStdDev: 46,
+  },
+};
+
 export interface SpecialFloorSpec {
   /** Pool id, also the on-disk file prefix. */
   readonly id: string;
@@ -229,11 +354,23 @@ export const FLOOR1_SPECIAL_FLOOR_SPECS: readonly SpecialFloorSpec[] = [
     id: 'welcome',
     manifestKey: 'welcome',
     material: {
-      cacheKey: 'floor1-welcome-floor',
+      // v2: the v1 prompt asked for "thin brass inlay lines" plus a "geometric
+      // border pattern repeating across the surface" and the model delivered
+      // exactly that — four columns spiking to luminance 133 against an 84.5
+      // field. Because the tile is seamless those lines chain across tile
+      // boundaries into unbroken lines spanning the whole room, reading as a
+      // debug grid over the floor the player spawns on. Every guard passed: the
+      // tile's column SD (11.58) is LOWER than the plain floor's (12.49), so a
+      // regular lattice is a low-variance signal that mean/SD/silhouette/seam
+      // checks are all blind to. The fix is to ask for irregular slab variation
+      // and to name the failure mode as an explicit negative.
+      cacheKey: 'floor1-welcome-floor-v2',
       prompt:
-        'Ceremonial entrance hall floor of polished dark slate tiles with thin ' +
-        'brass inlay lines and a faint engraved geometric border pattern repeating ' +
-        'across the surface. ' +
+        'Ceremonial entrance hall floor of large polished dark slate slabs, ' +
+        'irregular in size and shape, worn smooth by foot traffic, with subtle ' +
+        'mineral mottling and faint scuffs scattered unevenly across the stone. ' +
+        'No inlay, no metal strips, no painted lines, no grid, no lattice, ' +
+        'no geometric pattern, no regular repeating motif. ' +
         SHARED_STYLE,
       tile: ACCENT_FLOOR_TILE,
     },
@@ -262,7 +399,11 @@ export const FLOOR1_SPECIAL_FLOOR_SPECS: readonly SpecialFloorSpec[] = [
       tile: {
         sizePx: 64,
         posterizeLevels: 10,
-        targetMeanLuminance: 58,
+        // Still the darkest floor in the game (normal floor targets 74), but it
+        // MUST stay above WALL_TILE's 62: a floor that reads darker than its
+        // walls stops the walls reading as vertical. Authored at 58 originally,
+        // which inverted that hierarchy in the boss room specifically.
+        targetMeanLuminance: 70,
         maxLuminance: 140,
         targetStdDev: 18,
       },

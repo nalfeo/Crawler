@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "merge-train-update-branch-crash-fix",
+  "task_title": "Merge train: fix update-branch 403 crash deadlocking entire queue",
+  "estimated_apples": 1,
+  "stages": {}
+}

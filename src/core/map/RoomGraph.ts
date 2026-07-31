@@ -57,6 +57,22 @@ export class RoomGraph {
   }
 
   /**
+   * Replace a room's geometry (bounds/doors/role/label) in place, rebuilding the
+   * underlying record so readonly fields stay honest, and invalidate the spatial
+   * cache so {@link getRoomAt} reflects the new footprint. Used by prefab
+   * set-piece carving, which resizes a room's bounds to the prefab footprint.
+   */
+  updateRoom(
+    id: number,
+    patch: Partial<Pick<RoomData, 'bounds' | 'doors' | 'role' | 'label' | 'interiorCells'>>,
+  ): void {
+    const room = this.rooms[id];
+    if (!room) return;
+    this.rooms[id] = { ...room, ...patch };
+    this.spatialCache = null; // invalidate cache
+  }
+
+  /**
    * Append a neighbour to `id`'s adjacency list, rebuilding the underlying
    * array (RoomData.neighbors is declared readonly, so we replace the array
    * instead of mutating it). No-op if the neighbour is already present.

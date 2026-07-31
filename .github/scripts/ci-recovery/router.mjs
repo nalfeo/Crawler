@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
+import { MANAGED_COMMENT_PREFIX } from './markers.mjs';
 import {
   AUTOMATION_STALE_MINUTES,
   isHealthyRecoveryOwner,
@@ -91,13 +92,8 @@ const IDLE_CAP_MAX = 20;
 // exists to close.
 const OUTSTANDING_RUN_STATUSES = ['queued', 'pending', 'in_progress', 'waiting', 'requested'];
 const REPAIR_WINDOW_SIZE = 6;
-const MANAGED_COMMENT_MARKERS = [
-  '<!-- crawler-ci-state:v1 -->',
-  '<!-- crawler-ci-task:v1',
-  '<!-- crawler-merge-train:v1 -->',
-  '<!-- crawler-review-request:v1',
-  '<!-- crawler-review-conflict:v1',
-];
+// MANAGED_COMMENT_PREFIX is imported from markers.mjs above.
+// isManagedCommentEvent uses MANAGED_COMMENT_PREFIX so new markers are covered automatically.
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
@@ -115,6 +111,8 @@ const DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS = 5000;
 export const DISPATCH_BLOCKED_LABEL_NAMES = new Set([
   'ci-conflict-order-wait', // ci-conflict-coordinator/state.mjs ORDER_WAIT_LABEL
   'ci-conflict-escalation', // ci-conflict-coordinator/state.mjs ESCALATION_LABEL
+  'ci-lifecycle-quarantined', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.QUARANTINED]
+  'ci-lifecycle-abandoned', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.ABANDONED]
   BLOCKED_LABEL, // 'merge-train-blocked'
   VALIDATION_FAILED_LABEL, // 'merge-train-validation-failed'
   HUMAN_APPROVAL_LABEL, // 'human-approval-required'
@@ -204,8 +202,35 @@ export function parseRateLimitResetMilliseconds(error) {
   return waitMs > 0 ? waitMs : null;
 }
 
+// A *primary* rate-limit exhaustion (`x-ratelimit-remaining: 0`) is not a
+// transient blip: the budget only refills at `x-ratelimit-reset`, which can be
+// up to a full hour away. Because `CRAWLER_CI_PAT` is a classic user PAT, that
+// budget is shared across every token belonging to the owner, so exhaustion is
+// account-wide and no amount of local backoff can clear it.
+//
+// Incident 2026-07-30: this was retried like any other 403. Each call burned
+// DEFAULT_RETRY_MAX_ATTEMPTS requests against an already-empty budget, capped at
+// DEFAULT_RETRY_MAX_DELAY_MS (30s) — so the retries could never outlast a 60m
+// reset, and instead deepened the exhaustion they were waiting on. Detect the
+// condition and fail fast so the caller surfaces it to the liveness alarm
+// instead of silently grinding.
+export function isPrimaryRateLimitExhausted(error) {
+  const status = Number(error?.status || 0);
+  if (status !== 403 && status !== 429) {
+    return false;
+  }
+  const remaining = error?.headers?.get?.('x-ratelimit-remaining');
+  if (remaining === undefined || remaining === null || remaining === '') {
+    return false;
+  }
+  return Number.parseInt(remaining, 10) === 0;
+}
+
 export function isRetryableError(error) {
   const status = Number(error?.status || 0);
+  if (status === 429 && isPrimaryRateLimitExhausted(error)) {
+    return false;
+  }
   if (status === 429) {
     return true;
   }
@@ -214,7 +239,15 @@ export function isRetryableError(error) {
   }
   if (status === 403) {
     const message = String(error?.data?.message || error?.message || '').toLowerCase();
-    return message.includes('rate limit') || message.includes('secondary rate limit');
+    // Secondary rate limits are short-lived and carry `retry-after`, so they
+    // stay retryable even though the budget header may read zero.
+    if (message.includes('secondary rate limit')) {
+      return true;
+    }
+    if (isPrimaryRateLimitExhausted(error)) {
+      return false;
+    }
+    return message.includes('rate limit');
   }
   return false;
 }
@@ -301,6 +334,36 @@ export function isRepairWakeEligible(pullRequest) {
   return state.status === 'waiting' && (state.blockers || []).length === 0;
 }
 
+function ageOrder(left, right) {
+  return (
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+    left.number - right.number
+  );
+}
+
+function selectRepairWindowPulls({ direct, waitingTransitions, sweep, now = new Date() }) {
+  const targetSize = Math.max(REPAIR_WINDOW_SIZE, direct.length);
+  const remainingAfterDirect = Math.max(targetSize - direct.length, 0);
+  if (remainingAfterDirect === 0) return direct;
+  const prioritizedTransitions = [...waitingTransitions]
+    .sort(ageOrder)
+    .slice(0, remainingAfterDirect);
+  const remainingAfterTransitions = Math.max(
+    remainingAfterDirect - prioritizedTransitions.length,
+    0,
+  );
+  if (remainingAfterTransitions === 0) {
+    return [...direct, ...prioritizedTransitions];
+  }
+  const sweepOrdered = [...sweep].sort(ageOrder);
+  const rotation =
+    Number.isFinite(now.getTime()) && now.getTime() > 0
+      ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+      : 0;
+  const rotated = rotateList(sweepOrdered, rotation);
+  return [...direct, ...prioritizedTransitions, ...rotated.slice(0, remainingAfterTransitions)];
+}
+
 // Labels meaning an external mechanism currently owns this PR's progress, so a
 // CI Recovery dispatch cannot advance it. This is DISPATCH_BLOCKED_LABEL_NAMES
 // minus WAITING_LABEL: `ci-recovery-waiting` is CI Recovery's own parking
@@ -362,14 +425,9 @@ export function collectPrNumbers({
         !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
         !hasHealthyOwnerForSweep(pullRequest, now),
     );
-    return [...direct, ...waitingTransitions, ...sweep]
-      .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      )
-      .map((pullRequest) => pullRequest.number);
+    return selectRepairWindowPulls({ direct, waitingTransitions, sweep, now }).map(
+      (pullRequest) => pullRequest.number,
+    );
   }
   const directNumbers = eventPrNumbers(payload);
   const numbers = new Set(directNumbers);
@@ -486,11 +544,7 @@ export function eligibleTrainRecoveryPulls({
         !shouldExcludeByLabels
       );
     })
-    .sort(
-      (left, right) =>
-        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-        left.number - right.number,
-    );
+    .sort(ageOrder);
 }
 
 export function recoveryBacklogEntries(scheduledPulls, repository, now = new Date()) {
@@ -743,7 +797,9 @@ export function recoveryTriggerForPr({
 export function isManagedCommentEvent(payload, eventName) {
   if (eventName !== 'issue_comment') return false;
   const body = String(payload.comment?.body || '').trimStart();
-  return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
+  // Use the shared prefix from markers.mjs so any new '<!-- crawler-...' marker
+  // is automatically filtered without touching this file.
+  return body.startsWith(MANAGED_COMMENT_PREFIX);
 }
 
 // Total number of `workflowFile` runs currently outstanding (not yet
@@ -1178,11 +1234,65 @@ export async function runFromEnv(env = process.env) {
 
     const reaperNow = new Date();
     const reaperPrNumbers = identifyReapablePrs(scheduledPulls, reaperNow);
+
+    // Closed-fence reclaim: find ci-owner-pr-* repo labels whose PR is no longer
+    // open. These represent owner fences left behind when a PR was closed or
+    // merged while owned. They are NOT in scheduledPulls (open-only), so they
+    // must be discovered via the repo-label listing and merged into the shared
+    // reaper pool BEFORE selectReaperBatch so the combined set benefits from the
+    // same fair-rotation and REAPER_LANE_CAP budget accounting as stale open PRs.
+    const scheduledSet = new Set(scheduledPulls.map((p) => p.number));
+    const closedFenceCandidates = [];
+    try {
+      const allLabels = await requestWithBackoff(
+        () => paginate(token, `/repos/${owner}/${repo}/labels`),
+        { label: 'closed-fence-label-scan' },
+      );
+      const fenceNumbers = [
+        ...new Set(
+          allLabels
+            .map((l) => String(l.name || ''))
+            .filter((n) => n.startsWith(OWNER_LABEL_PREFIX))
+            .map((n) => Number.parseInt(n.slice(OWNER_LABEL_PREFIX.length), 10))
+            .filter((n) => Number.isInteger(n) && n > 0 && !scheduledSet.has(n)),
+        ),
+      ].sort((a, b) => a - b);
+      // Probe each candidate's state. Bound to avoid excessive API calls; the
+      // sweep runs every 10 minutes so unprobed candidates are retried soon.
+      const CAP_PROBE = 10;
+      for (const number of fenceNumbers.slice(0, CAP_PROBE)) {
+        let pull;
+        try {
+          pull = (
+            await requestWithBackoff(
+              () => request(token, `/repos/${owner}/${repo}/pulls/${number}`),
+              { label: `closed-fence-probe-${number}` },
+            )
+          ).data;
+        } catch {
+          continue;
+        }
+        if (String(pull?.state || '').toLowerCase() !== 'open') {
+          closedFenceCandidates.push(number);
+        }
+      }
+    } catch (error) {
+      process.stdout.write(`closed-fence-scan-error: ${error?.message || error}\n`);
+    }
+
+    // Merge stale-open and closed-fence candidates into one pool and select via
+    // the shared rotation + cap so neither category can starve the other.
+    const combinedReaperPool = [...new Set([...reaperPrNumbers, ...closedFenceCandidates])];
     // Rotate the eligible list once per sweep window before applying the cap
     // (see selectReaperBatch) so the tail cannot starve when more than
     // REAPER_LANE_CAP locks are stale.
-    const reaperBatch = selectReaperBatch(reaperPrNumbers, reaperNow);
+    const reaperBatch = selectReaperBatch(combinedReaperPool, reaperNow);
     for (const reaperPrNumber of reaperBatch) {
+      // Closed-fence candidates use a distinct trigger so reconcile.mjs and
+      // telemetry can distinguish them from stale-lock reclaims.
+      const reaperTrigger = closedFenceCandidates.includes(reaperPrNumber)
+        ? 'liveness-sweep:closed-owner-fence'
+        : 'lease-reaper';
       // Use a direct request() -- do NOT wrap in requestWithBackoff. Same
       // rationale as the normal dispatch loop: non-idempotent POST, retries
       // would create duplicate runs.
@@ -1193,13 +1303,13 @@ export async function runFromEnv(env = process.env) {
           inputs: {
             operation: 'reconcile',
             pr_number: String(reaperPrNumber),
-            trigger: 'lease-reaper',
+            trigger: reaperTrigger,
             lease_id: '',
           },
         },
       });
       reaperDispatchedSet.add(reaperPrNumber);
-      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=lease-reaper\n`);
+      process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=${reaperTrigger}\n`);
     }
     if (reaperBatch.length > 0) {
       process.stdout.write(

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "ci-recovery-loop-incident-auto-close",
+  "task_title": "Auto-close CI recovery loop incident on PR convergence",
+  "estimated_apples": 2,
+  "stages": {}
+}

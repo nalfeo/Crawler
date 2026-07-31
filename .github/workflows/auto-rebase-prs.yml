@@ -68,6 +68,7 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           TARGET_PR: ${{ inputs.pr_number }}
           EXPECTED_HEAD_INPUT: ${{ inputs.expected_head_sha }}
           EXPECTED_BASE_INPUT: ${{ inputs.expected_base_ref }}
@@ -109,11 +110,14 @@ jobs:
               exit 0
             fi
           else
+            # D2 fix: include mergeStateStatus so the loop can route BEHIND vs DIRTY
+            # without a git-rebase attempt (which would force-push with the App token
+            # and trigger the D7 action_required parking trap).
             prs_json=$(gh pr list \
               --repo "$GITHUB_REPOSITORY" \
               --state open \
               --base main \
-              --json number,isDraft,headRefOid,headRefName,headRepository,headRepositoryOwner,labels \
+              --json number,isDraft,headRefOid,headRefName,headRepository,headRepositoryOwner,labels,mergeStateStatus,mergeable \
               --jq '[.[] | select(.isDraft == false)]')
           fi
 
@@ -123,13 +127,14 @@ jobs:
             exit 0
           fi
 
-          echo "Found $pr_count active PR(s). Rebasing branches..."
+          echo "Found $pr_count active PR(s). Processing..."
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main --prune
 
           rebased=0
+          updated=0
           conflicts=0
           skipped=0
           failed=0
@@ -149,6 +154,61 @@ jobs:
               continue
             fi
 
+            # D2 fix (always-rebase, not conflict-only): for the non-train blanket
+            # sweep, use the GitHub update-branch API instead of git-rebase + force-push.
+            # Use CRAWLER_CI_PAT when available so the branch update triggers required CI
+            # (GITHUB_TOKEN is recursion-suppressed for push events, while CRAWLER_CI_PAT
+            # is a user token that emits normal push events and re-triggers CI).
+            # For conflicted PRs, dispatch ci-recovery directly without a git-rebase
+            # attempt.  Only the train-mode targeted conflict-rebase path still uses
+            # git operations (see below).
+            if [ "$train_enabled" != "true" ]; then
+              merge_state=$(echo "$pr" | jq -r '.mergeStateStatus // "UNKNOWN"')
+              case "$merge_state" in
+                BEHIND)
+                  echo "  🔄 PR #$number is clean-BEHIND; calling update-branch (D2 fix)..."
+                  update_branch_token="${CRAWLER_CI_PAT:-$GH_TOKEN}"
+                  set +e
+                  GH_TOKEN="$update_branch_token" gh api \
+                    -X PUT "repos/$GITHUB_REPOSITORY/pulls/$number/update-branch" \
+                    -F expected_head_sha="$expected_head" \
+                    > /tmp/update_branch_out.json 2>/tmp/update_branch_err.txt
+                  api_exit=$?
+                  set -e
+                  if [ $api_exit -eq 0 ]; then
+                    echo "  ✅ Branch update queued for PR #$number."
+                    updated=$((updated + 1))
+                  elif grep -qi '"status":422\|HTTP 422\|Unprocessable' /tmp/update_branch_err.txt 2>/dev/null; then
+                    echo "  ⚠️ update-branch 422 for PR #$number (already up-to-date or stale head); skipping."
+                    skipped=$((skipped + 1))
+                  else
+                    echo "  ❌ update-branch failed for PR #$number (non-422 error):"
+                    cat /tmp/update_branch_err.txt || true
+                    failed=$((failed + 1))
+                  fi
+                  continue
+                  ;;
+                DIRTY)
+                  echo "  ⚠️ Conflict on PR #$number; dispatching trusted CI recovery."
+                  gh workflow run ci-recovery.yml \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --ref main \
+                    -f operation=reconcile \
+                    -f pr_number="$number" \
+                    -f trigger=auto-rebase-conflict \
+                    -f lease_id=
+                  conflicts=$((conflicts + 1))
+                  continue
+                  ;;
+                *)
+                  echo "  ⏭️ Skipping PR #$number (mergeStateStatus=$merge_state; no update action needed)."
+                  skipped=$((skipped + 1))
+                  continue
+                  ;;
+              esac
+            fi
+
+            # Train mode: git rebase + force-push for targeted conflict recovery.
             if ! git fetch origin "$head_ref":"refs/remotes/origin/$head_ref"; then
               echo "  ⚠️ Failed to fetch branch for PR #$number; skipping."
               failed=$((failed + 1))
@@ -213,7 +273,7 @@ jobs:
             fi
           done < <(echo "$prs_json" | jq -c '.[]')
 
-          echo "Done. Rebasing summary: rebased=$rebased conflicts=$conflicts skipped=$skipped failed=$failed"
+          echo "Done. Summary: updated=$updated rebased=$rebased conflicts=$conflicts skipped=$skipped failed=$failed"
           if [ "$train_enabled" = "true" ] && [ "$failed" -gt 0 ]; then
             gh workflow run ci-recovery.yml \
               --repo "$GITHUB_REPOSITORY" \

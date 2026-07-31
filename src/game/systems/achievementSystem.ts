@@ -6,13 +6,17 @@ import {
   createEmptyAchievementFactSnapshot,
   getAchievementById,
   mergeAchievementFactSnapshots,
+  FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
   type AchievementCatalogRegistry,
   type AchievementFactSnapshot,
   type AchievementNumberOperator,
   type AchievementRulePhase,
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
+import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../shared/data/floor2-reward-pool.js';
 import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
+import { bandFor, getRelation } from '../../core/faction-relations.js';
+import { isInSafeContext } from '../../core/safe-space.js';
 import {
   RewardBundleResolutionError,
   resolveEquipmentRewardBundle,
@@ -21,6 +25,21 @@ import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
 } from '../floor1-lootbox-reward-resolver.js';
+
+/**
+ * Goal-flag key set once the player completes the Broker's settlement
+ * introduction (`src/game/floor2Scenario.ts`, `FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID`).
+ * Referenced here by its raw string literal rather than imported from
+ * `floor2Scenario.ts`: that module already imports
+ * `evaluateAchievementUnlocksForPhase` from this file, so importing the
+ * constant back would create a real circular module dependency, not just add
+ * coupling. Exported (test-only use) so a dedicated regression test
+ * (`'stays in sync with floor2Scenario's broker-intro-complete goal flag key'`
+ * in `tests/game/achievement-system.test.ts`) can import both constants and
+ * assert string equality directly — that test, not the general fact-computation
+ * tests, is what actually guards against the two literals drifting apart.
+ */
+export const FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID = 'floor2-broker-intro-complete';
 
 function highestSkillLevel(world: GameWorld): number {
   let maxLevel = 0;
@@ -54,6 +73,53 @@ function unlockedAbilityCount(world: GameWorld): number {
   return state?.passiveAbilityIds.length ?? 0;
 }
 
+/**
+ * Count of Floor 2 present families currently at the given relationship band.
+ * Reads live `world.factionRelations` state (via `getRelation`/`bandFor`), so
+ * it reflects the current tick's standing rather than a historical peak.
+ */
+function familiesAtBandCount(world: GameWorld, band: ReturnType<typeof bandFor>): number {
+  if (world.floor !== 2) return 0;
+  const presentFamilies = world.floorExtendedState?.familyState?.presentFamilies ?? [];
+  let count = 0;
+  for (const familyId of presentFamilies) {
+    if (bandFor(getRelation(world, familyId)) === band) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Whether the player currently has a family at neutral-or-better standing that
+ * they've also landed at least one player-attributed trash kill against
+ * ("double agent" behaviour).
+ *
+ * **Why neutral instead of friendly:** the `betrayerFlag` (originally checked
+ * here) is never set by any production system — only by a dev-only lab.  The
+ * replacement derivation is "family currently at neutral-or-better standing
+ * despite recorded kills against them."  Friendly (≥ 76) is unreachable via
+ * shipped mechanics: the maximum relation achievable through the six defined
+ * emergent events is 68 (neutral band, 50–75).  Using neutral (≥ 50) as the
+ * threshold makes the achievement reachable through normal gameplay — a
+ * positive event (e.g. `tributeDelivered`, `pickASideChosen`) can push a
+ * family from 45 (hostile default) into neutral, and the player can also kill
+ * that family's trash mobs during the same run.
+ */
+function hasBetrayedFriendlyFamily(world: GameWorld): boolean {
+  if (world.floor !== 2) return false;
+  const familyState = world.floorExtendedState?.familyState;
+  const presentFamilies = familyState?.presentFamilies ?? [];
+  for (const familyId of presentFamilies) {
+    const kills = familyState?.trashKillsByFamily?.get(familyId) ?? 0;
+    const band = bandFor(getRelation(world, familyId));
+    if (kills > 0 && (band === 'neutral' || band === 'friendly')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function evaluateNumberCompare(
   left: number,
   op: AchievementNumberOperator,
@@ -78,6 +144,11 @@ function evaluateUnlockRule(rule: AchievementUnlockRule, facts: AchievementFactS
 }
 
 export function collectCurrentFloorAchievementFacts(world: GameWorld): AchievementFactSnapshot {
+  // Track the running peak gold balance for the "Hoarder's Ledger" achievement.
+  // Updated here (before facts are snapshotted) so the peak is captured even if
+  // the player spends down before the next tick.
+  world.peakGold = Math.max(world.peakGold, world.playerGold);
+
   const empty = createEmptyAchievementFactSnapshot();
   const floor1Objective = world.floor === 1 ? world.floorScenario?.objective : undefined;
   const floor2TrashKills =
@@ -99,6 +170,59 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         world.goalFlags.get('floor2.objective.staircaseDiscovered') === true));
   const ratsKilled = floor1Objective?.ratsKilled ?? 0;
   const slimesKilled = floor1Objective?.slimesKilled ?? 0;
+  const familyState = world.floor === 2 ? world.floorExtendedState?.familyState : undefined;
+  const familyBossesDefeated = familyState?.decapitatedFamilies?.size ?? 0;
+  // `bossEncounters` is seeded with a `started: false` entry for EVERY present
+  // family at Floor 2 init (floor2Scenario.ts), so `.size` alone counts families
+  // regardless of player engagement. Only count encounters the player has
+  // actually started (entered the den).
+  const familyBossEncounterCount = familyState?.bossEncounters
+    ? [...familyState.bossEncounters.values()].filter((encounter) => encounter.started).length
+    : 0;
+  // `trashKillsByFamily` is likewise seeded with a 0-kill entry for every
+  // present family at init, so `.size` counts families regardless of combat.
+  // Only count families with at least one player-attributed trash kill.
+  const familiesEngagedInCombatCount = familyState?.trashKillsByFamily
+    ? [...familyState.trashKillsByFamily.values()].filter((kills) => kills > 0).length
+    : 0;
+  const familiesAtFriendlyCount = familiesAtBandCount(world, 'friendly');
+  const familiesAtHateCount = familiesAtBandCount(world, 'hate');
+  // Neutral-or-better: families at relation >= 50 (neutral or friendly band).
+  // Positive emergent events can push families from hostile (45 default) into
+  // neutral (50–75), so this threshold is reachable via shipped mechanics.
+  const familiesAtNeutralOrBetterCount =
+    world.floor === 2
+      ? (familyState?.presentFamilies ?? []).filter(
+          (id) =>
+            bandFor(getRelation(world, id)) !== 'hostile' &&
+            bandFor(getRelation(world, id)) !== 'hate',
+        ).length
+      : 0;
+  const presentFamilyCount = world.floor === 2 ? (familyState?.presentFamilies?.length ?? 0) : 0;
+  // Dynamic "every present family is Friendly" check — Floor 2's roster size
+  // varies (3 or 4 families), so a fixed numeric threshold would either miss a
+  // 4-family run or under-require a 3-family run.
+  const allPresentFamiliesFriendly =
+    presentFamilyCount > 0 && familiesAtFriendlyCount === presentFamilyCount;
+  // Neutral-or-better variant: all present families at neutral standing or above.
+  // Reachable via positive emergent events (max reachable relation ≈ 68 for
+  // family 0, which is within the neutral band 50–75).
+  const allPresentFamiliesNeutralOrBetter =
+    presentFamilyCount > 0 && familiesAtNeutralOrBetterCount === presentFamilyCount;
+  // Same dynamic-threshold reasoning as `allPresentFamiliesFriendly` above,
+  // applied to combat instead of reputation — a fixed `>= 4` threshold would
+  // be unreachable on the majority-case 3-family roster.
+  const allPresentFamiliesEngagedInCombat =
+    presentFamilyCount > 0 && familiesEngagedInCombatCount === presentFamilyCount;
+  // Same dynamic-threshold reasoning, applied to boss-den engagement (started
+  // the fight, not necessarily won it) — distinct from `familyBossesDefeated`,
+  // which requires a win. Grounds a "braved every den" feat without requiring
+  // the player to have cleared them all.
+  const allPresentFamilyBossesEngaged =
+    presentFamilyCount > 0 && familyBossEncounterCount === presentFamilyCount;
+  const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
+  const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
+  const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
 
   return {
     numberFacts: {
@@ -114,12 +238,26 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       completedQuestCount: completedQuestIds.length,
       questLogSize: world.questLog.size,
       playerGold: world.playerGold,
+      peakGold: world.peakGold,
       unlockedAbilityCount: unlockedAbilityCount(world),
       clearedFloorCount: floorCleared ? 1 : 0,
+      familiesAtFriendlyCount,
+      familiesAtHateCount,
+      familiesAtNeutralOrBetterCount,
+      familyBossesDefeated,
+      familyBossEncounterCount,
+      familiesEngagedInCombatCount,
     },
     booleanFacts: {
       ...empty.booleanFacts,
+      allPresentFamiliesFriendly,
+      allPresentFamiliesNeutralOrBetter,
+      allPresentFamiliesEngagedInCombat,
+      allPresentFamilyBossesEngaged,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
+      staircaseSpawned:
+        floor1Objective?.staircaseSpawned === true ||
+        world.floorExtendedState?.familyState?.staircaseSpawned === true,
       staircaseUnlocked:
         floor1Objective?.staircaseUnlocked === true ||
         world.floorExtendedState?.familyState?.staircaseUnlocked === true,
@@ -129,6 +267,9 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         floor1Objective?.staircaseDiscovered === true ||
         world.floorExtendedState?.familyState?.staircaseDiscovered === true,
       runClearedFloor: floorCleared,
+      hasBetrayedAlly,
+      floor2SafeRoomVisited,
+      hasMetBroker,
     },
     questIds,
     completedQuestIds,
@@ -161,7 +302,10 @@ export function unlockAchievement(
   // so the whole unlock is atomic: if the Floor 2 equipment economy is not
   // enabled (e.g. Floor 1, which is equipment-free), or bundle resolution fails
   // for any reason, we do NOT record the unlock (fail-closed).
-  if (achievement.reward.type === 'equipment') {
+  if (
+    achievement.reward.type === 'lootBox' &&
+    achievement.reward.lootTable === 'floor2-generated-equipment'
+  ) {
     // getFloor2EquipmentRewardsAccess gates on floor + feature flags, but does
     // NOT itself check whether the generated-equipment registry has a run key
     // configured. A world could (in principle) have those flags enabled yet
@@ -178,8 +322,8 @@ export function unlockAchievement(
       resolveEquipmentRewardBundle(
         world,
         achievementId,
-        achievement.reward.bases,
-        achievement.reward.tier,
+        FLOOR2_REWARD_POOL_STABLE_IDS,
+        FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier],
       );
     } catch (err) {
       if (err instanceof RewardBundleResolutionError) throw err;

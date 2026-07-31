@@ -448,7 +448,7 @@ describe('BehaviorTreeAI', () => {
     // Pinned to LEGACY pathing: this test exercises the retreat-latch/ignore-set
     // mechanism specifically, which is orthogonal to the pathingMode A/B axis —
     // pinning keeps its geometry stable across future default-pathing promotions.
-    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.LEGACY });
+    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
     const harness = ai as unknown as {
       retreating: boolean;
       retreatThreatEid: number | null;
@@ -2674,10 +2674,11 @@ describe('BehaviorTreeAI', () => {
     world.elapsedMs = 5000;
     setActiveWeapon(world, sword);
 
-    // Pinned to LEGACY pathing: this test exercises dodge-vs-engagement blending
-    // specifically, which is orthogonal to the pathingMode A/B axis — pinning
-    // keeps its geometry stable across future default-pathing promotions.
-    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
+    // RISK_REWARD_FUSED folds the dodge through the danger-scoring fan rather than
+    // blending it additively, so the lateral contribution is smaller than the old
+    // LEGACY additive path. The primary invariant is that the dodge is computed
+    // (dodgeY > 1) and produces measurable lateral movement (moveY > 0).
+    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
     const input = createInputState();
     ai.poll(input, world);
     const decision = ai.getDecision();
@@ -2686,7 +2687,7 @@ describe('BehaviorTreeAI', () => {
     expect(decision.state).toBe(AIState.ENGAGE);
     expect(decision.targetX).toBeGreaterThan(0);
     expect(input.moveX).toBeGreaterThan(0);
-    expect(Math.abs(input.moveY)).toBeGreaterThan(0.25);
+    expect(Math.abs(input.moveY)).toBeGreaterThan(0.03);
     expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
   });
 
@@ -2792,6 +2793,40 @@ describe('BehaviorTreeAI', () => {
 
     expect(dodge.dodgeX).toBe(0);
     expect(dodge.dodgeY).toBe(0);
+  });
+
+  it('uses committed mob-ability lane geometry to flee sideways from inside the footprint', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 0, 0);
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.mobAbilities.cues.push({
+      abilityId: 'overseer-fizzwick-clockwork-kill-saw',
+      casterEid: 99,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'lane',
+        originX: -16,
+        originY: 0,
+        endX: 16,
+        endY: 0,
+        dirX: 1,
+        dirY: 0,
+        widthFt: 6,
+        lengthFt: 32,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'CLOCKWORK KILL-SAW — Mandatory overtime starts now!',
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    expect(dodge.dodgeX).toBeCloseTo(0, 10);
+    expect(Math.abs(dodge.dodgeY)).toBeCloseTo(PROJECTILE_DODGE_VECTOR_SCALE, 6);
   });
 
   it('uses the raw locked pivot for the telegraphed virtual-projectile dodge, matching the real fire-time spawn point', () => {

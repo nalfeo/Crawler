@@ -44,55 +44,42 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     rmSync(destRepoRoot, { recursive: true, force: true });
   });
 
+  function shardPath(repoRoot: string, key: string): string {
+    return path.join(repoRoot, 'public', 'assets', 'generated', 'entries', `${key}.json`);
+  }
+
   function seedSrc(): void {
     const generatedDir = path.join(srcRepoRoot, 'public', 'assets', 'generated');
     mkdirSync(generatedDir, { recursive: true });
     writeFileSync(path.join(generatedDir, 'queued-var-1.png'), 'QUEUED-PNG');
     writeFileSync(path.join(generatedDir, 'unqueued-var-2.png'), 'UNQUEUED-PNG');
 
-    writeJson(path.join(srcRepoRoot, 'public', 'assets', 'generated', 'manifest.json'), {
-      version: 1,
-      entries: {
-        'queued-var-1': {
-          briefId: 'queued',
-          spriteName: 'queued-var-1',
-          assetPath: 'generated/queued-var-1.png',
-          variantIndex: 1,
-          contentHash: 'queued-hash',
-        },
-        'unqueued-var-2': {
-          briefId: 'unqueued',
-          spriteName: 'unqueued-var-2',
-          assetPath: 'generated/unqueued-var-2.png',
-          variantIndex: 2,
-          contentHash: 'unqueued-hash',
-        },
-      },
+    // Source of truth is per-asset shards, not the aggregate manifest.
+    writeJson(shardPath(srcRepoRoot, 'queued-var-1'), {
+      briefId: 'queued',
+      spriteName: 'queued-var-1',
+      assetPath: 'generated/queued-var-1.png',
+      variantIndex: 1,
+      contentHash: 'queued-hash',
     });
-
-    writeJson(path.join(srcRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), [
-      { id: 'generated:queued-var-1', kind: 'sprite', label: 'queued-var-1' },
-      { id: 'generated:unqueued-var-2', kind: 'sprite', label: 'unqueued-var-2' },
-    ]);
+    writeJson(shardPath(srcRepoRoot, 'unqueued-var-2'), {
+      briefId: 'unqueued',
+      spriteName: 'unqueued-var-2',
+      assetPath: 'generated/unqueued-var-2.png',
+      variantIndex: 2,
+      contentHash: 'unqueued-hash',
+    });
   }
 
   function seedDestBase(): void {
     // The worktree, freshly checked out from the remote base branch, already
-    // has ITS OWN (unrelated, previously-merged) manifest/catalog content.
-    writeJson(path.join(destRepoRoot, 'public', 'assets', 'generated', 'manifest.json'), {
-      version: 1,
-      entries: {
-        'preexisting-var-0': {
-          briefId: 'preexisting',
-          spriteName: 'preexisting-var-0',
-          assetPath: 'generated/preexisting-var-0.png',
-          variantIndex: 0,
-        },
-      },
+    // has ITS OWN (unrelated, previously-merged) shard content.
+    writeJson(shardPath(destRepoRoot, 'preexisting-var-0'), {
+      briefId: 'preexisting',
+      spriteName: 'preexisting-var-0',
+      assetPath: 'generated/preexisting-var-0.png',
+      variantIndex: 0,
     });
-    writeJson(path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), [
-      { id: 'generated:preexisting-var-0', kind: 'sprite', label: 'preexisting-var-0' },
-    ]);
   }
 
   it('copies ONLY the unqueued PNG, never the queued one', async () => {
@@ -110,49 +97,46 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     expect(existsSync(path.join(destGenerated, 'queued-var-1.png'))).toBe(false);
   });
 
-  it('merges ONLY the unqueued manifest entry onto the worktree base, preserving its existing entries', async () => {
+  it('copies ONLY the unqueued shard onto the worktree base, preserving its existing shards', async () => {
     seedSrc();
     seedDestBase();
     const deps = createDefaultCheckinDeps(srcRepoRoot);
 
     await deps.copyArtSurface(srcRepoRoot, destRepoRoot, [asset()]);
 
-    const manifest = JSON.parse(
-      readFileSync(
-        path.join(destRepoRoot, 'public', 'assets', 'generated', 'manifest.json'),
-        'utf8',
-      ),
-    );
-    expect(Object.keys(manifest.entries).sort()).toEqual(['preexisting-var-0', 'unqueued-var-2']);
-    expect(manifest.entries['unqueued-var-2'].contentHash).toBe('unqueued-hash');
-    // The queued asset's entry must NOT leak onto this branch.
-    expect(manifest.entries['queued-var-1']).toBeUndefined();
+    expect(existsSync(shardPath(destRepoRoot, 'unqueued-var-2'))).toBe(true);
+    const unqueued = JSON.parse(readFileSync(shardPath(destRepoRoot, 'unqueued-var-2'), 'utf8'));
+    expect(unqueued.contentHash).toBe('unqueued-hash');
+    // The preexisting base shard must be preserved.
+    expect(existsSync(shardPath(destRepoRoot, 'preexisting-var-0'))).toBe(true);
+    // The queued asset's shard must NOT leak onto this branch.
+    expect(existsSync(shardPath(destRepoRoot, 'queued-var-1'))).toBe(false);
   });
 
-  it('merges ONLY the unqueued catalog entry onto the worktree base, preserving its existing entries', async () => {
+  it('never writes the aggregate manifest or the sprite-catalog (both are derived, not committed)', async () => {
     seedSrc();
     seedDestBase();
     const deps = createDefaultCheckinDeps(srcRepoRoot);
 
     await deps.copyArtSurface(srcRepoRoot, destRepoRoot, [asset()]);
 
-    const catalog = JSON.parse(
-      readFileSync(path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), 'utf8'),
-    ) as Array<{ id: string }>;
-    const ids = catalog.map((entry) => entry.id).sort();
-    expect(ids).toEqual(['generated:preexisting-var-0', 'generated:unqueued-var-2']);
-    expect(ids).not.toContain('generated:queued-var-1');
+    // The aggregate manifest is a gitignored build artifact; copyArtSurface must
+    // not materialize it, and the generated: catalog rows are read-time derived.
+    expect(
+      existsSync(path.join(destRepoRoot, 'public', 'assets', 'generated', 'manifest.json')),
+    ).toBe(false);
+    expect(
+      existsSync(path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json')),
+    ).toBe(false);
   });
 
-  it('leaves manifest/catalog untouched when the asset has no manifestKey (still copies the PNG)', async () => {
+  it('leaves existing shards untouched when the asset has no manifestKey (still copies the PNG)', async () => {
     const generatedDir = path.join(srcRepoRoot, 'public', 'assets', 'generated');
     mkdirSync(generatedDir, { recursive: true });
     writeFileSync(path.join(generatedDir, 'untracked-var-0.png'), 'UNTRACKED-PNG');
     seedDestBase();
-    const manifestPath = path.join(destRepoRoot, 'public', 'assets', 'generated', 'manifest.json');
-    const catalogPath = path.join(destRepoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
-    const manifestBefore = readFileSync(manifestPath, 'utf8');
-    const catalogBefore = readFileSync(catalogPath, 'utf8');
+    const preexistingShard = shardPath(destRepoRoot, 'preexisting-var-0');
+    const shardBefore = readFileSync(preexistingShard, 'utf8');
     const deps = createDefaultCheckinDeps(srcRepoRoot);
 
     await deps.copyArtSurface(srcRepoRoot, destRepoRoot, [
@@ -167,10 +151,9 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     expect(
       existsSync(path.join(destRepoRoot, 'public', 'assets', 'generated', 'untracked-var-0.png')),
     ).toBe(true);
-    // No manifestKey to merge — the manifest/catalog merge step must be
-    // skipped entirely rather than touching (or corrupting) the base copy.
-    expect(readFileSync(manifestPath, 'utf8')).toBe(manifestBefore);
-    expect(readFileSync(catalogPath, 'utf8')).toBe(catalogBefore);
+    // No manifestKey to project — the shard-copy step must be skipped entirely
+    // rather than touching (or corrupting) the base copy.
+    expect(readFileSync(preexistingShard, 'utf8')).toBe(shardBefore);
   });
 });
 

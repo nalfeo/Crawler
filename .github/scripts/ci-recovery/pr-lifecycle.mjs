@@ -16,14 +16,15 @@
 import {
   LIFECYCLE_PHASES,
   NON_BLOCKING_PHASES,
+  QUARANTINE_COMMENT_MARKER,
   TERMINAL_PHASES,
   evaluateAdmission,
 } from './state.mjs';
 import { isAdmissible } from '../merge-train/state.mjs';
 import { whoMustLandFirst } from '../ci-conflict-coordinator/state.mjs';
+import { LIFECYCLE_DATA_PREFIX, LIFECYCLE_MARKER } from './markers.mjs';
 
-export const LIFECYCLE_MARKER = '<!-- crawler-pr-lifecycle:v1 -->';
-export const LIFECYCLE_DATA_PREFIX = '<!-- crawler-pr-lifecycle-data:';
+export { LIFECYCLE_MARKER, LIFECYCLE_DATA_PREFIX };
 
 // Phase enum (mirrors LIFECYCLE_PHASES in state.mjs).
 export const PHASE = { ...LIFECYCLE_PHASES };
@@ -271,8 +272,7 @@ export async function applyLifecycleDecision({
   // always rewritten. This prevents a wired caller from inadvertently leaving the lifecycle
   // comment bound to a stale head after a force-push when it forgets to pass currentHeadSha.
   const samePhase = currentPhase === targetPhase;
-  const headShaChanged =
-    currentHeadSha == null || compact(currentHeadSha) !== compact(headSha);
+  const headShaChanged = currentHeadSha == null || compact(currentHeadSha) !== compact(headSha);
   if (samePhase && !headShaChanged) {
     return { acted: false, noOp: true, phase: currentPhase, reason: 'already-in-phase' };
   }
@@ -360,4 +360,83 @@ export function formatRawLabelOutcome(prNumber, outcome) {
     return `coordinator no-op: pr=#${prNumber} label=${outcome.label} reason=${outcome.reason}`;
   }
   return `coordinator acted: pr=#${prNumber} label=${outcome.label}`;
+}
+
+// ---------------------------------------------------------------------------
+// Disposition comment rendering helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the human-decision quarantine comment body.
+ *
+ * This comment is posted when a PR transitions to QUARANTINED.  It:
+ *   - carries QUARANTINE_COMMENT_MARKER so the revival handler can find it;
+ *   - summarises the evidence that triggered quarantine;
+ *   - gives the PR owner an exact resolve path: comment "KEEP" or "ABANDON".
+ *
+ * @param {number} prNumber
+ * @param {{ reason: string, lastActivity?: string, thresholdDays?: number }} evidence
+ * @returns {string} comment body
+ */
+export function makeQuarantineComment(prNumber, evidence) {
+  const reason = compact(evidence?.reason || 'no-activity');
+  const lastActivity = evidence?.lastActivity
+    ? ` (last activity: \`${evidence.lastActivity}\`)`
+    : '';
+  const thresholdDays = Number(evidence?.thresholdDays) > 0 ? evidence.thresholdDays : null;
+  const thresholdNote = thresholdDays ? ` for more than ${thresholdDays} days` : '';
+
+  return [
+    QUARANTINE_COMMENT_MARKER,
+    `## ⚠ PR #${prNumber} — quarantined pending human decision`,
+    '',
+    `This PR has been quarantined${thresholdNote}${lastActivity} because it appears likely-superfluous but the redundancy is not deterministically provable.`,
+    '',
+    `**Evidence:** \`${reason}\``,
+    '',
+    '**While quarantined, this PR:**',
+    '- Is **excluded from all train-blocking positions** (cluster leader, order predecessor, train head)',
+    '- Will **not** receive automated repair dispatches',
+    '- **Will not** be auto-closed — this waits for you',
+    '',
+    '**To resolve, the PR owner must post an exact standalone comment:**',
+    '- `KEEP` — revive this PR: it re-enters the normal lifecycle as `queued`',
+    '- `ABANDON` — close this PR permanently',
+    '',
+    '_No other text, no quoted text, no other authors, no green CI — only the exact `KEEP` or `ABANDON` command from the PR owner counts._',
+    '',
+    '_This comment is managed by the authoritative PR-lifecycle owner (D11)._',
+  ].join('\n');
+}
+
+/**
+ * Render the auto-close comment body for a provable duplicate.
+ *
+ * @param {number} prNumber
+ * @param {{ proofRule: string, supersederPr: number|null, reason: string }} proof
+ * @returns {string} comment body
+ */
+export function makeDuplicateCloseComment(prNumber, proof) {
+  const ruleLabel = compact(proof?.proofRule || 'unknown');
+  const reason = compact(proof?.reason || '');
+  const superseder = proof?.supersederPr ? `#${proof.supersederPr}` : 'a previously merged PR';
+
+  const ruleExplanation =
+    {
+      'linked-issue-closed-by-sibling': `A closing issue of this PR was already closed by ${superseder}, which merged first.`,
+      'sibling-merged': `A sibling PR (${superseder}) that closes the same issue has already merged.`,
+      'empty-diff': "This PR's diff against its base is empty — all changes are already on `main`.",
+    }[ruleLabel] || `Proof rule \`${ruleLabel}\` fired.`;
+
+  return [
+    '<!-- crawler-ci-disposition:v1 -->',
+    `## PR #${prNumber} — closed as provable duplicate`,
+    '',
+    `**Reason:** ${ruleExplanation}`,
+    ...(reason ? [`**Proof detail:** \`${reason}\``] : []),
+    ...(proof?.supersederPr ? [`**Superseded by:** #${proof.supersederPr}`] : []),
+    '',
+    `Closing automatically via deterministic proof rule \`${ruleLabel}\`.`,
+    '_No heuristics were used. If this is incorrect, please re-open and add context._',
+  ].join('\n');
 }

@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "decouple-index-md",
+  "task_title": "Decouple INDEX.md from PR merge path",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Concern 1 (blocking): remediation cmd git rm --cached stages a deletion on a tracked file; fixed to git restore --source=origin/main. Concern 2 (non-blocking): docs-update.yml trigger scope acknowledged; staleness window accepted as-is per issue scope. Concern 3 (suggestion): added automation/docs-update exception note to guard message. Verdict: approved_with_changes, all concerns addressed."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

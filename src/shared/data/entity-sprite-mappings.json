@@ -24,7 +24,12 @@
     "player": {
       "proceduralTexture": "player",
       "kenneySpriteId": "player",
-      "kenneyScale": 1.6
+      "kenneyScale": 1.6,
+      "generated": {
+        "briefId": "player-walk-cycle",
+        "pinnedTextureKey": "player-walk-cycle",
+        "scale": 0.71875
+      }
     },
     "enemy": {
       "proceduralTexture": "enemy",

@@ -8,12 +8,7 @@
  * "deterministic variants derive only from stable seed + coordinates").
  */
 import { hashStringToSeed, SeededRandom } from './random.js';
-import type {
-  DoorSetDef,
-  PoolVariantDef,
-  TransformId,
-  WallAccentDef,
-} from './terrain-pack-types.js';
+import type { PoolVariantDef, TransformId, WallAccentDef } from './terrain-pack-types.js';
 import { TRANSFORM_IDS } from './terrain-pack-types.js';
 import type { DoorOrientation } from './terrain-pack-types.js';
 
@@ -306,36 +301,125 @@ export function buildGroundDecalStampConfig(
 }
 
 /**
- * Resolve door art orientation from wall-flank geometry.
+ * Stamp config for one linework (2-edge Wang) tile.
  *
- * Convention from `procedural-surfaces.renderDoorTile`:
- * - 'horizontal' = passage runs left-right, jambs on top+bottom strips
- * - 'vertical'   = passage runs top-bottom, jambs on left+right strips
- *
- * Wall-flank geometry:
- * - `horizontalDoorway` (walls at x±1): door sits in a left-right wall run →
- *   player moves top-to-bottom through the opening → art is 'vertical'
- * - NOT `horizontalDoorway` (walls at y±1): door sits in a top-bottom wall run →
- *   player moves left-to-right through the opening → art is 'horizontal'
+ * Deliberately has NO rotation and NO flip parameter, unlike the ground-decal
+ * config. A Wang frame's identity is its edge signature; rotating or mirroring
+ * it relabels those edges and silently breaks the join contract that makes a
+ * run read as continuous. Orientation is already encoded in the 16-frame set,
+ * so the renderer picks a frame and never transforms it.
  */
-export function resolveDoorOrientationFromFlanks(horizontalDoorway: boolean): DoorOrientation {
-  return horizontalDoorway ? 'vertical' : 'horizontal';
-}
-export interface DoorVariantKey {
-  readonly isOpen: boolean;
-  readonly orientation: DoorOrientation;
+export function buildLineworkStampConfig(scale: number): {
+  originX: number;
+  originY: number;
+  scaleX: number;
+  scaleY: number;
+} {
+  return { originX: 0.5, originY: 0.5, scaleX: scale, scaleY: scale };
 }
 
 /**
- * Pure resolver: select the terrain-pack door texture for a given
- * open/closed × horizontal/vertical state. Exactly the 4 combinations the
- * `doorSet` schema supports — no locked-door branch (out of scope, refinement
- * #5). Always returns a value (no null) since `doorSet` is a required,
- * fully-populated field on every registered pack.
+ * Decide whether an eligible linework tile carries a prop (switch stand, parked
+ * cart, valve wheel).
+ *
+ * Keyed on the tile's own coordinates plus the layer salt, so the answer is
+ * stable per tile and independent of iteration order — and two layers crossing
+ * the same tile do not both drop a prop on it.
  */
-export function resolveDoorPoolVariant(doorSet: DoorSetDef, key: DoorVariantKey) {
-  if (key.isOpen) {
-    return key.orientation === 'horizontal' ? doorSet.openHorizontal : doorSet.openVertical;
+export function shouldPlaceLineworkProp(
+  floorSeed: number,
+  seedSalt: string,
+  tx: number,
+  ty: number,
+  density: number,
+): boolean {
+  if (density <= 0) return false;
+  return new SeededRandom(deriveLineworkPropSeed(floorSeed, seedSalt, tx, ty)).next() < density;
+}
+
+/** Frame index for a placed prop. Uses a second draw off the same stream. */
+export function pickLineworkPropFrame(
+  floorSeed: number,
+  seedSalt: string,
+  tx: number,
+  ty: number,
+  frames: number,
+  frameStart = 0,
+): number {
+  if (frames <= 0) return frameStart;
+  const rng = new SeededRandom(deriveLineworkPropSeed(floorSeed, seedSalt, tx, ty));
+  rng.next();
+  return frameStart + Math.min(frames - 1, Math.floor(rng.next() * frames));
+}
+
+/**
+ * Stamp config for a linework PROP.
+ *
+ * Unlike the Wang frames — whose identity IS their edge signature, so rotating
+ * one relabels its edges and silently breaks the join contract — a prop carries
+ * no edges. Turning it a quarter turn to follow an east-west run is therefore
+ * both safe and necessary, otherwise every cart on a horizontal track sits
+ * across the rails.
+ */
+export function buildLineworkPropStampConfig(
+  scale: number,
+  rotationRad: number,
+): {
+  originX: number;
+  originY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+} {
+  return { originX: 0.5, originY: 0.5, scaleX: scale, scaleY: scale, rotation: rotationRad };
+}
+
+function deriveLineworkPropSeed(
+  floorSeed: number,
+  seedSalt: string,
+  tx: number,
+  ty: number,
+): number {
+  let saltHash = 0x811c9dc5;
+  for (let i = 0; i < seedSalt.length; i++) {
+    saltHash ^= seedSalt.charCodeAt(i);
+    saltHash = Math.imul(saltHash, 0x01000193) >>> 0;
   }
-  return key.orientation === 'horizontal' ? doorSet.closedHorizontal : doorSet.closedVertical;
+  // Offset the coordinates so a prop draw can never coincide with the pool,
+  // accent or decal pickers at the same integer tile.
+  return deriveTileVariantSeed(floorSeed ^ saltHash, tx + 6151, ty + 2749);
+}
+
+/**
+ * Resolve door art orientation from wall-flank geometry.
+ *
+ * `DoorOrientation` names the **WALL-RUN axis**, which is what decides the
+ * VIEWING ANGLE the art must be drawn at (see `door-visuals.ts`):
+ * - `horizontal` = wall runs left↔right, doorway crossed N↕S → seen FACE-ON
+ * - `vertical`   = wall runs up↕down, doorway crossed E↔W → seen SIDE-ON
+ *
+ * So the mapping is the identity on the wall run:
+ * - `horizontalDoorway` (walls at x±1) → the wall runs left↔right → `horizontal`
+ * - otherwise (walls at y±1) → the wall runs up↕down → `vertical`
+ *
+ * INVERTED UNTIL 2026-07-31. This returned the **passage** axis (the perpendicular),
+ * matching the convention of `procedural-surfaces.renderDoorTile` — a top-down hatch
+ * whose jamb strips were laid out along the passage. Consumers, however, read it as
+ * the wall run to pick a viewing angle, so every unambiguous doorway got its
+ * SIBLING's art: face-on N/S doorways drew the narrow side-on leaf and E/W doorways
+ * drew the wide face-on leaf.
+ *
+ * It went unnoticed because it was DEAD on the shipped floors: terrain-pack door art
+ * won selection unconditionally, so the orientation-sensitive generated keys were
+ * never reached. Retiring the pack path made it live, and `crossOrientationCount`
+ * cannot detect it — a mislabelled orientation still resolves its own nominal
+ * "exact" key, so the counter reads 0 either way.
+ *
+ * `renderDoorTile` and the entire pack door path are now deleted, so the passage
+ * convention has no remaining consumer and the wall-run convention is the only one
+ * left. `tests/unit/terrain-pack-variants.test.ts` pins the corrected mapping and
+ * `tests/unit/door-visuals.test.ts` pins topology → texture key end-to-end.
+ */
+export function resolveDoorOrientationFromFlanks(horizontalDoorway: boolean): DoorOrientation {
+  return horizontalDoorway ? 'horizontal' : 'vertical';
 }

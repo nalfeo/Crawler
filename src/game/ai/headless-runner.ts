@@ -26,14 +26,9 @@ import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
-import {
-  FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
-  FLOOR2_TIMEOUT_GOAL_ID,
-  denUnlockGoalId,
-} from '../floor2Scenario.js';
+import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
-  AIPathingMode,
   AIState,
   type AIInputProvider,
   type AIPathingModeValue,
@@ -51,19 +46,32 @@ import {
   autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
-import { runSettlementMaintenancePlanner } from './settlement-maintenance-planner.js';
+import {
+  runSettlementMaintenancePlanner,
+  runEagerMaintenanceTick,
+} from './settlement-maintenance-planner.js';
+import type { SettlementMaintenanceResult } from './settlement-maintenance-types.js';
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
-import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
+  isSettlementReturnRoutingEnabled,
 } from './settlement-return-router.js';
+import { restockFloor2Quartermaster } from '../quartermaster-stock.js';
 import { countEngagingEnemies } from '../floorScenario.js';
+import {
+  classifyGameOverOutcome,
+  collectEquipmentPlayabilityMetrics,
+  collectEquipmentPlayabilityViolations,
+} from './headless-runner-invariants.js';
 
 const logger = createLogger('game:headless-runner');
+
+/** Tracks the previous-frame safe-room state per world so the restock fires only on the entry edge. */
+const quartermasterRestockLatches = new WeakMap<GameWorld, boolean>();
 
 /**
  * Reads `world.state` outside the run loop's control-flow narrowing.
@@ -87,10 +95,28 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
-export function classifyGameOverOutcome(world: GameWorld): 'timeout' | 'death' {
-  const floor1Timeout = world.floorScenario?.failReason === 'stair_timeout';
-  const floor2Timeout = world.goalFlags.get(FLOOR2_TIMEOUT_GOAL_ID) === true;
-  return floor1Timeout || floor2Timeout ? 'timeout' : 'death';
+interface EquipmentSpendTelemetry {
+  readonly soldOfferKeys: Set<string>;
+  goldSpentOnEquipment: number;
+}
+
+function createEquipmentSpendTelemetry(): EquipmentSpendTelemetry {
+  return {
+    soldOfferKeys: new Set<string>(),
+    goldSpentOnEquipment: 0,
+  };
+}
+
+function updateEquipmentSpendTelemetry(world: GameWorld, telemetry: EquipmentSpendTelemetry): void {
+  const offers = world.floorExtendedState?.settlement?.quartermasterStock?.offers;
+  if (!offers) return;
+  for (const offer of offers) {
+    if (offer.quantity > 0) continue;
+    const key = `${offer.offerId}:${offer.instanceId}`;
+    if (telemetry.soldOfferKeys.has(key)) continue;
+    telemetry.soldOfferKeys.add(key);
+    telemetry.goldSpentOnEquipment += offer.unitPrice;
+  }
 }
 
 // Floor 1 AI-driver auto-actions (NPC talk, boss-reward spell pick, shop
@@ -135,9 +161,22 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
-   * Explicit Floor 2 equipment rollout configuration. Omitted preserves the
-   * world defaults (all disabled); dependency closure is validated by each
-   * enabled consumer before it mutates state.
+   * Explicit Floor 2 equipment rollout configuration, applied before scenario
+   * configuration. Omitted preserves the world defaults (all disabled); each
+   * enabled consumer validates its own dependency closure before mutating
+   * state. NOTE: on `floorId: 'floor2'`, `initializeFloor2Scenario` (the real
+   * shipped path) unconditionally overwrites five flags —
+   * `floor2EquipmentRegistry`, `floor2EquipmentCatalog`,
+   * `floor2EquipmentRewards`, `floor2EquipmentEconomy`, and
+   * `floor2EquipmentAiMaintenance` — as part of Floor 2's shipped content.
+   * The remaining two flags (`floor2EquipmentUx`, `floor2EquipmentWorld`)
+   * are NOT touched by the scenario initializer and are preserved as-is
+   * from any override supplied here. Note `floor2EquipmentUx` and
+   * `floor2EquipmentWorld` currently have zero enforcement sites anywhere
+   * in `src/` — they are declared-but-unenforced no-op flags, not yet
+   * wired to any gate.
+   * An override for the five scenario-set flags only has effect when
+   * disabling them (e.g. to isolate a scenario on a non-Floor-2 run).
    */
   floor2EquipmentFlags?: Partial<GameWorld['floor2EquipmentFlags']>;
   /**
@@ -190,6 +229,14 @@ export interface HeadlessRunnerConfig {
    * feature.
    */
   settlementReturnRouting?: boolean;
+  /**
+   * Floor-2-only invariant gate for the end-of-run equipment/reward seam.
+   * Keep enabled for normal headless playability runs; tests that
+   * intentionally synthesize partial/interrupted routing states may disable it
+   * when their subject is the router telemetry itself rather than the final
+   * serviced inventory outcome.
+   */
+  enforcePlayabilityInvariants?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -213,6 +260,7 @@ const DEFAULT_CONFIG: Required<
   weaponPersonas: true,
   merchantWeaponPurchase: false,
   settlementReturnRouting: false,
+  enforcePlayabilityInvariants: true,
 };
 
 function applyConfiguredHostileDamageMultiplier(
@@ -501,6 +549,7 @@ export async function runHeadless(
   const floor2TrashKillsAtDenUnlock = new Map<string, number>();
   const floor2EncounterStartedMs = new Map<string, number>();
   const floor2EncounterDefeatedMs = new Map<string, number>();
+  const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
 
   // NPC interaction tracking
   let lastNpcInteractionFrame = -1000;
@@ -522,7 +571,6 @@ export async function runHeadless(
     getDecisionMode?: () => string;
     getPathingMode?: () => AIPathingModeValue;
     getFloor2HuntFamilyId?: () => FamilyId | null;
-    disposeNavmesh?: () => void;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
   let lastFrameY = world.stores.position.y[playerEid] ?? 0;
@@ -621,10 +669,8 @@ export async function runHeadless(
     // `urgency` (from the post-tick `runPlan`). That is an observability
     // superset, NOT part of the deterministic sim: game behavior/determinism
     // stays byte-identical to main; only the emitted telemetry field set is
-    // broader. Prefer `decisionRunPlan` — the plan the SLACK_AWARE F1/F2 filters
-    // actually consulted this frame — falling back to the post-tick `runPlan`.
-    // In LEGACY `decisionRunPlan` is always null, so this falls back to
-    // `runPlan`, selecting the same plan a legacy-aware provider would.
+    // broader. Falls back to the post-tick `runPlan` when no decision-time
+    // plan is available.
     const tacticalDebug = navProvider.getTacticalRunDebug?.();
     const runPlan = tacticalDebug?.decisionRunPlan ?? tacticalDebug?.runPlan ?? null;
     const decisionMode = navProvider.getDecisionMode?.();
@@ -679,17 +725,6 @@ export async function runHeadless(
       ...canonicalPostSystems,
       ...(config.simulationOptions?.postSystems ?? []),
     ];
-
-    // Navmesh-routed pathing (NAVMESH and NAVMESH_FUSED) needs the recast WASM
-    // runtime initialized before the synchronous sim loop runs (the provider's
-    // poll() is sync and throws if the navmesh is not ready). Centralizing the
-    // await here means every headless caller — CLI, ai:ab-pathing-mode,
-    // ai:navmesh-sweep, and the determinism/functional tests — is covered without
-    // each remembering to init. LEGACY/RISK_REWARD_FUSED never touch it.
-    const pathingMode = navProvider.getPathingMode?.();
-    if (pathingMode === AIPathingMode.NAVMESH || pathingMode === AIPathingMode.NAVMESH_FUSED) {
-      await initNavmesh();
-    }
 
     // Main simulation loop
     while (frameCount < mergedConfig.maxFrames) {
@@ -769,8 +804,35 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      runSettlementMaintenancePlanner(world);
+      // On each new safe-room entry, advance the Quartermaster restock epoch so
+      // sold items are retired and fresh offers are generated. The call is
+      // unconditional: `restockFloor2Quartermaster` guards against a disabled
+      // economy, missing settlement, and backwards/skipped epoch requests and
+      // returns a typed error result rather than throwing, so this is safe on
+      // Floor 1 runs and on every frame after the initial entry-edge.
+      const isNowInSafeRoom = world.playerInSafeRoom === true;
+      const wasInSafeRoom = quartermasterRestockLatches.get(world) ?? false;
+      if (isNowInSafeRoom && !wasInSafeRoom) {
+        const qmStock = world.floorExtendedState?.settlement?.quartermasterStock;
+        if (qmStock) {
+          restockFloor2Quartermaster(world, qmStock.restockEpoch + 1);
+        }
+      }
+      quartermasterRestockLatches.set(world, isNowInSafeRoom);
+      runEagerMaintenanceTick(world, playerEid, {
+        // When settlement-return routing is active, the router uses unclaimed
+        // achievements as its navigation signal (utility ∝ unclaimedAchievements).
+        // Claiming them eagerly here would drop utility to zero on the next frame,
+        // causing the router to defer its trip before the player reaches the
+        // settlement. The settlement planner handles claiming on arrival instead.
+        skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
+      });
+      // Capture result type so `SettlementMaintenanceResult` has a production
+      // src consumer; result is also accessible via getLastSettlementMaintenanceResult(world).
+      const _settlementResult: SettlementMaintenanceResult = runSettlementMaintenancePlanner(world);
+      void _settlementResult;
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
+      updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
 
       // Check win/loss conditions — read HP before the guard so both early-exit
       // paths can record the final frame's HP delta (otherwise the lethal frame
@@ -1110,6 +1172,23 @@ export async function runHeadless(
       const combatDurationFrames = frameCount - combatStartFrame;
       combatTimeMs += combatDurationFrames * GAME.DELTA_MS;
     }
+
+    const equipmentPlayability = collectEquipmentPlayabilityMetrics(
+      world,
+      playerEid,
+      equipmentSpendTelemetry.goldSpentOnEquipment,
+    );
+    const playabilityViolations =
+      world.floorId === 'floor2' &&
+      mergedConfig.settlementReturnRouting &&
+      mergedConfig.enforcePlayabilityInvariants
+        ? collectEquipmentPlayabilityViolations(equipmentPlayability)
+        : [];
+    if (playabilityViolations.length > 0) {
+      throw new Error(
+        `Headless playability invariant failed: ${playabilityViolations.join(' | ')}`,
+      );
+    }
   } catch (error) {
     logger.error('Headless run crashed', { error });
 
@@ -1168,6 +1247,11 @@ export async function runHeadless(
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
+      equipmentPlayability: collectEquipmentPlayabilityMetrics(
+        world,
+        playerEid,
+        equipmentSpendTelemetry.goldSpentOnEquipment,
+      ),
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
@@ -1180,12 +1264,6 @@ export async function runHeadless(
       }
     }
     return crashStats;
-  } finally {
-    // Free the per-floor recast navmesh + query WASM allocations (outside the JS
-    // GC). No-op for LEGACY/RISK_REWARD_FUSED (no handle was ever built). Without
-    // this, the navmesh-sweep's sequential navmesh-routed runs would leak one
-    // handle each.
-    navProvider.disposeNavmesh?.();
   }
 
   const wallTimeMs = Date.now() - startTime;
@@ -1250,6 +1328,11 @@ export async function runHeadless(
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),
+    equipmentPlayability: collectEquipmentPlayabilityMetrics(
+      world,
+      playerEid,
+      equipmentSpendTelemetry.goldSpentOnEquipment,
+    ),
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),

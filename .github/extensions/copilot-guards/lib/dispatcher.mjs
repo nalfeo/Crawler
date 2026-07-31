@@ -82,7 +82,7 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
       if (guard.failClosed) {
         return {
           permissionDecision: 'deny',
-          permissionDecisionReason: `Guard ${guard.id} crashed and is configured fail-closed: ${err.message}. To bypass, set COPILOT_GUARDS_DISABLE=${guard.id}.`,
+          permissionDecisionReason: `[copilot-guards/${guard.id} | tool:${toolName}] Guard crashed (fail-closed): ${err.message}. To bypass, set COPILOT_GUARDS_DISABLE=${guard.id}.`,
         };
       }
       continue;
@@ -133,7 +133,7 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
       }
       const out = {
         permissionDecision: 'deny',
-        permissionDecisionReason: formatDeny(guard.id, result.reason),
+        permissionDecisionReason: formatDeny(guard.id, toolName, result.reason),
       };
       if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
       return out;
@@ -146,7 +146,7 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
       }
       const out = {
         permissionDecision: 'ask',
-        permissionDecisionReason: formatDeny(guard.id, result.reason),
+        permissionDecisionReason: formatDeny(guard.id, toolName, result.reason),
       };
       if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
       return out;
@@ -156,7 +156,7 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
   if (prDenies.length > 0) {
     const out = {
       permissionDecision: 'deny',
-      permissionDecisionReason: formatPrAggregate(prDenies, prAsks),
+      permissionDecisionReason: formatPrAggregate(prDenies, prAsks, toolName),
     };
     if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
     return out;
@@ -164,7 +164,7 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
   if (prAsks.length > 0) {
     const out = {
       permissionDecision: 'ask',
-      permissionDecisionReason: formatPrAggregate([], prAsks),
+      permissionDecisionReason: formatPrAggregate([], prAsks, toolName),
     };
     if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
     return out;
@@ -179,27 +179,45 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
   return undefined; // no opinion → default permission flow
 }
 
-function formatDeny(id, reason) {
-  return `[copilot-guards/${id}] ${reason}`;
+/**
+ * Format a guard denial or ask reason string.
+ *
+ * Embeds both the guard id and the denied tool name so that session-store
+ * queries can attribute denials by guard and by tool even when the session
+ * store's `tool_start_name` column is NULL for pre-empted tool calls.
+ *
+ * Format: `[copilot-guards/<id> | tool:<toolName>] <reason>`
+ *
+ * Chronicle query pattern:
+ *   WHERE tool_complete_result_content ILIKE '%[copilot-guards/%'
+ *   -- extract guard id: regexp_extract(..., '\[copilot-guards/([^|]+) \|', 1)
+ *   -- extract tool:     regexp_extract(..., '\| tool:([^\]]+)\]', 1)
+ */
+function formatDeny(id, toolName, reason) {
+  return `${formatGuardMarker(id, toolName)} ${reason}`;
 }
 
-function formatPrAggregate(denies, asks) {
+function formatPrAggregate(denies, asks, toolName) {
   const header =
     denies.length > 0
       ? 'PR preflight failed. Fix the following before retrying create_pull_request:'
       : 'PR preflight needs confirmation before continuing with create_pull_request:';
   const lines = [header];
   for (const d of denies) {
-    lines.push(`  ❌ [${d.id}] ${d.reason}`);
+    lines.push(`  ❌ ${formatGuardMarker(d.id, toolName)} ${d.reason}`);
   }
   for (const a of asks) {
-    lines.push(`  ❓ [${a.id}] ${a.reason}`);
+    lines.push(`  ❓ ${formatGuardMarker(a.id, toolName)} ${a.reason}`);
   }
   lines.push('');
   lines.push(
     'To bypass a specific guard (legitimate edge cases only): set COPILOT_GUARDS_DISABLE=<guard-id> in the environment.',
   );
   return lines.join('\n');
+}
+
+function formatGuardMarker(id, toolName) {
+  return `[copilot-guards/${id} | tool:${toolName}]`;
 }
 
 async function safeLog(ctx, msg, opts) {

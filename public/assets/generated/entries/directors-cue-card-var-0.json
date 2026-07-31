@@ -1,0 +1,39 @@
+{
+  "briefId": "directors-cue-card",
+  "spriteName": "directors-cue-card-var-0",
+  "assetPath": "generated/directors-cue-card-var-0.png",
+  "approvedAt": "2026-07-02T03:03:54.687Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-uPtLq7/directors-cue-card-v1/2026-07-01T23-19-06-10018060",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 34,
+    "y": 59,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 34,
+      "y": 59,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "2",
+  "type": "item",
+  "contentHash": "cbbbee603e5397628cc0207c5f289ca016747125705c918cc0762c731da76acf",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 4,
+    "width": 54,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

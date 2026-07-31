@@ -319,24 +319,6 @@
       "weight": 1
     }
   ],
-  "doorSet": {
-    "openHorizontal": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-open-horizontal.png",
-      "textureKey": "terrain-pack-industrial-cave-door-open-horizontal"
-    },
-    "openVertical": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-open-vertical.png",
-      "textureKey": "terrain-pack-industrial-cave-door-open-vertical"
-    },
-    "closedHorizontal": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-closed-horizontal.png",
-      "textureKey": "terrain-pack-industrial-cave-door-closed-horizontal"
-    },
-    "closedVertical": {
-      "imagePath": "assets/terrain-packs/industrial-cave/door-closed-vertical.png",
-      "textureKey": "terrain-pack-industrial-cave-door-closed-vertical"
-    }
-  },
   "groundDecals": [
     {
       "imagePath": "assets/terrain-packs/industrial-cave/ground-decals-long.png",
@@ -395,6 +377,58 @@
       "id": "damp-stain",
       "imagePath": "assets/terrain-packs/industrial-cave/accent-damp-stain.png",
       "textureKey": "terrain-pack-industrial-cave-accent-damp-stain"
+    }
+  ],
+  "linework": [
+    {
+      "id": "mine-track",
+      "kind": "track",
+      "imagePath": "assets/terrain-packs/industrial-cave/linework-track.png",
+      "textureKey": "terrain-pack-industrial-cave-linework-track",
+      "cellPx": 64,
+      "frames": 16,
+      "stubOffsetPx": 18,
+      "stubWidthPx": 28,
+      "spursPerHub": 4,
+      "trunkRoutes": 3,
+      "hubRadiusTiles": 25,
+      "awayFromHubCost": 0.55,
+      "turnPenalty": 6,
+      "seedSalt": "industrial-cave/mine-track",
+      "props": {
+        "imagePath": "assets/terrain-packs/industrial-cave/linework-props.png",
+        "textureKey": "terrain-pack-industrial-cave-linework-props",
+        "cellPx": 64,
+        "frameStart": 0,
+        "frames": 3,
+        "orientToRun": true,
+        "density": 0.05
+      }
+    },
+    {
+      "id": "steam-pipe",
+      "kind": "pipe",
+      "imagePath": "assets/terrain-packs/industrial-cave/linework-pipe.png",
+      "textureKey": "terrain-pack-industrial-cave-linework-pipe",
+      "cellPx": 64,
+      "frames": 16,
+      "stubOffsetPx": 23,
+      "stubWidthPx": 18,
+      "spursPerHub": 4,
+      "trunkRoutes": 2,
+      "hubRadiusTiles": 25,
+      "awayFromHubCost": 0.75,
+      "turnPenalty": 9,
+      "seedSalt": "industrial-cave/steam-pipe",
+      "props": {
+        "imagePath": "assets/terrain-packs/industrial-cave/linework-props.png",
+        "textureKey": "terrain-pack-industrial-cave-linework-pipe-props",
+        "cellPx": 64,
+        "frameStart": 3,
+        "frames": 3,
+        "orientToRun": false,
+        "density": 0.03
+      }
     }
   ]
 }

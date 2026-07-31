@@ -1,0 +1,24 @@
+{
+  "briefId": "twin-katar",
+  "spriteName": "twin-katar-var-0",
+  "assetPath": "generated/twin-katar-var-0.png",
+  "approvedAt": "2026-07-18T01:45:00.000Z",
+  "sourceRun": "manual/twin-katar",
+  "variantIndex": 0,
+  "anchor": null,
+  "sensorScore": "manual",
+  "judgeScore": null,
+  "type": "weapon",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 23,
+    "width": 105,
+    "height": 84,
+    "canvasWidth": 128,
+    "canvasHeight": 128
+  },
+  "catalog": {
+    "description": "Hand-authored silhouette icon for runtime key equipment/weapon/twin-katar.",
+    "tags": ["weapon", "generated", "hand-authored"]
+  }
+}

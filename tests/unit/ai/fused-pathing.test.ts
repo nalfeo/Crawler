@@ -65,19 +65,6 @@ const EXPECTED_CANDIDATE_COUNT = 13;
 const SAMPLE_LOOKAHEAD_FT = 8;
 
 describe('RISK_REWARD_FUSED — dormancy + opt-in capture (byte-identity guard)', () => {
-  it('LEGACY never populates the fused debug snapshot even with capture on', () => {
-    const world = freshFloor1World(42);
-    const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.LEGACY });
-    // Force capture on — LEGACY must STILL never run the scorer.
-    (ai as unknown as FusedScorerInternals).fusedDebugCapture = true;
-
-    for (let i = 0; i < 5; i++) {
-      ai.poll(createInputState(), world);
-    }
-
-    expect(ai.getFusedDebug()).toBeNull();
-  });
-
   it('fused mode with capture OFF (the default) records nothing', () => {
     const world = freshFloor1World(42);
     const ai = new BehaviorTreeAI({ seed: 42, pathingMode: AIPathingMode.RISK_REWARD_FUSED });

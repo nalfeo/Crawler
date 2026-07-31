@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "clean-behind-always-rebase",
+  "task_title": "D2 fix: always-rebase clean-BEHIND PRs via update-branch API",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "copilot-pull-request-reviewer",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Reviewer identified: wrong field name expected_head_oid vs expected_head_sha; GITHUB_TOKEN recursion suppression blocks CI re-trigger (use CRAWLER_CI_PAT); livePr fetch must precede eligible() to share authoritative snapshot. All resolved."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 14,
+          "resolved_count": 14,
+          "clean": false,
+          "notes": "PR review found 14 threads: expected_head_oid field name (3 files + 2 test files), non-422 error handling (3 blocks), token recursion suppression (auto-rebase + merge-train), eligible() ordering, missing QUEUE_MERGE_TRAIN test, missing request body assertion, missing stale-list regression test, review ledger incomplete. All addressed."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "All findings from round 1 addressed in recovery commit; no remaining concerns."
+        }
+      ]
+    }
+  }
+}

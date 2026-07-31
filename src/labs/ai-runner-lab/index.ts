@@ -23,13 +23,16 @@ import {
   type AIPathingModeValue,
   type FusedHeadingDebug,
 } from '../../game/ai/index.js';
-import { initNavmesh, isNavmeshReady } from '../../game/ai/navmesh/index.js';
+import { DEFAULT_CONFIG } from '../../game/ai/bt-ai-tuning.js';
 import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
-import { runSettlementMaintenancePlanner } from '../../game/ai/settlement-maintenance-planner.js';
+import {
+  runSettlementMaintenancePlanner,
+  runEagerMaintenanceTick,
+} from '../../game/ai/settlement-maintenance-planner.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
@@ -66,6 +69,7 @@ import {
   type FovPresetId,
 } from '../../engine/fov/fov-config.js';
 import { peekGroundFlowField } from '../../game/enemyAISystem.js';
+import { getRuntimeMobMotionProfile } from '../../shared/mob-motion.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -74,7 +78,7 @@ import {
   getQuestDef,
   objectiveTarget,
 } from '../../shared/quest-types.js';
-import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
+import { UI_DEPTH_CUTOFF, WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -440,20 +444,33 @@ const SCENARIO_VISUAL_BRIGHTENING: Record<
   'spawner-sealable-room': { ambient: 0.38, sourceIntensity: 1.1, discoveredLight: 0.12 },
   'spawner-unsealable-room': { ambient: 0.38, sourceIntensity: 1.1, discoveredLight: 0.12 },
   'spawner-cave': { ambient: 0.4, sourceIntensity: 1.15, discoveredLight: 0.14 },
+  // Inspection scene, not a gameplay scene: fully lit so wall/door junctions and
+  // corner silhouettes are never hidden by fog or falloff. `ambient` and
+  // `discoveredLight` are clamped to [0,1], so 1.0 is "no darkening at all".
+  'terrain-wall-junctions': { ambient: 1, sourceIntensity: 1.2, discoveredLight: 1 },
 };
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 /**
- * Mode predicates mirroring the provider seam (bt-ai-provider `poll()`): both
- * NAVMESH and NAVMESH_FUSED route via the recast navmesh; both RISK_REWARD_FUSED
- * and NAVMESH_FUSED run the fused candidate-heading scorer. The lab's overlays +
- * HUD gate on these so NAVMESH_FUSED shows BOTH the navmesh route AND the fused
- * fan — missing a site would make the new mode "run but look blank".
+ * Read `?scenario=<id>` so a specific slice can be linked to and jumped
+ * straight into — e.g. `?lab=ai-runner&scenario=terrain-wall-junctions`.
+ *
+ * This takes priority over the persisted selection on purpose: a link that
+ * silently lands on whatever scenario you last had open is not a jump-to link,
+ * and the whole point is to make "go look at exactly this" reproducible for the
+ * next agent or session. An unknown (but non-empty) id falls back to the
+ * default preset rather than returning `null`, so a stale link does not
+ * silently restore the persisted scenario (which could be an unrelated spawner
+ * preset the user happened to have open last time).
  */
-const usesNavmeshRoute = (m: AIPathingModeValue): boolean =>
-  m === AIPathingMode.NAVMESH || m === AIPathingMode.NAVMESH_FUSED;
-const usesFusedFan = (m: AIPathingModeValue): boolean =>
-  m === AIPathingMode.RISK_REWARD_FUSED || m === AIPathingMode.NAVMESH_FUSED;
+function scenarioPresetIdFromUrl(): AiRunnerScenarioPresetId | null {
+  if (typeof window === 'undefined') return null;
+  const requested = new URLSearchParams(window.location.search).get('scenario');
+  if (!requested) return null;
+  return AI_RUNNER_SCENARIO_PRESETS.some((preset) => preset.id === requested)
+    ? (requested as AiRunnerScenarioPresetId)
+    : DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
+}
 
 interface AiRunnerLabState {
   showFlowField: boolean;
@@ -468,13 +485,10 @@ interface AiRunnerLabState {
   scenarioPresetId?: AiRunnerScenarioPresetId;
   aiConfig: {
     visualRiskRewardFields: boolean;
-    visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas?: boolean;
     merchantWeaponPurchase?: boolean;
-    /** Slice 4b NAVMESH_FUSED seam weight (0 = shipped-4a control). */
-    seamWeight?: number;
   };
 }
 
@@ -618,46 +632,51 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   const panelRoot = document.createElement('div');
   controls.append(panelRoot);
-  let currentSeed = persisted?.seed ?? INITIAL_SEED;
+  // When `?scenario=<id>` is present we want the deep link to be fully
+  // reproducible: use the preset's own default seed and force floor1, so a
+  // tab that last ran Floor 2 with a different seed doesn't contaminate the
+  // inspection scene with the wrong floor or the wrong RNG state.
+  const urlScenario = scenarioPresetIdFromUrl();
   let selectedScenarioPresetId =
-    persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
+    urlScenario ?? persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
+  let currentSeed =
+    urlScenario != null
+      ? (getAiRunnerScenarioPreset(urlScenario)?.defaultSeed ?? INITIAL_SEED)
+      : (persisted?.seed ?? INITIAL_SEED);
   let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
   // AI configuration state. The A/B mode selection (pathingMode/decisionMode)
-  // both default LEGACY → byte-identical to main. All fields persist across lab
+  // both default to production defaults (DEFAULT_CONFIG) so a fresh lab session
+  // matches the shipped game. All fields persist across lab
   // reloads; pathingMode/decisionMode are passed into every BehaviorTreeAI the
   // lab constructs.
   const aiConfig: {
     pathingMode: AIPathingModeValue;
     decisionMode: AIDecisionModeValue;
     visualRiskRewardFields: boolean;
-    visualNavmesh: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas: boolean;
     merchantWeaponPurchase: boolean;
-    seamWeight: number;
   } = {
-    pathingMode: persisted?.pathingMode ?? AIPathingMode.LEGACY,
-    decisionMode: persisted?.decisionMode ?? AIDecisionMode.LEGACY,
+    pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
+    decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
-    visualNavmesh: persisted?.aiConfig?.visualNavmesh ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
     weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
     merchantWeaponPurchase: persisted?.aiConfig?.merchantWeaponPurchase ?? false,
-    seamWeight: persisted?.aiConfig?.seamWeight ?? 0,
   };
 
   let ai = new BehaviorTreeAI({
     seed: currentSeed,
     aggression: 1,
-    retreatThreshold: 0.15,
+    retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+    farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
     debug: true,
     pathingMode: aiConfig.pathingMode,
     decisionMode: aiConfig.decisionMode,
-    seamWeight: aiConfig.seamWeight,
   });
   let selectedSpeed = 1;
   let isPaused = true;
@@ -672,20 +691,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
   let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
   let fusedCandidatesGraphics: Phaser.GameObjects.Graphics | null = null;
-  let navmeshGraphics: Phaser.GameObjects.Graphics | null = null;
-  // NAVMESH-mode WASM readiness. recast init is async (~40ms) but the lab's
-  // create() hook is synchronous, so we kick it off at bootstrap and gate the AI
-  // tick until it resolves — otherwise a persisted NAVMESH default could poll the
-  // provider before the navmesh is ready (ensureFloorNavmesh throws then). This is
-  // also the browser proof that the real `.wasm` asset resolves under Vite.
-  let navmeshReady = isNavmeshReady();
-  void initNavmesh()
-    .then(() => {
-      navmeshReady = true;
-    })
-    .catch((err: unknown) => {
-      console.error('AI Runner lab: navmesh init failed', err);
-    });
+  let pausedEnemyHoverText: Phaser.GameObjects.Text | null = null;
   let showFlowField = persisted?.showFlowField ?? false;
   let lastStepReason = '';
   const floorDebug = {
@@ -707,12 +713,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       scenarioPresetId: selectedScenarioPresetId,
       aiConfig: {
         visualRiskRewardFields: aiConfig.visualRiskRewardFields,
-        visualNavmesh: aiConfig.visualNavmesh,
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
         weaponPersonas: aiConfig.weaponPersonas,
         merchantWeaponPurchase: aiConfig.merchantWeaponPurchase,
-        seamWeight: aiConfig.seamWeight,
       },
     });
   };
@@ -777,20 +781,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             state.moveY = 0;
             state.action = false;
           }
-        } else if (usesNavmeshRoute(aiConfig.pathingMode) && !navmeshReady) {
-          // A navmesh-routed mode (NAVMESH / NAVMESH_FUSED) is selected but the
-          // recast WASM is still loading. Hold still this frame rather than polling
-          // the provider (moveTowardViaNavmesh → ensureFloorNavmesh throws until
-          // initNavmesh() resolves).
-          state.moveX = 0;
-          state.moveY = 0;
-          state.action = false;
         } else {
-          // Capture the fused scorer's candidate fan only when the viz is on AND
-          // a fused mode is active. Set on the current `ai` each poll so it stays
-          // correct across rebuild/reseed. Default-off elsewhere → zero overhead.
-          ai.fusedDebugCapture =
-            aiConfig.visualRiskRewardFields && usesFusedFan(aiConfig.pathingMode);
+          // Capture the fused scorer's candidate fan only when the viz is on.
+          // Set on the current `ai` each poll so it stays correct across rebuild/reseed.
+          // Default-off elsewhere → zero overhead.
+          ai.fusedDebugCapture = aiConfig.visualRiskRewardFields;
           ai.poll(state, world);
         }
         lastMove.x = state.moveX;
@@ -833,9 +828,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     configureMerchantWeaponPurchase(world, aiConfig.merchantWeaponPurchase);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
+    runEagerMaintenanceTick(world, playerEid);
     runSettlementMaintenancePlanner(world);
   };
-  let currentFloor = persisted?.floorId ?? 'floor1';
+  let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
   let stagedSeedText = String(currentSeed);
   let stagedRunTarget: AiRunnerRunTargetKey | null = null;
   const recorderControls = createSessionRecorderControls({
@@ -1217,12 +1213,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiFolder
-    .add(aiConfig, 'visualNavmesh')
-    .name('Show navmesh walkable area')
-    .onChange(() => {
-      persistLabState();
-    });
-  aiFolder
     .add({ showFlowField }, 'showFlowField')
     .name('Show enemy flow field')
     .onChange((value: boolean) => {
@@ -1257,17 +1247,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // Rebuild the AI brain in place (preserving the current seed) so an A/B mode
   // toggle takes effect immediately without restarting the scene/floor.
   const rebuildAiBrain = (): void => {
-    // Free the outgoing brain's per-floor navmesh handle before dropping the
-    // reference (no-op unless NAVMESH built one), so mode toggles don't leak WASM.
-    ai.disposeNavmesh();
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
-      retreatThreshold: 0.15,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
-      seamWeight: aiConfig.seamWeight,
     });
   };
 
@@ -1279,32 +1266,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiModesFolder
-    .add(aiConfig, 'pathingMode', [
-      AIPathingMode.LEGACY,
-      AIPathingMode.RISK_REWARD_FUSED,
-      AIPathingMode.NAVMESH,
-      AIPathingMode.NAVMESH_FUSED,
-    ])
+    .add(aiConfig, 'pathingMode', [AIPathingMode.RISK_REWARD_FUSED])
     .name('Pathing')
     .onChange(() => {
       rebuildAiBrain();
       persistLabState();
     });
   aiModesFolder
-    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY, AIDecisionMode.SLACK_AWARE])
+    .add(aiConfig, 'decisionMode', [AIDecisionMode.LEGACY])
     .name('Decision')
-    .onChange(() => {
-      rebuildAiBrain();
-      persistLabState();
-    });
-  // Slice 4b: NAVMESH_FUSED seam weight. 0 = shipped-4a control (seam term OFF,
-  // byte-identical); higher biases travel ALONG the danger boundary toward the
-  // goal when farmable reward lies along the seam. Turn on "Show risk/reward
-  // fields" + pick NAVMESH_FUSED to see the magenta danger-gradient + orange
-  // seam-tangent overlay. Only affects NAVMESH_FUSED.
-  aiModesFolder
-    .add(aiConfig, 'seamWeight', 0, 4, 0.25)
-    .name('Seam weight (NAVMESH_FUSED)')
     .onChange(() => {
       rebuildAiBrain();
       persistLabState();
@@ -1401,16 +1371,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const reseed = (nextSeed: number): void => {
     currentSeed = nextSeed;
     sceneOptions.worldSeed = currentSeed;
-    // Free the outgoing brain's navmesh handle before dropping the reference.
-    ai.disposeNavmesh();
     ai = new BehaviorTreeAI({
       seed: currentSeed,
       aggression: 1,
-      retreatThreshold: 0.15,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
       debug: true,
       pathingMode: aiConfig.pathingMode,
       decisionMode: aiConfig.decisionMode,
-      seamWeight: aiConfig.seamWeight,
     });
     pollCount = 0;
     arenaEntryFrame = null;
@@ -1724,6 +1692,104 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     return flowFieldGraphics;
   };
 
+  const ensurePausedEnemyHoverText = (): Phaser.GameObjects.Text | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!pausedEnemyHoverText || !pausedEnemyHoverText.scene) {
+      pausedEnemyHoverText = scene.add
+        .text(0, 0, '', {
+          fontFamily: '"Press Start 2P", ui-monospace, monospace',
+          fontSize: '10px',
+          color: '#e2e8f0',
+          backgroundColor: 'rgba(8, 17, 32, 0.92)',
+          padding: { x: 8, y: 6 },
+          lineSpacing: 4,
+        })
+        .setDepth(UI_DEPTH_CUTOFF)
+        .setScrollFactor(0)
+        .setVisible(false);
+    }
+    return pausedEnemyHoverText;
+  };
+
+  const resolveEnemyDisplayName = (world: GameWorld, eid: number): string => {
+    const archetypeId =
+      world.floorScenario?.enemyArchetypes.get(eid) ??
+      world.enemyAppearanceKeys.get(eid) ??
+      world.floorExtendedState?.ambientEnemyArchetypes?.get(eid);
+    const profile = archetypeId ? getRuntimeMobMotionProfile(archetypeId) : undefined;
+    return profile?.name ?? archetypeId ?? 'Enemy';
+  };
+
+  const syncPausedEnemyHoverTooltip = (): void => {
+    const text = ensurePausedEnemyHoverText();
+    const scene = getScene();
+    const phaserScene = getPhaserScene();
+    const world = scene?.world;
+    const simulationPaused = scene?.isSimulationPaused?.() ?? isPaused;
+    if (!text || !scene || !phaserScene || !world || !simulationPaused) {
+      if (text) {
+        text.setVisible(false);
+      }
+      return;
+    }
+
+    const pointer = phaserScene.input.activePointer;
+    const camera = phaserScene.cameras.main;
+    if (!pointer || !camera) {
+      text.setVisible(false);
+      return;
+    }
+
+    const worldPoint = camera.getWorldPoint(pointer.x, pointer.y);
+    let hoveredEnemy: {
+      eid: number;
+      currentHp: number;
+      maxHp: number;
+      name: string;
+    } | null = null;
+    let hoveredDistSq = Number.POSITIVE_INFINITY;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      const currentHp = world.stores.health.current[eid] ?? 0;
+      if (currentHp <= 0) {
+        continue;
+      }
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const radiusFt = Math.max(world.stores.size.radius[eid] ?? 0, 1);
+      const dx = ex - pxToFt(worldPoint.x);
+      const dy = ey - pxToFt(worldPoint.y);
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusFt * radiusFt || distSq >= hoveredDistSq) {
+        continue;
+      }
+      hoveredDistSq = distSq;
+      hoveredEnemy = {
+        eid,
+        currentHp: Math.max(0, Math.round(currentHp)),
+        maxHp: Math.max(0, Math.round(world.stores.health.max[eid] ?? 0)),
+        name: resolveEnemyDisplayName(world, eid),
+      };
+    }
+
+    if (!hoveredEnemy) {
+      text.setVisible(false);
+      return;
+    }
+
+    text.setText(
+      `${hoveredEnemy.name}\n` +
+        `eid: ${hoveredEnemy.eid}\n` +
+        `health: ${hoveredEnemy.currentHp}/${hoveredEnemy.maxHp}`,
+    );
+    const maxX = Math.max(8, phaserScene.scale.width - text.width - 8);
+    const maxY = Math.max(8, phaserScene.scale.height - text.height - 8);
+    text.setPosition(Math.min(pointer.x + 16, maxX), Math.min(pointer.y + 16, maxY));
+    text.setVisible(true);
+  };
+
   /**
    * Render the shared ground flow field that dense chasers steer down. Each
    * reachable tile is shaded by its shortest-path distance to the player (hot =
@@ -1795,99 +1861,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const goal = floorMap.tileToWorld(field.goalX, field.goalY);
     graphics.lineStyle(2, 0x9cff57, 0.95);
     graphics.strokeCircle(ftToPx(goal.x), ftToPx(goal.y), tileSizePx * 0.4);
-  };
-
-  const ensureNavmeshGraphics = (): Phaser.GameObjects.Graphics | null => {
-    const scene = getPhaserScene();
-    if (!scene) {
-      return null;
-    }
-    if (!navmeshGraphics || !navmeshGraphics.scene) {
-      navmeshGraphics = scene.add.graphics();
-      // World-space debug overlay: sit just above the cyan A* path overlay so the
-      // navmesh route reads on top, but still below UI_DEPTH_CUTOFF (render-depths.ts).
-      navmeshGraphics.setDepth(WORLD_VFX_DEPTH.debugPath + 1);
-      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
-        navmeshGraphics,
-      );
-    }
-    return navmeshGraphics;
-  };
-
-  /**
-   * Visualise the recast navmesh (standing human requirement for this arc — the
-   * human must be able to see the path the AI will take):
-   *   1. A translucent purple fill over every tile the navmesh geometry treats as
-   *      walkable (`isPassable || isDoor` — the exact door-inclusive footprint the
-   *      pather builds). Shown only when the "Show navmesh walkable area" toggle is
-   *      on; iterating the whole map per-frame mirrors the flow-field overlay and is
-   *      acceptable behind an off-by-default toggle.
-   *   2. The deterministic waypoint route the navmesh computed to the BT-chosen
-   *      goal (world feet, straight from the provider's nav debug). Drawn whenever
-   *      NAVMESH pathing is active so the intended path is always visible.
-   */
-  const drawNavmeshOverlay = (): void => {
-    const graphics = ensureNavmeshGraphics();
-    const scene = getScene();
-    const world = scene?.world;
-    if (!graphics || !scene || !world || !world.floorMap) {
-      return;
-    }
-    graphics.clear();
-
-    const showFootprint = aiConfig.visualNavmesh;
-    const showRoute = usesNavmeshRoute(aiConfig.pathingMode) && !manualControl;
-    if (!showFootprint && !showRoute) {
-      return;
-    }
-
-    const floorMap = world.floorMap;
-    const tileSizePx = ftToPx(floorMap.config.tileSizeFt);
-
-    if (showFootprint) {
-      // Fill + thin per-cell outline so the door-inclusive walkable footprint reads
-      // as a mesh grid (stand-in for the recast polys). Full-map iteration mirrors
-      // the flow-field overlay and is acceptable behind this off-by-default toggle.
-      graphics.fillStyle(0xba68c8, 0.24);
-      graphics.lineStyle(1, 0xce93d8, 0.35);
-      for (let ty = 0; ty < floorMap.height; ty++) {
-        for (let tx = 0; tx < floorMap.width; tx++) {
-          if (!floorMap.tileMap.isPassable(tx, ty) && !floorMap.tileMap.isDoor(tx, ty)) {
-            continue;
-          }
-          const center = floorMap.tileToWorld(tx, ty);
-          const left = ftToPx(center.x) - tileSizePx / 2;
-          const top = ftToPx(center.y) - tileSizePx / 2;
-          graphics.fillRect(left, top, tileSizePx, tileSizePx);
-          graphics.strokeRect(left, top, tileSizePx, tileSizePx);
-        }
-      }
-    }
-
-    if (showRoute) {
-      const nav = ai.getNavigationDebug();
-      const waypoints = nav.navWaypoints;
-      if (waypoints.length > 0) {
-        const playerEid = scene.playerEid;
-        const hasPlayer = typeof playerEid === 'number' && playerEid >= 0;
-        const playerX = hasPlayer ? (world.stores.position.x[playerEid] ?? 0) : waypoints[0]!.x;
-        const playerY = hasPlayer ? (world.stores.position.y[playerEid] ?? 0) : waypoints[0]!.y;
-        const upcoming = waypoints.slice(nav.navPathIndex);
-        if (upcoming.length > 0) {
-          graphics.lineStyle(2.5, 0xba68c8, 0.95);
-          graphics.beginPath();
-          graphics.moveTo(ftToPx(playerX), ftToPx(playerY));
-          for (const wp of upcoming) {
-            graphics.lineTo(ftToPx(wp.x), ftToPx(wp.y));
-          }
-          graphics.strokePath();
-          graphics.fillStyle(0xce93d8, 0.9);
-          for (const wp of upcoming) {
-            graphics.fillCircle(ftToPx(wp.x), ftToPx(wp.y), 4);
-          }
-        }
-      }
-    }
   };
 
   const ensureRiskRewardFieldsGraphics = (): Phaser.GameObjects.Graphics | null => {
@@ -2083,12 +2056,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
    */
   const drawFusedCandidateOverlay = (): void => {
     const debug: FusedHeadingDebug | null = ai.getFusedDebug();
-    if (
-      !aiConfig.visualRiskRewardFields ||
-      !usesFusedFan(aiConfig.pathingMode) ||
-      !debug ||
-      debug.candidates.length === 0
-    ) {
+    if (!aiConfig.visualRiskRewardFields || !debug || debug.candidates.length === 0) {
       fusedCandidatesGraphics?.clear();
       return;
     }
@@ -2152,47 +2120,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       graphics.strokePath();
       graphics.fillStyle(0x33ffff, 0.95);
       graphics.fillCircle(ex, ey, 5);
-    }
-
-    // Slice 4b seam term: draw the centered danger GRADIENT (magenta, points
-    // uphill in danger) and, when the seam re-selected the heading this poll, the
-    // TANGENT the agent travels along (bright orange). Sourced from the real
-    // scorer's `seam` snapshot — the seam is defined ⟂ gradient, so an orange
-    // arrow ~90° off the magenta one, hugging the danger boundary, IS the
-    // "travelling the seam" evidence. Absent (null) when the seam block did not
-    // run (weight 0 or non-fused), so this stays invisible for the 4a control.
-    const seam = debug.seam;
-    if (seam) {
-      const gradLen = Math.hypot(seam.gradX, seam.gradY);
-      if (gradLen > 1e-9) {
-        const gx = px + (seam.gradX / gradLen) * rayLenPx;
-        const gy = py + (seam.gradY / gradLen) * rayLenPx;
-        graphics.lineStyle(2, 0xff33cc, 0.85); // magenta = danger gradient (uphill)
-        graphics.beginPath();
-        graphics.moveTo(px, py);
-        graphics.lineTo(gx, gy);
-        graphics.strokePath();
-        graphics.fillStyle(0xff33cc, 0.85);
-        graphics.fillCircle(gx, gy, 4);
-      }
-      if (seam.seamActive) {
-        // Tangent is unit length; draw both ways so the boundary line reads as a
-        // seam, with the forward (goal-oriented) half emphasized.
-        const tx = seam.tangentX * rayLenPx;
-        const ty = seam.tangentY * rayLenPx;
-        graphics.lineStyle(2, 0xffaa00, 0.5);
-        graphics.beginPath();
-        graphics.moveTo(px - tx, py - ty);
-        graphics.lineTo(px, py);
-        graphics.strokePath();
-        graphics.lineStyle(5, 0xffaa00, 0.95); // bright orange = seam travel dir
-        graphics.beginPath();
-        graphics.moveTo(px, py);
-        graphics.lineTo(px + tx, py + ty);
-        graphics.strokePath();
-        graphics.fillStyle(0xffaa00, 0.95);
-        graphics.fillCircle(px + tx, py + ty, 6);
-      }
     }
   };
 
@@ -2771,24 +2698,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     if (pathElem) {
       const nav = ai.getNavigationDebug();
-      if (usesNavmeshRoute(aiConfig.pathingMode)) {
-        pathElem.textContent = !navmeshReady
-          ? 'navmesh loading…'
-          : nav.navWaypoints.length > 0
-            ? `${nav.navPathIndex + 1}/${nav.navWaypoints.length} navmesh waypoints`
-            : 'No navmesh path';
-      } else {
-        pathElem.textContent =
-          nav.pathWaypoints.length > 0
-            ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
-            : 'No path';
-      }
+      pathElem.textContent =
+        nav.pathWaypoints.length > 0
+          ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
+          : 'No path';
     }
     const modesElem = document.getElementById('ai-modes');
     if (modesElem) {
       let modesText = `pathing=${ai.getPathingMode()} · decision=${ai.getDecisionMode()}`;
       const fused = ai.getFusedDebug();
-      if (usesFusedFan(aiConfig.pathingMode) && fused) {
+      if (fused) {
         const chosen = fused.candidates.find((c) => c.chosen);
         const angle = chosen ? `${chosen.angleDeg.toFixed(0)}°` : '?';
         modesText += ` · fused[chosen ${angle} · best ${fused.bestScore.toFixed(2)} · ${fused.candidates.length} cand]`;
@@ -2797,13 +2716,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     const slackElem = document.getElementById('ai-slack');
     if (slackElem) {
-      // Reads the run-plan slack signal. Prefers the SLACK_AWARE decision-time
-      // plan (what the F1/F2 filters actually consulted this frame) and falls
-      // back to the post-tick travel plan. Only populated while travelling under
-      // a Floor-1 run plan; 'n/a' otherwise. In LEGACY decisionRunPlan is null so
-      // this shows the same travel run plan as before.
+      // Reads the run-plan slack signal. Only populated while travelling under
+      // a Floor-1 run plan; 'n/a' otherwise.
       const debug = ai.getTacticalRunDebug();
-      const runPlan = debug.decisionRunPlan ?? debug.runPlan;
+      const runPlan = debug.runPlan;
       if (!runPlan) {
         slackElem.textContent = 'n/a';
         slackElem.style.color = '#888';
@@ -2823,7 +2739,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     drawFlowFieldOverlay();
     drawRiskRewardFieldsOverlay();
     drawFusedCandidateOverlay();
-    drawNavmeshOverlay();
+    syncPausedEnemyHoverTooltip();
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const scene = getScene();
@@ -2852,7 +2768,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     recorderControls.destroy();
     disposeHardwareInput();
-    ai.disposeNavmesh();
     persistLabState();
     pathGraphics?.destroy();
     pathGraphics = null;
@@ -2862,8 +2777,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     riskRewardFieldsGraphics = null;
     fusedCandidatesGraphics?.destroy();
     fusedCandidatesGraphics = null;
-    navmeshGraphics?.destroy();
-    navmeshGraphics = null;
+    pausedEnemyHoverText?.destroy();
+    pausedEnemyHoverText = null;
     panelRoot.remove();
     game.destroy(true);
   };

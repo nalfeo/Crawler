@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-29",
+  "session_slug": "remove-fixed-grid-slicer",
+  "task_title": "Remove fixed-grid frameSequence slicer — ONE way to slice (content-aware)",
+  "estimated_apples": 2,
+  "stages": {}
+}

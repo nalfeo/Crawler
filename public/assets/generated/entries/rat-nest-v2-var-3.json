@@ -1,0 +1,41 @@
+{
+  "briefId": "rat-nest-v2",
+  "spriteName": "rat-nest-v2-var-3",
+  "assetPath": "generated/rat-nest-v2-var-3.png",
+  "approvedAt": "2026-07-06T20:16:57.511Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-hrGkIK/rat-nest-v2/2026-07-06T20-11-59-4ec0292a",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 65,
+    "y": 41,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 65,
+      "y": 41,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 65,
+      "y": 41,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": null,
+  "type": "enemy",
+  "contentHash": "9e18aa426dde2ca4d157436b4ca49c898f7878a61e9aec6a33814012c23b3c3d",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rat-nest-v2/2026-07-06T20-11-59-4ec0292a/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 61,
+    "canvasWidth": 128,
+    "canvasHeight": 75
+  }
+}

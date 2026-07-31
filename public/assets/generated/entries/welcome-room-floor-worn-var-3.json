@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-room-floor-worn",
+  "spriteName": "welcome-room-floor-worn-var-3",
+  "assetPath": "generated/welcome-room-floor-worn-var-3.png",
+  "approvedAt": "2026-07-25T17:47:35.064Z",
+  "sourceRun": "generated/runs/welcome-room-floor-worn/2026-07-25T17-33-38-f949671c",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 31,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 31,
+        "y": 31
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T17:36:03.118Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design effectively conveys a worn carpet patch with a subtle, dusty appearance. The irregular shape and stippling at the edges align with the Crawler's design language. However, the wear mark could be slightly more broken up to better match the brief's emphasis on an 'archipelago' structure."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering style matches the references in terms of palette, shading, and pixel art techniques. The lack of an outline is appropriate for this specific asset, as per the brief."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering style matches the references in terms of palette, shading, and pixel art techniques. The lack of an outline is appropriate for this specific asset, as per the brief."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The candidate adheres to the brief's requirements for transparency, color palette, and lack of outline. However, the wear mark covers slightly more area than specified and could benefit from more internal transparency and smaller, more scattered patches."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and the wear mark is visible without being overly distinct. The stippling and feathering at the edges help it blend into the background effectively."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The asset is a single, isolated object with a transparent background, as required. It is appropriately scaled and does not include any extraneous elements or borders."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate adheres to the brief's requirements and is not fundamentally broken or unacceptable.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 4177,
+      "completionTokens": 362,
+      "totalTokens": 4539
+    }
+  },
+  "type": "prop",
+  "contentHash": "11fd01780f1aea928e64a3eab1e6dff032f36dd893cbe7ab917644e553dcf58b",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T17-33-38-f949671c\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T17-33-38-f949671c\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T17-33-38-f949671c\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 13,
+    "width": 53,
+    "height": 38,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

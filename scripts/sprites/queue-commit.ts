@@ -346,9 +346,11 @@ export async function runQueueCommit(
             );
           }
         }
-        // UNION the live asset entries onto the tip's manifest/catalog + copy PNGs.
+        // Copy each asset's PNG + its manifest shard onto the tip. The
+        // aggregate manifest and sprite-catalog rows are derived, never staged.
         await deps.copyArtSurface(sourceRoot, worktree, assets);
-        // Fixed allowlist: only generated art + the catalog can ever be staged.
+        // Fixed allowlist: only the generated art surface (PNGs + shards) can
+        // ever be staged.
         await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
 
         // No-op guard: if nothing staged, the queue already carries identical

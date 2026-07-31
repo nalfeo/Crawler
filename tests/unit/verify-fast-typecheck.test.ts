@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -387,6 +387,123 @@ describe('verify-fast changed TS path coverage', () => {
     },
     30_000,
   );
+});
+
+describe('verify-fast changed .mjs path coverage', () => {
+  it.skipIf(!hasBash || !hasGit)(
+    'accepts changed .github/scripts .mjs files',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        '.github/scripts/example.mjs': 'export const example = 1;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(
+        path.join(fixture, '.github/scripts/example.mjs'),
+        'export const example = 2;\n',
+      );
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'accepts changed .github/extensions .mjs files without linting them locally',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        '.github/extensions/my-ext/extension.mjs': 'export const ext = 1;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(
+        path.join(fixture, '.github/extensions/my-ext/extension.mjs'),
+        'export const ext = 2;\n',
+      );
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'accepts changed scripts/ .mjs files without linting them locally',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        'scripts/agent/my-tool.mjs': 'export const tool = 1;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(path.join(fixture, 'scripts/agent/my-tool.mjs'), 'export const tool = 2;\n');
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'fails when a changed .mjs file is in a truly unsupported location',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        'vitest.config.mjs': 'export const unsupportedMjsValue = 1;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(
+        path.join(fixture, 'vitest.config.mjs'),
+        'export const unsupportedMjsValue = 2;\n',
+      );
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        'verify:fast does not support changed .mjs files outside .github/scripts/, .github/extensions/, or scripts/:',
+      );
+      expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.mjs');
+    },
+    30_000,
+  );
+});
+
+describe('.github/scripts lint wiring', () => {
+  it('package lint scripts include .github/scripts', () => {
+    const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(packageJson.scripts.lint).toContain('.github/scripts/');
+    expect(packageJson.scripts['lint:cache']).toContain('.github/scripts/');
+  });
 });
 
 /** Intentionally long: must outlast the SIGTERM that interrupts the verifier. */

@@ -45,6 +45,7 @@ import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
 import { buildPrompt, buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
 import { expandVariations } from './expand-variations.js';
+import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { sliceSheetFromBrief, type BriefSliceResult } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
@@ -64,7 +65,7 @@ import {
   selectReferences,
   SELECTOR_VERSION,
 } from './reference-selector.js';
-import { parseGeneratedManifest, type ManifestEntry } from '../../src/shared/generated-assets.js';
+import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
 import { assertResolvedUnderGenerated, isSafeGeneratedAssetPath } from './generated-asset-path.js';
 
@@ -158,6 +159,7 @@ export type RunSummaryIdentity = Pick<
   | 'variations'
 > & {
   readonly referenceSprites?: RunSummary['referenceSprites'];
+  readonly frameSequence?: RunSummary['frameSequence'];
 };
 
 /**
@@ -304,11 +306,12 @@ export async function generateSheetCore(
     (() => {
       const manifestPath =
         options.manifestPath ?? path.join(publicAssetsRoot, 'generated', 'manifest.json');
-      // No manifest yet (cold start) == no approved sprites. Return an empty
-      // pool so the zero-eligible guard below raises its actionable error
-      // instead of an opaque ENOENT.
-      if (!existsSync(manifestPath)) return [];
-      const manifest = parseGeneratedManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
+      // The aggregate manifest.json is a gitignored build artifact; compose the
+      // reference pool directly from the committed per-asset shards (the source
+      // of truth), falling back to a legacy aggregate file when no shards exist.
+      // A cold start with neither yields an empty pool so the zero-eligible
+      // guard below raises its actionable error instead of an opaque ENOENT.
+      const manifest = loadGeneratedManifest(path.dirname(manifestPath));
       return Object.values(manifest.entries);
     });
   const loadDislikedReferenceNames =
@@ -438,6 +441,15 @@ export async function generateSheetCore(
       skippedReason: expansion.skippedReason,
     },
     ...(referenceSprites ? { referenceSprites } : {}),
+    ...(brief.frameSequence.enabled
+      ? {
+          frameSequence: {
+            frameCount: brief.frameSequence.frameCount,
+            frameRate: brief.frameSequence.frameRate,
+            loop: brief.frameSequence.loop,
+          },
+        }
+      : {}),
   };
 
   return {

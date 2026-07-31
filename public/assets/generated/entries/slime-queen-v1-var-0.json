@@ -1,0 +1,37 @@
+{
+  "briefId": "slime-queen-v1",
+  "spriteName": "slime-queen-v1-var-0",
+  "assetPath": "generated/slime-queen-v1-var-0.png",
+  "approvedAt": "2026-06-27T21:27:29.076Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-l0q0tE/slime-queen-v1/2026-06-27T21-23-49-d9b78ad3",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 34,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 34,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "2",
+  "type": "enemy",
+  "contentHash": "15c2b665285ffb7e7f9c91329f14b66a5643a65271f9b32e6e74200074430404",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 57,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

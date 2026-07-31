@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-25",
+  "session_slug": "ci-recovery-plan-posted-regex",
+  "task_title": "fix(ci-recovery): extend plan-detection regex to match plan to be posted phrasing",
+  "estimated_apples": 1,
+  "stages": {}
+}

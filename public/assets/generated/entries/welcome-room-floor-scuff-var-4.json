@@ -1,0 +1,119 @@
+{
+  "briefId": "welcome-room-floor-scuff",
+  "spriteName": "welcome-room-floor-scuff-var-4",
+  "assetPath": "generated/welcome-room-floor-scuff-var-4.png",
+  "approvedAt": "2026-07-26T21:51:11.569Z",
+  "sourceRun": "generated/runs/welcome-room-floor-scuff/2026-07-26T21-39-59-ece5efa6",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 35,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 35,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 35,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": false,
+      "sensor": "opaque-ratio",
+      "reason": "opaque ratio 0.007 outside [0.04, 0.22]"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 35,
+        "y": 31
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-26T21:42:44.897Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The scattered specks and subtle wear align with the understated, grounded aesthetic of Crawler's early floors. The design avoids boldness and reads as a subtle environmental detail."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering uses appropriate pixel density, palette constraints, and subtle shading consistent with the references. The lack of warm tones ensures it matches the grey stone floor style."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering uses appropriate pixel density, palette constraints, and subtle shading consistent with the references. The lack of warm tones ensures it matches the grey stone floor style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The candidate adheres closely to the brief, with a vertical column of scattered grey scuff specks, appropriate use of the palette, and no solid shapes or outlines."
+    },
+    "readability": {
+      "score": 3,
+      "rationale": "The scuff mark is visible at game scale but could be slightly more pronounced to ensure it reads as intended without being mistaken for noise or an artifact."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a grounded, top-down environmental detail with a clear tile footprint and no extraneous elements. It integrates seamlessly into the game world."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate is functional and adheres to the brief, though it could use minor refinements for better integration.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 3177,
+      "completionTokens": 343,
+      "totalTokens": 3520
+    }
+  },
+  "type": "prop",
+  "contentHash": "4b29a1a676ccaaf826f00f607632b1044e2307765323eaca62216efa29f0f3f2",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-scuff\\2026-07-26T21-39-59-ece5efa6\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-scuff\\2026-07-26T21-39-59-ece5efa6\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-scuff\\2026-07-26T21-39-59-ece5efa6\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 26,
+    "y": 9,
+    "width": 15,
+    "height": 45,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

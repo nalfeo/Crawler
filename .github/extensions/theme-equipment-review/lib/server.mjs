@@ -33,7 +33,9 @@ export async function startThemeEquipmentReviewServer(options) {
     repoRoot,
     renderHtml,
     runCommand,
+    readArtifact,
     dispatchWorkflow,
+    runStatus,
     log = () => {},
     listTtlMs = LIST_TTL_MS,
     watchIntervalMs = WATCH_INTERVAL_MS,
@@ -213,17 +215,44 @@ export async function startThemeEquipmentReviewServer(options) {
       writeJson(res, 200, await runCommand({ action: 'state', setId }));
       return;
     }
+    if (method === 'GET' && url.pathname === '/api/run-status') {
+      if (!setId) {
+        writeJson(res, 409, { error: 'no-set-selected' });
+        return;
+      }
+      if (typeof runStatus !== 'function') {
+        writeJson(res, 200, { available: false, errorKind: 'not-wired' });
+        return;
+      }
+      writeJson(res, 200, await runStatus(setId));
+      return;
+    }
     if (method === 'GET' && url.pathname === '/api/artifact') {
       if (!setId) {
         writeJson(res, 409, { error: 'no-set-selected' });
         return;
       }
-      const result = await runCommand({
+      const command = {
         action: 'artifact',
         setId,
         itemId: requiredQuery(url, 'itemId'),
         artifactId: requiredQuery(url, 'artifactId'),
-      });
+      };
+      // Read-only previews take an in-process warm-store fast path when one is
+      // wired; a failure there falls back to the child-process command so a
+      // reader problem can never break image previews.
+      let result;
+      if (readArtifact) {
+        try {
+          result = await readArtifact(command);
+        } catch (error) {
+          log(
+            `in-process artifact read failed, using child process: ${error?.message ?? error}`,
+            'warn',
+          );
+        }
+      }
+      if (!result) result = await runCommand(command);
       const bytes = Buffer.from(result.base64, 'base64');
       res.writeHead(200, {
         'Content-Type': result.contentType,
@@ -273,6 +302,7 @@ export async function startThemeEquipmentReviewServer(options) {
           action: 'save-plan',
           plan: body.plan,
           overwrite: body.overwrite === true,
+          retryPublish: body.retryPublish === true,
         });
         // A newly authored plan belongs in the index immediately.
         invalidateList();

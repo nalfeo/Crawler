@@ -12,24 +12,24 @@
  * `tests/property/reward-presentation-excitement.property.test.ts` and
  * `tests/unit/achievement-reward-presentation.test.ts`. It is NOT re-proven
  * here with real content, because no currently-shipped content path can
- * exercise rarity variance:
+ * exercise rarity variance in a quick non-headless game-UI run:
  *   - every Floor 1 achievement reward is `lootBox`-type (tier-only scoring —
  *     `rarityWeight` is always 0 for these; see `achievements.floor1.json`),
  *     never `equipment`-type;
- *   - boss chests always resolve `tier1`+`common` deterministically by design
+ *   - boss chests resolve `tier4` (85% Uncommon / 15% Rare per PLAN.md §E3-C)
  *     (ADR 0069/0070 — see `openBossChest` in
- *     `src/core/systems/bossChestRewards.ts`), so they can never vary rarity
- *     either.
+ *     `src/core/systems/bossChestRewards.ts`), so rarity variance is real but
+ *     requires a headless run to exercise (see boss-chest-lifecycle.test.ts).
  * This suite instead proves the TIER axis in real content (two lootBox
  * achievements of different tiers land in different excitement buckets) and
  * proves every other hard-contract behavior (state ordering, skip, reduced
  * motion, duplicate input, summary accuracy, input lock) against the real
- * scene. If/when an `equipment`-type achievement or rarity-varying boss chest
- * ships, extend this suite to add a real rarity-axis case.
+ * scene. If/when an `equipment`-type achievement ships, extend this suite
+ * to add a real rarity-axis case with live game-UI content.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { closeQuietly } from './helpers/ui-probe.js';
+import { boundsCenterScreen, closeQuietly, getCanvasRect } from './helpers/ui-probe.js';
 import {
   loadMainSceneProbeLab,
   mainSceneProbe,
@@ -166,6 +166,7 @@ describe('real reward-opening UX (achievement path)', () => {
       const trash = await waitForRewardOpeningState(page, (s) => s.open, {
         label: 'trash-tier reward overlay to open',
       });
+
       expect(trash.bucket).toBe('modest');
       await mainSceneProbe.skipRewardOpening(page);
       await mainSceneProbe.acknowledgeRewardOpening(page);
@@ -182,6 +183,67 @@ describe('real reward-opening UX (achievement path)', () => {
       // excitement independently of any equipment rarity input.
       expect(rare.bucket).toBe('exciting');
       expect(rare.bucket).not.toBe(trash.bucket);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('renders and equips the exact generated Floor 2 achievement reward through inventory', async () => {
+    const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+    const page = await context.newPage();
+    try {
+      await loadMainSceneProbeLab(page, { floor: 'floor2' });
+      await mainSceneProbe.resolveLoadout(page);
+      await waitForState(page, (s) => s.worldState === 'playing' && s.simulationPaused, {
+        label: 'Floor 2 loadout resolved',
+      });
+      await mainSceneProbe.unlockSafeRoomSurfaces(page);
+      await waitForState(page, (state) => state.safeContext, {
+        label: 'Floor 2 inventory surface unlocked',
+      });
+
+      const grantedInstanceKeys = await mainSceneProbe.claimAchievementReward(
+        page,
+        'floor2-safe-harbor',
+      );
+      expect(
+        grantedInstanceKeys,
+        'claiming the Floor 2 loot box should identify its immutable generated reward',
+      ).toHaveLength(1);
+      const instanceKey = grantedInstanceKeys[0];
+      if (!instanceKey) return;
+
+      await waitForRewardOpeningState(page, (state) => state.open, {
+        label: 'Floor 2 reward-opening overlay',
+      });
+      await mainSceneProbe.skipRewardOpening(page);
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (state) => !state.open, {
+        label: 'Floor 2 reward-opening overlay closed',
+      });
+
+      await mainSceneProbe.requestInventoryToggle(page);
+      await waitForState(page, (state) => state.inventoryOpen, {
+        label: 'inventory open after achievement claim',
+      });
+      const cell = await mainSceneProbe.getGeneratedInventoryCellBounds(page, instanceKey);
+      expect(
+        cell,
+        'claimed generated equipment must be visible in the rendered inventory grid',
+      ).not.toBeNull();
+      if (!cell) return;
+
+      const center = boundsCenterScreen(
+        await getCanvasRect(page),
+        { width: 1280, height: 720 },
+        cell,
+      );
+      await page.mouse.dblclick(center.x, center.y);
+      await expect
+        .poll(() => mainSceneProbe.getEquippedGeneratedInstanceKeys(page), {
+          message: 'double-click should equip the exact achievement reward instance',
+        })
+        .toContain(instanceKey);
     } finally {
       await context.close();
     }

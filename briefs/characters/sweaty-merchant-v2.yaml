@@ -1,0 +1,248 @@
+# REGENERATION of the welcome-room merchant (Asset Forge, 2026-07-26).
+#
+# WHY THIS BRIEF EXISTS: `npc-sweaty-merchant-var-0` reads as a generic grinning
+# ogre, not a merchant. Three documented failures it must fix:
+#
+#  1. NOTHING MERCHANT-Y. No wares, no apron, no coin pouch, no scales, no
+#     strapped-on trade goods. `sweaty-merchant-v1-var-11` held a tray of goods —
+#     that instinct was right and is borrowed here — but it is still too ogre-like
+#     in face and body.
+#  2. THE CHARACTER IS MISSING. His dialogue is clammy and unsettlingly familiar
+#     ("a merchant of... refined tastes"; he sends you to fetch a rat tail and
+#     wants it unwiped, "authentic"). He must read sweaty, ingratiating and
+#     faintly repellent — a damp, over-friendly little creep leaning in too
+#     close — not just a chubby guy grinning.
+#  3. ONE FLAT ORANGE-BROWN MASS with almost no internal contrast. He needs
+#     distinct garment / skin / goods value separation and a saturated accent of
+#     his own.
+#
+# GEOMETRY / PIPELINE DECISIONS (each paid for in an earlier wave):
+#
+#  * DEFAULT size variant. `sizeVariant: tall` is documented as actively harmful
+#    on this pipeline even for tall subjects — the model keeps drawing square
+#    cells and the slicer then cuts stacked columns. An upright character in a
+#    square 256x256 source cell is correct; the drawn box lands where it lands
+#    and is MEASURED off the shipped PNG, never restated from this brief.
+#
+#  * ONE AXIS ONLY is stated in source pixels (the height). Stating both axes
+#    reliably yields the stated one and a wrong other, and figure proportion is
+#    this sprite's whole problem.
+#
+#  * `sensors.anchor.mode: grip`. A standing character has a genuine single
+#    ground-contact footprint, so the grip/base-derived anchor is the correct
+#    contract (NOT center-of-mass — that is for two-contact or floating objects
+#    like the stanchion pair and the cable coil). Every threshold stays at its
+#    default, including `interiorHoles: 0`.
+#
+#  * `paletteMode: strict` against a purpose-built 16-step ramp. Prose does not
+#    control colour on this model — quantization does. The ramp is built so he
+#    CANNOT come back as one flat orange-brown mass: it carries a four-step olive
+#    apron ramp, a separate clammy-skin ramp, a near-white sweat highlight and a
+#    saturated teal glassware accent, and the lock also ACTIVATES the
+#    palette-membership sensor, tightening the gate.
+# ROUND 2 (2026-07-27): round 1 nailed the merchant identity (tray, teal
+# bottles, apron, reach) and the value structure, but failed on TWO counts:
+#
+#  a) PROPORTIONS. The figures came back roughly THREE AND A HALF heads tall,
+#     with the legs cropped away below the apron — exactly the "characters look
+#     too short" complaint this wave exists to fix. The forward lean plus the
+#     held-out tray ate the whole cell and the legs got sacrificed. Fixed by
+#     specifying the LEG BLOCK explicitly as a measured share of the height and
+#     by capping how far the lean and the tray may travel.
+#  b) SLICING. The content-aware slicer resolved only 4 of 16 cells because the
+#     drawn figures touched and merged across cell boundaries (the reaching arm
+#     and the tray ran to the cell edges). The one "passing" slice was a column
+#     containing two stacked figures. Fixed by commanding an explicit empty
+#     gutter around every figure.
+#
+# Neither fix touches a sensor or a threshold.
+type: character
+name: sweaty-merchant-v2
+description: |
+  A damp, ingratiating MALE PEDDLER working the shop table of a televised dungeon
+  reality show. He has been down here far too long and is a little too pleased to
+  see you.
+
+  PROPORTIONS ARE THE FIRST PRIORITY. He is an ADULT HUMAN roughly SEVEN HEADS
+  TALL — a full-grown 6-foot-6 man, drawn realistically tall with long legs and a
+  long torso. His head is SMALL relative to his body: measure it, the head must be
+  about one seventh of his total height, no more. Do NOT draw chibi,
+  super-deformed, two-head-tall, three-head-tall, dwarf, goblin or big-head
+  cartoon proportions. He may be soft and paunchy around the middle — that suits
+  him — but he is TALL first and round second, and he is unmistakably a MAN, not
+  an ogre, troll or monster.
+
+  BUILD HIM FROM THE FLOOR UP, IN THIS ORDER, AND KEEP THESE SHARES. Measured
+  against the 256-source-pixel height of his cell:
+   - The BOTTOM HALF of his total height is LEGS — at least 100 of those 256
+     source pixels, hip to knee to ankle, ending in boots planted on the floor.
+     Both knees and both boots must be visible and unobstructed. If the legs are
+     hidden, cropped, or shorter than the torso, the sprite has FAILED.
+   - The MIDDLE THIRD is torso, apron and tray.
+   - His HEAD, chin to crown, is at most 34 of those 256 source pixels — one
+     seventh of him. A head bigger than that is an automatic failure.
+  The apron hem stops at mid-thigh at the lowest; it must not become a long robe
+  or a skirt that swallows the legs, and the tray must never cover the knees.
+
+  MERCHANT IDENTITY IS THE SECOND PRIORITY, and it must be visible at game
+  scale. Draw ALL THREE of these, large and unambiguous:
+   - A SMALL, NARROW, SHALLOW WOODEN WARES TRAY slung on a neck strap and held in
+     front of his CHEST — high up, just under his chin, with its far edge no
+     lower than his navel. THE TRAY IS NARROW: it is no wider than the distance
+     between his own two shoulders, and clearly narrower than his cell. It is a
+     compact box, not a market table. It must never hang at hip or thigh height
+     and must never cover his knees or legs. It is tipped toward the viewer so
+     you see across its top. On it stand just THREE small stoppered GLASS BOTTLES
+     of glowing teal liquid. The bottles are the single brightest saturated thing
+     in the whole sprite.
+     Because the tray is narrow, the tallest thing in the cell is HIM — his head
+     and his legs, not his wares. Give the vertical room the narrow tray frees up
+     back to his LEGS.
+   - A GRUBBY WORK APRON in mid-value olive tied at his waist over his shirt,
+     with a visible pocket and a stained hem.
+   - A BULGING COIN POUCH on his belt, and one fat gaudy GOLD RING on a finger
+     gripping the tray rim.
+
+  ATTITUDE IS THE THIRD PRIORITY. He is SWEATY, OVER-FAMILIAR AND FAINTLY
+  REPELLENT. Draw it deliberately:
+   - HE STANDS BOLT UPRIGHT. His spine is a straight VERTICAL line from boots to
+     shoulders and his hips stay directly over his boots. The only thing that
+     leans is his HEAD AND NECK, craned forward and slightly down toward the
+     viewer — an over-familiar head-tilt, not a bent back. Do NOT bend him at
+     the waist, do NOT hunch, do NOT stoop, do NOT crouch, do NOT round the
+     spine. He is a TALL man craning his neck at you, and that is what makes him
+     unsettling.
+   - HE HOLDS THE TRAY IN BOTH HANDS. Both hands grip the tray's near rim,
+     symmetrically, one at each end, elbows tucked in against his ribs. NEITHER
+     hand reaches out. There is NO outstretched arm, NO extended palm, NO
+     pointing, NO gesture away from his body. His arms form a closed, symmetric
+     cradle around the tray and his silhouette is therefore as wide on his left
+     as on his right. This is a hard composition requirement: an arm reaching to
+     one side has failed this brief in every previous round.
+     The over-familiarity is carried ENTIRELY by his craned head, his leer and
+     his sweat — not by his hands.
+   - SHEEN. Bright near-white SWEAT HIGHLIGHTS on his forehead, temple, upper
+     lip, throat and the backs of his hands — several small hard-edged specular
+     dots, clearly readable as damp skin, never an airbrushed glow.
+   - A narrow, ingratiating, closed-lipped smile that does not reach his eyes,
+     with the eyes slightly too wide and fixed on the viewer.
+
+  VALUE STRUCTURE IS A PASS/FAIL CRITERION. The sprite is placed on a DARK
+  dungeon floor and must separate from it. Keep three clearly distinct value
+  masses: a MID-VALUE olive apron across the torso, LIGHT clammy pale skin on the
+  face, throat, forearms and hands, and DARK brown tray, strap, belt and boots
+  binding it together. Never one flat blob of a single hue, and never an
+  orange-brown monotone.
+
+  HARD NEGATIVES — these are the exact failures this brief replaces:
+  - Do NOT draw an ogre, troll, orc, goblin, brute or any non-human monster; no
+    tusks, no green monster skin, no oversized jaw, no pointed monster ears.
+  - Do NOT draw an empty-handed figure. If the tray, bottles, apron and pouch are
+    not all present, the sprite has failed.
+  - Do NOT draw a broad open toothy grin, a laugh, or a jolly friendly innkeeper.
+    The smile is small, closed, damp and wrong.
+  - Do NOT draw a stall, table, counter, shelf, cart or any second standalone
+    object — only what he is wearing or carrying.
+  - Do NOT draw a wide tray, a market table, a full stall board, or a tray that
+    reaches past his shoulders. Round 6 of this brief failed on exactly that: a
+    wide tray forced the model to shrink him to four heads tall to fit the cell.
+    Narrow tray, tall man.
+  - Do NOT draw a squat, wide, big-headed, chibi or dwarf-proportioned figure.
+  - Do NOT crop, hide or shorten his legs. No half-length "bust" framing, no
+    figure that ends at the apron hem, no figure standing behind anything.
+  - Do NOT draw a hunched, stooped, crouched or bent-over peddler. Round 3 of
+    this brief failed on exactly that: every figure came back bent at the waist
+    and only four heads tall. He stands STRAIGHT.
+  - Do NOT leave any fully enclosed pocket of background inside the figure. Both
+    elbows stay against his ribs and his legs touch each other.
+  - Do NOT draw ANY arm, hand or finger extending sideways past his shoulder
+    line. Both hands are on the tray.
+
+  He is one of THREE NPCs in this room and must read as the same cast as the
+  already-approved `spell-broker-v2-var-3`: the same head-to-body ratio, the same
+  rendering density, the same one-pixel hard dark outline, the same tall
+  instantly-readable silhouette, and the same discipline of ONE saturated focal
+  accent (the broker's is a glowing green orb; this character's is his teal
+  bottled wares — nothing else in the sprite is that saturated).
+
+  SIZE ON THE SHEET: the standing figure should span roughly 230 of the 256
+  vertical source pixels of its cell, centred, with his feet on a common
+  invisible floor line near the bottom of the cell. Let the width come out at
+  whatever the drawn figure honestly needs — do not stretch or squash him
+  horizontally to fill the cell — but keep the whole figure and his tray fully
+  inside its own cell with clear breathing room on every side.
+
+  EVERY CELL MUST BE ISLANDED. Each figure — including every corner of his tray —
+  sits wholly inside its own cell with a WIDE EMPTY MARGIN of flat background all
+  the way around it, at least 25 source pixels on every side. No figure may touch,
+  overlap, or come near the edge of its cell, and no two neighbouring figures may
+  run into one another. He is therefore clearly
+  NARROWER than his cell: he is tall and slim in a square cell, with generous
+  empty background to his left and right.
+
+  THE SILHOUETTE MUST BE BALANCED ABOUT HIS FEET. Draw a vertical line up from
+  the point midway between his two boots: the drawn figure must extend roughly the
+  SAME distance to the left of that line as it does to the right, counting the
+  tray. His boots sit under the middle of his own mass.
+
+  HIS FEET ARE FUSED INTO ONE SHAPE. His two boots are pressed together, heel to
+  heel and toe to toe, with NO gap of background anywhere between them, so that
+  the bottom edge of the sprite is ONE single unbroken horizontal run of boot.
+  Think of him standing to attention with his ankles touching. Do not draw a
+  wide planted stance, do not draw the legs apart, do not draw one foot forward
+  or turned out, do not draw a crouch, and do not leave even a one-pixel sliver
+  of background between the boots. That single joined boot shape sits DIRECTLY
+  UNDER THE MIDDLE OF HIS BODY AND HIS WARES — not under one hip, not under one
+  end of the tray. This is the single hardest requirement in this brief: if the
+  bottom of the sprite is not one unbroken boot shape centred under everything
+  else, the sprite is unusable.
+
+  Standing upright in an idle stance, same 3/4 view as the rest of the game's
+  props: the camera looks slightly down and he is turned a few degrees off
+  straight-on, both eyes visible, shoulders nearly square to the viewer.
+
+  MATERIAL AND PALETTE: olive apron, dull brown tray and leather straps, clammy
+  pale skin, near-white sweat specular, saturated teal glassware and one gaudy
+  gold ring. Worn by decades of syndication — stained, scuffed, thin at the
+  elbows. Hard one-pixel dark outline, 3-5 tonal stops per material, dithered
+  staining on the apron and tray. Lit from the top wall; soft one-pixel contact
+  shadow down and to the right under his feet only. Never candy-bright, never
+  glossy, no glow except the teal bottles' saturated fill.
+
+  Rendered in the game at roughly 6.6 feet tall (1 tile = 4 feet). The art must
+  read believably at that size — keep detail count low enough that the tray, the
+  teal bottles and the forward lean all still survive when the figure is only
+  about 40 pixels tall on screen, and do not over-detail.
+
+  SHEET BACKGROUND: every cell of the sheet must sit on ONE single flat uniform
+  background colour, identical in all cells, clearly distinct from the figure's
+  colours so it can be keyed out cleanly. Do not alternate or checkerboard the
+  cell backgrounds, do not use a different background colour per cell, and do not
+  draw any panel, border or frame behind the subject.
+
+  SHEET LAYOUT: exactly FOUR ROWS by FOUR COLUMNS of figures on the square
+  canvas. All four rows must be drawn fully inside the canvas — the bottom row's
+  boots must not run off the bottom edge, and the left and right columns must not
+  run off the sides. Leave a clear margin of background around the whole grid.
+palette:
+  id: welcome-room-merchant
+postprocessing:
+  paletteMode: strict
+sensors:
+  anchor:
+    # A standing biped is not a handheld weapon. `grip` scans the bottom row
+    # for opaque runs and locks onto ONE of them, so two boots resolve to a
+    # single foot and a perfectly centred figure reads as off-centre by half
+    # a stance width. `center-of-mass` is the contract this sensor's own
+    # docstring specifies for "mobs and most non-held sprites".
+    mode: center-of-mass
+tags:
+  - welcome-room
+  - reality-show
+  - merchant
+  - npc
+  - pixel-dungeon
+judge:
+  enabled: true
+  maxVariants: 12
+minVariations: 0

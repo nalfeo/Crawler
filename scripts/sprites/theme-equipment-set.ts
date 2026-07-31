@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
+import { SLOT_REGISTRY, getMirrorSlot } from '../../src/shared/equipment-slots.js';
 import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from './store/types.js';
 
 export const THEME_EQUIPMENT_SET_SCHEMA_VERSION = 1;
@@ -65,11 +65,29 @@ const artifactEvidenceSchema = z
   })
   .strict();
 
+/**
+ * Durable marker for the last generation attempt that failed for this item in
+ * this phase. Set by `recordThemeSetItemPhaseFailure` (the pipeline records it
+ * when an executor recoverably fails), cleared by a successful
+ * `recordThemeSetItemPhaseArtifacts`, an explicit human up-vote, a rejected-item
+ * revision, or a phase advance. Its purpose is to keep a failed item OUT of the
+ * "approve remaining" bulk action even when it retains stale artifacts from an
+ * earlier pass (see `computeBulkApprovePlan`).
+ */
+const itemPhaseGenerationErrorSchema = z
+  .object({
+    message: z.string().trim().min(1),
+  })
+  .strict();
+
 const itemPhaseStateSchema = z
   .object({
     artifacts: z.array(artifactEvidenceSchema),
     evidence: z.array(artifactEvidenceSchema),
     review: reviewSchema,
+    // Optional-with-default so states persisted before this field existed parse
+    // unchanged (absent → null), same treatment as `publication`.
+    generationError: itemPhaseGenerationErrorSchema.nullable().default(null),
   })
   .strict();
 
@@ -266,7 +284,12 @@ export function emptyThemeEquipmentReview(): ThemeEquipmentReview {
 }
 
 export function emptyThemeEquipmentItemPhaseState(): ThemeEquipmentItemPhaseState {
-  return { artifacts: [], evidence: [], review: emptyThemeEquipmentReview() };
+  return {
+    artifacts: [],
+    evidence: [],
+    review: emptyThemeEquipmentReview(),
+    generationError: null,
+  };
 }
 
 export function emptyThemeEquipmentSetPhaseReview(): ThemeEquipmentSetPhaseReview {
@@ -309,6 +332,19 @@ export function isThemeSetItemResolvedForPhase(
     item.frozenPhases.includes(phase) ||
     item.phases[phase].review.verdict === 'up'
   );
+}
+
+/**
+ * True when the pipeline has already produced at least one artifact for `item`
+ * in `phase`. Distinguishes a never-generated item (a run "generates" it) from
+ * one that has output but is unresolved (a run "regenerates" it). Purely
+ * cosmetic — drives only the Run-button wording, never eligibility or gating.
+ */
+export function themeSetItemHasPhaseOutput(
+  item: ThemeEquipmentSetItem,
+  phase: ThemeEquipmentSetReviewPhase,
+): boolean {
+  return item.phases[phase].artifacts.length > 0;
 }
 
 export function themeEquipmentSetStateKey(setId: string): string {
@@ -654,6 +690,8 @@ export function recordThemeSetItemPhaseArtifacts(
                 artifacts: parsedArtifacts.data,
                 evidence: parsedEvidence.data,
                 review: emptyThemeEquipmentReview(),
+                // A successful (re)generation supersedes any prior failure marker.
+                generationError: null,
               },
             },
           }
@@ -668,12 +706,115 @@ export function recordThemeSetItemPhaseArtifacts(
   return { ok: true, state: parseThemeEquipmentSetState(nextState) };
 }
 
+/**
+ * Records a durable, per-item/per-phase generation-failure marker for the
+ * CURRENT phase without touching that item's artifacts, evidence, review, or
+ * any set-level review. Called by the pipeline when a per-item executor fails
+ * recoverably, so a failed item stays visible AND is excluded from the "approve
+ * remaining" bulk action (`computeBulkApprovePlan`) even if it retains stale
+ * artifacts from a prior pass. Bumps `stateRevision` so the marker is a real
+ * mutation (never a same-revision rewrite — see the runner's save-if-mutated
+ * boundary). Refuses missing/resolved/non-review-phase items, mirroring the
+ * artifact-recording gates; the pipeline treats such a refusal as fatal.
+ */
+export function recordThemeSetItemPhaseFailure(
+  input: unknown,
+  itemId: string,
+  message: string,
+): ThemeSetMutationResult {
+  const parsed = themeEquipmentSetStateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, reasons: zodIssuesToGateReasons(parsed.error.issues) };
+  }
+  const state = parsed.data;
+  if (!isReviewPhase(state.phase)) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'phase-not-recordable',
+          message: `Cannot record item phase failure during phase "${state.phase}"`,
+          path: ['phase'],
+        },
+      ],
+    };
+  }
+
+  const item = state.items.find((candidate) => candidate.id === itemId);
+  if (!item) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'item-not-found',
+          message: `Theme set item "${itemId}" was not found`,
+          path: ['items'],
+        },
+      ],
+    };
+  }
+  if (isThemeSetItemResolvedForPhase(item, state.phase)) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          code: 'item-already-resolved',
+          message: `Item "${itemId}" is up-reviewed or frozen for phase "${state.phase}" and cannot be marked failed`,
+          path: ['items', item.id, 'phases', state.phase],
+        },
+      ],
+    };
+  }
+
+  const trimmed = message.trim();
+  const safeMessage = trimmed.length > 0 ? trimmed : 'Generation failed';
+  const phase = state.phase;
+  const nextState: ThemeEquipmentSetState = {
+    ...state,
+    stateRevision: state.stateRevision + 1,
+    items: state.items.map((candidate) =>
+      candidate.id === itemId
+        ? {
+            ...candidate,
+            phases: {
+              ...candidate.phases,
+              [phase]: {
+                ...candidate.phases[phase],
+                generationError: { message: safeMessage },
+              },
+            },
+          }
+        : candidate,
+    ),
+  };
+
+  return { ok: true, state: parseThemeEquipmentSetState(nextState) };
+}
+
 /** Required artifact `kind` for an up vote in each reviewable phase. */
 const PHASE_REQUIRED_ARTIFACT_KIND: Partial<Record<ThemeEquipmentSetReviewPhase, string>> = {
   briefs: 'selected-brief',
   'sprite-sheets': 'raw-sheet',
   'variant-approval': THEME_EQUIPMENT_APPROVED_VARIANT_ARTIFACT_KIND,
 } as const;
+
+/**
+ * True when `item` cannot yet be reviewed in `phase` because its required
+ * pipeline output has not been generated. Roster has no required artifact, so it
+ * is reviewable immediately and never "awaits generation". This gates the review
+ * thumbs in the canvas (Change 8) so the maintainer can't approve/reject an item
+ * before the pipeline has produced anything to judge. Distinct from
+ * `themeSetItemHasPhaseOutput` (any artifact) — this checks the REQUIRED kind, so
+ * it stays aligned with `validatePhaseArtifactsForUpVote`, the up-vote authority.
+ */
+export function themeSetItemAwaitsGeneration(
+  item: ThemeEquipmentSetItem,
+  phase: ThemeEquipmentSetReviewPhase,
+): boolean {
+  const requiredKind = PHASE_REQUIRED_ARTIFACT_KIND[phase];
+  if (!requiredKind) return false; // roster is reviewable without generated output
+  return !item.phases[phase].artifacts.some((artifact) => artifact.kind === requiredKind);
+}
 
 /**
  * Returns a gate reason when the item is missing the required artifact for an
@@ -806,6 +947,10 @@ export function applyThemeSetItemReview(
               [phase]: {
                 ...candidate.phases[phase],
                 review: parsedReview.data,
+                // An explicit up-vote supersedes any prior failure marker; a
+                // null/down verdict leaves it intact so a failed item stays
+                // excluded from bulk approval until it is regenerated.
+                ...(nextVerdict === 'up' ? { generationError: null } : {}),
               },
             },
           }
@@ -885,7 +1030,18 @@ function computeBulkApprovePlan(state: ThemeEquipmentSetState): ThemeSetBulkAppr
       });
       continue;
     }
-    // verdict === null → approve only if the phase's required artifacts are present.
+    // verdict === null → approve only if the phase's required artifacts are
+    // present AND the item did not fail its last generation attempt. A failed
+    // item may retain stale artifacts from an earlier pass, so the artifact
+    // check alone is insufficient — exclude it until it is regenerated.
+    if (item.phases[phase].generationError) {
+      skipped.push({
+        id: item.id,
+        code: 'item-generation-failed',
+        reason: `Item "${item.id}" failed its last generation attempt (${item.phases[phase].generationError.message}); regenerate it before approving`,
+      });
+      continue;
+    }
     const artifactReason = validatePhaseArtifactsForUpVote(item, phase);
     if (artifactReason) {
       skipped.push({ id: item.id, code: artifactReason.code, reason: artifactReason.message });
@@ -996,7 +1152,17 @@ export function approveRemainingThemeSetPhase(input: unknown): ThemeSetBulkAppro
 export interface ThemeSetRunPhasePlan {
   /** Current phase, or `null` when the set is not in a reviewable phase. */
   readonly phase: ThemeEquipmentSetReviewPhase | null;
-  /** Number of items a run would (re)generate — every non-resolved item. */
+  /**
+   * Number of unresolved items a run would generate for the FIRST time — items
+   * with no phase output yet. Disjoint from `regenerateCount`.
+   */
+  readonly generateCount: number;
+  /**
+   * Number of unresolved items a run would regenerate — items that already have
+   * phase output (e.g. rejected and awaiting a fresh attempt). Disjoint from
+   * `generateCount`. Invariant: `generateCount + regenerateCount` equals the
+   * total unresolved item count.
+   */
   readonly regenerateCount: number;
   /** True when a run regenerates nothing and would only judge the collection. */
   readonly judgeOnly: boolean;
@@ -1014,20 +1180,35 @@ export interface ThemeSetRunPhasePlan {
 export function planRunPhase(input: unknown): ThemeSetRunPhasePlan {
   const parsed = themeEquipmentSetStateSchema.safeParse(input);
   if (!parsed.success) {
-    return { phase: null, regenerateCount: 0, judgeOnly: false, collectionJudgeMissing: false };
+    return {
+      phase: null,
+      generateCount: 0,
+      regenerateCount: 0,
+      judgeOnly: false,
+      collectionJudgeMissing: false,
+    };
   }
   const state = parsed.data;
   if (!isReviewPhase(state.phase)) {
-    return { phase: null, regenerateCount: 0, judgeOnly: false, collectionJudgeMissing: false };
+    return {
+      phase: null,
+      generateCount: 0,
+      regenerateCount: 0,
+      judgeOnly: false,
+      collectionJudgeMissing: false,
+    };
   }
   const phase = state.phase;
-  const regenerateCount = state.items.filter(
-    (item) => !isThemeSetItemResolvedForPhase(item, phase),
+  const unresolved = state.items.filter((item) => !isThemeSetItemResolvedForPhase(item, phase));
+  const regenerateCount = unresolved.filter((item) =>
+    themeSetItemHasPhaseOutput(item, phase),
   ).length;
+  const generateCount = unresolved.length - regenerateCount;
   return {
     phase,
+    generateCount,
     regenerateCount,
-    judgeOnly: regenerateCount === 0,
+    judgeOnly: unresolved.length === 0,
     collectionJudgeMissing: state.phases[phase].collectionJudge === null,
   };
 }
@@ -1114,6 +1295,8 @@ export function applyEditedThemeSetBrief(
                 artifacts: [parsedArtifact.data],
                 evidence: [parsedEvidence.data],
                 review: { verdict: 'up' as const },
+                // A freshly minted brief supersedes any prior failure marker.
+                generationError: null,
               },
             },
           }
@@ -1309,6 +1492,42 @@ const themeEquipmentSetPlanEquipmentSchema = z
   })
   .strict();
 
+/**
+ * Reject split left/right mirror-pair items. Themed sets default to ONE unified
+ * item covering both sides of a mirror pair (a pair of bracers, arm wraps for
+ * both arms, a ring usable in either hand). An equipment item that lists one
+ * side of a mirror pair without its partner on the SAME item is invalid — this
+ * catches both a lone singleton ("signet-ring-left" with only `ringLeft`) and
+ * two separate single-side items (each fails on its own missing partner).
+ *
+ * Pure and side-effect free; returns one reason per offending slot so callers
+ * (and the roster-synth repair loop) get an actionable, per-slot message. The
+ * canonical pair list is `MIRROR_SLOT_PAIRS` in `equipment-slots.ts`, consulted
+ * here via `getMirrorSlot` so this rule can never drift from the slot registry.
+ */
+export function validateThemeSetPlanMirrorSlots(
+  equipment: readonly { readonly id: string; readonly slots: readonly string[] }[],
+): readonly ThemeSetGateReason[] {
+  const reasons: ThemeSetGateReason[] = [];
+  equipment.forEach((item, index) => {
+    const slotSet = new Set(item.slots);
+    for (const slot of item.slots) {
+      const partner = getMirrorSlot(slot);
+      if (partner !== undefined && !slotSet.has(partner)) {
+        reasons.push({
+          code: 'mirror-slot-unpaired',
+          message:
+            `Item "${item.id}" lists mirror slot "${slot}" without its pair "${partner}" on the same item; ` +
+            `themed sets use one unified item covering both sides. Left/right split items are not allowed — ` +
+            `add "${partner}" to this item's slots (or drop "${slot}").`,
+          path: ['equipment', index, 'slots'],
+        });
+      }
+    }
+  });
+  return reasons;
+}
+
 export const themeEquipmentSetPlanSchema = z
   .object({
     id: kebabIdSchema,
@@ -1318,7 +1537,20 @@ export const themeEquipmentSetPlanSchema = z
     weapons: z.array(themeEquipmentSetPlanWeaponSchema),
     equipment: z.array(themeEquipmentSetPlanEquipmentSchema),
   })
-  .strict();
+  .strict()
+  // Enforced on EVERY plan parse (build, load, roster synth/edit re-validation,
+  // and the authored-plan index) so a split mirror-pair item cannot be authored
+  // through any path. Deliberately NOT on the state schema — existing stored
+  // states with legacy split items must still load.
+  .superRefine((plan, ctx) => {
+    for (const reason of validateThemeSetPlanMirrorSlots(plan.equipment)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: reason.message,
+        path: reason.path ? [...reason.path] : ['equipment'],
+      });
+    }
+  });
 
 export type ThemeEquipmentSetPlan = z.infer<typeof themeEquipmentSetPlanSchema>;
 
@@ -1329,8 +1561,9 @@ export type ThemeEquipmentSetPlan = z.infer<typeof themeEquipmentSetPlanSchema>;
  * empty/held, and `stateRevision` starts at 0. Throws
  * `ThemeEquipmentSetValidationError` (via `parseThemeEquipmentSetState`) if
  * the expanded state fails schema or coverage validation — e.g. too few
- * distinct weapon types, too few distinct non-hand slots, or a duplicate
- * item id shared between the weapon and equipment lists.
+ * distinct weapon types, too few distinct non-hand slots, a duplicate
+ * item id shared between the weapon and equipment lists, or a split
+ * left/right mirror-pair item (see `validateThemeSetPlanMirrorSlots`).
  */
 export function buildThemeEquipmentSetStateFromPlan(
   plan: unknown,

@@ -1,0 +1,41 @@
+{
+  "briefId": "rat-king-v1",
+  "spriteName": "rat-king-v1-var-8",
+  "assetPath": "generated/rat-king-v1-var-8.png",
+  "approvedAt": "2026-07-06T17:32:48.639Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-JLZq1d/rat-king-v1/2026-07-03T21-41-59-74b768fa",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 29,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 29,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 35,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "83a2205a528cf0b883e5966122b480872a7cf2ce6d659412922c0752cad106d1",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "derived",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 3,
+    "width": 54,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

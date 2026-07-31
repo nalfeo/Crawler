@@ -1,0 +1,39 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "shard-generated-manifest",
+  "date": "2026-07-29",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 981,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 981
+    }
+  },
+  "tools": {
+    "ask_user": 1,
+    "create": 14,
+    "edit": 181,
+    "exit_plan_mode": 1,
+    "filesystem-edit_file": 1,
+    "filesystem-write_file": 1,
+    "glob": 2,
+    "grep": 119,
+    "list_agents": 2,
+    "powershell": 294,
+    "read_agent": 4,
+    "read_powershell": 7,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "rg": 37,
+    "send_session_message": 1,
+    "skill": 2,
+    "sql": 21,
+    "stop_powershell": 2,
+    "task": 4,
+    "view": 285
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

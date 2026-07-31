@@ -26,6 +26,7 @@ import { decodePng, encodePng, type RgbaImage } from './png-buffer.js';
 import { toMaterialTile, type MaterialTileOptions } from './gen/image-ops.js';
 import { FLOOR2_INDUSTRIAL_CAVE_MATERIALS } from './gen/materials.js';
 import { applySharedBasePoolRestyle } from './rebuild-shared-base-pools.js';
+import { isWallAlpha } from './wall-opacity.js';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 const CACHE_DIR = path.join(REPO_ROOT, '.cache', 'terrain-gen');
@@ -217,7 +218,7 @@ function buildWallAccents(
     for (let y = 0; y < atlas.height; y++) {
       for (let x = 0; x < atlas.width; x++) {
         const i = (y * atlas.width + x) * 4;
-        if (atlas.data[i + 3]! < 128) continue;
+        if (!isWallAlpha(atlas.data[i + 3]!)) continue;
         const sx = (x + ox) % source.width;
         const sy = (y + oy) % source.height;
         const si = (sy * source.width + sx) * 4;

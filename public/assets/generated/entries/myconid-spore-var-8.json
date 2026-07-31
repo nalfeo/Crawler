@@ -1,0 +1,42 @@
+{
+  "briefId": "myconid-spore",
+  "spriteName": "myconid-spore-var-8",
+  "assetPath": "generated/myconid-spore-var-8.png",
+  "approvedAt": "2026-07-08T04:36:02.107Z",
+  "sourceRun": "generated/runs/myconid-spore/2026-07-08T04-26-06-c1fd05f7",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 33,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 33,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 33,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": "enemy",
+  "contentHash": "dc20f1332645c50d74010e754a7dbbdd71fdff9d161db07cff8e6758389f5a0b",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-spore\\2026-07-08T04-26-06-c1fd05f7\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-spore\\2026-07-08T04-26-06-c1fd05f7\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\myconid-spore\\2026-07-08T04-26-06-c1fd05f7\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 5,
+    "width": 56,
+    "height": 53,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

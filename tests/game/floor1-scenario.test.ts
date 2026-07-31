@@ -71,7 +71,6 @@ import {
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
-import { stampSetPiece } from '../../src/core/map/stampSetPiece.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { selectBossSpawnPlacement } from '../../src/game/boss-spawn-placement.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
@@ -360,9 +359,14 @@ describe('floor1Scenario', () => {
       throw new Error('Expected the welcome-room set piece to be registered');
     }
     // One render instance is recorded per flattened draw layer (composites like
-    // the rug + banner each contribute their own layers), so the list length must
-    // match exactly — proving every authored layer actually reached the world.
-    const expectedPropCount = flattenSetPieceLayers(def).length;
+    // the rug + banner each contribute their own layers). Under the prefab-room
+    // model the def owns its own wall/door shell, but those structural props are
+    // carved as terrain TILES and SKIPPED from the render list (re-drawing them
+    // would z-fight the baked tiles), so the rendered count is the non-structural
+    // layers only.
+    const expectedPropCount = flattenSetPieceLayers(def).filter(
+      (draw) => draw.prop.kind !== 'wall' && draw.prop.kind !== 'door',
+    ).length;
     expect(expectedPropCount).toBeGreaterThan(0);
 
     const seeds = [42, 7, 2024];
@@ -389,31 +393,46 @@ describe('floor1Scenario', () => {
       }
       const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
-      // Every prop lands inside the welcome room's bounds — props layer over the
-      // room's own floor/walls, never spilling into a neighbouring room.
+      // Under the prefab-room model the room bounds hug the footprint exactly and
+      // the prefab OWNS its perimeter wall ring, so wall-mounted decor (banners,
+      // sconces, posters) legitimately renders on — and a sub-tile mount offset
+      // may nudge its centre just onto/over — that ring. The invariant this test
+      // guards is that props belong to THIS room: each prop tile stays within the
+      // footprint plus a 1-tile wall-mount margin AND never lands inside a
+      // DIFFERENT room (no spilling into a neighbour).
+      const MOUNT_MARGIN = 1;
       for (const [index, prop] of world.setPieceProps.entries()) {
         const tile = map.worldToTile(prop.x, prop.y);
-        const inBounds =
-          tile.x >= bx && tile.x <= bx + bw - 1 && tile.y >= by && tile.y <= by + bh - 1;
+        const withinFootprintMargin =
+          tile.x >= bx - MOUNT_MARGIN &&
+          tile.x <= bx + bw - 1 + MOUNT_MARGIN &&
+          tile.y >= by - MOUNT_MARGIN &&
+          tile.y <= by + bh - 1 + MOUNT_MARGIN;
         expect(
-          inBounds,
-          `seed ${seed}: prop ${index} at tile (${tile.x},${tile.y}) outside welcome room bounds`,
+          withinFootprintMargin,
+          `seed ${seed}: prop ${index} at tile (${tile.x},${tile.y}) outside welcome room footprint (+${MOUNT_MARGIN} mount margin)`,
+        ).toBe(true);
+        const roomAt = map.roomGraph.getRoomAt(tile.x, tile.y);
+        expect(
+          roomAt === welcomeRoomId || roomAt < 0,
+          `seed ${seed}: prop ${index} at tile (${tile.x},${tile.y}) spilled into a different room (${roomAt})`,
         ).toBe(true);
       }
     }
   });
 
-  it('reserves a full welcome-room footprint without extra carved interior walls', () => {
+  it('carves the welcome-room to the prefab footprint with a real wall/door shell', () => {
+    // Prefab-room model: the set-piece owns its shell. Map-gen carves the target
+    // room to EXACTLY the prefab footprint (the prefab ring coincides with the
+    // room perimeter — no nesting), walls the whole perimeter, and punches the
+    // declared door slot(s). This test proves the carve produced real terrain:
+    // bounds == footprint, every perimeter tile is an impassable wall or a DOOR
+    // (with >= 1 door), and the interior stays fully passable.
     const def = getSetPieceDef('welcome-room');
     if (!def) {
       throw new Error('Expected the welcome-room set piece to be registered');
     }
     const footprint = getSetPieceFootprint(def);
-    const structuralById = new Map(
-      def.props
-        .filter((prop) => prop.kind === 'wall' || prop.kind === 'door')
-        .map((prop) => [prop.id, prop]),
-    );
 
     for (const seed of [1, 7, 42, 2024]) {
       const world = createTestWorld({ seed });
@@ -432,63 +451,88 @@ describe('floor1Scenario', () => {
         throw new Error(`seed ${seed}: expected a welcome room at the welcome-office tile`);
       }
 
-      expect(room.bounds.width).toBeGreaterThanOrEqual(footprint.width + 2);
-      expect(room.bounds.height).toBeGreaterThanOrEqual(footprint.height + 2);
+      // The prefab is authoritative for room dimensions: bounds == footprint.
+      expect(room.bounds.width, `seed ${seed}: room width == footprint`).toBe(footprint.width);
+      expect(room.bounds.height, `seed ${seed}: room height == footprint`).toBe(footprint.height);
 
-      const stamp = stampSetPiece(def, {
-        roomBounds: room.bounds,
-        tileSizeFt: map.config.tileSizeFt,
-      });
-      const authoredWallTiles = new Set<string>();
-      for (const stampedProp of stamp.props) {
-        const propId = stampedProp.render.label;
-        if (!propId) continue;
-        const prop = structuralById.get(propId);
-        if (!prop || prop.kind !== 'wall') continue;
-        for (let dy = 0; dy < prop.height; dy += 1) {
-          for (let dx = 0; dx < prop.width; dx += 1) {
-            authoredWallTiles.add(`${stampedProp.tileX + dx},${stampedProp.tileY + dy}`);
-          }
+      // Every perimeter tile is a real impassable wall or a DOOR, with >= 1 door.
+      const { x, y, width, height } = room.bounds;
+      let perimeterDoors = 0;
+      for (let ty = y; ty < y + height; ty += 1) {
+        for (let tx = x; tx < x + width; tx += 1) {
+          const onRing = tx === x || tx === x + width - 1 || ty === y || ty === y + height - 1;
+          if (!onRing) continue;
+          const flags = map.tileMap.flags[ty * map.width + tx]!;
+          const isDoor = (flags & TileFlags.DOOR) !== 0;
+          const isWall = !isDoor && (flags & TileFlags.PASSABLE) === 0;
+          expect(
+            isDoor || isWall,
+            `seed ${seed}: perimeter tile (${tx},${ty}) must be a wall or door`,
+          ).toBe(true);
+          if (isDoor) perimeterDoors += 1;
         }
       }
+      expect(
+        perimeterDoors,
+        `seed ${seed}: the carved welcome-room ring needs at least one door`,
+      ).toBeGreaterThanOrEqual(1);
 
-      const { x, y, width, height } = room.bounds;
+      // The interior has no stray carved WALLS. `solid: true` furniture props
+      // (welcome-desk, bookcase, …) legitimately write impassable tiles here,
+      // but they use `TilePresets.WINDOW` — impassable AND transparent — so NPC
+      // line-of-sight still reaches over them. Anything impassable-and-opaque
+      // inside the ring is a real bug.
       for (let ty = y + 1; ty < y + height - 1; ty += 1) {
         for (let tx = x + 1; tx < x + width - 1; tx += 1) {
-          if (authoredWallTiles.has(`${tx},${ty}`)) continue;
           const flags = map.tileMap.flags[ty * map.width + tx]!;
+          if ((flags & TileFlags.PASSABLE) !== 0) continue;
           expect(
-            (flags & TileFlags.PASSABLE) !== 0,
-            `seed ${seed}: unexpected carved wall at (${tx},${ty}) in welcome room interior`,
+            (flags & TileFlags.TRANSPARENT) !== 0,
+            `seed ${seed}: impassable interior tile (${tx},${ty}) must be transparent furniture, not an opaque wall`,
           ).toBe(true);
         }
       }
     }
   });
 
-  it('welcome-room set-piece has no structural (wall/door) props and interior stays fully passable', () => {
-    // The welcome-room set-piece is purely decorative: room walls, floors, and
-    // doors come from the dungeon generator. Auto-generated wall/door props from
-    // the set-piece editor were removed because they caused "walls not solid"
-    // (auto-wall props set terrain=STONE_WALL without updating physics flags) and
-    // "door doesn't work" (door props at interior positions out of alignment with
-    // the actual dungeon doors).
+  it('welcome-room set-piece owns its wall/door shell and keeps its interior connected', () => {
+    // Prefab-room model: the welcome-room set-piece is now AUTHORITATIVE for its
+    // own shell — it carries a complete wall ring plus at least one door slot in
+    // its authored props. Those structural props are baked into terrain TILES by
+    // the carve (real impassable walls + a TileFlags.DOOR) and are SKIPPED from
+    // the render-only `world.setPieceProps` list (re-drawing them would z-fight
+    // the baked tiles).
+    //
+    // The interior is NOT fully passable: `solid: true` furniture props write
+    // impassable-but-transparent tiles. What must hold is that the walkable
+    // interior stays ONE connected region — `applySolidProps` reverts any prop
+    // whose blocking would split the room.
     const def = getSetPieceDef('welcome-room');
     if (!def) {
       throw new Error('Expected the welcome-room set piece to be registered');
     }
 
-    const structuralProps = def.props.filter(
-      (prop) => prop.kind === 'wall' || prop.kind === 'door',
+    const wallProps = def.props.filter((prop) => prop.kind === 'wall');
+    const doorProps = def.props.filter((prop) => prop.kind === 'door');
+    expect(wallProps.length, 'welcome-room must author a wall ring').toBeGreaterThan(0);
+    expect(doorProps.length, 'welcome-room must author at least one door').toBeGreaterThanOrEqual(
+      1,
     );
-    expect(structuralProps).toHaveLength(0);
 
-    // After stamping the set-piece, every interior tile that was not already a
-    // dungeon wall should remain passable (decorative props must not inadvertently
-    // seal the room interior).
+    // The structural props are carved to tiles, so they must NOT appear in the
+    // render-only prop list; only non-structural layers are rendered.
+    const renderedLayerCount = flattenSetPieceLayers(def).filter(
+      (draw) => draw.prop.kind !== 'wall' && draw.prop.kind !== 'door',
+    ).length;
+
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
+
+    expect(
+      world.setPieceProps.length,
+      'structural wall/door props must be filtered from the render list',
+    ).toBe(renderedLayerCount);
 
     const map = world.floorMap!;
     const objective = world.floorScenario!.objective;
@@ -500,15 +544,44 @@ describe('floor1Scenario', () => {
     }
 
     const { x, y, width, height } = room.bounds;
+    const passable: number[] = [];
     for (let ty = y + 1; ty < y + height - 1; ty += 1) {
       for (let tx = x + 1; tx < x + width - 1; tx += 1) {
-        const flags = map.tileMap.flags[ty * map.width + tx]!;
-        expect(
-          (flags & TileFlags.PASSABLE) !== 0,
-          `unexpected impassable tile at (${tx},${ty}) in welcome room interior after set-piece stamp`,
-        ).toBe(true);
+        if ((map.tileMap.flags[ty * map.width + tx]! & TileFlags.PASSABLE) !== 0) {
+          passable.push(ty * map.width + tx);
+        }
       }
     }
+    expect(passable.length, 'the welcome-room interior must not be sealed shut').toBeGreaterThan(0);
+
+    // Flood the walkable interior from an arbitrary passable tile; it must reach
+    // every other one, or furniture has split the room into islands.
+    const seen = new Set<number>([passable[0]!]);
+    const stack = [passable[0]!];
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const tx = idx % map.width;
+      const ty = (idx - tx) / map.width;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = tx + dx;
+        const ny = ty + dy;
+        if (nx <= x || nx >= x + width - 1 || ny <= y || ny >= y + height - 1) continue;
+        const nIdx = ny * map.width + nx;
+        if (seen.has(nIdx)) continue;
+        if ((map.tileMap.flags[nIdx]! & TileFlags.PASSABLE) === 0) continue;
+        seen.add(nIdx);
+        stack.push(nIdx);
+      }
+    }
+    expect(
+      seen.size,
+      'solid furniture props must never split the welcome-room interior into disconnected islands',
+    ).toBe(passable.length);
   });
 
   it('does not accumulate set-piece props when re-initialized on a reused world', () => {
@@ -522,7 +595,11 @@ describe('floor1Scenario', () => {
     if (!def) {
       throw new Error('Expected the welcome-room set piece to be registered');
     }
-    const expectedPropCount = flattenSetPieceLayers(def).length;
+    // Structural wall/door props are carved to tiles and skipped from the render
+    // list, so the expected render count is the non-structural layers only.
+    const expectedPropCount = flattenSetPieceLayers(def).filter(
+      (draw) => draw.prop.kind !== 'wall' && draw.prop.kind !== 'door',
+    ).length;
     expect(expectedPropCount).toBeGreaterThan(0);
 
     const world = createTestWorld({ seed: 42 });
@@ -1558,6 +1635,22 @@ describe('floor1Scenario', () => {
           }
         }
       }
+    });
+
+    it('keeps exactly one SAFE room after welcome-room promotion', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const floorMap = world.floorMap!;
+      const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+      expect(safeRooms).toHaveLength(1);
+
+      const welcomeRoomId = world.floorScenario?.welcomeRoomId;
+      expect(typeof welcomeRoomId).toBe('number');
+      if (typeof welcomeRoomId !== 'number') return;
+      expect(safeRooms[0]?.id).toBe(welcomeRoomId);
     });
 
     it('regression: seed 665790 spawns final boss at a passable tile (not in a wall)', () => {

@@ -1,0 +1,173 @@
+# ORIENTATION + ASPECT NOTE (Set Piece Designer, 2026-07-28)
+#
+# ROUND 4 -- THE ARCH IS NOW REQUIRED. This reverses the "leaf only, no stone"
+# rule that rounds 1-3 enforced. Maintainer decision, and the reasoning matters
+# more than the verdict:
+#
+# The open and closed doors must read as TWO FRAMES OF ONE ANIMATED OBJECT.
+# `tile-door-open-v1` refused the no-masonry instruction FIVE consecutive times
+# across four rounds, and on the fifth it was right to: a closed door needs no
+# frame, but an open doorway without one is a black blob with a plank beside it.
+# The VLM judge independently reached the same conclusion, scoring the frameless
+# attempts down for "the leaf is not distinguishable from the dark opening".
+#
+# So rather than lose a sixth round arguing with a true constraint, the CLOSED
+# door adopts the OPEN door's stone arch. Consistency now runs the right way:
+# both states are the same doorway, and only the leaf moves between them.
+#
+# The old objection is recorded rather than deleted, because it was not silly --
+# it was just outweighed. A baked frame DOES become the width-fitted rectangle
+# (`scale = tileSize / box.width`), so the leaf renders narrower than the 4 ft
+# doorway: at ~12% stone each side the leaf lands ~3.0 ft wide. That is
+# acceptable, and it was always the wrong thing to optimise -- the defect that
+# started this work was the door being 4 ft TALL against a 5.75 ft player, not
+# the leaf being narrow. A 3 ft leaf flanked by stone reads as a doorway; a 4 ft
+# door shorter than the player reads as a bug.
+#
+# MEASURED TARGET: opaque width / height ~= 0.72, matching round 5 of
+# `tile-door-open-v1` (79-83 x 114, rendering 5.49-5.77 ft). Both states must land
+# within 0.5 ft of each other or `generated-door-art.test.ts` fails the pair --
+# that gate exists precisely because two independently-sampled states silently
+# disagreed by 1.45 ft and every per-sprite check passed anyway.
+#
+# MECHANICAL (unchanged, still load-bearing). Declare height 128, never 112.
+# `resizeSpriteStrategy()` picks 'height' only when height >= 2*width; 112 falls
+# through to 'fit', which LETTERBOXES and leaves transparent rows under the door,
+# failing `anchor-derivable` on every variant. 'height' locks the height and lets
+# the width follow the drawn subject, so the art is aspect-true by construction.
+#
+# `sizeVariant: tall` is deliberately NOT used (2026-07-27 living-area handoff:
+# the model ignores portrait cells, the slicer cuts on the declared tall grid and
+# each "variant" becomes a column of stacked objects that passes every gate).
+type: prop
+name: tile-door-v1
+description: |
+  A heavy CLOSED DUNGEON DOOR set in a slim stone archway, front elevation,
+  looking STRAIGHT AT THE DOOR dead-on -- the face of the door is exactly parallel
+  to the screen, with NO tilt, NO rotation, NO oblique angle and NO perspective.
+  Modern high-quality pixel art, silhouette readable at 16px.
+
+  THIS IS ONE HALF OF A TWO-FRAME ANIMATION. The other frame is the same doorway
+  with the leaf swung open. The ARCHWAY MUST BE IDENTICAL BETWEEN THE TWO: same
+  slim grey stone jambs up both sides, same round-headed stone arch across the
+  top, same width, same height. Only the door leaf moves. If a player flicks
+  between the two pictures, the stonework must not move, change colour, or change
+  thickness by a single pixel of apparent weight.
+
+  THE ARCHWAY: slim cool-grey blocky stone -- narrow jambs up the left and right
+  sides and a shallow round-headed arch over the top, no more than about ONE
+  EIGHTH of the total width on each side. Keep it SLIM: the timber leaf is the
+  subject and must still dominate the picture. No threshold stone across the
+  bottom -- the leaf runs to the bottom edge.
+
+  MEASURE IT IN CELL PIXELS. The cell is 256 x 256 source pixels. The whole drawn
+  subject -- stone arch plus door leaf together -- must be approximately 184
+  PIXELS WIDE and 256 PIXELS TALL: the FULL HEIGHT of the cell, top margin to
+  bottom margin, and just under THREE QUARTERS of its width.
+  - The left ~14% and the right ~14% of the cell are completely EMPTY transparent
+    background.
+  - THREE planks on the leaf, not four.
+  - EXACTLY ONE DOOR PER CELL. Never stack two doors in a column and never draw a
+    double door pair side by side.
+
+  REAL-WORLD SIZE. The archway is 4 FEET WIDE x 5.7 FEET TALL overall, with the
+  timber leaf about 3 feet wide inside it. A person is 5.75 ft tall.
+
+  WHAT IT IS:
+  - A single closed door LEAF of heavy vertical TIMBER PLANKS -- THREE planks,
+    with deep seams between them, visible grain, and splits and dents at the lower
+    corners where boots have kicked it.
+  - The top of the leaf is gently ARCHED, following the stone arch above it.
+  - IRON BANDING: two broad HORIZONTAL iron straps running all the way across the
+    leaf, riveted with fat round studs that read clearly at small size. The bands
+    are the strongest readable detail on the door.
+  - A heavy IRON RING HANDLE a little above the middle of the leaf, hanging from
+    a round backplate. Big enough to read at 16px.
+  - Wear everywhere: rust bleeding down from the rivets, scuffed timber, grime
+    settled in the seams.
+
+  IT IS NOT: an open doorway, a dark archway standing empty, a portcullis, a
+  gate, a double door, a cupboard, a wardrobe, a bookcase, a crate, a chest, a
+  window, or a shuttered panel. It is ONE closed timber leaf filling a slim stone
+  archway.
+
+  MOOD -- a grimy reality-TV dungeon. Heavy, permanent and unwelcoming: the
+  object that keeps the contestants in. Tired, worn, long shut, never ornate and
+  never fantasy-decorative.
+
+  COLOUR -- the leaf is a warm desaturated walnut-brown with 4-5 tone stops so
+  the planks separate clearly; the iron banding, rivets and ring are a dull dark
+  grey-black metal with tarnished rust-brown streaks. It must NOT be pale, washed
+  out, or low-contrast. Keep a clear dark outline and clear tonal separation
+  between timber and iron. BANNED: neon, pure white, pure black, saturated red,
+  saturated yellow, orange, teal, cyan, blue, green, magenta, purple, gold leaf,
+  gemstones, glowing runes, magical glow, and any ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently. The upper edge of each
+  iron band and the left curve of the ring catch the highlight; shadow falls down
+  and to the right.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering for the timber grain -- no mushy gradients, no
+  airbrush, no floating unsupported elements.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils, labels,
+  captions, watermarks or signatures anywhere on the door.
+
+  BACKGROUND: fully transparent OUTSIDE the archway silhouette only. Draw ONLY
+  the slim stone archway and the door leaf inside it. Do NOT paint a masonry wall
+  beyond the arch, a floor slab, a rectangular backing panel, a border, a
+  vignette, or any cast/contact/drop shadow. Every pixel outside the archway's own
+  silhouette must be fully transparent.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the door's colours so it
+  can be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 64
+  height: 128
+anchor:
+  x: 32
+  y: 126
+sensors:
+  # A bare plank leaf is a deliberately near-rectangular object and fills far
+  # more of its bounding box than the `prop` default [0.10, 0.65], which is tuned
+  # for irregular open-silhouette props. The floor is loose because the 'height'
+  # resize strategy makes the shipped width follow the drawn subject, so the
+  # frame hugs the leaf. The 0.96 cap is derived from the ARCHED top: a shallow
+  # round head removes roughly 4-8% of the bounding box at the upper corners, so
+  # a genuine background-removal failure (which lands at ~0.99-1.0, perfectly
+  # rectangular) is still caught. Bounds set BEFORE generating, from the
+  # subject's geometry.
+  opaqueRatio:
+    min: 0.55
+    max: 0.96
+  # Grounded: the bottom of the leaf stands on the floor of the doorway, so the
+  # derived bottom-band anchor is the correct semantics and stays enforced. This
+  # is the sensor that caught the round-1 letterboxing.
+  #
+  # mode: center-of-mass, NOT the `grip` default. Added in round 4 alongside the
+  # stone arch, PRE-EMPTIVELY rather than after a failure: adding jambs turns this
+  # from a single-mass leaf into a THREE-mass subject (left jamb, leaf, right
+  # jamb), and `grip` splits the bottom-most opaque row into contiguous runs and
+  # picks exactly ONE. That is the identical failure already measured twice this
+  # session -- a biped's two boots resolving to one foot, and the open doorway's
+  # leaf-plus-jamb resolving to "grip midpoint x=16 is outside +/-10 of center 52"
+  # on all 16 variants. `grip` is simply the wrong contract for any subject whose
+  # footprint is separated masses; this is not a loosened gate.
+  anchor:
+    derive: true
+    mode: center-of-mass
+    bandRows: 8
+    centerToleranceX: 10
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

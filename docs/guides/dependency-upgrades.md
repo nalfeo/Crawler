@@ -16,7 +16,7 @@ do with dependencies.
 Exact versions prevent this by ensuring that no direct package version can advance
 without an explicit, intentional edit to `package.json`.
 
-> **Scope note:** Exact top-level pinning guards against *direct* dependency drift.
+> **Scope note:** Exact top-level pinning guards against _direct_ dependency drift.
 > Transitive dependency versions are locked by `package-lock.json` separately, but
 > upstream package ranges may still allow transitive churn. The exact-deps policy
 > is the primary control for the direct layer; the lockfile is the control for
@@ -42,17 +42,21 @@ Follow this procedure to bump a direct dependency to a newer version:
 
 2. **Edit `package.json` directly.** Change the version field for the target
    package to the new exact version string (no `^` or `~`):
+
    ```json
    "typescript": "6.1.0"
    ```
 
 3. **Update the lockfile:**
+
    ```sh
    npm install --package-lock-only
    ```
+
    This regenerates `package-lock.json` without touching `node_modules`.
 
 4. **Verify the installation works locally:**
+
    ```sh
    npm ci
    npm run verify:fast
@@ -100,6 +104,7 @@ const EXACT_VERSION_EXEMPTIONS = [
 ```
 
 Each entry must include:
+
 - `field`: the package.json field path (`"dependencies"`, `"devDependencies"`,
   `"overrides"`, or a nested override path like `"overrides/parent"`)
 - `name`: the exact package name

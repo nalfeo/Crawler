@@ -47,6 +47,10 @@
  */
 
 import { createHash } from 'node:crypto';
+import { PNG } from 'pngjs';
+import { deriveOpaqueBounds, type DerivedBounds } from './derive-opaque-bounds.js';
+import { packFrameStrip } from './pack-frame-strip.js';
+import { checkFrameCoherence, type FrameCoherenceOptions } from './sensors/frame-coherence.js';
 import {
   copyFileSync,
   existsSync,
@@ -59,6 +63,7 @@ import path from 'node:path';
 import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { formatJsonFilesSync } from './catalog-io.js';
+import { shardPathForKey } from './generated-shards.js';
 
 /** Subset of `node:fs` calls approveVariant needs. Exposed for tests. */
 export interface ApproveFs {
@@ -134,7 +139,22 @@ export interface ManifestEntry {
     readonly pixels?: ReadonlyArray<unknown>;
   }>;
   /** Full per-axis VLM scorecard retained for later calibration. */
-  readonly judgeScorecard?: Readonly<Record<string, unknown>> | null;
+  readonly judgeScorecard?:
+    | (Readonly<Record<string, unknown>> & {
+        /**
+         * When true, the judge issued a hard-block veto.  `approve.ts` rejects
+         * these unless `allowHardBlocked: true` is passed, in which case this
+         * field is cleared to `false` and `humanHardBlockOverride` is set.
+         */
+        readonly hardBlocked?: boolean;
+        /**
+         * Set to `true` when a human consciously approved a hard-blocked variant
+         * via `allowHardBlocked: true`.  The CI invariant only blocks
+         * `hardBlocked === true`, so this survives the check.
+         */
+        readonly humanHardBlockOverride?: boolean;
+      })
+    | null;
   /**
    * Canonical sprite type resolved from the brief, or `null` when it couldn't
    * be resolved. Written
@@ -149,11 +169,52 @@ export interface ManifestEntry {
    * existed omit it, and the guard falls back to hashing the on-disk asset.
    */
   readonly contentHash?: string;
+  /**
+   * Bounding box of the sprite's non-transparent pixels, plus the canvas it was
+   * measured against. Lets consumers anchor and scale by the art the player can
+   * actually see instead of the pipeline's transparent safety margin. Optional:
+   * entries approved before this field existed omit it and consumers fall back
+   * to whole-canvas behaviour. Backfilled by `sprites:derive-opaque-bounds`.
+   */
+  readonly opaqueBounds?: DerivedBounds;
   readonly postprocessOverrideProfilePath?: string | null;
   readonly effectivePipelineSnapshotPath?: string | null;
   readonly effectivePipelineSnapshotYamlPath?: string | null;
   readonly effectiveAnchorSource?: ManifestAnchor['source'] | null;
   readonly facingDirection?: 'left' | 'right';
+  /**
+   * Present only on entries approved via `approveFrameSequence` (Slice B
+   * walk-cycle animation sheets). Mirrors the shared descriptor Slice A's
+   * `src/shared/generated-assets.ts` declares — kept structurally identical
+   * here so this file does not need to import across the ownership boundary.
+   * `assetPath` for an animated entry is a single strip PNG containing
+   * `frameCount` consecutive `frameWidth × frameHeight` cells with no
+   * margin/spacing, ready for `Phaser.Loader.LoaderPlugin#spritesheet`.
+   */
+  readonly animation?: {
+    readonly frameWidth: number;
+    readonly frameHeight: number;
+    readonly frameCount: number;
+    readonly frameRate: number;
+    readonly loop: boolean;
+  };
+  /**
+   * True when this entry is a placeholder stand-in (not real generated art).
+   * Placeholder entries are excluded from the derived sprite-catalog rows. See
+   * `src/shared/generated-catalog.ts#isPlaceholderManifestEntry`.
+   */
+  readonly placeholder?: boolean;
+  /**
+   * Optional per-asset catalog overrides. The `generated:` sprite-catalog rows
+   * are DERIVED from this manifest; this field is the single home for the small
+   * set of hand-authored deviations (rich descriptions, deliberate tag
+   * overrides) that derivation cannot reconstruct. The override shards with its
+   * asset, so it never reintroduces a shared mega-file.
+   */
+  readonly catalog?: {
+    readonly description?: string;
+    readonly tags?: readonly string[];
+  };
 }
 
 export interface Manifest {
@@ -171,7 +232,12 @@ export class ApproveError extends Error {
       | 'variant-not-found'
       | 'processed-missing'
       | 'already-approved'
-      | 'manifest-invalid',
+      | 'manifest-invalid'
+      | 'hard-blocked'
+      // Frame-sequence-only kinds (approveFrameSequence):
+      | 'not-frame-sequence'
+      | 'frame-missing'
+      | 'frame-incoherent',
     message: string,
   ) {
     super(message);
@@ -205,13 +271,19 @@ interface RunSummaryShape {
       readonly reason?: string;
       readonly pixels?: ReadonlyArray<unknown>;
     }>;
+    readonly processedPath?: string;
     readonly derivedAnchor?: { readonly x: number; readonly y: number } | null;
     readonly derivedAnchors?: {
       readonly hold?: { readonly x: number; readonly y: number } | null;
       readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
     } | null;
     readonly judgeScorecard?:
-      | (Readonly<Record<string, unknown>> & { readonly minScore?: number })
+      | (Readonly<Record<string, unknown>> & {
+          readonly minScore?: number;
+          readonly hardBlocked?: boolean;
+          readonly passed?: boolean;
+          readonly hardBlockInstruction?: string | null;
+        })
       | null;
   }>;
   readonly postprocessOverrides?: {
@@ -223,6 +295,18 @@ interface RunSummaryShape {
       readonly direction?: 'left' | 'right';
       readonly applyToAllVariants?: boolean;
     } | null;
+  } | null;
+  /**
+   * Present only when `brief.frameSequence.enabled` (see `run-artifacts.ts`).
+   * Carries the ordered animation-cycle intent through to
+   * `approveFrameSequence`, which stamps the shared `animation` descriptor
+   * (frameWidth/frameHeight are measured from the packed strip, not stored
+   * here) onto the manifest entry.
+   */
+  readonly frameSequence?: {
+    readonly frameCount?: number;
+    readonly frameRate?: number;
+    readonly loop?: boolean;
   } | null;
 }
 
@@ -237,10 +321,20 @@ export interface ApproveVariantOptions {
   readonly runDir: string;
   /** Variant index, as it appears in `summary.json.candidates[i].index`. */
   readonly variantIndex: number;
-  /** Absolute path to `public/assets/generated/manifest.json`. Created if missing. */
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. The aggregate
+   * itself is a gitignored build artifact; approve derives the generated
+   * directory from this path and writes the per-asset shard under
+   * `entries/<key>.json`. Kept as the anchor path so callers don't need to know
+   * the shard layout.
+   */
   readonly manifestPath: string;
-  /** Absolute path to `src/shared/data/sprite-catalog.json`. Updated with approved sprite. */
-  readonly catalogPath: string;
+  /**
+   * @deprecated The `generated:` catalog rows are now DERIVED from the manifest
+   * shards (see `src/shared/generated-catalog.ts`); approve no longer writes the
+   * catalog. Accepted for backward compatibility and ignored.
+   */
+  readonly catalogPath?: string;
   /** Absolute path to `public/assets/` (parent of `generated/`). */
   readonly publicAssetsDir: string;
   /** Absolute path to the repo root, used to compute `sourceRun` relative path. */
@@ -260,6 +354,12 @@ export interface ApproveVariantOptions {
    * Set true only for deliberate programmatic re-approval.
    */
   readonly allowReapprove?: boolean;
+  /**
+   * Allow approving a variant whose judge scorecard has `hardBlocked === true`.
+   * Default false: hard-blocked variants throw `ApproveError('hard-blocked')`.
+   * Set true only when a human consciously overrules the judge's veto.
+   */
+  readonly allowHardBlocked?: boolean;
 }
 
 /**
@@ -309,6 +409,33 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     );
   }
 
+  // Hard-block gate: a judge-issued hard-block is a veto, not a score to be
+  // weighed. Refuse the approval unless the caller explicitly opts out with
+  // `allowHardBlocked: true` (reserved for conscious human overrides only).
+  if (candidate.judgeScorecard?.hardBlocked === true && !options.allowHardBlocked) {
+    const instruction = candidate.judgeScorecard.hardBlockInstruction;
+    throw new ApproveError(
+      'hard-blocked',
+      `Variant ${options.variantIndex} was hard-blocked by the judge and cannot be approved. ` +
+        (instruction ? `Judge instruction: "${instruction}". ` : '') +
+        `Pass allowHardBlocked: true (or --allow-hard-blocked on the CLI) to override deliberately.`,
+    );
+  }
+
+  // Soft warning: judge scored `passed: false` but did not hard-block. The art
+  // may still be approvable, but the operator should be aware.
+  if (
+    candidate.judgeScorecard !== null &&
+    candidate.judgeScorecard !== undefined &&
+    candidate.judgeScorecard.passed === false &&
+    candidate.judgeScorecard.hardBlocked !== true
+  ) {
+    process.stderr.write(
+      `⚠ Warning: approving variant ${options.variantIndex} whose judge scorecard has passed=false. ` +
+        `The judge flagged this art as below threshold — proceed only if you have reviewed it.\n`,
+    );
+  }
+
   const padded = padIndex(options.variantIndex);
   const processedDir = path.join(options.runDir, 'processed');
   const processedPng = path.join(processedDir, `${padded}.png`);
@@ -328,7 +455,21 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   // Content hash of the exact image we're about to approve. Used both to block
   // true byte-for-byte re-approval and to stamp the manifest entry so a later
   // approval can tell "same pixels" from "re-post-processed, genuinely changed".
-  const contentHash = createHash('sha256').update(fs.readFileSync(processedPng)).digest('hex');
+  const processedBytes = fs.readFileSync(processedPng);
+  const contentHash = createHash('sha256').update(processedBytes).digest('hex');
+
+  // Visible-pixel box of the exact art being approved, so new sprites ship with
+  // bounds and the backfill script only has to cover historical entries.
+  // Deliberately non-fatal: approval has never required decodable PNG bytes and
+  // must not start to. A skip is not silent — `sprites:derive-opaque-bounds
+  // --check` reports any entry missing bounds, so the gate stays authoritative
+  // rather than this catch swallowing the gap forever.
+  let opaqueBounds: DerivedBounds | undefined;
+  try {
+    opaqueBounds = deriveOpaqueBounds(PNG.sync.read(processedBytes));
+  } catch {
+    opaqueBounds = undefined;
+  }
 
   // Block re-approval ONLY when the identical image is already approved under
   // this variant id — a genuine content change (e.g. after re-post-processing)
@@ -379,6 +520,12 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
 
   const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
 
+  // Preserve any hand-authored catalog override (rich description / deliberate
+  // tag override) from a prior approval of this variant. Overrides live on the
+  // shard so re-approving real art must not silently drop them.
+  const existingEntry = readManifestEntry(fs, options.manifestPath, variantId);
+  const preservedCatalog = existingEntry?.catalog;
+
   const entry: ManifestEntry = {
     briefId,
     // Variant-unique sprite name == manifest key == engine texture key.
@@ -393,18 +540,249 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     sensorScore,
     judgeScore,
     sensorBreakdown: candidate.breakdown,
-    judgeScorecard: candidate.judgeScorecard ?? null,
+    judgeScorecard: (() => {
+      const sc = candidate.judgeScorecard ?? null;
+      // When a human consciously overrides a hard-block, clear the hardBlocked
+      // flag so the CI invariant (check-manifest-hard-blocked) doesn't reject
+      // the entry. Persist humanHardBlockOverride as durable evidence of the
+      // conscious override decision.
+      if (sc && options.allowHardBlocked && sc.hardBlocked === true) {
+        return { ...sc, hardBlocked: false, humanHardBlockOverride: true };
+      }
+      return sc;
+    })(),
     type,
     contentHash,
+    ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
     postprocessOverrideProfilePath: summary.postprocessOverrides?.profilePath ?? null,
     effectivePipelineSnapshotPath: summary.postprocessOverrides?.snapshotJsonPath ?? null,
     effectivePipelineSnapshotYamlPath: summary.postprocessOverrides?.snapshotYamlPath ?? null,
     effectiveAnchorSource: anchors.hold?.source ?? null,
     facingDirection: resolveFacingDirection(summary, options.variantIndex),
+    ...(preservedCatalog ? { catalog: preservedCatalog } : {}),
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
-  upsertCatalog(fs, options.catalogPath, entry, variantId, entry.type);
+  return entry;
+}
+
+export interface ApproveFrameSequenceOptions {
+  /** Absolute path to the run directory (`generated/runs/<brief>/<runId>`). */
+  readonly runDir: string;
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. The aggregate
+   * itself is a gitignored build artifact; approve derives the generated
+   * directory from this path and writes the per-asset shard under
+   * `entries/<key>.json`. Kept as the anchor path so callers don't need to know
+   * the shard layout.
+   */
+  readonly manifestPath: string;
+  /**
+   * @deprecated The `generated:` catalog rows are now DERIVED from the manifest
+   * shards (see `src/shared/generated-catalog.ts`); approve no longer writes the
+   * catalog. Accepted for backward compatibility and ignored.
+   */
+  readonly catalogPath?: string;
+  /** Absolute path to `public/assets/` (parent of `generated/`). */
+  readonly publicAssetsDir: string;
+  /** Absolute path to the repo root, used to compute `sourceRun` relative path. */
+  readonly repoRoot: string;
+  /**
+   * Stable repo-relative source identity for rematerialized runs. When omitted,
+   * derives the path from `runDir` exactly as before.
+   */
+  readonly sourceRunOverride?: string;
+  /** Clock injection for deterministic tests. Defaults to `() => new Date()`. */
+  readonly now?: () => Date;
+  /** Injected fs for tests. Defaults to `node:fs`. */
+  readonly fs?: ApproveFs;
+  /**
+   * Allow overwriting an already-approved entry with identical content.
+   * Default false: approving an exact-duplicate strip throws
+   * `ApproveError('already-approved')`.
+   */
+  readonly allowReapprove?: boolean;
+  /**
+   * Override the coherence-gate thresholds. Defaults to
+   * `frame-coherence.ts`'s own defaults. Present for tests only — do NOT
+   * loosen these in production callers just to force a failing generation
+   * to pass; regenerate instead.
+   */
+  readonly coherence?: FrameCoherenceOptions;
+}
+
+/**
+ * Approve an ENTIRE frame-sequence run (a walk-cycle animation sheet, Slice
+ * B) as a single unit — unlike `approveVariant`, which approves exactly one
+ * design-alternative cell, this reads every ordered frame the run produced,
+ * runs the deterministic cross-frame coherence gate (`frame-coherence.ts`),
+ * packs the frames into one horizontal strip PNG, and writes a manifest
+ * entry carrying the shared `animation` descriptor. Refuses to approve
+ * (and writes nothing) when the run isn't a frame-sequence run, is missing
+ * a frame, or fails the coherence gate — this hard gate must never be
+ * bypassed by a caller relaxing `coherence` outside of tests.
+ *
+ * Steps:
+ *   1. Load and validate `summary.json`, requiring `frameSequence` present.
+ *   2. Locate all `frameCount` candidates by index (0..frameCount-1, in
+ *      that ORDER — cycle order, not sensor-score rank).
+ *   3. Verify every frame's processed PNG exists.
+ *   4. Run `checkFrameCoherence` across the ordered frames; throw
+ *      `ApproveError('frame-incoherent')` on failure.
+ *   5. Pack the frames into one strip PNG → `publicAssetsDir/generated/<briefId>.png`.
+ *   6. Load + upsert + write `manifest.json` with the `animation` descriptor.
+ *   7. Return the new manifest entry.
+ */
+export function approveFrameSequence(options: ApproveFrameSequenceOptions): ManifestEntry {
+  const fs = options.fs ?? DEFAULT_FS;
+  const now = options.now ?? (() => new Date());
+
+  const summaryPath = path.join(options.runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
+  }
+
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const sourceRun = options.sourceRunOverride
+    ? normalizeSourceRunOverride(options.sourceRunOverride)
+    : toRepoRelativePosix(options.repoRoot, options.runDir);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+
+  const frameSequence = summary.frameSequence;
+  const frameCount = frameSequence?.frameCount;
+  if (!frameSequence || typeof frameCount !== 'number' || frameCount < 2) {
+    throw new ApproveError(
+      'not-frame-sequence',
+      `summary.json has no valid "frameSequence" field (brief must opt into ` +
+        `frameSequence.enabled): ${summaryPath}`,
+    );
+  }
+  const frameRate = frameSequence.frameRate;
+  const loop = frameSequence.loop;
+  if (typeof frameRate !== 'number' || typeof loop !== 'boolean') {
+    throw new ApproveError(
+      'not-frame-sequence',
+      `summary.json's "frameSequence" field is missing frameRate/loop: ${summaryPath}`,
+    );
+  }
+
+  // Ordered frames 0..frameCount-1 — cycle order, NOT sensor-score rank.
+  const candidatesByIndex = new Map((summary.candidates ?? []).map((c) => [c.index, c]));
+  const processedDir = path.join(options.runDir, 'processed');
+  const frameBuffers: Buffer[] = [];
+  const frameBreakdowns: Array<NonNullable<RunSummaryShape['candidates']>[number]['breakdown']> =
+    [];
+  for (let i = 0; i < frameCount; i++) {
+    const candidate = candidatesByIndex.get(i);
+    if (!candidate) {
+      throw new ApproveError(
+        'frame-missing',
+        `Frame ${i} not in summary.json candidates (need indices 0..${frameCount - 1})`,
+      );
+    }
+    const padded = padIndex(i);
+    const runLocalPng = path.join(processedDir, `${padded}.png`);
+    const declaredPng = candidate.processedPath
+      ? path.isAbsolute(candidate.processedPath)
+        ? candidate.processedPath
+        : path.join(options.repoRoot, candidate.processedPath)
+      : runLocalPng;
+    // `approveVariant` always resolves the run-local `processed/NN.png` path
+    // first and only falls back to the declared processedPath when the local
+    // file is absent. Do the same here: a rematerialized or reprocessed run
+    // will have written fresh bytes to the run-local path — preferring the
+    // declared absolute path from the original machine would silently pack
+    // stale bytes from before the reprocess (reviewer finding, PR #2302).
+    const processedPng = fs.existsSync(runLocalPng)
+      ? runLocalPng
+      : fs.existsSync(declaredPng)
+        ? declaredPng
+        : runLocalPng;
+    if (!fs.existsSync(processedPng)) {
+      throw new ApproveError(
+        'frame-missing',
+        `Processed PNG not found for frame ${i}: ${processedPng}`,
+      );
+    }
+    frameBuffers.push(fs.readFileSync(processedPng));
+    frameBreakdowns.push(candidate.breakdown);
+  }
+
+  // HARD GATE: cross-frame coherence. Never weaken these thresholds to force
+  // a lucky generation through — regenerate instead. See frame-coherence.ts.
+  // Pass `loop` so the wrap-around seam (final→first) is checked when the
+  // animation loops — a drifted loop seam plays on every cycle iteration.
+  const coherence = checkFrameCoherence(frameBuffers, { ...options.coherence, loop });
+  if (!coherence.ok) {
+    throw new ApproveError(
+      'frame-incoherent',
+      `Frame sequence for brief "${briefId}" failed the cross-frame coherence gate: ${coherence.reason ?? 'unknown reason'}`,
+    );
+  }
+
+  const strip = packFrameStrip(frameBuffers);
+
+  const generatedDir = path.join(options.publicAssetsDir, 'generated');
+  const assetAbsPath = path.join(generatedDir, `${briefId}.png`);
+  const contentHash = createHash('sha256').update(strip.buffer).digest('hex');
+
+  if (!options.allowReapprove) {
+    const existing = readManifestEntry(fs, options.manifestPath, briefId);
+    if (existing) {
+      const storedHash =
+        existing.contentHash && existing.contentHash.length > 0
+          ? existing.contentHash
+          : hashFileIfExists(fs, assetAbsPath);
+      if (storedHash !== null && storedHash === contentHash) {
+        throw new ApproveError(
+          'already-approved',
+          `Frame sequence ${briefId} is already approved with identical content. ` +
+            `Re-generate to change the cycle, or pass allowReapprove to overwrite it.`,
+        );
+      }
+    }
+  }
+
+  fs.mkdirSync(generatedDir, { recursive: true });
+  fs.writeFileSync(assetAbsPath, strip.buffer);
+
+  const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
+
+  // Ambiguous across multiple poses — leave unset rather than picking one
+  // frame's anchor arbitrarily. Consumers of animated entries derive
+  // gameplay anchoring differently (Slice A's concern), not from this field.
+  const entry: ManifestEntry = {
+    briefId,
+    spriteName: briefId,
+    assetPath: `generated/${briefId}.png`,
+    approvedAt: now().toISOString(),
+    sourceRun,
+    variantIndex: 0,
+    anchor: null,
+    anchors: { hold: null, centerOfGravity: null },
+    // Sensor score reported for frame 0 only — frame-sequence entries are
+    // approved as one unit via the coherence gate above, not per-variant
+    // sensor scoring.
+    sensorScore: 'frame-sequence',
+    judgeScore: null,
+    sensorBreakdown: frameBreakdowns[0],
+    judgeScorecard: null,
+    type,
+    contentHash,
+    animation: {
+      frameWidth: strip.frameWidth,
+      frameHeight: strip.frameHeight,
+      frameCount: strip.frameCount,
+      frameRate,
+      loop,
+    },
+  };
+
+  upsertManifest(fs, options.manifestPath, entry, briefId);
   return entry;
 }
 
@@ -493,6 +871,40 @@ export function loadApprovedEntry(options: {
   return readManifestEntry(fs, options.manifestPath, identity.variantId);
 }
 
+/**
+ * Frame-sequence counterpart to `loadApprovedEntry`: loads the manifest entry
+ * for a frame-sequence run that is ALREADY approved with identical content,
+ * WITHOUT mutating anything. Returns null when no such entry exists.
+ *
+ * Closes the same retry gap `loadApprovedEntry` closes for `--variant`
+ * approvals: re-running `approveFrameSequence` after a failed queue-commit
+ * throws `ApproveError('already-approved')` before `runQueueCommit` ever
+ * executes (the manifest write already succeeded), so the CLI's "re-run to
+ * retry queue-commit" advice would otherwise be false for `--sequence`. The
+ * caller catches `already-approved`, loads the existing entry via this
+ * helper, and falls through to `runQueueCommit` exactly as the `--variant`
+ * path does.
+ */
+export function loadApprovedFrameSequenceEntry(options: {
+  readonly runDir: string;
+  readonly manifestPath: string;
+  readonly repoRoot: string;
+  readonly fs?: ApproveFs;
+}): ManifestEntry | null {
+  const fs = options.fs ?? DEFAULT_FS;
+  const summaryPath = path.join(options.runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
+  }
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const rawBriefId = summary.brief;
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  return readManifestEntry(fs, options.manifestPath, briefId);
+}
+
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
   const facing = summary.postprocessOverrides?.facing;
   if (
@@ -526,22 +938,21 @@ function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): 
 }
 
 /**
- * Read the manifest entry stored under `entryKey`, or null when the manifest is
- * missing/unparseable or has no such entry. Best-effort: a corrupt manifest
- * reads as "no entry" so approval proceeds (corruption surfaces via
- * `upsertManifest`'s own validation).
+ * Read the manifest entry stored in the per-asset shard for `entryKey`, or null
+ * when the shard is missing/unparseable. Best-effort: a corrupt shard reads as
+ * "no entry" so approval proceeds (it will be overwritten by the write below).
  */
 function readManifestEntry(
   fs: ApproveFs,
   manifestPath: string,
   entryKey: string,
 ): ManifestEntry | null {
-  if (!fs.existsSync(manifestPath)) {
+  const shardPath = shardPathForKey(path.dirname(manifestPath), entryKey);
+  if (!fs.existsSync(shardPath)) {
     return null;
   }
   try {
-    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Partial<Manifest>;
-    return parsed.entries?.[entryKey] ?? null;
+    return JSON.parse(fs.readFileSync(shardPath, 'utf8')) as ManifestEntry;
   } catch {
     return null;
   }
@@ -560,9 +971,12 @@ function hashFileIfExists(fs: ApproveFs, absPath: string): string | null {
 }
 
 /**
- * Read + upsert + write the manifest atomically (best-effort). The manifest
- * file is small and tracked in git; pretty-printing with stable key order
- * keeps diffs reviewable.
+ * Write the manifest entry to its own per-asset shard
+ * (`entries/<entryKey>.json`). Sharding is the whole point of this design: two
+ * approvals touching different assets never touch the same file, so parallel
+ * art PRs no longer conflict by construction. The aggregate `manifest.json` is a
+ * gitignored build artifact composed from these shards (see
+ * `scripts/sprites/build-manifest.ts` and the Vite plugin).
  */
 function upsertManifest(
   fs: ApproveFs,
@@ -570,119 +984,12 @@ function upsertManifest(
   entry: ManifestEntry,
   entryKey: string,
 ): void {
-  let current: Manifest;
-  if (fs.existsSync(manifestPath)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Partial<Manifest>;
-      if (parsed.version !== MANIFEST_VERSION) {
-        throw new ApproveError(
-          'manifest-invalid',
-          `Unsupported manifest version: ${String(parsed.version)} (expected ${MANIFEST_VERSION})`,
-        );
-      }
-      current = {
-        version: MANIFEST_VERSION,
-        entries: { ...(parsed.entries ?? {}) },
-      };
-    } catch (err) {
-      if (err instanceof ApproveError) throw err;
-      throw new ApproveError(
-        'manifest-invalid',
-        `manifest.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  } else {
-    current = { version: MANIFEST_VERSION, entries: {} };
-  }
-
-  // Stable key order: sort keys with localeCompare so multiple approvals don't
-  // shuffle the file and the order matches the check:sort-assets CI validator.
-  const nextEntries: Record<string, ManifestEntry> = { ...current.entries, [entryKey]: entry };
-  const sortedKeys = Object.keys(nextEntries).sort((a, b) => a.localeCompare(b));
-  const sorted: Record<string, ManifestEntry> = {};
-  for (const key of sortedKeys) {
-    sorted[key] = nextEntries[key]!;
-  }
-
-  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  const next: Manifest = { version: MANIFEST_VERSION, entries: sorted };
-  fs.writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
-}
-
-/**
- * Convert manifest entry to catalog entry and upsert into catalog.json.
- * Catalog entries need additional fields for the game, so we construct the full entry here.
- */
-function upsertCatalog(
-  fs: ApproveFs,
-  catalogPath: string,
-  manifestEntry: ManifestEntry,
-  catalogId: string,
-  briefType: SpriteType | null,
-): void {
-  let catalog: Array<Record<string, unknown>>;
-
-  if (fs.existsSync(catalogPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
-      catalog = Array.isArray(raw) ? raw : [];
-    } catch (_err) {
-      console.warn(`Could not parse catalog (${catalogPath}), starting fresh`);
-      catalog = [];
-    }
-  } else {
-    catalog = [];
-  }
-
-  // Create catalog entry from manifest entry. The sprite type (from the brief)
-  // is included as the first tag so generated sprites are discoverable by type.
-  const tags = briefType
-    ? [briefType, 'generated', 'pipeline-approved']
-    : ['generated', 'pipeline-approved'];
-
-  // Preserve any existing hand-authored description so approve does not clobber
-  // richer catalog copy that was written after initial generation.
-  const existingEntry = catalog.find((e) => e.id === `generated:${catalogId}`);
-  const existingDescription =
-    typeof existingEntry?.description === 'string' &&
-    existingEntry.description !== `Generated sprite from brief: ${manifestEntry.briefId}.`
-      ? existingEntry.description
-      : null;
-
-  const catalogEntry: Record<string, unknown> = {
-    id: `generated:${catalogId}`,
-    kind: 'sprite',
-    label: manifestEntry.spriteName,
-    description: existingDescription ?? `Generated sprite from brief: ${manifestEntry.briefId}.`,
-    tags,
-    spriteId: manifestEntry.spriteName,
-    sheetKey: 'generated-manifest',
-    assetPath: manifestEntry.assetPath,
-    frame: 0,
-    col: 0,
-    row: 0,
-  };
-
-  // Remove existing entry with same ID if present, then add new one
-  const filtered = catalog.filter((e) => e.id !== catalogEntry.id);
-  filtered.push(catalogEntry);
-  filtered.sort((a, b) => {
-    const aKind = a.kind === 'sheet' ? 0 : 1;
-    const bKind = b.kind === 'sheet' ? 0 : 1;
-    if (aKind !== bKind) return aKind - bKind;
-    const aId = typeof a.id === 'string' ? a.id : '';
-    const bId = typeof b.id === 'string' ? b.id : '';
-    return aId.localeCompare(bId);
-  });
-
-  // Write updated catalog
-  fs.mkdirSync(path.dirname(catalogPath), { recursive: true });
-  fs.writeFileSync(catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
+  const shardPath = shardPathForKey(path.dirname(manifestPath), entryKey);
+  fs.mkdirSync(path.dirname(shardPath), { recursive: true });
+  fs.writeFileSync(shardPath, `${JSON.stringify(entry, null, 2)}\n`);
   // Apply Prettier so the on-disk format matches the committed style enforced
-  // by `format:check`. All catalog write paths must go through formatJsonFilesSync
-  // to ensure deterministic formatting regardless of which tool last wrote the
-  // file. See scripts/sprites/catalog-io.ts.
-  formatJsonFilesSync([catalogPath]);
+  // by `format:check`.
+  formatJsonFilesSync([shardPath]);
 }
 
 function parseSummary(raw: string, summaryPath: string): RunSummaryShape {
@@ -864,13 +1171,21 @@ export class UnapproveError extends Error {
 export interface UnapproveVariantOptions {
   /**
    * Variant id (`<briefId>-var-<N>`), the manifest key to remove.
-   * Must match an entry key in `manifest.json` exactly.
+   * Must match a shard file name in `entries/` exactly.
    */
   readonly variantId: string;
-  /** Absolute path to `public/assets/generated/manifest.json`. */
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. The aggregate is a
+   * gitignored build artifact; unapprove derives the generated directory from
+   * this path and deletes the per-asset shard under `entries/<key>.json`.
+   */
   readonly manifestPath: string;
-  /** Absolute path to `src/shared/data/sprite-catalog.json`. */
-  readonly catalogPath: string;
+  /**
+   * @deprecated The `generated:` catalog rows are DERIVED from the manifest
+   * shards; unapprove no longer edits the catalog. Accepted for backward
+   * compatibility and ignored.
+   */
+  readonly catalogPath?: string;
   /** Absolute path to `public/assets/` (parent of `generated/`). */
   readonly publicAssetsDir: string;
   /**
@@ -886,111 +1201,76 @@ export interface UnapproveVariantOptions {
 /**
  * Evict one approved variant from the repo's checked-in art surface.
  *
- * This is the inverse of `approveVariant`. It removes the manifest entry,
- * removes the catalog entry, and (by default) deletes the PNG from
- * `public/assets/generated/`.
+ * This is the inverse of `approveVariant`. It deletes the per-asset manifest
+ * shard and (by default) the PNG from `public/assets/generated/`. The
+ * `generated:` catalog rows are derived from the manifest, so removing the shard
+ * removes the catalog row automatically — there is no separate catalog edit.
  *
  * Steps:
- *   1. Load `manifest.json` and locate the entry for `variantId`.
- *   2. Remove the entry and write the updated manifest back.
- *   3. Remove the `generated:<variantId>` entry from `sprite-catalog.json`.
- *   4. If `deleteAsset` is true (default), delete the PNG file.
- *   5. Return the removed manifest entry.
+ *   1. Locate the shard for `variantId` under `entries/`.
+ *   2. Read + return the entry, then delete the shard.
+ *   3. If `deleteAsset` is true (default), delete the PNG file.
  *
- * Throws `UnapproveError('not-found')` when `variantId` is absent from the
- * manifest, or `UnapproveError('manifest-invalid')` for a corrupt manifest.
+ * Throws `UnapproveError('not-found')` when the shard is absent, or
+ * `UnapproveError('manifest-invalid')` for a corrupt shard.
  */
 export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntry {
   const deleteAsset = options.deleteAsset !== false;
   const fs = options.fs ?? DEFAULT_UNAPPROVE_FS;
 
-  // 1. Load + validate the manifest.
-  if (!fs.existsSync(options.manifestPath)) {
+  const generatedDir = path.dirname(options.manifestPath);
+  const shardsRoot = path.join(generatedDir, 'entries');
+  // `shardPathForKey` routes through `assertSafeManifestKey`, which throws for an
+  // unsafe key (empty, `..`/`.` segment, absolute, or backslash) BEFORE any fs
+  // access. Convert that into the unapprove contract: an unsafe key is simply
+  // "not approved", never a leaked low-level error and never an fs touch.
+  let shardPath: string;
+  try {
+    shardPath = shardPathForKey(generatedDir, options.variantId);
+  } catch {
     throw new UnapproveError(
       'not-found',
-      `Manifest not found — no approved sprites at: ${options.manifestPath}`,
+      `Variant "${options.variantId}" is not approved (unsafe manifest key).`,
     );
   }
 
-  let manifest: Manifest;
+  // Defense-in-depth: even for a key that passed `assertSafeManifestKey`, refuse
+  // any shard path that resolves outside the entries/ tree.
+  if (!path.resolve(shardPath).startsWith(path.resolve(shardsRoot) + path.sep)) {
+    throw new UnapproveError(
+      'not-found',
+      `Variant "${options.variantId}" is not approved (shard path escapes entries/).`,
+    );
+  }
+
+  // 1. Locate the shard.
+  if (!fs.existsSync(shardPath)) {
+    throw new UnapproveError(
+      'not-found',
+      `Variant "${options.variantId}" is not approved (no shard at ${shardPath}).`,
+    );
+  }
+
+  // 2. Read + validate the entry, then delete the shard.
+  let entry: ManifestEntry;
   try {
-    const parsed = JSON.parse(fs.readFileSync(options.manifestPath, 'utf8')) as Partial<Manifest>;
-    if (parsed.version !== MANIFEST_VERSION) {
-      throw new UnapproveError(
-        'manifest-invalid',
-        `Unsupported manifest version: ${String(parsed.version)} (expected ${MANIFEST_VERSION})`,
-      );
-    }
-    // Validate entries shape: must be a plain non-array object (or absent).
-    if (
-      parsed.entries !== undefined &&
-      (typeof parsed.entries !== 'object' ||
-        parsed.entries === null ||
-        Array.isArray(parsed.entries))
-    ) {
-      throw new UnapproveError(
-        'manifest-invalid',
-        `manifest.json has invalid entries field: expected a plain object`,
-      );
-    }
-    manifest = { version: MANIFEST_VERSION, entries: { ...(parsed.entries ?? {}) } };
+    entry = JSON.parse(fs.readFileSync(shardPath, 'utf8')) as ManifestEntry;
   } catch (err) {
-    if (err instanceof UnapproveError) throw err;
     throw new UnapproveError(
       'manifest-invalid',
-      `manifest.json is not parseable: ${err instanceof Error ? err.message : String(err)}`,
+      `Shard ${shardPath} is not parseable: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  fs.unlinkSync(shardPath);
 
-  // 2. Find the entry — use hasOwnProperty to avoid prototype-chain traversal
-  //    for keys like `__proto__` that would otherwise resolve through the object
-  //    prototype and produce a false 200 eviction.
-  const entry = Object.prototype.hasOwnProperty.call(manifest.entries, options.variantId)
-    ? manifest.entries[options.variantId]
-    : undefined;
-  if (!entry) {
-    throw new UnapproveError(
-      'not-found',
-      `Variant "${options.variantId}" is not in the manifest and cannot be unapproved.`,
-    );
-  }
-
-  // 3. Remove from manifest and write back (stable key order preserved).
-  const nextEntries: Record<string, ManifestEntry> = { ...manifest.entries };
-  delete nextEntries[options.variantId];
-  const sortedKeys = Object.keys(nextEntries).sort();
-  const sorted: Record<string, ManifestEntry> = {};
-  for (const key of sortedKeys) {
-    sorted[key] = nextEntries[key]!;
-  }
-  const next: Manifest = { version: MANIFEST_VERSION, entries: sorted };
-  fs.writeFileSync(options.manifestPath, `${JSON.stringify(next, null, 2)}\n`);
-
-  // 4. Remove from catalog (best-effort — a corrupt/missing catalog must not
-  //    block the manifest eviction that already succeeded above).
-  if (fs.existsSync(options.catalogPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(options.catalogPath, 'utf8'));
-      const catalog: Array<Record<string, unknown>> = Array.isArray(raw) ? raw : [];
-      const catalogId = `generated:${options.variantId}`;
-      const filtered = catalog.filter((e) => e.id !== catalogId);
-      if (filtered.length !== catalog.length) {
-        fs.writeFileSync(options.catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
-        formatJsonFilesSync([options.catalogPath]);
-      }
-    } catch {
-      // Best-effort: don't block eviction if catalog is corrupt.
-    }
-  }
-
-  // 5. Delete the on-disk PNG when requested.
+  // 3. Delete the on-disk PNG when requested.
   if (deleteAsset) {
-    const generatedDir = path.join(options.publicAssetsDir, 'generated');
-    const assetAbsPath = path.join(generatedDir, `${options.variantId}.png`);
+    const assetGeneratedDir = path.join(options.publicAssetsDir, 'generated');
+    const assetAbsPath = path.join(assetGeneratedDir, `${options.variantId}.png`);
     // Safety guard: ensure the resolved path stays inside generated/ to prevent
     // a variantId like `../../etc/passwd` from traversing outside the tree.
-    if (!path.resolve(assetAbsPath).startsWith(path.resolve(generatedDir) + path.sep)) {
-      // Skip deletion — manifest + catalog were already cleaned up above.
+    if (!path.resolve(assetAbsPath).startsWith(path.resolve(assetGeneratedDir) + path.sep)) {
+      // Skip deletion — the shard was already removed above.
       return entry;
     }
     if (fs.existsSync(assetAbsPath)) {

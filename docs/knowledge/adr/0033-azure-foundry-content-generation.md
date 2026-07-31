@@ -2,8 +2,11 @@
 
 ## Status
 
-Superseded by ADR 0072 (Retire Foundry — Standardize on Azure OpenAI) (2026-07-24).
-The Foundry provider backend has been removed from the asset pipeline.
+**Superseded** by [ADR 0072 — Retire Foundry Backend, Standardize on Azure OpenAI](0072-retire-foundry-standardize-azure-openai.md) (2026-07-24).
+
+The Foundry migration was not pursued: `aif-crawler-nalfeo` has zero deployments,
+no quota was obtainable, and the parallel foundry code path caused active CI 400
+failures. The asset pipeline standardizes on the direct `azure-openai` backend.
 
 ## Date
 

@@ -1,0 +1,114 @@
+{
+  "briefId": "welcome-room-floor-plate-scuffed",
+  "spriteName": "welcome-room-floor-plate-scuffed-var-6",
+  "assetPath": "generated/welcome-room-floor-plate-scuffed-var-6.png",
+  "approvedAt": "2026-07-27T07:09:29.600Z",
+  "sourceRun": "generated/runs/welcome-room-floor-plate-scuffed/2026-07-27T07-03-11-676f216f",
+  "variantIndex": 6,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 127,
+        "y": 127
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 6,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T07:05:34.019Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The scuffed floor plate concept aligns well with the Crawler design language, featuring subtle wear and asymmetry that avoids generic grim fantasy tropes. The scuffs and drag marks are appropriately understated and believable."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference style in terms of palette, tonal range, and edge treatment. The muted greys and subtle wear details are consistent with the approved sprites, though the scuff marks could be slightly more refined to match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference style in terms of palette, tonal range, and edge treatment. The muted greys and subtle wear details are consistent with the approved sprites, though the scuff marks could be slightly more refined to match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The candidate adheres closely to the brief, including the specified scuff marks, drag marks, and asymmetrical wear. The cool grey tone and lack of saturated colors are executed as instructed."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The tile reads clearly at game scale, with the scuffs and drag marks visible but not overpowering. The silhouette is intact, and the details do not blend into the floor excessively. Slightly more contrast in the scuff marks could enhance readability further."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate is functional and adheres to the brief, but minor adjustments could improve its integration with the references.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 4605,
+      "completionTokens": 342,
+      "totalTokens": 4947
+    }
+  },
+  "type": "tile",
+  "contentHash": "c39e615d0030e2ac7f090c7748cb6535ef230e36e5e24c1231dfd9c36b7dc21a",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed\\2026-07-27T07-03-11-676f216f\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed\\2026-07-27T07-03-11-676f216f\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed\\2026-07-27T07-03-11-676f216f\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

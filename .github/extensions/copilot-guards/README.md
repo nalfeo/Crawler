@@ -155,6 +155,59 @@ session.
 - `additionalContext` from any guard is concatenated and returned even when the overall decision is `allow`.
 - A guard that throws is logged and treated per its `failClosed` flag (safety guards fail-closed; advisory guards fail-open).
 
+### Session-store attribution format
+
+Every denial or ask reason string is formatted as:
+
+```
+[copilot-guards/<id> | tool:<toolName>] <reason>
+```
+
+For PR aggregate `create_pull_request` decisions, each guard line carries its own
+parseable marker:
+
+```text
+PR preflight failed. Fix the following before retrying create_pull_request:
+  ❌ [copilot-guards/pr-preflight | tool:create_pull_request] <reason>
+  ❌ [copilot-guards/pr-review-ledger | tool:create_pull_request] <reason>
+```
+
+This embeds both the guard id and the denied tool name so that Chronicle
+session-store SQL queries can attribute denials **even when the `tool_start_name`
+column is NULL** (tool was pre-empted, never started):
+
+```sql
+-- All guard denials in last 7 days
+WHERE tool_complete_result_content ILIKE '%[copilot-guards/%'
+  AND tool_complete_result_content ILIKE '%"permissionDecision":"deny"%'
+  AND timestamp > now() - INTERVAL '7 days'
+
+-- Extract every guard id + tool marker from result content
+SELECT
+  unnest(
+    regexp_extract_all(
+      tool_complete_result_content,
+      '\[copilot-guards/([^|]+) \| tool:([^\]]+)\]',
+      1
+    )
+  ) AS guard_id,
+  unnest(
+    regexp_extract_all(
+      tool_complete_result_content,
+      '\[copilot-guards/([^|]+) \| tool:([^\]]+)\]',
+      2
+    )
+  ) AS denied_tool
+FROM events
+WHERE tool_complete_result_content ILIKE '%[copilot-guards/%'
+  AND tool_complete_result_content ILIKE '%"permissionDecision":"deny"%'
+  AND timestamp > now() - INTERVAL '7 days'
+```
+
+The `files/guard-telemetry.jsonl` artifact remains the authoritative per-decision
+record; the session-store format above is a supplementary query path for
+Chronicle's cross-session fire-rate reports.
+
 ---
 
 ## Adding a new guard

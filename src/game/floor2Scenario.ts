@@ -940,11 +940,28 @@ export function initializeFloor2Scenario(
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
   // Floor 2 runtime owns the generated-equipment reward economy; enable the
-  // full dependency closure so Floor 2 achievement equipment rewards can
-  // resolve in shipped gameplay paths.
+  // full dependency closure so Floor 2 achievement equipment rewards, the
+  // Quartermaster/shop stock economy, and boss-chest reward resolution can all
+  // run in shipped gameplay paths. `floor2EquipmentEconomy` gates
+  // Quartermaster stock generation/purchasing (quartermaster-stock.ts,
+  // quartermaster-purchase.ts) and boss chest reward resolution
+  // (boss-chest-resolver.ts) — both already wired to real Floor 2 events but
+  // previously inert because this flag defaulted to false in the shipped
+  // path. Boss chests currently resolve at Common rarity (tier1, see
+  // boss-chest-resolver.ts); the 85/15 Uncommon/Rare split from
+  // PLAN.md §E3-C is a future task not yet implemented.
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+  world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+  // `floor2EquipmentAiMaintenance` gates the headless/behavior-tree AI's
+  // ability to act on the generated stock this flag closure produces
+  // (purchase + equip via `runSettlementMaintenancePlanner`). Without this,
+  // the economy would be generated but have zero real consumer that ever
+  // acts on it — the same "shipped inert" failure class this flag closure
+  // exists to eliminate. Interactive gameplay consumes the same economy
+  // through MainGameScene's settlement shop interaction flow.
+  world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
   if (!options?.playerCarryover) {
     applyFloor2DirectStartPlayerState(world, playerEid);
     initializePlayerWeaponSkills(world, playerEid);
@@ -1052,6 +1069,11 @@ export function initializeFloor2Scenario(
       ? world.rng.nextInt(settlementShopRange[0], settlementShopRange[1])
       : undefined;
 
+  if (options?.playerCarryover) {
+    restorePlayerCarryover(world, playerEid, options.playerCarryover);
+    initializePlayerWeaponSkills(world, playerEid);
+  }
+
   initializeFloor2Settlement(world, {
     ...(shopCount === 1 || shopCount === 2 ? { shopCount } : {}),
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
@@ -1088,11 +1110,6 @@ export function initializeFloor2Scenario(
         }
       }
     }
-  }
-
-  if (options?.playerCarryover) {
-    restorePlayerCarryover(world, playerEid, options.playerCarryover);
-    initializePlayerWeaponSkills(world, playerEid);
   }
 
   if (floor2Config?.governor?.autoVictoryOnStart === true) {

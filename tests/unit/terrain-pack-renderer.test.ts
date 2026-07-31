@@ -13,14 +13,24 @@
  */
 import type Phaser from 'phaser';
 import { describe, it, expect } from 'vitest';
-import { buildTerrainLayer } from '../../src/engine/terrain-renderer.js';
+import {
+  buildTerrainLayer,
+  PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES,
+} from '../../src/engine/terrain-renderer.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
-import { BiomeType, TerrainType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import {
+  BiomeType,
+  RoomRole,
+  TerrainType,
+  TilePresets,
+  type MapConfig,
+} from '../../src/shared/map-types.js';
 import { PIXELS_PER_FOOT } from '../../src/shared/units.js';
 import { getTerrainPack } from '../../src/shared/terrain-pack-registry.js';
 import {
+  MASK_BIT,
   computeRawMask8,
   neighborMask8InTerrain,
   normalizeBlob47Mask,
@@ -36,7 +46,7 @@ interface StampCall {
   frame: number | undefined;
   x: number;
   y: number;
-  config: { originX: number; originY: number; scaleX: number; scaleY: number };
+  config: { originX: number; originY: number; scaleX: number; scaleY: number; rotation?: number };
 }
 
 class MockRenderTexture {
@@ -115,6 +125,7 @@ function makeFloorMap(
   widthTiles: number,
   heightTiles: number,
   seed = 42,
+  roomGraph: RoomGraph = new RoomGraph(),
 ): FloorMap {
   const config: MapConfig = {
     widthTiles,
@@ -130,7 +141,33 @@ function makeFloorMap(
   const tileMap = new TileMap(widthTiles, heightTiles);
   tileMap.fill(TilePresets.FLOOR);
   const terrain = Uint8Array.from(terrainTypes);
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 0, y: 0 });
+  return new FloorMap(config, tileMap, roomGraph, terrain, { x: 0, y: 0 });
+}
+
+function makeLineworkFloorMap(seed = 4242): FloorMap {
+  const size = 25;
+  const terrain = Array<TerrainType>(size * size).fill(TerrainType.STONE_WALL);
+  const carve = (tx: number, ty: number, radius = 0): void => {
+    for (let y = ty - radius; y <= ty + radius; y++) {
+      for (let x = tx - radius; x <= tx + radius; x++) {
+        if (x < 0 || y < 0 || x >= size || y >= size) continue;
+        terrain[y * size + x] = TerrainType.STONE_FLOOR;
+      }
+    }
+  };
+  for (let tx = 2; tx < size - 2; tx++) carve(tx, 12);
+  for (let ty = 2; ty < size - 2; ty++) carve(12, ty);
+  for (let tx = 4; tx < size - 4; tx++) carve(tx, 6);
+  for (let tx = 4; tx < size - 4; tx++) carve(tx, 18);
+  for (let ty = 4; ty < size - 4; ty++) carve(6, ty);
+  for (let ty = 4; ty < size - 4; ty++) carve(18, ty);
+  carve(6, 6, 1);
+  carve(18, 18, 1);
+
+  const roomGraph = new RoomGraph();
+  roomGraph.add({ x: 5, y: 5, width: 3, height: 3 }, [], [], RoomRole.BOSS_DEN);
+  roomGraph.add({ x: 17, y: 17, width: 3, height: 3 }, [], [], RoomRole.RESOURCE_HEART);
+  return makeFloorMap(terrain, size, size, seed, roomGraph);
 }
 
 const pack = getTerrainPack('industrial-cave');
@@ -142,14 +179,22 @@ const allPackKeys = new Set<string>([
   pack.wallAutotile.textureKey,
   ...pack.floorPool.map((v) => v.textureKey),
   ...pack.corridorPool.map((v) => v.textureKey),
-  ...Object.values(pack.doorSet).map((v) => v.textureKey),
   ...(pack.wallAccents ?? []).map((a) => a.textureKey),
+  ...(pack.linework ?? []).map((l) => l.textureKey),
+  ...(pack.linework ?? []).flatMap((l) => (l.props ? [l.props.textureKey] : [])),
 ]);
 
 describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8)', () => {
   it('bypasses generated/sprite/color entirely for an isolated STONE_WALL tile', () => {
     const { scene, rt } = createPackScene(allPackKeys);
-    const floorMap = makeFloorMap([TerrainType.STONE_WALL], 1, 1);
+    // 3x3 grid, STONE_WALL at the center surrounded by real in-bounds FLOOR
+    // tiles on all 8 sides. A degenerate 1x1 map would put every neighbor
+    // out-of-bounds, which the wall mask now (correctly) reads as wall/rock
+    // for full-bleed edge behavior — that would test the fully-enclosed case,
+    // not an isolated wall, so the center tile needs genuine floor neighbors.
+    const grid = Array<TerrainType>(9).fill(TerrainType.STONE_FLOOR);
+    grid[4] = TerrainType.STONE_WALL; // center, index (1,1) in a 3x3 grid
+    const floorMap = makeFloorMap(grid, 3, 3);
 
     const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
 
@@ -157,8 +202,7 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.spriteCount).toBe(0);
     expect(result.colorCount).toBe(0);
     expect(result.packWallCount).toBe(1);
-    // Underdraw does NOT count toward packFloorCount — it is not a player-visible floor tile.
-    expect(result.packFloorCount).toBe(0);
+    expect(result.packFloorCount).toBe(8);
     expect(result.packCorridorCount).toBe(0);
 
     // Isolated wall: no wall neighbors -> raw mask 0 -> canonical mask 0.
@@ -167,17 +211,15 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       (m) => m.maskId === expectedMask,
     )!.frameIndex;
 
-    // stamps[0] = underdraw (floor pool combo), stamps[1] = wall atlas frame, stamps[2] = optional accent
-    expect(rt.stamps.length).toBeGreaterThanOrEqual(2);
-    expect(rt.stamps.length).toBeLessThanOrEqual(3);
-    expect(rt.stamps[1]!.key).toBe(pack.wallAutotile.textureKey);
-    expect(rt.stamps[1]!.frame).toBe(expectedFrame);
-    expect(rt.stamps[1]!.config.scaleX).toBe(packWallScale);
-    expect(rt.stamps[1]!.config.scaleY).toBe(packWallScale);
-    if (rt.stamps.length === 3) {
-      const accentKeys = new Set((pack.wallAccents ?? []).map((a) => a.textureKey));
-      expect(accentKeys.has(rt.stamps[2]!.key)).toBe(true);
-      expect(rt.stamps[2]!.frame).toBe(expectedFrame);
+    const baseWallStamps = rt.stamps.filter((s) => s.key === pack.wallAutotile.textureKey);
+    expect(baseWallStamps).toHaveLength(1);
+    expect(baseWallStamps[0]!.frame).toBe(expectedFrame);
+    expect(baseWallStamps[0]!.config.scaleX).toBe(packWallScale);
+    expect(baseWallStamps[0]!.config.scaleY).toBe(packWallScale);
+    const accentKeys = new Set((pack.wallAccents ?? []).map((a) => a.textureKey));
+    const accentStamps = rt.stamps.filter((s) => accentKeys.has(s.key));
+    for (const accentStamp of accentStamps) {
+      expect(accentStamp.frame).toBe(expectedFrame);
     }
   });
 
@@ -206,20 +248,207 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(centerStamp!.frame).toBe(expectedFrame);
   });
 
-  it('treats STONE_WALL and CAVE_WALL as connected pack walls for mask selection', () => {
+  it.each(['floor1-dungeon', 'industrial-cave'] as const)(
+    'treats a DOOR neighbour as wall so %s walls run flush into the jamb',
+    (packId) => {
+      // The defect: a door is a hole in a wall line, and its own art is a
+      // full-bleed tile. When the blob47 mask read DOOR as floor, each flanking
+      // wall picked mask 0 (isolated), which insets `WALL_INSET_PX` off every
+      // side — leaving a visible strip of floor between the wall and the door
+      // jamb. The wall must instead select the mask with the door's cardinal bit
+      // set, whose silhouette reaches that shared boundary. Covered for BOTH the
+      // square dungeon pack this session regenerated and a rounded cave pack, so
+      // the rule is proven to be a terrain semantic rather than dungeon-only.
+      const doorPack = getTerrainPack(packId);
+      const keys = new Set<string>([
+        doorPack.wallAutotile.textureKey,
+        ...doorPack.floorPool.map((v) => v.textureKey),
+        ...doorPack.corridorPool.map((v) => v.textureKey),
+        ...(doorPack.wallAccents ?? []).map((a) => a.textureKey),
+        ...(doorPack.linework ?? []).map((l) => l.textureKey),
+      ]);
+      const { scene, rt } = createPackScene(keys);
+      // 5x3 grid: middle row is [FLOOR, WALL, DOOR, WALL, FLOOR], flanked
+      // above/below by FLOOR rows. This keeps every neighbor of both wall
+      // tiles in-bounds — a bare 3x1 row would put N/S (and, for the
+      // outermost walls, W/E too) out-of-bounds, which the wall mask now
+      // (correctly) reads as wall/rock for edge full-bleed, swamping the
+      // door-neighbour signal this test targets.
+      const grid = Array<TerrainType>(15).fill(TerrainType.STONE_FLOOR);
+      grid[6] = TerrainType.STONE_WALL; // (1,1)
+      grid[7] = TerrainType.DOOR; // (2,1)
+      grid[8] = TerrainType.STONE_WALL; // (3,1)
+      const floorMap = makeFloorMap(grid, 5, 3);
+
+      buildTerrainLayer(scene, floorMap, { terrainPackId: packId });
+
+      const baseWallStamps = rt.stamps.filter((s) => s.key === doorPack.wallAutotile.textureKey);
+      // The door tile itself is NOT stamped from the wall atlas — this is a
+      // neighbour-only rule.
+      expect(baseWallStamps).toHaveLength(2);
+
+      const frameFor = (rawMask: number) =>
+        doorPack.wallAutotile.masks.find((m) => m.maskId === normalizeBlob47Mask(rawMask))!
+          .frameIndex;
+      const isolatedFrame = frameFor(0);
+      // Left wall connects EAST to the door; right wall connects WEST.
+      const eastFrame = frameFor(MASK_BIT.E);
+      const westFrame = frameFor(MASK_BIT.W);
+
+      expect(baseWallStamps[0]!.frame).toBe(eastFrame);
+      expect(baseWallStamps[1]!.frame).toBe(westFrame);
+      // Guards against the assertion passing vacuously if the pack ever collapsed
+      // those masks onto one frame.
+      expect(eastFrame).not.toBe(isolatedFrame);
+      expect(westFrame).not.toBe(isolatedFrame);
+    },
+  );
+
+  it('HARD GATE: treats a VOID (rock) neighbour as wall so no floor apron leaks past a wall into rock', () => {
+    // The defect: the mask predicate treated ANY non-wall neighbour (including
+    // solid rock, TerrainType.VOID) as "absent", so a wall bordering rock
+    // inset away from it and exposed a sliver of room floor sitting inside the
+    // rock. The fix: PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES now includes VOID,
+    // so a wall reads rock as wall for mask purposes and full-bleeds against
+    // it — no floor-pool apron underneath.
     const { scene, rt } = createPackScene(allPackKeys);
-    const floorMap = makeFloorMap([TerrainType.STONE_WALL, TerrainType.CAVE_WALL], 2, 1);
+    // 3x3 grid, STONE_WALL at center; every neighbour is real in-bounds FLOOR
+    // *except* the north neighbour, which is VOID (solid rock). Every other
+    // neighbour stays FLOOR so only the VOID signal is under test.
+    const grid = Array<TerrainType>(9).fill(TerrainType.STONE_FLOOR);
+    grid[1] = TerrainType.VOID; // (1,0) — north of center
+    grid[4] = TerrainType.STONE_WALL; // (1,1) — center, tile under test
+    const floorMap = makeFloorMap(grid, 3, 3);
 
     buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
 
-    const rawLeft = computeRawMask8(0, 0, 2, 1, (nx, ny) => {
-      const t = floorMap.terrain[ny * 2 + nx] as TerrainType;
+    const wallStamps = rt.stamps.filter((s) => s.key === pack.wallAutotile.textureKey);
+    expect(wallStamps).toHaveLength(1);
+
+    const frameFor = (rawMask: number) =>
+      pack.wallAutotile.masks.find((m) => m.maskId === normalizeBlob47Mask(rawMask))!.frameIndex;
+    const isolatedFrame = frameFor(0);
+    const northFrame = frameFor(MASK_BIT.N);
+
+    // The wall must select the mask with its NORTH cardinal bit set (rock read
+    // as wall), not the isolated (mask 0, all-sides-inset) frame.
+    expect(wallStamps[0]!.frame).toBe(northFrame);
+    expect(northFrame).not.toBe(isolatedFrame);
+
+    // And the floor pool must NOT stamp anything into the rock tile itself —
+    // VOID is not a poolable terrain type, so no apron slips out past the wall.
+    const poolKeys = new Set<string>([
+      ...pack.floorPool.map((v) => v.textureKey),
+      ...pack.corridorPool.map((v) => v.textureKey),
+    ]);
+    const voidTileCenterX = 1 * tileSize + tileSize / 2;
+    const voidTileCenterY = 0 * tileSize + tileSize / 2;
+    const poolStampsAtVoidTile = rt.stamps.filter(
+      (s) => poolKeys.has(s.key) && s.x === voidTileCenterX && s.y === voidTileCenterY,
+    );
+    expect(poolStampsAtVoidTile).toHaveLength(0);
+  });
+
+  it('HARD GATE: treats a TREE neighbour as wall so no floor apron leaks past a wall into a tree', () => {
+    // Same defect class as the VOID gate above, and this exact membership has
+    // already been dropped once (and shipped green) on the theory that TREE has
+    // no wall art. That theory is irrelevant: this is a NEIGHBOUR-ONLY rule, so
+    // including TREE never stamps the wall atlas into the tree tile — it only
+    // stops the wall from insetting away from a tile you cannot walk onto and
+    // exposing a floor sliver under the tree. The maintainer's rule is "do not
+    // inset on sides where the other side is not walkable"; TREE is not
+    // walkable, so it belongs in the set.
+    const { scene, rt } = createPackScene(allPackKeys);
+    // 3x3 grid, STONE_WALL at center; every neighbour is real in-bounds FLOOR
+    // *except* the north neighbour, which is TREE. Only the TREE signal is
+    // under test.
+    const grid = Array<TerrainType>(9).fill(TerrainType.STONE_FLOOR);
+    grid[1] = TerrainType.TREE; // (1,0) — north of center
+    grid[4] = TerrainType.STONE_WALL; // (1,1) — center, tile under test
+    const floorMap = makeFloorMap(grid, 3, 3);
+
+    buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    const wallStamps = rt.stamps.filter((s) => s.key === pack.wallAutotile.textureKey);
+    expect(wallStamps).toHaveLength(1);
+
+    const frameFor = (rawMask: number) =>
+      pack.wallAutotile.masks.find((m) => m.maskId === normalizeBlob47Mask(rawMask))!.frameIndex;
+    const isolatedFrame = frameFor(0);
+    const northFrame = frameFor(MASK_BIT.N);
+
+    // The wall must select the mask with its NORTH cardinal bit set (tree read
+    // as solid), not the isolated (mask 0, all-sides-inset) frame.
+    expect(wallStamps[0]!.frame).toBe(northFrame);
+    expect(northFrame).not.toBe(isolatedFrame);
+  });
+
+  it('HARD GATE: every non-walkable neighbour terrain type stays in the wall-mask set', () => {
+    // Direct set-membership backstop for the behavioural gates above. The
+    // behavioural tests only cover VOID and TREE; this catches a silent drop of
+    // any member of the rule, including WOOD_WALL and DOOR, which have no
+    // dedicated mask gate of their own.
+    for (const terrain of [
+      TerrainType.DOOR,
+      TerrainType.VOID,
+      TerrainType.WOOD_WALL,
+      TerrainType.TREE,
+    ]) {
+      expect(PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES.has(terrain)).toBe(true);
+    }
+  });
+
+  it('HARD GATE: treats an out-of-bounds neighbour as wall so a map-edge wall full-bleeds instead of insetting into nothing', () => {
+    // The defect: `computeRawMask8` treated OOB neighbours as non-matching
+    // (floor) by default, so a wall on the map edge insets away from the edge
+    // exactly as if bordered by real floor — exposing a floor-pool sliver past
+    // the map's border. The fix: the pack wall-mask call sites now pass
+    // `outOfBoundsMatches = true`, so a missing neighbour past the border
+    // reads as wall/rock, matching the in-bounds VOID rule above.
+    const { scene, rt } = createPackScene(allPackKeys);
+    // 3x3 grid, STONE_WALL at the WEST edge, middle row: (0,1). Its west
+    // neighbour (x=-1) is out-of-bounds; every other neighbour is real
+    // in-bounds FLOOR, so only the OOB signal is under test.
+    const grid = Array<TerrainType>(9).fill(TerrainType.STONE_FLOOR);
+    grid[3] = TerrainType.STONE_WALL; // (0,1) — west edge, tile under test
+    const floorMap = makeFloorMap(grid, 3, 3);
+
+    buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    const wallStamps = rt.stamps.filter((s) => s.key === pack.wallAutotile.textureKey);
+    expect(wallStamps).toHaveLength(1);
+
+    const frameFor = (rawMask: number) =>
+      pack.wallAutotile.masks.find((m) => m.maskId === normalizeBlob47Mask(rawMask))!.frameIndex;
+    const isolatedFrame = frameFor(0);
+    const westFrame = frameFor(MASK_BIT.W);
+
+    // The wall must select the mask with its WEST cardinal bit set (map edge
+    // read as wall), not the isolated (mask 0, all-sides-inset) frame.
+    expect(wallStamps[0]!.frame).toBe(westFrame);
+    expect(westFrame).not.toBe(isolatedFrame);
+  });
+
+  it('treats STONE_WALL and CAVE_WALL as connected pack walls for mask selection', () => {
+    const { scene, rt } = createPackScene(allPackKeys);
+    // 4x3 grid: middle row is [FLOOR, STONE_WALL, CAVE_WALL, FLOOR], flanked
+    // above/below by FLOOR rows, so neither wall tile has an out-of-bounds
+    // neighbor — a bare 2x1 row would put nearly every neighbor OOB, which
+    // the wall mask now (correctly) reads as wall/rock, swamping the signal
+    // this test targets (STONE_WALL/CAVE_WALL reading each other as wall).
+    const grid = Array<TerrainType>(12).fill(TerrainType.STONE_FLOOR);
+    grid[5] = TerrainType.STONE_WALL; // (1,1)
+    grid[6] = TerrainType.CAVE_WALL; // (2,1)
+    const floorMap = makeFloorMap(grid, 4, 3);
+
+    buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    const isWallLike = (nx: number, ny: number): boolean => {
+      const t = floorMap.terrain[ny * 4 + nx] as TerrainType;
       return t === TerrainType.STONE_WALL || t === TerrainType.CAVE_WALL;
-    });
-    const rawRight = computeRawMask8(1, 0, 2, 1, (nx, ny) => {
-      const t = floorMap.terrain[ny * 2 + nx] as TerrainType;
-      return t === TerrainType.STONE_WALL || t === TerrainType.CAVE_WALL;
-    });
+    };
+    const rawLeft = computeRawMask8(1, 1, 4, 3, isWallLike);
+    const rawRight = computeRawMask8(2, 1, 4, 3, isWallLike);
     const leftFrame = pack.wallAutotile.masks.find(
       (m) => m.maskId === normalizeBlob47Mask(rawLeft),
     )!.frameIndex;
@@ -438,6 +667,39 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     expect(result.packFloorCount).toBe(0);
     expect(rt.stamps).toHaveLength(1);
     expect(rt.stamps[0]!.key).toBe(pack.wallAutotile.textureKey);
+  });
+
+  it('executes linework runtime stamping with props and deferred wall-entry ordering', () => {
+    const { scene, rt } = createPackScene(allPackKeys);
+    const floorMap = makeLineworkFloorMap(4242);
+
+    const result = buildTerrainLayer(scene, floorMap, { terrainPackId: 'industrial-cave' });
+
+    expect(result.packLineworkHubs).toHaveLength(2);
+    expect(result.packLineworkTileCount).toBeGreaterThan(0);
+    expect(result.packLineworkRuns.length).toBeGreaterThan(0);
+
+    const lineworkKeys = new Set((pack.linework ?? []).map((layer) => layer.textureKey));
+    const lineworkStamps = rt.stamps.filter((stamp) => lineworkKeys.has(stamp.key));
+    expect(lineworkStamps.length).toBeGreaterThan(0);
+    expect(lineworkStamps.some((stamp) => typeof stamp.frame === 'number')).toBe(true);
+
+    const propKeys = new Set(
+      (pack.linework ?? []).flatMap((layer) => (layer.props ? [layer.props.textureKey] : [])),
+    );
+    const propStamps = rt.stamps.filter((stamp) => propKeys.has(stamp.key));
+    expect(propStamps.length).toBeGreaterThan(0);
+    expect(propStamps.some((stamp) => stamp.config.rotation === Math.PI / 2)).toBe(true);
+
+    const lastWallStampIndex = rt.stamps.reduce(
+      (latest, stamp, index) => (stamp.key === pack.wallAutotile.textureKey ? index : latest),
+      -1,
+    );
+    expect(lastWallStampIndex).toBeGreaterThanOrEqual(0);
+    const deferredLineworkIndex = rt.stamps.findIndex(
+      (stamp, index) => lineworkKeys.has(stamp.key) && index > lastWallStampIndex,
+    );
+    expect(deferredLineworkIndex).toBeGreaterThan(lastWallStampIndex);
   });
 });
 

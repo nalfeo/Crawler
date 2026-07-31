@@ -4,7 +4,14 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 * * * *'
+    # Daily full-CI backstop. This is the only unconditionally-full CI run in
+    # the system: the `changes` job below forces every scope flag off for
+    # schedule events, so it re-runs gates that a `detect-art-only.sh`
+    # misclassification could have skipped on a PR or push. It is NOT a
+    # main-health probe for the merge train -- promotion is gated solely on the
+    # validated composite candidate (ADR 0077) -- so hourly cadence is no
+    # longer needed for the train to make progress.
+    - cron: '0 6 * * *'
   pull_request:
     branches: [main]
     paths:
@@ -39,7 +46,6 @@ jobs:
   changes:
     name: Detect change scope
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule' || vars.MERGE_TRAIN_ENABLED == 'true'
     outputs:
       art_only: ${{ steps.scope.outputs.art_only }}
       docs_only: ${{ steps.scope.outputs.docs_only }}
@@ -192,6 +198,12 @@ jobs:
       DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the AUDIT_EXCEPTIONS comparison guard resolves the PR
+          # merge-base via GITHUB_BASE_SHA and reads the base file with git show.
+          # A depth-1 shallow clone cannot reach the base commit — the guard
+          # would fail closed rather than passing vacuously.
+          fetch-depth: 0
 
       # Playwright is required by the guard tests: sprite-editor and set-piece-editor
       # extension tests import chromium directly (see .github/extensions/*/tests/).
@@ -267,6 +279,22 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:sort-assets
 
+      # Sharded-manifest invariants (deterministic, exit-coded): every per-asset
+      # shard parses against the schema, composing the aggregate from shards is
+      # deterministic, the committed sprite-catalog.json carries NO generated:
+      # rows (they must be derived), and the composed full catalog has unique
+      # ids. Guards the sharding contract that keeps parallel art PRs conflict-free.
+      - name: Generated-manifest invariants
+        if: env.DOCS_ONLY != 'true'
+        run: npm run sprites:check-manifest
+      # Manifest hard-block invariant: no approved shard entry may carry
+      # judgeScorecard.hardBlocked=true. The judge hard-block is a veto, not a
+      # score to be weighed. approve.ts gates this at approval-time; this
+      # check catches any entries that pre-dated the gate.
+      - name: Manifest hard-block check
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:manifest-hard-blocked
+
       - name: Lab gate check
         if: env.DOCS_ONLY != 'true'
         run: bash scripts/agent/lab-gate-check.sh
@@ -279,6 +307,22 @@ jobs:
       - name: Orphaned-system wiring guard
         if: env.DOCS_ONLY != 'true'
         run: npm run check:wired-systems
+
+      # Test-only exports guard: flags src/ exports whose only consumers are in
+      # tests/**. Closes the blind spot where test-only usage masked production
+      # deadness in knip (knip includes tests/** in its project scope). The
+      # textbook case: listInventoryEntries in src/shared/inventory.ts was
+      # unit- and property-tested yet never called from production code.
+      - name: Test-only exports guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:test-only-exports
+
+      # Knip suppressions guard: validates that every ignoreIssues entry in
+      # knip.config.ts has a non-expired reason+expiresOn. An expired entry means
+      # the deadness must be fixed — not the date extended.
+      - name: Knip suppressions expiry guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:knip-suppressions
 
       # Exact-version guard: block any PR that introduces a semver range into
       # direct deps, devDeps, optionalDeps, or overrides. Ranges allow unrelated
@@ -337,6 +381,11 @@ jobs:
       - name: Security audit
         if: always() && env.GAMEPLAY_SAFE != 'true'
         continue-on-error: true
+        env:
+          # Provide the PR base SHA so the AUDIT_EXCEPTIONS comparison guard can
+          # compare the branch against its merge base. Empty on direct pushes
+          # (not a PR) — the guard skips gracefully when this is unset.
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: npm run security:audit
 
       # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
@@ -345,6 +394,40 @@ jobs:
         if: always() && env.GAMEPLAY_SAFE != 'true'
         continue-on-error: true
         run: npm run typecheck
+
+  # Job 2b: Silent merge-revert guard (issue #2282).
+  #
+  # Its own job rather than a step in check-lightweight, because it needs the
+  # FULL history (`fetch-depth: 0`) to resolve merge bases, and that fetch cost
+  # should not land on the fast lightweight job.
+  #
+  # Deliberately NOT gated on DOCS_ONLY: a merge can silently revert a policy
+  # doc or an ADR just as easily as a source file, and those reverts are just
+  # as invisible in review.
+  check-silent-reverts:
+    name: Silent Merge-Revert Guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the guard resolves merge bases and walks every merge
+          # commit on the branch. A shallow clone cannot do that — the guard
+          # detects this and FAILS CLOSED rather than passing vacuously.
+          fetch-depth: 0
+          # The default `pull_request` checkout is GitHub's synthetic merge
+          # commit, which would itself be walked as a merge and can never carry
+          # an ack trailer. Check out the real PR head instead.
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: ./.github/actions/setup-node
+        with:
+          install-playwright: 'false'
+
+      - name: Silent merge-revert guard
+        env:
+          SILENT_REVERT_BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+        run: npm run check:silent-reverts
 
   # Job 3: Unit tests (critical path, must pass)
   # Runs WITHOUT coverage instrumentation so the gate stays fast (~27 s).
@@ -391,7 +474,7 @@ jobs:
       - uses: ./.github/actions/setup-node
 
       - name: Unit tests with coverage
-        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json-summary --coverage.reporter=text
+        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json --coverage.reporter=json-summary --coverage.reporter=text
 
       - name: Upload coverage summary
         if: always()
@@ -473,6 +556,81 @@ jobs:
       - name: Headless Floor 1 completion
         run: npx vitest run --project headless --reporter=verbose
 
+  # Job 5b: Set-piece reachability hard gate (scoped)
+  # Runs the 200-seed Floor 1 welcome-room prefab reachability sweep whenever the
+  # carve/gate surface changes on a PR. Wired into merge-gate through this same
+  # workflow so failures block the required `ci` status.
+  set-piece-reachability:
+    name: Set-piece reachability
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Scope set-piece reachability sweep
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed_files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+          if printf '%s\n' "$changed_files" | grep -Eq '^(src/core/map/|src/game/floorScenario\.ts$|src/game/set-piece-reachability\.ts$|src/shared/set-piece-types\.ts$|src/shared/data/set-pieces\.json$|scripts/agent/set-piece/reachability-sweep\.ts$|\.github/workflows/(set-piece-reachability|ci)\.yml$)'; then
+            echo "run_sweep=true" >> "$GITHUB_OUTPUT"
+            echo "Set-piece reachability sweep enabled for this diff."
+          else
+            echo "run_sweep=false" >> "$GITHUB_OUTPUT"
+            echo "Set-piece reachability sweep skipped (no matching files changed)."
+          fi
+
+      - name: Run set-piece reachability sweep
+        if: steps.scope.outputs.run_sweep == 'true'
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/set-piece/reachability-sweep.ts \
+            --count 200 \
+            --out set-piece-reachability.json
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.scope.outputs.run_sweep == 'true'
+        with:
+          name: set-piece-reachability
+          path: set-piece-reachability.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Aggregate row ownership guard — detects silent data-loss when a PR
+  # regenerates an aggregate file (manifest.json, boss-abilities status) from a
+  # stale snapshot, silently reverting rows that concurrent PRs updated.
+  # Runs only on pull_request events; skipped for docs-only changes.
+  # Requires fetch-depth: 0 so git merge-base can find the true common ancestor.
+  check-aggregate-rows:
+    name: Aggregate row ownership guard
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.docs_only != 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Aggregate row ownership guard
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npm run check:aggregate-row-ownership
+
   # Job 6: Build (moved to advisory, not blocking)
   build:
     name: Build
@@ -498,10 +656,13 @@ jobs:
       [
         changes,
         check-lightweight,
+        check-aggregate-rows,
+        check-silent-reverts,
         test-unit,
         test-integration,
         test-sprites,
         test-headless,
+        set-piece-reachability,
         test-e2e-game,
         test-e2e-assets,
         test-e2e-devtools,
@@ -521,11 +682,16 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] &&
              [ "$train_enabled" = "true" ] &&
              [ "${{ needs.changes.outputs.train_promoted }}" = "true" ]; then
-            echo "✅ Main-push heavy CI deferred to the hourly health run"
-            exit 0
-          fi
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$train_enabled" = "false" ]; then
-            echo "✅ Hourly health run disabled with the merge train"
+            # Not a deferral: the merge train proves (landedCommitProofError,
+            # merge-train/reconcile-lib.mjs) that this landed commit's tree is
+            # byte-identical to the validated candidate prefix tree, and that
+            # candidate already passed the merge-train validation gate
+            # (static, unit, sprite, health, security). Re-running the heavy
+            # suite here would re-test an identical tree. Integration, headless,
+            # and E2E gates are covered unconditionally by the daily backstop
+            # schedule run (ci.yml schedule trigger), which forces all scope
+            # flags off regardless of change content.
+            echo "✅ Main-push heavy CI skipped: landed tree is byte-identical to the validated candidate tree"
             exit 0
           fi
 
@@ -561,6 +727,19 @@ jobs:
           # job still runs (and succeeds) so the human-approval gate is
           # unconditionally enforced for labeled docs-only PRs.
           check "Lightweight Checks"            "${{ needs.check-lightweight.result }}"
+          # Silent merge-revert guard (#2282). PR-only by construction, so a
+          # skip is legitimate ONLY on non-pull_request events. Any other skip
+          # fails closed rather than being counted as a pass.
+          silent_revert_result="${{ needs.check-silent-reverts.result }}"
+          if [ "$silent_revert_result" = "success" ]; then
+            echo "✅ Silent merge-revert guard: success"
+          elif [ "$silent_revert_result" = "skipped" ] && \
+               [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "✅ Silent merge-revert guard: skipped (not a pull_request event)"
+          else
+            echo "❌ Silent merge-revert guard: $silent_revert_result"
+            exit 1
+          fi
           # Unit tests: skipped for sprites_only (allow_skipped=true).
           check "Unit tests"                    "${{ needs.test-unit.result }}"        "true"
           # Integration tests: skipped for art_only or sprites_only (allow_skipped=true).
@@ -581,6 +760,12 @@ jobs:
             echo "❌ Headless Floor 1 completion: $headless_result (sim_touched=${sim_touched:-MISSING})"
             exit 1
           fi
+          # Set-piece reachability sweep: scoped to carve/gate files. A skipped job
+          # is an intentional scope skip (or non-PR event) and counts as pass.
+          check "Set-piece reachability"      "${{ needs.set-piece-reachability.result }}" "true"
+          # Aggregate row ownership guard: only runs on pull_request events; skipped
+          # for docs-only and push-to-main (allow_skipped=true).
+          check "Aggregate row ownership"     "${{ needs.check-aggregate-rows.result }}"   "true"
           # E2E visual jobs: each runs only when its surface was touched (allow_skipped=true).
           # visual_touched=false (CI/tooling-only) skips all three → no Playwright runner launched.
           # art_only=true → only e2e-assets runs (targeted asset smoke, not the full game suite).

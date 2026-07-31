@@ -41,18 +41,14 @@ import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../shared/data/floor2-weapon-base
 export const BOSS_CHEST_REWARD_BASE_IDS: readonly string[] = FLOOR2_WEAPON_WAVE_A_BASE_IDS;
 
 /**
- * Boss chests always resolve at `tier1` — a 100% deterministic Common-rarity
- * draw with zero RNG consumption (see {@link rollTierRarity} in
- * `floor2-reward-bundle-resolver.ts`). This preserves this module's original
- * "Common-rarity contract" design intent (deterministic, guaranteed, no
- * non-armor stat bonus) under the tiered `resolveEquipmentRewardBundle`
- * signature introduced by the achievement equipment-reward tier system (see
- * ADR 0070 addendum). `validateGeneratedCarryover` (`playerCarryover.ts`)
- * hardcodes this same expectation when restoring a persisted boss-chest
- * bundle, since boss chests have no backing achievement to cross-check a
- * tier against.
+ * Boss chests resolve at `tier4` — an 85% Uncommon / 15% Rare draw per
+ * PLAN.md §E3-C. This replaces the original `tier1` (100% Common) intent and
+ * correctly implements the Floor 2 equipment-economy spec. `validateGeneratedCarryover`
+ * (`playerCarryover.ts`) hardcodes this same expectation when restoring a
+ * persisted boss-chest bundle, since boss chests have no backing achievement
+ * to cross-check a tier against.
  */
-const BOSS_CHEST_REWARD_TIER: EquipmentRewardTier = 'tier1';
+const BOSS_CHEST_REWARD_TIER: EquipmentRewardTier = 'tier4';
 
 export type SpawnBossChestResult =
   | { readonly created: true; readonly chest: BossChestRecord }

@@ -1,0 +1,114 @@
+{
+  "briefId": "welcome-room-floor-worn",
+  "spriteName": "welcome-room-floor-worn-var-0",
+  "assetPath": "generated/welcome-room-floor-worn-var-0.png",
+  "approvedAt": "2026-07-25T07:17:01.484Z",
+  "sourceRun": "generated/runs/welcome-room-floor-worn/2026-07-25T06-59-11-21cdc2fe",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 127,
+        "y": 255
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T07:00:16.614Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The worn traffic line is present and the overall design aligns with the dark-fantasy dungeon aesthetic. The wear is subtle and believable, though the transition between worn and unworn areas could be slightly softer."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The texture and color palette are consistent with the references, and the worn effect is well-integrated. However, the wear band could be slightly more blended to better match the style of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The texture and color palette are consistent with the references, and the worn effect is well-integrated. However, the wear band could be slightly more blended to better match the style of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The candidate successfully depicts a worn carpet tile with a visible traffic line, using the specified warm orange palette and avoiding the previously rejected issues of borders and high-contrast wear."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the wear band is visible at game scale. However, the wear band could be slightly less prominent to improve subtlety and better match the brief's low-contrast requirement."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate is functional and addresses the brief's requirements, though it has minor issues that could be improved.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 4220,
+      "completionTokens": 313,
+      "totalTokens": 4533
+    }
+  },
+  "type": "tile",
+  "contentHash": "6962c1cef7b995927c084ffb969fac3b60d3d778a3dd1bc1fc5a91750477c552",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-59-11-21cdc2fe\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-59-11-21cdc2fe\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-worn\\2026-07-25T06-59-11-21cdc2fe\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

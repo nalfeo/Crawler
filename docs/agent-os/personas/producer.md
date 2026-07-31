@@ -5,6 +5,10 @@
 > in [`README.md`](./README.md). The Producer decomposes work, routes slices to
 > specialists, and owns the through-line so the session ships coherent work.
 
+## Agent
+
+[`producer`](../../../.github/agents/producer.agent.md)
+
 ## Responsibilities
 
 - Decompose a request into the smallest coherent slices and map each slice to the
@@ -41,7 +45,7 @@
 
 ## Tools & Workflows
 
-- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session. Then run the apple-scaled review harness — separate-model **plan review** (≥3🍎; **adversarial** at >3🍎: enumerate ≥2 alternatives and argue against the chosen design, and record `plan_divergence`), **code-review loop** until no concerns _or_ a 2-round cap then human escalation (≥3🍎), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Start from the routing matrix; write the slice → persona → path plan before
   touching code, and record it in the handoff.
 - Use `report_progress` checklists that mirror the slice plan so progress is
@@ -57,6 +61,17 @@
   it ready for review with complete handoff context and end the owning session
   immediately. CI Recovery and cloud Copilot own post-publication blockers; do
   not keep the local session active while waiting for CI, reviews, or assignment.
+
+## Skills
+
+- [`producer`](../../../.github/skills/producer/SKILL.md) — the authoritative
+  triage / decompose / delegate / publish playbook. Invoke it first.
+- [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — scale
+  review stages to the apple tier and write the ledger.
+- [`pr-shepherd`](../../../.github/skills/pr-shepherd/SKILL.md) — when published
+  PRs need driving to merge.
+- [`create-architectural-decision-record`](../../../.github/skills/create-architectural-decision-record/SKILL.md)
+  — any decision affecting 2+ systems.
 
 ## Quality Criteria
 

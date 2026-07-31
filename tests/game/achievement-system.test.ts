@@ -15,6 +15,7 @@ import {
 } from '../../src/game/systems/achievementSystem.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import {
+  ACHIEVEMENT_CATALOG_REGISTRY,
   createAchievementCatalog,
   createAchievementCatalogRegistry,
   createEmptyAchievementFactSnapshot,
@@ -48,7 +49,12 @@ function completeQuestState(questId: string): QuestState {
 function scopedAchievement(
   id: string,
   scope: 'floor' | 'current_run',
-  fact: 'playerGold' | 'totalKills' | 'clearedFloorCount',
+  fact:
+    | 'playerGold'
+    | 'totalKills'
+    | 'clearedFloorCount'
+    | 'familyBossEncounterCount'
+    | 'familiesEngagedInCombatCount',
 ): AchievementDef {
   return {
     ...FLOOR1_ACHIEVEMENTS[0]!,
@@ -335,6 +341,471 @@ describe('achievementSystem', () => {
     expect(world.achievements.unlockedIds.has('floor2-field-kit')).toBe(false);
     expect(world.generatedEquipmentRewardBundles.has('floor2-field-kit')).toBe(false);
   });
+
+  describe('new Floor 2 achievement facts', () => {
+    function bossEncounter(familyId: ReturnType<typeof asFamilyId>): {
+      familyId: ReturnType<typeof asFamilyId>;
+      roomId: number;
+      doorEids: number[];
+      activeGoalId: string;
+      started: boolean;
+      bossEid: number | null;
+      defeated: boolean;
+      displayName: string;
+    } {
+      return {
+        familyId,
+        roomId: 1,
+        doorEids: [],
+        activeGoalId: `floor2-boss-${familyId}`,
+        started: true,
+        bossEid: null,
+        defeated: false,
+        displayName: familyId,
+      };
+    }
+
+    it('counts family relationship bands and boss defeats/encounters from live faction + family state', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      world.factionRelations.set(mirekin, 90); // friendly
+      world.factionRelations.set(chitinous, 10); // hate
+      world.factionRelations.set(faceless, 60); // neutral
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          decapitatedFamilies: new Set([mirekin]),
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+          ]),
+        },
+      };
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      expect(facts.numberFacts.familiesAtFriendlyCount).toBe(1);
+      expect(facts.numberFacts.familiesAtHateCount).toBe(1);
+      expect(facts.numberFacts.familyBossesDefeated).toBe(1);
+      expect(facts.numberFacts.familyBossEncounterCount).toBe(2);
+    });
+
+    it('computes allPresentFamiliesFriendly dynamically against the actual present-family count (3 or 4 families)', () => {
+      // Regression test: Floor 2 can spawn 3 OR 4 present families, so "Court
+      // Favorite" must never use a fixed numeric threshold — it must compare
+      // against the actual roster size for the run.
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      const glimmerfolk = asFamilyId('glimmerfolk');
+
+      const threeFamilyWorld = createTestWorld({ seed: 42, floor: 2 });
+      threeFamilyWorld.factionRelations.set(mirekin, 90);
+      threeFamilyWorld.factionRelations.set(chitinous, 90);
+      threeFamilyWorld.factionRelations.set(faceless, 90);
+      threeFamilyWorld.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+        },
+      };
+      expect(
+        collectCurrentFloorAchievementFacts(threeFamilyWorld).booleanFacts
+          .allPresentFamiliesFriendly,
+      ).toBe(true);
+
+      const fourFamilyWorldPartial = createTestWorld({ seed: 42, floor: 2 });
+      fourFamilyWorldPartial.factionRelations.set(mirekin, 90);
+      fourFamilyWorldPartial.factionRelations.set(chitinous, 90);
+      fourFamilyWorldPartial.factionRelations.set(faceless, 90);
+      fourFamilyWorldPartial.factionRelations.set(glimmerfolk, 60); // neutral, not friendly
+      fourFamilyWorldPartial.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless, glimmerfolk],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+        },
+      };
+      // Bug this guards against: a fixed ">= 3 friendly" rule would have
+      // unlocked here even though the 4th present family is NOT Friendly.
+      expect(
+        collectCurrentFloorAchievementFacts(fourFamilyWorldPartial).booleanFacts
+          .allPresentFamiliesFriendly,
+      ).toBe(false);
+
+      const fourFamilyWorldFull = createTestWorld({ seed: 42, floor: 2 });
+      fourFamilyWorldFull.factionRelations.set(mirekin, 90);
+      fourFamilyWorldFull.factionRelations.set(chitinous, 90);
+      fourFamilyWorldFull.factionRelations.set(faceless, 90);
+      fourFamilyWorldFull.factionRelations.set(glimmerfolk, 90);
+      fourFamilyWorldFull.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless, glimmerfolk],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+        },
+      };
+      expect(
+        collectCurrentFloorAchievementFacts(fourFamilyWorldFull).booleanFacts
+          .allPresentFamiliesFriendly,
+      ).toBe(true);
+    });
+
+    it('computes allPresentFamilyBossesEngaged dynamically against the actual present-family count (3 or 4 families)', () => {
+      // Regression test: mirrors the allPresentFamiliesFriendly bug class —
+      // "No Den Unbraved" must never use a fixed encounter-count threshold,
+      // it must compare against the actual roster size for the run.
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      const glimmerfolk = asFamilyId('glimmerfolk');
+
+      const threeFamilyWorld = createTestWorld({ seed: 42, floor: 2 });
+      threeFamilyWorld.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+            [faceless, bossEncounter(faceless)],
+          ]),
+        },
+      };
+      expect(
+        collectCurrentFloorAchievementFacts(threeFamilyWorld).booleanFacts
+          .allPresentFamilyBossesEngaged,
+      ).toBe(true);
+
+      const fourFamilyWorldPartial = createTestWorld({ seed: 42, floor: 2 });
+      fourFamilyWorldPartial.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless, glimmerfolk],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+            [faceless, bossEncounter(faceless)],
+            // glimmerfolk's den never entered — this must stay false.
+          ]),
+        },
+      };
+      // Bug this guards against: a fixed ">= 3 encounters" rule would have
+      // unlocked here even though the 4th present family's den was never entered.
+      expect(
+        collectCurrentFloorAchievementFacts(fourFamilyWorldPartial).booleanFacts
+          .allPresentFamilyBossesEngaged,
+      ).toBe(false);
+
+      const fourFamilyWorldFull = createTestWorld({ seed: 42, floor: 2 });
+      fourFamilyWorldFull.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless, glimmerfolk],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, bossEncounter(chitinous)],
+            [faceless, bossEncounter(faceless)],
+            [glimmerfolk, bossEncounter(glimmerfolk)],
+          ]),
+        },
+      };
+      expect(
+        collectCurrentFloorAchievementFacts(fourFamilyWorldFull).booleanFacts
+          .allPresentFamilyBossesEngaged,
+      ).toBe(true);
+    });
+
+    it('reports zero family-band/boss facts on Floor 1 (no family state at all)', () => {
+      const world = createTestWorld({ seed: 42 });
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      expect(facts.numberFacts.familiesAtFriendlyCount).toBe(0);
+      expect(facts.numberFacts.familiesAtHateCount).toBe(0);
+      expect(facts.numberFacts.familyBossesDefeated).toBe(0);
+      expect(facts.numberFacts.familyBossEncounterCount).toBe(0);
+      expect(facts.numberFacts.familiesEngagedInCombatCount).toBe(0);
+      expect(facts.booleanFacts.allPresentFamiliesFriendly).toBe(false);
+      expect(facts.booleanFacts.allPresentFamilyBossesEngaged).toBe(false);
+      expect(facts.booleanFacts.hasBetrayedAlly).toBe(false);
+      expect(facts.booleanFacts.hasMetBroker).toBe(false);
+    });
+
+    it('excludes not-yet-started boss encounters from familyBossEncounterCount', () => {
+      // Regression test: Floor 2 init seeds a `started: false` bossEncounters
+      // entry for EVERY present family (floor2Scenario.ts), so a naive
+      // `.size` count would report "Meet the Boss"-style achievements as
+      // unlockable the instant the floor loads, before the player enters any
+      // den.
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, bossEncounter(mirekin)],
+            [chitinous, { ...bossEncounter(chitinous), started: false }],
+            [faceless, { ...bossEncounter(faceless), started: false }],
+          ]),
+        },
+      };
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      expect(facts.numberFacts.familyBossEncounterCount).toBe(1);
+    });
+
+    it('counts distinct families with player-attributed trash kills as familiesEngagedInCombatCount', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          trashKillsByFamily: new Map([
+            [mirekin, 3],
+            [chitinous, 0],
+          ]),
+        },
+      };
+
+      const facts = collectCurrentFloorAchievementFacts(world);
+
+      // Regression test: Floor 2 init seeds a 0-kill trashKillsByFamily entry
+      // for EVERY present family, so only families with kills > 0 should
+      // count — chitinous (0 kills) must NOT be counted as "engaged".
+      expect(facts.numberFacts.familiesEngagedInCombatCount).toBe(1);
+    });
+
+    it('does not auto-unlock family-engagement achievements at Floor 2 init, only after real player progress', () => {
+      // End-to-end regression test for the adversarial-review-found bugs:
+      // a freshly initialized Floor 2 world (mirroring floor2Scenario.ts's
+      // init-time eager seeding of bossEncounters/trashKillsByFamily for
+      // every present family) must NOT unlock "Meet the Boss" or
+      // "Two-Front War"-style achievements before the player has actually
+      // engaged a boss den or dealt damage.
+      const registry = createAchievementCatalogRegistry([
+        createAchievementCatalog(2, [
+          {
+            ...scopedAchievement('floor2-boss-sighted', 'floor', 'familyBossEncounterCount'),
+            unlockRules: [
+              { type: 'numberCompare', fact: 'familyBossEncounterCount', op: '>=', value: 1 },
+            ],
+          },
+          {
+            ...scopedAchievement('floor2-two-front-war', 'floor', 'familiesEngagedInCombatCount'),
+            unlockRules: [
+              {
+                type: 'numberCompare',
+                fact: 'familiesEngagedInCombatCount',
+                op: '>=',
+                value: 2,
+              },
+            ],
+          },
+        ]),
+      ]);
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      // Mirrors floor2Scenario.ts's init-time state: every present family gets
+      // a not-yet-started boss encounter and a 0-kill trash counter.
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          bossEncounters: new Map([
+            [mirekin, { ...bossEncounter(mirekin), started: false }],
+            [chitinous, { ...bossEncounter(chitinous), started: false }],
+          ]),
+          trashKillsByFamily: new Map([
+            [mirekin, 0],
+            [chitinous, 0],
+          ]),
+        },
+      };
+
+      evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+
+      expect(world.achievements.unlockedIds.has('floor2-boss-sighted')).toBe(false);
+      expect(world.achievements.unlockedIds.has('floor2-two-front-war')).toBe(false);
+    });
+
+    it('unlocks "Off This Floor" only at the run_end_clear phase, never at a regular tick', () => {
+      // Regression test for the adversarial-review-found phase-timing bug:
+      // confirmFloor2StairDescend evaluates achievements at the
+      // 'run_end_clear' phase right before flipping world.state to
+      // 'safe_room' (after which the per-tick achievementSystem() no longer
+      // runs, since MainGameScene gates its update loop on
+      // world.state === 'playing'). A rule with no explicit `phase` defaults
+      // to 'tick' and would be silently excluded from that one evaluation
+      // call, so it could never unlock. "Off This Floor"'s unlockRules must
+      // carry phase: "run_end_clear" to fire at the correct moment.
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+      world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+      world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+      world.questLog.set('floor2-leave-floor', completeQuestState('floor2-leave-floor'));
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [asFamilyId('mirekin')],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          staircaseDiscovered: true,
+        },
+      };
+
+      evaluateAchievementUnlocksForPhase(world, 'tick', ACHIEVEMENT_CATALOG_REGISTRY);
+      expect(world.achievements.unlockedIds.has('floor2-floor-cleared')).toBe(false);
+
+      evaluateAchievementUnlocksForPhase(world, 'run_end_clear', ACHIEVEMENT_CATALOG_REGISTRY);
+      expect(world.achievements.unlockedIds.has('floor2-floor-cleared')).toBe(true);
+    });
+
+    it('derives hasBetrayedAlly from a currently-neutral-or-better family with recorded trash kills', () => {
+      // Regression test for the multi-model-review-found unreachability bug:
+      // `betrayerFlag` is never set `true` by any production system (only a
+      // dev-only lab), so `hasBetrayedAlly` must derive from real, already-
+      // tracked facts — a present family currently at neutral-or-better standing
+      // (relation >= 50) that also has at least one player-attributed trash kill.
+      //
+      // Why neutral instead of friendly: the maximum achievable relation via
+      // shipped emergent events is ~68 (neutral band 50–75); the friendly band
+      // (76+) is unreachable without wiring additional mechanics.
+      const mirekin = asFamilyId('mirekin');
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      world.factionRelations.set(mirekin, 90); // 'friendly' band (76-100) — also neutral-or-better
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: false,
+          trashKillsByFamily: new Map([[mirekin, 1]]),
+        },
+      };
+
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(true);
+
+      // Neutral band (50–75) — the reachable case via positive emergent events —
+      // should also trigger the betrayal signal when kills are recorded.
+      world.factionRelations.set(mirekin, 60); // 'neutral' band
+      world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 1]]);
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(true);
+
+      // Neutral-or-better standing alone, with no recorded kills, is not betrayal.
+      world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 0]]);
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(false);
+
+      // Kills recorded, but the family is in hostile band — not betrayal by this definition.
+      world.floorExtendedState.familyState!.trashKillsByFamily = new Map([[mirekin, 1]]);
+      world.factionRelations.set(mirekin, 30); // 'hostile' band
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasBetrayedAlly).toBe(false);
+    });
+
+    it('reads hasMetBroker from the Broker intro-complete goal flag', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasMetBroker).toBe(false);
+
+      world.goalFlags.set('floor2-broker-intro-complete', true);
+
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.hasMetBroker).toBe(true);
+    });
+
+    it("stays in sync with floor2Scenario's broker-intro-complete goal flag key", async () => {
+      // achievementSystem.ts intentionally duplicates this goal-flag string
+      // literal rather than importing it from floor2Scenario.ts (which would
+      // create a circular module dependency, since floor2Scenario.ts already
+      // imports evaluateAchievementUnlocksForPhase from achievementSystem.ts).
+      // This test is the actual drift guard: it imports both source-of-truth
+      // constants and asserts they are identical, so a rename on either side
+      // fails loudly here instead of silently breaking "Meet the Broker" in
+      // production.
+      const { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID: fromScenario } =
+        await import('../../src/game/floor2Scenario.js');
+      const { FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID: fromAchievementSystem } =
+        await import('../../src/game/systems/achievementSystem.js');
+      expect(fromAchievementSystem).toBe(fromScenario);
+    });
+
+    it('reports floor2SafeRoomVisited only while on Floor 2 and in a safe context', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
+        false,
+      );
+
+      world.playerInSafeRoom = true;
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
+        true,
+      );
+
+      // Floor 1 never reports floor2SafeRoomVisited, even if the player is in a
+      // safe room, since the fact is Floor-2-specific by name and design.
+      world.floor = 1;
+      expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor2SafeRoomVisited).toBe(
+        false,
+      );
+    });
+
+    it('unlocks the new Floor 2 family/boss/settlement achievements from real constructed state', () => {
+      const world = createTestWorld({ seed: 42, floor: 2 });
+      world.floorId = 'floor2';
+      world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+      world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+      world.floor2EquipmentFlags.floor2EquipmentRewards = true;
+      const mirekin = asFamilyId('mirekin');
+      const chitinous = asFamilyId('chitinous');
+      const faceless = asFamilyId('faceless');
+      world.factionRelations.set(mirekin, 90);
+      world.factionRelations.set(chitinous, 90);
+      world.factionRelations.set(faceless, 5);
+      world.floorExtendedState = {
+        familyState: {
+          presentFamilies: [mirekin, chitinous, faceless],
+          contestedResource: asResourceId('glimmercap'),
+          betrayerFlag: true,
+          decapitatedFamilies: new Set([mirekin]),
+          bossEncounters: new Map([[mirekin, bossEncounter(mirekin)]]),
+          // mirekin is at 'friendly' band (90), which satisfies neutral-or-better
+          // standing — the real hasBetrayedAlly signal checks for a family at
+          // neutral-or-better (>= 50) with recorded trash kills. (betrayerFlag
+          // itself is dead/lab-only and intentionally ignored by achievementSystem.)
+          trashKillsByFamily: new Map([[mirekin, 1]]),
+        },
+      };
+      world.goalFlags.set('floor2-broker-intro-complete', true);
+      world.playerInSafeRoom = true;
+      world.questLog.set('floor2-find-settlement', completeQuestState('floor2-find-settlement'));
+
+      achievementSystem(world);
+
+      expect(world.achievements.unlockedIds.has('floor2-first-friend')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-inner-circle')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-court-favorite')).toBe(false);
+      expect(world.achievements.unlockedIds.has('floor2-made-an-enemy')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-double-agent')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-boss-sighted')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-den-breaker')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-settlement-found')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-meet-the-broker')).toBe(true);
+      expect(world.achievements.unlockedIds.has('floor2-safe-harbor')).toBe(true);
+    });
+  });
 });
 
 describe('claimAchievementReward', () => {
@@ -348,7 +819,11 @@ describe('claimAchievementReward', () => {
     const result = claimAchievementReward(world, 'first-bonk');
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.reward).toEqual({ type: 'lootBox', tier: 'trash' });
+      expect(result.reward).toEqual({
+        type: 'lootBox',
+        lootTable: 'floor1-materials',
+        tier: 'trash',
+      });
       expect(result.grantedLootBox?.gold).toBe(LOOT_BOX_GOLD_BY_TIER.trash);
       expect(result.grantedLootBox?.materials).toHaveLength(1);
       for (const materialId of result.grantedLootBox?.materials ?? []) {

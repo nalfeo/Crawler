@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-28",
+  "session_slug": "blob47-corner-gate-and-rounded-caves",
+  "task_title": "Close blob47 corner-coverage blind spot, round cave corners, and stop the wall silhouette self-perpetuating",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review red-teamed the gate-first design and enumerated 3 alternatives: (a) an exact canonical-silhouette contract instead of a sampling classifier, (b) moving silhouette ownership into the renderer so art never carries it, (c) regenerating accents from canonical geometry rather than clipping existing art. Verdict: architecture sound, no major fork. All 4 concerns addressed. Alternative (a) was partly adopted -- validateAuthoredSilhouetteExact was added ALONGSIDE the sampling gates rather than replacing them, because vendored packs are external art that is only approximately mask-compatible and still needs the classifier. Concerns: (1) threshold clip at >=128 keeps opaque accents over the semi-transparent rounded fringe, squaring off the curve -- fixed by clipping at alpha===255; (2) both gates sample only the cell perimeter so interior defects score 1.000 -- fixed by validateAuthoredSilhouetteExact; (3) WALL_OPACITY_THRESHOLD was a local const not shared with validate.ts -- fixed by extracting wall-opacity.ts; (4) rounding edgeA/edgeB would pinch wall-to-wall seams and intrude on the sampled edge band -- resolved by deliberately leaving those states square, with a test asserting each cardinal edge band stays a pure function of that cardinal bit across all 47 masks."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Found the parallel-test race on the committed wall-atlas.png, and independently caught that main()'s --dry-run branch omitted restyleWallAtlas() entirely, under-reporting by one file versus a real run. Both fixed."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Clean across all ten categories: all five round-1 fixes verified (including that the temp-dir corruption step is still load-bearing), plus independent passes on png-buffer.ts geometry, quadrant-kit.ts edge-band non-intrusion, src/shared layer rules, determinism, and gate integrity."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false,
+          "notes": "Five consolidated concerns. Adjudication rejected one proposed remedy: two reviewers suggested deleting the atlas-corruption step from the derived-not-inherited test. That was empirically disproven -- without the corruption the test passes even under the OLD broken verbatim-alpha code, because the on-disk art is now correct and both paths agree. The corruption is load-bearing, so the correct fix was to make restyleWallAtlas(packDir) injectable and corrupt a mkdtemp copy instead, keeping the test both hermetic and load-bearing. Other four: fused retuneWallAccents+reclipWallAccents into one in-memory processWallAccents() (fixes dry-run measuring stale art, double-counting, and a crash window that could commit retuned-but-spilling art); clipped accents at alpha===255 instead of >=128; added validateAuthoredSilhouetteExact for the interior blind spot; extracted wall-opacity.ts."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "codex reported clean across all ten categories. gemini verified four of the five round-1 fixes and caught one genuine follow-through gap codex missed: extracting wall-opacity.ts had only converted the two call sites named in the finding, leaving bare 128 alpha literals in build-caeles-fixture.ts, import-floor2-materials.ts, and one more in rebuild-shared-base-pools.ts -- so the single source of truth was not actually single. Adjudicated valid and fixed; a full regeneration afterwards produced byte-identical art across all 32 PNGs, confirming the refactor is behavior-preserving."
+        }
+      ]
+    }
+  }
+}
