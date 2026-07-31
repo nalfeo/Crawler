@@ -54,8 +54,11 @@ and replace the unsafe reachability-based proposal with an effective CI tree-dif
 
 ## Merge / recovery status
 
-- The old failing CI runs were not code regressions; the sampled failing
-  `Lightweight Checks` run failed at the explicit human-approval gate
-  (`APPROVED FOR CHECK-IN`), not at a project test/build step.
-- PR still needs thread-marker replies on the six review comments and then a fresh push so
-  CI Recovery can reconcile them.
+- The branch is already current with the fetched `origin/main` merge base for this PR:
+  `HEAD` is six commits ahead of `origin/main`, with no stale-main merge conflict to repair.
+- The old failing CI runs were not code regressions; both the original sampled run
+  (`30353236402`) and the current rerun on `80be025` (`30609743451`) fail at the explicit
+  human-approval gate (`APPROVED FOR CHECK-IN`), not at a project test/build step.
+- All six review threads now have `✅ Addressed in 80be025…` replies. The remaining merge
+  blocker is the intentional `human-approval-required` gate, not unresolved review feedback
+  or a repo validation failure.
