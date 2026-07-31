@@ -24,7 +24,7 @@ import { pushVfxEvent } from '../../shared/vfx-events.js';
  * 4 ft matches the harvest system's pickup radius — comfortable for manual play
  * and AI navigation while still feeling intentional (not accidental during combat).
  */
-export const BOSS_CHEST_RANGE_FT = 4.0;
+const BOSS_CHEST_RANGE_FT = 4.0;
 
 export function bossChestPickupSystem(world: GameWorld): void {
   const playerEntities = query(world.ecs, [Player, Position, Inventory]);
