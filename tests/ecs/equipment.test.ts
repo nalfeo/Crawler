@@ -22,14 +22,8 @@ import { getEntityEncumbranceSnapshot } from '../../src/core/encumbrance.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import { CORE_STAT_TO_SECONDARY, DEFAULT_BASE_STATS } from '../../src/shared/stats.js';
-import {
-  getEquipmentDefForItem,
-  getCatalogEquippableItemIds,
-  getEquippableItemIds,
-  GEAR_ITEM_IDS,
-  _registerEquipmentDefForTest,
-  _clearEquipmentDefsForTest,
-} from '../../src/shared/equipmentDefs.js';
+import { getEquipmentDefForItem, getEquippableItemIds } from '../../src/shared/equipmentDefs.js';
+import equipmentDefsTestSeams from '../../src/shared/equipmentDefs.test-seams.js';
 import {
   addGeneratedEquipmentReference,
   addItem,
@@ -39,7 +33,12 @@ import {
   getItemCount,
   type InventoryBag,
 } from '../../src/shared/inventory.js';
-import { ItemRarity, customTag, getItemById, type ItemDef } from '../../src/shared/items.js';
+import {
+  _customTag as customTag,
+  ItemRarity,
+  getItemById,
+  type ItemDef,
+} from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
@@ -554,7 +553,7 @@ describe('equipFromBag', () => {
   });
 
   afterEach(() => {
-    _clearEquipmentDefsForTest();
+    equipmentDefsTestSeams._clearEquipmentDefsForTest();
   });
 
   it('equips an item from the bag into an empty slot and removes it from the bag', () => {
@@ -632,7 +631,7 @@ describe('equipFromBag', () => {
     // be equipped. The OLD rollback re-equipped the blade first (girdle not yet
     // restored → STR 8 < 10 → blade silently dropped). The gate must reject it.
     initializeBaseStats(world, entity, { strength: 8 });
-    _registerEquipmentDefForTest({
+    equipmentDefsTestSeams._registerEquipmentDefForTest({
       id: 'colossus-blade',
       name: 'Colossus Blade',
       slots: ['mainHand', 'offHand'],
@@ -676,7 +675,7 @@ describe('equipFromBag', () => {
   // the post-unequip basis must still go through (the gate is not over-eager).
   it('allows a requirement-gated swap that is feasible after the target slot is freed', () => {
     initializeBaseStats(world, entity, { strength: 12 });
-    _registerEquipmentDefForTest({
+    equipmentDefsTestSeams._registerEquipmentDefForTest({
       id: 'warblade',
       name: 'Warblade',
       slots: ['mainHand'],
@@ -969,7 +968,7 @@ describe('generated equipment inventory transfers', () => {
 
 describe('equippable slot coverage', () => {
   it('keeps static bag seeders limited to item-catalog equipment', () => {
-    const catalogEquipmentIds = getCatalogEquippableItemIds();
+    const catalogEquipmentIds = equipmentDefsTestSeams.getCatalogEquippableItemIds();
     expect(catalogEquipmentIds.length).toBeGreaterThan(0);
     expect(catalogEquipmentIds.every((itemId) => getItemById(itemId) !== undefined)).toBe(true);
     expect(catalogEquipmentIds).not.toContain('weapon.venom-dirk');
@@ -988,12 +987,12 @@ describe('equippable slot coverage', () => {
 
   it('GEAR_ITEM_IDS covers the 15 non-hand, non-neck armor/accessory slots', () => {
     const gearSlots = new Set<string>();
-    for (const id of GEAR_ITEM_IDS) {
+    for (const id of equipmentDefsTestSeams.GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);
       expect(def, `gear id ${id} has no equipment def`).toBeDefined();
       for (const slotId of def!.slots) gearSlots.add(slotId);
     }
-    expect(GEAR_ITEM_IDS).toHaveLength(15);
+    expect(equipmentDefsTestSeams.GEAR_ITEM_IDS).toHaveLength(15);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
     expect(gearSlots.has('neck')).toBe(false);

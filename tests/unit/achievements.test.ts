@@ -12,6 +12,8 @@ import {
   FLOOR2_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENTS,
   FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
+  FLOOR2_ACHIEVEMENT_LOOT_TIERS,
+  FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
   getCurrentRunGlobalAchievements,
   LOOT_BOX_TIERS,
   getAchievementCatalogForFloor,
@@ -21,7 +23,7 @@ import {
   EQUIPMENT_REWARD_TIERS,
   EQUIPMENT_REWARD_TIER_RARITIES,
 } from '../../src/shared/generated-equipment-types.js';
-import { FLOOR2_REWARD_POOL_BASE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
+import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -224,46 +226,64 @@ describe('floor2 achievements catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('never awards Unique rarity, and reserves the Rare-capable tier4 for brutal achievements', () => {
+  it('gives every Floor 2 achievement a lootBox reward sourced from the central Floor 2 generated-equipment table', () => {
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
-      expect(achievement.reward.type).toBe('equipment');
-      if (achievement.reward.type === 'equipment') {
-        const tier = achievement.reward.tier;
-        expect(EQUIPMENT_REWARD_TIERS).toContain(tier);
-        // GeneratedEquipmentRarity itself has no 'unique' member (type-level
-        // guarantee), but assert the tier's allowed rarity pool never
-        // includes 'unique' as a deterministic runtime regression check too.
-        expect(EQUIPMENT_REWARD_TIER_RARITIES[tier]).not.toContain('unique');
-        // tier4 is the only Rare-capable tier and is reserved for the
-        // hardest ('brutal') achievements; everything else stays on the
-        // deliberately Uncommon-capped tier1/tier2/tier3 (see ADR 0070).
-        if (tier === 'tier4') {
-          expect(achievement.difficulty).toBe('brutal');
-        } else {
-          expect(achievement.difficulty).not.toBe('brutal');
-          expect(['tier1', 'tier2', 'tier3']).toContain(tier);
+      expect(achievement.reward.type).toBe('lootBox');
+      if (achievement.reward.type === 'lootBox') {
+        expect(achievement.reward.lootTable).toBe('floor2-generated-equipment');
+        if (achievement.reward.lootTable === 'floor2-generated-equipment') {
+          const tier = achievement.reward.tier;
+          expect(FLOOR2_ACHIEVEMENT_LOOT_TIERS).toContain(tier);
+          // ADR 0069 amendment: achievement JSON only ever declares
+          // common/uncommon/rare — tier4 (boss-chest-exclusive, 85%
+          // Uncommon/15% Rare per PLAN.md §E3-C) must never appear here, and
+          // the translated EquipmentRewardTier the resolver actually sees
+          // must never be tier4 either.
+          const equipmentTier = FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[tier];
+          expect(EQUIPMENT_REWARD_TIERS).toContain(equipmentTier);
+          expect(equipmentTier).not.toBe('tier4');
+          // GeneratedEquipmentRarity itself has no 'unique' member (type-level
+          // guarantee), but assert the translated tier's allowed rarity pool
+          // never includes 'unique' as a deterministic runtime regression
+          // check too.
+          expect(EQUIPMENT_REWARD_TIER_RARITIES[equipmentTier]).not.toContain('unique');
         }
       }
     }
   });
 
-  it('never resolves Rare rarity outside the dedicated tier4 pool', () => {
+  it('never resolves true Rare rarity from achievement JSON — that stays boss-chest-exclusive (tier4)', () => {
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
-      if (achievement.reward.type === 'equipment' && achievement.reward.tier !== 'tier4') {
-        expect(EQUIPMENT_REWARD_TIER_RARITIES[achievement.reward.tier]).not.toContain('rare');
+      if (
+        achievement.reward.type === 'lootBox' &&
+        achievement.reward.lootTable === 'floor2-generated-equipment'
+      ) {
+        const equipmentTier = FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier];
+        expect(equipmentTier).not.toBe('tier4');
+        expect(EQUIPMENT_REWARD_TIER_RARITIES[equipmentTier]).not.toContain('rare');
       }
     }
   });
 
-  it('gives every equipment reward the shared mixed Floor 2 reward pool', () => {
+  it('has an exact common/uncommon/rare tier distribution of 13/12/11 across all 36 Floor 2 achievements', () => {
+    const counts = { common: 0, uncommon: 0, rare: 0 };
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
-      if (achievement.reward.type === 'equipment') {
-        expect(achievement.reward.bases).toEqual(FLOOR2_REWARD_POOL_BASE_IDS);
+      if (
+        achievement.reward.type === 'lootBox' &&
+        achievement.reward.lootTable === 'floor2-generated-equipment'
+      ) {
+        counts[achievement.reward.tier]++;
       }
     }
-    expect(FLOOR2_REWARD_POOL_BASE_IDS.some((base) => base.startsWith('weapon.'))).toBe(true);
-    expect(FLOOR2_REWARD_POOL_BASE_IDS.some((base) => !base.startsWith('weapon.'))).toBe(true);
-    expect(FLOOR2_REWARD_POOL_BASE_IDS.some((base) => base.startsWith('accessory.'))).toBe(true);
+    expect(counts).toEqual({ common: 13, uncommon: 12, rare: 11 });
+  });
+
+  it('sources every Floor 2 achievement reward from the central, non-empty Floor 2 reward pool', () => {
+    expect(FLOOR2_REWARD_POOL_STABLE_IDS.length).toBeGreaterThan(0);
+    for (const id of FLOOR2_REWARD_POOL_STABLE_IDS) {
+      expect(typeof id).toBe('string');
+      expect(id.length).toBeGreaterThan(0);
+    }
   });
 
   it('scopes all 6 run-global achievements as current_run', () => {

@@ -22,12 +22,7 @@ import { BiomeType, TerrainType, TileFlags, type MapConfig } from '../../shared/
 import { SeededRandom } from '../../shared/random.js';
 import { computeRawMask8, normalizeBlob47Mask } from '../../shared/terrain-pack-mask.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
-import {
-  pickPoolCombo,
-  pickWallAccentSelection,
-  resolveDoorOrientationFromFlanks,
-  resolveDoorPoolVariant,
-} from '../../shared/terrain-pack-variants.js';
+import { pickPoolCombo, pickWallAccentSelection } from '../../shared/terrain-pack-variants.js';
 import { TERRAIN_FALLBACK_COLORS, colorToCss } from '../../shared/terrain-colors.js';
 import { PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES } from '../../engine/terrain-renderer.js';
 import type { TerrainPackId } from '../../shared/terrain-pack-types.js';
@@ -182,17 +177,12 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const poolW = poolEntries.length * (cell + 4);
     const poolRowH = cell;
 
-    // ── Door section ──────────────────────────────────────────────────────
-    const doorEntries = Object.entries(pack.doorSet).map(([key, v]) => ({ key, v }));
-    const doorW = doorEntries.length * (cell + 4);
-    const doorRowH = cell;
-
     // ── Wall-accents section (2026-07-25) ──────────────────────────────────
     const wallAccents = pack.wallAccents ?? [];
     const accentW = wallAccents.length * (cell + 4);
     const accentRowH = cell;
 
-    const totalW = Math.max(atlasW, poolW, doorW, accentW) + PADDING * 2;
+    const totalW = Math.max(atlasW, poolW, accentW) + PADDING * 2;
     const totalH =
       PADDING +
       LABEL_HEIGHT +
@@ -200,9 +190,6 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
       SECTION_GAP +
       LABEL_HEIGHT +
       poolRowH +
-      SECTION_GAP +
-      LABEL_HEIGHT +
-      doorRowH +
       SECTION_GAP +
       LABEL_HEIGHT +
       accentRowH +
@@ -317,40 +304,6 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
       }
     }
     y += poolRowH + SECTION_GAP;
-
-    // ── Draw door states ───────────────────────────────────────────────────
-    ctx.fillStyle = '#a0c8ff';
-    ctx.font = 'bold 13px monospace';
-    ctx.fillText(`Door States (${doorEntries.length})`, PADDING, y + 13);
-    y += LABEL_HEIGHT + 4;
-
-    let doorIdx = 0;
-    for (const { key, v } of doorEntries) {
-      const dx = PADDING + doorIdx * (cell + 4);
-      doorIdx += 1;
-
-      ctx.fillStyle = '#2d2d4e';
-      ctx.fillRect(dx, y, cell, cell);
-
-      const doorEntry = getOrLoad(v.textureKey, v.imagePath);
-      if (doorEntry.loaded) {
-        ctx.drawImage(doorEntry.img, dx, y, cell, cell);
-      } else if (doorEntry.error) {
-        ctx.fillStyle = '#c0392b55';
-        ctx.fillRect(dx, y, cell, cell);
-      }
-
-      ctx.fillStyle = '#ccaaff';
-      ctx.font = '9px monospace';
-      ctx.fillText(key, dx + 2, y + cell - 3);
-
-      if (settings.showGrid) {
-        ctx.strokeStyle = '#ccaaff44';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(dx + 0.5, y + 0.5, cell - 1, cell - 1);
-      }
-    }
-    y += doorRowH + SECTION_GAP;
 
     // ── Draw wall-accent atlases (2026-07-25) ──────────────────────────────
     // Shows the mask-255 (fully-enclosed interior) frame of each accent atlas
@@ -525,28 +478,12 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
             }
           }
         } else if ((flags & TileFlags.DOOR) !== 0) {
-          const leftTerrain = tx > 0 ? (map.terrain[idx - 1] as number) : TerrainType.VOID;
-          const rightTerrain =
-            tx < map.width - 1 ? (map.terrain[idx + 1] as number) : TerrainType.VOID;
-          const isHorizontal =
-            PACK_WALL_TERRAINS.has(leftTerrain) && PACK_WALL_TERRAINS.has(rightTerrain);
-          const orientation = resolveDoorOrientationFromFlanks(isHorizontal);
-          const doorVariant = resolveDoorPoolVariant(pack.doorSet, {
-            isOpen: (flags & TileFlags.PASSABLE) !== 0,
-            orientation,
-          });
-          if (doorVariant) {
-            const doorEntry = getOrLoad(doorVariant.textureKey, doorVariant.imagePath);
-            if (doorEntry.loaded) {
-              mapCtx.drawImage(doorEntry.img, dx, dy, cell, cell);
-            } else {
-              mapCtx.fillStyle = '#8b5cf6';
-              mapCtx.fillRect(dx, dy, cell, cell);
-            }
-          } else {
-            mapCtx.fillStyle = '#8b5cf6';
-            mapCtx.fillRect(dx, dy, cell, cell);
-          }
+          // Terrain packs no longer carry door art — doors are drawn by the one
+          // unified door renderer (`src/engine/sprites/door-visuals.ts`), which
+          // this pack-preview canvas deliberately does not replicate. Mark the
+          // doorway so the topology is still legible.
+          mapCtx.fillStyle = '#8b5cf6';
+          mapCtx.fillRect(dx, dy, cell, cell);
         } else if (PACK_FLOOR_TERRAINS.has(terrain)) {
           const combo = pickPoolCombo(pack.floorPool, seed, tx, ty);
           if (combo) {

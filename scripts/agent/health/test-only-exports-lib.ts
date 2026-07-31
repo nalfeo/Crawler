@@ -65,6 +65,14 @@ export interface ExportDef {
   readonly file: string;
 }
 
+/** Path-scoped allowlist entry for intentional test-scaffold exports. */
+export interface TestScaffoldAllowlistEntry {
+  /** Repo-relative POSIX path of the defining file. */
+  readonly file: string;
+  /** Exported identifier name. */
+  readonly name: string;
+}
+
 /** An export flagged as test-only. */
 export interface TestOnlyExport {
   /** The exported identifier name. */
@@ -80,6 +88,264 @@ export interface SourceFile {
   /** Repo-relative POSIX path, e.g. `src/shared/inventory.ts`. */
   readonly path: string;
   readonly content: string;
+}
+
+/**
+ * Export names intentionally exposed for unit testing but without a standalone
+ * production caller outside their defining file. This is keyed by both file and
+ * symbol to avoid cross-file false negatives when names collide.
+ */
+const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_REWARD_BUNDLE_RARITIES',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_REWARD_BUNDLE_AFFINITY_PROB',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_assertGeneratedRewardInstanceLegal',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_alignmentFromRoll',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rollAffinityAlignment',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_resolvePlayerBuildAffinity',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rarityEligibleBaseIds',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_computeFloor2RewardPoolTierEligibility',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_Floor2RewardPoolAuthoringError',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_validateFloor2RewardPoolTierEligibility',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rollTierRarity',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_GeneratedEquipmentGeneratorError',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_GenerateEquipmentInstanceRequest',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_getGeneratedEquipmentBaseV1',
+  },
+  {
+    file: 'src/game/systems/achievementSystem.ts',
+    name: 'unlockAchievement',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_LOOT_TIERS',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'ACHIEVEMENT_SCOPES',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'parseAchievementCatalog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'createAchievementCatalog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'createAchievementCatalogRegistry',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_CATALOG',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENTS',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'getAchievementCatalogForFloor',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'getCurrentRunGlobalAchievements',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'buildAchievementArtBacklog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR1_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/data/floor2-equipment-wave-b.ts',
+    name: 'FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS',
+  },
+  {
+    file: 'src/shared/data/floor2-reward-pool.ts',
+    name: 'FLOOR2_ARMOR_SLOT_IDS',
+  },
+  {
+    file: 'src/shared/data/floor2-reward-pool.ts',
+    name: 'FLOOR2_REWARD_POOL_NON_WEAPON_IDS',
+  },
+  {
+    file: 'src/shared/generated-equipment-types.ts',
+    name: 'EQUIPMENT_REWARD_TIERS',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'search',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'filterByTag',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'getActiveTags',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'reorderTab',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'hideTab',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'showTab',
+  },
+  {
+    file: 'src/shared/items.ts',
+    name: '_customTag',
+  },
+  {
+    file: 'src/shared/weaponDefs.ts',
+    name: 'WEAPON_DEFS',
+  },
+  {
+    file: 'src/shared/generated-assets.ts',
+    name: 'computeNormalizedWeaponAnchor',
+  },
+  {
+    file: 'src/shared/generated-assets.ts',
+    name: 'resolveWeaponAnchorWorldPos',
+  },
+  {
+    file: 'src/shared/generated-assets.ts',
+    name: 'buildGeneratedSpriteRegistry',
+  },
+  // Door art contract string used as assertion messages in unit tests that
+  // verify the projection/framing contract on shipped door PNGs.
+  {
+    file: 'src/engine/sprites/door-visuals.ts',
+    name: 'DOOR_ART_CONTRACT_NOTE',
+  },
+  // terrain-pack-visuals: pure helper + interface used only in unit tests
+  // that verify preload-entry generation without loading Phaser.
+  {
+    file: 'src/engine/sprites/terrain-pack-visuals.ts',
+    name: 'TerrainPackLoaderLike',
+  },
+  {
+    file: 'src/engine/sprites/terrain-pack-visuals.ts',
+    name: 'collectTerrainPackPreloadEntries',
+  },
+  // terrain-pack-types: zod sub-schemas and constants exposed so unit tests
+  // can validate schema fragments independently of the top-level pack schema.
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'terrainPackIdSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'provenanceSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'transformIdSchema',
+  },
+  {
+    file: 'src/shared/terrain-pack-types.ts',
+    name: 'WALL_ACCENT_COUNT',
+  },
+  // terrain-pack-variants: internal variance helpers tested in isolation so
+  // that seed-based determinism and pool-weight contracts are unit-verifiable.
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'deriveTileVariantSeed',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'pickPoolVariant',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'buildWeightedCombos',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'WALL_ACCENT_DENSITY',
+  },
+  {
+    file: 'src/shared/terrain-pack-variants.ts',
+    name: 'GROUND_DECAL_DENSITY',
+  },
+] as const satisfies readonly TestScaffoldAllowlistEntry[];
+
+function toAllowlistKey(file: string, name: string): string {
+  return `${file}#${name}`;
+}
+
+/** Build a path-scoped allowlist set from explicit file + symbol entries. */
+export function buildTestScaffoldAllowlist(
+  entries: readonly TestScaffoldAllowlistEntry[],
+): ReadonlySet<string> {
+  return new Set(entries.map((entry) => toAllowlistKey(entry.file, entry.name)));
+}
+
+/** Default path-scoped allowlist used by the guard wrapper. */
+export const TEST_SCAFFOLD_ALLOWLIST = buildTestScaffoldAllowlist(TEST_SCAFFOLD_ALLOWLIST_ENTRIES);
+
+/** Check whether an export is allowlisted as intentional test scaffold. */
+export function isTestScaffoldAllowlisted(
+  exp: ExportDef,
+  allowlist: ReadonlySet<string> = TEST_SCAFFOLD_ALLOWLIST,
+): boolean {
+  return allowlist.has(toAllowlistKey(exp.file, exp.name));
 }
 
 // ---------------------------------------------------------------------------

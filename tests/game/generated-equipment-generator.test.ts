@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
 import {
-  GeneratedEquipmentGeneratorError,
+  _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
-  getGeneratedEquipmentBaseV1,
+  _getGeneratedEquipmentBaseV1 as getGeneratedEquipmentBaseV1,
 } from '../../src/game/generated-equipment-generator.js';
 import { canonicalJson } from '../../src/shared/canonical-json.js';
 import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';

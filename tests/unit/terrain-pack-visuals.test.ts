@@ -71,14 +71,13 @@ describe('collectTerrainPackPreloadEntries', () => {
     expect(entries.every((e) => !e.textureKey.includes('caeles-fixture'))).toBe(true);
   });
 
-  it('includes every floorPool + corridorPool + doorSet + wallAccents asset for every RUNTIME pack', () => {
+  it('includes every floorPool + corridorPool + wallAccents asset for every RUNTIME pack', () => {
     for (const id of getAllRuntimeTerrainPackIds()) {
       const pack = getTerrainPack(id);
       const expectedKeys = [
         pack.wallAutotile.textureKey,
         ...pack.floorPool.map((v) => v.textureKey),
         ...pack.corridorPool.map((v) => v.textureKey),
-        ...Object.values(pack.doorSet).map((v) => v.textureKey),
         ...(pack.wallAccents ?? []).map((a) => a.textureKey),
       ];
       const actualKeys = entries.map((e) => e.textureKey);
@@ -86,6 +85,13 @@ describe('collectTerrainPackPreloadEntries', () => {
         expect(actualKeys).toContain(key);
       }
     }
+  });
+
+  it('preloads NO door textures (door art is not a per-pack asset any more)', () => {
+    // INVERTED from the doorSet clause of the assertion above. The preload list
+    // is built from the manifest, so a pack that reintroduced door art would
+    // silently start preloading it again and win precedence in the renderer.
+    expect(entries.every((e) => !e.textureKey.includes('-door-'))).toBe(true);
   });
 
   it('wall-atlas entries (base atlas + accent atlases) carry the pack cellPx as frame dimensions', () => {

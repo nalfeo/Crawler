@@ -29,6 +29,7 @@ import {
   collectNamedExports,
   collectNamedImports,
   findDuplicateExportNames,
+  isTestScaffoldAllowlisted,
   type SourceFile,
 } from './test-only-exports-lib.js';
 
@@ -163,34 +164,6 @@ function collectDeletedImportNames(
 // Entry point
 // ---------------------------------------------------------------------------
 
-/**
- * Export names intentionally exposed for unit testing but without a
- * standalone production caller outside their defining file.  Each entry
- * should be documented with the reason for the exemption and the condition
- * under which it should be removed.
- *
- * This mirrors the allowlist pattern used by `orphaned-systems-lib.ts` for
- * systems that are intentionally not yet wired into a runtime pipeline.
- */
-const TEST_SCAFFOLD_ALLOWLIST = new Set<string>([
-  // Called internally by `getEntityNormalizedWeaponAnchor` (same file) so the
-  // import scanner cannot see it as a production import.  Exported for direct
-  // unit testing of the normalization math.  Remove when production code
-  // imports it directly rather than going through the caching wrapper.
-  'computeNormalizedWeaponAnchor',
-  // No current production caller — the production path uses the cached
-  // `NormalizedWeaponAnchor` via `getEntityNormalizedWeaponAnchor`.  Exported
-  // for unit testing the world-position conversion math.  Remove and add a
-  // production caller when an external consumer is identified.
-  'resolveWeaponAnchorWorldPos',
-  // Convenience one-call wrapper over `parseGeneratedManifest` +
-  // `loadGeneratedManifest`.  Production code (preload.ts) calls the two
-  // primitives directly; this wrapper is exported so test helpers can build a
-  // registry from a raw object with a single call.  Remove from this list if
-  // production code imports it directly again.
-  'buildGeneratedSpriteRegistry',
-]);
-
 function main(): void {
   const report = new Report('health-test-only-exports');
 
@@ -245,11 +218,9 @@ function main(): void {
   const deletedImportCandidates = allExports.filter(
     (exp) => deletedImportNames.has(exp.name) && !changedExportNames.has(exp.name),
   );
-
   const candidates = [...changedExports, ...deletedImportCandidates];
-
   const testOnlyExports = candidates.flatMap((exp) => {
-    if (TEST_SCAFFOLD_ALLOWLIST.has(exp.name)) return []; // documented test scaffold
+    if (isTestScaffoldAllowlisted(exp)) return []; // documented test scaffold
 
     const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
     const outsideSrcConsumers = [...srcConsumers].filter((file) => file !== exp.file);
