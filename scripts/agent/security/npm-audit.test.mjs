@@ -183,7 +183,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
           severity: 'high',
           via: [
             {
-              source: 1124334,
+              source: 1130591,
               url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
               severity: 'high',
             },

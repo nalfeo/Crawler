@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "weapon-passive-carryover-vfx",
+  "task_title": "Suppress carryover rehydration VFX for weapon-gated passives",
+  "estimated_apples": 2,
+  "stages": {}
+}

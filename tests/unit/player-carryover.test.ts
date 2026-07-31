@@ -45,6 +45,7 @@ import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/acti
 import { addItem, listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
+import { SKILL_LEVEL5_ABILITY_GRANTS } from '../../src/game/abilities/registry.js';
 
 describe('player floor carryover', () => {
   it('restores run-wide progression without copying the previous floor modifier', () => {
@@ -1543,6 +1544,35 @@ describe('player floor carryover', () => {
         modifier.sourceId.startsWith(`combat-flow:passive:${destinationPlayer}:`),
       ),
     ).toHaveLength(2);
+    expect(destination.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(0);
+  });
+
+  it('does not re-emit abilityActivateFlash VFX for a weapon-gated passive across carryover when loadout is unchanged', () => {
+    const source = createTestWorld({ seed: 5252 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const sword = getEquipmentDefForStarterWeapon('sword');
+    expect(sword).toBeDefined();
+    expect(equip(source, sourcePlayer, sword!, { force: true }).ok).toBe(true);
+
+    const weaponPassiveId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword');
+    expect(weaponPassiveId).toBeDefined();
+    grantPassiveAbility(source, sourcePlayer, weaponPassiveId!);
+    abilitySystem(source);
+    expect(source.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(1);
+
+    source.vfxEvents.length = 0;
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const destination = createTestWorld({ seed: 5252, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, snapshot);
+    // Mirror a real floor tick after restore to guard against delayed replay.
+    abilitySystem(destination);
+
+    expect(
+      destination.abilityStatesByEntity
+        .get(destinationPlayer)
+        ?.appliedPassiveAbilityIds.has(weaponPassiveId!),
+    ).toBe(true);
     expect(destination.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(0);
   });
 
