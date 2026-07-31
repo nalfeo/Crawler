@@ -232,6 +232,7 @@ while IFS= read -r file; do
   case "$file" in
     public/assets/generated/*) ;;
     src/shared/data/sprite-catalog.json) ;;
+    docs/*) ;;
     *)
       art_only=false
       break

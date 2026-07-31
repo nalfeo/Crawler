@@ -225,7 +225,7 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.git('commit', '-q', '-m', 'docs');
     //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
     expect(repo.scope()).toEqual(
-      F(false, true, true, false, false, false, false, false, false, false),
+      F(true, true, true, false, false, false, false, false, false, false),
     );
   });
 
@@ -237,7 +237,7 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.git('commit', '-q', '-m', 'docs json');
     //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
     expect(repo.scope()).toEqual(
-      F(false, true, true, false, false, false, false, false, false, false),
+      F(true, true, true, false, false, false, false, false, false, false),
     );
   });
 

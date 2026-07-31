@@ -1,0 +1,27 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "fix-asset-pr-admission-policy",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 98,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 98
+    }
+  },
+  "tools": {
+    "create": 1,
+    "edit": 11,
+    "glob": 7,
+    "grep": 13,
+    "powershell": 31,
+    "read_powershell": 2,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "view": 31
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
