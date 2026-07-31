@@ -64,10 +64,29 @@ sprites-pipeline, canvas-extensions, ci-workflows
 - Review ledger: `docs/knowledge/review-ledgers/2026-07-31-icon-batch-pipeline.review-ledger.json` (3🍎, plan_review + code_review round 2)
 - Canvas observation: canvas extension follows the established `canvas-harness` pattern (renderer.mjs + extension.mjs). Icon URL double-slash bug fixed (leading `/` removed from path). Binary response format aligned to `{ status, headers, body }` as required by `relayPlainBinary`. Canvas launch verified via harness pattern; visual before/after not captured (canvas is tooling-only, no shipped game surface).
 
+## E2E validation (real Azure run, 2026-07-31)
+
+Bugs discovered and fixed during real e2e testing across all 4 channels:
+
+1. **Missing npm scripts** (regression from ea1622ec9 merge conflict): restored `sprites:gen-achievement-icon-briefs`, `sprites:gen-ability-icon-briefs`, `sprites:icon-batch` in `package.json`
+2. **Missing `loadEnvLocal` call** in `icon-batch-cli.ts`: Azure credentials not loaded from `.env.local` without it (fix: add `loadEnvLocal(REPO_ROOT)` at CLI entry)
+3. **Missing `icon.yml` template**: `template-pipeline.ts` looks up `${spriteType}.yml` → `icon.yml` was absent, causing ENOENT on every run. Created `scripts/sprites/templates/icon.yml` extending `base.yml`, disables `palette-quantize`
+4. **Canvas SDK API mismatch**: `extension.mjs` used old `.onOpen/.onAction/.onClose` method style; fixed to `createCanvas({ open, onClose, actions })` + `joinSession({ canvases: [canvas] })`
+
+Channel-by-channel results:
+
+- **CLI**: ✅ Validated — 4 real icons generated + approved via Azure (achv-floor2-run-\*)
+- **Canvas UX**: ✅ Validated — extension loads, `get_state` returns 12 batches/168 icons/4 approved
+- **workflow_dispatch**: ⏳ Blocked until PR merges (GitHub requires workflow on default branch)
+- **Issue→Action**: ⏳ Blocked until PR merges (same constraint)
+
+Channels 2 and 3 should be the FIRST thing tested after this PR merges.
+
 ## Recommended next steps
 
-1. Run `npm run sprites:gen-achievement-icon-briefs` and `npm run sprites:gen-ability-icon-briefs` to generate the brief YAML files.
-2. Trigger a test batch via `workflow_dispatch` with `action=run` and one batch ID to verify the end-to-end pipeline.
-3. Address the quality-gate gap in `approveIconBatch` (check judge hard-block per cell).
-4. Wire `AbilityPresentation` and achievement display to look up icons by manifest key.
-5. Design and implement the frame compositing layer (per-difficulty tier frames for achievements, per-kind frames for abilities).
+1. **Post-merge**: trigger `workflow_dispatch` with `action=status` to verify the workflow runs
+2. **Post-merge**: file a test issue via `.github/ISSUE_TEMPLATE/icon-batch-request.yml` with `action=run` and `batch_ids=achv-icons-batch-01` to validate Issue→Action channel
+3. Run remaining batches: `npm run sprites:icon-batch -- run-all` will process all 12 briefs (168 icons), skipping the 4 already approved
+4. Address the quality-gate gap in `approveIconBatch` (check judge hard-block per cell)
+5. Wire `AbilityPresentation` and achievement display to look up icons by manifest key
+6. Design and implement the frame compositing layer (per-difficulty tier frames for achievements, per-kind frames for abilities)
