@@ -18,6 +18,7 @@ import {
   FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
   loadShopArchetypes,
 } from '../shared/data/shop-archetypes.js';
+import tuning from '../shared/data/tuning.json';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import { generateEquipmentInstance } from './generated-equipment-generator.js';
 
@@ -48,7 +49,11 @@ function ensureFloor2EquipmentRegistry(world: GameWorld): void {
 
 function generatedPrice(instance: GeneratedEquipmentInstanceV1): number {
   const rarityMultiplier = instance.rarity === 'uncommon' ? 1.5 : 1;
-  return Math.max(1, Math.round((20 + instance.itemLevel * 5) * rarityMultiplier));
+  const floor2TierMultiplier = tuning.shopPricing.floor2TierMultiplier;
+  return Math.max(
+    1,
+    Math.round((20 + instance.itemLevel * 5) * rarityMultiplier * floor2TierMultiplier),
+  );
 }
 
 function rarityForOffer(

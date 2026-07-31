@@ -695,8 +695,8 @@
     "floor": 2,
     "title": "Breach the Gate",
     "popupText": "New achievement: Breach the Gate!",
-    "unlockCriteria": "Start the contested battle for the Floor 2 exit staircase.",
-    "details": "Unlock the moment the staircase's contested battle begins.",
+    "unlockCriteria": "Unlock the Floor 2 exit staircase.",
+    "details": "Unlock the moment the Floor 2 exit staircase spawns after family victory.",
     "directorFlavor": "The staircase isn't just going to hand itself over — whoever's holding that ground now knows you're coming, and the fight for it just started whether you were ready or not. This is the one skirmish on the floor that's explicitly about territory and nothing else: no reputation angle, no diplomacy option, just who ends up controlling the exit. The camera crew's been briefed to treat this as the floor's real climax, whatever else happened upstream. Win it and the way out is yours. Lose it and you'll be back here having this exact conversation again.",
     "iconId": "achv-floor2-breach-the-gate-placeholder",
     "difficulty": "standard",
@@ -713,7 +713,7 @@
     "unlockRules": [
       {
         "type": "booleanIs",
-        "fact": "staircaseBattleStarted",
+        "fact": "staircaseSpawned",
         "value": true
       }
     ]

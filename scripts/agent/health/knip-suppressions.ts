@@ -171,6 +171,14 @@ export const KNIP_SUPPRESSIONS: readonly KnipSuppression[] = [
       '(RewardOpeningUI). Remove once these exports are consumed or deleted.',
     expiresOn: '2026-09-30',
   },
+  {
+    file: 'src/shared/generated-assets.ts',
+    issues: ['exports'],
+    reason:
+      'resolveOpaqueBox is an internal helper used only within the same file; the export ' +
+      'is a leftover from PR #2391 and should be removed once a follow-up cleanup lands.',
+    expiresOn: '2026-10-31',
+  },
 ];
 
 // ---------------------------------------------------------------------------
