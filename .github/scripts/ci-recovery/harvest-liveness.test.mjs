@@ -5,15 +5,24 @@ import test from 'node:test';
 import YAML from 'yaml';
 
 import {
+  buildDispatchLivenessIncidentBody,
   collectRecentReconcileHarvestRuns,
   DEFAULT_HARVEST_THRESHOLD_MINUTES,
+  DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
+  DEFAULT_PR_DISPATCH_GAP_HOURS,
+  DISPATCH_LIVENESS_INCIDENT_LABEL,
+  DISPATCH_LIVENESS_INCIDENT_MARKER,
+  DISPATCH_LIVENESS_INCIDENT_TITLE,
   HARVEST_INCIDENT_LABEL,
   HARVEST_INCIDENT_MARKER,
   HARVEST_INCIDENT_TITLE,
   buildHarvestIncidentBody,
   evaluateHarvestLiveness,
   isReconcileHarvestRun,
+  parseDecisionRecords,
+  reconcileDispatchLivenessIncident,
   reconcileHarvestIncident,
+  summarizeDispatchLiveness,
   summarizeHarvestRuns,
 } from './harvest-liveness.mjs';
 
@@ -194,6 +203,119 @@ test('evaluateHarvestLiveness honours a custom threshold', () => {
   );
 });
 
+test('parseDecisionRecords extracts structured CI_RECOVERY_DECISION lines', () => {
+  const records = parseDecisionRecords(
+    [
+      'noise line',
+      'CI_RECOVERY_DECISION {"pr":2414,"ts":"2026-07-31T00:00:00.000Z","stage":"terminal","action":"skip-merge-train-owned"}',
+      'CI_RECOVERY_DECISION {"pr":2415,"ts":"2026-07-31T00:05:00.000Z","stage":"terminal","action":"dispatch-copilot"}',
+      'CI_RECOVERY_DECISION not-json',
+    ].join('\n'),
+  );
+  assert.equal(records.length, 2);
+  assert.equal(records[0].pr, 2414);
+  assert.equal(records[1].action, 'dispatch-copilot');
+});
+
+test('summarizeDispatchLiveness alarms when only skip/no-op decisions exist while blocked PRs are open', () => {
+  const summary = summarizeDispatchLiveness({
+    now: NOW,
+    windowHours: 8,
+    perPrGapHours: 4,
+    decisions: [
+      {
+        pr: 2414,
+        ts: '2026-07-30T12:50:00.000Z',
+        stage: 'terminal',
+        action: 'skip-merge-train-owned',
+      },
+      {
+        pr: 2414,
+        ts: '2026-07-30T13:30:00.000Z',
+        stage: 'terminal',
+        action: 'skip-duplicate-fingerprint',
+      },
+    ],
+    openBlockedPulls: [
+      {
+        number: 2414,
+        html_url: 'https://github.com/nalfeo/Crawler/pull/2414',
+        blocked_since: '2026-07-30T11:00:00.000Z',
+      },
+    ],
+  });
+
+  assert.equal(summary.stalled, true);
+  assert.equal(summary.reason, 'no-dispatches-and-per-pr-gap');
+  assert.equal(summary.dispatchCount, 0);
+  assert.equal(summary.neverSummonedBlockedPulls.length, 1);
+  assert.deepEqual(summary.nonDispatchHistogram, [
+    ['skip-merge-train-owned', 1],
+    ['skip-duplicate-fingerprint', 1],
+  ]);
+});
+
+test('summarizeDispatchLiveness stays healthy when dispatches are present for blocked PRs', () => {
+  const summary = summarizeDispatchLiveness({
+    now: NOW,
+    windowHours: DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
+    perPrGapHours: DEFAULT_PR_DISPATCH_GAP_HOURS,
+    decisions: [
+      {
+        pr: 2414,
+        ts: '2026-07-30T16:30:00.000Z',
+        stage: 'terminal',
+        action: 'dispatch-copilot',
+      },
+      {
+        pr: 2414,
+        ts: '2026-07-30T16:40:00.000Z',
+        stage: 'terminal',
+        action: 'wait-admission',
+      },
+    ],
+    openBlockedPulls: [
+      {
+        number: 2414,
+        html_url: 'https://github.com/nalfeo/Crawler/pull/2414',
+        blocked_since: '2026-07-30T15:00:00.000Z',
+      },
+    ],
+  });
+
+  assert.equal(summary.stalled, false);
+  assert.equal(summary.reason, 'healthy');
+  assert.equal(summary.dispatchCount, 1);
+});
+
+test('buildDispatchLivenessIncidentBody includes histogram and never-summoned blocked PRs', () => {
+  const body = buildDispatchLivenessIncidentBody({
+    now: NOW,
+    summary: {
+      stalled: true,
+      reason: 'no-dispatches-for-blocked-backlog',
+      windowHours: 8,
+      perPrGapHours: 4,
+      openBlockedCount: 2,
+      dispatchCount: 0,
+      decisionCountInWindow: 6,
+      nonDispatchHistogram: [
+        ['skip-merge-train-owned', 5],
+        ['skip-duplicate-fingerprint', 1],
+      ],
+      neverSummonedBlockedPulls: [
+        { number: 2193, html_url: 'https://github.com/nalfeo/Crawler/pull/2193' },
+      ],
+    },
+    workflowRunUrl: 'https://example.test/sweep',
+    repository: 'nalfeo/Crawler',
+  });
+  assert.ok(body.startsWith(DISPATCH_LIVENESS_INCIDENT_MARKER));
+  assert.match(body, /skip-merge-train-owned/);
+  assert.match(body, /#2193/);
+  assert.match(body, /https:\/\/github\.com\/nalfeo\/Crawler\/pull\/2193/);
+});
+
 test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the marker', () => {
   const body = buildHarvestIncidentBody({
     now: NOW,
@@ -335,6 +457,33 @@ test('reconcileHarvestIncident is a no-op when healthy with no open incident', a
   assert.equal(api.calls.length, 0);
 });
 
+test('reconcileDispatchLivenessIncident creates a managed incident when dispatch liveness stalls', async () => {
+  const api = fakeApi();
+  const result = await reconcileDispatchLivenessIncident({
+    ...api,
+    token: 't',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    summary: {
+      stalled: true,
+      reason: 'no-dispatches-for-blocked-backlog',
+      windowHours: 8,
+      perPrGapHours: 4,
+      openBlockedCount: 1,
+      dispatchCount: 0,
+      decisionCountInWindow: 2,
+      nonDispatchHistogram: [['skip-merge-train-owned', 2]],
+      neverSummonedBlockedPulls: [{ number: 2414, html_url: 'https://github.com/nalfeo/Crawler/pull/2414' }],
+    },
+    now: NOW,
+  });
+  assert.equal(result.action, 'created');
+  const post = api.calls.find((call) => call.method === 'POST');
+  assert.equal(post.body.title, DISPATCH_LIVENESS_INCIDENT_TITLE);
+  assert.deepEqual(post.body.labels, [DISPATCH_LIVENESS_INCIDENT_LABEL]);
+  assert.match(post.body.body, /skip-merge-train-owned/);
+});
+
 // ---------------------------------------------------------------------------
 // Workflow wiring. The alarm is only useful if it actually runs, and only
 // trustworthy if it runs on a token bucket independent of the one that failed.
@@ -351,6 +500,8 @@ test('CI Liveness Sweep runs the harvest liveness alarm', () => {
   assert.ok(ALARM_STEP, 'sweep must contain the harvest liveness alarm step');
   assert.match(ALARM_STEP.with.script, /harvest-liveness\.mjs/);
   assert.match(ALARM_STEP.with.script, /collectRecentReconcileHarvestRuns/);
+  assert.match(ALARM_STEP.with.script, /summarizeDispatchLiveness/);
+  assert.match(ALARM_STEP.with.script, /reconcileDispatchLivenessIncident/);
   assert.ok(
     SWEEP_STEPS.some((step) => String(step.uses || '').startsWith('actions/checkout')),
     'alarm imports a repo file, so the sweep must check out the repository',

@@ -31,12 +31,20 @@
  * point: the alarm must survive the exact failure it exists to report.
  */
 
+import { DECISION_LOG_MARKER } from './decision-log.mjs';
+import { DISPATCH_ACTION } from './dispatch-table.mjs';
+
 export const HARVEST_INCIDENT_LABEL = 'ci-incident';
 export const HARVEST_INCIDENT_TITLE = 'CI incident: stale-session harvest not completing';
 export const HARVEST_INCIDENT_MARKER = '<!-- crawler:ci-harvest-liveness -->';
+export const DISPATCH_LIVENESS_INCIDENT_LABEL = HARVEST_INCIDENT_LABEL;
+export const DISPATCH_LIVENESS_INCIDENT_TITLE = 'CI incident: CI recovery dispatch liveness gap';
+export const DISPATCH_LIVENESS_INCIDENT_MARKER = '<!-- crawler:ci-dispatch-liveness -->';
 
 /** Minutes without a successful harvest run before the alarm fires. */
 export const DEFAULT_HARVEST_THRESHOLD_MINUTES = 60;
+export const DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS = 8;
+export const DEFAULT_PR_DISPATCH_GAP_HOURS = 4;
 
 function parseRunTimestamp(run) {
   const at = Date.parse(run?.updated_at || run?.run_started_at || run?.created_at || '');
@@ -155,6 +163,96 @@ export function summarizeHarvestRuns(runs, now = new Date()) {
   };
 }
 
+export function parseDecisionRecords(logText) {
+  return String(logText || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(`${DECISION_LOG_MARKER} `))
+    .map((line) => line.slice(DECISION_LOG_MARKER.length + 1))
+    .map((json) => {
+      try {
+        const parsed = JSON.parse(json);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+export function summarizeDispatchLiveness({
+  decisions,
+  openBlockedPulls,
+  now = new Date(),
+  windowHours = DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
+  perPrGapHours = DEFAULT_PR_DISPATCH_GAP_HOURS,
+}) {
+  const windowMs = windowHours * 60 * 60 * 1000;
+  const perPrGapMs = perPrGapHours * 60 * 60 * 1000;
+  const windowStartMs = now.getTime() - windowMs;
+  const inWindow = (decisions || []).filter((record) => {
+    const at = Date.parse(String(record?.ts || ''));
+    return Number.isFinite(at) && at >= windowStartMs;
+  });
+
+  const dispatches = inWindow.filter(
+    (record) =>
+      record?.stage === 'terminal' && String(record?.action || '') === DISPATCH_ACTION.DISPATCH_COPILOT,
+  );
+  const nonDispatchHistogram = new Map();
+  for (const record of inWindow) {
+    const action = String(record?.action || '');
+    if (!action || action === DISPATCH_ACTION.DISPATCH_COPILOT) continue;
+    nonDispatchHistogram.set(action, (nonDispatchHistogram.get(action) || 0) + 1);
+  }
+
+  const openBlocked = (openBlockedPulls || []).filter((pull) => Number.isFinite(Number(pull?.number)));
+  const staleBlockedPulls = [];
+  const neverSummonedBlockedPulls = [];
+  for (const pull of openBlocked) {
+    const number = Number(pull.number);
+    const dispatchTimestamps = dispatches
+      .filter((record) => Number(record?.pr) === number)
+      .map((record) => Date.parse(String(record.ts || '')))
+      .filter(Number.isFinite)
+      .sort((left, right) => right - left);
+    const lastDispatchAt = dispatchTimestamps[0] ?? null;
+    const fallbackAt = Date.parse(String(pull.blocked_since || pull.updated_at || pull.created_at || ''));
+    if (lastDispatchAt === null && Number.isFinite(fallbackAt) && now.getTime() - fallbackAt >= perPrGapMs) {
+      neverSummonedBlockedPulls.push(pull);
+      staleBlockedPulls.push(pull);
+      continue;
+    }
+    if (lastDispatchAt !== null && now.getTime() - lastDispatchAt >= perPrGapMs) {
+      staleBlockedPulls.push(pull);
+    }
+  }
+
+  const noDispatchForBlockedBacklog = openBlocked.length > 0 && dispatches.length === 0;
+  const stalledPerPrGap = staleBlockedPulls.length > 0;
+  const stalled = noDispatchForBlockedBacklog || stalledPerPrGap;
+  const reason = noDispatchForBlockedBacklog
+    ? stalledPerPrGap
+      ? 'no-dispatches-and-per-pr-gap'
+      : 'no-dispatches-for-blocked-backlog'
+    : stalledPerPrGap
+      ? 'per-pr-dispatch-gap-exceeded'
+      : 'healthy';
+
+  return {
+    stalled,
+    reason,
+    windowHours,
+    perPrGapHours,
+    openBlockedCount: openBlocked.length,
+    dispatchCount: dispatches.length,
+    staleBlockedPulls,
+    neverSummonedBlockedPulls,
+    decisionCountInWindow: inWindow.length,
+    nonDispatchHistogram: [...nonDispatchHistogram.entries()].sort((left, right) => right[1] - left[1]),
+  };
+}
+
 /**
  * Decide whether the harvester is stalled.
  *
@@ -255,6 +353,52 @@ export function buildHarvestIncidentBody({
   ].join('\n');
 }
 
+export function buildDispatchLivenessIncidentBody({
+  now = new Date(),
+  summary,
+  workflowRunUrl = null,
+  repository = null,
+}) {
+  const histogramLines =
+    summary.nonDispatchHistogram.length === 0
+      ? ['_No non-dispatch decisions were recorded in the sampled window._']
+      : summary.nonDispatchHistogram.map(([action, count]) => `- \`${action}\`: ${count}`);
+  const neverSummonedLines =
+    summary.neverSummonedBlockedPulls.length === 0
+      ? ['_None._']
+      : summary.neverSummonedBlockedPulls.map((pull) => {
+          const url = pull.html_url || `https://github.com/${repository}/pull/${pull.number}`;
+          return `- [#${pull.number}](${url})`;
+        });
+
+  return [
+    DISPATCH_LIVENESS_INCIDENT_MARKER,
+    '',
+    'CI recovery decision logs show that `@copilot` dispatches are not happening for blocked open PRs.',
+    '',
+    '## Detection',
+    '',
+    `- Observed: ${now.toISOString()}`,
+    `- Reason: \`${summary.reason}\``,
+    `- Decision window: ${summary.windowHours}h`,
+    `- Per-PR dispatch gap threshold: ${summary.perPrGapHours}h`,
+    `- Open blocked PRs in scope: ${summary.openBlockedCount}`,
+    `- Dispatch-class decisions in window: ${summary.dispatchCount}`,
+    `- Decision records in window: ${summary.decisionCountInWindow}`,
+    ...(workflowRunUrl ? [`- Detected by: ${workflowRunUrl}`] : []),
+    '',
+    '## Skip/no-op histogram',
+    '',
+    ...histogramLines,
+    '',
+    '## Blocked PRs with no dispatch in threshold window',
+    '',
+    ...neverSummonedLines,
+    '',
+    '@copilot Diagnose why CI recovery is not summoning for blocked PRs, implement the smallest correct fix from `main`, run required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
+  ].join('\n');
+}
+
 function isOpenIssue(issue) {
   const state = String(issue?.state || '').toLowerCase();
   return state === '' || state === 'open';
@@ -291,7 +435,7 @@ export async function reconcileHarvestIncident({
 }) {
   const issues = await paginate(
     token,
-    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(HARVEST_INCIDENT_LABEL)}&per_page=100`,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(DISPATCH_LIVENESS_INCIDENT_LABEL)}&per_page=100`,
   );
   const existing = findManagedIncident(issues);
 
@@ -326,6 +470,66 @@ export async function reconcileHarvestIncident({
   const created = await request(token, `/repos/${owner}/${repo}/issues`, {
     method: 'POST',
     body: { title: HARVEST_INCIDENT_TITLE, labels: [HARVEST_INCIDENT_LABEL], body },
+  });
+  return { action: 'created', issueNumber: created.data.number };
+}
+
+function findManagedDispatchLivenessIncident(issues) {
+  return issues.find(
+    (issue) =>
+      !issue.pull_request &&
+      String(issue.title) === DISPATCH_LIVENESS_INCIDENT_TITLE &&
+      String(issue.body || '').includes(DISPATCH_LIVENESS_INCIDENT_MARKER),
+  );
+}
+
+export async function reconcileDispatchLivenessIncident({
+  request,
+  paginate,
+  token,
+  owner,
+  repo,
+  summary,
+  workflowRunUrl = null,
+  now = new Date(),
+}) {
+  const issues = await paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(HARVEST_INCIDENT_LABEL)}&per_page=100`,
+  );
+  const existing = findManagedDispatchLivenessIncident(issues);
+
+  if (!summary.stalled) {
+    if (!existing) return { action: 'noop' };
+    const resolved = `${String(existing.body || '').trim()}\n\n- Auto-resolved: ${now.toISOString()} (healthy)`;
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      body: { state: 'closed', state_reason: 'completed', body: resolved },
+    });
+    return { action: 'closed', issueNumber: existing.number };
+  }
+
+  const body = buildDispatchLivenessIncidentBody({
+    now,
+    summary,
+    workflowRunUrl,
+    repository: `${owner}/${repo}`,
+  });
+  if (existing) {
+    await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+      method: 'PATCH',
+      body: { body },
+    });
+    return { action: 'updated', issueNumber: existing.number };
+  }
+
+  const created = await request(token, `/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    body: {
+      title: DISPATCH_LIVENESS_INCIDENT_TITLE,
+      labels: [DISPATCH_LIVENESS_INCIDENT_LABEL],
+      body,
+    },
   });
   return { action: 'created', issueNumber: created.data.number };
 }
