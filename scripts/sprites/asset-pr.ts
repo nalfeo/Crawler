@@ -398,12 +398,9 @@ export async function runAssetPrConsolidation(
     // Non-fatal: a delete failure is not a reason to fail the whole operation.
     for (const branch of orphanedBranches) {
       if (orphanedPathsByBranch.has(branch)) {
-        await exec(deps.exec, repoRoot, 'git', [
-          'push',
-          remote,
-          '--delete',
-          branch,
-        ]).catch(() => undefined);
+        await exec(deps.exec, repoRoot, 'git', ['push', remote, '--delete', branch]).catch(
+          () => undefined,
+        );
       }
     }
 
