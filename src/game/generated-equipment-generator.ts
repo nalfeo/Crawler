@@ -331,23 +331,22 @@ export function getGeneratedEquipmentBaseAffinity(baseId: string): GeneratedEqui
  * bases such as accessory.lucky-feather (luck: 2 > cap 1) or
  * feet.shadow-boots (moveSpeed: 0.05 > cap 0.03).
  */
-const COMMON_REWARD_SINGLE_STAT_CAPS: Readonly<Partial<Record<StatId, number>>> =
-  Object.freeze({
-    strength: 1,
-    dexterity: 1,
-    constitution: 1,
-    intelligence: 1,
-    charisma: 1,
-    luck: 1,
-    damageBonus: 2,
-    attackSpeed: 0.05,
-    moveSpeed: 0.03,
-    critChance: 0.03,
-    dodgeChance: 0.02,
-    hpRegen: 0.25,
-    xpBonus: 0.03,
-    cooldownReduction: 0.03,
-  });
+const COMMON_REWARD_SINGLE_STAT_CAPS: Readonly<Partial<Record<StatId, number>>> = Object.freeze({
+  strength: 1,
+  dexterity: 1,
+  constitution: 1,
+  intelligence: 1,
+  charisma: 1,
+  luck: 1,
+  damageBonus: 2,
+  attackSpeed: 0.05,
+  moveSpeed: 0.03,
+  critChance: 0.03,
+  dodgeChance: 0.02,
+  hpRegen: 0.25,
+  xpBonus: 0.03,
+  cooldownReduction: 0.03,
+});
 
 /**
  * Whether a stat-bonus map exceeds the Common-rarity modest-stat limit:
