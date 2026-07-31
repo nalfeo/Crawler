@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "fix-workflow-extension-ext-health-check",
+  "task_title": "Fix workflow extension and add extension bare-import health check",
+  "estimated_apples": 2,
+  "stages": {}
+}
