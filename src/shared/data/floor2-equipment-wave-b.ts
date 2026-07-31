@@ -129,7 +129,7 @@ function combatProfile(
   };
 }
 
-const WEAPON_PROFILES = {
+export const WEAPON_PROFILES = {
   blade: combatProfile({
     weaponType: WeaponType.MELEE,
     baseDamage: 18,
@@ -266,7 +266,7 @@ const WEAPON_PROFILES = {
   }),
 } as const;
 
-type WaveBWeaponFamily = keyof typeof WEAPON_PROFILES;
+export type WaveBWeaponFamily = keyof typeof WEAPON_PROFILES;
 
 function isWaveBWeaponFamily(value: string): value is WaveBWeaponFamily {
   return Object.hasOwn(WEAPON_PROFILES, value);
