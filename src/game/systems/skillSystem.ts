@@ -159,12 +159,29 @@ function applyMilestone(
   const milestone = def.milestones.find((m) => m.level === level);
   if (milestone === undefined) return;
 
-  applyCatalogEffect(world, {
-    sourceType: 'skill',
-    sourceId:
-      holderEid === undefined
-        ? `${skillId}:milestone:${level}`
-        : `${skillId}:milestone:${level}:${holderEid}`,
-    effect: milestone.effect,
-  });
+  // If milestone has a CatalogEffect, apply it
+  if (milestone.effect !== undefined) {
+    applyCatalogEffect(world, {
+      sourceType: 'skill',
+      sourceId:
+        holderEid === undefined
+          ? `${skillId}:milestone:${level}`
+          : `${skillId}:milestone:${level}:${holderEid}`,
+      effect: milestone.effect,
+    });
+  }
+
+  // TODO: If milestone has an abilityId, grant it (once ability system is updated)
+  // if (milestone.abilityId !== undefined) {
+  //   const targetEid = holderEid ?? query(world.ecs, [Player])[0];
+  //   if (targetEid !== undefined) {
+  //     grantAbilitySources(world, targetEid, [
+  //       {
+  //         kind: 'passive' | 'active',
+  //         abilityId: milestone.abilityId,
+  //         sourceId: skillAbilityGrantSourceId(skillId, level),
+  //       },
+  //     ]);
+  //   }
+  // }
 }

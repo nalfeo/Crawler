@@ -17,7 +17,8 @@ export interface SkillMilestone {
   level: 5 | 10 | 15 | 20;
   name: string;
   description: string;
-  effect: MilestoneEffect;
+  effect?: MilestoneEffect;
+  abilityId?: string;
 }
 
 export interface SkillDefinition {
