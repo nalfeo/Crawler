@@ -413,14 +413,8 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
       const nonAligned = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
         (baseId) => getGeneratedEquipmentBaseAffinity(baseId) !== playerAffinity,
       );
-      expect(
-        aligned.length,
-        `${playerAffinity}-aligned pool must be non-empty`,
-      ).toBeGreaterThan(0);
-      expect(
-        nonAligned.length,
-        `non-${playerAffinity} pool must be non-empty`,
-      ).toBeGreaterThan(0);
+      expect(aligned.length, `${playerAffinity}-aligned pool must be non-empty`).toBeGreaterThan(0);
+      expect(nonAligned.length, `non-${playerAffinity} pool must be non-empty`).toBeGreaterThan(0);
     }
   });
 
