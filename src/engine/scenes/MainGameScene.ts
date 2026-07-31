@@ -121,6 +121,7 @@ import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 import { getAchievementById } from '../../shared/achievements.js';
+import { listStaticInventorySlots } from '../../shared/inventory.js';
 import {
   getQuartermasterOfferViews,
   purchaseQuartermasterOffer,
@@ -4093,11 +4094,11 @@ export class MainGameScene extends Phaser.Scene {
       }
       const optionRows = stock.map((entry) => {
         const item = getItemById(entry.itemId);
-        const owned = item
-          ? this.world.inventories
-              .get(this.playerEid)
-              ?.slots.some((slot) => slot.itemId === item.id)
-          : false;
+        const bag = this.world.inventories.get(this.playerEid);
+        const owned =
+          item !== undefined &&
+          bag !== undefined &&
+          listStaticInventorySlots(bag).some((slot) => slot.itemId === item.id);
         const affordable = this.world.playerGold >= entry.cost;
         return {
           id: `shop-stock:${entry.itemId}`,
