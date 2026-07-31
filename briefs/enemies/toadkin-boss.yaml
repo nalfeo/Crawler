@@ -1,0 +1,47 @@
+type: enemy
+mobRole: boss
+name: toadkin-boss
+floor: 2
+sizeVariant: large
+description: |
+  Big Mama Bufo, the crime matriarch of The Croak Family — a massive, squat,
+  low-slung toad boss whose enormous girth is her power. Maximum width-to-height
+  ratio: extremely wide, low body, nearly the full cell width from elbow to
+  elbow. The classic wide toad silhouette scaled to boss proportions — a
+  flattened dome of muscle and gland-studded skin. Short powerful forelimbs
+  with thick fingers resting on the ground or a makeshift throne armrest.
+  Back covered in large dark gland-bumps and ridges.
+
+  Crime-boss character: draped in a floor-length dark robe of oily fabric,
+  pinned with heavy salvage-iron brooches. Wide iron crown sits low on a flat
+  broad head. Dripping with dark-tarnished finery — corroded brass coin-chains,
+  salvage bone jewelry. One large wart-studded hand raised in a gesture of
+  absolute authority. Expression: cold maternal menace — wide mouth set in a
+  thin unimpressed line.
+
+  Dark Floor 2 palette: deep swamp-olive and charcoal-grey skin, dark rust
+  and tarnished brass for finery, very dark greenish-brown overall. No
+  bright greens.
+
+  Silhouette: wide, extremely low, maximum boss mass. Both arms out to sides
+  to emphasize the full width. Front-facing.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Big Mama Bufo in dark oily robe with iron brooches, wide iron crown on flat head, maximum width squat-toad silhouette, cold maternal authority
+  - Big Mama Bufo with thick toad body draped in tarnished brass coin-chains, corroded bone jewelry, wide-mouth cold expression, arm gesture of command
+  - Big Mama Bufo heavy-mass variant: enormous girth filling the frame width, swamp-charcoal gland-skin, salvage-iron crown, both arms wide
+  - Big Mama Bufo in dark matriarch pose: wide flat head, oily dark robe, iron salvage regalia, wart-studded skin with gland-bumps as boss detail
+
+minVariations: 4

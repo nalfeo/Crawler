@@ -1,0 +1,47 @@
+type: enemy
+mobRole: boss
+name: crabfolk-boss
+floor: 2
+sizeVariant: wide
+description: |
+  Kingpin Molt, the iron-shelled patriarch of The Tidewrack Mob — a massive
+  wide crustacean boss who has bolted salvage iron plating over his own
+  carapace for double the armor. The defining shape: wider than tall, with
+  an enormous pair of heavy crusher claws held partly out from the sides
+  creating maximum horizontal boss-mass. The claws are the dominant visual —
+  thick, segmented, heavily armored with both natural chitin and bolted iron
+  plates. The body is a broad flat dome above short powerful legs.
+
+  Crime-boss authority: the carapace is decorated with trophy-iron sheets
+  bolted over the natural shell — scrap-plate war decorations. A corroded
+  brass monocle-piece is fused to one eyestalk. Iron crown-like ridge of
+  salvage bolted to the top of the shell. Dark-tarnished chain of anchor
+  links draped as a chest-piece. One claw held slightly higher — the
+  pincer-point signal of a mob enforcer.
+
+  Dark Floor 2 palette: deep slate-blue and charcoal for natural chitin,
+  rust-red and iron-grey for bolted salvage plates, verdigris brass for
+  fittings. Dark oceanic tones. No bright colors.
+
+  Silhouette: extremely wide horizontal boss-mass dominated by the two large
+  claws. Three-quarter perspective angled toward viewer.
+
+sensors:
+  enemy:
+    facing: three-quarter
+    toleranceDeg: 40
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Kingpin Molt with massive bolted-iron crusher claws, carapace war-plating, corroded brass monocle-eyestalk, anchor-chain chest decoration
+  - Kingpin Molt wide-dominant silhouette: enormous claw span filling horizontal frame, heavy shell dome, iron scrap-plate trophies bolted to carapace
+  - Kingpin Molt in Tidewrack Mob authority — iron crown ridge on shell, tarnished chain, one raised pincer-signal, deep charcoal-slate boss presence
+  - Kingpin Molt three-quarter view: both great claws visible and wide, bolted iron-plate armor over chitin, crustacean boss mass at maximum menace
+
+minVariations: 4

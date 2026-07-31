@@ -1,0 +1,47 @@
+type: enemy
+mobRole: boss
+name: ratfolk-boss
+floor: 2
+sizeVariant: large
+description: |
+  Plague-Boss Squick, the disease-broker patriarch of The Gutter Guild — a
+  ratfolk boss draped in grotesque trophies of his plague-trade power. Hunched
+  wide-shouldered ratfolk silhouette, large and imposing. Long curved rat
+  snout wrapped in a tattered plague-doctor beak-mask of salvaged leather and
+  iron rivets. Shoulders covered in a heavy patched cloak of layered dark
+  rags, plague-cloth, and leather strips studded with vials and pouches of
+  dark substances. Massive hands gripping a gnarled staff or iron-bound
+  walking stick that is also a plague-dispenser wand.
+
+  Crime-boss authority: heavy chains of trophy-teeth and corroded iron links
+  as a chest-piece, the badge of the Gutter Guild. Dark leather-strap harness
+  bristling with small stoppered vials. Cracked leather cap with an iron
+  clasp. Dark, calculating ratfolk eyes visible above the beak-mask.
+
+  Dark Floor 2 palette: deep brown-black fur, dark grey and rust for iron
+  hardware, murky olive for plague-cloth, tarnished verdigris on chains.
+  No bright colors. Palette reads diseased and dangerous.
+
+  Silhouette: wide-shouldered hunched oval boss-mass, with the beak-mask as
+  a strong silhouette feature. Facing front-quarter toward camera. All
+  accessories integrated — no floating vials.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 30
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Plague-Boss Squick in riveted leather plague-mask, trophy-tooth chain chest-piece, layered dark-rag cloak, vial-studded harness, iron-bound plague-staff
+  - Plague-Boss Squick with wide hunched silhouette, corroded iron chain gorget, patched plague-cloak, dark calculating ratfolk eyes above the beak
+  - Plague-Boss Squick in full gutter-guild regalia: heavy chain-of-trophies, leather cap with iron clasp, wide boss mass of dark rag and leather layers
+  - Plague-Boss Squick silhouette: wide-shouldered hunched shape, prominent beak-mask, thick cloak mass, ratfolk boss presence dripping with dark authority
+
+minVariations: 4

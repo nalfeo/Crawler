@@ -1,0 +1,46 @@
+type: enemy
+mobRole: boss
+name: raccoons-boss
+floor: 2
+sizeVariant: large
+description: |
+  Boss Bandit Rocco, the master thief-patriarch of The Trash Panda Family —
+  a powerfully-built raccoon crime boss whose distinguished criminal career
+  is written across every inch of his armored silhouette. Wide, stocky raccoon
+  body with a broad chest and heavy shoulders. The iconic raccoon face-mask
+  pattern is enhanced by a literal mask of dark iron or leather worn over
+  the natural face markings — double-masked menace. Thick ringed tail curled
+  at the side or behind, adding to the body mass.
+
+  Crime-boss authority: wearing a heavy dark coat — deep charcoal or black —
+  with wide lapels lined in salvage-iron ring-mail. Boss medallion on a chain.
+  Multiple concealed-blade sheaths visible at the belt. Wide-brimmed boss hat
+  pulled low. Dark salvage-gauntlets with knuckle-guard plates. The whole
+  silhouette reads as a wide-shouldered heist mastermind.
+
+  Dark Floor 2 palette: deep charcoal and near-black for the coat and mask,
+  dark rust and tarnished brass for iron accessories, the natural grey-and-black
+  raccoon fur showing at face and paws. No bright colors.
+
+  Silhouette: wide-shouldered boss-mass with the tail adding to the side profile.
+  Front-facing toward the viewer, slight three-quarter stance.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 30
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Boss Bandit Rocco in wide-lapel charcoal coat with ring-mail lining, iron-leather double-mask, wide-brim hat pulled low, knuckle-guard gauntlets
+  - Boss Bandit Rocco with wide-shouldered heist-mastermind silhouette, boss medallion chain, blade-sheaths at belt, ringed tail curled behind
+  - Boss Bandit Rocco in dark salvage boss regalia, natural raccoon face-mask patterns under iron plate-mask, tarnished brass accessories
+  - Boss Bandit Rocco maximum menace: broad body, wide dark coat, all concealed-weapon details visible, raccoon boss presence in deep charcoal tones
+
+minVariations: 4

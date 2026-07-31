@@ -4,15 +4,18 @@ name: batfolk-boss
 floor: 2
 sizeVariant: large
 description: |
-  Countess Vesper, an aristocratic batfolk crime matriarch. A compact, single
-  connected boss silhouette with folded cloak-like wings wrapped into the body,
-  a severe noble face, and industrial salvage jewelry and armor suited to
-  dark-fantasy Floor 2. Preserve the square boss mass created by the folded
-  cloak-wings. Avoid open wing holes, detached thin appendages, or fragile
-  accessories. Front-facing toward the viewer. Dark purples and blacks with
-  accents of tarnished gold and rusted metal salvage. Bold, intimidating
-  silhouette that reads clearly at game scale — the folded-wing cloak should
-  create a solid rectangular body mass with the head rising above it.
+  Countess Vesper, an aristocratic batfolk crime matriarch. FULL BODY visible
+  head to feet — not a bust or portrait crop. The entire figure must fit within
+  the sprite frame, from the top of her head down to her feet or the base of
+  her cloak. A compact, single connected boss silhouette with folded cloak-like
+  wings wrapped into the body, a severe noble face, and industrial salvage
+  jewelry and armor suited to dark-fantasy Floor 2. Preserve the square boss
+  mass created by the folded cloak-wings. Avoid open wing holes, detached thin
+  appendages, or fragile accessories. Front-facing toward the viewer. Dark
+  purples and blacks with accents of tarnished gold and rusted metal salvage.
+  Bold, intimidating full-body silhouette that reads clearly at game scale —
+  the folded-wing cloak should create a solid rectangular body mass with the
+  head rising above it and the feet/cloak base grounding it below.
 sensors:
   enemy:
     toleranceDeg: 20
