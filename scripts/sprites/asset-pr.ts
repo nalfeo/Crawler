@@ -399,7 +399,9 @@ export async function runAssetPrConsolidation(
     // Prettier hook cannot run; these are binary PNGs + machine-generated JSON
     // that are already well-formed — no formatting pass needed.
     await exec(deps.exec, worktree, 'git', ['commit', '--no-verify', '-m', plan.commitMessage]);
-    await exec(deps.exec, worktree, 'git', ['push', '-u', remote, plan.batchBranch]);
+    // --no-verify: same reason as commit above — pre-push Prettier hook
+    // cannot find node_modules in the temp worktree.
+    await exec(deps.exec, worktree, 'git', ['push', '--no-verify', '-u', remote, plan.batchBranch]);
 
     const created = await exec(deps.exec, repoRoot, 'gh', [
       'pr',
