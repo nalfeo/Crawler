@@ -1,0 +1,36 @@
+name: 'ability-icons-batch-01b'
+description: >-
+  Ability icon batch 01b: pixel-art symbols for SPELL abilities (part 2 of 4).
+  Pixel-art symbols on transparent background; frames are composited separately.
+type: icon
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells:
+      - [1, 0]
+      - [1, 1]
+      - [1, 2]
+      - [1, 3]
+      - [2, 0]
+      - [2, 1]
+      - [2, 2]
+      - [2, 3]
+      - [3, 0]
+      - [3, 1]
+      - [3, 2]
+      - [3, 3]
+    nativeCanvas: 1024
+iconBatch:
+  - id: ability-icon-bless
+    concept: 'Bless'
+    description: 'SPELL ability — Call down a brief blessing that sharpens your strikes and footwork. Symbol: a radiant cross or golden light-beam blessing, warm and divine.'
+  - id: ability-icon-stoneskin
+    concept: 'Stoneskin'
+    description: 'SPELL ability — Harden your flesh into living granite for a few desperate moments. Symbol: a rocky fist or stone-plated arm, grey and solid.'
+  - id: ability-icon-curse
+    concept: 'Curse'
+    description: 'SPELL ability — Blight a cluster of enemies, dragging their movement into a crawl. Symbol: a hex circle or dripping skull, dark and ominous.'
+  - id: ability-icon-vampiric-touch
+    concept: 'Vampiric Touch'
+    description: 'SPELL ability — Rip vitality from the nearest foe and pour it back into yourself. Symbol: a clawed hand drawing red life-force, crimson and draining.'
