@@ -30,6 +30,8 @@ import {
   FLOOR2_HARVESTABLE_START_INDEX,
 } from '../../src/shared/harvestableDefs.js';
 import { isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
+import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from '../../src/shared/data/floor2-basic-leather-bases.js';
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../src/shared/data/floor2-equipment-art.js';
 import {
   loadShippedManifestRaw,
   shippedManifestShardsExist,
@@ -248,6 +250,36 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     // Whatever count it has, it must be a valid registry.
     expect(registry.version).toBe(GENERATED_MANIFEST_VERSION);
     expect(typeof registry.size).toBe('number');
+  });
+
+  it('preloads real approved Basic Leather art under every generated-equipment runtime key', () => {
+    if (!sharedRealRegistry) return;
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (textureKey, url) => queued.push({ textureKey, url }) },
+      sharedRealRegistry,
+    );
+
+    const expectedDefinitions = FLOOR2_EQUIPMENT_ART_DEFINITIONS.filter((definition) =>
+      FLOOR2_BASIC_LEATHER_STABLE_IDS.includes(definition.stableId),
+    );
+    expect(expectedDefinitions).toHaveLength(18);
+
+    for (const definition of expectedDefinitions) {
+      const alias = queued.find((entry) => entry.textureKey === definition.runtimeKey);
+      expect(
+        alias,
+        `missing real-art preload alias for ${definition.stableId} (${definition.runtimeKey})`,
+      ).toBeDefined();
+      expect(alias!.url).not.toContain('placeholder');
+      const pngPath = path.resolve(
+        path.dirname(REPO_MANIFEST),
+        '..',
+        alias!.url.slice('/assets/'.length),
+      );
+      expect(existsSync(pngPath), `missing Basic Leather PNG on disk: ${pngPath}`).toBe(true);
+    }
   });
 
   // Every migratable Floor-1 item must resolve — BY ITEM ID — to its real,

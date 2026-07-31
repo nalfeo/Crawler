@@ -105,6 +105,166 @@ function isExplicitTestScaffoldingExport(name: string): boolean {
  */
 const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
   {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_REWARD_BUNDLE_RARITIES',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_REWARD_BUNDLE_AFFINITY_PROB',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_assertGeneratedRewardInstanceLegal',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_alignmentFromRoll',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rollAffinityAlignment',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_resolvePlayerBuildAffinity',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rarityEligibleBaseIds',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_computeFloor2RewardPoolTierEligibility',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_Floor2RewardPoolAuthoringError',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_validateFloor2RewardPoolTierEligibility',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: '_rollTierRarity',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_GeneratedEquipmentGeneratorError',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_GenerateEquipmentInstanceRequest',
+  },
+  {
+    file: 'src/game/generated-equipment-generator.ts',
+    name: '_getGeneratedEquipmentBaseV1',
+  },
+  {
+    file: 'src/game/systems/achievementSystem.ts',
+    name: 'unlockAchievement',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_LOOT_TIERS',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'ACHIEVEMENT_SCOPES',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'parseAchievementCatalog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'createAchievementCatalog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'createAchievementCatalogRegistry',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_CATALOG',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENTS',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'getAchievementCatalogForFloor',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'getCurrentRunGlobalAchievements',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'buildAchievementArtBacklog',
+  },
+  {
+    file: 'src/shared/achievements.ts',
+    name: 'FLOOR1_ACHIEVEMENT_COUNT',
+  },
+  {
+    file: 'src/shared/data/floor2-equipment-wave-b.ts',
+    name: 'FLOOR2_EQUIPMENT_WAVE_B_STABLE_IDS',
+  },
+  {
+    file: 'src/shared/data/floor2-reward-pool.ts',
+    name: 'FLOOR2_ARMOR_SLOT_IDS',
+  },
+  {
+    file: 'src/shared/data/floor2-reward-pool.ts',
+    name: 'FLOOR2_REWARD_POOL_NON_WEAPON_IDS',
+  },
+  {
+    file: 'src/shared/generated-equipment-types.ts',
+    name: 'EQUIPMENT_REWARD_TIERS',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'search',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'filterByTag',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'getActiveTags',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'reorderTab',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'hideTab',
+  },
+  {
+    file: 'src/shared/inventory.ts',
+    name: 'showTab',
+  },
+  {
+    file: 'src/shared/items.ts',
+    name: '_customTag',
+  },
+  {
+    file: 'src/shared/weaponDefs.ts',
+    name: 'WEAPON_DEFS',
+  },
+  {
     file: 'src/shared/generated-assets.ts',
     name: 'computeNormalizedWeaponAnchor',
   },

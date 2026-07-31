@@ -603,6 +603,9 @@ const EXPECTED_FAMILY_COUNTS: Readonly<Record<Floor2WeaponBaseFamily, number>> =
   'magic-focus': 2,
   beam: 2,
   trap: 2,
+  // Classic Fantasy [Basic Leather] bases live in floor2-basic-leather-bases.ts,
+  // not Wave A — this family contributes zero bases here.
+  'basic-leather': 0,
 };
 
 function validateWaveABases(): void {

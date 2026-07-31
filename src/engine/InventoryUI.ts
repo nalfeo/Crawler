@@ -9,19 +9,23 @@
  * - Respects TabPreferences for tab ordering and hiding
  */
 import Phaser from 'phaser';
-import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import type { GameWorld } from '../core/world.js';
+import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
 import type {
-  GeneratedEquipmentInventoryEntry,
+  GeneratedInventoryEntryResolver,
   InventoryBag,
+  InventoryBagEntry,
+  InventoryEntryMetadata,
   TabPreferences,
 } from '../shared/inventory.js';
 import {
   createTabPreferences,
   getVisibleTabs,
+  inventoryEntryIdentity,
   listInventoryEntries,
+  sortSlots,
   type SortField,
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
@@ -30,9 +34,11 @@ import {
   ItemRarity,
   type ItemDef,
   type ItemTag,
+  normalizeGeneratedInventoryTag,
   RARITY_COLORS,
   getItemById,
 } from '../shared/items.js';
+import type { GeneratedEquipmentInventoryEntry } from '../shared/inventory.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -40,7 +46,6 @@ import {
 } from '../shared/generated-assets.js';
 import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
-import { GENERATED_EQUIPMENT_RARITY_COLORS } from './generated-equipment-icon.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { renderItemTooltip } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
@@ -94,39 +99,6 @@ export interface InventoryUIConfig {
 /** Max ms between two clicks on the same cell to count as an equip double-click. */
 const DOUBLE_CLICK_MS = 220;
 
-const GENERATED_RARITY_ORDER: Readonly<Record<'common' | 'uncommon' | 'rare', number>> = {
-  common: 0,
-  uncommon: 1,
-  rare: 2,
-};
-
-const GENERATED_RARITY_TO_ITEM_RARITY: Readonly<
-  Record<'common' | 'uncommon' | 'rare', ItemRarity>
-> = {
-  common: ItemRarity.Common,
-  uncommon: ItemRarity.Uncommon,
-  rare: ItemRarity.Rare,
-};
-
-const ITEM_RARITY_ORDER: Readonly<Record<ItemDef['rarity'], number>> = {
-  Common: 0,
-  Uncommon: 1,
-  Rare: 2,
-  Epic: 3,
-  Legendary: 4,
-};
-
-type RenderInventoryEntry = {
-  readonly renderKey: string;
-  readonly itemId: string;
-  readonly quantity: number;
-  readonly def: ItemDef;
-  readonly rarityOrder: number;
-  readonly rarityColor: number;
-  readonly slotIds: readonly EquipmentSlotId[];
-  readonly equipTarget: string | GeneratedEquipmentInventoryEntry;
-};
-
 export function createInventoryUI(
   scene: Phaser.Scene,
   config: InventoryUIConfig = {},
@@ -141,13 +113,19 @@ export function createInventoryUI(
    */
   getCellScreenBounds(index: number): ScreenBounds | null;
   /**
-   * Test/automation affordance: render-order index of the first visible cell
-   * holding `itemId`, or null when absent. Lets e2e find a specific item's cell
-   * without assuming a fixed sort position.
+   * Test/automation affordance: render-order index of a visible canonical entry.
+   * Generated entries use their immutable instance key, so duplicate-base items
+   * remain independently addressable.
+   */
+  getCellIndexForEntry(entry: InventoryBagEntry): number | null;
+  /**
+   * Legacy base-item-id lookup retained for existing inventory probes. Matches
+   * the first visible cell whose *base* item id equals `itemId` — for a
+   * generated instance this is its base id, not the opaque instance key.
    */
   getCellIndexForItem(itemId: string): number | null;
-  /** Test/automation affordance: visible rendered item ids in grid order. */
-  getVisibleItemIds(): string[];
+  /** Test/automation affordance: visible rendered inventory base item ids, in cell order. */
+  getVisibleItemIds(): readonly string[];
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -192,7 +170,7 @@ export function createInventoryUI(
   // Double-click equip detection: remember the last cell click so a quick
   // second click on the same equippable item fires the equip intent while a
   // slow second click still just toggles the pinned tooltip.
-  let lastClickItemKey: string | null = null;
+  let lastClickEntryIdentity: string | null = null;
   let lastClickTime = Number.NEGATIVE_INFINITY;
 
   // Signature of the last rendered grid state. The scene calls refresh() every
@@ -205,7 +183,7 @@ export function createInventoryUI(
 
   // Currently "pinned" tooltip (via click/tap). Stays visible after the pointer
   // leaves the cell until the item is clicked again or another item is clicked.
-  let pinned: { entry: RenderInventoryEntry; x: number; y: number } | null = null;
+  let pinned: { def: ItemDef; entry: InventoryBagEntry; x: number; y: number } | null = null;
   let currentWorld: GameWorld | null = null;
 
   /**
@@ -223,6 +201,71 @@ export function createInventoryUI(
   // Run seed captured from the world on refresh. Used to choose a stable
   // generated-sprite variant per item without consuming the gameplay RNG stream.
   let currentWorldSeed = 0;
+
+  const generatedRarityToItemRarity: Record<string, ItemRarity> = {
+    common: ItemRarity.Common,
+    uncommon: ItemRarity.Uncommon,
+    rare: ItemRarity.Rare,
+    epic: ItemRarity.Epic,
+    legendary: ItemRarity.Legendary,
+  };
+
+  const generatedMetadata: GeneratedInventoryEntryResolver = (
+    entry: GeneratedEquipmentInventoryEntry,
+  ): InventoryEntryMetadata | undefined => {
+    if (!currentWorld) return undefined;
+    const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
+    if (!instance) return undefined;
+    const stats = Object.entries(instance.frozen.statBonuses)
+      .filter(([, value]) => value !== 0)
+      .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`);
+    return {
+      name: instance.frozen.displayName,
+      description: [
+        instance.frozen.slots.map(getSlotLabel).join(' / '),
+        stats.join(', '),
+        `${instance.frozen.weightLb} lb`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      tags: instance.frozen.tags.map(normalizeGeneratedInventoryTag),
+      rarity: generatedRarityToItemRarity[instance.rarity] ?? ItemRarity.Common,
+      slots: instance.frozen.slots,
+    };
+  };
+
+  function resolveEntryDef(entry: InventoryBagEntry): ItemDef | undefined {
+    if (entry.kind === 'stackable-static-item') return getItemById(entry.itemId);
+    const metadata = generatedMetadata(entry);
+    if (!metadata) return undefined;
+    // `id` intentionally resolves to the *base* item id (not the opaque
+    // instance key) so item-id-keyed lookups (getVisibleItemIds,
+    // getCellIndexForItem, the generated-sprite-variant fallback below) treat
+    // a generated instance the same way as its static base item.
+    const instance = currentWorld
+      ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
+      : undefined;
+    return {
+      id: instance?.baseId ?? entry.instanceKey,
+      name: metadata.name,
+      description: metadata.description,
+      tags: [...metadata.tags],
+      rarity: (metadata.rarity as ItemRarity) ?? ItemRarity.Common,
+      maxStack: 1,
+    };
+  }
+
+  function isEquippableEntry(entry: InventoryBagEntry): boolean {
+    if (entry.kind === 'stackable-static-item') return isEquippableItem(entry.itemId);
+    return (generatedMetadata(entry)?.slots.length ?? 0) > 0;
+  }
+
+  /** Narrow render-to-scene equip payload; matches `equipFromBag`'s own union. */
+  function equipPayload(entry: InventoryBagEntry): string | GeneratedEquipmentInventoryEntry {
+    return entry.kind === 'generated-instance'
+      ? { kind: 'generated-instance', instanceKey: entry.instanceKey }
+      : entry.itemId;
+  }
 
   /**
    * Resolve which approved generated-sprite variant to render for an item.
@@ -347,7 +390,10 @@ export function createInventoryUI(
   const cellObjects: Phaser.GameObjects.GameObject[] = [];
   // Cell background rectangles, in render order (test/automation hit-targets).
   const cellBackgrounds: Phaser.GameObjects.Rectangle[] = [];
-  // Item id per render-order cell, parallel to cellBackgrounds (automation).
+  // Canonical identity per render-order cell, parallel to cellBackgrounds.
+  const cellEntryIdentities: string[] = [];
+  // Base item id per render-order cell (generated entries use their base id),
+  // parallel to cellBackgrounds. Powers getVisibleItemIds/getCellIndexForItem.
   const cellItemIds: string[] = [];
   // Tooltip objects
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
@@ -436,6 +482,7 @@ export function createInventoryUI(
     }
     cellObjects.length = 0;
     cellBackgrounds.length = 0;
+    cellEntryIdentities.length = 0;
     cellItemIds.length = 0;
   }
 
@@ -450,13 +497,7 @@ export function createInventoryUI(
     clearTabObjects();
     if (!currentBag) return;
 
-    const tagBag: InventoryBag = {
-      slots: buildRenderEntries().map((entry) => ({
-        itemId: entry.itemId,
-        quantity: entry.quantity,
-      })),
-    };
-    const tabs = getVisibleTabs(tagBag, tabPrefs);
+    const tabs = getVisibleTabs(currentBag, tabPrefs, undefined, generatedMetadata);
     if (activeTag !== null && !tabs.includes(activeTag)) {
       activeTag = null;
     }
@@ -538,87 +579,37 @@ export function createInventoryUI(
     }
   }
 
-  function buildRenderEntries(): RenderInventoryEntry[] {
+  function getFilteredEntries(): InventoryBagEntry[] {
     if (!currentBag) return [];
 
-    const entries: RenderInventoryEntry[] = [];
-    for (const [index, bagEntry] of listInventoryEntries(currentBag).entries()) {
-      if (bagEntry.kind === 'generated-instance') {
-        if (!currentWorld) continue;
-        const instance = getGeneratedEquipmentInstance(currentWorld, bagEntry.instanceKey);
-        if (!instance) continue;
-        const def =
-          getItemById(instance.baseId) ??
-          ({
-            id: instance.baseId,
-            name: instance.frozen.displayName,
-            description: '',
-            tags: [...instance.frozen.tags] as ItemTag[],
-            rarity: GENERATED_RARITY_TO_ITEM_RARITY[instance.rarity],
-            maxStack: 1,
-          } satisfies ItemDef);
-        entries.push({
-          renderKey: `generated:${bagEntry.instanceKey}`,
-          itemId: def.id,
-          quantity: 1,
-          def,
-          rarityOrder: GENERATED_RARITY_ORDER[instance.rarity],
-          rarityColor: GENERATED_EQUIPMENT_RARITY_COLORS[instance.rarity],
-          slotIds: instance.frozen.slots,
-          equipTarget: bagEntry,
-        });
-        continue;
+    const normalizedQuery = searchQuery.toLowerCase();
+    return sortSlots(currentBag, currentSortBy, undefined, generatedMetadata).filter((entry) => {
+      const metadata =
+        entry.kind === 'generated-instance'
+          ? generatedMetadata(entry)
+          : (() => {
+              const def = getItemById(entry.itemId);
+              return def
+                ? {
+                    name: def.name,
+                    description: def.description,
+                    tags: def.tags,
+                    slots: getEquipmentDefForItem(entry.itemId)?.slots ?? [],
+                  }
+                : undefined;
+            })();
+      if (!metadata) return false;
+      if (externalSlotFilter !== null && !metadata.slots.includes(externalSlotFilter)) {
+        return false;
       }
-
-      const def = getItemById(bagEntry.itemId);
-      if (!def) continue;
-      entries.push({
-        renderKey: `static:${bagEntry.itemId}:${index}`,
-        itemId: bagEntry.itemId,
-        quantity: bagEntry.quantity,
-        def,
-        rarityOrder: ITEM_RARITY_ORDER[def.rarity] ?? 0,
-        rarityColor: RARITY_COLORS[def.rarity] ?? 0x9e9e9e,
-        slotIds: getEquipmentDefForItem(bagEntry.itemId)?.slots ?? [],
-        equipTarget: bagEntry.itemId,
-      });
-    }
-    return entries;
-  }
-
-  function getFilteredEntries(): RenderInventoryEntry[] {
-    let entries = buildRenderEntries();
-
-    const slotFilter = externalSlotFilter;
-    if (slotFilter !== null) {
-      entries = entries.filter((entry) => entry.slotIds.includes(slotFilter));
-    }
-
-    if (searchQuery) {
-      const lowerQuery = searchQuery.toLowerCase();
-      entries = entries.filter(
-        (entry) =>
-          entry.def.name.toLowerCase().includes(lowerQuery) ||
-          entry.def.description.toLowerCase().includes(lowerQuery),
-      );
-    } else {
-      const tag = activeTag;
-      if (tag !== null) {
-        entries = entries.filter((entry) => entry.def.tags.includes(tag));
+      if (
+        normalizedQuery &&
+        !metadata.name.toLowerCase().includes(normalizedQuery) &&
+        !metadata.description.toLowerCase().includes(normalizedQuery)
+      ) {
+        return false;
       }
-    }
-
-    return [...entries].sort((a, b) => {
-      switch (currentSortBy) {
-        case 'rarity': {
-          const diff = b.rarityOrder - a.rarityOrder;
-          return diff !== 0 ? diff : a.def.name.localeCompare(b.def.name);
-        }
-        case 'name':
-          return a.def.name.localeCompare(b.def.name);
-        case 'quantity':
-          return b.quantity - a.quantity;
-      }
+      return activeTag === null || metadata.tags.includes(activeTag);
     });
   }
 
@@ -639,14 +630,15 @@ export function createInventoryUI(
 
     for (let i = 0; i < Math.min(entries.length, maxVisible); i++) {
       const entry = entries[i]!;
-      const def = entry.def;
+      const def = resolveEntryDef(entry);
+      if (!def) continue;
 
       const col = i % COLS;
       const row = Math.floor(i / COLS);
       const cellX = snap(gridLeft + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
       const cellY = snap(gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
 
-      const rarityColor = entry.rarityColor;
+      const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
 
       // Cell background
       const cellBg = scene.add.rectangle(cellX, cellY, CELL_SIZE, CELL_SIZE, COLORS.cellBg);
@@ -655,22 +647,26 @@ export function createInventoryUI(
 
       // Keep the pinned cell highlighted and its coordinates fresh across
       // re-renders (item order/position can shift when the bag changes).
-      if (pinned !== null && pinned.entry.renderKey === entry.renderKey) {
-        pinned = { entry, x: cellX, y: cellY };
+      if (
+        pinned !== null &&
+        inventoryEntryIdentity(pinned.entry) === inventoryEntryIdentity(entry)
+      ) {
+        pinned = { def, entry, x: cellX, y: cellY };
         cellBg.setFillStyle(COLORS.cellHover);
       }
 
       cellBg.on('pointerover', () => {
         cellBg.setFillStyle(COLORS.cellHover);
-        showTooltip(entry, cellX, cellY);
+        showTooltip(def, entry, cellX, cellY);
       });
       cellBg.on('pointerout', () => {
-        const stillPinned = pinned !== null && pinned.entry.renderKey === entry.renderKey;
+        const stillPinned =
+          pinned !== null && inventoryEntryIdentity(pinned.entry) === inventoryEntryIdentity(entry);
         cellBg.setFillStyle(stillPinned ? COLORS.cellHover : COLORS.cellBg);
         clearTooltip();
         // Restore the pinned tooltip when leaving a non-pinned cell.
         if (pinned !== null) {
-          showTooltip(pinned.entry, pinned.x, pinned.y);
+          showTooltip(pinned.def, pinned.entry, pinned.x, pinned.y);
         }
       });
       // Click/tap toggles a pinned tooltip so touch users (no hover) can read
@@ -678,29 +674,30 @@ export function createInventoryUI(
       // equip intent (ARPG double-click idiom).
       cellBg.on('pointerdown', () => {
         const now = scene.time.now;
+        const entryIdentity = inventoryEntryIdentity(entry);
         const isDoubleClick =
-          lastClickItemKey === entry.renderKey && now - lastClickTime <= DOUBLE_CLICK_MS;
+          lastClickEntryIdentity === entryIdentity && now - lastClickTime <= DOUBLE_CLICK_MS;
         lastClickTime = now;
-        lastClickItemKey = entry.renderKey;
+        lastClickEntryIdentity = entryIdentity;
 
-        if (isDoubleClick && config.onEquipItem && canEquipEntry(entry)) {
+        if (isDoubleClick && config.onEquipItem && isEquippableEntry(entry)) {
           // Equipping moves the item out of this cell; drop the pin/tooltip and
           // reset the click tracker so a follow-up click starts fresh.
           pinned = null;
           clearTooltip();
-          lastClickItemKey = null;
+          lastClickEntryIdentity = null;
           lastClickTime = Number.NEGATIVE_INFINITY;
-          config.onEquipItem(entry.equipTarget);
+          config.onEquipItem(equipPayload(entry));
           return;
         }
 
-        if (pinned !== null && pinned.entry.renderKey === entry.renderKey) {
+        if (pinned !== null && inventoryEntryIdentity(pinned.entry) === entryIdentity) {
           pinned = null;
         } else {
-          pinned = { entry, x: cellX, y: cellY };
+          pinned = { def, entry, x: cellX, y: cellY };
         }
         clearTooltip();
-        showTooltip(entry, cellX, cellY);
+        showTooltip(def, entry, cellX, cellY);
         cellBg.setFillStyle(COLORS.cellHover);
       });
 
@@ -709,13 +706,21 @@ export function createInventoryUI(
       // the texture. When a concept has multiple approved variants, one is
       // chosen deterministically per (item, run). Falls back to the
       // 2-character placeholder text otherwise.
-      const generatedEntry = selectGeneratedEntry(entry.itemId);
+      const instance =
+        entry.kind === 'generated-instance' && currentWorld
+          ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
+          : undefined;
+      const generatedEntry = selectGeneratedEntry(instance?.frozen.artKey ?? def.id);
+      const generatedTextureKey =
+        instance?.frozen.artKey && scene.textures?.exists(instance.frozen.artKey)
+          ? instance.frozen.artKey
+          : generatedEntry?.textureKey;
       const generatedTextureLoaded =
-        generatedEntry !== null && scene.textures?.exists(generatedEntry.textureKey) === true;
+        generatedTextureKey !== undefined && scene.textures?.exists(generatedTextureKey) === true;
 
       let iconObject: Phaser.GameObjects.GameObject;
-      if (generatedEntry && generatedTextureLoaded) {
-        const iconImage = scene.add.image(cellX, cellY - 6, generatedEntry.textureKey);
+      if (generatedTextureKey && generatedTextureLoaded) {
+        const iconImage = scene.add.image(cellX, cellY - 6, generatedTextureKey);
         iconImage.setOrigin(0.5, 0.5);
         // Fit the sprite to ~75% of the cell from its ACTUAL source size so the
         // rarity border stays visible — never assume a fixed source size.
@@ -738,7 +743,7 @@ export function createInventoryUI(
       }
 
       // Stack count
-      if (entry.quantity > 1) {
+      if (entry.kind === 'stackable-static-item' && entry.quantity > 1) {
         const countText = crispText(
           cellX + CELL_SIZE / 2 - 4,
           cellY + CELL_SIZE / 2 - 4,
@@ -758,7 +763,8 @@ export function createInventoryUI(
       container.add(iconObject);
       cellObjects.push(cellBg, iconObject);
       cellBackgrounds.push(cellBg);
-      cellItemIds.push(entry.itemId);
+      cellEntryIdentities.push(inventoryEntryIdentity(entry));
+      cellItemIds.push(def.id);
     }
 
     // Fill trailing cells of the final row with empty-slot backgrounds so the
@@ -817,25 +823,23 @@ export function createInventoryUI(
 
     // Re-show (or drop) the pinned tooltip after rebuilding the grid.
     if (pinned !== null) {
-      const stillPresent = entries.some((entry) => entry.renderKey === pinned!.entry.renderKey);
+      const stillPresent = entries.some(
+        (entry) => inventoryEntryIdentity(entry) === inventoryEntryIdentity(pinned!.entry),
+      );
       if (stillPresent) {
-        showTooltip(pinned.entry, pinned.x, pinned.y);
+        showTooltip(pinned.def, pinned.entry, pinned.x, pinned.y);
       } else {
         pinned = null;
       }
     }
   }
 
-  function canEquipEntry(entry: RenderInventoryEntry): boolean {
-    return entry.slotIds.length > 0 || isEquippableItem(entry.itemId);
-  }
-
-  function showTooltip(entry: RenderInventoryEntry, cellX: number, cellY: number): void {
+  function showTooltip(def: ItemDef, entry: InventoryBagEntry, cellX: number, cellY: number): void {
     clearTooltip();
     // Surface the equip affordance only when a coordinator is listening and the
     // item can actually be equipped.
     const footerHint =
-      config.onEquipItem !== undefined && canEquipEntry(entry)
+      config.onEquipItem !== undefined && isEquippableEntry(entry)
         ? 'DOUBLE-CLICK TO EQUIP'
         : undefined;
     tooltipObjects.push(
@@ -849,8 +853,8 @@ export function createInventoryUI(
         anchorX: cellX,
         anchorY: cellY,
         anchorSize: CELL_SIZE,
-        def: entry.def,
-        quantity: entry.quantity,
+        def,
+        quantity: entry.kind === 'stackable-static-item' ? entry.quantity : 1,
         fontFamily: FONT_FAMILY,
         footerHint,
         crispText,
@@ -912,9 +916,9 @@ export function createInventoryUI(
   }
 
   function refresh(world: GameWorld): void {
+    currentWorld = world;
     playerEid = findPlayerEid(world);
     currentBag = playerEid >= 0 ? (world.inventories.get(playerEid) ?? null) : null;
-    currentWorld = world;
     currentWorldSeed = world.seed | 0;
     if (!visible) {
       return;
@@ -932,21 +936,26 @@ export function createInventoryUI(
   }
 
   function computeRenderSignature(): string {
-    const entries = buildRenderEntries();
-    let signature = [activeTag ?? '*', searchQuery, currentSortBy, externalSlotFilter ?? '*'].join(
-      '|',
-    );
+    const entries = currentBag ? listInventoryEntries(currentBag) : [];
+    let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}|${externalSlotFilter ?? '*'}`;
     for (const entry of entries) {
       // Fold in the *selected* generated icon variant and whether its texture is
       // loaded yet, so the grid re-renders once async sprite warm-loading
-      // finishes (the slot contents alone are unchanged, so without this the
+      // finishes (the entry contents alone are unchanged, so without this the
       // cells would stay on their text fallback until the next inventory
       // mutation). Selecting via the same path as the icon keeps them in sync.
-      const iconEntry = selectGeneratedEntry(entry.itemId);
-      const iconReady = iconEntry !== null && scene.textures?.exists(iconEntry.textureKey) === true;
-      signature += `;${entry.renderKey}:${entry.quantity}:${entry.itemId}:${
-        iconEntry?.textureKey ?? ''
-      }:${iconReady ? 1 : 0}`;
+      const instance =
+        entry.kind === 'generated-instance' && currentWorld
+          ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
+          : undefined;
+      const artKey = instance?.frozen.artKey;
+      const sprite = selectGeneratedEntry(
+        artKey ?? (entry.kind === 'stackable-static-item' ? entry.itemId : entry.instanceKey),
+      );
+      const textureKey =
+        artKey && scene.textures?.exists(artKey) ? artKey : (sprite?.textureKey ?? '');
+      const iconReady = textureKey !== '' && scene.textures?.exists(textureKey) === true;
+      signature += `;${inventoryEntryIdentity(entry)}:${entry.kind === 'stackable-static-item' ? entry.quantity : 1}:${artKey ?? ''}:${textureKey}:${iconReady ? 1 : 0}`;
     }
     return signature;
   }
@@ -977,11 +986,15 @@ export function createInventoryUI(
       const b = cell.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
+    getCellIndexForEntry: (entry: InventoryBagEntry): number | null => {
+      const i = cellEntryIdentities.indexOf(inventoryEntryIdentity(entry));
+      return i >= 0 ? i : null;
+    },
     getCellIndexForItem: (itemId: string): number | null => {
       const i = cellItemIds.indexOf(itemId);
       return i >= 0 ? i : null;
     },
-    getVisibleItemIds: () => [...cellItemIds],
+    getVisibleItemIds: (): readonly string[] => [...cellItemIds],
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
     setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {

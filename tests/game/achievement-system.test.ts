@@ -819,7 +819,11 @@ describe('claimAchievementReward', () => {
     const result = claimAchievementReward(world, 'first-bonk');
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.reward).toEqual({ type: 'lootBox', tier: 'trash' });
+      expect(result.reward).toEqual({
+        type: 'lootBox',
+        lootTable: 'floor1-materials',
+        tier: 'trash',
+      });
       expect(result.grantedLootBox?.gold).toBe(LOOT_BOX_GOLD_BY_TIER.trash);
       expect(result.grantedLootBox?.materials).toHaveLength(1);
       for (const materialId of result.grantedLootBox?.materials ?? []) {
