@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SEVERITY_ORDER = ['info', 'low', 'moderate', 'high', 'critical'];
 
@@ -33,6 +33,18 @@ export const TEMP_DEPENDENCY_EXCEPTIONS = [
 
 const AUDIT_SCRIPT_PATH = 'scripts/agent/security/npm-audit.mjs';
 
+// All exported exception arrays in this file that carry expiresOn fields.
+// Adding a new expiresOn-bearing exported array without listing it here will
+// cause the fail-closed check in getReasonRestatementViolationsForCurrentBranch
+// to error, preventing a silent guard bypass.
+export const KNOWN_EXPIRY_ARRAY_NAMES = ['AUDIT_EXCEPTIONS', 'TEMP_DEPENDENCY_EXCEPTIONS'];
+
+// Maps each known array name to its live export for violation comparison.
+const LIVE_EXPIRY_ARRAYS = {
+  AUDIT_EXCEPTIONS,
+  TEMP_DEPENDENCY_EXCEPTIONS,
+};
+
 export function findReasonRestatementViolations(previousExceptions, currentExceptions) {
   const previousByPackage = new Map(
     previousExceptions.map((exception) => [exception.packageName, exception]),
@@ -57,20 +69,45 @@ export function findReasonRestatementViolations(previousExceptions, currentExcep
   return violations;
 }
 
-export function extractAuditExceptionsFromSource(source) {
-  const match = source.match(/export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/);
+export function extractNamedExceptionsFromSource(source, arrayName) {
+  const escaped = arrayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = source.match(
+    new RegExp(`export const ${escaped} = (\\[\\]|\\[[\\s\\S]*?\\n\\]);`),
+  );
   if (!match) {
     throw new Error(
-      'Could not find AUDIT_EXCEPTIONS declaration in scripts/agent/security/npm-audit.mjs',
+      `Could not find ${arrayName} declaration in scripts/agent/security/npm-audit.mjs`,
     );
   }
 
   const exceptions = Function(`"use strict"; return (${match[1]});`)();
   if (!Array.isArray(exceptions)) {
-    throw new Error('AUDIT_EXCEPTIONS declaration is not an array');
+    throw new Error(`${arrayName} declaration is not an array`);
   }
 
   return exceptions;
+}
+
+// Backward-compatible alias; prefer extractNamedExceptionsFromSource for new callers.
+export function extractAuditExceptionsFromSource(source) {
+  return extractNamedExceptionsFromSource(source, 'AUDIT_EXCEPTIONS');
+}
+
+// Returns the names of exported array constants that contain expiresOn entries
+// but are not listed in KNOWN_EXPIRY_ARRAY_NAMES. An empty result means the
+// current source is fully covered; a non-empty result is a guard failure.
+export function findUnknownExpiryArrays(source) {
+  const exportedArrayPattern = /export const (\w+) = (\[\]|\[[\s\S]*?\]);/g;
+  const unknown = [];
+  let match;
+  while ((match = exportedArrayPattern.exec(source)) !== null) {
+    const [, name, body] = match;
+    if (KNOWN_EXPIRY_ARRAY_NAMES.includes(name)) continue;
+    if (body.includes('expiresOn')) {
+      unknown.push(name);
+    }
+  }
+  return unknown;
 }
 
 function readFileAtRef(ref, relativePath) {
@@ -125,8 +162,37 @@ export function getReasonRestatementViolationsForCurrentBranch() {
     return [];
   }
 
-  const previousExceptions = extractAuditExceptionsFromSource(previousSource);
-  return findReasonRestatementViolations(previousExceptions, AUDIT_EXCEPTIONS);
+  // Fail closed: if the current source has any exported array with expiresOn
+  // entries that is not listed in KNOWN_EXPIRY_ARRAY_NAMES, error out rather
+  // than silently skipping the guard for that array.
+  const currentSource = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const unknownArrays = findUnknownExpiryArrays(currentSource);
+  if (unknownArrays.length > 0) {
+    throw new Error(
+      `Found expiresOn-bearing exported arrays not listed in KNOWN_EXPIRY_ARRAY_NAMES: ` +
+        `${unknownArrays.join(', ')}. Add each to KNOWN_EXPIRY_ARRAY_NAMES so the ` +
+        `expiry-extension guard covers it.`,
+    );
+  }
+
+  const violations = [];
+  for (const arrayName of KNOWN_EXPIRY_ARRAY_NAMES) {
+    let previousArrayExceptions;
+    try {
+      previousArrayExceptions = extractNamedExceptionsFromSource(previousSource, arrayName);
+    } catch {
+      // Array did not exist at the base ref (e.g. newly added in this PR) —
+      // no previous value to compare against, so no violations for this array.
+      continue;
+    }
+    const currentArrayExceptions = LIVE_EXPIRY_ARRAYS[arrayName];
+    const arrayViolations = findReasonRestatementViolations(
+      previousArrayExceptions,
+      currentArrayExceptions,
+    );
+    violations.push(...arrayViolations.map((v) => ({ ...v, arrayName })));
+  }
+  return violations;
 }
 
 function isActive(exception, now) {
@@ -264,7 +330,7 @@ function main() {
       `${reasonViolations
         .map(
           (violation) =>
-            `AUDIT_EXCEPTIONS extension for "${violation.packageName}" changed expiresOn (${violation.previousExpiresOn} -> ${violation.currentExpiresOn}) without changing reason. Extending an exception requires a restated, current justification.`,
+            `${violation.arrayName} extension for "${violation.packageName}" changed expiresOn (${violation.previousExpiresOn} -> ${violation.currentExpiresOn}) without changing reason. Extending an exception requires a restated, current justification.`,
         )
         .join('\n')}\n`,
     );

@@ -1,0 +1,32 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "asset-search-tags-nl-mcp",
+  "date": "2026-08-01",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 194,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 194
+    }
+  },
+  "tools": {
+    "ask_user": 3,
+    "create": 8,
+    "edit": 23,
+    "exit_plan_mode": 3,
+    "filesystem-edit_file": 1,
+    "glob": 7,
+    "grep": 16,
+    "powershell": 20,
+    "rename_branch": 2,
+    "rename_session": 1,
+    "sql": 6,
+    "task": 1,
+    "view": 66,
+    "web_fetch": 37
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
