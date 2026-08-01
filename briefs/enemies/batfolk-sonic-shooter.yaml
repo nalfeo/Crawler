@@ -1,0 +1,47 @@
+type: enemy
+mobRole: normal
+name: batfolk-sonic-shooter
+floor: 2
+description: |
+  Nightwing Sonic Shooter — a sleek batfolk ranged combatant in a committed
+  shooter stance, FULL BODY visible from ear tips to talon-feet. Single centered
+  subject only. The entire figure must stay inside frame with hard pixel edges,
+  no background, and no text.
+
+  The sonic blaster is the clear visual focus: a wide-mouthed speaker-gun or
+  cone-shaped sound weapon held forward in both hands, with visible concentric
+  sound-wave rings emanating directly from the barrel. The rings must feel tied
+  to the weapon rather than floating as separate symbols, and the blaster should
+  read unmistakably as a ranged sound weapon at a glance.
+
+  Body and gear: lean fast batfolk silhouette, leathery wings folded or
+  semi-spread behind the body for balance, pointed bat ears, dark charcoal and
+  purple flight suit, wraparound visor, and compact echolocation-themed tactical
+  gear. Keep the body athletic and agile rather than bulky. The palette should
+  match the established batfolk family look: dark purple, near-black charcoal,
+  muted metal, with only small cool highlights that do not outshine the weapon.
+
+  Pose and silhouette: three-quarter combat stance with the blaster aimed across
+  the body, wings supporting the composition behind the torso without becoming
+  detached side subjects. If painted solid black, the silhouette should still
+  read clearly as a batfolk shooter with a cone weapon and wing-backed balance.
+
+  Strict constraints:
+  - One batfolk only. No squadmates, decoys, or duplicate wing silhouettes.
+  - No muzzle flash, fire, smoke, or unrelated magic.
+  - Sound-wave rings must stay attached to the sonic blaster barrel.
+  - No oversized backpack or heavy armor that makes the silhouette bulky.
+
+sensors:
+  enemy:
+    facing: three-quarter
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Lean batfolk in a sharp three-quarter firing stance, cone-shaped speaker gun thrust forward, tight sound-wave rings pulsing from the barrel, wings half-open for balance
+  - Agile nightwing shooter with wraparound visor and dark purple flight suit, wide-mouthed sonic blaster aimed across the body, folded wings tucked behind the stance
+  - Fast charcoal batfolk marksman with compact tactical harness, speaker-gun held in both hands, visible concentric audio rings, wings braced like stabilizers
+  - Sleek batfolk ranged fighter with pointed ears and semi-spread leathery wings, visor low over the eyes, cone weapon dominant and clearly broadcasting sonic waves
