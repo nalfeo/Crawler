@@ -383,6 +383,20 @@ describe('parseAssetRequestIssueBody', () => {
     expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });
 
+  it('parses the exact issue #2567 raccoon-bottle-rocketeer request with floor 2 and default size', () => {
+    const body = issuesFixture.issues['2567']!.body;
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).toMatchObject({
+      name: 'raccoon-bottle-rocketeer',
+      type: 'enemy',
+      floor: 2,
+      sizeVariant: 'default',
+      briefSentence: fixtureBrief(body),
+      fingerprint: '0e13b752d8f337004ab0b8f3f84f5e84fbb7e2dac551533c9bf1dab52f048887',
+    });
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
   it('treats blank and _No response_ size fields as omitted', () => {
     for (const size of ['', '_No response_']) {
       const parsed = parseAssetRequestIssueBody(
