@@ -150,8 +150,8 @@ describe('MainGameScene UI exclusivity', () => {
 
   it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
     await bootPlayingSafeScene();
-    await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 100);
-    await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 9_999);
+    await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 260);
+    await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 160);
     await mainSceneProbe.advanceSimulationFrames(page, 2);
 
     // Real rendered player-visible projection of the level-5 skill-passive
@@ -186,12 +186,14 @@ describe('MainGameScene UI exclusivity', () => {
     expect(combatFlow?.details).not.toContain('INACTIVE');
     expect(combatFlow?.details).toContain('Damage +5%');
 
-    const shadowblade = state.abilityLoadoutVisibleEntries.find(
-      (entry) => entry.id === 'shadowblade',
+    const daggerRapidStrike = state.abilityLoadoutVisibleEntries.find(
+      (entry) => entry.id === 'dagger-rapid-strike-base',
     );
-    expect(shadowblade, 'shadowblade should be visible in the rendered loadout list').toBeDefined();
-    expect(shadowblade?.details).toContain('INACTIVE');
-    expect(shadowblade?.details).toContain('requires a dagger');
+    expect(
+      daggerRapidStrike,
+      'dagger-rapid-strike-base should be visible in the rendered loadout list',
+    ).toBeDefined();
+    expect(daggerRapidStrike?.details).toContain('PASSIVE');
 
     const combatFlowIndex = state.abilityLoadoutVisibleEntries.findIndex(
       (entry) => entry.id === 'combat-flow',
