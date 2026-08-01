@@ -10,8 +10,8 @@ description: |
   snout wrapped in a tattered plague-doctor beak-mask of salvaged leather and
   iron rivets. Shoulders covered in a heavy patched cloak of layered dark
   rags, plague-cloth, and leather strips studded with vials and pouches of
-  dark substances. Massive hands gripping a gnarled staff or iron-bound
-  walking stick that is also a plague-dispenser wand.
+  dark substances. Massive hands with thick plague-dispenser gauntlets and
+  iron-tube wrist rigs integrated into the forearms.
 
   Crime-boss authority: heavy chains of trophy-teeth and corroded iron links
   as a chest-piece, the badge of the Gutter Guild. Dark leather-strap harness
@@ -39,7 +39,7 @@ judge:
   maxVariants: 4
 
 variations:
-  - Plague-Boss Squick in riveted leather plague-mask, trophy-tooth chain chest-piece, layered dark-rag cloak, vial-studded harness, iron-bound plague-staff
+  - Plague-Boss Squick in riveted leather plague-mask, trophy-tooth chain chest-piece, layered dark-rag cloak, vial-studded harness, iron-tube plague gauntlets
   - Plague-Boss Squick with wide hunched silhouette, corroded iron chain gorget, patched plague-cloak, dark calculating ratfolk eyes above the beak
   - 'Plague-Boss Squick in full gutter-guild regalia: heavy chain-of-trophies, leather cap with iron clasp, wide boss mass of dark rag and leather layers'
   - 'Plague-Boss Squick silhouette: wide-shouldered hunched shape, prominent beak-mask, thick cloak mass, ratfolk boss presence dripping with dark authority'

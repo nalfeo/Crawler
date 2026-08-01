@@ -684,11 +684,14 @@ function buildSystemInstructions(
     ...(hasFigureFramingAxis
       ? [
           '',
-          `  ${figureFramingAxisNumber}. figure_framing — Is the character or mob shown as a complete full-body`,
-          '                      figure, with head, torso, and feet all visible in the frame?',
-          '                      A bust, portrait, or figure cropped at the waist or mid-torso',
-          '                      scores <= 2. A pure 90-degree side profile where no face',
-          '                      is visible also scores <= 2.',
+          `  ${figureFramingAxisNumber}. figure_framing — Is the character or mob fully framed from its`,
+          '                      highest visible extent to its lowest visible extent, with',
+          '                      the whole body visible in-frame? A bust, portrait, or',
+          '                      figure cropped at the waist, mid-body, or lower-body',
+          '                      scores <= 2. For upright humanoid figures, head/torso/feet',
+          '                      should all be visible when that anatomy is present.',
+          '                      A pure 90-degree side profile where no face is visible',
+          '                      also scores <= 2.',
         ]
       : []),
     ...(hasPoseAxis

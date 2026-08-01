@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31  
 **Mode:** local (Azure sidecar, interactive)  
-**Apple estimate:** 4🍎 (pure art — review-ledger-exempt; 2 script bugfixes in `scripts/sprites/asset-pr.ts` are code-touching, ~0.5🍎 each)  
+**Apple estimate:** 3🍎 (rescored for final merge-intent scope; art-heavy with targeted code-touching fixes; review-ledger required and recorded)  
 **Persona:** Graphics Designer
 
 ---

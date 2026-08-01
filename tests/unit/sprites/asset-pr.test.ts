@@ -172,4 +172,64 @@ describe('runAssetPrConsolidation', () => {
       }),
     ).rejects.toThrow(/local-only/);
   });
+
+  it('uses --no-verify for temp-worktree commit and push on successful consolidation', async () => {
+    const commands: string[] = [];
+    const commandCwds: string[] = [];
+    const exec: Exec = (command, args, options) => {
+      commands.push([command, ...args].join(' '));
+      commandCwds.push(`${[command, ...args].join(' ')} ::cwd=${options?.cwd ?? ''}`);
+
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return Promise.resolve({
+          stdout: JSON.stringify([
+            {
+              number: 3,
+              title: 'asset-checkin',
+              body: issueBody('assets/a', [asset()]),
+            },
+          ]),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      if (command === 'git' && args[0] === 'ls-remote') {
+        return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+      }
+      if (command === 'gh' && args[0] === 'pr' && args[1] === 'list') {
+        return Promise.resolve({ stdout: '[]', stderr: '', code: 0 });
+      }
+      if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') {
+        return Promise.resolve({ stdout: 'https://github.com/nalfeo/Crawler/pull/9999\n', stderr: '', code: 0 });
+      }
+
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+    };
+
+    const result = await runAssetPrConsolidation('/repo', {
+      exec,
+      makeTempDir: () => Promise.resolve('/tmp/asset-pr-worktree'),
+      removeDir: () => Promise.resolve(),
+      readJson: () => Promise.resolve({} as never),
+      writeJson: () => Promise.resolve(),
+      env: {},
+    });
+
+    expect(result?.prUrl).toBe('https://github.com/nalfeo/Crawler/pull/9999');
+    const commitMessage = result?.plan.commitMessage ?? 'missing-commit-message';
+    const batchBranch = result?.plan.batchBranch ?? 'missing-branch';
+    expect(commands).toContain(`git commit --no-verify -m ${commitMessage}`);
+    expect(commands).toContain(`git push --no-verify -u origin ${batchBranch}`);
+    expect(
+      commandCwds.some((line) =>
+        line.startsWith(`git commit --no-verify -m ${commitMessage} ::cwd=/tmp/asset-pr-worktree`),
+      ),
+    ).toBe(true);
+    expect(
+      commandCwds.some((line) =>
+        line.startsWith(`git push --no-verify -u origin ${batchBranch} ::cwd=/tmp/asset-pr-worktree`),
+      ),
+    ).toBe(true);
+  });
 });

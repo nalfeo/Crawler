@@ -520,7 +520,7 @@ describe('judgeVariant — happy path', () => {
         reference_style_match: { score: 5, rationale: 'on style' },
         brief_match: { score: 5, rationale: 'matches' },
         readability: { score: 5, rationale: 'readable' },
-        figure_framing: { score: 2, rationale: 'bust crop — feet not visible' },
+        figure_framing: { score: 2, rationale: 'body cropped — lower shell clipped off-frame' },
       },
     });
     const scorecard = await judgeVariant({
@@ -528,7 +528,7 @@ describe('judgeVariant — happy path', () => {
       referencePngs: [],
       brief: makeBrief({
         type: 'enemy',
-        name: 'bust-cropped-mob',
+        name: 'snailfolk-boss',
         sensors: { enemy: { facing: 'front', toleranceDeg: 20 } },
       }),
       styleGuide: '',
@@ -537,9 +537,14 @@ describe('judgeVariant — happy path', () => {
       env: {},
     });
     expect(calls[0]?.request.systemInstructions).toContain('figure_framing');
+    expect(calls[0]?.request.systemInstructions).toContain(
+      'A pure 90-degree side profile where no face',
+    );
+    expect(calls[0]?.request.systemInstructions).toContain('highest visible extent');
+    expect(calls[0]?.request.systemInstructions).toContain('when that anatomy is present');
     expect(scorecard.figureFraming).toEqual({
       score: 2,
-      rationale: 'bust crop — feet not visible',
+      rationale: 'body cropped — lower shell clipped off-frame',
     });
     expect(scorecard.passed).toBe(false);
     expect(scorecard.rejectedBy).toContain('figure_framing');
