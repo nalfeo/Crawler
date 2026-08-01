@@ -243,11 +243,13 @@ describe('runBriefBatchConsolidation', () => {
   it('skips PRs whose branches are missing on the remote', async () => {
     const { exec, calls } = makeFakeExec((cmd, args) => {
       if (cmd === 'gh' && args.includes('list')) return { stdout: openPRsJson };
-      if (cmd === 'git' && args[0] === 'fetch' && args[2] === 'origin' && args[3] !== 'main') {
+      if (cmd === 'git' && args[0] === 'fetch' && args[2] === 'origin') {
+        const refspec = args[3] ?? '';
         // Simulate missing branch for copilot/panda
-        if (args[3] === 'copilot/panda') return { code: 128, stderr: 'not found' };
-        if (args[3] === 'copilot/ratfolk') return { code: 0 };
-        if (args[3] === 'copilot/mixed') return { code: 0 };
+        if (refspec.includes('copilot/panda')) return { code: 128, stderr: 'not found' };
+        if (refspec.includes('copilot/ratfolk')) return { code: 0 };
+        if (refspec.includes('copilot/mixed')) return { code: 0 };
+        return { code: 0 };
       }
       if (cmd === 'git' && args.includes('diff')) {
         if (args.some((a) => a.includes('copilot/ratfolk')))

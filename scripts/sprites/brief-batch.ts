@@ -236,16 +236,23 @@ export async function runBriefBatchConsolidation(
   if (!rawPRs.length) return null;
 
   // Step 2: fetch base branch so three-dot diffs work.
-  await exec(deps.exec, repoRoot, 'git', ['fetch', '--no-tags', remote, baseBranch]);
+  const remoteBaseRef = `refs/remotes/${remote}/${baseBranch}`;
+  await exec(deps.exec, repoRoot, 'git', [
+    'fetch',
+    '--no-tags',
+    remote,
+    `+${baseBranch}:${remoteBaseRef}`,
+  ]);
 
   // Step 3: for each PR, compute the three-dot diff. Skip if the branch is
   // missing on the remote (fork PRs or already-deleted branches).
   const diffsByHeadRef = new Map<string, string>();
   for (const pr of rawPRs) {
     if (typeof pr.headRefName !== 'string' || !pr.headRefName) continue;
+    const remoteHeadRef = `refs/remotes/${remote}/${pr.headRefName}`;
     const fetchRes = await deps.exec(
       'git',
-      ['fetch', '--no-tags', remote, pr.headRefName],
+      ['fetch', '--no-tags', remote, `+${pr.headRefName}:${remoteHeadRef}`],
       { cwd: repoRoot },
     );
     if (fetchRes.code !== 0) continue; // branch absent on remote — skip gracefully

@@ -54,6 +54,7 @@ describe('isArtSurfacePath', () => {
     expect(isArtSurfacePath('public/assets/generated/manifest.json')).toBe(true);
     expect(isArtSurfacePath('public/assets/generated/skull-mace-var-2.png')).toBe(true);
     expect(isArtSurfacePath('public/assets/generated/nested/deep.png')).toBe(true);
+    expect(isArtSurfacePath('briefs/enemies/panda-boba-sniper.yaml')).toBe(true);
   });
 
   it('rejects paths outside the art surface', () => {
@@ -804,6 +805,29 @@ function seedQueueWithArt(
   }
 }
 
+function seedQueueWithBrief(
+  liveDir: string,
+  briefPath: string,
+  yaml: string,
+  queueBranch = 'assets/queue',
+): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-brief-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const briefAbs = path.join(wt, ...briefPath.split('/'));
+    mkdirSync(path.dirname(briefAbs), { recursive: true });
+    writeFileSync(briefAbs, yaml);
+    gitSync(wt, 'add', '--', 'briefs');
+    gitSync(wt, 'commit', '--no-verify', '-m', `queue brief: ${briefPath}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${queueBranch}`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 /**
  * Push an art commit DIRECTLY onto origin/main (simulates the legacy asset-PR
  * flow that lands art without going through the queue branch).
@@ -1188,6 +1212,20 @@ describe('runReconcile (real git)', () => {
     for (const p of diff) {
       expect(isArtSurfacePath(p)).toBe(true);
     }
+  });
+
+  it('(c) promotes queued brief files alongside art-surface changes', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const briefPath = 'briefs/enemies/panda-boba-sniper.yaml';
+    seedQueueWithBrief(liveDir, briefPath, 'id: panda-boba-sniper\n');
+    const gh = new FakeGh();
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    const promotedBrief = gitSync(liveDir, 'show', `origin/assets/promote:${briefPath}`);
+    expect(promotedBrief).toContain('id: panda-boba-sniper');
   });
 
   it('(d) returns to a no-op after the promote PR squash-merges into main', async () => {

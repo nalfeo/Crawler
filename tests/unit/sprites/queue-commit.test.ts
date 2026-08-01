@@ -38,6 +38,12 @@ function asset(overrides: Partial<CheckinAsset> = {}): CheckinAsset {
   };
 }
 
+function stageBriefOnDisk(liveDir: string, briefPath: string, yaml: string): void {
+  const abs = path.join(liveDir, ...briefPath.split('/'));
+  mkdirSync(path.dirname(abs), { recursive: true });
+  writeFileSync(abs, yaml);
+}
+
 // ---------------------------------------------------------------------------
 // Layer 1: control-flow (faked exec)
 // ---------------------------------------------------------------------------
@@ -245,6 +251,37 @@ describe('runQueueCommit (control flow)', () => {
         briefs: ['briefs/enemies/panda-boba-sniper.yaml'],
       }),
     ).rejects.toMatchObject({ kind: 'invalid-brief-path' });
+  });
+
+  it('stages copied briefs before the no-op diff guard', async () => {
+    const { exec, calls } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: '' };
+      if (args[0] === 'diff') return { code: 0 };
+      return {};
+    });
+    let copiedBriefs = 0;
+    const result = await runQueueCommit(
+      '/repo',
+      [asset()],
+      controlDeps(exec, {
+        copyBriefFiles: async () => {
+          copiedBriefs++;
+        },
+      }),
+      {
+        message: 'm',
+        briefs: ['briefs/enemies/panda-boba-sniper.yaml'],
+      },
+    );
+    expect(result.status).toBe('noop');
+    expect(copiedBriefs).toBe(1);
+
+    const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    const addBriefIdx = line.findIndex((l) => l === 'git add -- briefs/');
+    const diffIdx = line.findIndex((l) => l === 'git diff --cached --quiet');
+    expect(addBriefIdx).toBeGreaterThan(-1);
+    expect(diffIdx).toBeGreaterThan(-1);
+    expect(addBriefIdx).toBeLessThan(diffIdx);
   });
 
   it('returns a no-op for an empty asset list without touching git', async () => {
@@ -885,6 +922,61 @@ describe('runQueueCommit (real git)', () => {
   );
 
   it(
+    'commits when art is unchanged but a queued brief changes',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+
+      const briefPath = 'briefs/enemies/alpha.yaml';
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      stageBriefOnDisk(liveDir, briefPath, 'id: alpha\nversion: 1\n');
+      const deps = realGitDeps(liveDir);
+      const opts = {
+        message: 'chore(assets): edit alpha brief',
+        briefs: [briefPath],
+      };
+
+      const first = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        deps,
+        opts,
+      );
+      expect(first.status).toBe('committed');
+
+      // Art bytes remain identical; only the brief changes.
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES);
+      stageBriefOnDisk(liveDir, briefPath, 'id: alpha\nversion: 2\n');
+      const second = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        deps,
+        opts,
+      );
+      expect(second.status).toBe('committed');
+
+      gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      const brief = gitSync(liveDir, 'show', `FETCH_HEAD:${briefPath}`);
+      expect(brief).toContain('version: 2');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
     'is a no-op when the identical asset is already queued',
     async () => {
       const { root, liveDir } = setupRepos();
@@ -1160,7 +1252,7 @@ describe('runQueueCommit (real git)', () => {
       gitSync(scratchDir, 'config', 'commit.gpgsign', 'false');
       gitSync(scratchDir, 'remote', 'add', 'origin', originUrl);
 
-      // Seed the orphan with an existing asset (delta) so we confirm it survives.
+      // Seed the orphan with an existing asset+brief so we confirm both survive.
       const genDir = path.join(scratchDir, 'public', 'assets', 'generated');
       mkdirSync(genDir, { recursive: true });
       writeFileSync(path.join(genDir, 'delta.png'), PNG_BYTES);
@@ -1168,6 +1260,7 @@ describe('runQueueCommit (real git)', () => {
         assetPath: 'generated/delta.png',
         spriteName: 'delta',
       });
+      stageBriefOnDisk(scratchDir, 'briefs/enemies/delta.yaml', 'id: delta\n');
       gitSync(scratchDir, 'add', '-A');
       gitSync(scratchDir, 'commit', '-m', 'orphan seed delta');
       // Force-push as assets/queue so origin has an orphan branch.
@@ -1217,6 +1310,8 @@ describe('runQueueCommit (real git)', () => {
       // All three entries must coexist — orphan art (delta), this write (beta),
       // concurrent writer (gamma) — the retry unioned, it did not clobber.
       expect(Object.keys(m.entries).sort()).toEqual(['beta', 'delta', 'gamma']);
+      const brief = gitSync(liveDir, 'show', 'FETCH_HEAD:briefs/enemies/delta.yaml');
+      expect(brief).toContain('id: delta');
 
       // beta's PNG round-trips correctly through the migration.
       const blob = execFileSync('git', ['show', 'FETCH_HEAD:public/assets/generated/beta.png'], {

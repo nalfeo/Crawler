@@ -52,7 +52,12 @@
  */
 
 import { parseAssetIssueBody } from './asset-issues.js';
-import { ASSET_CHECKIN_LABEL, ASSET_SURFACE_PATHS, type Exec } from './checkin.js';
+import {
+  ART_SURFACE_ALLOWLIST,
+  ASSET_CHECKIN_LABEL,
+  ASSET_SURFACE_PATHS,
+  type Exec,
+} from './checkin.js';
 
 /** How the reconcile cycle resolved. */
 export type ReconcileStatus = 'noop' | 'pr-open';
@@ -258,23 +263,9 @@ async function mustGh(exec: Exec, cwd: string, args: readonly string[]): Promise
 }
 
 /**
- * The guard's TOLERANCE surface — the set of paths a promotion diff may touch
- * without being rejected. It is deliberately BROADER than `ASSET_SURFACE_PATHS`
- * (what check-in actually WRITES, now only the sharded generated dir): the
- * committed `sprite-catalog.json` no longer receives generated rows, but a diff
- * that touches it (e.g. a hand-authored/sheet row, or migration cleanup) is
- * still art-surface and safe to auto-merge. Keeping the guard tolerant of the
- * catalog matches `detect-art-only.sh`'s classifier so a promote→main diff the
- * guard accepts is precisely one CI classifies `art_only=true`.
- */
-const ART_SURFACE_ALLOWLIST = [
-  ...ASSET_SURFACE_PATHS,
-  'src/shared/data/sprite-catalog.json',
-] as const;
-
-/**
  * Is `p` inside the art-surface allowlist? A path is trusted iff it is exactly
- * `src/shared/data/sprite-catalog.json` OR lives under `public/assets/generated/`.
+ * an allowlisted file (for example `src/shared/data/sprite-catalog.json`) OR
+ * lives under an allowlisted directory (`public/assets/generated/`, `briefs/`).
  * Matches `detect-art-only.sh` EXACTLY so the guard and the CI art-only
  * classifier agree by construction — a promote→main diff the guard accepts is
  * precisely one `ci.yml` classifies `art_only=true`.
@@ -840,7 +831,7 @@ export async function runReconcile(
         baseRef,
         queueRef,
         '--',
-        ...ASSET_SURFACE_PATHS,
+        ...ART_SURFACE_ALLOWLIST,
       ]);
       queueVsMainArt = parseNameOnly(delta);
     }
@@ -863,7 +854,7 @@ export async function runReconcile(
         baseRef,
         ref,
         '--',
-        ...ASSET_SURFACE_PATHS,
+        ...ART_SURFACE_ALLOWLIST,
       ]);
       if (orphanDelta.code !== 0) continue;
       const paths = parseNameOnly(orphanDelta.stdout).filter(

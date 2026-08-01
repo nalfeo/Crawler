@@ -117,7 +117,7 @@ npm run sprites:brief-batch
 # Specify custom base or remote:
 npm run sprites:brief-batch -- --base main --remote origin
 
-# Dry-run the naming (custom slug):
+# Override the branch slug (still pushes and opens a real PR):
 npm run sprites:brief-batch -- --slug my-test-batch
 ```
 

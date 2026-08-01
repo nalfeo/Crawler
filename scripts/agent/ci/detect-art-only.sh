@@ -570,6 +570,7 @@ emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_tou
 #   docs/**, .specify/**, *.md, *.txt, AGENTS.md   documentation
 #   scripts/agent/**             CI/automation helper scripts
 #   scripts/sprites/**           sprite GENERATION pipeline (not the generated output)
+#   briefs/**                    sprite authoring inputs (no runtime/browser UI surface)
 #   tests/unit/**, tests/ecs/**, tests/game/**, tests/property/**,
 #   tests/determinism/**, tests/sensors/**, tests/balance/**,
 #   tests/integration/**, tests/headless/**, tests/helpers/**,
@@ -591,6 +592,7 @@ while IFS= read -r file; do
     *.txt) ;;
     scripts/agent/*) ;;
     scripts/sprites/*) ;;
+    briefs/*) ;;
     tests/unit/*) ;;
     tests/ecs/*) ;;
     tests/game/*) ;;
