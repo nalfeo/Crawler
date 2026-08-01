@@ -201,7 +201,11 @@ describe('runAssetPrConsolidation', () => {
         return Promise.resolve({ stdout: '[]', stderr: '', code: 0 });
       }
       if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') {
-        return Promise.resolve({ stdout: 'https://github.com/nalfeo/Crawler/pull/9999\n', stderr: '', code: 0 });
+        return Promise.resolve({
+          stdout: 'https://github.com/nalfeo/Crawler/pull/9999\n',
+          stderr: '',
+          code: 0,
+        });
       }
 
       return Promise.resolve({ stdout: '', stderr: '', code: 0 });
