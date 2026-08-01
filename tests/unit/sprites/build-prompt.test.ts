@@ -697,7 +697,7 @@ describe('buildSheetPrompt — frameSequence (walk-cycle) mode', () => {
   it('instructs identity/palette/outfit to stay identical across frames', () => {
     const out = buildSheetPrompt(makeWalkCycleBrief(), FAKE_STYLE_GUIDE);
     expect(out).toContain('Keep identity strictly IDENTICAL across every frame');
-    expect(out).toContain('leg/arm pose progresses between cells');
+    expect(out).toContain('leg stride and arm swing progressing smoothly');
   });
 
   it('a normal (non-sequence) brief with the same grid still gets the exploration line', () => {
@@ -707,5 +707,75 @@ describe('buildSheetPrompt — frameSequence (walk-cycle) mode', () => {
     const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain('Treat each cell as a separate exploration');
     expect(out).not.toContain('ORDERED FRAMES');
+  });
+});
+
+describe('buildSheetPrompt — seedFrames (reference-frame identity pinning)', () => {
+  function makeWalkBriefWithSeeds(seedFrames: Array<{ path: string; note?: string }>): Brief {
+    return briefSchema.parse({
+      type: 'character',
+      name: 'test-walk-brief',
+      size: { width: 64, height: 64 },
+      palette: { id: 'kenney-roguelike' },
+      anchor: { x: 32, y: 63 },
+      tags: ['character'],
+      prompt: 'A test character walking.',
+      seedFrames,
+      generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+      frameSequence: { enabled: true, frameCount: 4, frameRate: 8, loop: true },
+      minVariations: 0,
+    });
+  }
+
+  it('does not emit the seed-frames block when seedFrames is empty', () => {
+    const brief = makeWalkBriefWithSeeds([]);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).not.toContain('## Seed frames');
+    expect(out.startsWith(FAKE_STYLE_GUIDE)).toBe(true);
+  });
+
+  it('emits the seed-frames block immediately after the style guide when seedFrames is non-empty', () => {
+    const brief = makeWalkBriefWithSeeds([{ path: 'briefs/characters/seeds/frame0.png' }]);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('## Seed frames (HIGHEST PRIORITY');
+    expect(out).toContain('SEED FRAME');
+    const seedIdx = out.indexOf('## Seed frames');
+    const floorIdx = out.indexOf('FLOOR:');
+    expect(seedIdx).toBeGreaterThan(-1);
+    expect(floorIdx).toBeGreaterThan(seedIdx);
+  });
+
+  it('still starts with the style guide when seedFrames is non-empty', () => {
+    const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png' }]);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out.startsWith(FAKE_STYLE_GUIDE)).toBe(true);
+  });
+
+  it('uses singular wording for one seed frame', () => {
+    const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png' }]);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('first 1 attached reference image is a SEED FRAME');
+  });
+
+  it('uses plural wording for multiple seed frames', () => {
+    const brief = makeWalkBriefWithSeeds([
+      { path: 'seeds/frame0.png' },
+      { path: 'seeds/frame1.png' },
+    ]);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('first 2 attached reference images are SEED FRAMES');
+  });
+
+  it('overrides the technique-only reference note with identity-match instruction when seed frames are set', () => {
+    const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png' }]);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('match it EXACTLY in character identity');
+    expect(out).not.toContain('copy their TECHNIQUE ONLY');
+  });
+
+  it('preserves the technique-only note when no seed frames are configured', () => {
+    const brief = makeWalkBriefWithSeeds([]);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('copy their TECHNIQUE ONLY');
   });
 });
