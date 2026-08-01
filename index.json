@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ae536c746ce811dcd1850d29bca7610589aa550e",
+    "commitDate": "2026-08-01T04:16:11Z",
+    "commitSubject": "fix(sprites): use force-with-lease for orphan-reset push to assets/queue (#2543)",
+    "capturedAt": "2026-08-01T05:20:17.580Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30683889024",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/ae536c746ce811dcd1850d29bca7610589aa550e.json"
+  },
+  {
     "commit": "03462095e3f9b406f7e72d53355d08dd4b2ed54e",
     "commitDate": "2026-08-01T04:01:06Z",
     "commitSubject": "Add the llama-curb-stomper enemy brief and lock the issue-form contract (#2527)",
