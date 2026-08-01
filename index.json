@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f0e1825f61f32d8302229fcb5c40ebc0f3cef951",
+    "commitDate": "2026-08-01T07:02:19Z",
+    "commitSubject": "feat(assets): add snailfolk-sludge-artillery enemy brief (#2584)",
+    "capturedAt": "2026-08-01T08:17:56.280Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30689501577",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/f0e1825f61f32d8302229fcb5c40ebc0f3cef951.json"
+  },
+  {
     "commit": "5ab9f00e99b175dce7fe8fe27fb791c7ecb3d3da",
     "commitDate": "2026-08-01T05:15:45Z",
     "commitSubject": "fix(sprites): reset transient-exhausted publish stage before retry (#2549)",
