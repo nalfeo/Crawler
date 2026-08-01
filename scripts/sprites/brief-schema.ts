@@ -232,6 +232,37 @@ export const briefSchema = z
      * validate; forward-compat only, not a generation input.
      */
     references: z.array(referenceSchema).default([]),
+    /**
+     * Pre-generated approved PNGs attached as explicit sequence-seed references.
+     *
+     * Unlike the legacy `references` field (style-reference-only, never read by
+     * the generation pipeline), `seedFrames` ARE a generation input:
+     * `generateSheetCore` loads these PNGs and prepends them to the reference
+     * image list so the provider receives them first. They also trigger a
+     * "match this identity exactly" override in the sheet prompt that supersedes
+     * the default "copy technique only" reference-image instruction.
+     *
+     * Intended use: pass frame 0 of an approved walk cycle as the seed so that
+     * frames 1–N are generated to be visually consistent with it (same character
+     * identity, palette, proportions, cel-shading style) rather than relying on
+     * the model's own cross-row consistency.
+     *
+     * Paths are relative to the repository root.  Path traversal outside the
+     * repo root is rejected at generation-time.
+     */
+    seedFrames: z
+      .array(
+        z
+          .object({
+            path: z.string().min(1).describe('Path to the PNG, relative to the repository root'),
+            note: z
+              .string()
+              .optional()
+              .describe("Optional description of this frame's role in the cycle"),
+          })
+          .strict(),
+      )
+      .default([]),
     generation: generationSchema,
     sensors: sensorOverridesSchema,
     /**

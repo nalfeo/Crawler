@@ -383,6 +383,22 @@ export async function generateSheetCore(
     }
   }
 
+  // Prepend any declared seed frames so the provider receives them first and
+  // the prompt's "Seed frames" section matches the actual image slot indices.
+  if (brief.seedFrames.length > 0 && supportsReferenceImages) {
+    const seedPngs = brief.seedFrames.map((sf) => {
+      const resolved = path.resolve(repoRoot, sf.path);
+      // Prevent path traversal outside the repository root.
+      if (!resolved.startsWith(repoRoot + path.sep) && resolved !== repoRoot) {
+        throw new Error(
+          `generateSheetCore: seed frame path "${sf.path}" resolves outside the repository root`,
+        );
+      }
+      return readReference(resolved);
+    });
+    referencePngs = [...seedPngs, ...referencePngs];
+  }
+
   const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
   // Store-key helper: returns a key relative to the store root.
   const storeKey = (rel: string) => `${brief.name}/${runId}/${rel}`;
