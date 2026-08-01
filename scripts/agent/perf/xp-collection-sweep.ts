@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseFreshProcessResult } from './fresh-process-result.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const WORKER = path.join(REPO_ROOT, 'scripts', 'agent', 'perf', 'xp-collection-probe-worker.ts');
@@ -53,16 +54,10 @@ for (const maxTimeMs of maxTimes) {
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
-    const markerLine = child.stdout?.split(/\r?\n/).find((line) => line.startsWith(RESULT_MARKER));
-    if (child.error || child.status !== 0 || !markerLine) {
-      throw new Error(
-        `XP probe failed (seed=${seed}, maxTimeMs=${maxTimeMs}, status=${child.status}): ${child.error?.message ?? child.stderr ?? child.stdout}`,
-      );
-    }
-    const result = JSON.parse(markerLine.slice(RESULT_MARKER.length)) as {
+    const result = parseFreshProcessResult<{
       outcome: string;
       xpCollection?: { floors: Array<{ spawned: number; collected: number; efficiency: number }> };
-    };
+    }>(child, RESULT_MARKER, `XP probe (seed=${seed}, maxTimeMs=${maxTimeMs})`);
     results.push(result);
     const xp = result.xpCollection?.floors.at(-1);
     console.error(

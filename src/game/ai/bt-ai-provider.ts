@@ -8681,6 +8681,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.collectDwellAnchorX = 0;
     this.collectDwellAnchorY = 0;
     this.collectDwellFrames = 0;
+    this.xpCleanupMode = null;
+    this.xpCleanupAnchorX = 0;
+    this.xpCleanupAnchorY = 0;
+    this.xpCleanupStartFrame = 0;
+    this.xpCleanupCooldownUntilFrame = 0;
+    this.xpCleanupCombatWindowUntilFrame = -1;
     this.exploreDwell.reset();
     this.progressGoalSuppressedUntilFrame = 0;
     this.progressGoalSuppressionSource = null;

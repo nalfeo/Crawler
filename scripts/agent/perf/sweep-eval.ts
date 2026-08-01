@@ -84,6 +84,7 @@ import {
   parseComboId,
   rangeFor,
 } from './gen-configs.js';
+import { parseFreshProcessResult } from './fresh-process-result.js';
 import {
   SHARD_SCHEMA_VERSION,
   assertRowSafeRoomInRange,
@@ -194,13 +195,11 @@ function runOneInFreshProcess(task: EvalTask, shared: EvalShared): RunStats {
     maxBuffer: 10 * 1024 * 1024,
   });
   const marker = 'ISOLATED_SWEEP_RESULT=';
-  const resultLine = child.stdout?.split(/\r?\n/).find((line) => line.startsWith(marker));
-  if (child.error || child.status !== 0 || !resultLine) {
-    throw new Error(
-      `Fresh-process sweep run failed (seed=${task.seed}, weapon=${task.weapon}, status=${child.status}): ${child.error?.message ?? child.stderr ?? child.stdout}`,
-    );
-  }
-  return JSON.parse(resultLine.slice(marker.length)) as RunStats;
+  return parseFreshProcessResult<RunStats>(
+    child,
+    marker,
+    `Fresh-process sweep run (seed=${task.seed}, weapon=${task.weapon})`,
+  );
 }
 
 /** Run a batch of tasks, using the worker pool when concurrency > 1. */
