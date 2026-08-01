@@ -10,26 +10,26 @@ Graphics Designer (Asset Forge)
 
 ## Systems touched
 
-sprite-pipeline
+- `briefs/enemies/snailfolk-elite-slick-don.yaml` — new brief
+- `src/shared/generated-assets.ts` — needs wiring update after art lands (see below)
 
 ## Apples
 
-1🍎 — brief authoring only, no runtime code changes. Tooling-only ceremony cap applies. Art-only diff; review-ledger-exempt.
+1🍎 — brief authoring only, no runtime code changes yet. Art-only diff; review-ledger-exempt.
+The wiring PR (updating `generated-assets.ts`) will be a separate ≤1🍎 code change after art merges.
 
 ## What Was Done
 
-Authored `briefs/enemies/snailfolk-elite-slick-don.yaml` for issue #2571 (Asset request: snailfolk-elite-slick-don).
-
-This brief creates a Floor 2 snailfolk elite enemy — the Slick Don Slowburn, a crime don oozing
-cold confidence with an iridescent shell polished to a high gloss, silk shirt open at the collar,
-gold chain, and one imperious eyestalk raised. Brief is ready for generation via the asset-request
-CI pipeline.
+**Authored and committed** `briefs/enemies/snailfolk-elite-slick-don.yaml` for issue #2571
+(Asset request: snailfolk-elite-slick-don). The brief is the canonical human-authored reference
+for this Floor 2 snailfolk elite enemy — the Slick Don Slowburn.
 
 ### Brief design decisions
 
 - `type: enemy`, `mobRole: elite`, `floor: 2` — standard 64×64 hostile sprite, Floor 2 elite tier.
-- Front-facing sensor override (`sensors.enemy.facing: front`, `toleranceDeg: 20`) — the brief
-  calls for a slow, deliberate, front-facing posture. Matches snailfolk-boss and other elite briefs.
+- `judge.enabled: true`, `maxVariants: 5` — VLM judge on every generation run for unattended quality filtering.
+- Front-facing sensor override (`sensors.enemy.facing: front`, `toleranceDeg: 20`) — matches
+  slow deliberate front-facing posture; aligned with snailfolk-boss and other elite briefs.
 - Description emphasizes **two visual anchors**: the iridescent high-gloss shell (with gold swirl
   elite mark) and the gold chain on the open silk collar. Both must read clearly at game scale.
 - Snailfolk family palette: soft earth-tone body (warm olive / sandy-tan), iridescent glossy shell —
@@ -37,53 +37,66 @@ CI pipeline.
 - Five variation seeds explore: (1) imperious eyestalk + pearl silk + chain, (2) rainbow-sheen shell
   + open collar, (3) cream silk + gold chain + imperious gaze, (4) maximum iridescence + silk,
   (5) maximum gloss + settled authority posture.
-- `minVariations: 5` — enough candidate pressure to filter for the iridescent shell quality.
+- `minVariations: 5` — sufficient candidate pressure to filter for iridescent shell quality.
 
-### Enemy archetype
+### Enemy archetype (pre-existing, no changes needed)
 
-The `snailfolk-elite-slick-don` archetype is pre-wired in `enemies.floor2.json`:
+The `snailfolk-elite-slick-don` archetype exists in `enemies.floor2.json`:
 - id: `snailfolk-elite-slick-don`, name: "Slick Don Slowburn"
-- hp: 82, speed: 0.08, detectRange: 55.0, familyId: "snailfolk"
-- Currently falls back to `snailfolk-slimer` sprite in `src/shared/generated-assets.ts`
+- hp: 82, speed: 0.08, detectRange: 55.0, familyId: "snailfolk", spriteTexture: 1
+- Currently falls back to `snailfolk-slimer` sprite via `src/shared/generated-assets.ts` line 656
 
-### CI pipeline status
+### Current pipeline state (as of 2026-08-01T06:00 UTC)
 
-The asset-request workflow (run #30686146471) completed successfully:
-- ✅ Queued and started processing
-- ✅ Brief synthesized from issue description (gpt-4o selected candidate 1/3)
-- ✅ Brief promoted to `briefs/draft/enemies/snailfolk-elite-slick-don.yaml` in Azure
-- ✅ Sprite generated, postprocessed, and judged
-- ✅ **3 variants selected for publication: variant 4, variant 7, variant 14** (all 0 sensor failures)
-- ✅ Brief: `snailfolk-elite-slick-don-v1`, Run: `2026-08-01T05-46-45-40047e73`
-- ⏳ `sprites:publish-selected` step updating the art PR (`assets/queue` branch, PR #2558)
+- ✅ Brief committed to `briefs/enemies/snailfolk-elite-slick-don.yaml`
+- ❌ `assets/queue` branch does NOT yet have `snailfolk-elite-slick-don-v*` sprites
+- ❌ Azure environment unavailable in CI runner — local generation blocked
+- ⏳ Issue #2571 must trigger `asset-request.yml` workflow to generate sprites
 
-The committed brief in `briefs/enemies/snailfolk-elite-slick-don.yaml` is the canonical authored
-reference. The pipeline used the Azure-stored draft brief for generation.
+### Wiring analysis
 
-## GitHub issue plan comment
+The issue-wave pipeline generates sprites with versioned briefIds (e.g.
+`snailfolk-elite-slick-don-v1`). These do **not** auto-wire over the bare-concept
+placeholder via `generatedBriefIdForEnemy`'s `registry.variants()` check (which
+looks for the bare key `snailfolk-elite-slick-don`). After sprites land in `assets/queue`,
+a wiring code PR must update line 656 in `src/shared/generated-assets.ts`:
 
-The `gh` CLI did not have GitHub auth configured in this runner environment, preventing direct
-issue comment posting. The full plan is documented in the PR description and this handoff.
+```diff
+- 'snailfolk-elite-slick-don': 'snailfolk-slimer',
++ 'snailfolk-elite-slick-don': 'snailfolk-elite-slick-don-v1',
+```
 
-**Plan summary for issue #2571:**
-- 1🍎 art-only task — brief authoring + CI-driven sprite generation
-- Brief captures: iridescent glossy shell (gold swirl elite mark), silk shirt open at collar,
-  gold chain, one imperious eyestalk, earth-tone snailfolk body, front-facing authority posture
-- CI pipeline handles synthesis → generation → judge → art PR automatically
-- No runtime code changes needed (archetype pre-exists, sprite mapping auto-resolves from manifest)
+Note: `entity-sprite-mappings.json` does NOT need any changes — that file only holds
+render-KIND entries (e.g. `enemy_rat`, `enemy_family_boss`), not per-mob entries.
+Snailfolk elites use the `generated-assets.ts` alias map exclusively.
 
 ## What Needs to Happen Next
 
-1. **CI pipeline completes:** The asset-request workflow generates, postprocesses, and judges sprite
-   variants. A completion comment will be posted on issue #2571 with the spritesheet.
+1. **Trigger sprite generation:** A maintainer needs to run the `asset-request` workflow
+   for issue #2571. Either:
+   - Relabel the issue (re-apply `asset-request` label → triggers `labeled` event)
+   - `gh workflow run asset-request.yml` with maintainer credentials
 
-2. **Art PR published:** `sprites:publish-selected` creates/updates the `assets/queue` PR with the
-   approved sprite PNG and updated manifest.
+2. **Watch the pipeline:** `gh run list --workflow "Asset Request Pipeline"` and inspect
+   any failures with `gh run view <id> --log-failed`.
 
-3. **Merge art PR:** Once the art PR merges, `src/shared/generated-assets.ts` will automatically
-   resolve the `snailfolk-elite-slick-don` appearance key to the dedicated sprite (via
-   `registry.variants()` returning a non-empty array — see `generatedBriefIdForEnemy` in
-   `generated-assets.ts`). No manual wiring update needed.
+3. **Art lands in `assets/queue`:** The workflow publishes selected variants as
+   `public/assets/generated/snailfolk-elite-slick-don-v1-var-N.png`.
 
-4. **Observe:** After art merges, confirm the elite sprite renders correctly in `npm run dev` on a
-   Floor 2 run with snailfolk enemies active.
+4. **Judge the sprites:** Use the `sprite-judge` skill — check `combinedPassed`,
+   `NN.judge.json`, and the eyeball checklist before approval.
+
+5. **Create art PR:** Run `npm run sprites:asset-pr` to fold open `asset-checkin` issues
+   into one art-only PR and squash-merge.
+
+6. **Wire in a code PR:** After art merges, update `src/shared/generated-assets.ts` line 656
+   (see diff above). This is a 1-liner code PR; run `npm run verify:fast` to confirm no regressions.
+
+7. **Observe:** After wiring merges, confirm the elite sprite renders correctly in
+   `npm run dev` on a Floor 2 run with snailfolk enemies active. State before/after in the PR.
+
+## Mode used
+
+`issue-wave` (no local Azure credentials in CI runner; `sprites:gallery` launcher reports
+"cloud/CI environment, Azure credentials required"). Sprites to be generated by the
+`asset-request.yml` CI workflow triggered by issue #2571.

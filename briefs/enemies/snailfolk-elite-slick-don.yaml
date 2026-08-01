@@ -30,6 +30,11 @@ sensors:
   enemy:
     facing: front
     toleranceDeg: 20
+
+judge:
+  enabled: true
+  maxVariants: 5
+
 variations:
   - snailfolk elite don with one eyestalk raised imperiously, pearl silk shirt open at collar, thick gold chain on chest, iridescent gold-swirl shell
   - slowlane don with glossy rainbow-sheen shell, silk open-collar shirt slightly open, heavy gold chain, contemptuous upward eyestalk gaze
