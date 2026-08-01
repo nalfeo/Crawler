@@ -114,3 +114,11 @@ test('nightly perf filer creates and then reuses one durable issue', async () =>
     expectedBody: buildPerfIssueBody,
   });
 });
+
+test('nightly velocity issue body uses fully qualified closes reference', () => {
+  const issueNumber = 2612;
+  assert.match(
+    buildVelocityIssueBody(issueNumber),
+    new RegExp(`Closes nalfeo/Crawler#${issueNumber}`),
+  );
+});

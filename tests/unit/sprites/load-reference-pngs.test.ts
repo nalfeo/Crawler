@@ -6,6 +6,7 @@ import type {
   ReferenceSpriteRef,
   ReferenceSpriteSelection,
   RunSummary,
+  SeedFrameRef,
 } from '../../../scripts/sprites/run-artifacts.js';
 
 const REPO_ROOT = '/repo';
@@ -47,8 +48,9 @@ function selection(
 
 function summary(
   referenceSprites: ReferenceSpriteSelection | undefined,
-): Pick<RunSummary, 'brief' | 'referenceSprites'> {
-  return { brief: 'subject-lamp-v1', referenceSprites };
+  seedFrames?: ReadonlyArray<SeedFrameRef>,
+): Pick<RunSummary, 'brief' | 'referenceSprites' | 'seedFrames'> {
+  return { brief: 'subject-lamp-v1', referenceSprites, ...(seedFrames ? { seedFrames } : {}) };
 }
 
 /** In-memory fake filesystem keyed by absolute path. */
@@ -70,6 +72,10 @@ function fakeFs(files: Record<string, Buffer>): {
 
 function absOf(spriteName: string): string {
   return path.resolve(REPO_ROOT, 'public', 'assets', `generated/${spriteName}.png`);
+}
+
+function absSeedOf(seedPath: string): string {
+  return path.resolve(REPO_ROOT, seedPath);
 }
 
 describe('loadRecordedReferencePngs', () => {
@@ -209,5 +215,90 @@ describe('loadRecordedReferencePngs', () => {
         },
       }),
     ).toThrow(/unsafe/);
+  });
+});
+
+describe('loadRecordedReferencePngs — seed frame replay', () => {
+  const SEED_PATH = 'briefs/seeds/frame0.png';
+  const SEED_BYTES = Buffer.from('seed-frame-bytes');
+  const SEED_HASH = sha256(SEED_BYTES);
+
+  function seedRef(over: Partial<SeedFrameRef> = {}): SeedFrameRef {
+    return { path: SEED_PATH, contentHash: SEED_HASH, ...over };
+  }
+
+  it('prepends seed frames before style references in the returned list', () => {
+    const a = ref({ spriteName: 'lamp-a' });
+    const files = {
+      [absSeedOf(SEED_PATH)]: SEED_BYTES,
+      [absOf('lamp-a')]: Buffer.from('png-bytes:lamp-a'),
+    };
+    const fs = fakeFs(files);
+
+    const buffers = loadRecordedReferencePngs({
+      summary: summary(selection([a]), [seedRef()]),
+      repoRoot: REPO_ROOT,
+      readReference: fs.readReference,
+      assetExists: fs.assetExists,
+    });
+
+    expect(buffers).toHaveLength(2);
+    expect(buffers[0]).toBe(SEED_BYTES);
+    expect(buffers[1]!.toString()).toBe('png-bytes:lamp-a');
+  });
+
+  it('verifies seed frame content hash and throws on drift', () => {
+    const a = ref({ spriteName: 'lamp-a' });
+    expect(() =>
+      loadRecordedReferencePngs({
+        summary: summary(selection([a]), [seedRef({ contentHash: 'wrong-hash' })]),
+        repoRoot: REPO_ROOT,
+        assetExists: () => true,
+        readReference: () => SEED_BYTES,
+        hashBytes: () => SEED_HASH,
+      }),
+    ).toThrow(/content hash drifted/);
+  });
+
+  it('throws when a seed frame is missing on disk', () => {
+    const a = ref({ spriteName: 'lamp-a' });
+    expect(() =>
+      loadRecordedReferencePngs({
+        summary: summary(selection([a]), [seedRef()]),
+        repoRoot: REPO_ROOT,
+        assetExists: (p) => !p.includes('frame0'),
+        readReference: () => Buffer.alloc(0),
+      }),
+    ).toThrow(/is missing on disk/);
+  });
+
+  it('throws when a recorded seed frame path escapes the briefs/ directory', () => {
+    const a = ref({ spriteName: 'lamp-a' });
+    const tampered = seedRef({ path: '../outside/secret.txt' });
+    expect(() =>
+      loadRecordedReferencePngs({
+        summary: summary(selection([a]), [tampered]),
+        repoRoot: REPO_ROOT,
+        assetExists: () => {
+          throw new Error('assetExists must not be called for an unsafe seed path');
+        },
+        readReference: () => {
+          throw new Error('readReference must not be called for an unsafe seed path');
+        },
+      }),
+    ).toThrow(/resolves outside the approved seed directory/);
+  });
+
+  it('returns only style references when no seed frames are recorded', () => {
+    const a = ref({ spriteName: 'lamp-a' });
+    const buffers = loadRecordedReferencePngs({
+      summary: summary(selection([a])),
+      repoRoot: REPO_ROOT,
+      assetExists: () => true,
+      readReference: () => Buffer.from('png-bytes:lamp-a'),
+      hashBytes: () => a.contentHash as string,
+    });
+    expect(buffers).toHaveLength(1);
+    expect(buffers[0]!.toString()).toBe('png-bytes:lamp-a');
   });
 });
