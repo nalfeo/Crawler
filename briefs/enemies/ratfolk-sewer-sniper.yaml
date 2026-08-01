@@ -1,6 +1,7 @@
 type: enemy
 name: ratfolk-sewer-sniper
 floor: 2
+weaponBearing: true
 description: |
   A lean, crouching ratfolk sniper sighting down the scope of a long makeshift
   rifle — pipes, fittings, and salvaged hardware bolted together into a functional

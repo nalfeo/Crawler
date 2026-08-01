@@ -135,6 +135,20 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no spell effects/i);
   });
 
+  it('allows held weapons for weapon-bearing enemy briefs', () => {
+    const enemy = makeBrief({
+      type: 'enemy',
+      weaponBearing: true,
+      anchor: { x: 8, y: 8 },
+      sensors: { enemy: { facing: 'front' } } as Brief['sensors'],
+    });
+    const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/weapon-bearing/i);
+    expect(out).toMatch(/requested held weapon/i);
+    expect(out).not.toMatch(/no held weapons/i);
+    expect(out).toMatch(/no shields/i);
+  });
+
   it('defaults enemy briefs to a camera-facing three-quarter pose when facing is omitted', () => {
     const enemy = makeBrief({
       type: 'enemy',

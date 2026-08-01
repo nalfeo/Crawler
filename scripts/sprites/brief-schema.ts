@@ -212,6 +212,7 @@ export const briefSchema = z
   .object({
     type: z.enum(SPRITE_TYPES),
     mobRole: z.enum(['normal', 'elite', 'boss']).optional(),
+    weaponBearing: z.boolean().optional(),
     name: z
       .string()
       .min(1)
