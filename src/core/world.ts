@@ -81,7 +81,13 @@ import {
   createComponentStores,
   type ComponentStores,
 } from './components.js';
-import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
+import type {
+  StatModifier,
+  SkillState,
+  SkillUsageEvent,
+  PlayerLevel,
+  MilestoneGrantEvent,
+} from '../shared/skills.js';
 import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -187,6 +193,11 @@ export interface GameWorld {
   skillStatesByEntity: Map<number, Map<string, SkillState>>;
   /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
   skillUsageEvents: SkillUsageEvent[];
+  /**
+   * Append-only log of every milestone ability grant during this run.
+   * Never cleared — read by headless runner at run end for RunStats.
+   */
+  milestoneGrantLog: MilestoneGrantEvent[];
   /**
    * Active weapon skill IDs keyed by attacker EID (player).
    * Set by weaponSystem after a successful accuracy check; read by damage
@@ -639,6 +650,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerSkills: new Map(),
     skillStatesByEntity: new Map(),
     skillUsageEvents: [],
+    milestoneGrantLog: [],
     attackerWeaponSkills: new Map(),
     attackWeaponSkillsByEntity: new Map(),
     abilityStatesByEntity: new Map(),

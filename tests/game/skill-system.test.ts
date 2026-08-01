@@ -91,15 +91,15 @@ describe('skillSystem', () => {
 
   it('accumulates usage and levels up when threshold crossed', () => {
     const { world } = setupPlayerWithSkill();
-    // swordsmanship threshold for level 1 is 10 hits
-    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 10 });
+    // swordsmanship threshold for level 1 is 15 hits
+    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 15 });
     skillSystem(world);
     expect(world.playerSkills.get('swordsmanship')!.level).toBe(1);
   });
 
   it('adds per-level modifier on level-up', () => {
     const { world } = setupPlayerWithSkill();
-    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 10 });
+    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 15 });
     skillSystem(world);
     // swordsmanship perLevelBonus is { damage: 1 }
     const damageModifiers = world.statModifiers.filter(
@@ -129,51 +129,49 @@ describe('skillSystem', () => {
   });
 
   it('fires milestone at level 5 exactly once', () => {
-    const { world } = setupPlayerWithSkill();
+    const { world, player } = setupPlayerWithSkill();
     const state = world.playerSkills.get('swordsmanship')!;
-    // Enough to hit level 5 (threshold[4] = 100)
-    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 100 });
+    // Enough to hit level 5 (threshold[4] = 260)
+    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 260 });
     skillSystem(world);
     expect(state.triggeredMilestones.has(5)).toBe(true);
 
-    const milestoneMods = world.statModifiers.filter(
-      (m) => m.sourceId === 'swordsmanship:milestone:5',
-    );
-    expect(milestoneMods.length).toBeGreaterThan(0);
+    // swordsmanship L5 grants 'combat-flow' ability
+    const abilityState = world.abilityStatesByEntity.get(player);
+    expect(abilityState?.passiveAbilityIds).toContain('combat-flow');
 
-    // Running again should not add another copy of the milestone modifier
-    const countBefore = world.statModifiers.length;
+    // Running again should not add another copy
+    const countBefore = abilityState!.passiveAbilityIds.filter((id) => id === 'combat-flow').length;
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
     skillSystem(world);
-    expect(world.statModifiers.length).toBe(countBefore);
+    const countAfter = world.abilityStatesByEntity
+      .get(player)!
+      .passiveAbilityIds.filter((id) => id === 'combat-flow').length;
+    expect(countAfter).toBe(countBefore);
   });
 
-  it('applies stat_add milestone modifiers for iron-skin', () => {
-    const { world } = setupPlayerWithSkillState('iron-skin');
-    world.skillUsageEvents.push({ skillId: 'iron-skin', metric: 'damage_dealt', amount: 450 });
+  it('grants passive ability at iron-skin level 5 milestone', () => {
+    const { world, player } = setupPlayerWithSkillState('iron-skin');
+    world.skillUsageEvents.push({ skillId: 'iron-skin', metric: 'damage_dealt', amount: 920 });
     skillSystem(world);
 
-    const milestoneMod = world.statModifiers.find((m) => m.sourceId === 'iron-skin:milestone:5');
-    expect(milestoneMod).toBeDefined();
-    expect(milestoneMod!.stat).toBe('maxHp');
-    expect(milestoneMod!.op).toBe('add');
-    expect(milestoneMod!.value).toBe(20);
+    const abilityState = world.abilityStatesByEntity.get(player);
+    expect(abilityState).toBeDefined();
+    expect(abilityState!.passiveAbilityIds).toContain('stalwart-resolve');
   });
 
-  it('applies aura milestone placeholder modifier at level 20 for iron-skin', () => {
-    const { world } = setupPlayerWithSkillState('iron-skin');
+  it('grants placeholder ability at iron-skin level 20 milestone', () => {
+    const { world, player } = setupPlayerWithSkillState('iron-skin');
     const state = world.playerSkills.get('iron-skin')!;
     state.itemBonus = 5;
 
-    world.skillUsageEvents.push({ skillId: 'iron-skin', metric: 'damage_dealt', amount: 5000 });
+    world.skillUsageEvents.push({ skillId: 'iron-skin', metric: 'damage_dealt', amount: 16970 });
     skillSystem(world);
 
     expect(state.level).toBe(20);
-    const auraModifier = world.statModifiers.find((m) => m.sourceId === 'iron-skin:milestone:20');
-    expect(auraModifier).toBeDefined();
-    expect(auraModifier!.stat).toBe('damage');
-    expect(auraModifier!.op).toBe('add');
-    expect(auraModifier!.value).toBe(0);
+    const abilityState = world.abilityStatesByEntity.get(player);
+    expect(abilityState).toBeDefined();
+    expect(abilityState!.passiveAbilityIds).toContain('placeholder-generic-l20');
   });
 
   it('uses per-entity skill states when holder eid is provided', () => {
@@ -186,7 +184,7 @@ describe('skillSystem', () => {
       holderEid: player,
       skillId: 'swordsmanship',
       metric: 'hits_landed',
-      amount: 10,
+      amount: 15,
     });
     skillSystem(world);
     expect(state.level).toBe(1);
@@ -195,7 +193,7 @@ describe('skillSystem', () => {
     );
   });
 
-  it('keys holder milestone modifiers by holder eid', () => {
+  it('keys milestone ability grants by holder eid', () => {
     const { world, player } = setupPlayerWithSkill();
     const state = world.playerSkills.get('swordsmanship')!;
     state.level = 0;
@@ -205,23 +203,24 @@ describe('skillSystem', () => {
       holderEid: player,
       skillId: 'swordsmanship',
       metric: 'hits_landed',
-      amount: 100,
+      amount: 260,
     });
     skillSystem(world);
 
-    expect(
-      world.statModifiers.some((m) => m.sourceId === `swordsmanship:milestone:5:${player}`),
-    ).toBe(true);
+    // swordsmanship L5 grants 'combat-flow' to the holder entity's ability state
+    const abilityState = world.abilityStatesByEntity.get(player);
+    expect(abilityState).toBeDefined();
+    expect(abilityState!.passiveAbilityIds).toContain('combat-flow');
   });
 
   it('grants level-5 passive owned by skillAbilityGrantSourceId and is idempotent', () => {
     const { world, player } = setupPlayerWithSkillState('iron-skin');
-    // iron-skin level 5 grants 'stalwart-resolve' passive via SKILL_LEVEL5_ABILITY_GRANTS
+    // iron-skin level 5 grants 'stalwart-resolve' passive via the L5 abilityId milestone
     world.skillUsageEvents.push({
       holderEid: player,
       skillId: 'iron-skin',
       metric: 'damage_dealt',
-      amount: 450, // enough to reach level 5
+      amount: 920, // enough to reach level 5
     });
     skillSystem(world);
 
