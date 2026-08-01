@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "xp-sweep-floor-exit",
+  "task_title": "Pre-exit XP sweep + RunStats telemetry",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Reviewed plan for pre-exit XP sweep. Key concerns addressed: (1) sweep now XP-specific not all-loot, (2) dedicated target latch to avoid zig-zag, (3) panic-threshold gate not just beeline, (4) correct stair availability checks. plan_divergence: minor — scope narrowed from all-loot to XP-only, panic threshold added.",
+      "model": "gpt-5.4"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No high-confidence bugs, logic errors, or policy violations found. Panic-profile null case correctly handled (computeCollapsePanicProfile returns panic:0/beeline:false for Floor 2). Target latch re-validated and invalidated on all exit paths. Blackboard rebuilt fresh each poll — no cross-frame staleness. Reachability TTL-cached — unlimited radius scan does not re-pay full A* cost per frame. xpOnGroundAtEnd sums the same xpGem.value store used for totalXp accrual. Crash-path and normal-path computations are duplicated but on mutually exclusive branches."
+        }
+      ]
+    }
+  }
+}
