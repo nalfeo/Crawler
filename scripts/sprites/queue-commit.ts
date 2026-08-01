@@ -334,14 +334,20 @@ export async function runQueueCommit(
           // First try a normal merge; fall back to --allow-unrelated-histories
           // if the queue branch is an orphan (no common ancestor with main,
           // which can happen when the branch was initially created via --orphan
-          // or its history was squashed away). The fallback is safe: we still
-          // apply main's full tree, and the subsequent asset copy + staged diff
-          // guard ensures only art-surface changes are committed.
+          // or its history was squashed away).
+          //
+          // The fallback adds `-X theirs` to auto-resolve any non-art conflicts
+          // in favour of main.  Art files that exist only on the queue branch
+          // (not yet in main) appear as "added by ours" only — no conflict,
+          // no data loss.  The subsequent art-copy + staged-diff guard ensures
+          // only art-surface changes ever get committed.
           let merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
           if (merge.code !== 0 && merge.stderr.toLowerCase().includes('unrelated histories')) {
             merge = await runGit(deps.exec, worktree, [
               'merge',
               '--allow-unrelated-histories',
+              '-X',
+              'theirs',
               '--no-edit',
               mainRef,
             ]);

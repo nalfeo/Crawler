@@ -320,9 +320,9 @@ describe('runQueueCommit (control flow)', () => {
     // The first merge must be the plain (no flag) attempt.
     const mergeLines = line.filter((l) => l.startsWith('git merge'));
     expect(mergeLines[0]).toBe('git merge --no-edit refs/queue-commit/main-qc-xyz');
-    // The second merge must carry the --allow-unrelated-histories flag.
+    // The second merge must carry the --allow-unrelated-histories and -X theirs flags.
     expect(mergeLines[1]).toBe(
-      'git merge --allow-unrelated-histories --no-edit refs/queue-commit/main-qc-xyz',
+      'git merge --allow-unrelated-histories -X theirs --no-edit refs/queue-commit/main-qc-xyz',
     );
     expect(mergeLines).toHaveLength(2);
   });
