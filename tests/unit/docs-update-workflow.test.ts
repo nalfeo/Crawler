@@ -9,6 +9,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 interface WorkflowStep {
   name?: string;
   uses?: string;
+  if?: string;
+  run?: string;
   with?: Record<string, string>;
 }
 
@@ -31,5 +33,19 @@ describe('docs-update workflow', () => {
 
     expect(openPr?.uses).toBe('peter-evans/create-pull-request@v7');
     expect(openPr?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+  });
+
+  it('prunes stale remote refs before opening the automation PR', () => {
+    const workflow = loadWorkflow();
+    const steps = workflow.jobs['docs-update']?.steps ?? [];
+    const pruneIndex = steps.findIndex((step) => step.name === 'Prune stale remote tracking refs');
+    const openPrIndex = steps.findIndex((step) => step.name === 'Open docs automation PR');
+    const pruneStep = steps[pruneIndex];
+
+    expect(pruneStep?.if).toBe("steps.changes.outputs.changed == 'true'");
+    expect(pruneStep?.run).toBe('git fetch --prune origin');
+    expect(pruneIndex).toBeGreaterThan(-1);
+    expect(openPrIndex).toBeGreaterThan(-1);
+    expect(pruneIndex).toBeLessThan(openPrIndex);
   });
 });
