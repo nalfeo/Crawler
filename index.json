@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ed6f17c2531b61e79213de7e5deb6f978bebeae7",
+    "commitDate": "2026-08-01T08:37:43Z",
+    "commitSubject": "feat(skills): weapon class grants passive abilities at all milestone tiers (#2533)",
+    "capturedAt": "2026-08-01T09:44:05.673Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30692492758",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/ed6f17c2531b61e79213de7e5deb6f978bebeae7.json"
+  },
+  {
     "commit": "be61812b8ab3a6bb75dc948e9cb6f5a55ec99a63",
     "commitDate": "2026-08-01T08:15:57Z",
     "commitSubject": "feat(briefs): batch 22 enemy sprite briefs (Floor 2 expansion) (#2593)",
