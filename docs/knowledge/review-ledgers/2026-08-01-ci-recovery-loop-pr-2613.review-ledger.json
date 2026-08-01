@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "ci-recovery-loop-pr-2613",
+  "task_title": "Fix CI recovery loop for PR #2613: qualify closing reference in nightly-velocity-issue and improve task comment guidance",
+  "estimated_apples": 1,
+  "stages": {}
+}

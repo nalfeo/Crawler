@@ -160,6 +160,12 @@ const sensorOverridesSchema = z
          *   permits a full side profile.
          */
         facing: z.enum(['front', 'three-quarter', 'left', 'right', 'any']).optional(),
+        /**
+         * Opt-in override for enemy briefs that intentionally depict a held
+         * spell medium or magical glow (e.g. caster archetypes). When true,
+         * prompt generation relaxes the default body-only enemy rule.
+         */
+        allowSpellMedium: z.boolean().default(false),
         toleranceDeg: z.number().min(0).max(45).default(2),
       })
       .strict()

@@ -500,7 +500,7 @@ describe('judgeVariant — happy path', () => {
       brief: makeBrief({
         type: 'enemy',
         name: 'front-facing-boss',
-        sensors: { enemy: { facing: 'front', toleranceDeg: 20 } },
+        sensors: { enemy: { facing: 'front', toleranceDeg: 20, allowSpellMedium: false } },
       }),
       styleGuide: '',
       provider,
@@ -529,7 +529,7 @@ describe('judgeVariant — happy path', () => {
       brief: makeBrief({
         type: 'enemy',
         name: 'snailfolk-boss',
-        sensors: { enemy: { facing: 'front', toleranceDeg: 20 } },
+        sensors: { enemy: { facing: 'front', toleranceDeg: 20, allowSpellMedium: false } },
       }),
       styleGuide: '',
       provider,

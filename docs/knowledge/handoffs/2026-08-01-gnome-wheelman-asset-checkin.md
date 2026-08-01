@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-01  
 **Session:** asset-pr for issue #2639  
-**Apple estimate:** 1🍎  
+**Apple estimate:** 1🍎
 
 ## Systems touched
 
@@ -16,6 +16,7 @@ Checked in 1 approved asset from branch `assets/checkin-20260801-173438-30e183` 
 - `public/assets/generated/entries/gnome-wheelman-var-1.json`
 
 Asset metadata:
+
 - **briefId:** `gnome-wheelman`
 - **type:** enemy
 - **judgeScore:** 4/5 (confidence 0.92)

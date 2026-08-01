@@ -22,7 +22,7 @@ Run the nightly velocity-engineer workflow to identify where feature delivery lo
 
 ## Delivery requirements
 - Follow AGENTS.md and the repository's normal verification/review-harness requirements.
-- Any implementation PR must include \`Closes nalfeo/Crawler#${issueNumber}\`.
+- Any implementation PR must include \`Refs nalfeo/Crawler#${issueNumber}\` and avoid closing-keyword forms for this tracking issue to prevent human-approval gate propagation.
 
 @copilot Please run the velocity-engineer / bottleneck-scan loop for this issue.`;
 }
