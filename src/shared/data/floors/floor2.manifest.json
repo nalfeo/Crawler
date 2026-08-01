@@ -28,6 +28,7 @@
   },
   "terrainPackId": "industrial-cave",
   "enemyPackId": "floor2-families",
+  "floorLootTableId": "floor_2",
   "player": {
     "hpBonus": 30,
     "moveSpeedBonus": 0.0375,
