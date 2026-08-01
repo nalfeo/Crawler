@@ -13,7 +13,10 @@ import {
   type AchievementRulePhase,
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
-import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../shared/data/floor2-reward-pool.js';
+import {
+  FLOOR2_REWARD_POOL_STABLE_IDS,
+  FLOOR2_REWARD_POOL_WEAPON_IDS,
+} from '../../shared/data/floor2-reward-pool.js';
 import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
 import { bandFor, getRelation } from '../../core/faction-relations.js';
 import { isInSafeContext } from '../../core/safe-space.js';
@@ -25,6 +28,14 @@ import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
 } from '../floor1-lootbox-reward-resolver.js';
+
+/**
+ * Pre-computed set of Floor 2 weapon base IDs for category-weighted reward
+ * selection (see {@link FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT} in
+ * `floor2-reward-bundle-resolver.ts`). Built once at module load from the
+ * same source array used by the reward pool — never hand-copied.
+ */
+const FLOOR2_REWARD_WEAPON_ID_SET: ReadonlySet<string> = new Set(FLOOR2_REWARD_POOL_WEAPON_IDS);
 
 /**
  * Goal-flag key set once the player completes the Broker's settlement
@@ -324,6 +335,7 @@ export function unlockAchievement(
         achievementId,
         FLOOR2_REWARD_POOL_STABLE_IDS,
         FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier],
+        FLOOR2_REWARD_WEAPON_ID_SET,
       );
     } catch (err) {
       if (err instanceof RewardBundleResolutionError) throw err;
