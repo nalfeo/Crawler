@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a680e9b7ffc95774b3bb7e30c3a4beaa5a2fb083",
+    "commitDate": "2026-08-01T10:15:15Z",
+    "commitSubject": "feat(floor2-rewards): weight draws 25% weapon / 75% non-weapon to fix 14× per-slot weapon oversupply (#2556)",
+    "capturedAt": "2026-08-01T11:20:54.363Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30695744846",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/a680e9b7ffc95774b3bb7e30c3a4beaa5a2fb083.json"
+  },
+  {
     "commit": "56370584c389cb847d457f157a152bb119bdf283",
     "commitDate": "2026-08-01T09:50:00Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (395 art paths) (#2608)",
