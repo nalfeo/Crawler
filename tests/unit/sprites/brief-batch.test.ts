@@ -83,9 +83,7 @@ describe('parseBriefOnlyPRs', () => {
     const json = JSON.stringify([
       { number: 3, title: 'Add panda sniper brief', headRefName: 'copilot/panda-sniper-brief' },
     ]);
-    const d = diffs([
-      ['copilot/panda-sniper-brief', ['briefs/enemies/panda-boba-sniper.yaml']],
-    ]);
+    const d = diffs([['copilot/panda-sniper-brief', ['briefs/enemies/panda-boba-sniper.yaml']]]);
     const result = parseBriefOnlyPRs(json, d);
     expect(result).toHaveLength(1);
     expect(result[0]?.number).toBe(3);
@@ -124,12 +122,8 @@ describe('parseBriefOnlyPRs', () => {
   });
 
   it('captures multiple brief paths from one PR', () => {
-    const json = JSON.stringify([
-      { number: 1, title: 'multi', headRefName: 'multi-brief' },
-    ]);
-    const d = diffs([
-      ['multi-brief', ['briefs/enemies/foo.yaml', 'briefs/weapons/bar.yaml']],
-    ]);
+    const json = JSON.stringify([{ number: 1, title: 'multi', headRefName: 'multi-brief' }]);
+    const d = diffs([['multi-brief', ['briefs/enemies/foo.yaml', 'briefs/weapons/bar.yaml']]]);
     const result = parseBriefOnlyPRs(json, d);
     expect(result[0]?.briefPaths).toEqual(['briefs/enemies/foo.yaml', 'briefs/weapons/bar.yaml']);
   });
@@ -307,7 +301,10 @@ describe('runBriefBatchConsolidation', () => {
 
     // Verify brief files were checked out explicitly (not via wildcard)
     const checkouts = calls.filter(
-      (c) => c.command === 'git' && c.args[0] === 'checkout' && c.args.some(p => p.startsWith('briefs/')),
+      (c) =>
+        c.command === 'git' &&
+        c.args[0] === 'checkout' &&
+        c.args.some((p) => p.startsWith('briefs/')),
     );
     expect(checkouts.length).toBeGreaterThanOrEqual(2);
     const checkedOutPaths = checkouts.map((c) => c.args.find((a) => a.startsWith('briefs/')));
@@ -330,8 +327,7 @@ describe('runBriefBatchConsolidation', () => {
       if (cmd === 'gh' && args.includes('list'))
         return { stdout: JSON.stringify([{ number: 1, title: 't', headRefName: 'feat/brief' }]) };
       if (cmd === 'git' && args[0] === 'fetch') return { code: 0 };
-      if (cmd === 'git' && args.includes('diff'))
-        return { stdout: 'briefs/enemies/foo.yaml' };
+      if (cmd === 'git' && args.includes('diff')) return { stdout: 'briefs/enemies/foo.yaml' };
       if (cmd === 'gh' && args.includes('create'))
         return { stdout: 'https://github.com/nalfeo/Crawler/pull/1\n' };
       return {};

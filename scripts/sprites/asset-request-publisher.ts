@@ -341,10 +341,7 @@ function resolveSafeBriefDestination(stageRoot: string, briefPath: string): stri
   assertSafeBriefPaths([briefPath]);
   const destination = path.resolve(stageRoot, ...briefPath.split('/'));
   const stageRootAbs = path.resolve(stageRoot);
-  if (
-    destination !== stageRootAbs &&
-    !destination.startsWith(`${stageRootAbs}${path.sep}`)
-  ) {
+  if (destination !== stageRootAbs && !destination.startsWith(`${stageRootAbs}${path.sep}`)) {
     throw new QueueCommitError('invalid-brief-path', `Brief path escapes stage root: ${briefPath}`);
   }
   return destination;

@@ -182,9 +182,7 @@ function renderPrBody(
   lines.push('---');
   lines.push('');
   lines.push('**After this PR merges:** close the source PRs listed above.');
-  lines.push(
-    'Their branches remain on the remote and can be reopened if needed.',
-  );
+  lines.push('Their branches remain on the remote and can be reopened if needed.');
   return lines.join('\n');
 }
 
@@ -327,12 +325,9 @@ export async function runBriefBatchConsolidation(
 
     return { prUrl, plan };
   } finally {
-    await exec(deps.exec, repoRoot, 'git', [
-      'worktree',
-      'remove',
-      worktree,
-      '--force',
-    ]).catch(() => undefined);
+    await exec(deps.exec, repoRoot, 'git', ['worktree', 'remove', worktree, '--force']).catch(
+      () => undefined,
+    );
     await deps.removeDir(worktree).catch(() => undefined);
   }
 }

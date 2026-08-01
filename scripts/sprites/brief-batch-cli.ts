@@ -18,7 +18,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runBriefBatchConsolidation, type BriefBatchDeps, type BriefBatchOptions } from './brief-batch.js';
+import {
+  runBriefBatchConsolidation,
+  type BriefBatchDeps,
+  type BriefBatchOptions,
+} from './brief-batch.js';
 import type { Exec, ExecResult } from './checkin.js';
 
 const realExec: Exec = (command, args, options) =>
@@ -88,7 +92,9 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         `\nNext steps:\n` +
         `  1. Verify the PR contains only brief YAML files and merge it.\n` +
         `  2. After merge, close the source PRs:\n` +
-        result.plan.sourcePRs.map((pr) => `     gh pr close ${pr.number} --comment "Batched into ${result.prUrl}"`).join('\n') +
+        result.plan.sourcePRs
+          .map((pr) => `     gh pr close ${pr.number} --comment "Batched into ${result.prUrl}"`)
+          .join('\n') +
         '\n',
     );
     return 0;
