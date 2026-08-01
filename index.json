@@ -1,5 +1,16 @@
 [
   {
+    "commit": "43c314b9d26fa70837e06e81eb6ad806194ed170",
+    "commitDate": "2026-08-01T02:54:23Z",
+    "commitSubject": "fix(sprites): replace -X theirs with reset+checkout for orphan-branch publish (#2535)",
+    "capturedAt": "2026-08-01T04:00:21.457Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30681222304",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/43c314b9d26fa70837e06e81eb6ad806194ed170.json"
+  },
+  {
     "commit": "4a1e64c2dade65a892e20dabd6d52760cbda897a",
     "commitDate": "2026-08-01T01:32:45Z",
     "commitSubject": "fix(sprites): allow unrelated-histories fallback in queue-commit merge (#2532)",
