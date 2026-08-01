@@ -287,7 +287,7 @@ export function renderHtml({ batches, baseUrl, recentRuns = [] }) {
 
     // ── Per-icon review ──────────────────────────────────────────────────────
     function rejectIcon(iconId, concept) {
-      var feedback = window.prompt('Reject "' + concept + '"?\n\nOptional feedback (leave blank to skip):');
+      var feedback = window.prompt('Reject "' + concept + '"?\\n\\nOptional feedback (leave blank to skip):');
       if (feedback === null) return; // cancelled
       post('reject', { iconId: iconId, feedback: feedback.trim() })
         .then(function() { refresh(); })

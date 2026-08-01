@@ -17,10 +17,21 @@ function makeGameObjectStub(): unknown {
     get(_target, prop) {
       if (typeof prop === 'symbol') return undefined;
       if (prop === 'then') return undefined;
-      if (prop === 'width' || prop === 'height' || prop === 'displayWidth' || prop === 'displayHeight') {
+      if (
+        prop === 'width' ||
+        prop === 'height' ||
+        prop === 'displayWidth' ||
+        prop === 'displayHeight'
+      ) {
         return 64;
       }
-      if (prop === 'x' || prop === 'y' || prop === 'depth' || prop === 'scaleX' || prop === 'scaleY') {
+      if (
+        prop === 'x' ||
+        prop === 'y' ||
+        prop === 'depth' ||
+        prop === 'scaleX' ||
+        prop === 'scaleY'
+      ) {
         return 0;
       }
       if (prop === 'visible') return true;
