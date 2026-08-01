@@ -1,0 +1,19 @@
+type: enemy
+mobRole: elite
+name: llama-elite-backlot-capo
+floor: 2
+description: |
+  An imposing elite llama backlot capo in a long tailored deep-charcoal coat
+  with bold gold trim and epaulettes, upright posture, and head held high in a
+  haughty, commanding expression. Elongated regal llama face with a neutral tan
+  coat visible beneath the outfit. A ranged spit-rifle with a brass scope rests
+  clearly over one shoulder and remains unmistakably visible in the silhouette.
+  Single centered subject only, hard pixel edges, no anti-aliasing, no
+  background, and no text. Reads as more decorated, imposing, and better-dressed
+  than the regular llama-spitter.
+variations:
+  - longer coat hem and larger epaulettes with a narrow brass-scoped rifle silhouette
+  - heavier shoulder trim and broader chest sash with a compact scoped spit-rifle
+  - slightly taller neck posture and sharper snout profile with ornate coat cuffs
+  - reinforced coat lapels with brighter gold accents and a long rifle stock silhouette
+minVariations: 4

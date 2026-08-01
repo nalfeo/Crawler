@@ -1,0 +1,33 @@
+type: enemy
+name: molefolk-gravel-slinger
+floor: 2
+description: |
+  A molefolk soldier in a ranged attack posture, wielding a gravel-sling — a
+  large, chunky centrifugal launcher that hurls fist-sized chunks of rock. The
+  weapon is the dominant feature: oversized, rock-fed, with a heavy rotating arm
+  or sling cradle loaded with a rough stone. The pose is wound-up or aimed —
+  weapon cocked back or leveled forward with intent.
+
+  Digging-crew aesthetic throughout: sturdy canvas work overalls in deep khaki
+  or earthy olive, iron hard hat (battered, dented), thick heavy gloves, heavy
+  steel-toed boots. Belt pouches and a bandolier of rock chunks emphasize the
+  rock-fed ranged role. Compact, stocky molefolk build with a broad velvety
+  snout, small deep-set eyes, and short powerful limbs.
+
+  Palette: molefolk earthy brown-gray velvety fur, dark khaki/olive canvas
+  overalls, iron-grey hard hat and glove buckles, muted stone-brown rock chunks.
+  No bright accent colors — the palette stays deep underground, grimy, and
+  functional. The gravel-sling itself is dark iron-grey with visible mechanical
+  joints and rock-feed slots.
+
+  Single centered subject, front-facing, fully inside frame, hard pixel edges,
+  no background, no text.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+variations:
+  - molefolk gravel-slinger with weapon wound up over one shoulder, rock chunk loaded in sling cradle, ready-to-release posture
+  - molefolk gravel-slinger with heavy sling leveled forward and aimed, beady eyes squinting down the weapon line
+  - molefolk gravel-slinger with bandolier of rock chunks visible, hard hat tilted forward, sturdy wide-stance power pose
+minVariations: 6
