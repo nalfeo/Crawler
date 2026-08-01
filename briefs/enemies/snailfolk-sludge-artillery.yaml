@@ -1,0 +1,53 @@
+type: enemy
+name: snailfolk-sludge-artillery
+floor: 2
+sizeVariant: default
+description: |
+  A snailfolk soldier in an artillery braced stance — weight low and wide,
+  cannon aimed upward at an angle ready to lob arcing shots. The sludge cannon
+  is the absolute visual centerpiece: a heavy backpack-mounted pressurised tank
+  riding behind the body, connected by thick rubber hoses to a wide nozzle that
+  points skyward at roughly 50 degrees. The tank is riveted industrial metal with
+  a rounded silhouette, visibly sloshing with acidic slime — the one bold colour
+  accent: toxic acid-green slime visible through a porthole window and dripping
+  from the nozzle tip.
+
+  Snailfolk family body: wide soft torso, two short eyestalks rising from a
+  broad flat head. The shell is present but smaller than the boss variant —
+  a medium-sized dark spiral shell tucked behind the body (the cannon backpack
+  sits partly over it). Front-facing.
+
+  Protective gear: a tinted rubber visor over the eyestalks, a thick rubber
+  apron covering the torso, rubber gloves on the wide flat hands gripping the
+  cannon's trigger/grip assembly.
+
+  Snailfolk earth-tone palette: dark olive and slate-blue for the soft body,
+  deep charcoal-grey for the shell, iron-grey for the tank body and armor
+  fittings, verdigris/oxidised-green for the rubber apron and hoses. The only
+  non-earth accent is the acid-green slime (rgb(80,220,60) range) — vivid,
+  immediately readable, exclusive to the slime itself and not borrowed by any
+  body material.
+
+  Silhouette: the cannon+tank assembly creates a bulky asymmetric upper mass
+  on one side while the wide snailfolk body anchors the bottom. The shape reads
+  as "heavy siege weapon being wielded by a patient slow creature". Single
+  subject, fully inside frame, hard pixel edges, no background, no text.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: false
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Front-facing snailfolk artillery braced stance, cannon nozzle angled skyward, acid-green slime dripping from the nozzle tip, rubber visor and apron, riveted tank backpack
+  - Snailfolk sludge-artillery wide low stance, backpack tank prominent behind dark spiral shell, thick rubber hoses connecting tank to wide cannon nozzle, slate-blue body, iron-grey fittings
+  - Snailfolk soldier with sludge cannon as centerpiece silhouette — the tank+nozzle assembly fills the upper right, acid-green porthole glow visible on tank, verdigris rubber apron, both hands gripping the cannon trigger
+
+minVariations: 3

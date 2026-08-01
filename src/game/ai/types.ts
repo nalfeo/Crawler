@@ -363,6 +363,12 @@ export interface Floor2FamilyProgressMetrics {
   encounterStarted: boolean;
   /** Simulated time when the production encounter first started. */
   encounterStartedMs: number | null;
+  /**
+   * Player level at the moment the boss encounter started. Used to verify that
+   * XP pacing delivers the intended fight level (≥10) before the first Floor 2
+   * boss. Null when the encounter never started.
+   */
+  levelAtEncounterStart: number | null;
   /** Whether the real production boss encounter was defeated. */
   encounterDefeated: boolean;
   /** Simulated time when the production encounter was first defeated. */
@@ -411,6 +417,27 @@ export interface EquipmentPlayabilityMetrics {
   unopenedRewardBoxes: number;
   /** Bagged generated instances that could fill an empty matching slot. */
   unequippedWithEmptySlotCount: number;
+}
+
+/**
+ * Skill and ability progression observed during a run.
+ * Populated from `world.milestoneGrantLog` at run end.
+ */
+export interface SkillRunMetrics {
+  /**
+   * Ordered list of every milestone ability grant that fired.
+   * Each entry records the skill, ability, milestone level, and game time.
+   */
+  grants: Array<{
+    skillId: string;
+    abilityId: string;
+    milestoneLevel: number;
+    gameTimeMs: number;
+  }>;
+  /** Number of distinct ability IDs granted (upgrades only counted once). */
+  uniqueAbilityCount: number;
+  /** Milestone levels reached per skill ID (e.g. `{ swords: [5, 10] }`). */
+  milestonesReached: Record<string, number[]>;
 }
 
 /**
@@ -497,4 +524,6 @@ export interface RunStats {
    * test fixtures construct RunStats manually.
    */
   xpOnGroundAtEnd?: number;
+  /** Skill milestone ability grants observed during this run. */
+  skills?: SkillRunMetrics;
 }

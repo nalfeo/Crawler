@@ -305,3 +305,59 @@ describe('headless runner weapon telemetry (opt-in)', () => {
     expect(again.weaponTelemetry).toEqual(wt);
   });
 });
+
+describe('Floor 2 levelAtEncounterStart telemetry', () => {
+  it('is null for all families when no boss encounter has started (1-frame run)', async () => {
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      floorId: 'floor2',
+      maxFrames: 1,
+    });
+
+    expect(stats.floor2Progression).toBeDefined();
+    for (const fam of Object.values(stats.floor2Progression!.families)) {
+      expect(fam.levelAtEncounterStart).toBeNull();
+    }
+  });
+
+  it('captures the player level at the frame the first boss encounter starts', async () => {
+    // Force the first present family's boss encounter to start on frame 1
+    // so we can assert the captured level matches world.playerLevel.level.
+    let capturedLevelAtForce = -1;
+    let targetFamilyId = '';
+    let fired = false;
+
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      floorId: 'floor2',
+      maxFrames: 2,
+      simulationOptions: {
+        postSystems: [
+          (world: GameWorld) => {
+            if (fired) return;
+            const floor2State = world.floorExtendedState?.familyState;
+            if (!floor2State) return;
+            const familyId = floor2State.presentFamilies[0];
+            if (!familyId) return;
+            const encounter = floor2State.bossEncounters?.get(familyId);
+            if (!encounter) return;
+            // Force encounter started and capture the level at the same frame.
+            encounter.started = true;
+            capturedLevelAtForce = world.playerLevel?.level ?? -1;
+            targetFamilyId = familyId;
+            fired = true;
+          },
+        ],
+      },
+    });
+
+    expect(stats.floor2Progression).toBeDefined();
+    const famMetrics = stats.floor2Progression!.families[targetFamilyId];
+    expect(famMetrics).toBeDefined();
+    // The runner captures the level on the frame started first becomes true.
+    // capturedLevelAtForce is the level at that same frame (postSystems run
+    // inside the simulation tick, before telemetry collection).
+    expect(famMetrics!.levelAtEncounterStart).toBe(capturedLevelAtForce);
+    expect(famMetrics!.levelAtEncounterStart).not.toBeNull();
+  });
+});

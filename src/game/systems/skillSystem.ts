@@ -5,13 +5,16 @@ import type { StatKey } from '../../shared/stats.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
-import { applyCatalogEffect } from './progressionEffects.js';
-import { grantAbilitySources, queueAbilityTrigger } from './abilitySystem.js';
-import { SKILL_LEVEL5_ABILITY_GRANTS, getAbilityDefinition } from '../abilities/registry.js';
-import { skillAbilityGrantSourceId } from '../../shared/abilities.js';
+import { grantAbilitySources, queueAbilityTrigger, revokeAbilitySources } from './abilitySystem.js';
+import { getAbilityDefinition } from '../abilities/registry.js';
+import { skillAbilityGrantSourceId, type AbilityGrantSourceId } from '../../shared/abilities.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
+import {
+  getWeaponSwingVfxSpec,
+  weaponSwingVfxKindForPreset,
+} from '../../shared/weapon-swing-vfx.js';
 
 /** How long the level-5 passive-unlock banner is shown, in milliseconds. */
 const SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS = 2600;
@@ -83,63 +86,6 @@ export function skillSystem(world: GameWorld): void {
       ) {
         state.triggeredMilestones.add(state.level);
         applyMilestone(world, def.id, state.level, event.holderEid);
-
-        // At level 5, also grant the corresponding passive ability (if any).
-        // Uses holderEid from v2 holder-scoped events directly. For v1-style
-        // events (no holderEid), falls back to the player entity so the milestone
-        // is never consumed without the ability being granted. The fallback can be
-        // removed once all skill-usage events are holder-scoped (v2 path only).
-        if (state.level === 5) {
-          const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get(def.id);
-          if (abilityId !== undefined) {
-            const targetEid = event.holderEid ?? query(world.ecs, [Player])[0];
-            if (targetEid !== undefined) {
-              grantAbilitySources(world, targetEid, [
-                {
-                  kind: 'passive',
-                  abilityId,
-                  sourceId: skillAbilityGrantSourceId(def.id, state.level),
-                },
-              ]);
-
-              // Player-only, one-time unlock feedback. Mobs can level skills
-              // via the v2 holder-scoped path but never render HUD feedback.
-              if (hasComponent(world.ecs, targetEid, Player)) {
-                const abilityDef = getAbilityDefinition(abilityId);
-                const isGeneralPassive =
-                  abilityDef !== undefined &&
-                  abilityDef.kind === 'passive' &&
-                  abilityDef.weaponPrerequisite === undefined;
-
-                // Weapon-gated passives already get their activation VFX from
-                // applyPassive() the moment a matching weapon is equipped
-                // (which happens this same tick if the prerequisite is
-                // already met) — pushing it again here would double-fire.
-                // General (no-prerequisite) passives never take that path,
-                // so this milestone grant is their only VFX, emitted exactly
-                // once thanks to the `triggeredMilestones` guard above.
-                if (isGeneralPassive) {
-                  const px = world.stores.position.x[targetEid] ?? 0;
-                  const py = world.stores.position.y[targetEid] ?? 0;
-                  pushVfxEvent(world.vfxEvents, {
-                    kind: 'abilityActivateFlash',
-                    x: px,
-                    y: py,
-                  });
-                }
-
-                const presentation = getAbilityPresentation(abilityId);
-                pushAnnouncement(world.announcements, {
-                  kind: 'skillPassiveUnlocked',
-                  archetypeIndex: -1,
-                  text: `Passive Unlocked: ${presentation?.name ?? abilityId}`,
-                  durationMs: SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS,
-                  elapsedMs: world.elapsedMs,
-                });
-              }
-            }
-          }
-        }
       }
     }
   }
@@ -159,12 +105,96 @@ function applyMilestone(
   const milestone = def.milestones.find((m) => m.level === level);
   if (milestone === undefined) return;
 
-  applyCatalogEffect(world, {
-    sourceType: 'skill',
-    sourceId:
-      holderEid === undefined
-        ? `${skillId}:milestone:${level}`
-        : `${skillId}:milestone:${level}:${holderEid}`,
-    effect: milestone.effect,
-  });
+  // Grant the ability defined on this milestone
+  if (milestone.abilityId !== undefined) {
+    const targetEid = holderEid ?? query(world.ecs, [Player])[0];
+    if (targetEid !== undefined) {
+      const sourceId = skillAbilityGrantSourceId(skillId, level);
+
+      // Handle upgrade logic: L15 replaces L5, L20 replaces L10
+      const revokeRequests: Array<{
+        kind: 'passive';
+        abilityId: string;
+        sourceId: AbilityGrantSourceId;
+      }> = [];
+      if (level === 15) {
+        const oldSourceId = skillAbilityGrantSourceId(skillId, 5);
+        const oldMilestone = def.milestones.find((m) => m.level === 5);
+        if (oldMilestone?.abilityId !== undefined) {
+          revokeRequests.push({
+            kind: 'passive',
+            abilityId: oldMilestone.abilityId,
+            sourceId: oldSourceId,
+          });
+        }
+      } else if (level === 20) {
+        const oldSourceId = skillAbilityGrantSourceId(skillId, 10);
+        const oldMilestone = def.milestones.find((m) => m.level === 10);
+        if (oldMilestone?.abilityId !== undefined) {
+          revokeRequests.push({
+            kind: 'passive',
+            abilityId: oldMilestone.abilityId,
+            sourceId: oldSourceId,
+          });
+        }
+      }
+
+      // Revoke the old ability(ies) first
+      if (revokeRequests.length > 0) {
+        revokeAbilitySources(world, targetEid, revokeRequests);
+      }
+
+      // Grant the new ability
+      grantAbilitySources(world, targetEid, [
+        {
+          kind: 'passive',
+          abilityId: milestone.abilityId,
+          sourceId,
+        },
+      ]);
+
+      // Append to the run-level milestone grant log (read by headless runner).
+      world.milestoneGrantLog.push({
+        skillId,
+        abilityId: milestone.abilityId,
+        milestoneLevel: level,
+        gameTimeMs: world.elapsedMs,
+      });
+
+      // Player-only, one-time unlock feedback.
+      if (hasComponent(world.ecs, targetEid, Player)) {
+        const px = world.stores.position.x[targetEid] ?? 0;
+        const py = world.stores.position.y[targetEid] ?? 0;
+        const swingVfx = getWeaponSwingVfxSpec(milestone.abilityId);
+        if (swingVfx !== undefined) {
+          pushVfxEvent(world.vfxEvents, {
+            kind: weaponSwingVfxKindForPreset(swingVfx.preset),
+            x: px,
+            y: py,
+            color: swingVfx.color,
+            intensity: swingVfx.intensity,
+          });
+        }
+
+        const abilityDef = getAbilityDefinition(milestone.abilityId);
+        const isGeneralPassive =
+          abilityDef !== undefined &&
+          abilityDef.kind === 'passive' &&
+          abilityDef.weaponPrerequisite === undefined;
+
+        if (isGeneralPassive && swingVfx === undefined) {
+          pushVfxEvent(world.vfxEvents, { kind: 'abilityActivateFlash', x: px, y: py });
+        }
+
+        const presentation = getAbilityPresentation(milestone.abilityId);
+        pushAnnouncement(world.announcements, {
+          kind: 'skillPassiveUnlocked',
+          archetypeIndex: -1,
+          text: `Passive Unlocked: ${presentation?.name ?? milestone.abilityId}`,
+          durationMs: SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS,
+          elapsedMs: world.elapsedMs,
+        });
+      }
+    }
+  }
 }

@@ -1,0 +1,39 @@
+type: enemy
+name: ratfolk-sewer-sniper
+floor: 2
+description: |
+  A lean, crouching ratfolk sniper sighting down the scope of a long makeshift
+  rifle — pipes, fittings, and salvaged hardware bolted together into a functional
+  long-arm. The posture reads as a committed shooting stance: one knee down, weight
+  forward, body angled low, eye pressed to a hand-fitted scope. No wasted mass;
+  this is a ranged specialist, not a brawler.
+
+  Sewer-worker outfit: knee-high rubber waders in dark olive or dirty yellow,
+  a heavy canvas tool belt with hanging fittings and small pouches, and a patchy
+  cloth vest layered over a grimy work shirt. Everything looks worn and functional —
+  no decorative armor, nothing polished.
+
+  Ratfolk details: prominent pointed snout, one beady eye sharp and focused down
+  the scope, dark-grey and brown fur with sewer-green highlights from ambient grime,
+  thin wiry build, ears flat and back in concentration. The silhouette reads lean
+  and precise — hunched over the weapon is the dominant shape.
+
+  Rifle details: long, noticeably improvised — visible pipe segments, threaded
+  fittings, a hand-strapped stock, and a crude but functional scope. The length
+  of the weapon should extend the subject's horizontal reach and reinforce the
+  ranged-specialist read.
+
+  Floor 2 grimy-urban palette: dark grays, dirty browns, sewer greens, and
+  flashes of rust on the metal parts. Hard pixel edges, transparent background,
+  no text, single centered subject, no extra companions.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+variations:
+  - ratfolk sniper in a deep one-knee crouch, rubber waders, long pipe-rifle raised with scope at eye level, flat ears, focused expression
+  - lean ratfolk marksrat pressing cheek to the stock, tool-belt fittings dangling, dark-grey fur, sewer-green waders, improvised scoped long-gun
+  - wiry ratfolk sniper body angled low in a shooting brace, patchy canvas vest, pipe-and-fitting rifle with a cloth-wrapped grip, beady eye at scope
+  - ratfolk sewer-sniper silhouette: elongated rifle dominating the horizontal, crouched wiry body, prominent snout, grimy urban palette of brown and sewer green
+  - ratfolk ranged specialist in a tight low stance, rubber waders and tool belt, hand-made scoped rifle with threaded metal fittings, rust and dark-gray accents
+minVariations: 5
