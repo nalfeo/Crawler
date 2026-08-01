@@ -641,7 +641,7 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   'molefolk-gravel-slinger': 'molefolk-burrower',
   'raccoon-boss': 'raccoons-boss',
   'raccoon-thief': 'raccoon-thief',
-  'raccoon-elite-heist-capo': 'raccoon-thief',
+  'raccoon-elite-heist-capo': 'raccoon-elite-heist-capo-v1',
   'raccoon-bottle-rocketeer': 'raccoon-thief',
   'geese-boss': 'geese-boss',
   'geese-honker': 'geese-honker',
