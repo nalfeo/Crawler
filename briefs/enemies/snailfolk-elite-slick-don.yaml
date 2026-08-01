@@ -1,0 +1,39 @@
+type: enemy
+mobRole: elite
+name: snailfolk-elite-slick-don
+floor: 2
+description: |
+  The Slick Don Slowburn — an elite snailfolk crime don oozing cold confidence.
+  The shell is front and center: iridescent and polished to a blinding gloss,
+  with a subtle gold swirl spiral pattern etched across its surface as the elite
+  mark. The shell must read as the dominant silhouette element — large, high-
+  gloss, rainbow-sheen iridescent, not matte or dark. Rich soft earth-tone body
+  below: warm olive or sandy-tan slug flesh, wide and low, unhurried.
+
+  Outfit: a silk shirt open at the collar — cream or pearl-white with subtle
+  iridescent sheen, slightly oversized, visibly luxurious fabric. A thick gold
+  chain rests on the open chest, catching the light. No tie. One eyestalk raised
+  in an imperious, contemptuous upward gaze; the other neutral or slightly drooped.
+  Expression: untouchable authority, patience of someone who has never needed to
+  hurry. Slow, deliberate posture — weight settled back, no attack lean.
+
+  Composition: single centered subject, front-facing, hard pixel edges, no
+  background, no text, no floating accessories. The silhouette should read as
+  a connected mass: wide glossy shell behind and above a soft wide body with a
+  slightly upturned eyestalk as the height peak. Iridescent shell and gold chain
+  are the two visual anchors — both must be clearly legible at game scale.
+
+  Floor 2 cartel-dungeon tone: this is the slowest and most untouchable member
+  of the Slowlane Syndicate short of the boss. Wealth reads in the shell finish
+  and the silk; threat reads in the imperious eyestalk and settled posture.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+variations:
+  - snailfolk elite don with one eyestalk raised imperiously, pearl silk shirt open at collar, thick gold chain on chest, iridescent gold-swirl shell
+  - slowlane don with glossy rainbow-sheen shell, silk open-collar shirt slightly open, heavy gold chain, contemptuous upward eyestalk gaze
+  - crime-don snailfolk in cream silk shirt, gold chain medallion, one imperious eyestalk raised, high-gloss iridescent shell with gold swirl mark
+  - elite snailfolk don oozing authority — one eyestalk up in disdain, pearl-white silk, gold chain, lustrous iridescent shell with gold spiral
+  - slick don snailfolk with maximum shell gloss and iridescence, silk open collar, gold chain, deliberate unhurried settled posture
+minVariations: 5
