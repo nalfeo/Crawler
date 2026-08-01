@@ -46,7 +46,7 @@ export default {
   ],
   project: ['src/**/*.ts', 'tests/**/*.ts', 'scripts/sprites/**/*.ts'],
   ignore: ['node_modules/**', 'dist/**'],
-  ignoreDependencies: ['playwright'],
+  ignoreDependencies: ['playwright', 'minisearch'],
   ignoreBinaries: ['pwsh'],
   ignoreIssues,
 } satisfies KnipConfig;
