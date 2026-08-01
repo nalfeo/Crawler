@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7c93127a2080a1e9d74ffee916ad7d7f31e92cef",
+    "commitDate": "2026-08-01T10:43:22Z",
+    "commitSubject": "fix: prefer neutral wearables for non-aligned reward draws (magic build parity) (#2554)",
+    "capturedAt": "2026-08-01T11:51:57.033Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30696682617",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/7c93127a2080a1e9d74ffee916ad7d7f31e92cef.json"
+  },
+  {
     "commit": "a680e9b7ffc95774b3bb7e30c3a4beaa5a2fb083",
     "commitDate": "2026-08-01T10:15:15Z",
     "commitSubject": "feat(floor2-rewards): weight draws 25% weapon / 75% non-weapon to fix 14× per-slot weapon oversupply (#2556)",
