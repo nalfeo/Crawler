@@ -361,6 +361,22 @@ describe('loadBrief', () => {
       expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/sensors/);
     });
   });
+
+  it('loads the committed imp-chain-brawler brief with the intended front-facing overrides', () => {
+    const projectRoot = path.resolve('.');
+    const briefPath = path.join(projectRoot, 'briefs', 'enemies', 'imp-chain-brawler.yaml');
+
+    const { brief } = loadBrief(briefPath, { projectRoot });
+
+    expect(brief.name).toBe('imp-chain-brawler');
+    expect(brief.type).toBe('enemy');
+    expect(brief.floor).toBe(2);
+    expect(brief.sensors.enemy?.facing).toBe('front');
+    expect(brief.sensors.enemy?.toleranceDeg).toBe(20);
+    expect(brief.variations).toHaveLength(3);
+    expect(brief.prompt).toContain('heavy iron chains');
+    expect(brief.prompt).toContain('front-facing');
+  });
 });
 
 describe('mergeMinimalIntoDefaults — size variants', () => {
