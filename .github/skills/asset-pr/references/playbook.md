@@ -1,7 +1,13 @@
-# Asset PR — playbook
+# Asset PR — playbook (legacy drain)
+
+> ⚠️ **This playbook covers the legacy `asset-checkin` drain path.** The normal
+> art-landing flow since Jul 2026 is: `sprites:approve` (automatically pushes to
+> `assets/queue`) → hourly `sprite-queue-reconciler.yml` cron → single
+> `assets/promote → main` PR. Run `sprites:asset-pr` only to drain legacy
+> `asset-checkin` issues or orphaned `assets/checkin-*` branches that pre-date
+> the reconciler.
 
 Detailed recipes for consolidating `asset-checkin` issues into one game PR.
-Read this before doing anything non-trivial with `gh` or git here.
 
 ## The data model
 
@@ -121,8 +127,10 @@ conflicts with newer work, delete the branch on the remote first:
 
 - If that asset is no longer wanted: close the stale issue
   (`gh issue close <n> --comment "branch pruned; superseded"`) and re-run.
-- If it's still wanted: re-approve + `npm run sprites:checkin` to regenerate the
-  branch + issue, then re-run.
+- If it's still wanted: re-approve via the current flow (`npm run sprites:approve
+  -- <runDir> --variant <N>`, which pushes to `assets/queue`) — the reconciler
+  will pick it up. Then remove the stale issue before re-running `sprites:asset-pr`
+  if the legacy drain is still needed for other issues.
 
 **The PR opened but a check-in branch's asset is missing from the diff:**
 confirm the payload's `assets[].assetPath` matches a real file on the branch
