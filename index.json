@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d1185a9a78666e8a21515c6afe5435271de7b90e",
+    "commitDate": "2026-08-01T09:00:54Z",
+    "commitSubject": "chore: auto-junction node_modules in new worktrees via post-checkout hook (#2598)",
+    "capturedAt": "2026-08-01T09:57:00.192Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30693345983",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/d1185a9a78666e8a21515c6afe5435271de7b90e.json"
+  },
+  {
     "commit": "ed6f17c2531b61e79213de7e5deb6f978bebeae7",
     "commitDate": "2026-08-01T08:37:43Z",
     "commitSubject": "feat(skills): weapon class grants passive abilities at all milestone tiers (#2533)",
