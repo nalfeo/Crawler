@@ -93,5 +93,7 @@ This skill folds **all** such legacy issues into one branch and one PR.
   always run `npm run sprites:generate-wiring -- --since main` to find replaceable
   placeholders and open a follow-up wiring PR for any matches — otherwise approved
   art ships and is never seen in-game.
-- Do not hand-edit the unioned `manifest.json`; if the union looks wrong, fix
-  `mergeManifests` in `scripts/sprites/asset-issues.ts` and add a unit test.
+- Do not hand-edit any JSON in the worktree. If a per-asset shard (`entries/<key>.json`)
+  looks wrong, confirm its content on the source branch
+  (`git show origin/<branch>:public/assets/generated/entries/<key>.json`) and
+  re-run `sprites:asset-pr` after correcting the source data.
