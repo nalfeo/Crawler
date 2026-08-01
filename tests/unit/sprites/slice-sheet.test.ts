@@ -1261,7 +1261,8 @@ describe('sliceSheetWithGrid (rerun re-slice determinism)', () => {
 // that doesn't match the gutter RGB. With alpha ignored, those gutter pixels
 // were classified as "foreground" → no interior bands → 1 cell.
 //
-// The fix: alpha=0 always → background, regardless of RGB.
+// The fix: on transparent-backed sheets alpha=0 always → background, and any
+// nonzero-alpha pixel is foreground regardless of stored RGB.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('transparent-background sheet slicing (icon batch)', () => {
   /**
@@ -1280,6 +1281,11 @@ describe('transparent-background sheet slicing (icon batch)', () => {
     margin: number,
     gutterRgb: Rgb = { r: 150, g: 100, b: 200 },
     cornerRgb: Rgb = { r: 0, g: 0, b: 0 },
+    color: (row: number, col: number) => Rgb = (r, c) => ({
+      r: 80 + c * 30,
+      g: 120 + r * 20,
+      b: 60,
+    }),
   ): Buffer {
     const width = margin * 2 + cols * block + (cols - 1) * gutter;
     const height = margin * 2 + rows * block + (rows - 1) * gutter;
@@ -1310,7 +1316,7 @@ describe('transparent-background sheet slicing (icon batch)', () => {
     const origin = (idx: number): number => margin + idx * (block + gutter);
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        const col: Rgb = { r: 80 + c * 30, g: 120 + r * 20, b: 60 };
+        const col = color(r, c);
         const x0 = origin(c);
         const y0 = origin(r);
         for (let y = y0; y < y0 + block; y++) {
@@ -1386,6 +1392,28 @@ describe('transparent-background sheet slicing (icon batch)', () => {
     expect(result.variantCount).toBe(4);
     expect(result.grid.rows).toBe(2);
     expect(result.grid.cols).toBe(2);
+  });
+
+  it('treats opaque black icon pixels as foreground on transparent-backed sheets', () => {
+    // Transparent corner RGB is meaningless. When it is zeroed to black, opaque
+    // black icon content must still count as foreground rather than blending
+    // into the estimated "background" colour.
+    const sheet = encodeTransparentGrid(
+      2,
+      2,
+      16,
+      4,
+      4,
+      { r: 220, g: 80, b: 170 },
+      { r: 0, g: 0, b: 0 },
+      () => ({ r: 0, g: 0, b: 0 }),
+    );
+    const brief = {
+      generation: { sheet: { rows: 2, cols: 2, emptyCells: [] } },
+    } as unknown as Brief;
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(result.variantCount).toBe(4);
+    expect(result.grid).toEqual({ rows: 2, cols: 2, emptyCells: [] });
   });
 
   it('still slices a solid-background sheet correctly (non-regression for existing types)', () => {
