@@ -1123,39 +1123,6 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   },
 ];
 
-/**
- * Maps each skill ID to the ability ID that is granted when that skill reaches
- * level 5. Used by `skillSystem` to call `grantPassiveAbility` on milestone.
- *
- * This is a second source of truth alongside the skill and ability registries.
- * If a skill ID is renamed, update this map accordingly. The test suite in
- * `tests/game/weapon-skill-abilities.test.ts` cross-checks all 20 entries
- * against `getAllSkillDefinitions()` and `getAllAbilityDefinitions()` at runtime
- * to catch drift.
- */
-export const SKILL_LEVEL5_ABILITY_GRANTS: ReadonlyMap<string, string> = new Map([
-  ['swordsmanship', 'combat-flow'],
-  ['iron-skin', 'stalwart-resolve'],
-  ['sprint', 'ever-vigilant'],
-  ['slashing', 'blade-mastery'],
-  ['stabbing', 'vital-targeting'],
-  ['smashing', 'brute-force'],
-  ['ranged', 'marksmans-eye'],
-  ['throwing', 'rapid-release'],
-  ['forearms', 'iron-resolve'],
-  ['arcane', 'arcane-efficiency'],
-  ['sword', 'keen-swordsman'],
-  ['dagger', 'shadowblade'],
-  ['hammer', 'crushing-momentum'],
-  ['sports-equipment', 'athletes-grit'],
-  ['bow', 'archers-stance'],
-  ['crossbow', 'precision-bolts'],
-  ['pistol', 'hair-trigger'],
-  ['throwing-weapons', 'juggling-arsenal'],
-  ['unarmed', 'bare-knuckle'],
-  ['spellcraft', 'arcane-attunement'],
-]);
-
 export function parseAbilityCatalog(raw: unknown): AbilityDefinition[] {
   return abilityCatalogSchema.parse(raw);
 }

@@ -7,7 +7,6 @@ import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import { statSystem } from '../../core/systems/index.js';
 import {
   getAllAbilityDefinitions,
-  SKILL_LEVEL5_ABILITY_GRANTS,
 } from '../../game/abilities/registry.js';
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
@@ -87,7 +86,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           .join('');
 
         // Show the level-5 ability grant (if any) and its prerequisite status.
-        const abilityGrantId = SKILL_LEVEL5_ABILITY_GRANTS.get(skill.id);
+        const abilityGrantId = skill.milestones.find((m) => m.level === 5)?.abilityId;
         const abilityGrantCell = abilityGrantId
           ? (() => {
               const abilityDef = allAbilities.find((a) => a.id === abilityGrantId);

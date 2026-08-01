@@ -137,7 +137,6 @@ export { getSkillDefinition, getAllSkillDefinitions } from './skills/registry.js
 export {
   getAbilityDefinition,
   getAllAbilityDefinitions,
-  SKILL_LEVEL5_ABILITY_GRANTS,
 } from './abilities/registry.js';
 export type {
   SkillDefinition,
