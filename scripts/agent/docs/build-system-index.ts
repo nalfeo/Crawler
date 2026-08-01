@@ -257,7 +257,9 @@ function renderIndex(
     const remaining = list.length - shown.length;
     if (remaining > 0) {
       parts.push('');
-      parts.push(`_…and ${remaining} older unarchived handoff(s) in this directory (see \`archive/\` for older archived entries)._`);
+      parts.push(
+        `_…and ${remaining} older unarchived handoff(s) in this directory (see \`archive/\` for older archived entries)._`,
+      );
     }
     parts.push('');
   }
