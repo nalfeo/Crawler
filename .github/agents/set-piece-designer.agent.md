@@ -33,8 +33,10 @@ them.
 ## First action (mandatory)
 
 1. `bash scripts/agent/preflight.sh`; adopt the Set Designer persona.
-2. Read `docs/knowledge/game-design/set-piece-lookbook.md` — the 50-example study set
-   and the four principles. Find the archetype section matching your room.
+2. Read `docs/knowledge/game-design/set-piece-lookbook.md` — the 50-example study set,
+   the four principles, **the room grammar template, the composition modes table, and
+   the vignette vocabulary**. Find the archetype section matching your room (production
+   set archetypes or dungeon grammar archetypes).
 3. Run `npm run setpiece:score` to get the current baseline for every room, and
    `npm run setpiece:score -- <id>` for your target. **Record the before line** — you
    will need the before/after in the handoff.
@@ -48,20 +50,25 @@ The single most important rule: **blockout before props, props before dressing.*
 The lookbook's first principle is "floorplans first, decoration second". Placing
 props before declaring zones is exactly what produces scattered-props-in-a-box.
 
-1. **Blockout** — `set-piece-blockout` skill. Declare the room's purpose, archetype,
-   zone graph, circulation path, focal point, and the **room art contract** (palette
-   subset, light direction, shadow convention, tile-scale class). No props yet.
+1. **Blockout** — `set-piece-blockout` skill. The output must include all ten:
+   narrative verb, purpose, archetype, composition mode, zone graph, vignette list,
+   breathing room, circulation path, focal point, and the **room art contract**
+   (palette subset, light direction, shadow convention, tile-scale class). No props yet.
 2. **Inventory** — `prop-inventory` skill. What existing catalog/sheet art fits this
    room's contract? Produces a kept list and a **ranked gap list**.
 3. **Commission** — `prop-commission` skill. Turn gaps into sprite briefs and hand
    off to **Asset Forge** (`.github/agents/asset-forge.agent.md`), which owns
    generate → judge → approve → check-in → art PR. Every brief inherits the room art
    contract. Iterate rejects with _context-specific_ critique.
-4. **Dress** — `set-piece-dress` skill. Place, stack, vary and wear. Run
-   `npm run setpiece:score -- <id>`, read the failing checks, re-dress. Loop until
-   green. This is the inner loop and it is where most of the work happens.
+4. **Dress** — `set-piece-dress` skill. Dress by vignette — focal vignette first,
+   then secondary vignettes, then perimeter; protect the breathing room zone. Place,
+   stack, vary and wear. Run `npm run setpiece:score -- <id>`, read the failing
+   checks, re-dress. Loop until green. This is the inner loop and it is where most
+   of the work happens.
 5. **Review** — `set-piece-review` skill. Render, post the image inline, run the
-   visual judge's set-piece scenario, then apply via the `set-piece-editor` canvas.
+   structured six-dimension scorecard (narrative verb clarity, focal drama, vignette
+   coherence, composition mode, negative space, landmark uniqueness), then apply via
+   the `set-piece-editor` canvas.
 6. **Observe before done** — a lab render force-draws the layout and proves nothing
    about the game. Confirm in the real artifact (`npm run dev` or a headless probe)
    and state before/after in the PR/handoff (project rule #9).
@@ -101,8 +108,9 @@ room needs dressing. Thresholds are v1 ballpark values isolated in
 separate conversation with the human — never a way to pass a room.
 
 The deterministic gate is necessary but not sufficient. It cannot see taste, so the
-subjective half runs too: the visual judge's set-piece scenario, critiqued against the
-lookbook. A room ships only when **both** are clean.
+subjective half runs too: the **structured six-dimension scorecard** in
+`set-piece-review`, critiqued against the lookbook. A room ships only when **both**
+are clean.
 
 ## Non-negotiable behaviors
 
