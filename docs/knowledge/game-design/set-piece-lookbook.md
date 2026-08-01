@@ -6,9 +6,10 @@ lookbook. It exists so the **Set Piece Designer** agent and the **visual judge**
 critique against a named bar instead of generic "add more detail".
 
 **Projection match:** the lookbook's craft framing calls out **3/4 top-down
-projection** on **16x16 tiles**. That is exactly Crawler
-(`SET_PIECE_TILE_SIZE = 16`, `PIXELS_PER_FOOT = 8`, so **1 tile = 2 feet**), so the
-top-down entries transfer directly.
+projection** on **16x16 tiles**. That matches Crawler's presentation, but set-piece
+authoring uses **`FEET_PER_TILE = 4`** from
+`scripts/agent/set-piece/composition-score.ts`; do not derive room scale from the 16px
+editor sprite size. The top-down entries still transfer directly.
 
 > **Attribution caveat (second lookbook).** Its plate attributions are unreliable:
 > several plates reuse the _same_ image under different game credits, and its own
@@ -230,7 +231,7 @@ writing the blockout, fill this template — it forces story-first thinking befo
 single tile is assigned.
 
 ```
-ROOM TYPE:   <archetype: one of the table below>
+ROOM TYPE:   <archetype: Floor entrance / Welcome room / Boss den / Settlement / Earth artifact>
 NARRATIVE:   <one sentence starting with "The player ___s here" — the room as a verb>
 PRIMARY:     <the one prop the room is about — the focal object>
 SECONDARY:   <two to four props that serve, contrast with, or lead the eye to primary>

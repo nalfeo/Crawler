@@ -24,8 +24,8 @@ short written plan, not JSON.
 Produce all ten, in session chat, before touching `set-pieces.json`. The first
 four are design thinking; the rest flow from them.
 
-1. **Narrative verb** — one sentence starting with "The player **_s here" or
-   "This room is where _**". This is the room as a _sentence_, not a contents
+1. **Narrative verb** — one sentence starting with "The player \_\_\_s here" or
+   "This room is where \_\_\_". This is the room as a _sentence_, not a contents
    list. If you cannot write it, the room is not ready to design.
    > Good: "The player _discovers_ that someone was living in this dungeon wing —
    > and left in a hurry."

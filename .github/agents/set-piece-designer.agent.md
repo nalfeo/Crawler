@@ -75,9 +75,10 @@ props before declaring zones is exactly what produces scattered-props-in-a-box.
 
 ## Crawler set-piece facts (authoritative)
 
-- **1 tile = 2 feet.** `SET_PIECE_TILE_SIZE = 16`px, `PIXELS_PER_FOOT = 8`. Every
-  non-floor prop must declare `widthFt`/`heightFt`; without them the sprite is
-  stretched to the tile grid and cannot feel correctly sized.
+- **Set-piece authoring uses `FEET_PER_TILE = 4`.** `scripts/agent/set-piece/composition-score.ts`
+  is the scale source of truth; do not derive room scale from the 16px editor sprite
+  size. Every non-floor prop must declare `widthFt`/`heightFt`; without them the sprite
+  is stretched to the tile grid and cannot feel correctly sized.
 - **Schema supports everything you need already** (`src/shared/set-piece-types.ts`):
   multiple `layers[]` per prop for stacking, `offsetXFt`/`offsetYFt` for off-grid
   nudges, `flipX`/`rotationDeg`/`tintHex` for variation, `sceneLayers` for editor

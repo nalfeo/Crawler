@@ -102,7 +102,7 @@ The before/after pair plus the scorecard is the evidence rule #9 requires.
 ## Done when
 
 The room renders, the image is posted, the six-dimension scorecard has been run
-(all dimensions ≥6 or explicitly accepted with reason), non-scored findings are
+(all dimensions ≥6), non-scored findings are
 addressed or accepted, the layout is applied, and the room still scores 11/11.
 
 ## Related

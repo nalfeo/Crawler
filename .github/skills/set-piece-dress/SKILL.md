@@ -60,11 +60,13 @@ that cluster in isolation, would you recognize it as the intended vignette?
 If a vignette cannot pass the "could you name it?" test, it needs either more specific
 props or a different vignette identity.
 
-`SET_PIECE_TILE_SIZE = 16`px and `PIXELS_PER_FOOT = 8`, so **1 tile = 2 feet**. A prop
-with no `widthFt`/`heightFt` is contain-fit to its tile extent — it renders at
-whatever size the grid implies, not the size the object should be. Twelve of thirteen
-shipped rooms declare feet on **zero** props; the one curated room declares them on
-all of them. This is the single largest cause of "props don't feel like they fit".
+Set-piece authoring uses **`FEET_PER_TILE = 4`** from
+`scripts/agent/set-piece/composition-score.ts`; do **not** derive room scale from the
+16px editor sprite size. A prop with no `widthFt`/`heightFt` is contain-fit to its tile
+extent — it renders at whatever size the grid implies, not the size the object should
+be. Twelve of thirteen shipped rooms declare feet on **zero** props; the one curated
+room declares them on all of them. This is the single largest cause of "props don't feel
+like they fit".
 
 Reference sizes (real-world, feet):
 
