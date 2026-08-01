@@ -31,7 +31,7 @@ import {
  * change to the resolution algorithm produces a distinct, non-colliding stream
  * even for the same run key + achievement.
  */
-export const REWARD_BUNDLE_RESOLVER_VERSION = 'v2';
+export const REWARD_BUNDLE_RESOLVER_VERSION = 'v1';
 
 /**
  * Authored weapon draw weight for category-biased reward selection (issue #2555).
@@ -347,30 +347,54 @@ export function _validateFloor2RewardPoolTierEligibility(
   // removing all physical weapons) must be caught here, not at runtime.
   // When non-weapon sub-pool exists, validate it is non-empty per tier × rarity
   // so the non-weapon uniform-draw path always has at least one candidate.
+  // Also assert all non-weapon bases are neutral — the category-weighted path
+  // skips affinity alignment for non-weapons under that assumption, so a future
+  // non-weapon with a non-neutral affinity would silently mismatch.
   if (weaponIds.size > 0) {
     const weaponBases = bases.filter((id) => weaponIds.has(id));
     const nonWeaponBases = bases.filter((id) => !weaponIds.has(id));
+
+    // Guard: if weaponIds is non-empty but none of the bases are recognized as
+    // weapons, the category-weighted weapon draw would always crash at runtime.
+    if (weaponBases.length === 0) {
+      throw new _Floor2RewardPoolAuthoringError(
+        `Floor 2 reward pool authoring check failed: weaponIds is non-empty (${weaponIds.size} entries) ` +
+          `but no base in the supplied pool matches any weapon ID (pool size: ${bases.length})`,
+      );
+    }
+
+    // Assert all non-weapon bases carry neutral affinity — the category-weighted
+    // non-weapon draw path skips affinity alignment on this assumption. A future
+    // non-weapon base with physical/magic affinity would silently bypass alignment.
+    for (const nonWeaponBase of nonWeaponBases) {
+      const affinity = getGeneratedEquipmentBaseAffinity(nonWeaponBase);
+      if (affinity !== 'neutral') {
+        throw new _Floor2RewardPoolAuthoringError(
+          `Floor 2 reward pool authoring check failed: non-weapon base "${nonWeaponBase}" ` +
+            `has affinity "${affinity}" — all non-weapon bases must be neutral for the ` +
+            `category-weighted non-weapon draw path (which skips affinity alignment)`,
+        );
+      }
+    }
 
     for (const tier of ACHIEVEMENT_EQUIPMENT_REWARD_TIERS) {
       for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
         // Weapon sub-pool: both affinity partitions must be non-empty so the
         // category-weighted weapon draw can always apply affinity alignment.
-        if (weaponBases.length > 0) {
-          const eligibleWeapons = _rarityEligibleBaseIds(weaponBases, rarity);
-          for (const playerAffinity of BUILD_AFFINITIES) {
-            const { aligned, nonAligned } = partitionBases(eligibleWeapons, playerAffinity);
-            if (aligned.length === 0) {
-              throw new _Floor2RewardPoolAuthoringError(
-                `Floor 2 reward pool authoring check failed: weapon sub-pool for tier ${tier} ` +
-                  `rarity ${rarity} has no ${playerAffinity}-aligned weapon candidate`,
-              );
-            }
-            if (nonAligned.length === 0) {
-              throw new _Floor2RewardPoolAuthoringError(
-                `Floor 2 reward pool authoring check failed: weapon sub-pool for tier ${tier} ` +
-                  `rarity ${rarity} has no non-${playerAffinity} weapon candidate`,
-              );
-            }
+        const eligibleWeapons = _rarityEligibleBaseIds(weaponBases, rarity);
+        for (const playerAffinity of BUILD_AFFINITIES) {
+          const { aligned, nonAligned } = partitionBases(eligibleWeapons, playerAffinity);
+          if (aligned.length === 0) {
+            throw new _Floor2RewardPoolAuthoringError(
+              `Floor 2 reward pool authoring check failed: weapon sub-pool for tier ${tier} ` +
+                `rarity ${rarity} has no ${playerAffinity}-aligned weapon candidate`,
+            );
+          }
+          if (nonAligned.length === 0) {
+            throw new _Floor2RewardPoolAuthoringError(
+              `Floor 2 reward pool authoring check failed: weapon sub-pool for tier ${tier} ` +
+                `rarity ${rarity} has no non-${playerAffinity} weapon candidate`,
+            );
           }
         }
 
