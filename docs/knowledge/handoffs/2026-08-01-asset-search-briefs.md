@@ -33,6 +33,14 @@ asset-pipeline
 - `description` field falls back to `parsed.prompt` for minimal briefs that define the
   content inside the `prompt` key.
 
+## Apples
+
+Estimated: 🍎 x 1
+Actual: 🍎 x 2
+Verdict: 📉 Under — the change touches two code files and adds a new corpus-building
+function (`buildBriefCorpus`) plus cache invalidation logic; that crosses into the
+2🍎 "Small" tier. Original 1🍎 estimate assumed a single-file wire-up.
+
 ## Unresolved issues
 
 None.
