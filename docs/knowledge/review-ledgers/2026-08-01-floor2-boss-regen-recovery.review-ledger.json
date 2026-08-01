@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "floor2-boss-regen-recovery",
+  "task_title": "PR #2502 review-thread recovery fixes",
+  "estimated_apples": 3,
+  "apples_rescored_from": 4,
+  "rescore_reason": "Final merge-intent scope is targeted blocker recovery across existing files, not a new multi-system feature.",
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial plan review approved with changes. Blocking concerns resolved by tightening front-facing language in sprite-style.md to match build-prompt, adding anatomy-neutral rubric assertions in judge.test.ts, and asserting asset-pr commit/push run in temp worktree cwd."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Found one high-confidence regression in new asset-pr unit test: hardcoded commit message did not match planConsolidation output. Fixed by asserting against result.plan.commitMessage and result.plan.batchBranch."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-review after fix found no actionable issues. Recovery scope clean."
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,47 @@
+type: enemy
+mobRole: boss
+name: panda-boss
+floor: 2
+sizeVariant: large
+description: |
+  Big Panda Wei, the immovable kingpin of The Bamboo Triad — a massive,
+  serene panda crime boss whose sheer bulk radiates calm menace. Round, wide
+  body with a squat, heavy silhouette — a dense rectangular boss-mass of
+  fur and armor. The panda black-eye patches are his most prominent facial
+  feature, giving him a permanently unreadable, impassive stare. Dressed in
+  dark crime-boss regalia fused to his bulk: a heavy quilted dark-fabric
+  vest studded with iron rivets, scavenged bone and iron knuckle-dusters,
+  and a thick chain collar of corroded brass links. A massive corroded-iron
+  championship medallion and layered brass regalia across his chest make his
+  wealth read as body-integrated status.
+
+  Dark Floor 2 palette: deep black-and-charcoal fur patches against off-white
+  cream fur (not bright white), iron grey and verdigris for armor/chains,
+  dark jade green as a subtle Triad accent. No pastel tones.
+
+  Expression: impassive, still, immovable — the threat is that he doesn't
+  need to move. Front-facing toward camera, arms slightly out to the sides
+  to emphasize width.
+
+  Silhouette: wide and low, massive rounded rectangular boss-mass. The
+  iconic panda eye-patches must remain visible and readable.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Big Panda Wei in riveted dark vest, bone-and-iron knuckle-dusters, corroded brass chain collar, impassive stare, massive rounded silhouette
+  - Big Panda Wei with quilted charcoal armor-vest, thick iron chain belt, oversized corroded-iron chest medallion, serene menace posture
+  - 'Big Panda Wei in Triad-don regalia: dark jade trim on charcoal vest, iron boss-medal, wide-body panda silhouette with classic eye patches visible'
+  - 'Big Panda Wei bulk variant: maximum wide body mass, simple dark-fabric robe, corroded brass ornaments, still and immovable boss presence'
+
+minVariations: 4

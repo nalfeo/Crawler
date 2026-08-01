@@ -1,0 +1,47 @@
+type: enemy
+mobRole: boss
+name: imps-boss
+floor: 2
+sizeVariant: large
+description: |
+  Foreman Scorch, the industrial fire-boss of The Brimstone Boys — a large,
+  powerfully-built imp who has grown well beyond the typical scraggly imp
+  silhouette. Boss-mass achieved through a heavy salvage-iron labor suit
+  welded onto his frame: thick iron plates over chest and shoulders, heavy
+  foreman boots with slag-resistant plating, and thick iron bracers with
+  coal-rake gauntlets. Horns are larger than typical — cracked and heat-scored,
+  with small riveted iron plates hammered over the damaged sections. Long
+  tail tipped with a molten iron weight or chain.
+
+  Crime-boss authority: Foreman Scorch wears the Brimstone Boys insignia on
+  a hammered iron chest-plate — a fire-brand mark in the metal. Heavy chain
+  of iron slag-links as a foreman's collar. One gauntleted hand raised in
+  foreman's command gesture, the other braced over an oversized integrated
+  slag-breaker forearm plate. Eyes glow a deep amber-coal — not neon, but warm smoldering.
+
+  Dark Floor 2 palette: deep charcoal-black and ash-grey for the iron suit,
+  deep rust for exposed skin, dark coal-amber for eye glow, verdigris on
+  older iron fittings. No bright reds or oranges.
+
+  Silhouette: wide-shouldered armored boss-mass. Three-quarter facing.
+  All details fused into the body — no floating accessories.
+
+sensors:
+  enemy:
+    facing: three-quarter
+    toleranceDeg: 35
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Foreman Scorch in salvage-iron foreman suit, cracked riveted horns, coal-amber eye glow, fire-brand chest-plate, iron slag-chain collar
+  - Foreman Scorch with heavy foreman shoulder-plates, coal-rake gauntlets, oversized slag-breaker forearm plate, Brimstone Boys insignia, three-quarter stance
+  - 'Foreman Scorch wide boss-mass variant: maximum iron-plated silhouette, thick slag-boots, foreman command gesture, dark ash-charcoal tones'
+  - Foreman Scorch in brimstone authority pose — foreman's raised gauntlet, reinforced breaker forearm, smoldering amber eyes, imp-boss industrial menace
+
+minVariations: 4
