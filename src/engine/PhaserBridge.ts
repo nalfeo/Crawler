@@ -638,7 +638,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         type: string,
         options?: { appearanceKey?: string; variantRoll?: number },
       ): ResolvedTexture => {
-        const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey);
+        const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey, generatedRegistry);
         const hasGeneratedVariants =
           briefId !== undefined &&
           generatedRegistry !== null &&

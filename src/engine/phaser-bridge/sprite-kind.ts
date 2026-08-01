@@ -322,7 +322,7 @@ export function pickGeneratedEnemyTextureKey(
   if (registry === null || registry === undefined) {
     return null;
   }
-  const briefId = generatedBriefIdForEnemy(type, appearanceKey);
+  const briefId = generatedBriefIdForEnemy(type, appearanceKey, registry);
   if (briefId === undefined) {
     return null;
   }
