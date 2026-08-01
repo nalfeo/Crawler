@@ -1,4 +1,4 @@
-# Handoff: queue-commit `-X theirs` conflict fix (2026-08-01)
+# Handoff: queue-commit orphan-branch conflict fix v3 (2026-08-01)
 
 ## Summary
 
@@ -12,21 +12,32 @@ that diverged from `main`. When `git merge --allow-unrelated-histories` runs wit
 no common ancestor, every file in both trees appears as "added" — if the same file
 has different content on each side, git cannot auto-resolve it.
 
-Fix: add `-X theirs` to the `--allow-unrelated-histories` retry so all conflicts
-auto-resolve in favour of `main`. Art files that exist only on the queue branch
-(new icons/sprites not yet in main) appear as "added by ours" only — no conflict,
-no data loss.
+**v2 attempt** (superseded): `-X theirs` on the retry merge auto-resolved
+conflicts in `main`'s favour, but would silently discard any queued art if a sprite
+filename existed on both branches with different content — unsafe.
+
+**v3 (this PR)**: Instead of any `-X` flag, on an "unrelated histories" condition:
+
+1. `git reset --hard mainRef` — bring the working tree to a clean `main` state,
+   discarding all non-art files from the orphan commit.
+2. `git checkout baseRef -- public/assets/generated` — layer the queued art files
+   back from the orphan tip on top of the clean main tree.
+3. `git add public/assets/generated` — stage only the art surface.
+
+No merge commit is needed. This approach is semantically cleaner: it never touches
+non-art files from the orphan branch, and it cannot conflict on art files (we
+explicitly check out the queued art we want).
 
 ## Files touched
 
-- `scripts/sprites/queue-commit.ts` — added `-X theirs` to the fallback merge args
-- `tests/unit/sprites/queue-commit.test.ts` — updated regression test expectation
+- `scripts/sprites/queue-commit.ts` — replaced `-X theirs` retry with reset+checkout approach
+- `tests/unit/sprites/queue-commit.test.ts` — rewrote regression suite (4 tests; covers reset path, non-reset path, pathspec error treated as empty queue, pathspec error re-thrown on unexpected error)
 - `docs/knowledge/review-ledgers/2026-08-01-queue-commit-xtheirs-conflict-fix.review-ledger.json`
 - `docs/knowledge/handoffs/2026-08-01-queue-commit-xtheirs-conflict-fix.md` (this file)
 
 ## Verification
 
-- `npx vitest run tests/unit/sprites/queue-commit.test.ts` → 29/29 pass
+- `npx vitest run tests/unit/sprites/queue-commit.test.ts` → 30/30 pass
 - `npm run verify:fast` → ✅ Fast verification passed
 
 ## Unresolved issues

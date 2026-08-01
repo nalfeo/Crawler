@@ -296,18 +296,19 @@ describe('runQueueCommit (control flow)', () => {
   // Regression: unrelated-histories fallback (orphan queue branch)
   // ---------------------------------------------------------------------------
 
-  it('retries with --allow-unrelated-histories when the first merge fails with that diagnostic and succeeds', async () => {
+  it('on unrelated-histories: resets to main then layers art from the orphan tip', async () => {
     let mergeCount = 0;
     const { exec, calls } = makeFakeExec((_command, args) => {
       if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
       if (args[0] === 'merge') {
         mergeCount++;
-        // First attempt: normal merge fails with the orphan diagnostic.
-        // Second attempt: --allow-unrelated-histories succeeds.
+        // Only the first (normal) merge is called; the fallback no longer uses merge.
         return mergeCount === 1
           ? { code: 1, stderr: 'fatal: refusing to merge unrelated histories' }
-          : { code: 0 };
+          : {}; // should never be reached
       }
+      if (args[0] === 'reset') return { code: 0 }; // reset --hard
+      if (args[0] === 'checkout') return { code: 0 }; // checkout baseRef -- art surface
       if (args[0] === 'diff') return { code: 1 }; // staged diff present
       if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
       return {};
@@ -317,17 +318,25 @@ describe('runQueueCommit (control flow)', () => {
     expect(result.status).toBe('committed');
 
     const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
-    // The first merge must be the plain (no flag) attempt.
+    // Only one merge attempt — the normal one.
     const mergeLines = line.filter((l) => l.startsWith('git merge'));
+    expect(mergeLines).toHaveLength(1);
     expect(mergeLines[0]).toBe('git merge --no-edit refs/queue-commit/main-qc-xyz');
-    // The second merge must carry the --allow-unrelated-histories and -X theirs flags.
-    expect(mergeLines[1]).toBe(
-      'git merge --allow-unrelated-histories -X theirs --no-edit refs/queue-commit/main-qc-xyz',
-    );
-    expect(mergeLines).toHaveLength(2);
+    // reset --hard mainRef
+    expect(line.some((l) => l === 'git reset --hard refs/queue-commit/main-qc-xyz')).toBe(true);
+    // checkout baseRef -- <art surface>
+    expect(
+      line.some(
+        (l) =>
+          l.startsWith('git checkout refs/queue-commit/base-qc-xyz --') &&
+          l.includes('public/assets/generated'),
+      ),
+    ).toBe(true);
+    // No --allow-unrelated-histories flag anywhere.
+    expect(line.some((l) => l.includes('allow-unrelated-histories'))).toBe(false);
   });
 
-  it('does NOT retry with --allow-unrelated-histories for other merge failures (content conflict)', async () => {
+  it('does NOT reset/checkout for other merge failures (content conflict)', async () => {
     const { exec, calls } = makeFakeExec((_command, args) => {
       if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
       if (args[0] === 'merge')
@@ -339,29 +348,48 @@ describe('runQueueCommit (control flow)', () => {
       runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' }),
     ).rejects.toMatchObject({ kind: 'destination-conflict' });
 
-    // Only one merge attempt — the fallback must not fire for non-unrelated-history errors.
+    // Only one merge attempt; no reset or checkout called.
     const mergeCalls = calls.filter((c) => c.args[0] === 'merge');
     expect(mergeCalls).toHaveLength(1);
-    expect(mergeCalls[0]!.args).not.toContain('--allow-unrelated-histories');
+    expect(calls.some((c) => c.args[0] === 'reset')).toBe(false);
+    expect(
+      calls
+        .filter((c) => c.args[0] === 'checkout')
+        .some((c) => c.args.includes('--allow-unrelated-histories') || c.args.includes('--hard')),
+    ).toBe(false);
   });
 
-  it('throws destination-conflict when the --allow-unrelated-histories retry also fails', async () => {
-    let mergeCount = 0;
+  it('throws destination-conflict when the orphan art checkout fails with a non-pathspec error', async () => {
     const { exec } = makeFakeExec((_command, args) => {
       if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
-      if (args[0] === 'merge') {
-        mergeCount++;
-        // Both attempts fail — first with the orphan diagnostic, second with another error.
-        return mergeCount === 1
-          ? { code: 1, stderr: 'fatal: refusing to merge unrelated histories' }
-          : { code: 128, stderr: 'fatal: something else went wrong' };
-      }
+      if (args[0] === 'merge')
+        return { code: 1, stderr: 'fatal: refusing to merge unrelated histories' };
+      if (args[0] === 'reset') return { code: 0 }; // reset --hard succeeds
+      if (args[0] === 'checkout')
+        return { code: 128, stderr: 'fatal: bad object refs/queue-commit/base-qc-xyz' };
       return {};
     });
 
     await expect(
       runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' }),
     ).rejects.toMatchObject({ kind: 'destination-conflict' });
+  });
+
+  it('succeeds when the orphan has no art (pathspec error is treated as empty queue)', async () => {
+    const { exec } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
+      if (args[0] === 'merge')
+        return { code: 1, stderr: 'fatal: refusing to merge unrelated histories' };
+      if (args[0] === 'reset') return { code: 0 };
+      if (args[0] === 'checkout')
+        return { code: 1, stderr: 'error: pathspec did not match any file(s) known to git' };
+      if (args[0] === 'diff') return { code: 1 }; // staged diff present
+      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      return {};
+    });
+
+    const result = await runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' });
+    expect(result.status).toBe('committed');
   });
 
   it('returns a no-op (no commit/push) when nothing is staged', async () => {

@@ -331,26 +331,39 @@ export async function runQueueCommit(
         // "branch already checked out" clash with the caller's worktree.
         await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
         if (branchExists) {
-          // First try a normal merge; fall back to --allow-unrelated-histories
-          // if the queue branch is an orphan (no common ancestor with main,
-          // which can happen when the branch was initially created via --orphan
-          // or its history was squashed away).
-          //
-          // The fallback adds `-X theirs` to auto-resolve any non-art conflicts
-          // in favour of main.  Art files that exist only on the queue branch
-          // (not yet in main) appear as "added by ours" only — no conflict,
-          // no data loss.  The subsequent art-copy + staged-diff guard ensures
-          // only art-surface changes ever get committed.
+          // First try a normal merge.
           let merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
           if (merge.code !== 0 && merge.stderr.toLowerCase().includes('unrelated histories')) {
-            merge = await runGit(deps.exec, worktree, [
-              'merge',
-              '--allow-unrelated-histories',
-              '-X',
-              'theirs',
-              '--no-edit',
-              mainRef,
+            // The queue branch is an orphan (no common ancestor with main).
+            // This can happen when the branch was seeded with --orphan or had
+            // its history squashed.  A straight merge would produce conflicts
+            // on every non-art file because git has no merge base to compute
+            // the three-way diff from.
+            //
+            // Strategy: reset the worktree to main's clean state, then layer
+            // the queued art files back on top from the orphan tip.  Non-art
+            // files on the orphan are discarded (they violate the art-only
+            // queue discipline and main always has the canonical version).
+            // The art surface is fully preserved: queued sprites that are
+            // already on the branch survive, and copyArtSurface adds the
+            // newly approved ones in the next step.
+            await mustGit(deps.exec, worktree, ['reset', '--hard', mainRef]);
+            const artCheckout = await runGit(deps.exec, worktree, [
+              'checkout',
+              baseRef,
+              '--',
+              ...ASSET_SURFACE_PATHS,
             ]);
+            // "pathspec did not match any file(s)" → the orphan has no staged
+            // art yet; that is fine — copyArtSurface will add the first batch.
+            if (artCheckout.code !== 0 && !artCheckout.stderr.toLowerCase().includes('pathspec')) {
+              throw new QueueCommitError(
+                'destination-conflict',
+                `assets/queue orphan art checkout failed: ${artCheckout.stderr}`,
+              );
+            }
+            await runGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
+            merge = { code: 0, stdout: '', stderr: '' };
           }
           if (merge.code !== 0) {
             throw new QueueCommitError(
