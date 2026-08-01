@@ -26,13 +26,22 @@ generated.
 
 ## Constraints
 
+- **Narrative verb before blockout.** Write "The player \_\_\_s here" before assigning
+  any tile. Rooms designed without a verb produce containers, not places.
+- **Composition mode declared at blockout.** The mode (axial / clustered / radial /
+  corner-led / organic) determines how props are arranged. A mismatched mode makes a
+  ceremonial room look like a mess or a shop look like a throne room.
+- **Vignettes before props.** Plan 2–4 named functional clusters at blockout; dress
+  the focal vignette first, then secondary vignettes, then perimeter. Never place
+  individual props without a vignette they belong to.
+- **Breathing room is protected.** At least one named empty zone per room. Do not
+  fill it even if density is failing — depth in the vignettes, not area.
 - **Blockout before props.** No prop may be placed until zones, circulation and the
   focal point are declared. The lookbook's first principle is "floorplans first,
   decoration second"; violating the ordering is what produces scattered-props-in-a-box.
-- **Every non-floor prop declares `widthFt`/`heightFt`.** One tile is 2 feet
-  (`SET_PIECE_TILE_SIZE = 16`, `PIXELS_PER_FOOT = 8`). A prop sized only by tile
-  extent is stretched to the grid and can never feel correctly sized. This is the
-  single largest cause of "props don't fit".
+- **Every non-floor prop declares `widthFt`/`heightFt`.** One tile is 4 feet
+  (`FEET_PER_TILE = 4`). A prop sized only by tile extent is stretched to the grid and
+  can never feel correctly sized. This is the single largest cause of "props don't fit".
 - **Never loosen a composition threshold to pass.** Thresholds live in
   `DEFAULT_THRESHOLDS`; a failing check means the room needs dressing, not a smaller
   number. Retuning is a deliberate, reference-backed exercise, never a way to go
@@ -49,12 +58,15 @@ generated.
 A set piece ships when **both** gates pass:
 
 1. **Deterministic:** `npm run setpiece:score -- <id>` is green on all eleven checks.
-2. **Subjective:** the visual judge's set-piece scenario returns no blocking finding,
+2. **Subjective:** the structured six-dimension scorecard in `set-piece-review`
+   scores ≥6 on every dimension (narrative verb clarity, focal point drama, vignette
+   coherence, composition mode execution, negative space quality, landmark uniqueness),
    critiqued against `docs/knowledge/game-design/set-piece-lookbook.md`.
 
 Neither gate substitutes for the other. The score catches empty boxes, stamped
-floors and conveyor-belt placement; the judge catches "technically dense but
-tasteless".
+floors and conveyor-belt placement; the scorecard catches "technically dense but
+tasteless". A room scoring 11/11 on the deterministic gate and failing narrative verb
+clarity is not done.
 
 ## Skills
 

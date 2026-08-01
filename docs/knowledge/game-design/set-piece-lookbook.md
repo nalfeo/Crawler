@@ -6,9 +6,10 @@ lookbook. It exists so the **Set Piece Designer** agent and the **visual judge**
 critique against a named bar instead of generic "add more detail".
 
 **Projection match:** the lookbook's craft framing calls out **3/4 top-down
-projection** on **16x16 tiles**. That is exactly Crawler
-(`SET_PIECE_TILE_SIZE = 16`, `PIXELS_PER_FOOT = 8`, so **1 tile = 2 feet**), so the
-top-down entries transfer directly.
+projection** on **16x16 tiles**. That matches Crawler's presentation, but set-piece
+authoring uses **`FEET_PER_TILE = 4`** from
+`scripts/agent/set-piece/composition-score.ts`; do not derive room scale from the 16px
+editor sprite size. The top-down entries still transfer directly.
 
 > **Attribution caveat (second lookbook).** Its plate attributions are unreliable:
 > several plates reuse the _same_ image under different game credits, and its own
@@ -222,6 +223,191 @@ into workstations rather than sprinkled evenly.
 | 48  | Roots of Pacha (modern)      | Community PachaHearth                       | Top-down               | Hearth-centered planning sells prehistoric community                | Earth tones, cooking props and organic shapes soften grids            |
 | 49  | Potion Permit (modern)       | Clinic / medical service                    | Top-down               | Two-section layout: desk/supplies plus patient beds                 | Medical props and beds make purpose unmistakable                      |
 | 50  | Littlewood (modern)          | Tavern / Grand Library / shops              | Top-down               | Modular town interiors for services and collection                  | Clean room footprints and furniture sets are excellent tile reference |
+
+## Room grammar template
+
+The single most useful tool for escaping the "box of props" failure mode. Before
+writing the blockout, fill this template — it forces story-first thinking before a
+single tile is assigned.
+
+```
+ROOM TYPE:   <archetype: Floor entrance / Welcome room / Boss den / Settlement / Earth artifact>
+NARRATIVE:   <one sentence starting with "The player ___s here" — the room as a verb>
+PRIMARY:     <the one prop the room is about — the focal object>
+SECONDARY:   <two to four props that serve, contrast with, or lead the eye to primary>
+VIGNETTES:   <two to four named clusters, e.g. "reading corner", "guard post", "ritual area">
+COMPOSITION: <axial / clustered / radial / corner-led / organic>
+MOOD:        <two to three words — forgotten, sacred, grimy, domestic, industrial, festive, …>
+BREATHING:   <one zone that is intentionally EMPTY and why — "mid-aisle: player must cross it">
+```
+
+A room with no answer for NARRATIVE is not ready to design. A room with no answer
+for BREATHING will end up wall-to-wall clutter that reads as noise.
+
+## Composition modes
+
+Each mode implies a default spatial grammar. Choosing one at blockout prevents the
+agent from inventing random placement.
+
+| Mode           | Grammar                                                                                             | Typical archetype                          |
+| -------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| **Axial**      | One axis of symmetry; a runner/aisle pointing at the focal object from the entrance                 | Floor entrance, threshold, ceremonial room |
+| **Clustered**  | 2–4 workstation groups separated by navigable corridors; the focal object anchors the largest group | Welcome room, workshop, settlement         |
+| **Radial**     | Focal object at the centre; props and zones ring it; player approaches from the perimeter           | Ritual space, boss den, altar room         |
+| **Corner-led** | The heaviest mass sits in one corner; the rest of the room opens away from it                       | Boss den variant, arcane study             |
+| **Organic**    | No dominant axis; mass clusters emerge from the fiction (hearth, forge, stacked cargo)              | Earth-artifact room, lived-in settlement   |
+
+**Axial rooms feel ceremonial; organic rooms feel inhabited.** Using axial for an
+Earth-artifact scene produces a living room that looks like a throne room. Using
+organic for a floor entrance produces a mess the player reads as a corridor, not
+a gateway. Match mode to archetype.
+
+## Vignette vocabulary
+
+A vignette is a **named functional cluster** — 3–7 props that have a relationship with
+each other and together tell a micro-story. Good rooms have 2–4 vignettes separated by
+breathing room. Bad rooms have props.
+
+Name vignettes after their function, not their contents:
+
+| Vignette name    | Implied props                                               | Story it tells                         |
+| ---------------- | ----------------------------------------------------------- | -------------------------------------- |
+| Reading corner   | Chair + floor lamp + stack of books + cold coffee           | Someone studies here; interrupted      |
+| Abandoned dinner | Table + plates + overturned cup + flies                     | Something made them leave mid-meal     |
+| Guard post       | Stool + empty bottle + club + faded roster on wall          | Maintenance without discipline         |
+| Ritual area      | Circle on floor + candles + ash + torn notes                | Something was attempted here           |
+| Crafting station | Workbench + materials + half-finished item + reference book | Active production, functional disorder |
+| Service counter  | Counter + register + stool behind + signage                 | Commerce, transaction, performance     |
+| Recovery nook    | Cot + bandages + water jug + dim lamp                       | Someone sleeps here out of necessity   |
+| Trophy wall      | Mounted heads / framed notices + trophy + empty bracket     | Pride, status, aspiration              |
+
+A vignette that could appear in any room is not a vignette — it is furniture. Force the
+props to encode the specific fiction: an abandoned dinner in a dungeon guard post has
+a torn ration package and a clay cup, not a tablecloth and a wine glass.
+
+## Negative space as design
+
+The gate checks for density (≥22% of tiles). It has no ceiling. This is the right
+call for CI — but it has trained agents to keep adding props until the number
+turns green. The better mental model:
+
+> **Negative space is where the story happens.**
+
+The player must _cross_ the empty aisle to reach the chest. The _gap_ between the
+guard post and the ritual circle implies they do not look at each other. The open
+floor in front of the altar is where the player stands to trigger the encounter.
+
+Required: every blockout must name at least one zone that is intentionally empty
+and state why the emptiness serves the fiction or the gameplay. Zones without a
+reason for being empty are candidates for dressing; zones with a reason are protected.
+
+## Second specimen set — dungeon, castle, and adventure grammar
+
+A 50-study set of orthographic JRPG-style interiors grouped by dungeon/adventure
+function. These are visual specimens (not real game screenshots); use them for spatial
+grammar and composition patterns, not as citations.
+
+### Domestic foundations (5 specimens)
+
+Craftsman warmth, urban compactness, farmhouse utility, attic geometry, sunken
+conversation space.
+
+**Patterns:** hearth or table as focal object; mass distributed along two or three
+walls, middle held clear for circulation; vignettes cluster around function (cooking,
+seating, sleeping) with gaps between them.
+
+### Domestic character (5 specimens)
+
+Tatami restraint, family clutter, winter quiet, 1970s density, tiny-home optimization.
+
+**Patterns:** culture-specific prop vocabulary; tatami rooms are sparser, 1970s rooms
+are denser; small-space optimization forces every prop to serve two purposes.
+
+### Specialty rooms (5 specimens)
+
+Bathing ritual, family circulation, creative mess, conservatory abundance, modular
+futurism.
+
+**Patterns:** a dominant surface (bath, drawing table, planting bench) anchors the
+room; clutter radiates from it rather than being scattered across the floor.
+
+### Rooms that tell stories (5 specimens)
+
+Private library, shared childhood, rehearsal space, ceramic workshop, storm-facing
+dining room.
+
+**Patterns:** props carry narrative weight — books mid-fall, two sets of toys in one
+room, a chair pulled to the window. Every prop has been placed _by_ a character, not
+_into_ a room.
+
+### Dungeon grammar (5 specimens)
+
+Entry threshold, water traversal, root invasion, readable traps, circular ritual
+staging.
+
+**Patterns for Crawler:**
+
+- **Entry threshold:** axial composition, single strong axis from door to focal object;
+  the room reads as a gate, not a destination; decoration defers to structure.
+- **Water traversal:** the environmental hazard IS the composition; props orient around
+  safe tiles; the path is the focal point.
+- **Root invasion:** organic overgrowth breaks the room's original function; props show
+  two eras in tension (dungeon infrastructure + encroaching nature).
+- **Readable traps:** geometry telegraphs danger; props cluster AWAY from the trap zone
+  leaving it unnervingly bare; the player notices the absence.
+- **Circular ritual staging:** radial composition, focal object at centre, props ring
+  it; entrance is framed to deliver the player to the perimeter before the reveal.
+
+### Castle functions (5 specimens)
+
+Ceremonial power, barracks order, feast logistics, arcane study, sacred ruin.
+
+**Patterns for Crawler:**
+
+- **Ceremonial power:** axial, long aisle, throne/altar focal, everything subordinate;
+  scale signals authority — the focal prop must be 3× the median.
+- **Barracks order:** repetition is deliberate; beds/benches in rows; wear and
+  personalization break the grid (one overturned boot, one scratched name).
+- **Feast logistics:** long table is the room; everything else is peripheral; seating
+  implies attendance.
+- **Arcane study:** clustered composition, 2–3 workstations (reference, experiment,
+  storage) in organic arrangement; the disorder is ORGANIZED — each vignette has
+  internal logic.
+- **Sacred ruin:** sparse; the room was once ceremonial (traces of axial structure)
+  but collapse has created organic asymmetry; darkness and emptiness are the design.
+
+### Adventure support spaces (5 specimens)
+
+Tavern flow, guild planning, forge production, recovery, defensible treasure storage.
+
+**Patterns for Crawler:**
+
+- **Tavern flow:** counter separates service from customer; seating clusters in 2–3
+  groups; a hearth or stage creates a secondary focal point; the room has two
+  clear circulation routes.
+- **Guild planning:** a table with a map IS the room; everything else supports it;
+  chairs around the table encode authority positions.
+- **Forge production:** heat source is the focal object; workbenches radiate from it;
+  raw material, in-process, and finished goods occupy distinct zones.
+- **Recovery:** low light, horizontal surfaces (cots), a service point (bandages, water);
+  the room's mood is exhaustion, not activity.
+- **Defensible treasure storage:** the room is designed to be hard to cross; the chest/
+  vault is visible but separated; layout creates tactical tension.
+
+### Exotic adventure spaces (5 specimens)
+
+Light puzzles, frozen ceremony, clockwork control, living architecture, open-sky
+astronomy.
+
+**Patterns for Crawler (Earth-artifact tone):**
+
+- **Light puzzles:** the room's mechanic IS its art — reflectors, prisms, or switches
+  visible at a glance; the focal object is the light source or its target.
+- **Frozen ceremony:** a ritual interrupted mid-action; props in process-state (candle
+  still burning, chalice raised); the composition is axial but a single prop is
+  displaced.
+- **Clockwork control:** a panel or console is the focal object; all other props serve
+  or connect to it; cables/pipes are the circulation clues.
 
 ## Related
 
