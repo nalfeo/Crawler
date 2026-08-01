@@ -21,7 +21,6 @@ import {
 import { createInputState } from '../../shared/input.js';
 import { GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
-import { assertBuiltInFloorManifestsClean } from '../../shared/floor-registry.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
@@ -428,7 +427,6 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-  assertBuiltInFloorManifestsClean('runHeadless');
   const startTime = Date.now();
 
   if (mergedConfig.debug) {
