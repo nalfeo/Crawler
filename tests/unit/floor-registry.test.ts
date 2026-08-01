@@ -29,12 +29,12 @@ describe('floor-registry', () => {
   });
 
   it('resolves the built-in floor1 manifest', () => {
-    expect(getFloorManifest('floor1')).toBe(floor1Manifest);
+    expect(getFloorManifest('floor1')).toEqual(floor1Manifest);
     expect(hasFloorManifest('floor1')).toBe(true);
   });
 
   it('resolves the built-in floor2 manifest', () => {
-    expect(getFloorManifest('floor2')).toBe(floor2Manifest);
+    expect(getFloorManifest('floor2')).toEqual(floor2Manifest);
     expect(hasFloorManifest('floor2')).toBe(true);
   });
 
@@ -82,8 +82,21 @@ describe('floor-registry', () => {
 
     resetBuiltInFloorManifests();
 
-    expect(getFloorManifest('floor2')).toBe(floor2Manifest);
+    expect(getFloorManifest('floor2')).toEqual(floor2Manifest);
     expect(getFloorManifest('floor-test-custom')).toBe(customManifest);
+    expect(getOverriddenBuiltInFloorManifestIds()).toEqual([]);
+  });
+
+  it('detects and restores in-place built-in manifest mutation', () => {
+    const floor1 = getFloorManifest('floor1');
+    expect(floor1).toBeDefined();
+    floor1!.timer.durationMs += 1;
+
+    expect(getOverriddenBuiltInFloorManifestIds()).toEqual(['floor1']);
+
+    resetBuiltInFloorManifests();
+
+    expect(getFloorManifest('floor1')).toEqual(floor1Manifest);
     expect(getOverriddenBuiltInFloorManifestIds()).toEqual([]);
   });
 

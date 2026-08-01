@@ -6,15 +6,26 @@
  */
 import { floor1Manifest, floor2Manifest, type FloorManifestDef } from './floor-manifest.js';
 
-const BUILT_IN_FLOOR_MANIFESTS = new Map<string, FloorManifestDef>([
-  ['floor1', floor1Manifest],
-  ['floor2', floor2Manifest],
+const BUILT_IN_FLOOR_MANIFEST_SNAPSHOTS = new Map<string, FloorManifestDef>([
+  ['floor1', structuredClone(floor1Manifest)],
+  ['floor2', structuredClone(floor2Manifest)],
 ]);
+
+function cloneBuiltInFloorManifest(floorId: string): FloorManifestDef {
+  const manifest = BUILT_IN_FLOOR_MANIFEST_SNAPSHOTS.get(floorId);
+  if (!manifest) {
+    throw new Error(`Unknown built-in floor manifest "${floorId}"`);
+  }
+  return structuredClone(manifest);
+}
 
 /**
  * Registry of available floor manifests.
  */
-const FLOOR_REGISTRY = new Map<string, FloorManifestDef>(BUILT_IN_FLOOR_MANIFESTS);
+const FLOOR_REGISTRY = new Map<string, FloorManifestDef>([
+  ['floor1', cloneBuiltInFloorManifest('floor1')],
+  ['floor2', cloneBuiltInFloorManifest('floor2')],
+]);
 
 function manifestsMatch(left: FloorManifestDef | undefined, right: FloorManifestDef): boolean {
   return left !== undefined && JSON.stringify(left) === JSON.stringify(right);
@@ -54,8 +65,8 @@ export function registerFloorManifest(floorId: string, manifest: FloorManifestDe
  * custom floor registrations.
  */
 export function resetBuiltInFloorManifests(): void {
-  for (const [floorId, manifest] of BUILT_IN_FLOOR_MANIFESTS) {
-    FLOOR_REGISTRY.set(floorId, manifest);
+  for (const floorId of BUILT_IN_FLOOR_MANIFEST_SNAPSHOTS.keys()) {
+    FLOOR_REGISTRY.set(floorId, cloneBuiltInFloorManifest(floorId));
   }
 }
 
@@ -65,7 +76,7 @@ export function resetBuiltInFloorManifests(): void {
  */
 export function getOverriddenBuiltInFloorManifestIds(): string[] {
   const overridden: string[] = [];
-  for (const [floorId, manifest] of BUILT_IN_FLOOR_MANIFESTS) {
+  for (const [floorId, manifest] of BUILT_IN_FLOOR_MANIFEST_SNAPSHOTS) {
     if (!manifestsMatch(FLOOR_REGISTRY.get(floorId), manifest)) {
       overridden.push(floorId);
     }
