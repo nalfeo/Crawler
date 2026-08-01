@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4a1e64c2dade65a892e20dabd6d52760cbda897a",
+    "commitDate": "2026-08-01T01:32:45Z",
+    "commitSubject": "fix(sprites): allow unrelated-histories fallback in queue-commit merge (#2532)",
+    "capturedAt": "2026-08-01T02:37:45.363Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30678446471",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/4a1e64c2dade65a892e20dabd6d52760cbda897a.json"
+  },
+  {
     "commit": "9b996e46e647272b92e52c35fc4a93fd9b5365db",
     "commitDate": "2026-08-01T00:58:15Z",
     "commitSubject": "docs(set-piece): add narrative verb, vignettes, composition modes, and structured judge scorecard (#2531)",
