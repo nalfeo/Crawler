@@ -150,7 +150,7 @@ describe('MainGameScene UI exclusivity', () => {
 
   it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
     await bootPlayingSafeScene();
-    await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 100);
+    await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 260);
     await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 9_999);
     await mainSceneProbe.advanceSimulationFrames(page, 2);
 

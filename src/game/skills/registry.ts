@@ -206,7 +206,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       100, 280, 620, 1140, 1850, 2750, 3840, 5120, 6590, 8250, 10100, 12140, 14370, 16790, 19400,
       22200, 25190, 28370, 31740, 35290,
     ],
-    perLevelBonus: { moveSpeed: 0.8 },
+    perLevelBonus: { moveSpeed: 0.00625 },
     milestones: [
       {
         level: 5,
@@ -258,7 +258,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 10,
         name: 'Fluid Strikes',
-        description: '+10% attack speed with slashing',
+        description: '+1 extra projectile with slashing',
         abilityId: 'slashing-momentum',
       },
       {
@@ -291,13 +291,13 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Find the Seam',
-        description: '+10% damage with stabbing weapons',
+        description: '+15% attack speed with stabbing weapons',
         abilityId: 'stabbing-precision-base',
       },
       {
         level: 10,
         name: 'Rapid Thrust',
-        description: '+15% attack speed with stabbing',
+        description: '+1 extra projectile with stabbing',
         abilityId: 'stabbing-tempo',
       },
       {
@@ -337,7 +337,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 10,
         name: 'Juggernaut Step',
-        description: '+1 pickup range with smashing',
+        description: '+1 extra projectile with smashing',
         abilityId: 'smashing-momentum',
       },
       {
@@ -448,7 +448,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Iron Knuckle',
-        description: '+10% damage with unarmed strikes',
+        description: '+15% attack speed with forearms',
         abilityId: 'forearms-brawl-base',
       },
       {
@@ -494,7 +494,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 10,
         name: 'Arcane Surge',
-        description: '+0.025 mana regen multiplier',
+        description: '+10% damage with arcane weapons',
         abilityId: 'arcane-efficiency',
       },
       {
@@ -848,8 +848,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       },
       {
         level: 10,
-        name: 'Mana Efficiency',
-        description: '+0.025 mana regen multiplier with spellcraft',
+        name: 'Cascade',
+        description: '+1 extra projectile with spellcraft',
         abilityId: 'spellcraft-cascade',
       },
       {
@@ -861,7 +861,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 20,
         name: 'Arcane Overflow',
-        description: 'Evolved Mana Efficiency ability',
+        description: 'Evolved Cascade ability',
         abilityId: 'spellcraft-cascade-evolved',
       },
     ],
