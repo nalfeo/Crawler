@@ -1,0 +1,10 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "nightly-perf-flow-field",
+  "task_title": "Optimize computeFlowField BFS loop",
+  "estimated_apples": 2,
+  "stages": {},
+  "apples_rescored_from": 3,
+  "rescore_reason": "Declared as 3\ud83c\udf4e before profiling, but the landed diff collapsed to one localized runtime optimization plus one committed bench file."
+}

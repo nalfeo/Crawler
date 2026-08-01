@@ -23,24 +23,9 @@
 
 import type { FloorMap } from './FloorMap.js';
 import { isTileTraversable, PATH_TRAVERSAL, type TilePoint } from './pathfinding.js';
-import { indexToCoords } from './grid-utils.js';
 
 /** Distance marker for tiles the goal sweep never reached (walls, sealed areas). */
 export const FLOW_UNREACHABLE = -1;
-
-/**
- * Fixed neighbour order for the BFS sweep (4-connected, matching
- * {@link findTilePath}'s topology). The distance field itself stays 4-connected
- * — cheap to build and a true shortest-path metric — while {@link flowFieldStep}
- * layers diagonal descent on top for natural movement. Order must stay stable
- * for deterministic routing.
- */
-const FLOW_DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
 
 /**
  * Neighbour order for {@link flowFieldStep}: the four cardinals first (so they
@@ -112,32 +97,69 @@ export function computeFlowField(
   const goalIndex = goal.y * width + goal.x;
   distance[goalIndex] = 0;
 
-  // Plain array used as a FIFO queue with a moving head cursor — cheaper than
-  // Array.shift() and fully deterministic.
-  const queue: number[] = [goalIndex];
+  // Fixed-size FIFO queue (every tile is enqueued at most once).
+  const queue = new Int32Array(width * height);
+  queue[0] = goalIndex;
   let head = 0;
+  let tail = 1;
 
-  while (head < queue.length) {
+  while (head < tail) {
     const idx = queue[head]!;
     head += 1;
-    const [cx, cy] = indexToCoords(idx, width);
+    const cx = idx % width;
+    const cy = (idx - cx) / width;
     const nextDistance = distance[idx]! + 1;
 
-    for (const [dx, dy] of FLOW_DIRECTIONS) {
-      const nx = cx + dx;
-      const ny = cy + dy;
-      if (!floorMap.tileMap.inBounds(nx, ny)) {
-        continue;
+    const rightX = cx + 1;
+    if (rightX < width) {
+      const rightIdx = cy * width + rightX;
+      if (
+        distance[rightIdx] === FLOW_UNREACHABLE &&
+        isTileTraversable(floorMap, rightX, cy, traversalMode, isTilePassable)
+      ) {
+        distance[rightIdx] = nextDistance;
+        queue[tail] = rightIdx;
+        tail += 1;
       }
-      const nIdx = ny * width + nx;
-      if (distance[nIdx] !== FLOW_UNREACHABLE) {
-        continue;
+    }
+
+    const leftX = cx - 1;
+    if (leftX >= 0) {
+      const leftIdx = cy * width + leftX;
+      if (
+        distance[leftIdx] === FLOW_UNREACHABLE &&
+        isTileTraversable(floorMap, leftX, cy, traversalMode, isTilePassable)
+      ) {
+        distance[leftIdx] = nextDistance;
+        queue[tail] = leftIdx;
+        tail += 1;
       }
-      if (!isTileTraversable(floorMap, nx, ny, traversalMode, isTilePassable)) {
-        continue;
+    }
+
+    const downY = cy + 1;
+    if (downY < height) {
+      const downIdx = downY * width + cx;
+      if (
+        distance[downIdx] === FLOW_UNREACHABLE &&
+        isTileTraversable(floorMap, cx, downY, traversalMode, isTilePassable)
+      ) {
+        distance[downIdx] = nextDistance;
+        queue[tail] = downIdx;
+        tail += 1;
       }
-      distance[nIdx] = nextDistance;
-      queue.push(nIdx);
+    }
+
+    const upY = cy - 1;
+    if (upY >= 0) {
+      const upIdx = upY * width + cx;
+      if (
+        distance[upIdx] === FLOW_UNREACHABLE &&
+        isTileTraversable(floorMap, cx, upY, traversalMode, isTilePassable)
+      ) {
+        distance[upIdx] = nextDistance;
+        queue[tail] = upIdx;
+        tail += 1;
+      }
     }
   }
 
