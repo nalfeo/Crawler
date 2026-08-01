@@ -1,0 +1,28 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "skill-ability-grant-fixes",
+  "date": "2026-08-01",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 337,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 337
+    }
+  },
+  "tools": {
+    "ask_user": 6,
+    "edit": 61,
+    "extensions_reload": 1,
+    "glob": 1,
+    "grep": 23,
+    "powershell": 83,
+    "read_powershell": 17,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "view": 143
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
