@@ -1,5 +1,5 @@
 {
-  "_comment": "Verbatim GitHub issue-form bodies for asset-request parser regression tests. Real open issues #555 (single-sentence baseline), #588/#607/#626 (rich multi-sentence, >240 chars), and #2505 (typed+floored+default-sized enemy request). Do not edit by hand; bodies mirror production issue text.",
+  "_comment": "Verbatim GitHub issue-form bodies for asset-request parser regression tests. Real open issues #555 (single-sentence baseline), #588/#607/#626 (rich multi-sentence, >240 chars), #2505 (typed+floored+default-sized enemy request), #2559 (ratfolk-sewer-sniper Floor 2 enemy), and #2567 (raccoon bottle-rocketeer Floor 2 enemy). Do not edit by hand; bodies mirror production issue text.",
   "issues": {
     "555": {
       "title": "Asset request: classified-dossier",
@@ -20,6 +20,14 @@
     "2505": {
       "title": "Asset request: llama-curb-stomper",
       "body": "### Name\n\nllama-curb-stomper\n\n### Brief\n\nA heavy, thuggish llama in massive reinforced stomping boots — one leg raised as if mid-stomp, weight forward. No weapon; the boots ARE the weapons. Chunky, low-center-of-gravity silhouette. Thick neck, dull expression of single-minded aggression. Outfit: sleeveless vest or undershirt, suspenders, the oversized boots as the main visual focal point (studded, steel-toed, comically huge relative to the body). Llama fur in dusty tan/beige with dark boot leather. The cartel-dungeon tone means even the stompers have style — the boots are absurdly well-made. Single subject, front-facing, hard pixel edges, no background, no text.\n\n### Type (optional)\n\nenemy\n\n### Floor (optional)\n\n2\n\n### Size (optional)\n\ndefault"
+    },
+    "2559": {
+      "title": "Asset request: ratfolk-sewer-sniper",
+      "body": "### Name\n\nratfolk-sewer-sniper\n\n### Brief\n\nA ratfolk sniper crouched in a low shooting stance, holding a long makeshift scoped rifle cobbled from pipes and fittings. Sewer-worker aesthetic: rubber waders, tool belt, patchy vest. Prominent snout, beady sharp eyes scanning down the scope. Lean and precise silhouette — less bulk than a brawler, ranged specialist posture. Matches ratfolk family's grimy urban palette (dark grays, sewer greens). Single centered subject, front-facing, hard pixel edges, no background, no text.\n\n### Type (optional)\n\nenemy\n\n### Floor (optional)\n\n2\n\n### Size (optional)\n\ndefault"
+    },
+    "2567": {
+      "title": "Asset request: raccoon-bottle-rocketeer",
+      "body": "### Name\n\nraccoon-bottle-rocketeer\n\n### Brief\n\nA raccoon soldier launching bottle rockets from a makeshift shoulder-mounted launcher — a bundle of tubes crammed with small rockets, held like a bazooka. Explosive specialist aesthetic: goggles pushed up on the forehead, singed fur on the launching arm. Energetic, slightly reckless posture. Matches raccoon family&#39;s gray-and-black palette. Single centered subject, front-facing, hard pixel edges, no background, no text.\n\n### Type (optional)\n\nenemy\n\n### Floor (optional)\n\n2\n\n### Size (optional)\n\ndefault"
     }
   }
 }

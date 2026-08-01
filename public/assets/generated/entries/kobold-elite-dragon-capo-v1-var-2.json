@@ -1,0 +1,42 @@
+{
+  "briefId": "kobold-elite-dragon-capo-v1",
+  "spriteName": "kobold-elite-dragon-capo-v1-var-2",
+  "assetPath": "generated/kobold-elite-dragon-capo-v1-var-2.png",
+  "approvedAt": "2026-08-01T00:22:20Z",
+  "sourceRun": "generated/runs/kobold-elite-dragon-capo-v1/2026-08-01T00-18-28-593c60eb",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 122,
+    "y": 143,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 122,
+      "y": 143,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 122,
+      "y": 143,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": null,
+  "type": "enemy",
+  "contentHash": "7b0624a9a073715fb619261348746b9bb111f7605505bdd4fb1de3d4f5aae5cc",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 228,
+    "height": 236,
+    "canvasWidth": 256,
+    "canvasHeight": 264
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/kobold-elite-dragon-capo-v1/2026-08-01T00-18-28-593c60eb/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/kobold-elite-dragon-capo-v1/2026-08-01T00-18-28-593c60eb/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/kobold-elite-dragon-capo-v1/2026-08-01T00-18-28-593c60eb/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
