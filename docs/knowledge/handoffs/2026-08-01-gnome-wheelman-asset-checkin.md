@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-sprite-workflow
+sprite-pipeline, sprite-workflow
 
 ## Summary
 
