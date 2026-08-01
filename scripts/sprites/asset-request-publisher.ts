@@ -153,6 +153,18 @@ export async function publishSelectedAssetRequests(
               error instanceof Error ? error.message : String(error),
             );
           }
+          // briefs/draft/** is gitignored in the repo; queue-commit must
+          // commit the brief to the canonical non-draft path so `git add`
+          // stages it correctly.  Promote: briefs/draft/<type>/<name>.yaml →
+          // briefs/<type>/<name>.yaml and materialise that file in stageRoot.
+          const briefQueuePath = item.checkpoint.details.promotedBriefPath.replace(
+            /^briefs\/draft\//,
+            'briefs/',
+          );
+          const briefQueueAbs = path.join(item.stageRoot, ...briefQueuePath.split('/'));
+          mkdirSync(path.dirname(briefQueueAbs), { recursive: true });
+          writeFileSync(briefQueueAbs, item.checkpoint.details.promotedBriefYaml, 'utf8');
+
           const queueResult = await runQueueCommit(
             options.repoRoot,
             item.assets,
@@ -161,7 +173,7 @@ export async function publishSelectedAssetRequests(
               message: `art: publish issue #${item.checkpoint.issueNumber} selected variants`,
               maxAttempts: 3,
               sourceRoot: item.stageRoot,
-              briefs: [item.checkpoint.details.promotedBriefPath],
+              briefs: [briefQueuePath],
               ciAuthorization: { caller: 'asset-request-publisher' },
               validateDestination: validateExactAssetPayloads,
             },

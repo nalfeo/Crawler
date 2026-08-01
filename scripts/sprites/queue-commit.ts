@@ -486,7 +486,13 @@ export async function runQueueCommit(
         // the no-op guard so a commit that touches only a brief file (identical
         // art bytes already on the queue) still lands as `committed` rather than
         // `noop`, preventing the brief from silently disappearing.
-        if (briefs.length > 0 && deps.copyBriefFiles) {
+        if (briefs.length > 0) {
+          if (!deps.copyBriefFiles) {
+            throw new QueueCommitError(
+              'invalid-brief-path',
+              'briefs provided but deps.copyBriefFiles is not wired — cannot stage brief files',
+            );
+          }
           await deps.copyBriefFiles(sourceRoot, worktree, briefs);
           await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);
         }

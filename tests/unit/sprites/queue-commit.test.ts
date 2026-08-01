@@ -23,6 +23,7 @@ import type { CheckinAsset, Exec, ExecResult } from '../../../scripts/sprites/ch
 import {
   runQueueCommit,
   isNonFastForwardRejection,
+  assertSafeBriefPaths,
   type QueueCommitDeps,
 } from '../../../scripts/sprites/queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../../../scripts/sprites/queue-commit-runtime.js';
@@ -201,6 +202,49 @@ describe('runQueueCommit (control flow)', () => {
       ).rejects.toMatchObject({ kind: 'invalid-asset-path' });
     }
     expect(calls).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // assertSafeBriefPaths
+  // -------------------------------------------------------------------------
+
+  it('assertSafeBriefPaths: accepts valid paths under briefs/', () => {
+    expect(() =>
+      assertSafeBriefPaths([
+        'briefs/enemies/panda-boba-sniper.yaml',
+        'briefs/weapons/soul-reaper.yaml',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('assertSafeBriefPaths: rejects empty string', () => {
+    expect(() => assertSafeBriefPaths([''])).toThrow();
+  });
+
+  it('assertSafeBriefPaths: rejects absolute paths', () => {
+    expect(() => assertSafeBriefPaths(['/briefs/enemies/foo.yaml'])).toThrow();
+  });
+
+  it('assertSafeBriefPaths: rejects traversal sequences', () => {
+    expect(() => assertSafeBriefPaths(['briefs/../etc/passwd'])).toThrow();
+    expect(() => assertSafeBriefPaths(['../briefs/enemies/foo.yaml'])).toThrow();
+  });
+
+  it('assertSafeBriefPaths: rejects paths not under briefs/', () => {
+    expect(() => assertSafeBriefPaths(['src/game/foo.ts'])).toThrow();
+    expect(() => assertSafeBriefPaths(['public/assets/generated/foo.png'])).toThrow();
+  });
+
+  it('throws invalid-brief-path when briefs supplied but copyBriefFiles dep is absent', async () => {
+    const { exec } = makeFakeExec(happyResponder);
+    const deps: QueueCommitDeps = controlDeps(exec);
+    // copyBriefFiles is optional — verify the invariant guard throws rather than silently drops.
+    await expect(
+      runQueueCommit('/repo', [asset()], deps, {
+        message: 'm',
+        briefs: ['briefs/enemies/panda-boba-sniper.yaml'],
+      }),
+    ).rejects.toMatchObject({ kind: 'invalid-brief-path' });
   });
 
   it('returns a no-op for an empty asset list without touching git', async () => {
