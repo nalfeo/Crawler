@@ -198,6 +198,16 @@ export interface ReferenceSpriteSelection {
   readonly selected: ReadonlyArray<ReferenceSpriteRef>;
 }
 
+/**
+ * A single seed frame entry as persisted in `RunSummary.seedFrames`.
+ * Captures the repo-relative path and a SHA-256 content hash so replay
+ * can verify the on-disk bytes are unchanged from what was generated with.
+ */
+export interface SeedFrameRef {
+  readonly path: string;
+  readonly contentHash: string;
+}
+
 export interface RunSummary {
   readonly brief: string;
   readonly briefPath: string;
@@ -312,6 +322,14 @@ export interface RunSummary {
    * retirement; absent on legacy runs whose refs came from `brief.references`.
    */
   readonly referenceSprites?: ReferenceSpriteSelection;
+  /**
+   * Seed frames prepended before style references at generation time.
+   * Each entry records the repo-relative path and a SHA-256 content hash so
+   * replay/re-judging (`loadRecordedReferencePngs`) can verify the bytes are
+   * unchanged and prepend the same images in the same order.
+   * Absent on runs that declared no seed frames.
+   */
+  readonly seedFrames?: ReadonlyArray<SeedFrameRef>;
   /**
    * Optional deterministic sensor telemetry counters for operator dashboards.
    */
