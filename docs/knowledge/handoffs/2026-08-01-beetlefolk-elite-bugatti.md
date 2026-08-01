@@ -16,8 +16,7 @@ handoff delivers the brief YAML ready for the Azure sprite pipeline.
 
 ## Systems touched
 
-- `briefs/enemies/beetlefolk-elite-bugatti.yaml` — New; default size, type: enemy,
-  floor 2, 3 color-variant variations, minVariations: 6, judge.enabled: true
+sprite-workflow
 
 ## Blocker: Azure credentials unavailable in agent context
 

@@ -40,8 +40,6 @@ variations:
     popped; slight forward lean telegraphing aggression
 minVariations: 6
 sensors:
-  edge:
-    allowMainTouch: true
   enemy:
     facing: front
     toleranceDeg: 35
