@@ -613,7 +613,7 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   'toadkin-bouncer': 'toadkin-tongue',
   'gnome-boss': 'gnome-boss',
   'gnome-tinker': 'gnome-tinker',
-  'gnome-elite-pinstripe-artillerist': 'gnome-tinker',
+  'gnome-elite-pinstripe-artillerist': 'gnome-elite-pinstripe-artillerist',
   'gnome-wheelman': 'gnome-tinker',
   'ratfolk-boss': 'ratfolk-boss',
   'ratfolk-plague': 'ratfolk-plague',
