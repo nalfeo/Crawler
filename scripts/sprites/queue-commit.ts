@@ -331,7 +331,21 @@ export async function runQueueCommit(
         // "branch already checked out" clash with the caller's worktree.
         await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
         if (branchExists) {
-          const merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
+          // First try a normal merge; fall back to --allow-unrelated-histories
+          // if the queue branch is an orphan (no common ancestor with main,
+          // which can happen when the branch was initially created via --orphan
+          // or its history was squashed away). The fallback is safe: we still
+          // apply main's full tree, and the subsequent asset copy + staged diff
+          // guard ensures only art-surface changes are committed.
+          let merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
+          if (merge.code !== 0 && merge.stderr.toLowerCase().includes('unrelated histories')) {
+            merge = await runGit(deps.exec, worktree, [
+              'merge',
+              '--allow-unrelated-histories',
+              '--no-edit',
+              mainRef,
+            ]);
+          }
           if (merge.code !== 0) {
             throw new QueueCommitError(
               'destination-conflict',
