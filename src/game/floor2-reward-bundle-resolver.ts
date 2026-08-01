@@ -142,20 +142,44 @@ interface PartitionedBases {
   readonly nonAligned: readonly string[];
 }
 
-function partitionBases(
+/**
+ * Partition `bases` into aligned (same affinity as `playerAffinity`) and
+ * non-aligned pools for reward selection.
+ *
+ * **Non-aligned pool preference:** when neutral (non-weapon) bases exist in the
+ * candidate set, the non-aligned pool is restricted to those neutrals only —
+ * off-affinity weapons are excluded. This prevents magic players from spending
+ * their non-aligned draws on unusable physical weapons (which dominate the pool
+ * ~51:5) and gives both builds comparable wearable-gear acquisition rates.
+ *
+ * **Fallback:** when no neutral bases are present (e.g. a weapon-only fixture),
+ * the non-aligned pool falls back to all non-aligned candidates (neutral +
+ * off-affinity) so small test fixtures and boss-chest pools continue to work
+ * without an `empty-nonaligned-pool` error.
+ *
+ * Exported with `_` prefix for unit-testing the exact partitioning contract;
+ * callers outside this module should use {@link resolveEquipmentRewardBundle}.
+ */
+export function _partitionBases(
   bases: readonly string[],
   playerAffinity: RewardBundleBuildAffinity,
 ): PartitionedBases {
   const aligned: string[] = [];
-  const nonAligned: string[] = [];
+  const neutral: string[] = [];
+  const offAffinity: string[] = [];
   for (const baseId of bases) {
-    if (getGeneratedEquipmentBaseAffinity(baseId) === playerAffinity) {
+    const affinity = getGeneratedEquipmentBaseAffinity(baseId);
+    if (affinity === playerAffinity) {
       aligned.push(baseId);
+    } else if (affinity === 'neutral') {
+      neutral.push(baseId);
     } else {
-      // Opposite affinity OR neutral bases both count as non-aligned.
-      nonAligned.push(baseId);
+      offAffinity.push(baseId);
     }
   }
+  // Prefer neutral (wearable) bases for non-aligned draws; fall back to the
+  // full non-aligned set only when no neutral items are present.
+  const nonAligned = neutral.length > 0 ? neutral : [...neutral, ...offAffinity];
   return { aligned: Object.freeze(aligned), nonAligned: Object.freeze(nonAligned) };
 }
 
@@ -308,7 +332,7 @@ export function _validateFloor2RewardPoolTierEligibility(
     for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
       const eligible = _rarityEligibleBaseIds(bases, rarity);
       for (const playerAffinity of BUILD_AFFINITIES) {
-        const { aligned, nonAligned } = partitionBases(eligible, playerAffinity);
+        const { aligned, nonAligned } = _partitionBases(eligible, playerAffinity);
         if (aligned.length === 0) {
           throw new _Floor2RewardPoolAuthoringError(
             `Floor 2 reward pool authoring check failed: tier ${tier} rarity ${rarity} has no ` +
@@ -383,7 +407,7 @@ export function _validateFloor2RewardPoolTierEligibility(
     for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
       const eligibleWeapons = _rarityEligibleBaseIds(weaponBases, rarity);
       for (const playerAffinity of BUILD_AFFINITIES) {
-        const { aligned, nonAligned } = partitionBases(eligibleWeapons, playerAffinity);
+        const { aligned, nonAligned } = _partitionBases(eligibleWeapons, playerAffinity);
         if (aligned.length === 0) {
           throw new _Floor2RewardPoolAuthoringError(
             `Floor 2 reward pool authoring check failed: weapon sub-pool for tier ${tier} ` +
@@ -561,7 +585,7 @@ export function resolveEquipmentRewardBundle(
     if (category === 'weapon') {
       // Weapons carry physical/magic affinities — apply the normal alignment
       // step within the weapon sub-pool.
-      const { aligned, nonAligned } = partitionBases(categoryBases, playerAffinity);
+      const { aligned, nonAligned } = _partitionBases(categoryBases, playerAffinity);
       if (aligned.length === 0) {
         throw new RewardBundleResolutionError(
           'empty-aligned-pool',
@@ -590,7 +614,7 @@ export function resolveEquipmentRewardBundle(
   } else {
     // No category weighting — original behavior: partition all eligible bases
     // by affinity and roll aligned vs non-aligned.
-    const { aligned, nonAligned } = partitionBases(rarityEligibleBases, playerAffinity);
+    const { aligned, nonAligned } = _partitionBases(rarityEligibleBases, playerAffinity);
     if (aligned.length === 0) {
       throw new RewardBundleResolutionError(
         'empty-aligned-pool',
