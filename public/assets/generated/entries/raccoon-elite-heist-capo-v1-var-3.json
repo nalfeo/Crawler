@@ -1,0 +1,126 @@
+{
+  "briefId": "raccoon-elite-heist-capo-v1",
+  "spriteName": "raccoon-elite-heist-capo-v1-var-3",
+  "assetPath": "generated/raccoon-elite-heist-capo-v1-var-3.png",
+  "approvedAt": "2026-08-01T05:57:30.342Z",
+  "sourceRun": "generated/runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 120,
+    "y": 161,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 120,
+      "y": 161,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 120,
+      "y": 161,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 120,
+        "y": 161
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:55:32.875Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The raccoon concept is clear and fits the Crawler aesthetic with its mix of criminal sophistication and dark humor. However, the design could push the 'authored contradiction' further to make it more memorable."
+    },
+    "referenceStyleMatch": {
+      "score": 3,
+      "rationale": "The sprite generally matches the references in outline weight and shading, but the palette feels slightly muted compared to the vibrant colors of the references."
+    },
+    "styleMatch": {
+      "score": 3,
+      "rationale": "The sprite generally matches the references in outline weight and shading, but the palette feels slightly muted compared to the vibrant colors of the references."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite includes the raccoon, turtleneck, beret, and blueprint tube, but the silver watch and sharp white face paint stripes are missing or not clearly visible."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and readable at game scale, but the blueprint tube could be more distinct to enhance recognition."
+    },
+    "poseOrientation": {
+      "score": 4,
+      "rationale": "The character faces the camera at a slight angle, but the pose could be more dynamic to emphasize the 'swagger' described in the brief."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully visible and well-framed, with no cropping or missing elements."
+    },
+    "themeAdherence": {
+      "score": 3,
+      "rationale": "The sprite incorporates elements of the Trash Panda Family theme, such as the raccoon mask and streetwear, but it lacks the specific details like the silver watch and sharp face paint stripes that would tie it more strongly to the brief."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.78,
+    "usage": {
+      "promptTokens": 4121,
+      "completionTokens": 431,
+      "totalTokens": 4552
+    }
+  },
+  "type": "enemy",
+  "contentHash": "2cacedc7d7d46e8c12f29618aacbf7b528c51fef86f890dffca6f6a175cac67a",
+  "opaqueBounds": {
+    "x": 17,
+    "y": 17,
+    "width": 222,
+    "height": 282,
+    "canvasWidth": 256,
+    "canvasHeight": 316
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

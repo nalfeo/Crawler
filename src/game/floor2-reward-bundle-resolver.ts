@@ -33,6 +33,33 @@ import {
  */
 export const REWARD_BUNDLE_RESOLVER_VERSION = 'v1';
 
+/**
+ * Authored weapon draw weight for category-biased reward selection (issue #2555).
+ *
+ * When {@link resolveEquipmentRewardBundle} is called with a `weaponIds` set
+ * this is the probability that the candidate base is drawn from the weapon
+ * sub-pool rather than the non-weapon (armor/accessory) sub-pool. 25 % weapon
+ * / 75 % non-weapon corrects the ~14× per-position oversupply of weapons
+ * relative to armor: weapons occupy only 2 equipment slots vs 16 armor slots,
+ * yet previously represented 64 % of the reward pool by raw count.
+ *
+ * This constant intentionally remains tunable. It ONLY applies when the caller
+ * supplies a non-undefined `weaponIds` set (achievement rewards from the full
+ * Floor 2 pool). Boss-chest rewards use their own disjoint pool without
+ * category weighting.
+ */
+export const FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT = 0.25;
+
+/**
+ * Pure category decision from a single RNG roll in [0, 1). Returns `'weapon'`
+ * when `roll < weaponWeight`, `'non-weapon'` otherwise. Extracted as a named
+ * export so the exact `< weight` threshold can be asserted in unit tests — an
+ * empirical frequency test can never prove exactness.
+ */
+export function _categoryFromRoll(roll: number, weaponWeight: number): 'weapon' | 'non-weapon' {
+  return roll < weaponWeight ? 'weapon' : 'non-weapon';
+}
+
 export type RewardBundleBuildAffinity = 'magic' | 'physical';
 
 /**
@@ -64,6 +91,7 @@ export class RewardBundleResolutionError extends Error {
       | 'no-run-key'
       | 'empty-aligned-pool'
       | 'empty-nonaligned-pool'
+      | 'empty-category-pool'
       | 'illegal-effect-budget'
       | 'illegal-base',
     message: string,
@@ -335,6 +363,92 @@ export function _validateFloor2RewardPoolTierEligibility(
     );
   }
 
+  // Category-weighted sub-pool validation: mirrors the runtime category-selection
+  // path in resolveEquipmentRewardBundle, which activates whenever weaponIds is
+  // defined — including an empty set. Both category pools must be non-empty so
+  // neither category roll can crash at runtime. The weapon sub-pool affinity check
+  // runs before the non-weapon neutrality check so both paths are independently
+  // reachable: a partial weaponIds (e.g. physical-only) triggers the affinity
+  // error before the neutrality guard (which operates on non-weapon bases).
+  const weaponBases = bases.filter((id) => weaponIds.has(id));
+  const nonWeaponBases = bases.filter((id) => !weaponIds.has(id));
+
+  // Guard: an empty weaponIds means every weapon-category roll would crash at
+  // runtime — the resolver enables category weighting for any defined weaponIds,
+  // including an empty set.
+  if (weaponIds.size === 0) {
+    throw new _Floor2RewardPoolAuthoringError(
+      `Floor 2 reward pool authoring check failed: weaponIds is empty — ` +
+        `category weighting requires a non-empty weapon ID set (weapon category pool would always be empty)`,
+    );
+  }
+
+  // Guard: non-empty weaponIds but no bases match means the weapon draw crashes.
+  if (weaponBases.length === 0) {
+    throw new _Floor2RewardPoolAuthoringError(
+      `Floor 2 reward pool authoring check failed: weaponIds is non-empty (${weaponIds.size} entries) ` +
+        `but no base in the supplied pool matches any weapon ID (pool size: ${bases.length})`,
+    );
+  }
+
+  // Guard: an all-weapon pool means every non-weapon-category roll would crash.
+  if (nonWeaponBases.length === 0) {
+    throw new _Floor2RewardPoolAuthoringError(
+      `Floor 2 reward pool authoring check failed: all bases in the pool are weapons — ` +
+        `non-weapon category pool would always be empty for a non-weapon category roll`,
+    );
+  }
+
+  // Weapon sub-pool: both affinity partitions must be non-empty per tier × rarity
+  // so the category-weighted weapon draw can always apply affinity alignment.
+  // (Checked before the non-weapon neutrality guard so this path is independently
+  // reachable — see comment above.)
+  for (const tier of ACHIEVEMENT_EQUIPMENT_REWARD_TIERS) {
+    for (const rarity of EQUIPMENT_REWARD_TIER_RARITIES[tier]) {
+      const eligibleWeapons = _rarityEligibleBaseIds(weaponBases, rarity);
+      for (const playerAffinity of BUILD_AFFINITIES) {
+        const { aligned, nonAligned } = _partitionBases(eligibleWeapons, playerAffinity);
+        if (aligned.length === 0) {
+          throw new _Floor2RewardPoolAuthoringError(
+            `Floor 2 reward pool authoring check failed: weapon sub-pool for tier ${tier} ` +
+              `rarity ${rarity} has no ${playerAffinity}-aligned weapon candidate`,
+          );
+        }
+        if (nonAligned.length === 0) {
+          throw new _Floor2RewardPoolAuthoringError(
+            `Floor 2 reward pool authoring check failed: weapon sub-pool for tier ${tier} ` +
+              `rarity ${rarity} has no non-${playerAffinity} weapon candidate`,
+          );
+        }
+      }
+
+      // Non-weapon sub-pool: must be non-empty per tier × rarity so the uniform
+      // draw path always has at least one candidate. (nonWeaponBases is guaranteed
+      // non-empty after the all-weapon guard above.)
+      const eligibleNonWeapons = _rarityEligibleBaseIds(nonWeaponBases, rarity);
+      if (eligibleNonWeapons.length === 0) {
+        throw new _Floor2RewardPoolAuthoringError(
+          `Floor 2 reward pool authoring check failed: non-weapon sub-pool for tier ${tier} ` +
+            `rarity ${rarity} has no eligible candidate`,
+        );
+      }
+    }
+  }
+
+  // Assert all non-weapon bases carry neutral affinity — the category-weighted
+  // non-weapon draw path skips affinity alignment on this assumption. A future
+  // non-weapon base with physical/magic affinity would silently bypass alignment.
+  for (const nonWeaponBase of nonWeaponBases) {
+    const affinity = getGeneratedEquipmentBaseAffinity(nonWeaponBase);
+    if (affinity !== 'neutral') {
+      throw new _Floor2RewardPoolAuthoringError(
+        `Floor 2 reward pool authoring check failed: non-weapon base "${nonWeaponBase}" ` +
+          `has affinity "${affinity}" — all non-weapon bases must be neutral for the ` +
+          `category-weighted non-weapon draw path (which skips affinity alignment)`,
+      );
+    }
+  }
+
   return report;
 }
 
@@ -376,6 +490,16 @@ export function _rollTierRarity(
  * {@link rollTierRarity}). `tier1` is common-only; `tier2`/`tier3` draw
  * {common, uncommon}; `tier4` (boss chests) draws {uncommon, rare} at 85/15.
  *
+ * Category weighting (issue #2555):
+ * - When `weaponIds` is provided, the draw is category-biased before affinity
+ *   alignment. A `'category'` substream rolls weapon vs non-weapon at
+ *   {@link FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT} (25 % weapon / 75 %
+ *   non-weapon). Weapon draws apply the normal affinity-alignment step.
+ *   Non-weapon draws skip affinity alignment and pick uniformly from the
+ *   non-weapon sub-pool (non-weapons are all neutral — they carry no
+ *   physical/magic affinity). Boss-chest callers omit `weaponIds` and
+ *   receive the original uniform-with-affinity behavior.
+ *
  * Determinism & isolation:
  * - Every random decision uses a bundle-specific {@link SeededRandom} derived
  *   from the run key + achievement id + rarity + decision (no `world.rng`
@@ -396,6 +520,7 @@ export function resolveEquipmentRewardBundle(
   achievementId: string,
   bases: readonly string[],
   tier: EquipmentRewardTier,
+  weaponIds?: ReadonlySet<string>,
 ): GeneratedEquipmentRewardBundleV1 {
   const existing = world.generatedEquipmentRewardBundles.get(achievementId);
   if (existing !== undefined) return existing;
@@ -435,28 +560,83 @@ export function resolveEquipmentRewardBundle(
   const rarityEligibleBases = _rarityEligibleBaseIds(bases, rarity);
 
   const playerAffinity = _resolvePlayerBuildAffinity(world);
-  const { aligned, nonAligned } = _partitionBases(rarityEligibleBases, playerAffinity);
-  if (aligned.length === 0) {
-    throw new RewardBundleResolutionError(
-      'empty-aligned-pool',
-      `Reward bases for ${achievementId} have no ${playerAffinity}-aligned candidate at rarity ${rarity}`,
+
+  // Determine the final candidate pool: category-weighted when weaponIds is
+  // provided, original affinity-partitioned draw otherwise.
+  let pool: readonly string[];
+
+  if (weaponIds !== undefined) {
+    // Category-biased selection (issue #2555). Roll weapon vs non-weapon FIRST
+    // using a dedicated substream so category decisions are independent of
+    // rarity/affinity substreams and never collide with them.
+    const categoryRng = substreamRng(runKey, achievementId, 'category', tier);
+    const category = _categoryFromRoll(categoryRng.next(), FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT);
+
+    const categoryBases = rarityEligibleBases.filter((id) =>
+      category === 'weapon' ? weaponIds.has(id) : !weaponIds.has(id),
     );
-  }
-  if (nonAligned.length === 0) {
-    throw new RewardBundleResolutionError(
-      'empty-nonaligned-pool',
-      `Reward bases for ${achievementId} have no non-${playerAffinity} candidate at rarity ${rarity}`,
+    if (categoryBases.length === 0) {
+      throw new RewardBundleResolutionError(
+        'empty-category-pool',
+        `Reward bases for ${achievementId} have no ${category} candidate at rarity ${rarity}`,
+      );
+    }
+
+    if (category === 'weapon') {
+      // Weapons carry physical/magic affinities — apply the normal alignment
+      // step within the weapon sub-pool.
+      const { aligned, nonAligned } = _partitionBases(categoryBases, playerAffinity);
+      if (aligned.length === 0) {
+        throw new RewardBundleResolutionError(
+          'empty-aligned-pool',
+          `Reward bases for ${achievementId} have no ${playerAffinity}-aligned weapon candidate at rarity ${rarity}`,
+        );
+      }
+      if (nonAligned.length === 0) {
+        throw new RewardBundleResolutionError(
+          'empty-nonaligned-pool',
+          `Reward bases for ${achievementId} have no non-${playerAffinity} weapon candidate at rarity ${rarity}`,
+        );
+      }
+      const aligns = _rollAffinityAlignment(
+        substreamRng(runKey, achievementId, rarity, 'alignment'),
+        rarity,
+      );
+      pool = aligns ? aligned : nonAligned;
+    } else {
+      // Non-weapons are all neutral — skip affinity alignment and draw
+      // uniformly. Using `affinity` RNG here would have no effect anyway (all
+      // neutral → never aligned for any build), and skipping it keeps the
+      // substream distinct so future re-runs are reproducible whether or not
+      // any particular tier/affinity combination ever fires.
+      pool = categoryBases;
+    }
+  } else {
+    // No category weighting — original behavior: partition all eligible bases
+    // by affinity and roll aligned vs non-aligned.
+    const { aligned, nonAligned } = _partitionBases(rarityEligibleBases, playerAffinity);
+    if (aligned.length === 0) {
+      throw new RewardBundleResolutionError(
+        'empty-aligned-pool',
+        `Reward bases for ${achievementId} have no ${playerAffinity}-aligned candidate at rarity ${rarity}`,
+      );
+    }
+    if (nonAligned.length === 0) {
+      throw new RewardBundleResolutionError(
+        'empty-nonaligned-pool',
+        `Reward bases for ${achievementId} have no non-${playerAffinity} candidate at rarity ${rarity}`,
+      );
+    }
+    const aligns = _rollAffinityAlignment(
+      substreamRng(runKey, achievementId, rarity, 'alignment'),
+      rarity,
     );
+    pool = aligns ? aligned : nonAligned;
   }
 
   const itemLevel = Math.max(1, Math.floor(world.playerLevel.level));
 
   const transaction = createGeneratedEquipmentRegistryTransaction(world);
-  const aligns = _rollAffinityAlignment(
-    substreamRng(runKey, achievementId, rarity, 'alignment'),
-    rarity,
-  );
-  const pool = aligns ? aligned : nonAligned;
   const baseRng = substreamRng(runKey, achievementId, rarity, 'base');
   const baseId = pool[baseRng.nextInt(0, pool.length - 1)]!;
   const effectsRng = substreamRng(runKey, achievementId, rarity, 'effects');

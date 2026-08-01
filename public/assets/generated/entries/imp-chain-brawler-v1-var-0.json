@@ -1,0 +1,122 @@
+{
+  "briefId": "imp-chain-brawler-v1",
+  "spriteName": "imp-chain-brawler-v1-var-0",
+  "assetPath": "generated/imp-chain-brawler-v1-var-0.png",
+  "approvedAt": "2026-08-01T01:39:34.368Z",
+  "sourceRun": "generated/runs/imp-chain-brawler-v1/2026-08-01T00-28-56-8d65ceda",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 124,
+    "y": 148,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 124,
+      "y": 148,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 124,
+      "y": 148,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 124,
+        "y": 148
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T01:35:20.639Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The sprite effectively combines the imp's stocky, menacing form with the jagged, spiked chains, creating a clear identity and contradiction. The grin and crouched pose add dark humor and personality."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering closely matches the references in outline weight, shading, and palette depth. However, the chain texture is slightly noisier than the references' clean material rendering."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering closely matches the references in outline weight, shading, and palette depth. However, the chain texture is slightly noisier than the references' clean material rendering."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the brief perfectly, depicting a stocky imp with stubby legs, elongated arms, jagged chains, and a crouched, aggressive pose."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is mostly clear, but the chain-covered fist slightly blends into the body at game scale, reducing instant readability."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character faces the camera at an appropriate one-third turn, with a dynamic and engaging pose."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple theme elements, including jagged chains, a crouched brawler stance, and a demonic grin, aligning with the Brimstone Boys' aesthetic and the Family Matters floor theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3975,
+      "completionTokens": 378,
+      "totalTokens": 4353
+    }
+  },
+  "type": "enemy",
+  "contentHash": "d5460a9dac467c5ba6e8c44f204d012f9da31aa58eff406046082aec4e205b1b",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 226,
+    "height": 247,
+    "canvasWidth": 256,
+    "canvasHeight": 277
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-chain-brawler-v1/2026-08-01T00-28-56-8d65ceda/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-chain-brawler-v1/2026-08-01T00-28-56-8d65ceda/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-chain-brawler-v1/2026-08-01T00-28-56-8d65ceda/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

@@ -724,3 +724,17 @@ export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-8;
 // COLLECT uses steering only while farther than this from the pickup, so the final
 // harvest overlap approach (Track A close-range slide) is left untouched.
 export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
+
+// --- Pre-exit XP sweep -------------------------------------------------------
+// After the floor staircase is unlocked the AI performs a sweep to collect any
+// XP gems left on the ground before descending (which destroys uncollected gems
+// via scene restart). The sweep fires between Interact (Priority 2) and Progress
+// (Priority 3), so it delays the stair approach only while reachable XP remains.
+//
+// Panic threshold: abort the sweep and fall through to Progress (beeline to
+// stairs) when collapse panic exceeds this fraction. Calibrated so the sweep
+// stays active during the comfortable post-clear lull (~3-4 min remaining) but
+// surrenders in the final 1-min crunch period when panic > 0.5 on Floor 1.
+// Floor 2 has no collapse timer so panic is always 0 there — the sweep runs
+// until all reachable XP is collected.
+export const XP_SWEEP_PANIC_THRESHOLD = 0.5;

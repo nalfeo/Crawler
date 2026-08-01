@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "welcome-room-v2-redesign",
+  "task_title": "Set-piece process/tooling updates + welcome-room-v2 8x8 redesign",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Holistic branch plan review covered process/tooling + room redesign: (1) NPC anchor role names must match schema values welcome/shop/spell - resolved; (2) bookcase facade area must achieve 2.5x median ratio for focal dominance - confirmed at 7.22x6.8=49.1sqft vs median. divergence=minor (stanchion placement detail adjusted, no re-architecture)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
