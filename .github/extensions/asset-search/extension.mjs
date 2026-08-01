@@ -10,7 +10,7 @@
  *
  * Tool: search_assets
  *   Input:  { query: string, type?: string, maxResults?: number }
- *   Output: array of { id, label, description, tags, type, assetPath, score }
+ *   Output: array of { id, label, description, tags, type, assetPath, status, score }
  */
 
 import { existsSync, appendFileSync, mkdirSync, statSync, readdirSync } from 'node:fs';
@@ -23,6 +23,7 @@ const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXT_DIR, '..', '..', '..');
 const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
 const SHARDS_DIR = path.join(GENERATED_DIR, 'entries');
+const BRIEFS_DIR = path.join(REPO_ROOT, 'briefs');
 const FILES_DIR = path.join(REPO_ROOT, 'files');
 const TELEMETRY_PATH = path.join(FILES_DIR, 'asset-search-telemetry.jsonl');
 
@@ -41,22 +42,28 @@ let indexState = {
 };
 
 function shardsFingerprint() {
-  if (!existsSync(SHARDS_DIR)) return '0:-1';
   let count = 0;
   let maxMtime = -1;
-  const walk = (abs) => {
+
+  const walkDir = (abs) => {
+    if (!existsSync(abs)) return;
     for (const dirent of readdirSync(abs, { withFileTypes: true })) {
       const child = path.join(abs, dirent.name);
       if (dirent.isDirectory()) {
-        walk(child);
-      } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
+        walkDir(child);
+      } else if (dirent.isFile()) {
         count++;
         const m = statSync(child).mtimeMs;
         if (m > maxMtime) maxMtime = m;
       }
     }
   };
-  walk(SHARDS_DIR);
+
+  // Include both approved shards and brief files so the index rebuilds
+  // whenever either changes.
+  walkDir(SHARDS_DIR);
+  walkDir(BRIEFS_DIR);
+
   return `${count}:${maxMtime}`;
 }
 
@@ -70,7 +77,7 @@ async function getIndex() {
   const ms = new MiniSearch({
     idField: 'id',
     fields: ['tags', 'label', 'description', 'type'],
-    storeFields: ['id', 'label', 'tags', 'type', 'description', 'assetPath'],
+    storeFields: ['id', 'label', 'tags', 'type', 'description', 'assetPath', 'status'],
     extractField: (doc, field) =>
       field === 'tags' ? doc.tags.join(' ') : String(doc[field] ?? ''),
     searchOptions: {
@@ -132,6 +139,7 @@ async function handleSearchAssets(params) {
     tags: r.tags,
     type: r.type,
     assetPath: r.assetPath,
+    status: r.status,
     score: Math.round(r.score * 100) / 100,
   }));
 
@@ -160,6 +168,8 @@ const session = await joinSession({
       name: 'search_assets',
       description:
         'Search for sprite assets by natural language query. Returns matching sprites ranked by relevance. ' +
+        'Results include both approved generated assets (status: "approved", with assetPath) and ' +
+        'briefs that have been specified but not yet generated (status: "brief-only", no assetPath). ' +
         'Useful for finding props, mobs, tiles, and other game assets by describing what you need ' +
         '(e.g. "rusty workshop tools", "ornate altar stone"). ' +
         'Empty result queries are logged and drive new asset brief creation.',
