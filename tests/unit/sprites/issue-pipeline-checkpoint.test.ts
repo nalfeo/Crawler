@@ -266,6 +266,8 @@ describe('issue pipeline checkpoints', () => {
             status: 'failed',
             attempts: 3,
             updatedAt: '2026-07-24T12:00:00.000Z',
+            // Use push-retries-exhausted (resettable) so the test verifies stage
+            // isolation. null is not auto-resettable (see null-kind test above).
             error: { kind: 'push-retries-exhausted', message: 'push loop exhausted' },
           },
         },

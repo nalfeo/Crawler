@@ -311,21 +311,6 @@ export async function runCheckpointStage<T>(
 }
 
 /**
- * If `stage` is exhausted (attempts ≥ maxAttempts) **and** its last recorded
- * error was transient (not in PERMANENT_ERROR_KINDS), this removes the stage
- * entry from the checkpoint so the next `runCheckpointStage` call can retry
- * from a clean slate.
- *
- * Returns `true` when a reset was performed, `false` when no reset was needed
- * (stage not present, still in-flight, succeeded, or failed permanently).
- *
- * Recovery path for stages that hit their retry ceiling due to infrastructure
- * bugs that have since been fixed — e.g. queue-commit push failures (bugs #1–3)
- * that caused the `publish` stage to exhaust all three attempts before the
- * underlying git defect was repaired. Calling this for a stage whose failure
- * was permanent (auth, destination-conflict, etc.) is safe: it is a no-op.
- */
-/**
  * Error kinds that are safe to auto-reset after an infrastructure fix.
  *
  * Only a strict subset of transient kinds qualify — kinds that are EXCLUSIVELY
@@ -347,6 +332,21 @@ export async function runCheckpointStage<T>(
  */
 const INFRA_RESETTABLE_KINDS = new Set<string>(['push-retries-exhausted']);
 
+/**
+ * If `stage` is exhausted (attempts ≥ maxAttempts) **and** its last recorded
+ * error was transient (not in PERMANENT_ERROR_KINDS), this removes the stage
+ * entry from the checkpoint so the next `runCheckpointStage` call can retry
+ * from a clean slate.
+ *
+ * Returns `true` when a reset was performed, `false` when no reset was needed
+ * (stage not present, still in-flight, succeeded, or failed permanently).
+ *
+ * Recovery path for stages that hit their retry ceiling due to infrastructure
+ * bugs that have since been fixed — e.g. queue-commit push failures (bugs #1–3)
+ * that caused the `publish` stage to exhaust all three attempts before the
+ * underlying git defect was repaired. Calling this for a stage whose failure
+ * was permanent (auth, destination-conflict, etc.) is safe: it is a no-op.
+ */
 export async function resetExhaustedTransientStage(
   controller: IssueCheckpointController,
   stage: IssuePipelineStage,
