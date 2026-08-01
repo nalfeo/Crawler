@@ -224,7 +224,7 @@ export async function runBriefBatchConsolidation(
     '--limit',
     '500',
   ]);
-  let rawPRs: RawPR[] = [];
+  let rawPRs: RawPR[];
   try {
     rawPRs = JSON.parse(listed.stdout) as RawPR[];
   } catch {

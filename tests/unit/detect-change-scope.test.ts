@@ -1099,7 +1099,10 @@ const cases: Case[] = [
   // Brief + art together (queue-commit bundles them): still art_only and gameplay_safe.
   {
     name: 'art + brief (bundled queue-commit): art_only=true, gameplay_safe=true',
-    files: ['public/assets/generated/panda-boba-sniper-var-0.png', 'briefs/enemies/panda-boba-sniper.yaml'],
+    files: [
+      'public/assets/generated/panda-boba-sniper-var-0.png',
+      'briefs/enemies/panda-boba-sniper.yaml',
+    ],
     //                         art   docs  gsafe sponly sptch sim   cov   vis   game  asset devt
     expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
