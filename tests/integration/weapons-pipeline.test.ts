@@ -47,6 +47,7 @@ const SWORD_BRIEF: Brief = {
     { path: 'tests/fixtures/sprites/_ref-a.png' },
     { path: 'tests/fixtures/sprites/_ref-b.png' },
   ],
+  seedFrames: [],
   generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
   sensors: {},
   variations: [],

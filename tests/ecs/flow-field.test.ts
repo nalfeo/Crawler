@@ -6,6 +6,8 @@ import {
   computeFlowField,
   flowFieldStep,
   FLOW_UNREACHABLE,
+  type FlowField,
+  type FlowFieldOptions,
 } from '../../src/core/map/flow-field.js';
 import { PATH_TRAVERSAL } from '../../src/core/map/pathfinding.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
@@ -13,6 +15,12 @@ import { makePathMap } from '../helpers/map-fixtures.js';
 
 const WIDTH = 12;
 const HEIGHT = 9;
+const FLOW_DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
 
 /** Walk the gradient from `start`, returning every tile visited up to the goal. */
 function descend(
@@ -34,6 +42,91 @@ function descend(
 
 const distanceAt = (field: ReturnType<typeof computeFlowField>, x: number, y: number): number =>
   field.distance[y * WIDTH + x]!;
+
+function computeFlowFieldBaseline(
+  floorMap: FloorMap,
+  goal: { x: number; y: number },
+  options: FlowFieldOptions = {},
+): FlowField {
+  const traversalMode = options.traversalMode ?? PATH_TRAVERSAL.GROUND;
+  const isTilePassable = options.isTilePassable;
+  const width = floorMap.tileMap.width;
+  const height = floorMap.tileMap.height;
+  const distance = new Int32Array(width * height).fill(FLOW_UNREACHABLE);
+  const field: FlowField = { width, height, goalX: goal.x, goalY: goal.y, distance };
+
+  if (
+    !floorMap.tileMap.inBounds(goal.x, goal.y) ||
+    (!floorMap.tileMap.isPassable(goal.x, goal.y) && traversalMode !== PATH_TRAVERSAL.FLYING)
+  ) {
+    return field;
+  }
+  if (
+    traversalMode === PATH_TRAVERSAL.FLYING
+      ? floorMap.hasBarrierAtTile(goal.x, goal.y)
+      : !(
+          (isTilePassable
+            ? isTilePassable(goal.x, goal.y)
+            : floorMap.tileMap.isPassable(goal.x, goal.y)) &&
+          !floorMap.hasBarrierAtTile(goal.x, goal.y)
+        )
+  ) {
+    return field;
+  }
+
+  const goalIndex = goal.y * width + goal.x;
+  distance[goalIndex] = 0;
+  const queue: number[] = [goalIndex];
+  let head = 0;
+
+  while (head < queue.length) {
+    const idx = queue[head]!;
+    head += 1;
+    const cx = idx % width;
+    const cy = (idx - cx) / width;
+    const nextDistance = distance[idx]! + 1;
+
+    for (const [dx, dy] of FLOW_DIRECTIONS) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!floorMap.tileMap.inBounds(nx, ny)) {
+        continue;
+      }
+      const nextIndex = ny * width + nx;
+      if (distance[nextIndex] !== FLOW_UNREACHABLE) {
+        continue;
+      }
+      const traversable =
+        traversalMode === PATH_TRAVERSAL.FLYING
+          ? !floorMap.hasBarrierAtTile(nx, ny)
+          : (isTilePassable ? isTilePassable(nx, ny) : floorMap.tileMap.isPassable(nx, ny)) &&
+            !floorMap.hasBarrierAtTile(nx, ny);
+      if (!traversable) {
+        continue;
+      }
+      distance[nextIndex] = nextDistance;
+      queue.push(nextIndex);
+    }
+  }
+
+  return field;
+}
+
+function traceFor(
+  run: (floorMap: FloorMap, goal: { x: number; y: number }, options: FlowFieldOptions) => FlowField,
+  floorMap: FloorMap,
+  goal: { x: number; y: number },
+  basePassable: (x: number, y: number) => boolean,
+): { field: FlowField; trace: string[] } {
+  const trace: string[] = [];
+  const field = run(floorMap, goal, {
+    isTilePassable: (x, y) => {
+      trace.push(`${x},${y}`);
+      return basePassable(x, y);
+    },
+  });
+  return { field, trace };
+}
 
 /** Open arena (only the border is wall), with optional extra wall tiles. */
 function makeOpenMap(extraWalls: ReadonlyArray<readonly [number, number]> = []): FloorMap {
@@ -60,6 +153,26 @@ function makeOpenMap(extraWalls: ReadonlyArray<readonly [number, number]> = []):
     tileMap.flags[wy * WIDTH + wx] = TilePresets.WALL;
   }
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 2, y: 2 });
+}
+
+function makeAllFloorMap(width: number, height: number): FloorMap {
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.FLOOR);
+  const config: MapConfig = {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizeFt: 4,
+    biome: BiomeType.ARENA,
+    seed: 11,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+  return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(width * height), {
+    x: 0,
+    y: 0,
+  });
 }
 
 describe('computeFlowField', () => {
@@ -131,6 +244,49 @@ describe('computeFlowField', () => {
     );
 
     expect(distanceAt(field, 2, 4)).toBe(FLOW_UNREACHABLE);
+  });
+
+  it('matches the pre-optimization baseline for flying traversal', () => {
+    const floorMap = makePathMap(false, { tileSizeFt: 4 });
+    const goal = { x: 9, y: 4 };
+
+    const current = computeFlowField(floorMap, goal, {
+      traversalMode: PATH_TRAVERSAL.FLYING,
+    });
+    const baseline = computeFlowFieldBaseline(floorMap, goal, {
+      traversalMode: PATH_TRAVERSAL.FLYING,
+    });
+
+    expect(Array.from(current.distance)).toEqual(Array.from(baseline.distance));
+  });
+
+  it('matches the pre-optimization callback probe trace', () => {
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
+    const goal = { x: 9, y: 4 };
+    const basePassable = (x: number, y: number): boolean =>
+      floorMap.tileMap.isPassable(x, y) && !(x === 6 && y === 4);
+
+    const current = traceFor(computeFlowField, floorMap, goal, basePassable);
+    const baseline = traceFor(computeFlowFieldBaseline, floorMap, goal, basePassable);
+
+    expect(current.trace).toEqual(baseline.trace);
+    expect(Array.from(current.field.distance)).toEqual(Array.from(baseline.field.distance));
+  });
+
+  it('matches the pre-optimization baseline for boundary goals', () => {
+    const floorMap = makeAllFloorMap(4, 4);
+    const goals = [
+      { x: 3, y: 2 },
+      { x: 0, y: 1 },
+      { x: 2, y: 3 },
+      { x: 1, y: 0 },
+    ];
+
+    for (const goal of goals) {
+      const current = computeFlowField(floorMap, goal);
+      const baseline = computeFlowFieldBaseline(floorMap, goal);
+      expect(Array.from(current.distance)).toEqual(Array.from(baseline.distance));
+    }
   });
 
   it('returns an all-unreachable field when the goal itself is blocked', () => {

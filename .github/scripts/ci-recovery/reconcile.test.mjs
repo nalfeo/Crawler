@@ -3876,7 +3876,12 @@ test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE
   );
   assert.deepEqual(
     postUpdateDispatch.body?.inputs,
-    { operation: 'reconcile', pr_number: String(PR_NUM), trigger: 'post-update-branch', lease_id: '' },
+    {
+      operation: 'reconcile',
+      pr_number: String(PR_NUM),
+      trigger: 'post-update-branch',
+      lease_id: '',
+    },
     'post-update-branch dispatch inputs must be correct',
   );
 });
@@ -4798,7 +4803,8 @@ test('train mode skips substantive-review wait for assets/promote when diff is a
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.doesNotMatch(stdout, /admission=substantive-copilot-review/);
   const labelPosts = mutatingCalls.filter(
-    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
   );
   assert.equal(
     labelPosts.some((call) => call.body?.labels?.includes(WAITING_LABEL)),
@@ -5735,7 +5741,9 @@ test('reconcile escalates required-check action-required runs as ci-retrigger bl
   // REQUIRED_CHECK_WORKFLOW_PATHS and must not produce a required-check escalation.
   assert.doesNotMatch(
     stdout,
-    new RegExp(`escalate action_required run=${lintRunId} .* reason=required-check-action_required`),
+    new RegExp(
+      `escalate action_required run=${lintRunId} .* reason=required-check-action_required`,
+    ),
   );
   // Must NOT attempt approval or produce an un-actionable wait-only exit
   assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
@@ -6140,6 +6148,10 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   assert.ok(
     taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
     'task comment should reserve the SHA-less marker for deterministic non-applicability',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('use the session `update_pull_request` tool'),
+    'task comment should direct PR-body edits through the supported update_pull_request tool path',
   );
 });
 
@@ -12600,10 +12612,7 @@ test('lease-reaper stale retry refreshes progressAt and carries the attempt coun
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(finalState?.attempt, 2, 'attempt must carry forward (1 -> 2)');
   const parsedProgressAt = Date.parse(finalState?.progressAt ?? '');
-  assert.ok(
-    Number.isFinite(parsedProgressAt),
-    'progressAt must be a valid ISO timestamp',
-  );
+  assert.ok(Number.isFinite(parsedProgressAt), 'progressAt must be a valid ISO timestamp');
   assert.ok(
     Math.abs(parsedProgressAt - Date.now()) < 10_000,
     'lease-reaper retry must set progressAt within 10s of now (fresh liveness window)',

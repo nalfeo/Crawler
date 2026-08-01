@@ -101,6 +101,20 @@ test('nightly velocity filer creates and then reuses one durable issue', async (
   });
 });
 
+test('buildVelocityIssueBody uses a non-closing owner/repo issue reference', () => {
+  const issueNumber = 9999;
+  const body = buildVelocityIssueBody(issueNumber);
+  assert.ok(
+    body.includes(`Refs nalfeo/Crawler#${issueNumber}`),
+    `Expected body to contain 'Refs nalfeo/Crawler#${issueNumber}' but got:\n${body}`,
+  );
+  assert.ok(
+    !body.includes(`Closes nalfeo/Crawler#${issueNumber}`) &&
+      !body.includes(`Closes #${issueNumber}`),
+    `Expected body NOT to contain closing-keyword references for #${issueNumber} but it does`,
+  );
+});
+
 test('nightly perf filer creates and then reuses one durable issue', async () => {
   const harness = createHarness();
   const first = await runWithHarness(runNightlyPerfIssue, harness);
@@ -113,4 +127,11 @@ test('nightly perf filer creates and then reuses one durable issue', async () =>
     expectedLabels: PERF_LABELS,
     expectedBody: buildPerfIssueBody,
   });
+});
+
+test('nightly velocity issue body avoids closing-keyword references', () => {
+  const issueNumber = 2612;
+  const body = buildVelocityIssueBody(issueNumber);
+  assert.match(body, new RegExp(`Refs nalfeo/Crawler#${issueNumber}`));
+  assert.doesNotMatch(body, new RegExp(`Closes nalfeo/Crawler#${issueNumber}`));
 });

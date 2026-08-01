@@ -5,6 +5,10 @@
  * returns matching sprite assets from the generated manifest. Uses MiniSearch
  * for BM25-weighted full-text search over tags, labels, descriptions, and types.
  *
+ * Each shard document is enriched with its source brief's description text
+ * (stored as `briefText`), giving the index richer signal for concept queries.
+ * Tags remain the authoritative, highest-weighted field.
+ *
  * Also writes per-query telemetry to `files/asset-search-telemetry.jsonl` so
  * empty-result queries can be turned into new asset briefs.
  *
@@ -23,6 +27,7 @@ const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXT_DIR, '..', '..', '..');
 const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
 const SHARDS_DIR = path.join(GENERATED_DIR, 'entries');
+const BRIEFS_DIR = path.join(REPO_ROOT, 'briefs');
 const FILES_DIR = path.join(REPO_ROOT, 'files');
 const TELEMETRY_PATH = path.join(FILES_DIR, 'asset-search-telemetry.jsonl');
 
@@ -41,22 +46,28 @@ let indexState = {
 };
 
 function shardsFingerprint() {
-  if (!existsSync(SHARDS_DIR)) return '0:-1';
   let count = 0;
   let maxMtime = -1;
-  const walk = (abs) => {
+
+  const walkDir = (abs) => {
+    if (!existsSync(abs)) return;
     for (const dirent of readdirSync(abs, { withFileTypes: true })) {
       const child = path.join(abs, dirent.name);
       if (dirent.isDirectory()) {
-        walk(child);
-      } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
+        walkDir(child);
+      } else if (dirent.isFile()) {
         count++;
         const m = statSync(child).mtimeMs;
         if (m > maxMtime) maxMtime = m;
       }
     }
   };
-  walk(SHARDS_DIR);
+
+  // Include both approved shards and brief files so the index rebuilds
+  // whenever either changes.
+  walkDir(SHARDS_DIR);
+  walkDir(BRIEFS_DIR);
+
   return `${count}:${maxMtime}`;
 }
 
@@ -69,12 +80,12 @@ async function getIndex() {
 
   const ms = new MiniSearch({
     idField: 'id',
-    fields: ['tags', 'label', 'description', 'type'],
+    fields: ['tags', 'label', 'description', 'briefText', 'type'],
     storeFields: ['id', 'label', 'tags', 'type', 'description', 'assetPath'],
     extractField: (doc, field) =>
       field === 'tags' ? doc.tags.join(' ') : String(doc[field] ?? ''),
     searchOptions: {
-      boost: { tags: 3, label: 2, type: 1.5, description: 1 },
+      boost: { tags: 3, label: 2, type: 1.5, description: 1, briefText: 0.6 },
       fuzzy: 0.2,
       prefix: true,
       combineWith: 'OR',
@@ -159,9 +170,10 @@ const session = await joinSession({
     {
       name: 'search_assets',
       description:
-        'Search for sprite assets by natural language query. Returns matching sprites ranked by relevance. ' +
-        'Useful for finding props, mobs, tiles, and other game assets by describing what you need ' +
-        '(e.g. "rusty workshop tools", "ornate altar stone"). ' +
+        'Search for sprite assets by natural language query. Returns matching approved sprites ranked by relevance. ' +
+        'Each asset is indexed by its tags (highest weight), label, description, type, and its source brief text ' +
+        '(lower weight) — so concept queries like "rusty workshop tools" or "glowing ritual altar" match ' +
+        'both explicit tags and the intent captured in the original brief. ' +
         'Empty result queries are logged and drive new asset brief creation.',
       parameters: {
         type: 'object',

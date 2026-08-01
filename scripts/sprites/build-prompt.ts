@@ -142,6 +142,7 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   return [
     styleGuide,
     '',
+    ...(brief.seedFrames.length > 0 ? [seedFrameBlock(brief.seedFrames.length), ''] : []),
     floorContextBlock(brief.floor),
     ...addenda,
     '',
@@ -302,15 +303,43 @@ function outputSizeBlock(brief: Brief): string {
  * See `docs/knowledge/game-design/art-style-guide.md` ("Character Proportions",
  * "Rendering"), which is the authoritative source this block implements.
  */
-const CARTOON_FIGURE_RULES: readonly string[] = [
-  '- **Art style (overrides the style preamble for this subject):** draw a CARTOON figure in the tradition of EarthBound, Chrono Trigger, Undertale and Zelda: A Link to the Past. Charming and chunky, NOT gritty, NOT painterly, NOT semi-realistic, NOT photoreal.',
-  '- **Proportions are deliberately bobblehead:** for any upright/humanoid figure, roughly 3-4 heads tall in total, with the head about ONE THIRD of the whole height. A big head is REQUIRED, not a defect. Limbs are short, chunky and simplified; hands are mitten shapes without individual fingers.',
-  '- **Face:** simple and iconic — large dark dot or bean eyes, little or no nose, one simple mouth shape. Expression comes from a few large features. Do NOT render pupils-and-whites, a nose bridge, wrinkles, pores, stubble texture or individual teeth.',
-  '- **Rendering:** flat colour fills with hard-edged cel shading, 2-3 tone stops per material. No gradients, no airbrush blending. Flat is CORRECT here and does not read as unfinished.',
-  '- **Minimal dithering.** No dither noise, grain, speckle or grime texture on figures. Wear and age are drawn as a few deliberate simple shapes (a patch, a stain, a bent edge), never as texture.',
-  '- Keep the clean, consistent dark outline and the bold value separation that make the silhouette read at 1x.',
-  '- **About the attached reference images:** copy their TECHNIQUE ONLY — outline weight, palette discipline, pixel resolution and crispness. Do NOT copy their figure proportions or rendering density. Several references are older, more realistically-proportioned and more heavily textured art that this brief is deliberately moving away from.',
-];
+function cartoonFigureRules(seedFrameCount: number): readonly string[] {
+  const refNote =
+    seedFrameCount > 0
+      ? `- **About the attached reference images:** The first ${seedFrameCount} image${
+          seedFrameCount > 1 ? 's are SEED FRAMES' : ' is a SEED FRAME'
+        } (see "Seed frames" section above) — match ${seedFrameCount > 1 ? 'them' : 'it'} EXACTLY in character identity, face and head shape, hair style and colour, outfit and accessory details, colour palette, line weight, and cel-shading style. The remaining reference images provide technique context only: copy their outline weight, palette discipline, and pixel resolution, but NOT their figure proportions or rendering density.`
+      : '- **About the attached reference images:** copy their TECHNIQUE ONLY — outline weight, palette discipline, pixel resolution and crispness. Do NOT copy their figure proportions or rendering density. Several references are older, more realistically-proportioned and more heavily textured art that this brief is deliberately moving away from.';
+  return [
+    '- **Art style (overrides the style preamble for this subject):** draw a CARTOON figure in the tradition of EarthBound, Chrono Trigger, Undertale and Zelda: A Link to the Past. Charming and chunky, NOT gritty, NOT painterly, NOT semi-realistic, NOT photoreal.',
+    '- **Proportions are deliberately bobblehead:** for any upright/humanoid figure, roughly 3-4 heads tall in total, with the head about ONE THIRD of the whole height. A big head is REQUIRED, not a defect. Limbs are short, chunky and simplified; hands are mitten shapes without individual fingers.',
+    '- **Face:** simple and iconic — large dark dot or bean eyes, little or no nose, one simple mouth shape. Expression comes from a few large features. Do NOT render pupils-and-whites, a nose bridge, wrinkles, pores, stubble texture or individual teeth.',
+    '- **Rendering:** flat colour fills with hard-edged cel shading, 2-3 tone stops per material. No gradients, no airbrush blending. Flat is CORRECT here and does not read as unfinished.',
+    '- **Minimal dithering.** No dither noise, grain, speckle or grime texture on figures. Wear and age are drawn as a few deliberate simple shapes (a patch, a stain, a bent edge), never as texture.',
+    '- Keep the clean, consistent dark outline and the bold value separation that make the silhouette read at 1x.',
+    refNote,
+  ];
+}
+
+/**
+ * Generates a high-priority preamble block telling the model that the first N
+ * attached reference images are approved seed frames whose identity must be
+ * matched exactly, not merely referenced for technique.  Placed at the very top
+ * of the sheet prompt so it is the first thing the model reads.
+ */
+function seedFrameBlock(count: number): string {
+  const s = count === 1 ? '' : 's';
+  const areIs = count === 1 ? 'is a SEED FRAME' : 'are SEED FRAMES';
+  const themIt = count === 1 ? 'it' : 'them';
+  return [
+    '## Seed frames (HIGHEST PRIORITY — read before all other instructions)',
+    `The first ${count} attached reference image${s} ${areIs} — already-approved frame${s} from this exact walk cycle, not general style references.`,
+    '',
+    `CRITICAL: Your output must be INDISTINGUISHABLE from the seed frame${s} in every visual property: character face and head shape, hair style and colour, outfit and accessory details, colour palette, line weight, cel-shading style, and overall rendering quality. Do NOT introduce any new design detail, colour, or proportion that is absent from the seed frame${s}.`,
+    '',
+    `Match ${themIt} as your PRIMARY VISUAL REFERENCE for character identity. Treat all other attached images as technique-only style references.`,
+  ].join('\n');
+}
 
 function typeRulesBlock(brief: Brief): string | null {
   if (brief.type === 'enemy') {
@@ -340,7 +369,7 @@ function typeRulesBlock(brief: Brief): string | null {
         : '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.';
     return [
       '## Mob rules',
-      ...CARTOON_FIGURE_RULES,
+      ...cartoonFigureRules(brief.seedFrames.length),
       facingLine,
       ...bossLines,
       bodyOnlyRule,
@@ -365,7 +394,7 @@ function typeRulesBlock(brief: Brief): string | null {
     const breatheHi = Math.round((cellH - loH) / 2);
     return [
       '## Character rules',
-      ...CARTOON_FIGURE_RULES,
+      ...cartoonFigureRules(brief.seedFrames.length),
       '- Keep the character generally camera-facing at a one-third-to-two-thirds turn, with a clear eye line toward camera. Never use a full side profile.',
       `- **Height normalization:** default to a ${brief.size.height}px-tall final character read. In a ${cellW}×${cellH} source cell this is roughly ${loH}-${hiH} source pixels tall (top of head to sole of feet) with small top/bottom breathing room (about ${breatheLo}-${breatheHi} source pixels each). Measure that span from the TOP OF THE BIG HEAD to the soles — do not shrink the body to make room for the head, and do not center a tiny figure in a large empty box.`,
       '- **Hair readability:** hair is a bold simple mass with a clear silhouette (braids/locs/twists/afro shape must read as one deliberate shape). Do not collapse hair into a tiny cap, and do not blend hair into skin or background.',
