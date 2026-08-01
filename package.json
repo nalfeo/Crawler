@@ -65,6 +65,7 @@
     "sprites:unapprove": "tsx scripts/sprites/unapprove-cli.ts",
     "sprites:checkin": "tsx scripts/sprites/checkin-cli.ts",
     "sprites:asset-pr": "tsx scripts/sprites/asset-pr-cli.ts",
+    "sprites:brief-batch": "tsx scripts/sprites/brief-batch-cli.ts",
     "sprites:synth": "tsx scripts/sprites/synth-cli.ts",
     "sprites:batch": "tsx scripts/sprites/batch-cli.ts",
     "sprites:asset-plan": "tsx scripts/sprites/asset-plan-cli.ts",

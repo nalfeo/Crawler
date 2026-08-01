@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "brief-batch-consolidation",
+  "task_title": "feat(sprites): brief-batch consolidation command and queue-commit brief bundling",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "convergent",
+      "notes": "B1 (brief add before noop guard), B2 (orphan-reset brief restore), N1 (three-dot diff), N2 (explicit path checkout), N4 (no auto-close source PRs), S1 (assertSafeBriefPaths validation). All 6 concerns fixed before implementation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "CR-1 high: briefs/draft/ gitignored — git add silently dropped brief. Fixed: promote briefs/draft/<type>/<name>.yaml to briefs/<type>/<name>.yaml in asset-request-publisher.ts. CR-2 low: silent-drop when copyBriefFiles dep absent — fixed: throw invalid-brief-path invariant guard in queue-commit.ts."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "CR-3 low: invalid-brief-path not in PERMANENT_ERROR_KINDS so treated as transient and retried 3x instead of fail-fast. Fixed: added invalid-brief-path to PERMANENT_ERROR_KINDS in issue-pipeline-checkpoint.ts. CR-1 and CR-2 fixes verified correct. No further concerns."
+        }
+      ]
+    }
+  }
+}
