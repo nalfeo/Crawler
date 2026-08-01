@@ -175,6 +175,10 @@ on:
         description: 'Prior AI Sweep Eval run ID to resume compatible checkpoints from (e.g. a run cancelled by runner starvation). Blank (default) = fresh run, no cross-run import.'
         type: string
         default: ''
+      xp_collection:
+        description: 'Telemetry-only: run validate seeds in fresh Node processes and record optional XP spawn/collection stats (no AI behavior change).'
+        type: boolean
+        default: false
 
 # Read-only: checkout + artifact up/download need nothing more. No default flip here.
 permissions:
@@ -543,7 +547,6 @@ jobs:
   # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
   # replaces the old flat `search` job's implicit round-0 evaluation with an
   # explicit, independently-timed stage (see header for the timing rationale).
-
 
   # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
   # replaces the old flat `search` job's implicit round-0 evaluation with an
@@ -1416,7 +1419,15 @@ jobs:
   validate:
     name: Validate ${{ matrix.combo.combo }}
     needs:
-      [preflight, checkpoint-init, round1-select, round2-select, round3-select, validate-budget, resume-import]
+      [
+        preflight,
+        checkpoint-init,
+        round1-select,
+        round2-select,
+        round3-select,
+        validate-budget,
+        resume-import,
+      ]
     if: ${{ !cancelled() }}
     concurrency:
       group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
@@ -1455,6 +1466,7 @@ jobs:
           VALIDATE_SEEDS: ${{ inputs.validate_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
+          XP_COLLECTION: ${{ inputs.xp_collection }}
         run: |
           set -euo pipefail
           # Select the latest successfully-uploaded round checkpoint (r3 > r2 > r1 > init).
@@ -1471,11 +1483,18 @@ jobs:
             exit 1
           fi
           echo "Using checkpoint: $CHECKPOINT"
+          # Telemetry-only: measure each validate seed in its own fresh Node process
+          # and record optional XP spawn/collection stats. No AI behavior change.
+          XP_FLAGS=()
+          if [ "$XP_COLLECTION" = "true" ]; then
+            XP_FLAGS=(--fresh-process --record-xp)
+          fi
           npx tsx scripts/agent/perf/sweep-eval.ts \
             --stage validate --combo "$COMBO" \
             --search-artifact "$CHECKPOINT" \
             --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
             --workers "$WORKERS" \
+            "${XP_FLAGS[@]}" \
             --out "validate-$COMBO.json"
 
       - uses: actions/upload-artifact@v4
