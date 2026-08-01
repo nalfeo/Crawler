@@ -42,3 +42,13 @@ export interface PlayerLevel {
   unspentPoints: number;
   pointsPerLevel: number;
 }
+
+/** Append-only log entry emitted when a skill milestone ability is granted. */
+export interface MilestoneGrantEvent {
+  skillId: string;
+  abilityId: string;
+  /** Milestone level index (5, 10, 15, or 20). */
+  milestoneLevel: number;
+  /** World elapsed time when the grant fired (ms). */
+  gameTimeMs: number;
+}

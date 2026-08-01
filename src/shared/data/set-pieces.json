@@ -15068,6 +15068,1290 @@
           "locked": false
         }
       ]
+    },
+    {
+      "id": "welcome-room-v2",
+      "name": "Welcome Room v2",
+      "theme": "tutorial",
+      "sizing": "exact",
+      "width": 8,
+      "height": 8,
+      "description": "Backstage holding area. Contestants discover the show's rules and choose a power before the dungeon swallows them. Clustered composition with diagonal weighting: living-corner chaos lower-left, spell-broker authority upper-right, merchant queue crossing the Z-path.",
+      "tags": ["tutorial", "welcome", "hub", "production-set", "reality-show"],
+      "placement": {
+        "verticalAlign": "top"
+      },
+      "props": [
+        {
+          "id": "w-t0",
+          "kind": "wall",
+          "x": 0,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-t1",
+          "kind": "wall",
+          "x": 1,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-t2",
+          "kind": "wall",
+          "x": 2,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-t3",
+          "kind": "wall",
+          "x": 3,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-t4",
+          "kind": "wall",
+          "x": 4,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-t5",
+          "kind": "wall",
+          "x": 5,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-t6",
+          "kind": "wall",
+          "x": 6,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-t7",
+          "kind": "wall",
+          "x": 7,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-b0",
+          "kind": "wall",
+          "x": 0,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-b1",
+          "kind": "wall",
+          "x": 1,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-b2",
+          "kind": "wall",
+          "x": 2,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-b3",
+          "kind": "wall",
+          "x": 3,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "door-entry",
+          "kind": "door",
+          "x": 4,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-door-var-2"
+              },
+              "widthFt": 5.75,
+              "heightFt": 8
+            }
+          ]
+        },
+        {
+          "id": "w-b5",
+          "kind": "wall",
+          "x": 5,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-b6",
+          "kind": "wall",
+          "x": 6,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-b7",
+          "kind": "wall",
+          "x": 7,
+          "y": 7,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-l1",
+          "kind": "wall",
+          "x": 0,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-l2",
+          "kind": "wall",
+          "x": 0,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-l3",
+          "kind": "wall",
+          "x": 0,
+          "y": 3,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-l4",
+          "kind": "wall",
+          "x": 0,
+          "y": 4,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-l5",
+          "kind": "wall",
+          "x": 0,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-l6",
+          "kind": "wall",
+          "x": 0,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-r1",
+          "kind": "wall",
+          "x": 7,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-r2",
+          "kind": "wall",
+          "x": 7,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-r3",
+          "kind": "wall",
+          "x": 7,
+          "y": 3,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-r4",
+          "kind": "wall",
+          "x": 7,
+          "y": 4,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-r5",
+          "kind": "wall",
+          "x": 7,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "w-r6",
+          "kind": "wall",
+          "x": 7,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-c1",
+          "kind": "floor",
+          "x": 1,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-c2",
+          "kind": "floor",
+          "x": 3,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-c3",
+          "kind": "floor",
+          "x": 5,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-c4",
+          "kind": "floor",
+          "x": 2,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-c5",
+          "kind": "floor",
+          "x": 6,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-s1",
+          "kind": "floor",
+          "x": 1,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-9"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-s2",
+          "kind": "floor",
+          "x": 4,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-9"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-s3",
+          "kind": "floor",
+          "x": 5,
+          "y": 3,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-9"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-s4",
+          "kind": "floor",
+          "x": 6,
+          "y": 4,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-9"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-r1",
+          "kind": "floor",
+          "x": 4,
+          "y": 3,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-runner-var-10"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-r2",
+          "kind": "floor",
+          "x": 4,
+          "y": 4,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-runner-var-10"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-r3",
+          "kind": "floor",
+          "x": 4,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-runner-var-10"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-rug1",
+          "kind": "floor",
+          "x": 2,
+          "y": 3,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-rug-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-rug2",
+          "kind": "floor",
+          "x": 1,
+          "y": 4,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-rug-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-rug3",
+          "kind": "floor",
+          "x": 4,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-rug-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "shop-table",
+          "kind": "furniture",
+          "x": 1,
+          "y": 2,
+          "width": 1.6225,
+          "height": 0.75,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-shop-table-var-0"
+              },
+              "widthFt": 6.49,
+              "heightFt": 3.5,
+              "anchorBase": true
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "purple-potion-bottle-v1-var-4"
+              },
+              "widthFt": 0.63,
+              "heightFt": 0.77,
+              "offsetXFt": 1,
+              "offsetYFt": -1.25
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "autograph-book-placeholder"
+              },
+              "widthFt": 0.96,
+              "heightFt": 0.96,
+              "offsetXFt": -2,
+              "offsetYFt": -1
+            }
+          ]
+        },
+        {
+          "id": "velvet-rope",
+          "kind": "decoration",
+          "x": 1.9,
+          "y": 2.95,
+          "width": 1,
+          "height": 0.5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-velvet-rope-var-2"
+              },
+              "widthFt": 5.13,
+              "heightFt": 3.4
+            }
+          ]
+        },
+        {
+          "id": "queue-stanchion",
+          "kind": "fixture",
+          "x": 1.6,
+          "y": 2.85,
+          "width": 0.6,
+          "height": 0.5,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-stanchion-pair-var-4"
+              },
+              "widthFt": 6,
+              "heightFt": 3.79
+            }
+          ]
+        },
+        {
+          "id": "merchant-board",
+          "kind": "decoration",
+          "x": 0.05,
+          "y": 1.5,
+          "width": 0.25,
+          "height": 0.5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-merchant-board-var-6"
+              },
+              "widthFt": 2.62,
+              "heightFt": 3
+            }
+          ]
+        },
+        {
+          "id": "history-board",
+          "kind": "decoration",
+          "x": 0.05,
+          "y": 2.5,
+          "width": 0.25,
+          "height": 0.5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-history-board-var-3"
+              },
+              "widthFt": 3.7,
+              "heightFt": 4.5
+            }
+          ]
+        },
+        {
+          "id": "lounge-stool",
+          "kind": "furniture",
+          "x": 2.3,
+          "y": 3.5,
+          "width": 0.52,
+          "height": 0.5,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-lounge-stool-var-1"
+              },
+              "widthFt": 2.08,
+              "heightFt": 2.2
+            }
+          ]
+        },
+        {
+          "id": "wall-banner",
+          "kind": "decoration",
+          "x": 2.5,
+          "y": 0.05,
+          "width": 0.75,
+          "height": 0.25,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-banner-var-6"
+              },
+              "widthFt": 6.83,
+              "heightFt": 3.2
+            }
+          ]
+        },
+        {
+          "id": "broker-bookcase",
+          "kind": "decoration",
+          "x": 6.1,
+          "y": 0.95,
+          "width": 1.805,
+          "height": 0.5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-bookcase-var-0"
+              },
+              "widthFt": 7.22,
+              "heightFt": 6.8,
+              "anchorBase": true
+            }
+          ],
+          "z": 9
+        },
+        {
+          "id": "broker-desk",
+          "kind": "furniture",
+          "x": 4.05,
+          "y": 2,
+          "width": 1.62,
+          "height": 0.75,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-desk-var-0"
+              },
+              "widthFt": 6.48,
+              "heightFt": 4,
+              "anchorBase": true
+            },
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "autograph-book-placeholder"
+              },
+              "widthFt": 1.44,
+              "heightFt": 1.44,
+              "offsetXFt": -2.5,
+              "offsetYFt": -1.5
+            }
+          ]
+        },
+        {
+          "id": "broker-side-table",
+          "kind": "decoration",
+          "x": 4.8,
+          "y": 3.1,
+          "width": 0.64,
+          "height": 0.5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-side-table-var-12"
+              },
+              "widthFt": 2.56,
+              "heightFt": 2.6
+            }
+          ]
+        },
+        {
+          "id": "call-sheet",
+          "kind": "decoration",
+          "x": 5.5,
+          "y": 0.05,
+          "width": 0.375,
+          "height": 0.25,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-call-sheet-var-3"
+              },
+              "widthFt": 1.03,
+              "heightFt": 1.3
+            }
+          ]
+        },
+        {
+          "id": "show-poster",
+          "kind": "decoration",
+          "x": 4.2,
+          "y": 0.05,
+          "width": 0.5,
+          "height": 0.25,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-show-poster-var-0"
+              },
+              "widthFt": 3.22,
+              "heightFt": 3.5
+            }
+          ]
+        },
+        {
+          "id": "camera-rig",
+          "kind": "fixture",
+          "x": 6.3,
+          "y": 3.5,
+          "width": 1,
+          "height": 0.8,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-camera-rig-var-4"
+              },
+              "widthFt": 4.38,
+              "heightFt": 5
+            }
+          ]
+        },
+        {
+          "id": "broker-chair",
+          "kind": "furniture",
+          "x": 4.8,
+          "y": 3,
+          "width": 0.68,
+          "height": 0.75,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-chair-turned-var-0"
+              },
+              "widthFt": 2.72,
+              "heightFt": 3.5,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "bunk-bed",
+          "kind": "furniture",
+          "x": 1.05,
+          "y": 4,
+          "width": 1.695,
+          "height": 1,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-bunk-bed-var-6"
+              },
+              "widthFt": 6.78,
+              "heightFt": 6.6,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "kitchenette",
+          "kind": "furniture",
+          "x": 1.1,
+          "y": 5.1,
+          "width": 1.5,
+          "height": 1,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-kitchenette-var-0"
+              },
+              "widthFt": 6,
+              "heightFt": 6.6,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "mini-fridge",
+          "kind": "fixture",
+          "x": 3.05,
+          "y": 6.3,
+          "width": 0.7375,
+          "height": 0.5,
+          "solid": true,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-mini-fridge-var-2"
+              },
+              "widthFt": 2.95,
+              "heightFt": 3.3
+            }
+          ]
+        },
+        {
+          "id": "laundry-line",
+          "kind": "decoration",
+          "x": 1.3,
+          "y": 3.8,
+          "width": 1.5,
+          "height": 0.25,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-laundry-line-var-0"
+              },
+              "widthFt": 7.43,
+              "heightFt": 3
+            }
+          ]
+        },
+        {
+          "id": "trash-bin",
+          "kind": "decoration",
+          "x": 2.8,
+          "y": 6.2,
+          "width": 0.6975,
+          "height": 0.5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-trash-bin-var-0"
+              },
+              "widthFt": 2.79,
+              "heightFt": 3,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "potted-plant",
+          "kind": "decoration",
+          "x": 5.5,
+          "y": 5.9,
+          "width": 0.6475,
+          "height": 0.75,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-potted-plant-var-0"
+              },
+              "widthFt": 2.59,
+              "heightFt": 3.2,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "sconce-top-left",
+          "kind": "decoration",
+          "x": 1.5,
+          "y": 0.05,
+          "width": 0.375,
+          "height": 0.25,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-wall-sconce-v1-var-4"
+              },
+              "widthFt": 1.11,
+              "heightFt": 1.6
+            }
+          ]
+        },
+        {
+          "id": "sconce-top-right",
+          "kind": "decoration",
+          "x": 6.5,
+          "y": 0.05,
+          "width": 0.375,
+          "height": 0.25,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-wall-sconce-v1-var-6"
+              },
+              "widthFt": 1.24,
+              "heightFt": 1.6
+            }
+          ]
+        },
+        {
+          "id": "sconce-left-mid",
+          "kind": "decoration",
+          "x": 0.05,
+          "y": 3.5,
+          "width": 0.25,
+          "height": 0.375,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-wall-sconce-v1-var-2"
+              },
+              "widthFt": 1.24,
+              "heightFt": 1.6
+            }
+          ]
+        },
+        {
+          "id": "sconce-right-top",
+          "kind": "decoration",
+          "x": 6.95,
+          "y": 0.5,
+          "width": 0.25,
+          "height": 0.375,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-wall-sconce-v1-var-1"
+              },
+              "widthFt": 1.13,
+              "heightFt": 1.6
+            }
+          ]
+        },
+        {
+          "id": "wall-torch-right-mid",
+          "kind": "decoration",
+          "x": 6.95,
+          "y": 2.5,
+          "width": 0.25,
+          "height": 0.375,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-torch-v1-var-14"
+              },
+              "widthFt": 1.83,
+              "heightFt": 2.8
+            }
+          ]
+        },
+        {
+          "id": "wall-torch-right-low",
+          "kind": "decoration",
+          "x": 6.95,
+          "y": 5.5,
+          "width": 0.25,
+          "height": 0.375,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "prop-torch-v1-var-8"
+              },
+              "widthFt": 1.98,
+              "heightFt": 2.8
+            }
+          ]
+        },
+        {
+          "id": "exit-sign",
+          "kind": "decoration",
+          "x": 6.95,
+          "y": 4.5,
+          "width": 0.375,
+          "height": 0.25,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-exit-sign-wall-var-2"
+              },
+              "widthFt": 2.5,
+              "heightFt": 1.77
+            }
+          ]
+        },
+        {
+          "id": "chore-rota",
+          "kind": "decoration",
+          "x": 6.95,
+          "y": 3.5,
+          "width": 0.375,
+          "height": 0.375,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-chore-rota-var-2"
+              },
+              "widthFt": 2.33,
+              "heightFt": 2.5
+            }
+          ]
+        },
+        {
+          "id": "wall-shelf-right",
+          "kind": "decoration",
+          "x": 6.95,
+          "y": 1.5,
+          "width": 0.5,
+          "height": 0.375,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-shelf-var-0"
+              },
+              "widthFt": 4.26,
+              "heightFt": 2.69
+            }
+          ]
+        },
+        {
+          "id": "fl-rug4",
+          "kind": "floor",
+          "x": 5,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-rug-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-s5",
+          "kind": "floor",
+          "x": 2,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-9"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-c6",
+          "kind": "floor",
+          "x": 5,
+          "y": 6,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-carpet-var-4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-rug5",
+          "kind": "floor",
+          "x": 3,
+          "y": 5,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-rug-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fl-s6",
+          "kind": "floor",
+          "x": 5,
+          "y": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-seam-var-9"
+              }
+            }
+          ]
+        }
+      ],
+      "npcs": [
+        {
+          "npcTypeId": "shopkeeper",
+          "anchorRole": "shop",
+          "x": 1.5,
+          "y": 1.3,
+          "id": "npc-merchant"
+        },
+        {
+          "npcTypeId": "tutorial-goon",
+          "anchorRole": "welcome",
+          "x": 3.5,
+          "y": 5.5,
+          "id": "npc-goon"
+        },
+        {
+          "npcTypeId": "spell-quest-giver",
+          "anchorRole": "spell",
+          "x": 5.5,
+          "y": 1.5,
+          "id": "npc-broker"
+        }
+      ]
     }
   ]
 }

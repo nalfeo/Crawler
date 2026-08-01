@@ -11,6 +11,7 @@ import { hasComponent, query } from 'bitecs';
 import {
   Player,
   Health,
+  XpGem,
   createGameWorld,
   spawnPlayer,
   Enemy,
@@ -34,6 +35,7 @@ import {
   type AIPathingModeValue,
   type RunStats,
   type LevelUpEvent,
+  type SkillRunMetrics,
 } from './types.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
@@ -93,6 +95,15 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
     world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status === 'complete' ||
     readRunState(world) === 'safe_room'
   );
+}
+
+function computeXpOnGroundAtEnd(world: GameWorld): number {
+  let total = 0;
+  for (const eid of query(world.ecs, [XpGem])) {
+    if (eid === undefined) continue;
+    total += world.stores.xpGem.value[eid] ?? 0;
+  }
+  return total;
 }
 
 interface EquipmentSpendTelemetry {
@@ -515,6 +526,7 @@ export async function runHeadless(
   if (world.state !== 'playing') {
     throw new Error(`Failed to transition from loadout: state is ${world.state}`);
   }
+  const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
 
   let frameCount = 0;
@@ -620,6 +632,16 @@ export async function runHeadless(
       suppressedProgressNavCount: decisionStateCounts[suppressedState] ?? 0,
       suppressedProgressNavMs: decisionStateMs[suppressedState] ?? 0,
     };
+  };
+
+  const collectSkillMetrics = (): SkillRunMetrics => {
+    const grants = world.milestoneGrantLog.map((g) => ({ ...g }));
+    const uniqueAbilityCount = new Set(grants.map((g) => g.abilityId)).size;
+    const milestonesReached: Record<string, number[]> = {};
+    for (const g of grants) {
+      (milestonesReached[g.skillId] ??= []).push(g.milestoneLevel);
+    }
+    return { grants, uniqueAbilityCount, milestonesReached };
   };
 
   const buildFloor2HuntMetrics = (): NonNullable<RunStats['floor2Progression']>['hunt'] => ({
@@ -1252,6 +1274,7 @@ export async function runHeadless(
       },
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
+      runStartXp,
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
       floor2Progression: collectFloor2Progression(
@@ -1270,9 +1293,11 @@ export async function runHeadless(
         playerEid,
         equipmentSpendTelemetry.goldSpentOnEquipment,
       ),
+      skills: collectSkillMetrics(),
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
+      xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1295,6 +1320,12 @@ export async function runHeadless(
     killsByType.rat = world.floorScenario.objective.ratsKilled;
     killsByType.slime = world.floorScenario.objective.slimesKilled;
   }
+
+  // Sum XP gem values remaining on the ground at run end. These gems are
+  // destroyed by the scene restart on floor transition (entity world is fresh).
+  // Combined with `totalXp` and `runStartXp` this lets callers compute
+  // floor-local collection efficiency.
+  const xpOnGroundAtEnd = computeXpOnGroundAtEnd(world);
 
   const stats: RunStats = {
     totalFrames: frameCount,
@@ -1334,6 +1365,7 @@ export async function runHeadless(
     },
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
+    runStartXp,
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
     floor2Progression: collectFloor2Progression(
@@ -1352,9 +1384,11 @@ export async function runHeadless(
       playerEid,
       equipmentSpendTelemetry.goldSpentOnEquipment,
     ),
+    skills: collectSkillMetrics(),
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),
+    xpOnGroundAtEnd,
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

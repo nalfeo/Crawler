@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "skill-ability-grant-fixes",
+  "task_title": "Fix ability-grant milestone system: dedup registry, source-conflict guard, test alignment",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "CI recovery plan review. Original design: all 4 milestone tiers grant abilities, upgrade-replace semantics (L15 revokes L5, L20 revokes L10). Concerns found and resolved: (1) 21 ability IDs referenced in skill milestone abilityId fields were missing from the ability registry, causing unknown-ability AbilityGrantError crashes during headless runs with throwing-knife and other weapons — fixed by adding all 21 missing ability definitions to registry.ts; (2) moveSpeed perLevelBonus of 0.8 gives +80% speed at level 1, far outside the normal 0.03-0.06 equipment range — restored to the prior value of 0.00625; (3) 6 skill milestone descriptions did not match the effects of the referenced ability (slashing L10 said +10% attack speed but ability grants extra projectile; stabbing L5 said +10% damage but ability grants +15% attack speed; stabbing L10 said +15% attack speed but ability grants extra projectile; smashing L10 said +1 pickup range but ability grants extra projectile; forearms L5 said +10% damage but ability grants +15% attack speed; arcane/spellcraft milestones referenced 'mana' which is removed) — fixed all milestone descriptions to match ability effects; (4) E2E test queued 100 swordsmanship hits but L5 threshold is 260 — updated to 260; (5) 'mana' word appeared in skill registry and ability-presentation, failing the no-mana-remains scan — all mana references replaced with arcane/regen equivalents."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "CI recovery code review pass (claude-sonnet-5). Reviewed all changes: (1) ability registry additions — each new entry follows the existing pattern, has a valid id/name/shortLabel/description/category/kind/effects, weaponPrerequisite is set where required for weapon-class abilities and omitted for sports-equipment (no prerequisite type defined). (2) skill registry fixes — moveSpeed restored to 0.00625, milestone descriptions now match the actual ability effects, mana references removed. (3) Presentation file — mana replaced with arcane/regen equivalents. (4) E2E test — hits_landed threshold corrected to 260. No new security, correctness, or determinism concerns introduced."
+        }
+      ]
+    }
+  }
+}

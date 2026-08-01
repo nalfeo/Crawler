@@ -1,0 +1,28 @@
+type: enemy
+mobRole: elite
+name: faerie-elite-fae-driveby
+floor: 2
+description: |
+  Elite faerie "Fae Drive-By Shotcaller" hovering in a dangerous drive-by pose.
+  Single centered subject, no background, no text, hard pixel edges.
+
+  Silhouette priority: small delicate faerie body with iridescent wings spread wide,
+  but the twin compact pistols (one in each hand) must read immediately as the
+  dominant threat shape. Both pistols are pointed outward from the body in a
+  confident, strafing drive-by stance.
+
+  Elite tier cues versus a regular faerie: more ornate wings, brighter iridescent
+  pastels, deeper jewel-tone accents, and a tiny crown or tiara that reads as
+  "crime royalty" at sprite scale. Outfit includes an iridescent mini jacket and
+  tiny holsters integrated into the silhouette.
+
+  Materials and palette: luminous faerie pastels for skin/wings with richer
+  emerald/sapphire/amethyst accents in jacket trim, holsters, and pistol details.
+  Keep contrast high enough that wings, crown, and both pistols stay readable at
+  game scale.
+variations:
+  - Elite faerie hovering with wings fully spread, twin pistols level outward, tiny jeweled tiara, iridescent mini jacket
+  - Fae shotcaller in mid-hover strafe pose, ornate butterfly-like wings, compact dual pistols, jewel-tone trim and holsters
+  - Crime-royalty faerie with bright pastel wings and sapphire accents, crownlet visible, both pistols clearly separated in silhouette
+  - Delicate but dangerous elite faerie, wide wing span, dual-handgun drive-by posture, emerald-amethyst highlights on jacket and gear
+minVariations: 4

@@ -1,0 +1,55 @@
+type: enemy
+name: raccoon-bottle-rocketeer
+floor: 2
+description: |
+  Trash Panda Bottle Rocketeer — a wiry raccoon soldier carrying a makeshift
+  shoulder-mounted rocket launcher built from a crudely bundled cluster of
+  salvaged tubes packed with small rockets, worn and held like a bazooka aimed
+  from the hip. The subject is front-facing toward the viewer in a wide, planted
+  stance that telegraphs recoil readiness.
+
+  Raccoon details: natural gray-and-black fur with the iconic face-mask stripe,
+  small round ears, a ringed tail curled behind and visible at the edge of the
+  silhouette. The fur on the launching arm (the arm bracing the rear of the
+  launcher) is singed and frizzed — a detail that reads at pixel scale as
+  darkened, irregular fur texture rather than smooth gray. Goggles pushed up
+  onto the forehead (not over the eyes) with a tinted lens catching light,
+  suggesting past blasts that the rocketeer didn't entirely dodge. The expression
+  is energetic and slightly unhinged — wide eyes, a grin that doesn't fit the
+  situation.
+
+  Launcher details: a cluster of 4–6 mismatched salvage tubes (pipe fittings,
+  rebar clamps, duct tape) bundled tightly and rested on the shoulder, muzzle
+  end pointing toward the viewer at a slight downward cant. Small fins or wires
+  visible at the tail of the tubes. The whole thing looks improvised and barely
+  safe. Worn metal grey, dark rust patches on joints, occasional brass fitting
+  as accent.
+
+  Floor 2 dark-dungeon palette: deep charcoal and near-black for the raccoon
+  coat layer (matching the family's dark aesthetic from raccoons-boss), natural
+  gray-black fur showing at the face mask and paws, tarnished brass and dark
+  rust for metal launcher hardware, one small saturated accent (electric orange
+  or sulfur yellow) on a rocket tip or warning stripe so the explosive
+  specialist read is immediate. No bright colors on the body; the accent is
+  weapon-only.
+
+  Silhouette must read as: stout raccoon body, chunky launcher on shoulder,
+  wide braced stance. Full body visible from head/ears to feet. Hard pixel
+  edges, transparent background, no text, no secondary subjects.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Raccoon bottle-rocketeer in a wide braced stance, tube-bundle launcher resting on left shoulder aimed forward, singed right arm, goggles up, grin visible under the face-mask stripe
+  - Raccoon explosive specialist leaning into the recoil stance, crudely bundled multi-tube launcher, frizzed fur on the firing arm, dark charcoal coat with rust-and-brass launcher hardware
+  - Trash Panda Rocketeer front-facing, barrel cluster aimed slightly down-center toward the viewer, ringed tail behind, sulfur-yellow rocket tips as the only saturated accent against the dark fur and metal grey tubes
+  - Raccoon bottle-rocketeer silhouette: broad shoulder from the launcher mass, wide planted feet, face-mask natural markings, near-black charcoal palette with tarnished metal hardware and a single orange/yellow tip accent
+
+minVariations: 4
