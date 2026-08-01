@@ -1,0 +1,34 @@
+type: enemy
+name: rat
+floor: 1
+description: |
+  A scuttling dungeon rat the size of a housecat. Three-quarter view, hunched
+  and feral. Rounded rodent head with large gnarly yellow incisors in a snarl.
+  Small beady red eyes. Patchy grey-brown fur, mangy and scarred. Thin scaly
+  tail curved behind the body. Lean, aggressive — a dungeon scavenger not a
+  pet. No clothing or tools. Short legs, low-slung body close to the ground.
+
+  Silhouette: compact hunched mass with a distinctive long rat tail. Reads
+  instantly as rat at game scale — the tail is the key shape cue.
+
+  Palette: grey-brown desaturated fur (dark mids), dirty yellowed incisors,
+  a single red eye glint, near-black shadow under the belly. No bright
+  primaries. Grim, grimy floor-one critter.
+
+  HARD NEGATIVES: no clothes, no weapons, no backpack, no hat, no text
+  anywhere on the sprite. Do not draw a cartoon rat — this is a mean feral
+  dungeon creature.
+
+sensors:
+  enemy:
+    facing: three-quarter
+    toleranceDeg: 45
+  edge:
+    allowMainTouch: false
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+minVariations: 4
