@@ -1,0 +1,31 @@
+type: enemy
+name: gnome-wheelman
+floor: 2
+description: |
+  Cog Combine wheelman — a compact gnome melee skirmisher riding a tiny
+  one-wheeled contraption at speed. The silhouette must read immediately as one
+  subject: gnome up top, single wheel below, oversized wrench swinging forward
+  as the melee attack tell.
+
+  Gnome details: warm beige skin, goggles pulled down, focused expression,
+  compact tinker proportions, and grime-dark workshop clothes with brass/blue
+  Cog Combine accents. The rider leans forward aggressively to telegraph mobile
+  melee pressure.
+
+  Machine details: improvised unicycle or single motorized wheel-pod built from
+  salvaged parts, with visible spokes, gears, bolts, and cobbled metal-grey
+  plating. The wheel itself must stay obvious and mechanically detailed rather
+  than disappearing into the body silhouette.
+
+  Weapon details: an oversized wrench in a saturated accent color so the threat
+  reads instantly against the muted machine body. The joke is the ridiculous
+  vehicle paired with a serious, committed wrench swing.
+
+  Keep hard pixel edges, transparent background, no text, no extra props, and
+  no rider companions. Readable at game scale in a three-quarter enemy pose for
+  Floor 2's salvage-industrial dungeon palette.
+variations:
+  - exposed spoke wheel with the bright wrench raised high in mid-swing
+  - enclosed mono-wheel pod with brass patches and the wrench held low and ready
+  - scrap-built wheel with toolkit straps and an even sharper forward lean
+minVariations: 6
