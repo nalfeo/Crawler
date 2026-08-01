@@ -20,7 +20,7 @@ describe('faerie-spark-caster brief', () => {
     expect(brief.judge?.enabled).toBe(true);
     expect(brief.judge?.maxVariants).toBe(4);
     expect(brief.variations).toHaveLength(4);
-    expect(brief.prompt).toContain('yellow-white electrical arcs');
+    expect(brief.prompt).toContain('bright yellow-white electrical');
     expect(brief.prompt).toContain('both arms raised and palms forward');
   });
 });

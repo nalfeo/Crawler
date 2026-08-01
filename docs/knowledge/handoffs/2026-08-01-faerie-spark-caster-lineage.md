@@ -19,7 +19,7 @@ sprite-pipeline, enemies
   own request-aligned lineage automatically, without requiring a second code
   change just to stop borrowing `faerie-blink`.
 - Added the dedicated `faerie-spark-caster` enemy brief with `judge.enabled:
-  true` and a small unit test pinning the requested electric-casting direction.
+true` and a small unit test pinning the requested electric-casting direction.
 - Added a regression test proving:
   - no-registry resolution still falls back to `faerie-blink`, and
   - registry-backed resolution prefers `faerie-spark-caster` once its own art
@@ -37,6 +37,11 @@ sprite-pipeline, enemies
 - `npm install --package-lock=false`
 - local-only lockfile mirror rewrite attempt to swap Visual Studio package URLs to
   `registry.npmjs.org`, then `npm install` again
+- `npm run test:unit -- tests/unit/faerie-spark-caster-brief.test.ts tests/unit/phaser-bridge-sprite-kind.test.ts`
+- `npm run verify:fast`
+- `npm run review:ledger -- init --apples 2 --slug faerie-spark-caster-lineage --title "Add faerie spark caster asset lineage"`
+- `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-08-01-faerie-spark-caster-lineage.review-ledger.json`
+- `npm run verify:pr-prereqs`
 - `git --no-pager diff --check`
 - `git --no-pager status --short`
 - multiple read-only `rg` / `view` inspections across generated-art wiring and
@@ -54,12 +59,14 @@ sprite-pipeline, enemies
   (`getaddrinfo ENOTFOUND ms-feed-12.pkgs.visualstudio.com`)
 - `npm install --package-lock=false` ❌ npm/arborist failed while recovering the
   partial local install (`Cannot read properties of null (reading 'edgesOut')`)
-- lockfile mirror rewrite + `npm install` ❌ still hit additional unreachable
-  Visual Studio package hosts (`ms-feed-25.pkgs.visualstudio.com`)
-- `npm run verify:fast` not run honestly: blocked by the same missing local
-  toolchain
-- sprite generation / approval / check-in / observation not run honestly:
-  blocked by missing `tsx` + failed dependency restore
+- lockfile mirror rewrite + `npm install` ✅ local-only repair succeeded; reverted
+  before finishing so `package-lock.json` stays unchanged in the repo diff
+- `npm run test:unit -- tests/unit/faerie-spark-caster-brief.test.ts tests/unit/phaser-bridge-sprite-kind.test.ts` ✅
+- `npm run verify:fast` ✅
+- `npm run review:ledger -- validate ...faerie-spark-caster-lineage.review-ledger.json` ✅
+- `npm run verify:pr-prereqs` ✅
+- sprite generation / approval / check-in / observation still not run honestly:
+  no `faerie-spark-caster` art was generated or approved in this environment
 - `parallel_validation` ✅ no review findings; CodeQL reported 0 alerts but was
   skipped because the JavaScript database is too large in this environment
 
