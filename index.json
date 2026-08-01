@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5ab9f00e99b175dce7fe8fe27fb791c7ecb3d3da",
+    "commitDate": "2026-08-01T05:15:45Z",
+    "commitSubject": "fix(sprites): reset transient-exhausted publish stage before retry (#2549)",
+    "capturedAt": "2026-08-01T06:20:54.234Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30685761197",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/5ab9f00e99b175dce7fe8fe27fb791c7ecb3d3da.json"
+  },
+  {
     "commit": "1fa49b2a8bbd3b7876158661f6ce93a5610b67f3",
     "commitDate": "2026-08-01T04:54:43Z",
     "commitSubject": "feat(sprites): harden boss briefs + enforce full-body framing in judge (#2502)",
