@@ -1,0 +1,46 @@
+type: enemy
+mobRole: normal
+name: crabfolk-claw-gunner
+floor: 2
+description: |
+  Tidewrack Claw Gunner — a crabfolk soldier whose dominant right claw has been
+  retrofitted into a built-in ranged weapon: a barnacle-encrusted pincer-cannon
+  with a wide barrel bore, riveted iron sleeve over the natural chitin, and a
+  pressure-venting side chamber. The converted claw is raised and leveled at the
+  viewer, barrel pointed outward as the primary read. The other claw is natural
+  and held at low guard.
+
+  Body and silhouette: medium-weight crustacean frame — stockier than a basic
+  soldier but clearly lighter than the shell-capo. Wide-legged scuttling stance,
+  shell dome humped on the back, eyestalks alert and aimed forward. The cannon
+  claw dominates one side of the silhouette; the natural claw anchors the other.
+  No extra props, no companions, single centered subject.
+
+  Palette: natural chitin in blue-gray and deep slate with barnacle-grey
+  undersides. The iron cannon sleeve uses gunmetal and dark rust with verdigris
+  patina around the vent holes. One gold earring or anchor-link chain detail for
+  the Tidewrack Mob dockworker aesthetic. A candy-wrapper scrap or saltwater
+  taffy foil tucked under the cannon sleeve as a gang-color accent.
+
+  Front-facing pose, weight pitched slightly toward the cannon side to sell the
+  ranged combat stance. Hard pixel edges, transparent background, no text.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Claw Gunner with the barnacle-encrusted cannon claw leveled straight at camera, blue-gray chitin, gunmetal iron sleeve, gold earring detail
+  - Claw Gunner in a wide scuttling stance, pincer-cannon tilted slightly upward at aim, natural claw at low guard, verdigris vent patina on the iron barrel
+  - Claw Gunner with a heavier iron rivet pattern on the cannon sleeve, saltwater-taffy foil scrap tucked under the barrel, alert eyestalks, dark slate carapace
+  - Claw Gunner front-facing with the cannon claw dominant on the right, anchor-chain detail, barnacled shell dome humped on the back, rust-and-gunmetal cannon fittings
+
+minVariations: 4
