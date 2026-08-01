@@ -1,5 +1,16 @@
 [
   {
+    "commit": "81433c30a5f0fd1d176b7ed301be8279c475c90b",
+    "commitDate": "2026-08-01T18:54:51Z",
+    "commitSubject": "feat(sprites): add approved imp-chain-brawler variant 9 asset (#2634)",
+    "capturedAt": "2026-08-01T19:52:59.507Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30713732858",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/81433c30a5f0fd1d176b7ed301be8279c475c90b.json"
+  },
+  {
     "commit": "c279dea855654c1d5479d86813f3db84e0849780",
     "commitDate": "2026-08-01T18:36:11Z",
     "commitSubject": "Harden docs-update automation against branch lease races (#2642)",
