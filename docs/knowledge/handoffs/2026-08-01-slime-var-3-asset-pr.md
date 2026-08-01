@@ -31,8 +31,9 @@ Brief match 5/5, readability 5/5, figure framing 5/5.
 - Closes issue #2630
 
 **Observe before done**: NOT YET — the wiring PR is pending. The sprite has not been
-observed rendering in the real game. It must be confirmed via `npm run dev` or
-`tests/headless/floor1-completion.test.ts` after the wiring PR merges.
+observed rendering in the real game. It must be confirmed via `npm run dev` (real-game
+visual check, mandatory) **before** the wiring PR merges. `floor1-completion.test.ts`
+runs headless with no Phaser/DOM/rendering and cannot substitute for this check.
 
 ## Key Decisions Made
 
