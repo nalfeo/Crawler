@@ -61,6 +61,11 @@ const TRUSTED_PACKAGES = new Set<string>([
   // widely audited, and used by npm itself. Pinned to the version in
   // package.json; no known CVEs as of 2026-07-20.
   'cacache',
+  // Asset-search extension full-text index (ADR 0075) — BM25 + fuzzy + prefix
+  // search over sprite catalog shards. Apache-2.0 licensed, maintained by
+  // lucaong/minisearch, no known CVEs as of 2026-08-01. Used only in the
+  // asset-search extension (never in game runtime).
+  'minisearch',
 ]);
 
 function isTrusted(name: string): boolean {
