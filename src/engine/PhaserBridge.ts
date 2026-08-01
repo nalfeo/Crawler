@@ -1122,7 +1122,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             holdX = generatedEntry.anchor.x;
             holdY = generatedEntry.anchor.y;
             const src = scene.textures.get(weaponTextureKey).getSourceImage() as
-              { width?: number; height?: number } | undefined;
+              | { width?: number; height?: number }
+              | undefined;
             const w = src?.width;
             const h = src?.height;
             if (typeof w === 'number' && w > 0 && typeof h === 'number' && h > 0) {
