@@ -173,6 +173,10 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     name: '_rollTierRarity',
   },
   {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: 'FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT',
+  },
+  {
     file: 'src/game/generated-equipment-generator.ts',
     name: '_GeneratedEquipmentGeneratorError',
   },
