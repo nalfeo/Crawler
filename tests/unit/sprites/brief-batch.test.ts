@@ -269,7 +269,7 @@ describe('runBriefBatchConsolidation', () => {
     expect(result?.plan.sourcePRs[0]?.headRefName).toBe('copilot/ratfolk');
     // copilot/panda should have been attempted but skipped
     const pandaFetch = calls.find(
-      (c) => c.command === 'git' && c.args.includes('copilot/panda'),
+      (c) => c.command === 'git' && c.args.some((a) => a.includes('copilot/panda')),
     );
     expect(pandaFetch).toBeTruthy();
   });

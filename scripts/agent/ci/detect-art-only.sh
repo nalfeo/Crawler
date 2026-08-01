@@ -383,6 +383,7 @@ while IFS= read -r file; do
     tests/integration/*) ;;
     docs/*) ;;
     public/*) ;;
+    briefs/*) ;;
     .github/*) ;;
     .specify/*) ;;
     scripts/*) ;;
@@ -426,6 +427,7 @@ while IFS= read -r file; do
     tests/integration/*) ;;
     docs/*) ;;
     public/*) ;;
+    briefs/*) ;;
     .github/*) ;;
     .specify/*) ;;
     scripts/*) ;;
@@ -524,6 +526,7 @@ while IFS= read -r file; do
     tests/*) ;;
     docs/*) ;;
     public/*) ;;
+    briefs/*) ;;
     .github/*) ;;
     .specify/*) ;;
     scripts/*) ;;
