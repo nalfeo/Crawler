@@ -8,7 +8,6 @@
  * pixels (alpha=0) as holes — no "background colour" is involved.
  */
 import { describe, expect, it } from 'vitest';
-import { PNG } from 'pngjs';
 import { fillEnclosedTransparentHoles } from '../../../scripts/sprites/postprocess.js';
 import type { RgbaImage } from '../../../scripts/sprites/postprocess.js';
 
@@ -43,7 +42,6 @@ function getPixel(img: RgbaImage, x: number, y: number): [number, number, number
 // Shorthand RGBA tuples for test fixtures.
 const O: readonly [number, number, number, number] = [200, 100, 50, 255]; // opaque orange
 const T: readonly [number, number, number, number] = [0, 0, 0, 0]; // transparent
-const G: readonly [number, number, number, number] = [0, 200, 80, 255]; // opaque green
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
