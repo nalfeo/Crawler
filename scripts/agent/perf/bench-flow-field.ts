@@ -10,8 +10,12 @@
  *   - BASELINE — verbatim copy of the pre-optimization implementation so the
  *                comparison remains reproducible after the source changes.
  *   - CURRENT  — the live `computeFlowField`.
- *   - Correctness: compare width/height/goal metadata and every `distance`
- *                  entry, never a hash.
+ *   - Correctness: time first, then run the differential oracle so the untimed
+ *                  checks cannot perturb V8 tiering. Compare width/height/goal
+ *                  metadata and every `distance` entry, never a hash.
+ *   - Option-bearing oracle cases: cover FLYING traversal and the
+ *                  caller-supplied `isTilePassable` path, including the ordered
+ *                  callback probe trace.
  *   - Timing: same-process, interleaved, rotating lead, with several rotated
  *             warmup sweeps before timing starts.
  *
@@ -27,9 +31,9 @@ import {
   computeFlowField,
   FLOW_UNREACHABLE,
   type FlowField,
+  type FlowFieldOptions,
 } from '../../../src/core/map/flow-field.js';
 import { FloorMap } from '../../../src/core/map/FloorMap.js';
-import { indexToCoords } from '../../../src/core/map/grid-utils.js';
 import type { TilePoint } from '../../../src/core/map/pathfinding.js';
 import { isTileTraversable, PATH_TRAVERSAL } from '../../../src/core/map/pathfinding.js';
 import type { GameWorld } from '../../../src/core/world.js';
@@ -46,7 +50,13 @@ const FLOW_DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
 ];
 
-function computeFlowFieldBaseline(floorMap: FloorMap, goal: TilePoint): FlowField {
+function computeFlowFieldBaseline(
+  floorMap: FloorMap,
+  goal: TilePoint,
+  options: FlowFieldOptions = {},
+): FlowField {
+  const traversalMode = options.traversalMode ?? PATH_TRAVERSAL.GROUND;
+  const isTilePassable = options.isTilePassable;
   const width = floorMap.tileMap.width;
   const height = floorMap.tileMap.height;
   const distance = new Int32Array(width * height).fill(FLOW_UNREACHABLE);
@@ -55,7 +65,7 @@ function computeFlowFieldBaseline(floorMap: FloorMap, goal: TilePoint): FlowFiel
 
   if (
     !floorMap.tileMap.inBounds(goal.x, goal.y) ||
-    !isTileTraversable(floorMap, goal.x, goal.y, PATH_TRAVERSAL.GROUND)
+    !isTileTraversable(floorMap, goal.x, goal.y, traversalMode, isTilePassable)
   ) {
     return field;
   }
@@ -68,7 +78,8 @@ function computeFlowFieldBaseline(floorMap: FloorMap, goal: TilePoint): FlowFiel
   while (head < queue.length) {
     const idx = queue[head]!;
     head += 1;
-    const [cx, cy] = indexToCoords(idx, width);
+    const cx = idx % width;
+    const cy = (idx - cx) / width;
     const nextDistance = distance[idx]! + 1;
 
     for (const [dx, dy] of FLOW_DIRECTIONS) {
@@ -81,7 +92,7 @@ function computeFlowFieldBaseline(floorMap: FloorMap, goal: TilePoint): FlowFiel
       if (distance[nIdx] !== FLOW_UNREACHABLE) {
         continue;
       }
-      if (!isTileTraversable(floorMap, nx, ny, PATH_TRAVERSAL.GROUND)) {
+      if (!isTileTraversable(floorMap, nx, ny, traversalMode, isTilePassable)) {
         continue;
       }
       distance[nIdx] = nextDistance;
@@ -97,9 +108,10 @@ interface FlowCase {
   readonly goal: TilePoint;
   readonly probeIndex: number;
   readonly label: string;
+  readonly options?: FlowFieldOptions;
 }
 
-type Variant = (floorMap: FloorMap, goal: TilePoint) => FlowField;
+type Variant = (floorMap: FloorMap, goal: TilePoint, options?: FlowFieldOptions) => FlowField;
 
 interface NamedVariant {
   readonly name: string;
@@ -143,7 +155,13 @@ function passableTiles(floorMap: FloorMap): TilePoint[] {
   return out;
 }
 
-function buildCases(floorMap: FloorMap, seed: number, total: number): FlowCase[] {
+function buildCases(
+  floorMap: FloorMap,
+  seed: number,
+  total: number,
+  options?: FlowFieldOptions,
+  labelPrefix = `seed${seed}`,
+): FlowCase[] {
   const tiles = passableTiles(floorMap);
   if (tiles.length === 0) {
     throw new Error('bench-flow-field: floor map has no traversable tiles');
@@ -157,10 +175,15 @@ function buildCases(floorMap: FloorMap, seed: number, total: number): FlowCase[]
       floorMap,
       goal,
       probeIndex: probe.y * floorMap.tileMap.width + probe.x,
-      label: `seed${seed}-${i}`,
+      label: `${labelPrefix}-${i}`,
+      options,
     });
   }
   return cases;
+}
+
+function makePassableOverride(floorMap: FloorMap): (x: number, y: number) => boolean {
+  return (x: number, y: number): boolean => floorMap.tileMap.isPassable(x, y);
 }
 
 function fieldsDiffer(expected: FlowField, actual: FlowField): string | null {
@@ -181,22 +204,66 @@ function fieldsDiffer(expected: FlowField, actual: FlowField): string | null {
   return null;
 }
 
+function tracesDiffer(expected: readonly string[], actual: readonly string[]): string | null {
+  if (expected.length !== actual.length) {
+    return `trace length ${expected.length} vs ${actual.length}`;
+  }
+  for (let i = 0; i < expected.length; i += 1) {
+    if (expected[i] !== actual[i]) {
+      return `trace[${i}] ${expected[i]} vs ${actual[i]}`;
+    }
+  }
+  return null;
+}
+
+function runWithTrace(flowCase: FlowCase, variant: Variant): { field: FlowField; trace: string[] } {
+  const originalPassable = flowCase.options?.isTilePassable;
+  if (!originalPassable) {
+    return {
+      field: variant(flowCase.floorMap, flowCase.goal, flowCase.options),
+      trace: [],
+    };
+  }
+  const trace: string[] = [];
+  const options: FlowFieldOptions = {
+    ...flowCase.options,
+    isTilePassable: (x, y) => {
+      trace.push(`${x},${y}`);
+      return originalPassable(x, y);
+    },
+  };
+  return {
+    field: variant(flowCase.floorMap, flowCase.goal, options),
+    trace,
+  };
+}
+
 function checkEquivalence(cases: readonly FlowCase[], variants: readonly NamedVariant[]): boolean {
   let compared = 0;
+  let traced = 0;
   for (const c of cases) {
-    const expected = computeFlowFieldBaseline(c.floorMap, c.goal);
+    const expected = runWithTrace(c, computeFlowFieldBaseline);
     for (const variant of variants) {
-      const actual = variant.run(c.floorMap, c.goal);
-      const diff = fieldsDiffer(expected, actual);
+      const actual = runWithTrace(c, variant.run);
+      const diff = fieldsDiffer(expected.field, actual.field);
       compared += 1;
       if (diff !== null) {
         console.error(`❌ ${variant.name} diverged on "${c.label}": ${diff}`);
         return false;
       }
+      if (c.options?.isTilePassable) {
+        traced += 1;
+        const traceDiff = tracesDiffer(expected.trace, actual.trace);
+        if (traceDiff !== null) {
+          console.error(`❌ ${variant.name} callback trace diverged on "${c.label}": ${traceDiff}`);
+          return false;
+        }
+      }
     }
   }
   console.log(
-    `✅ Equivalence: ${compared} comparisons across ${cases.length} fixtures — all exact.`,
+    `✅ Post-timing oracle: ${compared} grid comparisons across ${cases.length} fixtures` +
+      `${traced > 0 ? ` and ${traced} callback-trace comparisons` : ''} — all exact.`,
   );
   return true;
 }
@@ -205,7 +272,7 @@ function timeVariant(cases: readonly FlowCase[], variant: Variant): number {
   const start = process.hrtime.bigint();
   let sink = 0;
   for (const c of cases) {
-    const field = variant(c.floorMap, c.goal);
+    const field = variant(c.floorMap, c.goal, c.options);
     sink += field.distance[c.probeIndex] ?? 0;
   }
   const elapsed = Number(process.hrtime.bigint() - start) / 1e6;
@@ -259,8 +326,8 @@ function runPanel(
     const worst = Math.min(...ratios);
     const won = ratios.filter((ratio) => ratio > 1).length;
     console.log(
-      `    ${variants[i]!.name.padEnd(10)} ${median(ratios).toFixed(2)}x median  ` +
-        `[worst round ${worst.toFixed(2)}x, best ${Math.max(...ratios).toFixed(2)}x]  ` +
+      `    ${variants[i]!.name.padEnd(10)} ${worst.toFixed(2)}x worst round  ` +
+        `[median ${median(ratios).toFixed(2)}x, best ${Math.max(...ratios).toFixed(2)}x]  ` +
         `[rounds won ${won}/${ratios.length}]`,
     );
   }
@@ -270,18 +337,30 @@ async function main(): Promise<void> {
   const roundsRaw = Number(process.argv[2] ?? DEFAULT_ROUNDS);
   const rounds = Number.isInteger(roundsRaw) && roundsRaw > 0 ? roundsRaw : DEFAULT_ROUNDS;
   const [seed1Map, seed2Map] = await Promise.all([buildFloorOneMap(1), buildFloorOneMap(2)]);
-  const cases = [...buildCases(seed1Map, 0x5eed, 150), ...buildCases(seed2Map, 0x5eee, 150)];
+  const timedCases = [...buildCases(seed1Map, 0x5eed, 150), ...buildCases(seed2Map, 0x5eee, 150)];
+  const oracleCases = [
+    ...timedCases,
+    ...buildCases(seed1Map, 0x5eef, 8, { traversalMode: PATH_TRAVERSAL.FLYING }, 'flying-seed1'),
+    ...buildCases(
+      seed2Map,
+      0x5ef0,
+      8,
+      { isTilePassable: makePassableOverride(seed2Map) },
+      'callback-seed2',
+    ),
+  ];
   const variants: NamedVariant[] = [
     { name: 'BASELINE', run: computeFlowFieldBaseline },
     { name: 'CURRENT', run: computeFlowField },
   ];
 
-  if (!checkEquivalence(cases, variants.slice(1))) {
+  runPanel('computeFlowField on real Floor 1 maps', timedCases, variants, rounds);
+
+  if (!checkEquivalence(oracleCases, variants.slice(1))) {
+    console.error('❌ Post-timing oracle failed; disregard the timings above.');
     process.exitCode = 1;
     return;
   }
-
-  runPanel('computeFlowField on real Floor 1 maps', cases, variants, rounds);
 }
 
 void main().catch((error: unknown) => {

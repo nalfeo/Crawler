@@ -8,7 +8,7 @@
 
 ## Systems touched
 
-mapgen, ai-behavior-tree, perf-tooling
+mapgen, ai-behavior-tree, ai-pathfinding
 
 ## Summary
 
@@ -29,8 +29,9 @@ Also added a committed reproduction bench:
 
 That bench captures real Floor 1 maps from the headless runner, compares the
 live implementation against a verbatim pre-change baseline, and reports
-same-process interleaved paired ratios plus a full distance-grid equivalence
-oracle.
+same-process interleaved paired ratios plus a post-timing differential oracle
+that checks the full distance grid, FLYING traversal, and ordered
+`isTilePassable` callback traces.
 
 ## Why this target
 
@@ -49,13 +50,19 @@ gameplay semantics change.
 ### Microbench (`npx tsx scripts/agent/perf/bench-flow-field.ts 15`)
 
 All runs compare CURRENT vs the inlined pre-change BASELINE over **300 real
-Floor-1 fixtures**, with exact distance-field equivalence checked first.
+Floor-1 fixtures**. After timing, the bench also runs **16 option-bearing
+oracle fixtures** (8 FLYING, 8 recording-callback) and checks both exact
+distance-field equality and ordered callback-trace parity against the baseline.
 
 Observed sequential invocations:
 
-- **1.28x** median, worst round **0.87x**, rounds won **14/15**
-- **1.29x** median, worst round **0.88x**, rounds won **14/15**
-- **1.28x** median, worst round **0.87x**, rounds won **14/15**
+- worst round **0.89x**, median **1.20x**, rounds won **12/15**
+- worst round **0.87x**, median **1.10x**, rounds won **9/15**
+- worst round **0.73x**, median **1.13x**, rounds won **10/15**
+
+This is still a median win, but not a clean sweep: every 15-round sample kept a
+sub-1.0 worst paired round, so the microbench evidence is **marginal-positive**
+rather than decisive on its own.
 
 ### Real profile (`npm run perf:profile`)
 
@@ -90,6 +97,7 @@ Result:
 
 - `npx vitest run tests/ecs/flow-field.test.ts tests/property/flow-field-properties.test.ts --reporter=dot`
 - `npm run verify:fast`
+- `npm run test:mutate -- src/core/map/flow-field.ts:77-167 --tests tests/ecs/flow-field.test.ts,tests/property/flow-field-properties.test.ts`
 - `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-31-nightly-perf-flow-field.review-ledger.json`
 
 ## Notes / blockers
@@ -101,3 +109,11 @@ Result:
 - The full 24-run fingerprint gate was intentionally left for CI / GitHub
   infrastructure in line with the nightly perf issue requirements and AGENTS.md
   guidance on broad samples.
+- The scoped mutation proof killed **74/82 mutants (92.68%)** over
+  `src/core/map/flow-field.ts:77-167`. The 6 surviving mutants are all on the
+  redundant outer edge guards around the unrolled probes (`rightX < width`,
+  `leftX >= 0`, `downY < height`, `upY >= 0`). Those guards were added only to
+  skip futile helper calls: `isTileTraversable()` already rejects out-of-bounds
+  coordinates before any queue write, so the surviving mutations are
+  equivalent/no-op under the function's current contract rather than evidence of
+  an untested gameplay branch.
