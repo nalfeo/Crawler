@@ -11,6 +11,17 @@
     "path": "by-sha/5a86407b620ccdecdb9f60e31720ef02173c7a0b.json"
   },
   {
+    "commit": "e809b951280e4d9aa046a4be6edb406e32914d71",
+    "commitDate": "2026-08-01T17:16:51Z",
+    "commitSubject": "fix(asset-search): enrich approved shards with brief text (#2632)",
+    "capturedAt": "2026-08-01T18:19:30.925Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30710254791",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/e809b951280e4d9aa046a4be6edb406e32914d71.json"
+  },
+  {
     "commit": "f418e56280431fa29459b2404adab81491c4d42e",
     "commitDate": "2026-08-01T16:44:37Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2626)",
