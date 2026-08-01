@@ -14,7 +14,7 @@ sprite-pipeline
 
 ## Apples
 
-1🍎 exact — a new sprite brief for a floor-2 elite enemy; no runtime code changes.
+1 apple exact — a new sprite brief for a floor-2 elite enemy; no runtime code changes.
 
 ## What Was Done
 
