@@ -41,10 +41,10 @@ function formBody(parts: {
   return lines.join('\n');
 }
 
-/** Extract the verbatim brief text from a fixture body (single-line briefs). */
+/** Extract the verbatim brief text from a fixture body. */
 function fixtureBrief(body: string): string {
-  const marker = '### Brief\n';
-  return body.slice(body.indexOf(marker) + marker.length).trim();
+  const match = body.match(/(?:^|\n)### Brief\s*\n+([\s\S]*?)(?=\n###\s|\n<!--|$)/);
+  return match ? match[1].trim() : '';
 }
 
 describe('parseAssetRequestIssueBody', () => {
