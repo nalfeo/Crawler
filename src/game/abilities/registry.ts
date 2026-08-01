@@ -816,6 +816,82 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
   },
 
+  // Throwing weapons type abilities
+  {
+    id: 'throwing-toss-base',
+    name: 'Throwing Toss',
+    shortLabel: 'TOSS',
+    description: 'Basic throwing attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'throwing-boomerang',
+    name: 'Throwing Boomerang',
+    shortLabel: 'BOOM',
+    description: 'Returning throw attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'throwing-toss-evolved',
+    name: 'Throwing Toss (Evolved)',
+    shortLabel: 'TOSS+',
+    description: 'Evolved throwing toss',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'throwing-scatter',
+    name: 'Throwing Scatter',
+    shortLabel: 'SCATTER',
+    description: 'Scatter throw attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Sports equipment type abilities
+  {
+    id: 'sports-swing-base',
+    name: 'Sports Swing',
+    shortLabel: 'SWING',
+    description: 'Basic sports-equipment strike',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'sports-home-run',
+    name: 'Sports Home Run',
+    shortLabel: 'HOMER',
+    description: 'Heavy sports-equipment follow-through',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'sports-swing-evolved',
+    name: 'Sports Swing (Evolved)',
+    shortLabel: 'SWING+',
+    description: 'Evolved sports-equipment strike',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'sports-grand-slam',
+    name: 'Sports Grand Slam',
+    shortLabel: 'SLAM',
+    description: 'Ultimate sports-equipment strike',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
   // Unarmed type abilities
   {
     id: 'unarmed-punch-base',

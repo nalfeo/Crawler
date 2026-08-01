@@ -391,6 +391,53 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
+  function weaponSwingArc(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.8, Math.min(2.0, intensity));
+    spawnRing(x, y, 0xffffff, 6, 1.4 * clamped, depth, SPARK_LIFETIME_MS, 0.6);
+    spawnRing(x, y, color, 9, 2.1 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.42);
+    const sparks = Math.max(4, Math.round(4 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x + spread(4), y + spread(2), color, depth, 72);
+    }
+  }
+
+  function weaponSwingImpact(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.9, Math.min(2.2, intensity));
+    spawnRing(x, y, 0xffffff, 7, 1.6 * clamped, depth, SPARK_LIFETIME_MS, 0.65);
+    spawnRing(x, y, color, 10, 2.4 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.45);
+    const sparks = Math.max(6, Math.round(7 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x, y, color, depth, 88);
+    }
+  }
+
+  function weaponSwingVolley(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.8, Math.min(2.0, intensity));
+    spawnRing(x, y, color, 8, 1.9 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.35);
+    const motes = Math.max(5, Math.round(6 * clamped));
+    for (let i = 0; i < motes; i += 1) {
+      spawnRisingMote(x + spread(8), y + spread(6), color, depth);
+    }
+    const sparks = Math.max(3, Math.round(4 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x + spread(6), y + spread(4), color, depth, 64);
+    }
+  }
+
+  function weaponSwingSpin(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.9, Math.min(2.2, intensity));
+    spawnRing(x, y, 0xffffff, 8, 2.0 * clamped, depth, SPARK_LIFETIME_MS, 0.6);
+    spawnRing(x, y, color, 12, 3.0 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.4);
+    const sparks = Math.max(7, Math.round(8 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x, y, color, depth, 92);
+    }
+  }
+
   function arcaneBoltImpact(x: number, y: number, color: number): void {
     const depth = WORLD_VFX_DEPTH.spellCast;
     spawnRing(x, y, 0xffffff, 5, 1.5, depth, SPARK_LIFETIME_MS, 0.7);
@@ -506,6 +553,18 @@ export function createEffectsVfx(scene: Phaser.Scene): {
         break;
       case 'abilityActivateFlash':
         abilityActivateFlash(x, y);
+        break;
+      case 'weaponSwingArc':
+        weaponSwingArc(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
+        break;
+      case 'weaponSwingImpact':
+        weaponSwingImpact(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
+        break;
+      case 'weaponSwingVolley':
+        weaponSwingVolley(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
+        break;
+      case 'weaponSwingSpin':
+        weaponSwingSpin(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
         break;
       case 'arcaneBoltImpact':
         arcaneBoltImpact(x, y, event.color ?? COLOR_ARCANE_BOLT);

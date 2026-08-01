@@ -11,6 +11,10 @@ import { skillAbilityGrantSourceId, type AbilityGrantSourceId } from '../../shar
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
+import {
+  getWeaponSwingVfxSpec,
+  weaponSwingVfxKindForPreset,
+} from '../../shared/weapon-swing-vfx.js';
 
 /** How long the level-5 passive-unlock banner is shown, in milliseconds. */
 const SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS = 2600;
@@ -151,15 +155,26 @@ function applyMilestone(
 
       // Player-only, one-time unlock feedback.
       if (hasComponent(world.ecs, targetEid, Player)) {
+        const px = world.stores.position.x[targetEid] ?? 0;
+        const py = world.stores.position.y[targetEid] ?? 0;
+        const swingVfx = getWeaponSwingVfxSpec(milestone.abilityId);
+        if (swingVfx !== undefined) {
+          pushVfxEvent(world.vfxEvents, {
+            kind: weaponSwingVfxKindForPreset(swingVfx.preset),
+            x: px,
+            y: py,
+            color: swingVfx.color,
+            intensity: swingVfx.intensity,
+          });
+        }
+
         const abilityDef = getAbilityDefinition(milestone.abilityId);
         const isGeneralPassive =
           abilityDef !== undefined &&
           abilityDef.kind === 'passive' &&
           abilityDef.weaponPrerequisite === undefined;
 
-        if (isGeneralPassive) {
-          const px = world.stores.position.x[targetEid] ?? 0;
-          const py = world.stores.position.y[targetEid] ?? 0;
+        if (isGeneralPassive && swingVfx === undefined) {
           pushVfxEvent(world.vfxEvents, { kind: 'abilityActivateFlash', x: px, y: py });
         }
 
