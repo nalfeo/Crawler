@@ -1,5 +1,16 @@
 [
   {
+    "commit": "25dc10c2db36c6451e3f85b08f300aa717db5223",
+    "commitDate": "2026-08-01T12:36:40Z",
+    "commitSubject": "feat(sprites): brief-batch consolidation command + queue-commit brief bundling (#2594)",
+    "capturedAt": "2026-08-01T13:50:30.036Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30700486649",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/25dc10c2db36c6451e3f85b08f300aa717db5223.json"
+  },
+  {
     "commit": "7c93127a2080a1e9d74ffee916ad7d7f31e92cef",
     "commitDate": "2026-08-01T10:43:22Z",
     "commitSubject": "fix: prefer neutral wearables for non-aligned reward draws (magic build parity) (#2554)",
