@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c279dea855654c1d5479d86813f3db84e0849780",
+    "commitDate": "2026-08-01T18:36:11Z",
+    "commitSubject": "Harden docs-update automation against branch lease races (#2642)",
+    "capturedAt": "2026-08-01T19:48:53.825Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30713456295",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/c279dea855654c1d5479d86813f3db84e0849780.json"
+  },
+  {
     "commit": "b220c37cda187561711dea579ebf188bc6faf412",
     "commitDate": "2026-08-01T18:05:53Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2647)",
