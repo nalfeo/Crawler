@@ -1,0 +1,40 @@
+type: enemy
+name: slime
+floor: 1
+description: |
+  A low, slow dungeon slime — a quivering mound of gelatinous ooze about the
+  size of a large dog, seen from a three-quarter angle. Blobby amorphous body
+  that sits low and wide to the ground, slightly lopsided, with a lumpy
+  irregular silhouette. No limbs; it moves by surging forward.
+
+  Two simple round eyes embedded in the goo — small, dark with a pale
+  highlight. The body has a slimy sheen: slightly lighter highlights along the
+  top surface, dark shadow pooled at the base. A few trapped bubbles or
+  impurities visible inside as dark blobs — conveyed through COLOUR not
+  transparency.
+
+  Palette: deep swampy green with yellow-green highlights and near-black
+  shadow underneath. Desaturated and murky — dungeon slime not a cartoon
+  jellybaby. A single faint stomach-ache yellow tint in the core.
+
+  HARD RULES — the body must be FULLY OPAQUE with NO transparent or
+  semi-transparent interior pixels. Gelatinous quality is conveyed entirely
+  through colour gradient and highlight, never through alpha. Hard pixel
+  outline on all edges. No text. No accessories. No arms or legs.
+
+  Silhouette: a wide squat blob, clearly not a rat or any legged creature.
+  Reads as "slime" immediately at game scale.
+
+sensors:
+  enemy:
+    facing: three-quarter
+    toleranceDeg: 45
+  edge:
+    allowMainTouch: false
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+minVariations: 4
