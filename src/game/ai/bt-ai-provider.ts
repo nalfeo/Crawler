@@ -1663,16 +1663,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.xpCleanupCombatWindowUntilFrame =
         world.frameCount + XP_CLEANUP_COMBAT_LULL_WINDOW_FRAMES;
     }
+    const exit = this.getFinalExitTarget(world);
     if (
       this.getCollapsePanicProfile(world).beeline ||
-      this.isFloor2IntroductionPending(world) ||
+      (exit === null && this.isFloor2IntroductionPending(world)) ||
       this.hasLivingEnemyWithin(world, playerX, playerY, XP_CLEANUP_ENEMY_CLEARANCE_FT)
     ) {
       this.resetXpCleanupSession(false, world.frameCount);
       return null;
     }
 
-    const exit = this.getFinalExitTarget(world);
     const mode = exit ? 'exit' : 'local';
     if (
       mode === 'local' &&
