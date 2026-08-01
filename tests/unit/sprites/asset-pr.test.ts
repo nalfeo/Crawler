@@ -176,6 +176,7 @@ describe('runAssetPrConsolidation', () => {
   it('uses --no-verify for temp-worktree commit and push on successful consolidation', async () => {
     const commands: string[] = [];
     const commandCwds: string[] = [];
+    const tempWorktree = '/tmp/asset-pr-worktree';
     const exec: Exec = (command, args, options) => {
       commands.push([command, ...args].join(' '));
       commandCwds.push(`${[command, ...args].join(' ')} ::cwd=${options?.cwd ?? ''}`);
@@ -213,7 +214,7 @@ describe('runAssetPrConsolidation', () => {
 
     const result = await runAssetPrConsolidation('/repo', {
       exec,
-      makeTempDir: () => Promise.resolve('/tmp/asset-pr-worktree'),
+      makeTempDir: () => Promise.resolve(tempWorktree),
       removeDir: () => Promise.resolve(),
       readJson: () => Promise.resolve({} as never),
       writeJson: () => Promise.resolve(),
@@ -227,12 +228,12 @@ describe('runAssetPrConsolidation', () => {
     expect(commands).toContain(`git push --no-verify -u origin ${batchBranch}`);
     expect(
       commandCwds.some((line) =>
-        line.startsWith(`git commit --no-verify -m ${commitMessage} ::cwd=/tmp/asset-pr-worktree`),
+        line.startsWith(`git commit --no-verify -m ${commitMessage} ::cwd=${tempWorktree}`),
       ),
     ).toBe(true);
     expect(
       commandCwds.some((line) =>
-        line.startsWith(`git push --no-verify -u origin ${batchBranch} ::cwd=/tmp/asset-pr-worktree`),
+        line.startsWith(`git push --no-verify -u origin ${batchBranch} ::cwd=${tempWorktree}`),
       ),
     ).toBe(true);
   });
