@@ -1,0 +1,38 @@
+type: enemy
+name: beetlefolk-resin-gunner
+floor: 2
+description: |
+  A beetlefolk soldier in a firm combat stance, resin-blaster raised and aimed
+  straight at the viewer. Medium silhouette — stocky, upright body, dark segmented
+  chitinous exoskeleton in the beetlefolk palette of deep charcoal-black and
+  oily dark-brown with subtle iridescent highlights. A rounded beetle carapace
+  sits on the back, reinforced and road-worn with grime and chipped edges.
+
+  The weapon is the unmistakable visual centerpiece: a wide-bore resin-blaster
+  gripped in both clawed hands, barrel leveled forward. The blaster body is chunky
+  and utilitarian — wide nozzle with a ribbed muzzle ring, and a large amber resin
+  canister mounted on the top or side, translucent golden-amber catching the light
+  so it reads as a distinct material against the dark chitinous frame. The canister
+  is visibly full of viscous fluid. The gun reads as a sticky-goop projector, not
+  a firearms weapon.
+
+  Pose: upright front-facing combat stance, arms extended holding the blaster,
+  barrel pointed toward camera. Head is a flattened beetle head — compound eyes,
+  short antennae, prominent mandibles. Body proportions are soldier-class: broad
+  thorax, sturdy legs planted wide, no fragile or thin disconnected parts.
+
+  Color palette anchored to beetlefolk dark-chitin family: near-black carapace
+  with dark-brown undertones, amber-gold resin canister as the sole warm accent,
+  dull olive or rust secondary details. No bright whites or neon. Hard pixel edges,
+  fully transparent background, no text, no labels, no riders or extra figures.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+variations:
+  - resin-blaster with a bulbous amber canister mounted on top, compound eyes glowing faintly, wide-leg combat stance
+  - resin-blaster held at a slight upward angle, oversized nozzle with ribbed rings, beetle shell showing scratched wear
+  - both clawed hands gripping a wide-bore blaster, large side-mounted amber canister with visible resin level, antennae swept back
+minVariations: 6

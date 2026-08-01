@@ -198,6 +198,11 @@ export interface HeadlessRunnerConfig {
    */
   questStallFrames?: number;
   /**
+   * Optional deterministic early-stop predicate evaluated once per frame after
+   * telemetry updates. When true, the run exits immediately with current stats.
+   */
+  stopWhen?: (world: GameWorld) => boolean;
+  /**
    * Optional inspection hook invoked with the live `GameWorld` after the run
    * completes (or crashes) but before `runHeadless` returns. Used by CI
    * gates that need to statically enumerate entities/components at the end
@@ -242,7 +247,12 @@ export interface HeadlessRunnerConfig {
 const DEFAULT_CONFIG: Required<
   Omit<
     HeadlessRunnerConfig,
-    'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish' | 'floor2EquipmentFlags'
+    | 'simulationOptions'
+    | 'recordEvent'
+    | 'forceWeaponId'
+    | 'onFinish'
+    | 'floor2EquipmentFlags'
+    | 'stopWhen'
   >
 > = {
   seed: 12345,
@@ -386,6 +396,7 @@ function collectFloor2Progression(
   world: GameWorld,
   trashKillsAtDenUnlock: ReadonlyMap<string, number>,
   encounterStartedMs: ReadonlyMap<string, number>,
+  encounterStartedLevel: ReadonlyMap<string, number>,
   encounterDefeatedMs: ReadonlyMap<string, number>,
   hunt: NonNullable<RunStats['floor2Progression']>['hunt'],
 ): NonNullable<RunStats['floor2Progression']> | undefined {
@@ -404,6 +415,7 @@ function collectFloor2Progression(
       denEntered: encounterStarted,
       encounterStarted,
       encounterStartedMs: encounterStartedMs.get(familyId) ?? null,
+      levelAtEncounterStart: encounterStartedLevel.get(familyId) ?? null,
       encounterDefeated: encounter?.defeated === true,
       encounterDefeatedMs: encounterDefeatedMs.get(familyId) ?? null,
     };
@@ -548,6 +560,7 @@ export async function runHeadless(
   const questLogCompletedMs = new Map<string, number>();
   const floor2TrashKillsAtDenUnlock = new Map<string, number>();
   const floor2EncounterStartedMs = new Map<string, number>();
+  const floor2EncounterStartedLevel = new Map<string, number>();
   const floor2EncounterDefeatedMs = new Map<string, number>();
   const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
 
@@ -1055,11 +1068,15 @@ export async function runHeadless(
           const encounter = floor2State.bossEncounters?.get(familyId);
           if (encounter?.started === true && !floor2EncounterStartedMs.has(familyId)) {
             floor2EncounterStartedMs.set(familyId, world.elapsedMs);
+            floor2EncounterStartedLevel.set(familyId, world.playerLevel?.level ?? 0);
           }
           if (encounter?.defeated === true && !floor2EncounterDefeatedMs.has(familyId)) {
             floor2EncounterDefeatedMs.set(familyId, world.elapsedMs);
           }
         }
+      }
+      if (mergedConfig.stopWhen?.(world)) {
+        break;
       }
 
       // Telemetry: state-change annotations + periodic samples.
@@ -1241,6 +1258,7 @@ export async function runHeadless(
         world,
         floor2TrashKillsAtDenUnlock,
         floor2EncounterStartedMs,
+        floor2EncounterStartedLevel,
         floor2EncounterDefeatedMs,
         buildFloor2HuntMetrics(),
       ),
@@ -1322,6 +1340,7 @@ export async function runHeadless(
       world,
       floor2TrashKillsAtDenUnlock,
       floor2EncounterStartedMs,
+      floor2EncounterStartedLevel,
       floor2EncounterDefeatedMs,
       buildFloor2HuntMetrics(),
     ),

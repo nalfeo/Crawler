@@ -206,7 +206,7 @@ async function main(): Promise<void> {
       console.log(
         `  ${familyId.padEnd(10)} kills ${String(family.trashKills).padStart(3)} ` +
           `(unlock ${unlockKills.padStart(3)}) · den ${family.denEntered ? 'entered' : 'not entered'} · ` +
-          `boss ${family.encounterStarted ? `started ${(family.encounterStartedMs! / 1000).toFixed(1)}s` : 'not started'}/` +
+          `boss ${family.encounterStarted ? `started ${(family.encounterStartedMs! / 1000).toFixed(1)}s lv${family.levelAtEncounterStart ?? '?'}` : 'not started'}/` +
           `${family.encounterDefeated ? `defeated ${(family.encounterDefeatedMs! / 1000).toFixed(1)}s` : 'alive'}`,
       );
     }
