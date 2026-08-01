@@ -12,6 +12,14 @@ interface ResolveGeneratedIconOptions {
   readonly seed: number;
 }
 
+const compareEntries = (a: GeneratedSpriteEntry, b: GeneratedSpriteEntry): number =>
+  a.variantIndex - b.variantIndex || a.textureKey.localeCompare(b.textureKey);
+
+const textureIndexCache = new WeakMap<
+  GeneratedSpriteRegistry,
+  ReadonlyMap<string, readonly GeneratedSpriteEntry[]>
+>();
+
 export function resolveGeneratedIconEntry(
   scene: Phaser.Scene,
   options: ResolveGeneratedIconOptions,
@@ -26,18 +34,19 @@ export function resolveGeneratedIconEntry(
   }
 
   if (options.textureKeys.length === 0) return null;
-  const wanted = new Set(options.textureKeys.filter((key) => key.length > 0));
-  if (wanted.size === 0) return null;
-
-  const byTexture = registry
-    .entries()
-    .filter((entry) => wanted.has(entry.textureKey))
-    .sort((a, b) => a.variantIndex - b.variantIndex || a.textureKey.localeCompare(b.textureKey));
-
-  for (const entry of byTexture) {
-    if (scene.textures.exists(entry.textureKey)) return entry;
+  const index = getTextureIndex(registry);
+  let best: GeneratedSpriteEntry | null = null;
+  for (const textureKey of options.textureKeys) {
+    if (!textureKey) continue;
+    const variants = index.get(textureKey);
+    if (!variants) continue;
+    for (const entry of variants) {
+      if (!scene.textures.exists(entry.textureKey)) continue;
+      if (!best || compareEntries(entry, best) < 0) best = entry;
+      break;
+    }
   }
-  return null;
+  return best;
 }
 
 function getGeneratedRegistry(scene: Phaser.Scene): GeneratedSpriteRegistry | null {
@@ -50,4 +59,20 @@ function isGeneratedSpriteRegistry(value: unknown): value is GeneratedSpriteRegi
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Partial<GeneratedSpriteRegistry>;
   return typeof candidate.variants === 'function' && typeof candidate.lookup === 'function';
+}
+
+function getTextureIndex(
+  registry: GeneratedSpriteRegistry,
+): ReadonlyMap<string, readonly GeneratedSpriteEntry[]> {
+  const cached = textureIndexCache.get(registry);
+  if (cached) return cached;
+  const byTexture = new Map<string, GeneratedSpriteEntry[]>();
+  for (const entry of registry.entries()) {
+    const bucket = byTexture.get(entry.textureKey);
+    if (bucket) bucket.push(entry);
+    else byTexture.set(entry.textureKey, [entry]);
+  }
+  for (const bucket of byTexture.values()) bucket.sort(compareEntries);
+  textureIndexCache.set(registry, byTexture);
+  return byTexture;
 }

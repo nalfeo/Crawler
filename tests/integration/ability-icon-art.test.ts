@@ -134,11 +134,11 @@ describe('ability-icon real render path over the shipped manifest (observe-befor
     }
   });
 
-  it('resolves icon-batch entries when iconBriefId is a manifest key (textureKey)', () => {
+  it('resolves canonical texture fallback when only a batch-brief entry exists', () => {
     const entry = {
       briefId: 'ability-icons-batch-01',
-      textureKey: 'ability-icon-battle-focus',
-      assetPath: 'public/assets/generated/ability-icon-battle-focus.png',
+      textureKey: 'ability-icon-fireball',
+      assetPath: 'public/assets/generated/ability-icon-fireball.png',
       anchor: { x: 0.5, y: 0.5 },
       centerOfGravity: { x: 0.5, y: 0.5 },
       anchorIsDefault: false,
@@ -160,9 +160,9 @@ describe('ability-icon real render path over the shipped manifest (observe-befor
       briefIds: () => [entry.briefId],
     };
     const scene = makeRecordingScene(registry);
-    const resolved = getAbilityIconEntry(scene as never, 'battle-focus');
+    const resolved = getAbilityIconEntry(scene as never, 'fireball');
     expect(resolved).not.toBeNull();
-    expect(resolved?.textureKey).toBe('ability-icon-battle-focus');
+    expect(resolved?.textureKey).toBe('ability-icon-fireball');
     expect(resolved?.briefId).toBe('ability-icons-batch-01');
   });
 });
