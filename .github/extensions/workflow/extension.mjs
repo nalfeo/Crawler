@@ -3,7 +3,7 @@
  * plans/briefs, and generated sprite RUNS (variants + judge + sensors +
  * sheet/slice-map), record per-criterion reviewer feedback, view each
  * variant's accept/integration LIFECYCLE, and accept a selected variant into
- * the durable asset-checkin queue.
+ * the durable sprite queue (`assets/queue` branch).
  *
  * This canvas ABSORBED the former standalone `sprite-review` canvas's
  * read-only run/variant-inspection surface (judge/sensor traces, sheet +
@@ -1680,7 +1680,7 @@ const canvas = createCanvas({
   id: 'workflow',
   displayName: 'Sprite Generation Workflow',
   description:
-    'Inspect the sprite-generation workflow, review judge/sensor traces and record per-criterion feedback, see each variant\u2019s accept/integration lifecycle, and accept a selected run variant into the durable asset-checkin queue.',
+    'Inspect the sprite-generation workflow, review judge/sensor traces and record per-criterion feedback, see each variant\u2019s accept/integration lifecycle, and accept a selected run variant into the durable sprite queue (`assets/queue` branch).',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -1850,7 +1850,7 @@ const canvas = createCanvas({
     {
       name: 'accept_variant',
       description:
-        'Approve a generated variant and publish it to the durable asset-checkin queue atomically.',
+        'Approve a generated variant and publish it to the durable sprite queue (`assets/queue` branch) atomically.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
