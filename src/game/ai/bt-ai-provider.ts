@@ -1042,6 +1042,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private floor2HuntLastProgressFrame: number = 0;
   private floor2HuntCadenceStartFrame: number = 0;
   private floor2HuntHandledSuppressionUntilFrame: number = 0;
+  private floor2HuntSuppressLocalXpCleanup: boolean = false;
   private readonly floor2HuntPatrolTiles = new Map<string, TilePoint[]>();
   private xpCleanupMode: 'local' | 'exit' | null = null;
   private xpCleanupAnchorX: number = 0;
@@ -1691,6 +1692,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const mode = exit ? 'exit' : 'local';
+    if (mode === 'local' && this.shouldYieldLocalXpCleanupToFloor2Hunt(world)) {
+      this.resetXpCleanupSession(false, world.frameCount);
+      return null;
+    }
     if (
       mode === 'local' &&
       this.xpCleanupMode === null &&
@@ -1758,6 +1763,23 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.resetXpCleanupSession(true, world.frameCount);
     }
     return null;
+  }
+
+  private shouldYieldLocalXpCleanupToFloor2Hunt(world: GameWorld): boolean {
+    if (world.floorId !== 'floor2' || !this.floor2HuntFamilyId) {
+      return false;
+    }
+    const quest = world.questLog.get(`floor2-den-${this.floor2HuntFamilyId}-unlock`);
+    if (!quest || quest.status !== 'active') {
+      return false;
+    }
+    if (
+      !this.floor2HuntSuppressLocalXpCleanup &&
+      world.frameCount - this.floor2HuntLastProgressFrame >= FLOOR2_HUNT_NO_PROGRESS_FRAMES
+    ) {
+      this.floor2HuntSuppressLocalXpCleanup = true;
+    }
+    return this.floor2HuntSuppressLocalXpCleanup;
   }
 
   private hasLivingEnemyWithin(
@@ -3462,6 +3484,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = world.frameCount;
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.floor2HuntSuppressLocalXpCleanup = false;
     this.floor2HuntPatrolTiles.clear();
     this.xpCleanupMode = null;
     this.xpCleanupAnchorX = 0;
@@ -5491,6 +5514,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = world.frameCount;
     this.floor2HuntCadenceStartFrame = world.frameCount;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.floor2HuntSuppressLocalXpCleanup = false;
     this.floor2HuntPatrolTiles.clear();
   }
 
@@ -5763,6 +5787,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (killCount > this.floor2HuntLastKillCount) {
       this.floor2HuntLastKillCount = killCount;
       this.floor2HuntLastProgressFrame = world.frameCount;
+      this.floor2HuntSuppressLocalXpCleanup = false;
     }
     if (
       world.frameCount < this.progressGoalSuppressedUntilFrame &&
@@ -8728,6 +8753,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.floor2HuntLastProgressFrame = 0;
     this.floor2HuntCadenceStartFrame = 0;
     this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.floor2HuntSuppressLocalXpCleanup = false;
     this.floor2HuntPatrolTiles.clear();
     this.globalDwellActive = false;
     this.globalDwellAnchorX = 0;

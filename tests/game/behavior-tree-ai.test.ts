@@ -3820,6 +3820,45 @@ describe('BehaviorTreeAI', () => {
         expect(ai.getDecision().reason).not.toContain('local post-combat XP');
       });
 
+      it('yields local cleanup to a stalled Floor 2 den hunt until a family kill', () => {
+        const world = createTestWorld({ seed: 49, floor: 2 });
+        const player = spawnPlayer(world, 0, 0);
+        initializeFloor2Scenario(world, player);
+        world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+        world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+        const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+        const px = world.stores.position.x[player]!;
+        const py = world.stores.position.y[player]!;
+        const gem = spawnXpGem(world, px + 10, py, 5);
+        const ai = new BehaviorTreeAI({ seed: 49 });
+        const harness = ai as unknown as {
+          floor2HuntFamilyId: FamilyId | null;
+          floor2HuntLastKillCount: number;
+          floor2HuntLastProgressFrame: number;
+          floor2HuntSuppressLocalXpCleanup: boolean;
+          xpCleanupCombatWindowUntilFrame: number;
+          findPriorityXpCleanupTarget(
+            world: GameWorld,
+            playerX: number,
+            playerY: number,
+          ): { eid: number } | null;
+          updateFloor2HuntProgress(world: GameWorld, familyId: FamilyId): boolean;
+        };
+        harness.floor2HuntFamilyId = familyId;
+        harness.floor2HuntLastKillCount = 0;
+        harness.floor2HuntLastProgressFrame = 0;
+        harness.xpCleanupCombatWindowUntilFrame = FLOOR2_HUNT_NO_PROGRESS_FRAMES + 60;
+        world.frameCount = FLOOR2_HUNT_NO_PROGRESS_FRAMES;
+
+        expect(harness.findPriorityXpCleanupTarget(world, px, py)).toBeNull();
+        expect(harness.floor2HuntSuppressLocalXpCleanup).toBe(true);
+
+        world.floorExtendedState!.familyState!.trashKillsByFamily!.set(familyId, 1);
+        expect(harness.updateFloor2HuntProgress(world, familyId)).toBe(true);
+        expect(harness.floor2HuntSuppressLocalXpCleanup).toBe(false);
+        expect(harness.findPriorityXpCleanupTarget(world, px, py)?.eid).toBe(gem);
+      });
+
       it('clears cleanup eligibility and cooldown when the provider resets', () => {
         const world = createTestWorld({ seed: 47 });
         const player = spawnPlayer(world, 0, 0);
