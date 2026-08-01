@@ -26,6 +26,7 @@ export function parseFreshProcessResult<T>(
   } catch (error) {
     throw new Error(
       `${context} emitted malformed result JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 }

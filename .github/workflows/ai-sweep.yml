@@ -180,6 +180,11 @@ on:
         required: false
         type: boolean
         default: false
+      xp_floor:
+        description: 'Optional XP-only measurement floor; floor1 keeps the normal validation panel only'
+        required: false
+        type: string
+        default: 'floor1'
 
 # Read-only: checkout + artifact up/download need nothing more. No default flip here.
 permissions:
@@ -259,6 +264,34 @@ jobs:
           MATRIX_JSON: ${{ steps.matrix.outputs.combos }}
           MATRIX_KEY: combo
         run: node .github/scripts/sweep-budget.mjs
+
+  xp-measure:
+    name: XP measurement ${{ inputs.xp_floor }}
+    needs: preflight
+    if: ${{ inputs.xp_collection && inputs.xp_floor != 'floor1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Run isolated XP measurement panel
+        env:
+          FLOOR: ${{ inputs.xp_floor }}
+          SEEDS: ${{ inputs.validate_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage xp-measure --combo riskRewardFused+legacy \
+            --floor "$FLOOR" --seeds "$SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" --fresh-process --record-xp \
+            --out "xp-measure-$FLOOR.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xp-measure-${{ inputs.xp_floor }}
+          path: xp-measure-*.json
+          if-no-files-found: error
+          retention-days: 30
 
   # Cross-run resume (`resume_run_id`). ALWAYS runs and ALWAYS emits well-formed
   # `freshCombos`/`resumedCombos`/`hasFreshCombos` outputs — even on the default

@@ -150,6 +150,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
         'weapons',
         'workers',
         'xp_collection',
+        'xp_floor',
       ].sort(),
     );
     expect(inputs.combos).toMatchObject({ type: 'string', default: 'all' });
@@ -167,6 +168,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     // on the new resume-import job's checkout/Node-setup/metadata step).
     expect(inputs.resume_run_id).toMatchObject({ type: 'string', default: '' });
     expect(inputs.xp_collection).toMatchObject({ type: 'boolean', default: false });
+    expect(inputs.xp_floor).toMatchObject({ type: 'string', default: 'floor1' });
   });
 
   it('offers fresh-process XP telemetry for the validation panel', () => {
@@ -176,6 +178,17 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(script).toContain('--fresh-process');
     expect(script).toContain('--record-xp');
     expect(script).toContain('XP_COLLECTION');
+  });
+
+  it('runs non-Floor-1 XP panels in a dedicated fresh-process job', () => {
+    const doc = loadWorkflow();
+    const job = getJob(doc, 'xp-measure');
+    expect(job.if).toContain('inputs.xp_collection');
+    expect(job.if).toContain("inputs.xp_floor != 'floor1'");
+    const script = allRunSteps(job);
+    expect(script).toContain('--stage xp-measure');
+    expect(script).toContain('--fresh-process');
+    expect(script).toContain('--record-xp');
   });
 
   it('stays read-only with only the metadata permissions required by queue-aware admission and cross-run artifact download', () => {
