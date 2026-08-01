@@ -1227,7 +1227,11 @@ describe('createPhaserBridge', () => {
 
     addComponent(world.ecs, rat, set(Position, { x: 10, y: 10 }));
     addComponent(world.ecs, rat, Enemy);
-    addComponent(world.ecs, rat, set(Sprite, { textureId: 1, width: 16, height: 16, variantRoll: 0 }));
+    addComponent(
+      world.ecs,
+      rat,
+      set(Sprite, { textureId: 1, width: 16, height: 16, variantRoll: 0 }),
+    );
     world.enemyAppearanceKeys.set(rat, 'faerie-spark-caster');
 
     bridge.sync(world);
