@@ -1,0 +1,164 @@
+{
+  "briefId": "ability-icons-batch-01",
+  "spriteName": "ability-icon-stalwart-resolve",
+  "assetPath": "generated/ability-icon-stalwart-resolve.png",
+  "approvedAt": "2026-07-31T21:20:55.870Z",
+  "sourceRun": "generated/runs/ability-icons-batch-01/2026-07-31T21-17-25-f393c076",
+  "variantIndex": 10,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 176 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 80,
+          "y": 47
+        },
+        {
+          "x": 81,
+          "y": 47
+        },
+        {
+          "x": 80,
+          "y": 48
+        },
+        {
+          "x": 81,
+          "y": 48
+        },
+        {
+          "x": 80,
+          "y": 49
+        },
+        {
+          "x": 81,
+          "y": 49
+        },
+        {
+          "x": 80,
+          "y": 50
+        },
+        {
+          "x": 81,
+          "y": 50
+        },
+        {
+          "x": 77,
+          "y": 51
+        },
+        {
+          "x": 78,
+          "y": 51
+        },
+        {
+          "x": 79,
+          "y": 51
+        },
+        {
+          "x": 80,
+          "y": 51
+        },
+        {
+          "x": 81,
+          "y": 51
+        },
+        {
+          "x": 77,
+          "y": 52
+        },
+        {
+          "x": 78,
+          "y": 52
+        },
+        {
+          "x": 79,
+          "y": 52
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 10,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T21:20:20.490Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The flexed arm icon is a clear and recognizable symbol for strength or power, fitting well within the dark-fantasy theme of Crawler. The exaggerated musculature and the golden color give it a slightly humorous and exaggerated tone, aligning with the game's offbeat aesthetic."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering uses a similar pixel density, outline weight, and shading style as the references. The color palette is consistent with the warm tones seen in the references, and the shading has appropriate contrast and depth."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering uses a similar pixel density, outline weight, and shading style as the references. The color palette is consistent with the warm tones seen in the references, and the shading has appropriate contrast and depth."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The icon clearly depicts a flexed arm, which is a common symbol for strength or power, aligning perfectly with the brief for ability icons."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and instantly recognizable at game scale. The dark outline ensures it stands out against the dark floor tile, and there are no visual integrity defects such as floating pixels or transparency issues."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.85,
+    "usage": {
+      "promptTokens": 3370,
+      "completionTokens": 301,
+      "totalTokens": 3671
+    }
+  },
+  "type": "icon",
+  "contentHash": "d4e1865c1e2a17514e0886fef62a46001d8996e8438550ec6d1156e2fc098273",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 115,
+    "canvasWidth": 128,
+    "canvasHeight": 129
+  },
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": null
+}

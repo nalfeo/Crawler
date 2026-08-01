@@ -1,0 +1,97 @@
+{
+  "briefId": "ability-icons-batch-01",
+  "spriteName": "ability-icon-bless",
+  "assetPath": "generated/ability-icon-bless.png",
+  "approvedAt": "2026-07-31T21:20:55.035Z",
+  "sourceRun": "generated/runs/ability-icons-batch-01/2026-07-31T21-17-25-f393c076",
+  "variantIndex": 4,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T21:19:40.265Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design is consistent with the Crawler aesthetic, featuring a clear and recognizable hand symbol with a radiating effect. The concept is simple yet effective, and the golden color adds a sense of importance or power, fitting for an ability icon. However, the design could be slightly more unique or surprising to fully align with the 'authored contradiction' aspect of the Crawler style."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the reference style well, with appropriate outline weight, shading, and color palette. The use of 3-5 distinct color stops and the crisp edges are consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the reference style well, with appropriate outline weight, shading, and color palette. The use of 3-5 distinct color stops and the crisp edges are consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The candidate clearly depicts an ability icon with a hand and radiating elements, which aligns with the brief for a pixel-art symbol on a transparent background."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The hand and radiating elements are easily recognizable against the dark background."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3370,
+      "completionTokens": 314,
+      "totalTokens": 3684
+    }
+  },
+  "type": "icon",
+  "contentHash": "e014dc9f1d7bdd53038c6354b129b7e62ab72ba81d3d8498cdaae46dc6c2ba43",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 128,
+    "canvasWidth": 128,
+    "canvasHeight": 142
+  },
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": null
+}

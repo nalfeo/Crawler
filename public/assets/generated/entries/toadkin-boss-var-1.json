@@ -1,0 +1,126 @@
+{
+  "briefId": "toadkin-boss",
+  "spriteName": "toadkin-boss-var-1",
+  "assetPath": "generated/toadkin-boss-var-1.png",
+  "approvedAt": "2026-07-31T20:29:45.535Z",
+  "sourceRun": "generated/runs/toadkin-boss/2026-07-31T20-13-16-95881ee3",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 278,
+    "y": 283,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 278,
+      "y": 283,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 278,
+      "y": 283,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 278,
+        "y": 283
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T20:14:32.652Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The candidate effectively combines the toad-like physicality with crime-boss elements, such as the crown, jewelry, and robe. The cold, menacing expression and the raised hand gesture convey authority and menace, aligning with the brief's tone and the Crawler design language."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of muted colors and the pixel art technique are consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of muted colors and the pixel art technique are consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a massive, wide toad boss with a low-slung body, gland-studded skin, and crime-boss attire. The raised hand and cold expression match the brief's description perfectly."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and immediately recognizable as a wide, low toad boss. The sprite stands out well against the dark floor tile in the readability composite."
+    },
+    "bossPresence": {
+      "score": 5,
+      "rationale": "The sprite's massive width and low height create a dominant, imposing silhouette. The raised hand and crown further enhance its boss-like presence."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The sprite is a complete full-body figure, with all limbs and the head fully visible within the frame. The wide stance emphasizes the boss's mass and presence."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the swampy green palette, tarnished brass jewelry, and crime-boss attire. The toad's wide, low body and gland-studded skin align with the Croak Family's aesthetic."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4306,
+      "completionTokens": 490,
+      "totalTokens": 4796
+    }
+  },
+  "type": "enemy",
+  "contentHash": "8aaa29bc90b40fe1434ecaa7afb364b581911e35c38fc2ef5ff5f3cfde5ebc3f",
+  "opaqueBounds": {
+    "x": 31,
+    "y": 31,
+    "width": 518,
+    "height": 450,
+    "canvasWidth": 580,
+    "canvasHeight": 512
+  },
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\toadkin-boss\\2026-07-31T20-13-16-95881ee3\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\toadkin-boss\\2026-07-31T20-13-16-95881ee3\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\toadkin-boss\\2026-07-31T20-13-16-95881ee3\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
