@@ -25,6 +25,10 @@ Estimated 2🍎, actual 2🍎.
 
 The nightly velocity issue template is the canonical instruction surface for this loop. Using a fully qualified issue reference removes ambiguity and keeps close-linking deterministic in automation and copied PR text.
 
+## Scope note
+
+This PR is a **standalone template correction only**. It does **not** close or complete issue #2612. Issue #2612 (nightly bottleneck scan with deterministic telemetry and measurable evidence) requires a separate implementation session with the full required scan artifacts.
+
 ## Verification
 
 - `node --test .github/scripts/nightly-velocity-issue/nightly-agent-issues.test.mjs` ✅
