@@ -310,6 +310,63 @@ export async function runCheckpointStage<T>(
   throw new IssuePipelineCheckpointError(`Stage ${stage} did not produce an output`);
 }
 
+/**
+ * If `stage` is exhausted (attempts ≥ maxAttempts) **and** its last recorded
+ * error was transient (not in PERMANENT_ERROR_KINDS), this removes the stage
+ * entry from the checkpoint so the next `runCheckpointStage` call can retry
+ * from a clean slate.
+ *
+ * Returns `true` when a reset was performed, `false` when no reset was needed
+ * (stage not present, still in-flight, succeeded, or failed permanently).
+ *
+ * Recovery path for stages that hit their retry ceiling due to infrastructure
+ * bugs that have since been fixed — e.g. queue-commit push failures (bugs #1–3)
+ * that caused the `publish` stage to exhaust all three attempts before the
+ * underlying git defect was repaired. Calling this for a stage whose failure
+ * was permanent (auth, destination-conflict, etc.) is safe: it is a no-op.
+ */
+/**
+ * Error kinds that are safe to auto-reset after an infrastructure fix.
+ *
+ * Only a strict subset of transient kinds qualify — kinds that are EXCLUSIVELY
+ * the result of infrastructure failures (push loop exhausted) rather than
+ * operational failures (auth, permissions, network) that share the same kind
+ * string. Specifically:
+ *
+ * - `null`  — unknown/unclassified error; no permanent signal in the kind alone.
+ * - `push-retries-exhausted` — the push retry loop was exhausted due to a
+ *   non-fast-forward rejection; unambiguously an infrastructure issue.
+ *
+ * `git-failed` is intentionally excluded: `QueueCommitError('git-failed')` is
+ * also thrown for authentication, permission, and network failures that should
+ * NOT be silently reset on every workflow run.
+ */
+const INFRA_RESETTABLE_KINDS = new Set<string | null>([null, 'push-retries-exhausted']);
+
+export async function resetExhaustedTransientStage(
+  controller: IssueCheckpointController,
+  stage: IssuePipelineStage,
+  maxAttempts = ISSUE_PIPELINE_MAX_STAGE_ATTEMPTS,
+): Promise<boolean> {
+  const checkpoint = await loadIssueCheckpoint(controller);
+  const prior = checkpoint.stages[stage];
+  const errorKind = prior?.error?.kind ?? null;
+  if (
+    prior === undefined ||
+    prior.status !== 'failed' ||
+    prior.attempts < maxAttempts ||
+    !INFRA_RESETTABLE_KINDS.has(errorKind)
+  ) {
+    return false;
+  }
+  // Build a new stages map without the exhausted entry.
+  const remainingStages = Object.fromEntries(
+    Object.entries(checkpoint.stages).filter(([k]) => k !== stage),
+  ) as IssuePipelineCheckpoint['stages'];
+  await writeIssueCheckpoint(controller, { ...checkpoint, stages: remainingStages });
+  return true;
+}
+
 export async function markIssuePipelineTerminal(
   controller: IssueCheckpointController,
   outcome: 'selected-pending-publish' | 'quality-stopped' | 'published',
