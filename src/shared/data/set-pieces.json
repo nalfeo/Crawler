@@ -13800,7 +13800,7 @@
       "sizing": "exact",
       "width": 7,
       "height": 7,
-      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
+      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off â€” the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
       "tags": ["reality-show", "welcome", "floor1", "named"],
       "placement": {
         "verticalAlign": "top"
@@ -15066,6 +15066,2029 @@
           "name": "Default",
           "visible": true,
           "locked": false
+        }
+      ]
+    },
+    {
+      "id": "welcome-room-v2",
+      "name": "Welcome Room v2",
+      "theme": "tutorial",
+      "sizing": "exact",
+      "width": 8,
+      "height": 8,
+      "description": "A worn tutorial check-in hub where the welcome desk runs the room, the Sweaty Merchant hovers close to the goon to intercept newcomers, and the Spell Broker has been edged into a quieter side nook.",
+      "tags": ["tutorial", "welcome", "hub", "check-in", "npc"],
+      "props": [
+        {
+          "id": "floor-1-1",
+          "kind": "floor",
+          "x": 0,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-1",
+          "kind": "floor",
+          "x": 1,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-1",
+          "kind": "floor",
+          "x": 2,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-1",
+          "kind": "floor",
+          "x": 3,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-1",
+          "kind": "floor",
+          "x": 4,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-1",
+          "kind": "floor",
+          "x": 5,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-1",
+          "kind": "floor",
+          "x": 6,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-1",
+          "kind": "floor",
+          "x": 7,
+          "y": 0,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-1-2",
+          "kind": "floor",
+          "x": 0,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-2",
+          "kind": "floor",
+          "x": 1,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-2",
+          "kind": "floor",
+          "x": 2,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-2",
+          "kind": "floor",
+          "x": 3,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-2",
+          "kind": "floor",
+          "x": 4,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-2",
+          "kind": "floor",
+          "x": 5,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-2",
+          "kind": "floor",
+          "x": 6,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-2",
+          "kind": "floor",
+          "x": 7,
+          "y": 1,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-1-3",
+          "kind": "floor",
+          "x": 0,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-3",
+          "kind": "floor",
+          "x": 1,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-3",
+          "kind": "floor",
+          "x": 2,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-3",
+          "kind": "floor",
+          "x": 3,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-3",
+          "kind": "floor",
+          "x": 4,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-3",
+          "kind": "floor",
+          "x": 5,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-3",
+          "kind": "floor",
+          "x": 6,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-3",
+          "kind": "floor",
+          "x": 7,
+          "y": 2,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-1-4",
+          "kind": "floor",
+          "x": 0,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-4",
+          "kind": "floor",
+          "x": 1,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-4",
+          "kind": "floor",
+          "x": 2,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-4",
+          "kind": "floor",
+          "x": 3,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-4",
+          "kind": "floor",
+          "x": 4,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-4",
+          "kind": "floor",
+          "x": 5,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-4",
+          "kind": "floor",
+          "x": 6,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-4",
+          "kind": "floor",
+          "x": 7,
+          "y": 3,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-1-5",
+          "kind": "floor",
+          "x": 0,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-5",
+          "kind": "floor",
+          "x": 1,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-5",
+          "kind": "floor",
+          "x": 2,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-5",
+          "kind": "floor",
+          "x": 3,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-5",
+          "kind": "floor",
+          "x": 4,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-5",
+          "kind": "floor",
+          "x": 5,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-5",
+          "kind": "floor",
+          "x": 6,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-5",
+          "kind": "floor",
+          "x": 7,
+          "y": 4,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-1-6",
+          "kind": "floor",
+          "x": 0,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-6",
+          "kind": "floor",
+          "x": 1,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-6",
+          "kind": "floor",
+          "x": 2,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-6",
+          "kind": "floor",
+          "x": 3,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-6",
+          "kind": "floor",
+          "x": 4,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-6",
+          "kind": "floor",
+          "x": 5,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-6",
+          "kind": "floor",
+          "x": 6,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-6",
+          "kind": "floor",
+          "x": 7,
+          "y": 5,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-1-7",
+          "kind": "floor",
+          "x": 0,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-7",
+          "kind": "floor",
+          "x": 1,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-7",
+          "kind": "floor",
+          "x": 2,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-7",
+          "kind": "floor",
+          "x": 3,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-7",
+          "kind": "floor",
+          "x": 4,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-7",
+          "kind": "floor",
+          "x": 5,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-7",
+          "kind": "floor",
+          "x": 6,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-7",
+          "kind": "floor",
+          "x": 7,
+          "y": 6,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-1-8",
+          "kind": "floor",
+          "x": 0,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-2-8",
+          "kind": "floor",
+          "x": 1,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-3-8",
+          "kind": "floor",
+          "x": 2,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-cable-run-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-4-8",
+          "kind": "floor",
+          "x": 3,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-5-8",
+          "kind": "floor",
+          "x": 4,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-6-8",
+          "kind": "floor",
+          "x": 5,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-clean-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-7-8",
+          "kind": "floor",
+          "x": 6,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-scuffed-v2-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor-8-8",
+          "kind": "floor",
+          "x": 7,
+          "y": 7,
+          "sceneLayer": "floor",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-plate-tape-mark-var-0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "wall-1-1",
+          "kind": "wall",
+          "x": 0,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-2-1",
+          "kind": "wall",
+          "x": 1,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-3-1",
+          "kind": "wall",
+          "x": 2,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-4-1",
+          "kind": "wall",
+          "x": 3,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-5-1",
+          "kind": "wall",
+          "x": 4,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-6-1",
+          "kind": "wall",
+          "x": 5,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-7-1",
+          "kind": "wall",
+          "x": 6,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-1",
+          "kind": "wall",
+          "x": 7,
+          "y": 0,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-1-2",
+          "kind": "wall",
+          "x": 0,
+          "y": 1,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-2",
+          "kind": "wall",
+          "x": 7,
+          "y": 1,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-1-3",
+          "kind": "wall",
+          "x": 0,
+          "y": 2,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-3",
+          "kind": "wall",
+          "x": 7,
+          "y": 2,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-1-4",
+          "kind": "wall",
+          "x": 0,
+          "y": 3,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-4",
+          "kind": "wall",
+          "x": 7,
+          "y": 3,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-1-5",
+          "kind": "wall",
+          "x": 0,
+          "y": 4,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-5",
+          "kind": "wall",
+          "x": 7,
+          "y": 4,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-1-6",
+          "kind": "wall",
+          "x": 0,
+          "y": 5,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-6",
+          "kind": "wall",
+          "x": 7,
+          "y": 5,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-1-7",
+          "kind": "wall",
+          "x": 0,
+          "y": 6,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-7",
+          "kind": "wall",
+          "x": 7,
+          "y": 6,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-1-8",
+          "kind": "wall",
+          "x": 0,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-2-8",
+          "kind": "wall",
+          "x": 1,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-3-8",
+          "kind": "wall",
+          "x": 2,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "door-main",
+          "kind": "door",
+          "x": 3,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 5,
+                "row": 6
+              },
+              "widthFt": 3,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-5-8",
+          "kind": "wall",
+          "x": 4,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-6-8",
+          "kind": "wall",
+          "x": 5,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-7-8",
+          "kind": "wall",
+          "x": 6,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "wall-8-8",
+          "kind": "wall",
+          "x": 7,
+          "y": 7,
+          "sceneLayer": "structure",
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 4,
+                "row": 6
+              },
+              "widthFt": 2,
+              "heightFt": 7,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "checkin-desk",
+          "kind": "furniture",
+          "x": 2,
+          "y": 1,
+          "width": 3,
+          "height": 1,
+          "solid": true,
+          "sceneLayer": "focal",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-desk-var-0"
+              },
+              "widthFt": 5.18,
+              "heightFt": 3.2,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "desk-ledger",
+          "kind": "decoration",
+          "x": 3,
+          "y": 1,
+          "sceneLayer": "focal",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-call-sheet-var-3"
+              },
+              "widthFt": 1.9,
+              "heightFt": 2.4
+            }
+          ]
+        },
+        {
+          "id": "desk-lamp",
+          "kind": "decoration",
+          "x": 4,
+          "y": 1,
+          "sceneLayer": "focal",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-exit-sign-var-0"
+              },
+              "widthFt": 3.86,
+              "heightFt": 2.6
+            }
+          ]
+        },
+        {
+          "id": "welcome-banner",
+          "kind": "fixture",
+          "x": 3,
+          "y": 0,
+          "width": 2,
+          "height": 1,
+          "sceneLayer": "focal",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-banner-var-6"
+              },
+              "widthFt": 6.4,
+              "heightFt": 3.0,
+              "anchorBase": true,
+              "offsetYFt": -1.0
+            }
+          ]
+        },
+        {
+          "id": "merchant-table",
+          "kind": "furniture",
+          "x": 5,
+          "y": 2,
+          "width": 2,
+          "height": 1,
+          "solid": true,
+          "sceneLayer": "merchant",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-shop-table-var-0"
+              },
+              "widthFt": 5.57,
+              "heightFt": 3.0,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "merchant-crates",
+          "kind": "furniture",
+          "x": 6,
+          "y": 1,
+          "width": 1,
+          "height": 2,
+          "solid": true,
+          "sceneLayer": "merchant",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-crate-stack-var-3"
+              },
+              "widthFt": 4.89,
+              "heightFt": 5.2,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "merchant-board",
+          "kind": "fixture",
+          "x": 6,
+          "y": 3,
+          "sceneLayer": "merchant",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-merchant-board-var-6"
+              },
+              "widthFt": 2.79,
+              "heightFt": 3.2,
+              "anchorBase": true,
+              "rotationDeg": -3
+            }
+          ]
+        },
+        {
+          "id": "goon-locker",
+          "kind": "furniture",
+          "x": 1,
+          "y": 1,
+          "width": 1,
+          "height": 2,
+          "solid": true,
+          "sceneLayer": "goon",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-mini-fridge-var-2"
+              },
+              "widthFt": 2.87,
+              "heightFt": 3.2,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "bench-left",
+          "kind": "furniture",
+          "x": 1,
+          "y": 4,
+          "width": 1,
+          "height": 2,
+          "solid": true,
+          "sceneLayer": "goon",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-lounge-stool-var-1"
+              },
+              "widthFt": 2.46,
+              "heightFt": 2.6,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "broker-bookcase",
+          "kind": "furniture",
+          "x": 1,
+          "y": 6,
+          "width": 2,
+          "height": 1,
+          "solid": true,
+          "sceneLayer": "broker",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-bookcase-var-0"
+              },
+              "widthFt": 6.16,
+              "heightFt": 5.8,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "broker-side-table",
+          "kind": "furniture",
+          "x": 3,
+          "y": 5,
+          "solid": false,
+          "sceneLayer": "broker",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-side-table-var-12"
+              },
+              "widthFt": 2.26,
+              "heightFt": 2.3,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "broker-open-book",
+          "kind": "decoration",
+          "x": 2,
+          "y": 5,
+          "sceneLayer": "broker",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-call-sheet-var-3"
+              },
+              "widthFt": 1.74,
+              "heightFt": 2.2,
+              "rotationDeg": -14
+            }
+          ]
+        },
+        {
+          "id": "queue-rug",
+          "kind": "decoration",
+          "x": 3,
+          "y": 4,
+          "width": 2,
+          "height": 2,
+          "sceneLayer": "lane",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-rug-var-0"
+              },
+              "widthFt": 1.55,
+              "heightFt": 0.8,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "queue-stanchion-a",
+          "kind": "fixture",
+          "x": 3,
+          "y": 3,
+          "sceneLayer": "lane",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-stanchion-pair-var-4"
+              },
+              "widthFt": 4.75,
+              "heightFt": 3.0,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "queue-stanchion-b",
+          "kind": "fixture",
+          "x": 4,
+          "y": 3,
+          "sceneLayer": "lane",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-velvet-rope-var-2"
+              },
+              "widthFt": 4.22,
+              "heightFt": 2.8,
+              "anchorBase": true,
+              "flipX": true
+            }
+          ]
+        },
+        {
+          "id": "entry-mat",
+          "kind": "decoration",
+          "x": 4,
+          "y": 5,
+          "sceneLayer": "lane",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-runner-var-10"
+              },
+              "widthFt": 0.33,
+              "heightFt": 0.7
+            }
+          ]
+        },
+        {
+          "id": "queue-crate",
+          "kind": "furniture",
+          "x": 5,
+          "y": 6,
+          "solid": true,
+          "sceneLayer": "lane",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-crate-single-var-0"
+              },
+              "widthFt": 2.64,
+              "heightFt": 2.4,
+              "anchorBase": true
+            }
+          ]
+        },
+        {
+          "id": "broom-corner",
+          "kind": "decoration",
+          "x": 6,
+          "y": 6,
+          "sceneLayer": "merchant",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-trash-bin-var-0"
+              },
+              "widthFt": 2.05,
+              "heightFt": 2.2,
+              "anchorBase": true,
+              "rotationDeg": 6
+            }
+          ]
+        },
+        {
+          "id": "notice-left",
+          "kind": "fixture",
+          "x": 0,
+          "y": 3,
+          "sceneLayer": "goon",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-history-board-var-3"
+              },
+              "widthFt": 2.3,
+              "heightFt": 2.8,
+              "anchorBase": true,
+              "offsetXFt": 0.3
+            }
+          ]
+        },
+        {
+          "id": "notice-right",
+          "kind": "fixture",
+          "x": 7,
+          "y": 3,
+          "sceneLayer": "merchant",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-show-poster-var-0"
+              },
+              "widthFt": 2.57,
+              "heightFt": 2.8,
+              "anchorBase": true,
+              "flipX": true,
+              "offsetXFt": -0.3,
+              "rotationDeg": 2
+            }
+          ]
+        },
+        {
+          "id": "coat-hooks",
+          "kind": "fixture",
+          "x": 5,
+          "y": 0,
+          "sceneLayer": "goon",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-wall-shelf-var-0"
+              },
+              "widthFt": 3.48,
+              "heightFt": 2.2,
+              "anchorBase": true,
+              "offsetYFt": -0.8
+            }
+          ]
+        },
+        {
+          "id": "broker-candle",
+          "kind": "decoration",
+          "x": 1,
+          "y": 5,
+          "sceneLayer": "broker",
+          "layers": [
+            {
+              "sprite": {
+                "source": "catalog",
+                "spriteId": "welcome-room-floor-stain-var-0"
+              },
+              "widthFt": 0.4,
+              "heightFt": 0.4
+            }
+          ]
+        }
+      ],
+      "npcs": [
+        {
+          "id": "welcome-goon",
+          "npcTypeId": "tutorial-goon",
+          "x": 3,
+          "y": 2,
+          "widthFt": 2.5,
+          "heightFt": 5.0,
+          "anchorRole": "welcome",
+          "sceneLayer": "actors"
+        },
+        {
+          "id": "welcome-merchant",
+          "npcTypeId": "shopkeeper",
+          "x": 4,
+          "y": 2,
+          "widthFt": 2.5,
+          "heightFt": 5.0,
+          "anchorRole": "shop",
+          "sceneLayer": "actors"
+        },
+        {
+          "id": "welcome-spell-broker",
+          "npcTypeId": "spell-quest-giver",
+          "x": 2,
+          "y": 5,
+          "widthFt": 2.5,
+          "heightFt": 5.0,
+          "anchorRole": "spell",
+          "sceneLayer": "actors"
+        }
+      ],
+      "sceneLayers": [
+        {
+          "id": "floor",
+          "name": "Floor"
+        },
+        {
+          "id": "structure",
+          "name": "Structure"
+        },
+        {
+          "id": "focal",
+          "name": "Focal Counter"
+        },
+        {
+          "id": "goon",
+          "name": "Goon Cluster"
+        },
+        {
+          "id": "merchant",
+          "name": "Merchant Cluster"
+        },
+        {
+          "id": "broker",
+          "name": "Broker Nook"
+        },
+        {
+          "id": "lane",
+          "name": "Queue Lane"
+        },
+        {
+          "id": "actors",
+          "name": "NPC Anchors"
         }
       ]
     }
