@@ -35,7 +35,10 @@ function openSweepWindow(world: ReturnType<typeof createTestWorld>): void {
   obj.staircaseDiscovered = false;
 }
 
-function playerPos(world: ReturnType<typeof createTestWorld>, playerEid: number): { x: number; y: number } {
+function playerPos(
+  world: ReturnType<typeof createTestWorld>,
+  playerEid: number,
+): { x: number; y: number } {
   return {
     x: world.stores.position.x[playerEid] ?? 0,
     y: world.stores.position.y[playerEid] ?? 0,
