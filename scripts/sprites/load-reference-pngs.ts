@@ -9,6 +9,10 @@
  * replays the recorded selection rather than re-loading `brief.references`
  * (which pointed at the now-retired Kenney placeholder spritesheets).
  *
+ * Seed frames (`RunSummary.seedFrames`) are prepended before the style references
+ * exactly as they were at generation time, and their on-disk bytes are verified
+ * against the stored SHA-256 content hash.
+ *
  * Reproducibility guard: when a recorded reference carries a `contentHash`, the
  * on-disk bytes are re-hashed and MUST match. Approving a new asset can reuse a
  * path (`approve.ts`), so a silent byte drift would otherwise re-judge against
@@ -26,7 +30,7 @@ import type { RunSummary } from './run-artifacts.js';
 
 export interface LoadRecordedReferencePngsOptions {
   /** The stored run summary whose `referenceSprites` selection to replay. */
-  readonly summary: Pick<RunSummary, 'brief' | 'referenceSprites'>;
+  readonly summary: Pick<RunSummary, 'brief' | 'referenceSprites' | 'seedFrames'>;
   /** Repository root; asset paths resolve under `<repoRoot>/public/assets/`. */
   readonly repoRoot: string;
   /** Byte reader injection (tests). Defaults to `fs.readFileSync`. */
@@ -40,6 +44,7 @@ export interface LoadRecordedReferencePngsOptions {
 /**
  * Load the exact reference PNG bytes recorded for a run. Impure (filesystem).
  * Throws loudly on any inconsistency; never returns Kenney placeholders.
+ * Seed frames are prepended in the same order they appeared during generation.
  */
 export function loadRecordedReferencePngs(options: LoadRecordedReferencePngsOptions): Buffer[] {
   const { summary, repoRoot } = options;
@@ -57,8 +62,39 @@ export function loadRecordedReferencePngs(options: LoadRecordedReferencePngsOpti
     );
   }
 
+  // Replay seed frames first, in the same order as at generation time.
+  const seedPngs: Buffer[] = [];
+  const seedEntries = summary.seedFrames ?? [];
+  const approvedSeedRoot = path.resolve(repoRoot, 'briefs');
+  for (const sf of seedEntries) {
+    const absolutePath = path.resolve(repoRoot, sf.path);
+    if (!absolutePath.startsWith(approvedSeedRoot + path.sep)) {
+      throw new Error(
+        `loadRecordedReferencePngs: recorded seed frame "${sf.path}" for run "${summary.brief}" ` +
+          `resolves outside the approved seed directory (briefs/). ` +
+          `The summary may be tampered — re-generate.`,
+      );
+    }
+    if (!assetExists(absolutePath)) {
+      throw new Error(
+        `loadRecordedReferencePngs: recorded seed frame "${sf.path}" is missing on disk for ` +
+          `run "${summary.brief}". The seed frame was moved or deleted — re-generate.`,
+      );
+    }
+    const bytes = readReference(absolutePath);
+    const actual = hashBytes(bytes);
+    if (actual !== sf.contentHash) {
+      throw new Error(
+        `loadRecordedReferencePngs: seed frame "${sf.path}" content hash drifted for run ` +
+          `"${summary.brief}" (expected ${sf.contentHash}, got ${actual}). ` +
+          `The seed frame changed since this run was generated — re-generate.`,
+      );
+    }
+    seedPngs.push(bytes);
+  }
+
   const publicAssetsRoot = path.resolve(repoRoot, 'public', 'assets');
-  return selection.selected.map((ref) => {
+  const stylePngs = selection.selected.map((ref) => {
     // Our art only: a tampered/legacy summary must not be able to read outside
     // the generated tree (e.g. a smuggled `generated/../kenney/...` path). Reject
     // unsafe paths, then verify post-resolve containment as defence in depth.
@@ -92,4 +128,7 @@ export function loadRecordedReferencePngs(options: LoadRecordedReferencePngsOpti
     }
     return bytes;
   });
+
+  // Return seed frames first (highest-priority identity anchors), then style references.
+  return [...seedPngs, ...stylePngs];
 }

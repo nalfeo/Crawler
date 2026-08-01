@@ -352,13 +352,14 @@ async function reprocessOne(
 }
 
 function maskBatchReferenceHashes(
-  summary: Pick<RunSummary, 'brief' | 'referenceSprites'>,
+  summary: Pick<RunSummary, 'brief' | 'referenceSprites' | 'seedFrames'>,
   batchSpriteIds: ReadonlySet<string>,
-): Pick<RunSummary, 'brief' | 'referenceSprites'> {
+): Pick<RunSummary, 'brief' | 'referenceSprites' | 'seedFrames'> {
   const refs = summary.referenceSprites;
   if (!refs || refs.selected.length === 0) return summary;
   return {
     brief: summary.brief,
+    ...(summary.seedFrames ? { seedFrames: summary.seedFrames } : {}),
     referenceSprites: {
       ...refs,
       selected: refs.selected.map((ref) =>
