@@ -482,4 +482,11 @@ export interface RunStats {
   weaponTelemetry?: WeaponTelemetrySummary;
   /** End-of-run deterministic equipment/reward playability metrics. */
   equipmentPlayability?: EquipmentPlayabilityMetrics;
+  /**
+   * Total XP gem value left on the ground when the run ended. These gems are
+   * destroyed by the floor transition (scene restart with fresh world). Measures
+   * AI collection efficiency: `totalXp / (totalXp + xpOnGroundAtEnd)`.
+   * Optional because pre-existing test fixtures construct RunStats manually.
+   */
+  xpOnGroundAtEnd?: number;
 }

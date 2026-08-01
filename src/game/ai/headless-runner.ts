@@ -11,6 +11,7 @@ import { hasComponent, query } from 'bitecs';
 import {
   Player,
   Health,
+  XpGem,
   createGameWorld,
   spawnPlayer,
   Enemy,
@@ -1255,6 +1256,14 @@ export async function runHeadless(
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
+      xpOnGroundAtEnd: (() => {
+        let total = 0;
+        for (const eid of query(world.ecs, [XpGem])) {
+          if (eid === undefined) continue;
+          total += world.stores.xpGem.value[eid] ?? 0;
+        }
+        return total;
+      })(),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1276,6 +1285,15 @@ export async function runHeadless(
   if (world.floorScenario) {
     killsByType.rat = world.floorScenario.objective.ratsKilled;
     killsByType.slime = world.floorScenario.objective.slimesKilled;
+  }
+
+  // Sum XP gem values remaining on the ground at run end. These gems are
+  // destroyed by the scene restart on floor transition (entity world is fresh).
+  // Combined with `totalXp` this lets callers compute collection efficiency.
+  let xpOnGroundAtEnd = 0;
+  for (const eid of query(world.ecs, [XpGem])) {
+    if (eid === undefined) continue;
+    xpOnGroundAtEnd += world.stores.xpGem.value[eid] ?? 0;
   }
 
   const stats: RunStats = {
@@ -1336,6 +1354,7 @@ export async function runHeadless(
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),
+    xpOnGroundAtEnd,
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
