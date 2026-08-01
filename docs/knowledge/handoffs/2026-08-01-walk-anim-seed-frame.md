@@ -23,7 +23,7 @@ CI recovery (2026-08-01) hardened three areas:
 
 ## Systems touched
 
-sprites
+sprite-pipeline
 
 ## Files touched
 
