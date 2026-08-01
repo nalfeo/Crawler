@@ -5,6 +5,7 @@ import type { InputState } from '../../src/shared/input.js';
 import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { spawnXpGem } from '../../src/core/spawners/pickups.js';
 import {
   AIDecisionDebugState,
   AIProgressSuppressionSource,
@@ -103,6 +104,8 @@ describe('headless runner AI telemetry', () => {
 
     expect(stats.finalLevel).toBeGreaterThanOrEqual(3);
     expect(stats.totalXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
+    expect(stats.runStartXp).toBe(stats.totalXp);
+    expect(stats.runStartXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
   });
 
   it('level 1 (default) applies no boost', async () => {
@@ -116,6 +119,56 @@ describe('headless runner AI telemetry', () => {
 
     // No boost applied — player XP/level should not be inflated above a normal start.
     expect(stats.finalLevel).toBeLessThan(2);
+    expect(stats.runStartXp ?? 0).toBe(0);
+  });
+
+  it('reports xpOnGroundAtEnd on the normal completion path', async () => {
+    let spawned = false;
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 1,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (spawned) return;
+            spawned = true;
+            spawnXpGem(world, 900, 900, 5);
+            spawnXpGem(world, 910, 900, 12);
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('timeout');
+    expect(stats.xpOnGroundAtEnd).toBe(17);
+  });
+
+  it('reports xpOnGroundAtEnd on the error path', async () => {
+    let spawned = false;
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 10,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (!spawned) {
+              spawned = true;
+              spawnXpGem(world, 900, 900, 5);
+              spawnXpGem(world, 910, 900, 12);
+            }
+            throw new Error('telemetry crash test');
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('error');
+    expect(stats.error).toContain('telemetry crash test');
+    expect(stats.xpOnGroundAtEnd).toBe(17);
   });
 
   it('counts real Floor 2 enemy deaths without treating director pruning as kills', async () => {
