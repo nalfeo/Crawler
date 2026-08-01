@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ba51dedd70f1d7765d854e5b1ff6424b8c300b25",
+    "commitDate": "2026-08-01T21:08:14Z",
+    "commitSubject": "[WIP] Consolidate approved asset check-in for llama-curb-stomper (#2651)",
+    "capturedAt": "2026-08-01T21:53:54.305Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30718646937",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/ba51dedd70f1d7765d854e5b1ff6424b8c300b25.json"
+  },
+  {
     "commit": "a862211444c3443284afd99d5a0ebe38974b28e4",
     "commitDate": "2026-08-01T20:10:36Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2657)",
