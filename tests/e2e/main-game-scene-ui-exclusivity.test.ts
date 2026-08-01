@@ -151,7 +151,7 @@ describe('MainGameScene UI exclusivity', () => {
   it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
     await bootPlayingSafeScene();
     await mainSceneProbe.queueSkillUsage(page, 'swordsmanship', 'hits_landed', 260);
-    await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 9_999);
+    await mainSceneProbe.queueSkillUsage(page, 'dagger', 'weapon_fired', 160);
     await mainSceneProbe.advanceSimulationFrames(page, 2);
 
     // Real rendered player-visible projection of the level-5 skill-passive

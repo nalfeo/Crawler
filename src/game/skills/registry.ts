@@ -33,13 +33,12 @@ const skillSchema: z.ZodType<SkillDefinition> = z
     perLevelBonus: perLevelBonusSchema,
     milestones: z
       .array(
-        z
-          .object({
-            level: skillMilestoneLevelSchema,
-            name: z.string().trim().min(1),
-            description: z.string().trim().min(1),
-            abilityId: z.string().trim().min(1),
-          })
+        z.object({
+          level: skillMilestoneLevelSchema,
+          name: z.string().trim().min(1),
+          description: z.string().trim().min(1),
+          abilityId: z.string().trim().min(1),
+        }),
       )
       .length(4),
     flavorText: z.string().trim().min(1).optional(),
@@ -882,7 +881,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
   },
 ];
 
-export const SKILL_DEFINITIONS = skillCatalogSchema.parse(SKILL_DEFINITIONS_RAW);
+const SKILL_DEFINITIONS = skillCatalogSchema.parse(SKILL_DEFINITIONS_RAW);
 
 export function parseSkillCatalog(raw: unknown) {
   return skillCatalogSchema.parse(raw);
