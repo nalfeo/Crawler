@@ -97,7 +97,7 @@ export function extractAuditExceptionsFromSource(source) {
 // but are not listed in KNOWN_EXPIRY_ARRAY_NAMES. An empty result means the
 // current source is fully covered; a non-empty result is a guard failure.
 export function findUnknownExpiryArrays(source) {
-  const exportedArrayPattern = /export const (\w+) = (\[\]|\[[\s\S]*?\n\]);/g;
+  const exportedArrayPattern = /export const (\w+) = (\[\]|\[[\s\S]*?\]);/g;
   const unknown = [];
   let match;
   while ((match = exportedArrayPattern.exec(source)) !== null) {

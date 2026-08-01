@@ -159,6 +159,14 @@ export const FOO_EXCEPTIONS = [{ expiresOn: '2026-09-01' }
   assert.deepEqual(findUnknownExpiryArrays(source), ['FOO_EXCEPTIONS']);
 });
 
+test('findUnknownExpiryArrays detects same-line unknown expiresOn-bearing array', () => {
+  const source = `
+export const AUDIT_EXCEPTIONS = [{ expiresOn: '2026-08-01' }];
+export const FOO_EXCEPTIONS = [{ expiresOn: '2026-09-01' }];
+`;
+  assert.deepEqual(findUnknownExpiryArrays(source), ['FOO_EXCEPTIONS']);
+});
+
 test('findUnknownExpiryArrays ignores arrays without expiresOn', () => {
   const source = `
 export const AUDIT_EXCEPTIONS = [{ expiresOn: '2026-08-01' }
