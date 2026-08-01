@@ -18,6 +18,9 @@ sensors:
   enemy:
     facing: front
     toleranceDeg: 20
+judge:
+  enabled: true
+  maxVariants: 4
 variations:
   - llama curb-stomper with one boot planted and the other lifted high, sleeveless undershirt, suspenders, blank thuggish stare
   - llama curb-stomper with extra-studded steel toes and thick ankle straps, dusty tan fur, forward-leaning stomp pose
