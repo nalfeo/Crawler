@@ -56,14 +56,17 @@ Authored `briefs/enemies/molefolk-gravel-slinger.yaml` for issue nalfeo/Crawler#
 
 ## What's Next / Blockers
 
-The brief is ready. The sprite generation pipeline will pick it up automatically
-once the brief lands on `main` via the asset-request CI worker drain cycle.
+The brief is ready as the canonical authored reference. Current
+`asset-request.yml` issue jobs do **not** consume `briefs/enemies/**` directly;
+they synthesize and promote a `briefs/draft/**` candidate from the issue body
+inside `runIssuePipeline`.
 
 ### Next session checklist (requires Azure credentials):
 
-1. **Wait for CI generation**: check issue #2565 for a pipeline comment like:
-   `✅ Asset-request pipeline complete. - brief: molefolk-gravel-slinger`
+1. **Use this brief as canonical reference** for future revisions/check-ins.
+   Existing issue-run generation for #2565 came from the synthesized draft path.
 2. **Judge candidates** with the `sprite-judge` skill if needed.
-3. **Approve the best variant**: `npm run sprites:approve -- molefolk-gravel-slinger`
+3. **Approve the best variant**:
+   `npm run sprites:approve -- generated/runs/molefolk-gravel-slinger/<runId> --variant <N>`
 4. **Wire the enemy runtime**: add `molefolk-gravel-slinger` to the Floor 2 enemy
    roster once the approved sprite asset is checked in.
