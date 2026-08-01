@@ -10,21 +10,6 @@ const skillMilestoneLevelSchema = z.union([
   z.literal(20),
 ]);
 
-const statKeySchema = z.enum(STAT_KEYS);
-
-const milestoneEffectSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('stat_add'), stat: statKeySchema, value: z.number() }).strict(),
-  z.object({ type: z.literal('stat_multiply'), stat: statKeySchema, value: z.number() }).strict(),
-  z.object({ type: z.literal('extra_projectile'), count: z.number() }).strict(),
-  z
-    .object({
-      type: z.literal('aura'),
-      radius: z.number().positive(),
-      dpsPercentOfDamage: z.number().positive(),
-    })
-    .strict(),
-]);
-
 const perLevelBonusSchema = z
   .object(Object.fromEntries(STAT_KEYS.map((key) => [key, z.number().optional()])))
   .strict();
@@ -53,19 +38,8 @@ const skillSchema: z.ZodType<SkillDefinition> = z
             level: skillMilestoneLevelSchema,
             name: z.string().trim().min(1),
             description: z.string().trim().min(1),
-            effect: milestoneEffectSchema.optional(),
-            abilityId: z.string().trim().min(1).optional(),
+            abilityId: z.string().trim().min(1),
           })
-          .strict()
-          .superRefine((m, ctx) => {
-            if (!m.effect && !m.abilityId) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'milestone must have either effect or abilityId',
-                path: ['effect'],
-              });
-            }
-          }),
       )
       .length(4),
     flavorText: z.string().trim().min(1).optional(),
@@ -571,7 +545,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
         level: 5,
         name: 'Close Quarters',
         description: '+0.1 accuracy with daggers',
-        abilityId: 'dagger-rapid-strike-base',
+        abilityId: 'shadowblade',
       },
       {
         level: 10,

@@ -5,9 +5,8 @@ import type { StatKey } from '../../shared/stats.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
-import { applyCatalogEffect } from './progressionEffects.js';
 import { grantAbilitySources, queueAbilityTrigger, revokeAbilitySources } from './abilitySystem.js';
-import { SKILL_LEVEL5_ABILITY_GRANTS, getAbilityDefinition } from '../abilities/registry.js';
+import { getAbilityDefinition } from '../abilities/registry.js';
 import { skillAbilityGrantSourceId, type AbilityGrantSourceId } from '../../shared/abilities.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
@@ -83,65 +82,6 @@ export function skillSystem(world: GameWorld): void {
       ) {
         state.triggeredMilestones.add(state.level);
         applyMilestone(world, def.id, state.level, event.holderEid);
-
-        // At level 5, also grant the corresponding passive ability (if any)
-        // via the legacy SKILL_LEVEL5_ABILITY_GRANTS map — but only when the
-        // skill does NOT already have an abilityId on its L5 milestone (in that
-        // case applyMilestone() above already handled the grant and reusing the
-        // same sourceId here would throw a source-conflict error).
-        if (state.level === 5) {
-          const l5MilestoneAbility = def.milestones.find((m) => m.level === 5)?.abilityId;
-          const legacyAbilityId =
-            l5MilestoneAbility === undefined ? SKILL_LEVEL5_ABILITY_GRANTS.get(def.id) : undefined;
-          if (legacyAbilityId !== undefined) {
-            const targetEid = event.holderEid ?? query(world.ecs, [Player])[0];
-            if (targetEid !== undefined) {
-              grantAbilitySources(world, targetEid, [
-                {
-                  kind: 'passive',
-                  abilityId: legacyAbilityId,
-                  sourceId: skillAbilityGrantSourceId(def.id, state.level),
-                },
-              ]);
-
-              // Player-only, one-time unlock feedback. Mobs can level skills
-              // via the v2 holder-scoped path but never render HUD feedback.
-              if (hasComponent(world.ecs, targetEid, Player)) {
-                const abilityDef = getAbilityDefinition(legacyAbilityId);
-                const isGeneralPassive =
-                  abilityDef !== undefined &&
-                  abilityDef.kind === 'passive' &&
-                  abilityDef.weaponPrerequisite === undefined;
-
-                // Weapon-gated passives already get their activation VFX from
-                // applyPassive() the moment a matching weapon is equipped
-                // (which happens this same tick if the prerequisite is
-                // already met) — pushing it again here would double-fire.
-                // General (no-prerequisite) passives never take that path,
-                // so this milestone grant is their only VFX, emitted exactly
-                // once thanks to the `triggeredMilestones` guard above.
-                if (isGeneralPassive) {
-                  const px = world.stores.position.x[targetEid] ?? 0;
-                  const py = world.stores.position.y[targetEid] ?? 0;
-                  pushVfxEvent(world.vfxEvents, {
-                    kind: 'abilityActivateFlash',
-                    x: px,
-                    y: py,
-                  });
-                }
-
-                const presentation = getAbilityPresentation(legacyAbilityId);
-                pushAnnouncement(world.announcements, {
-                  kind: 'skillPassiveUnlocked',
-                  archetypeIndex: -1,
-                  text: `Passive Unlocked: ${presentation?.name ?? legacyAbilityId}`,
-                  durationMs: SKILL_PASSIVE_UNLOCK_ANNOUNCEMENT_MS,
-                  elapsedMs: world.elapsedMs,
-                });
-              }
-            }
-          }
-        }
       }
     }
   }
@@ -161,19 +101,7 @@ function applyMilestone(
   const milestone = def.milestones.find((m) => m.level === level);
   if (milestone === undefined) return;
 
-  // If milestone has a CatalogEffect, apply it
-  if (milestone.effect !== undefined) {
-    applyCatalogEffect(world, {
-      sourceType: 'skill',
-      sourceId:
-        holderEid === undefined
-          ? `${skillId}:milestone:${level}`
-          : `${skillId}:milestone:${level}:${holderEid}`,
-      effect: milestone.effect,
-    });
-  }
-
-  // If milestone has an abilityId, grant it
+  // Grant the ability defined on this milestone
   if (milestone.abilityId !== undefined) {
     const targetEid = holderEid ?? query(world.ecs, [Player])[0];
     if (targetEid !== undefined) {
