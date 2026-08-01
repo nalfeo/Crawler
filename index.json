@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4fcb0b0370fdedada9138e83ce86ef5bcc8696a5",
+    "commitDate": "2026-08-01T03:34:04Z",
+    "commitSubject": "Add the committed gnome-wheelman enemy brief (#2524)",
+    "capturedAt": "2026-08-01T04:46:25.756Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30682734333",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/4fcb0b0370fdedada9138e83ce86ef5bcc8696a5.json"
+  },
+  {
     "commit": "43c314b9d26fa70837e06e81eb6ad806194ed170",
     "commitDate": "2026-08-01T02:54:23Z",
     "commitSubject": "fix(sprites): replace -X theirs with reset+checkout for orphan-branch publish (#2535)",
