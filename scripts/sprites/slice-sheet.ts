@@ -128,19 +128,30 @@ interface ContentBounds {
   readonly maxY: number;
 }
 
-function findBgColumns(
-  sheet: PNG,
-  bg: readonly [number, number, number],
-  threshold: number,
-): boolean[] {
+interface BackgroundSample {
+  readonly rgb: readonly [number, number, number];
+  readonly isTransparent: boolean;
+}
+
+function findBgColumns(sheet: PNG, bg: BackgroundSample, threshold: number): boolean[] {
   const result = new Array<boolean>(sheet.width).fill(true);
+  const thresholdSq = threshold * threshold;
   for (let x = 0; x < sheet.width; x++) {
     for (let y = 0; y < sheet.height; y++) {
       const idx = (y * sheet.width + x) * 4;
+      // Fully transparent pixel is always background regardless of RGB values.
+      // This is critical for icon sheets where gutters are transparent (alpha=0)
+      // and the RGB channels at those positions may differ from the estimated
+      // background colour (causing them to be mis-classified as foreground).
+      if ((sheet.data[idx + 3] ?? 255) === 0) continue;
+      if (bg.isTransparent) {
+        result[x] = false;
+        break;
+      }
       const r = sheet.data[idx] ?? 0;
       const g = sheet.data[idx + 1] ?? 0;
       const b = sheet.data[idx + 2] ?? 0;
-      if (rgbDistanceSq(r, g, b, bg[0], bg[1], bg[2]) > threshold * threshold) {
+      if (rgbDistanceSq(r, g, b, bg.rgb[0], bg.rgb[1], bg.rgb[2]) > thresholdSq) {
         result[x] = false;
         break;
       }
@@ -149,19 +160,22 @@ function findBgColumns(
   return result;
 }
 
-function findBgRows(
-  sheet: PNG,
-  bg: readonly [number, number, number],
-  threshold: number,
-): boolean[] {
+function findBgRows(sheet: PNG, bg: BackgroundSample, threshold: number): boolean[] {
   const result = new Array<boolean>(sheet.height).fill(true);
+  const thresholdSq = threshold * threshold;
   for (let y = 0; y < sheet.height; y++) {
     for (let x = 0; x < sheet.width; x++) {
       const idx = (y * sheet.width + x) * 4;
+      // Fully transparent pixel is always background regardless of RGB values.
+      if ((sheet.data[idx + 3] ?? 255) === 0) continue;
+      if (bg.isTransparent) {
+        result[y] = false;
+        break;
+      }
       const r = sheet.data[idx] ?? 0;
       const g = sheet.data[idx + 1] ?? 0;
       const b = sheet.data[idx + 2] ?? 0;
-      if (rgbDistanceSq(r, g, b, bg[0], bg[1], bg[2]) > threshold * threshold) {
+      if (rgbDistanceSq(r, g, b, bg.rgb[0], bg.rgb[1], bg.rgb[2]) > thresholdSq) {
         result[y] = false;
         break;
       }
@@ -193,7 +207,7 @@ function maskToBands(mask: boolean[], minWidth: number): Band[] {
 
 function inferContentBounds(
   sheet: PNG,
-  bg: readonly [number, number, number],
+  bg: BackgroundSample,
   threshold: number,
 ): ContentBounds | null {
   const colForeground = new Array<number>(sheet.width).fill(0);
@@ -202,10 +216,17 @@ function inferContentBounds(
   for (let y = 0; y < sheet.height; y++) {
     for (let x = 0; x < sheet.width; x++) {
       const idx = (y * sheet.width + x) * 4;
+      // Fully transparent pixel is always background regardless of RGB values.
+      if ((sheet.data[idx + 3] ?? 255) === 0) continue;
+      if (bg.isTransparent) {
+        colForeground[x] = (colForeground[x] ?? 0) + 1;
+        rowForeground[y] = (rowForeground[y] ?? 0) + 1;
+        continue;
+      }
       const r = sheet.data[idx] ?? 0;
       const g = sheet.data[idx + 1] ?? 0;
       const b = sheet.data[idx + 2] ?? 0;
-      if (rgbDistanceSq(r, g, b, bg[0], bg[1], bg[2]) > limitSq) {
+      if (rgbDistanceSq(r, g, b, bg.rgb[0], bg.rgb[1], bg.rgb[2]) > limitSq) {
         colForeground[x] = (colForeground[x] ?? 0) + 1;
         rowForeground[y] = (rowForeground[y] ?? 0) + 1;
       }
@@ -741,7 +762,7 @@ function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: 
   return PNG.sync.write(cell);
 }
 
-function estimateSheetBackgroundRgb(sheet: PNG): readonly [number, number, number] {
+function estimateSheetBackgroundRgb(sheet: PNG): BackgroundSample {
   const corners: readonly (readonly [number, number])[] = [
     [0, 0],
     [sheet.width - 1, 0],
@@ -751,13 +772,26 @@ function estimateSheetBackgroundRgb(sheet: PNG): readonly [number, number, numbe
   let r = 0;
   let g = 0;
   let b = 0;
+  let opaqueSamples = 0;
   for (const [x, y] of corners) {
     const idx = (y * sheet.width + x) * 4;
+    if ((sheet.data[idx + 3] ?? 255) === 0) continue;
     r += sheet.data[idx] ?? 0;
     g += sheet.data[idx + 1] ?? 0;
     b += sheet.data[idx + 2] ?? 0;
+    opaqueSamples++;
   }
-  return [Math.round(r / 4), Math.round(g / 4), Math.round(b / 4)] as const;
+  if (opaqueSamples === 0) {
+    return { rgb: [0, 0, 0] as const, isTransparent: true };
+  }
+  return {
+    rgb: [
+      Math.round(r / opaqueSamples),
+      Math.round(g / opaqueSamples),
+      Math.round(b / opaqueSamples),
+    ] as const,
+    isTransparent: false,
+  };
 }
 
 function rgbDistanceSq(

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "icon-batch-transparent-slice-fix",
+  "task_title": "Fix icon batch slicer to treat transparent (alpha=0) pixels as background",
+  "estimated_apples": 2,
+  "stages": {}
+}
