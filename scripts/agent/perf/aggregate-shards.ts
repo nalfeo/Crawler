@@ -51,6 +51,10 @@ export interface RunRow {
   gold: number;
   minHealthPercent: number;
   finalLevel: number;
+  xpSpawned?: number;
+  xpCollected?: number;
+  xpRemaining?: number;
+  xpEfficiency?: number;
 }
 
 /** The subset of RunStats the SSOT scorer reads. The producer (sweep-eval) and
