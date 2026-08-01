@@ -17,6 +17,7 @@ import {
   _rarityEligibleBaseIds as rarityEligibleBaseIds,
   _Floor2RewardPoolAuthoringError as Floor2RewardPoolAuthoringError,
   _assertGeneratedRewardInstanceLegal as assertGeneratedRewardInstanceLegal,
+  _partitionBases as partitionBases,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
@@ -184,13 +185,10 @@ describe('resolvePlayerBuildAffinity', () => {
 });
 
 describe('affinity partitioning — physical/magic/neutral candidates', () => {
-  // A neutral (non-weapon/armor) base must count as non-aligned for BOTH a
-  // physical and a magic player build (see `partitionBases` in
-  // floor2-reward-bundle-resolver.ts: "Opposite affinity OR neutral bases
-  // both count as non-aligned."). This proves the aligned/non-aligned split
-  // stays legal (both pools non-empty, no empty-pool error) for a physical
-  // player, a magic player, and — separately — confirms the neutral base is
-  // actually reachable from the non-aligned pool for either build.
+  // Neutral (non-weapon/armor) bases are the ONLY non-aligned candidates when
+  // present (see `_partitionBases` in floor2-reward-bundle-resolver.ts).
+  // Off-affinity weapons are excluded from the non-aligned pool when neutral
+  // items exist, so magic players are not flooded with unusable physical weapons.
   const NEUTRAL_ARMOR_BASE = 'travelers-cloak';
   const THREE_WAY_BASES = [PHYSICAL_BASE_A, MAGIC_BASE_A, NEUTRAL_ARMOR_BASE] as const;
 
@@ -216,19 +214,21 @@ describe('affinity partitioning — physical/magic/neutral candidates', () => {
         expect(resolvePlayerBuildAffinity(world)).toBe(playerAffinity);
         // Must not throw empty-aligned-pool or empty-nonaligned-pool: the
         // single same-affinity base keeps `aligned` non-empty, and the
-        // opposite-affinity base plus the neutral base keep `nonAligned`
-        // non-empty, regardless of which affinity the player has.
+        // neutral base keeps `nonAligned` non-empty (neutral-preference means
+        // the opposite-affinity weapon is excluded when neutral items exist).
         const bundle = resolveEquipmentRewardBundle(world, `ach-${seed}`, THREE_WAY_BASES, 'tier2');
         const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
         if (instance.baseId === NEUTRAL_ARMOR_BASE) sawNeutralInNonAligned.value = true;
         const oppositeBase = playerAffinity === 'physical' ? MAGIC_BASE_A : PHYSICAL_BASE_A;
         if (instance.baseId === oppositeBase) sawOppositeInNonAligned.value = true;
       }
-      // Not vacuous: across 40 seeds the non-aligned pool (opposite + neutral)
-      // must actually have been drawn at least once, and the neutral base
-      // specifically must have surfaced as a legal draw.
-      expect(sawNeutralInNonAligned.value || sawOppositeInNonAligned.value).toBe(true);
+      // Not vacuous: across 40 seeds the neutral non-aligned pool must
+      // actually have been drawn at least once.
       expect(sawNeutralInNonAligned.value).toBe(true);
+      // Neutral-preference: with neutral items present, the off-affinity weapon
+      // is excluded from the non-aligned pool so it should never appear as a
+      // non-aligned draw.
+      expect(sawOppositeInNonAligned.value).toBe(false);
     },
   );
 
@@ -243,6 +243,71 @@ describe('affinity partitioning — physical/magic/neutral candidates', () => {
     }
     expect(err).toBeInstanceOf(RewardBundleResolutionError);
     expect((err as RewardBundleResolutionError).code).toBe('empty-nonaligned-pool');
+  });
+});
+
+describe('_partitionBases — neutral-preference logic', () => {
+  const PHYSICAL_BASE = 'weapon.iron-cleaver';
+  const MAGIC_BASE = 'weapon.ember-wand';
+  const NEUTRAL_BASE = 'travelers-cloak';
+
+  it('when neutral items exist: non-aligned pool contains only neutral items (no off-affinity weapons)', () => {
+    // Physical player with physical + magic weapon + neutral armor:
+    // non-aligned = [neutral_armor] only (magic weapon excluded despite being non-aligned)
+    const physResult = partitionBases(
+      [PHYSICAL_BASE, MAGIC_BASE, NEUTRAL_BASE],
+      'physical',
+    );
+    expect(physResult.aligned).toContain(PHYSICAL_BASE);
+    expect(physResult.nonAligned).toEqual([NEUTRAL_BASE]);
+    expect(physResult.nonAligned).not.toContain(MAGIC_BASE);
+
+    // Magic player with same set:
+    // non-aligned = [neutral_armor] only (physical weapon excluded)
+    const magicResult = partitionBases(
+      [PHYSICAL_BASE, MAGIC_BASE, NEUTRAL_BASE],
+      'magic',
+    );
+    expect(magicResult.aligned).toContain(MAGIC_BASE);
+    expect(magicResult.nonAligned).toEqual([NEUTRAL_BASE]);
+    expect(magicResult.nonAligned).not.toContain(PHYSICAL_BASE);
+  });
+
+  it('fallback: when no neutral items exist, non-aligned pool contains all off-affinity candidates', () => {
+    // Weapon-only pool (no neutral items): falls back to full non-aligned (opposite weapons)
+    const physResult = partitionBases([PHYSICAL_BASE, MAGIC_BASE], 'physical');
+    expect(physResult.aligned).toEqual([PHYSICAL_BASE]);
+    expect(physResult.nonAligned).toEqual([MAGIC_BASE]);
+
+    const magicResult = partitionBases([PHYSICAL_BASE, MAGIC_BASE], 'magic');
+    expect(magicResult.aligned).toEqual([MAGIC_BASE]);
+    expect(magicResult.nonAligned).toEqual([PHYSICAL_BASE]);
+  });
+
+  it('full Floor 2 pool: both builds get neutral-only non-aligned pool (32 wearables, not weapon-diluted)', () => {
+    // Physical player: non-aligned = all 32 neutral items (not the 5 magic weapons)
+    const physResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'physical');
+    expect(physResult.aligned.length).toBe(51); // 51 physical weapons
+    expect(physResult.nonAligned.length).toBe(32); // 32 neutral wearables only
+    for (const id of physResult.nonAligned) {
+      expect(getGeneratedEquipmentBaseAffinity(id)).toBe('neutral');
+    }
+
+    // Magic player: non-aligned = all 32 neutral items (not the 51 physical weapons)
+    const magicResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'magic');
+    expect(magicResult.aligned.length).toBe(5); // 5 magic weapons
+    expect(magicResult.nonAligned.length).toBe(32); // 32 neutral wearables only (no physical weapons)
+    for (const id of magicResult.nonAligned) {
+      expect(getGeneratedEquipmentBaseAffinity(id)).toBe('neutral');
+    }
+  });
+
+  it('non-aligned pool size is equal for both builds on the full Floor 2 pool (horizontal parity)', () => {
+    const physResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'physical');
+    const magicResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'magic');
+    // Both builds now draw from the same 32-item neutral pool on non-aligned draws.
+    expect(physResult.nonAligned.length).toBe(magicResult.nonAligned.length);
+    expect(physResult.nonAligned.length).toBe(32);
   });
 });
 
@@ -407,17 +472,13 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(sawTravelersCloakUncommon).toBe(true);
   });
 
-  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity', () => {
+  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity (using actual resolver partitioning)', () => {
     // Under the decoupled model all bases are eligible for Common draws (no
     // base-stat pre-filtering). The full pool must keep both aligned and
-    // non-aligned partitions non-empty for every player build and rarity.
+    // non-aligned partitions non-empty for every player build and rarity,
+    // using the neutral-preference partitioning that the resolver actually uses.
     for (const playerAffinity of ['physical', 'magic'] as const) {
-      const aligned = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-        (baseId) => getGeneratedEquipmentBaseAffinity(baseId) === playerAffinity,
-      );
-      const nonAligned = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-        (baseId) => getGeneratedEquipmentBaseAffinity(baseId) !== playerAffinity,
-      );
+      const { aligned, nonAligned } = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, playerAffinity);
       expect(aligned.length, `${playerAffinity}-aligned pool must be non-empty`).toBeGreaterThan(0);
       expect(nonAligned.length, `non-${playerAffinity} pool must be non-empty`).toBeGreaterThan(0);
     }
@@ -555,19 +616,14 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect(new Set(uncommonEligible)).toEqual(new Set(FLOOR2_REWARD_POOL_STABLE_IDS));
   });
 
-  it('EXHAUSTIVELY (not sampled) proves every achievement-reachable tier × rarity × player-build partition is non-empty on both sides', () => {
+  it('EXHAUSTIVELY (not sampled) proves every achievement-reachable tier × rarity × player-build partition is non-empty on both sides (using actual resolver partitioning)', () => {
     for (const tier of ['tier1', 'tier2', 'tier3'] as const) {
       for (const rarity of tier === 'tier1'
         ? (['common'] as const)
         : (['common', 'uncommon'] as const)) {
         const eligible = rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, rarity);
         for (const playerAffinity of ['physical', 'magic'] as const) {
-          const aligned = eligible.filter(
-            (id) => getGeneratedEquipmentBaseAffinity(id) === playerAffinity,
-          );
-          const nonAligned = eligible.filter(
-            (id) => getGeneratedEquipmentBaseAffinity(id) !== playerAffinity,
-          );
+          const { aligned, nonAligned } = partitionBases(eligible, playerAffinity);
           expect(
             aligned.length,
             `tier ${tier} rarity ${rarity} ${playerAffinity}-aligned pool must be non-empty`,
