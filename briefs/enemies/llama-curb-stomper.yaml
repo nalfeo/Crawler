@@ -1,0 +1,24 @@
+type: enemy
+name: llama-curb-stomper
+floor: 2
+description: |
+  A heavy, thuggish llama in massive reinforced stomping boots, front-facing
+  with one leg raised as if mid-stomp and the body's weight pitched forward.
+  No weapon — the boots are the weapons. Keep the silhouette chunky, dense,
+  and low-center-of-gravity with a thick neck and a dull, single-mindedly
+  aggressive expression. Outfit is minimal and tough: sleeveless vest or
+  undershirt with suspenders, while the boots dominate the read as absurdly
+  oversized, studded, steel-toed, and comically huge relative to the body.
+  Fur is dusty tan/beige; boots are dark, well-made leather with reinforced
+  metal toe caps and trim. The Floor 2 cartel-dungeon tone should come
+  through in the craftsmanship — this is a brutal enforcer wearing boots that
+  are absurdly stylish and expensively built. Single subject only. Hard pixel
+  edges, no background, no text, no separate weapon.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+variations:
+  - llama curb-stomper with one boot planted and the other lifted high, sleeveless undershirt, suspenders, blank thuggish stare
+  - llama curb-stomper with extra-studded steel toes and thick ankle straps, dusty tan fur, forward-leaning stomp pose
+  - llama curb-stomper in a dark sleeveless vest with huge polished stomping boots, squat heavy silhouette, dull aggressive expression

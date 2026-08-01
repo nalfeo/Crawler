@@ -197,4 +197,29 @@ describe('postprocess resize fit', () => {
     });
     expectSensorOk(processed, brief, 'anchor-opaque');
   });
+
+  it('cover-expands canvas height for a tall silhouette in a 256x256 default-size frame', () => {
+    // 256×256 is the default output size for character/enemy/prop/equipment after
+    // the 256-defaults change. Square ≥128 briefs use the 'cover' resize strategy,
+    // which expands the secondary axis so the subject fills the dominant axis
+    // without letterboxing. A 4×8 source with 1px transparent-trim margin becomes
+    // ~6×10 before resize; cover scales to width-first (scale≈42.67), giving
+    // fittedHeight≈427 which expands the canvas beyond the 256 box.
+    // dimensionsExact accepts any size ≥ brief.size for cover strategy.
+    const brief = makeBrief({ width: 256, height: 256 }, { x: 128, y: 128 });
+    const processed = postprocess(makeTallFixture(), brief, PALETTE);
+    const out = PNG.sync.read(processed);
+
+    // Width is locked to the requested 256 (dominant axis).
+    expect(out.width).toBe(256);
+    // Height expands past 256 — the canvas is NOT letterboxed at 256×256.
+    expect(out.height).toBeGreaterThan(256);
+    // Concrete regression: transparent-trim pads 4×8 → ~6×10, cover scale≈42.67
+    // yields fittedHeight=round(10×42.67)=427.
+    expect(out.height).toBe(427);
+    expect(dimensionsExact(decodeSprite(processed), brief)).toEqual({
+      ok: true,
+      sensor: 'dimensions-exact',
+    });
+  });
 });

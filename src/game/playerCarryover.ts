@@ -59,6 +59,7 @@ import {
 import { clearActiveWeaponDef } from '../core/active-weapon.js';
 import { createBossChestId, type BossChestState } from '../core/systems/bossChestRewards.js';
 import { listGeneratedEquipmentReferences, listStaticInventorySlots } from '../shared/inventory.js';
+import { spawnBossChestEntity } from '../core/spawners/world-objects.js';
 
 const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
 
@@ -128,6 +129,14 @@ export interface BossChestCarryoverEntry {
    * closed (see the boss-chest validation loop below).
    */
   readonly revealedGrant?: ResolvedRewardPresentation;
+  /**
+   * World-space position where the physical chest entity was spawned.
+   * Optional for backward compatibility with saves that predate physical
+   * chests. When present and the chest is still `available`, the restore
+   * path re-spawns the ECS entity so the player can interact with it again.
+   */
+  readonly spawnX?: number;
+  readonly spawnY?: number;
 }
 
 export interface PlayerCarryoverSnapshot {
@@ -1209,6 +1218,21 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
         `Boss chest id ${chest.chestId} does not match family ${chest.familyId}`,
       );
     }
+    const hasSpawnX = chest.spawnX !== undefined;
+    const hasSpawnY = chest.spawnY !== undefined;
+    if (hasSpawnX !== hasSpawnY) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} must persist spawnX and spawnY together`,
+      );
+    }
+    if (
+      (hasSpawnX && (typeof chest.spawnX !== 'number' || !Number.isFinite(chest.spawnX))) ||
+      (hasSpawnY && (typeof chest.spawnY !== 'number' || !Number.isFinite(chest.spawnY)))
+    ) {
+      throw new PlayerCarryoverSnapshotError(
+        `Boss chest ${chest.chestId} has an invalid spawn position`,
+      );
+    }
     if (chest.revealedGrant !== undefined) {
       assertResolvedRewardPresentation(
         chest.revealedGrant,
@@ -1712,13 +1736,19 @@ export function capturePlayerCarryover(
         instanceKeys: [...bundle.instanceKeys],
       }),
     ),
-    bossChests: [...world.bossChests.values()].map((chest) => ({
-      chestId: chest.chestId,
-      familyId: chest.familyId,
-      state: chest.state,
-      createdAtMs: chest.createdAtMs,
-      ...(chest.revealedGrant ? { revealedGrant: chest.revealedGrant } : {}),
-    })),
+    bossChests: [...world.bossChests.values()].map((chest) => {
+      const eid = world.bossChestEids.get(chest.chestId);
+      const spawnX = eid !== undefined ? world.stores.position.x[eid] : undefined;
+      const spawnY = eid !== undefined ? world.stores.position.y[eid] : undefined;
+      return {
+        chestId: chest.chestId,
+        familyId: chest.familyId,
+        state: chest.state,
+        createdAtMs: chest.createdAtMs,
+        ...(chest.revealedGrant ? { revealedGrant: chest.revealedGrant } : {}),
+        ...(spawnX !== undefined && spawnY !== undefined ? { spawnX, spawnY } : {}),
+      };
+    }),
     lootBoxRewardBundles: [...world.lootBoxRewardBundles.values()].map((bundle) => ({
       schemaVersion: bundle.schemaVersion,
       achievementId: bundle.achievementId,
@@ -1832,7 +1862,6 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
       playerEid,
       restoreAbilityState(snapshot.abilityState, world.frameCount, persistedPassiveAbilityIds),
     );
-    synchronizeAbilityPassives(world, playerEid);
   } else {
     world.abilityStatesByEntity.delete(playerEid);
   }
@@ -1870,6 +1899,12 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
       },
     ]),
   );
+  // Re-spawn physical chest entities for available chests that have a saved position.
+  for (const chest of snapshot.bossChests) {
+    if (chest.state === 'available' && chest.spawnX !== undefined && chest.spawnY !== undefined) {
+      spawnBossChestEntity(world, chest.spawnX, chest.spawnY, chest.chestId);
+    }
+  }
   // lootBox bundles reference no generated-equipment instances, so they can
   // be restored independently of the registry restore above.
   world.lootBoxRewardBundles = new Map(
@@ -1923,6 +1958,10 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
           .join('; ')}`,
       );
     }
+  }
+
+  if (snapshot.abilityState) {
+    synchronizeAbilityPassives(world, playerEid, { suppressActivationVfx: true });
   }
 
   const equipment = getEquipmentState(world, playerEid);

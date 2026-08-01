@@ -1,0 +1,54 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "icon-batch-retry-and-active-runs",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 838,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 836
+    },
+    "pr-preflight": {
+      "allow": 1
+    },
+    "pr-review-ledger": {
+      "allow": 1
+    }
+  },
+  "tools": {
+    "apply_patch": 1,
+    "ask_user": 3,
+    "create": 12,
+    "create_pull_request": 2,
+    "edit": 57,
+    "extensions_manage": 1,
+    "extensions_reload": 3,
+    "filesystem-edit_file": 2,
+    "filesystem-read_media_file": 1,
+    "filesystem-write_file": 2,
+    "get_changes_overview": 1,
+    "glob": 31,
+    "grep": 72,
+    "invoke_canvas_action": 4,
+    "list_canvas_capabilities": 1,
+    "open_canvas": 2,
+    "playwright-browser_take_screenshot": 1,
+    "powershell": 277,
+    "read_agent": 21,
+    "read_powershell": 39,
+    "rename_branch": 2,
+    "rename_session": 1,
+    "rg": 31,
+    "send_session_message": 1,
+    "skill": 1,
+    "sql": 11,
+    "stop_powershell": 1,
+    "task": 2,
+    "update_pull_request": 2,
+    "view": 253
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

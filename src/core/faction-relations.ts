@@ -107,6 +107,10 @@ export interface Floor2FamilyBossEncounterState extends FloorBossEncounterState 
   roomId: number;
   doorEids: number[];
   activeGoalId: string;
+  /** World-space X position where this family's boss was spawned (used to drop the chest). */
+  bossSpawnX?: number;
+  /** World-space Y position where this family's boss was spawned (used to drop the chest). */
+  bossSpawnY?: number;
 }
 
 /** Default starting relation applied to every present family (from tuning.json). */

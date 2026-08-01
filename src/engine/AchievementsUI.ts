@@ -27,11 +27,14 @@ import {
 } from '../core/systems/achievementRewards.js';
 import type { RewardOpeningUI } from './RewardOpeningUI.js';
 import { prefersReducedMotion } from './reduced-motion.js';
+import { getAchievementIconEntry } from './achievement-icon.js';
 
 const PANEL_PADDING = 16;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 const ROW_HEIGHT = 98;
 const ROW_GAP = 8;
+const ACHIEVEMENT_ICON_SIZE = 32;
+const ACHIEVEMENT_ICON_GAP = 10;
 
 /** Flavor text longer than this (chars) gets a collapse/expand toggle. */
 const FLAVOR_EXPAND_THRESHOLD = 120;
@@ -269,7 +272,8 @@ export function createAchievementsUI(
     const isExpanded = expandedIds.has(def.id);
     const claimed = lastWorld?.achievements.claimedIds.has(def.id) === true;
     const rewardColumnWidth = 150;
-    const detailsWidth = w - 180;
+    const textLeft = x + 12 + ACHIEVEMENT_ICON_SIZE + ACHIEVEMENT_ICON_GAP;
+    const detailsWidth = w - (textLeft - x) - rewardColumnWidth - 18;
     const flavorWrapW = detailsWidth;
     const flavorStyle: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: FONT_FAMILY,
@@ -287,7 +291,7 @@ export function createAchievementsUI(
       // Create a temporary text object to measure rendered height. This runs
       // synchronously and is destroyed before the next draw call so it never
       // appears on screen.
-      const tmpFlavor = crispText(x + 12, y + 50, def.directorFlavor, flavorStyle);
+      const tmpFlavor = crispText(textLeft, y + 50, def.directorFlavor, flavorStyle);
       fullFlavorH = Math.max(FLAVOR_LINE_H, tmpFlavor.height);
       tmpFlavor.destroy();
       flavorHeightCache.set(def.id, fullFlavorH);
@@ -303,7 +307,32 @@ export function createAchievementsUI(
     container.add(box);
     rowObjects.push(box);
 
-    const t = crispText(x + 12, y + 8, def.title, {
+    const iconBg = scene.add.rectangle(
+      x + 12 + ACHIEVEMENT_ICON_SIZE / 2,
+      y + 10 + ACHIEVEMENT_ICON_SIZE / 2,
+      ACHIEVEMENT_ICON_SIZE,
+      ACHIEVEMENT_ICON_SIZE,
+      COLORS.panelBg,
+      0.9,
+    );
+    iconBg.setStrokeStyle(1, COLORS.rowBorder);
+    container.add(iconBg);
+    rowObjects.push(iconBg);
+
+    const iconEntry = getAchievementIconEntry(scene, def);
+    if (iconEntry) {
+      const iconSprite = scene.add
+        .image(
+          x + 12 + ACHIEVEMENT_ICON_SIZE / 2,
+          y + 10 + ACHIEVEMENT_ICON_SIZE / 2,
+          iconEntry.textureKey,
+        )
+        .setDisplaySize(ACHIEVEMENT_ICON_SIZE - 4, ACHIEVEMENT_ICON_SIZE - 4);
+      container.add(iconSprite);
+      rowObjects.push(iconSprite);
+    }
+
+    const t = crispText(textLeft, y + 8, def.title, {
       fontFamily: FONT_FAMILY,
       fontSize: '15px',
       fontStyle: 'bold',
@@ -312,7 +341,7 @@ export function createAchievementsUI(
     container.add(t);
     rowObjects.push(t);
 
-    const crit = crispText(x + 12, y + 30, def.unlockCriteria, {
+    const crit = crispText(textLeft, y + 30, def.unlockCriteria, {
       fontFamily: FONT_FAMILY,
       fontSize: '13px',
       color: hex(COLORS.textSecondary),
@@ -321,7 +350,7 @@ export function createAchievementsUI(
     container.add(crit);
     rowObjects.push(crit);
 
-    const flavor = crispText(x + 12, y + 50, def.directorFlavor, {
+    const flavor = crispText(textLeft, y + 50, def.directorFlavor, {
       ...flavorStyle,
       maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
     });
@@ -331,7 +360,7 @@ export function createAchievementsUI(
     if (isLong) {
       const expanderY = y + 50 + flavorH + 2;
       const expanderLabel = isExpanded ? '▲ less' : '▼ more';
-      const expander = crispText(x + 12, expanderY, expanderLabel, {
+      const expander = crispText(textLeft, expanderY, expanderLabel, {
         fontFamily: FONT_FAMILY,
         fontSize: '10px',
         color: hex(COLORS.textSecondary),

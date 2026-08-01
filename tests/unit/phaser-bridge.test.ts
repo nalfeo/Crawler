@@ -2,6 +2,7 @@ import { addComponent, addEntity, removeComponent, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BossChestEntity,
   DeathTimer,
   Enemy,
   Gold,
@@ -741,6 +742,22 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.scaleX).toBe(1);
   });
 
+  it('renders boss chest entities with the dedicated chest fallback texture', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 5, y: 6 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
+    addComponent(world.ecs, eid, BossChestEntity);
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('__cw_boss_chest');
+  });
+
   it('prefers Kenney sprite + frame when the sheet texture exists', () => {
     // Exclude the generated player art so this exercises the Kenney FALLBACK.
     // The `player` render kind now also pins generated art (the gender-matched
@@ -1169,6 +1186,58 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(1);
     expect(images[0]?.textureKey).toBe('rat-v1-var-9');
+  });
+
+  it('falls back to faerie-blink generated art when dedicated faerie-spark-caster texture is not loaded yet', () => {
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'faerie-blink-var-0': {
+          briefId: 'faerie-blink',
+          spriteName: 'faerie-blink-var-0',
+          assetPath: 'generated/faerie-blink-var-0.png',
+          approvedAt: '2026-08-01T00:00:00.000Z',
+          sourceRun: 'test',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '7/8',
+          judgeScore: '2',
+        },
+        'faerie-spark-caster-var-0': {
+          briefId: 'faerie-spark-caster',
+          spriteName: 'faerie-spark-caster-var-0',
+          assetPath: 'generated/faerie-spark-caster-var-0.png',
+          approvedAt: '2026-08-01T00:00:00.000Z',
+          sourceRun: 'test',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '7/8',
+          judgeScore: '2',
+        },
+      },
+    });
+    const { scene, images } = createSceneStub({
+      kenneyLoaded: true,
+      generatedRegistry: registry,
+      textureExists: (key) => key === 'kenney-tiny-dungeon' || key === 'faerie-blink-var-0',
+    });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const rat = addEntity(world.ecs);
+
+    addComponent(world.ecs, rat, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, rat, Enemy);
+    addComponent(
+      world.ecs,
+      rat,
+      set(Sprite, { textureId: 1, width: 16, height: 16, variantRoll: 0 }),
+    );
+    world.enemyAppearanceKeys.set(rat, 'faerie-spark-caster');
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('faerie-blink-var-0');
   });
 
   it('upgrades an existing slime visual to generated art once the texture becomes available', () => {

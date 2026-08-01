@@ -1,0 +1,46 @@
+type: enemy
+mobRole: boss
+name: molefolk-boss
+floor: 2
+sizeVariant: large
+description: |
+  Foreman Grubbs, the digging-rights patriarch of The Deepdig Union — a
+  massive, barrel-chested molefolk boss with enormous digging-claws that
+  double as weapons. Wide, low-slung body with hugely exaggerated shovel-hands
+  — the claws are so large they create wide horizontal extensions from the
+  body, making the silhouette nearly as wide as it is tall. Deep-set beady
+  eyes almost buried in the broad velvety head. A wide, flat snout.
+
+  Union boss authority: wearing a heavy work-master's foreman coat of dark
+  salvage canvas studded with iron boss-clasps, a thick tool-belt of scavenged
+  implements, and an iron hard-hat battered and dented from decades of labor.
+  Heavy chain of iron mining-pick links as a chest-piece — the foreman's badge.
+  The massive digging-claws have been further reinforced with iron-plate tip-caps
+  bolted onto the natural keratin.
+
+  Dark Floor 2 palette: deep charcoal-grey and near-black velvety mole fur,
+  dark rust-brown for canvas coat, dull iron-grey for claw plating and
+  hard-hat, verdigris on mining-chain. Deep underground tones.
+
+  Silhouette: wide body with oversized claws extending to sides creating a
+  heavy horizontal boss-mass. Front-facing. No thin protrusions.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Foreman Grubbs in salvage-canvas foreman coat, iron hard-hat, mining-pick chain chest-badge, massive iron-tipped digging-claws extending wide
+  - 'Foreman Grubbs wide-claw silhouette: enormous shovel-hands with iron tip-caps, barrel-chested mole body, union foreman authority pose'
+  - Foreman Grubbs with deep charcoal velvety fur, tool-belt of implements, hard-hat tilted at boss angle, front-facing underground patriarch presence
+  - 'Foreman Grubbs maximum mass variant: both huge claws out to sides at full span, heavy salvage foreman coat, flat snout, beady deep-set eyes'
+
+minVariations: 4

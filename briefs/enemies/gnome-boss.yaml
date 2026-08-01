@@ -1,0 +1,48 @@
+type: enemy
+mobRole: boss
+name: gnome-boss
+floor: 2
+sizeVariant: large
+description: |
+  Overseer Fizzwick, the chief engineer-tyrant of The Cog Combine — a gnome
+  boss who compensates for small stature with elaborate mechanical extensions
+  and sheer authority. The boss-mass is achieved through an enormous armored
+  exo-suit chassis bolted around the gnome's small frame: heavy iron
+  shoulder-plates expanding outward, a thick chest-plate of riveted salvage
+  gears and pressure gauges, and bulky mechanical arm-braces that end in
+  thick reinforced gauntlets. The gnome's own small face is visible inside
+  or above the collar, wearing huge round brass magnifying-goggles pushed up
+  on the forehead.
+
+  Crime-boss authority: Overseer Fizzwick wears the mark of The Cog Combine
+  — a heavy chain of large interlocking iron cogs as a collar/gorget, multiple
+  clan-rank medallions, and a foreman's helmet of welded scrap with a single
+  dented crest. One gauntleted fist raised — foreman's pointing-command gesture.
+
+  Dark Floor 2 palette: dark gunmetal and charcoal iron for the exo-chassis,
+  verdigris-stained brass for pressure gauges and cog chain, deep grey-green
+  for old painted metal. No bright colors.
+
+  Silhouette: wide and boxy — the chassis makes this a large rectangular
+  boss-mass despite the small gnome inside. Front-facing. No thin floating
+  parts — all mechanical extensions fused solidly into the body outline.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Overseer Fizzwick in riveted iron exo-chassis, huge cog-chain gorget, magnifying-goggles on forehead, foreman's salvage helmet, pointing-command fist
+  - Overseer Fizzwick with widened mechanical shoulder-plates, pressure-gauge chest, verdigris brass details, gnome face visible above heavy collar
+  - 'Overseer Fizzwick heavy iron exo-suit variant: maximum rectangular boss-mass, bolted scrap-iron plating, Cog Combine rank medallions, dark gunmetal'
+  - Overseer Fizzwick in foreman pose — mechanical arm-brace raised, cog-chain authority collar, full dark-iron chassis with gnome face peering out
+
+minVariations: 4

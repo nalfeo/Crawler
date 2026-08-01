@@ -3784,6 +3784,9 @@ test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND
   assert.match(stdout, /dry-run would-arm-auto-merge pr=#42/);
   // D2 fix: an admissible clean-BEHIND PR must also emit would-update-branch in dry-run.
   assert.match(stdout, /dry-run would-update-branch pr=#42 reason=clean-behind/);
+  // Issue #2453: dry-run must also emit the would-dispatch-post-update-branch message
+  // to document that live mode would dispatch a follow-up reconcile to re-arm.
+  assert.match(stdout, /dry-run would-dispatch-post-update-branch pr=#42/);
   assert.doesNotMatch(stdout, /merge-conflict/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
@@ -3827,6 +3830,10 @@ test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE
       status: 202,
       body: { message: 'Updating pull request branch.' },
     }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: () => ({
+      status: 204,
+      body: {},
+    }),
   });
 
   t.after(() => server.close());
@@ -3852,6 +3859,164 @@ test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE
     updateBranchCall.body,
     { expected_head_sha: HEAD_SHA },
     'update-branch body must use expected_head_sha',
+  );
+  // Issue #2453: after update-branch succeeds (202), a fresh reconcile must be
+  // dispatched so the PR is re-armed after CI passes on the new head — GitHub
+  // silently clears auto-merge when the head SHA changes.
+  assert.match(stdout, /dispatch-post-update-branch pr=#42/);
+  const postUpdateDispatch = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches` &&
+      call.body?.inputs?.trigger === 'post-update-branch',
+  );
+  assert.ok(
+    postUpdateDispatch,
+    'post-update-branch reconcile dispatch must be issued after update-branch succeeds',
+  );
+  assert.deepEqual(
+    postUpdateDispatch.body?.inputs,
+    { operation: 'reconcile', pr_number: String(PR_NUM), trigger: 'post-update-branch', lease_id: '' },
+    'post-update-branch dispatch inputs must be correct',
+  );
+});
+
+test('live reconcile does NOT dispatch post-update-branch when update-branch returns 422', async (t) => {
+  // When update-branch returns 422 (already up-to-date), the head SHA did not
+  // change, so auto-merge was not cleared — no follow-up dispatch is needed.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // update-branch returns 422: already up-to-date, head SHA unchanged.
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 422,
+      body: { message: 'already up-to-date' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /auto-merge armed pr=#42/);
+  // The 422 non-fatal message is written to stderr (not stdout).
+  assert.match(stderr, /update-branch pr=#42 non-fatal: 422/);
+  // 422 means the head was NOT advanced, so auto-merge is still armed.
+  // No post-update-branch dispatch should be issued.
+  assert.doesNotMatch(stdout, /dispatch-post-update-branch/);
+  const postUpdateDispatches = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches` &&
+      call.body?.inputs?.trigger === 'post-update-branch',
+  );
+  assert.equal(
+    postUpdateDispatches.length,
+    0,
+    'no post-update-branch dispatch when update-branch returns 422',
+  );
+});
+
+test('live reconcile does NOT dispatch post-update-branch when trigger=post-update-branch', async (t) => {
+  // Guard: a reconcile that was itself triggered by a post-update-branch event
+  // must not issue another post-update-branch dispatch — this prevents an
+  // infinite self-dispatch loop when the PR is repeatedly seen as 'behind'.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: true, mergeable_state: 'behind' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-28T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PUT /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/update-branch`]: () => ({
+      status: 202,
+      body: { message: 'Updating pull request branch.' },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  // Run with RECOVERY_TRIGGER=post-update-branch to simulate the recursive case.
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    RECOVERY_TRIGGER: 'post-update-branch',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /update-branch pr=#42 reason=clean-behind/);
+  // Self-dispatch guard: NO follow-up dispatch must be emitted.
+  assert.doesNotMatch(stdout, /dispatch-post-update-branch/);
+  const postUpdateDispatches = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches` &&
+      call.body?.inputs?.trigger === 'post-update-branch',
+  );
+  assert.equal(
+    postUpdateDispatches.length,
+    0,
+    'no post-update-branch dispatch when trigger is already post-update-branch',
   );
 });
 
@@ -4577,6 +4742,68 @@ test('train mode waits when Copilot produced only a no-files review', async (t) 
     labelPosts.some((call) => call.body?.labels?.includes('merge-train')),
     false,
     'a no-files review must not admit the PR to the merge train',
+  );
+});
+
+test('train mode skips substantive-review wait for assets/promote when diff is art+docs only', async (t) => {
+  const noFilesReview = substantiveCopilotReview({
+    body: "Copilot wasn't able to review any files in this pull request.",
+  });
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        head: { ...basePr().head, ref: 'assets/promote' },
+        changed_files: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      body: [
+        { filename: 'public/assets/generated/sprites/dagger.png' },
+        { filename: 'docs/knowledge/handoffs/2026-07-31-assets.md' },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads([noFilesReview]) }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /admission=substantive-copilot-review/);
+  const labelPosts = mutatingCalls.filter(
+    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  assert.equal(
+    labelPosts.some((call) => call.body?.labels?.includes(WAITING_LABEL)),
+    false,
+    'art+docs assets/promote diff should not be marked as waiting for substantive review',
   );
 });
 
@@ -12254,16 +12481,14 @@ test('live reconcile advances an attached automation fence past an outdated-mark
 });
 
 // ---------------------------------------------------------------------------
-// Fix #1 (review thread PRRT_kwDOSvo2Ms6TCmv9): on the lease-reaper GC trigger,
-// the stale-automation retry path must CARRY the attempt count forward and
-// FREEZE progressAt at its persisted value instead of refreshing it to `now`.
-// Refreshing slid the staleness window forward on every reap so a dead lock
-// survived many TTLs; freezing it makes the window monotonic, so the existing
-// attempt>=2 ceiling becomes a true wall-clock bound. NO run-inference liveness
-// signal is used (adversarial plan review, 2026-07-22).
+// Regression (PR #2365 loop incident): on lease-reaper stale-retry redispatch,
+// the retry path must CARRY the attempt count forward but refresh progressAt.
+// If progressAt stays frozen at an older stale timestamp, the next sweep can
+// immediately trip stale-automation-exhausted and release the fresh dispatch
+// before it gets any liveness window.
 // ---------------------------------------------------------------------------
 
-test('lease-reaper stale retry freezes progressAt and carries the attempt count', async (t) => {
+test('lease-reaper stale retry refreshes progressAt and carries the attempt count', async (t) => {
   const blockers = [
     {
       kind: 'ci-failure',
@@ -12369,15 +12594,19 @@ test('lease-reaper stale retry freezes progressAt and carries the attempt count'
   );
   assert.ok(releasePatch, 'lease-reaper retry must release via stale-automation-retry');
 
-  // Final dispatched state: attempt carried+incremented to 2, progressAt FROZEN.
+  // Final dispatched state: attempt carried+incremented to 2, progressAt refreshed.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final dispatched state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(finalState?.attempt, 2, 'attempt must carry forward (1 -> 2)');
-  assert.equal(
-    finalState?.progressAt,
-    frozenProgressAt,
-    'lease-reaper retry must FREEZE progressAt at its persisted value, not refresh it to now',
+  const parsedProgressAt = Date.parse(finalState?.progressAt ?? '');
+  assert.ok(
+    Number.isFinite(parsedProgressAt),
+    'progressAt must be a valid ISO timestamp',
+  );
+  assert.ok(
+    Math.abs(parsedProgressAt - Date.now()) < 10_000,
+    'lease-reaper retry must set progressAt within 10s of now (fresh liveness window)',
   );
 });
 

@@ -19,7 +19,6 @@ export type {
 } from './spawners/index.js';
 export {
   weaponSystem,
-  weaponEntitySystem,
   setActiveWeapon,
   clearActiveWeapon,
   getActiveWeapon,
@@ -135,11 +134,7 @@ export {
 } from './systems/familyFeudSystem.js';
 export type { FamilyAIDecision, FamilyTargetKind } from './systems/familyFeudSystem.js';
 export { getSkillDefinition, getAllSkillDefinitions } from './skills/registry.js';
-export {
-  getAbilityDefinition,
-  getAllAbilityDefinitions,
-  SKILL_LEVEL5_ABILITY_GRANTS,
-} from './abilities/registry.js';
+export { getAbilityDefinition, getAllAbilityDefinitions } from './abilities/registry.js';
 export type {
   SkillDefinition,
   SkillState,

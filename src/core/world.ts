@@ -52,7 +52,6 @@ import {
   Spawner,
   BroadcastScore,
   DroppedItem,
-  Weapon,
   Owner,
   Team,
   Lifetime,
@@ -82,7 +81,13 @@ import {
   createComponentStores,
   type ComponentStores,
 } from './components.js';
-import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
+import type {
+  StatModifier,
+  SkillState,
+  SkillUsageEvent,
+  PlayerLevel,
+  MilestoneGrantEvent,
+} from '../shared/skills.js';
 import type { FloorScenarioState, Floor2SettlementSnapshot } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -189,6 +194,11 @@ export interface GameWorld {
   /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
   skillUsageEvents: SkillUsageEvent[];
   /**
+   * Append-only log of every milestone ability grant during this run.
+   * Never cleared — read by headless runner at run end for RunStats.
+   */
+  milestoneGrantLog: MilestoneGrantEvent[];
+  /**
    * Active weapon skill IDs keyed by attacker EID (player).
    * Set by weaponSystem after a successful accuracy check; read by damage
    * systems (melee/projectile/beam/area) to emit skill XP when damage lands.
@@ -211,6 +221,12 @@ export interface GameWorld {
   generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
   /** Boss chest lifecycle records keyed by chest ID (`boss-chest:<familyId>`). */
   bossChests: Map<string, BossChestRecord>;
+  /**
+   * Reverse lookup: physical boss-chest ECS entity ID keyed by chest ID.
+   * Populated when `spawnBossChestEntity` creates the world-object; cleared when
+   * `bossChestPickupSystem` removes the entity after the player opens it.
+   */
+  bossChestEids: Map<string, number>;
   /**
    * Unclaimed Floor 1 `lootBox` reward bundles keyed by achievement ID.
    * Resolved once at unlock (see `resolveLootBoxRewardBundle`) and consumed
@@ -583,7 +599,6 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Spawner, stores.spawner);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
   wireStore(ecs, DroppedItem, stores.droppedItem);
-  wireStore(ecs, Weapon, stores.weapon);
   wireStore(ecs, Owner, stores.owner);
   wireStore(ecs, Team, stores.team);
   wireStore(ecs, Lifetime, stores.lifetime);
@@ -635,6 +650,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerSkills: new Map(),
     skillStatesByEntity: new Map(),
     skillUsageEvents: [],
+    milestoneGrantLog: [],
     attackerWeaponSkills: new Map(),
     attackWeaponSkillsByEntity: new Map(),
     abilityStatesByEntity: new Map(),
@@ -646,6 +662,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     }),
     generatedEquipmentRewardBundles: new Map(),
     bossChests: new Map(),
+    bossChestEids: new Map(),
     lootBoxRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),

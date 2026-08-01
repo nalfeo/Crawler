@@ -1,0 +1,122 @@
+{
+  "briefId": "llama-elite-backlot-capo-v1",
+  "spriteName": "llama-elite-backlot-capo-v1-var-2",
+  "assetPath": "generated/llama-elite-backlot-capo-v1-var-2.png",
+  "approvedAt": "2026-08-01T00:11:27.396Z",
+  "sourceRun": "generated/runs/llama-elite-backlot-capo-v1/2026-08-01T00-08-30-e63c8050",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 125,
+    "y": 183,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 125,
+      "y": 183,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 125,
+      "y": 183,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 125,
+        "y": 183
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 2,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:10:03.920Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a llama capo with a tailored coat, gold epaulettes, and a spit-rifle is both unique and fits the darkly humorous and strange tone of Crawler. The combination of a refined, dignified appearance with the absurdity of a llama and a spit-rifle is well-executed."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The use of color stops and the crispness of the edges are consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The use of color stops and the crispness of the edges are consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a tall llama in a tailored coat with gold epaulettes, a red sash, and a brass-scoped spit-rifle. The haughty expression and refined facial structure are also well-represented."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The key elements, such as the coat, epaulettes, and spit-rifle, are easily identifiable."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a one-third turn, facing the camera in a way that is consistent with the references and allows for clear visibility of the key design elements."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language, including the tailored coat, gold epaulettes, red sash, and spit-rifle. The overall design effectively conveys the authority and cartel pageantry of the Spit Syndicate."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4553,
+      "completionTokens": 447,
+      "totalTokens": 5000
+    }
+  },
+  "type": "enemy",
+  "contentHash": "14dcca664b6b051d9bc99178744d76091987cbf63c822f45ed4d433a380ffa05",
+  "opaqueBounds": {
+    "x": 19,
+    "y": 19,
+    "width": 218,
+    "height": 313,
+    "canvasWidth": 256,
+    "canvasHeight": 351
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-elite-backlot-capo-v1/2026-08-01T00-08-30-e63c8050/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-elite-backlot-capo-v1/2026-08-01T00-08-30-e63c8050/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-elite-backlot-capo-v1/2026-08-01T00-08-30-e63c8050/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

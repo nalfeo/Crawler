@@ -420,14 +420,42 @@ function resolveGeneratedTexture(
   // If (1) is ever extended to cover a render kind that ALSO configures
   // `variantsByAppearanceKey`, the registry wins — (2) is local-override-only,
   // it does not shadow the global registry.
+  const generatedRegistry = getGeneratedSpriteRegistry(scene);
   const registryKey = pickGeneratedEnemyTextureKey(
-    getGeneratedSpriteRegistry(scene),
+    generatedRegistry,
     type,
     options?.variantRoll,
     options?.appearanceKey,
   );
   if (registryKey !== null && scene.textures.exists(registryKey)) {
     return { key: registryKey, scale: generated.scale };
+  }
+  if (generatedRegistry !== null && options?.appearanceKey !== undefined) {
+    const preferredBriefId = generatedBriefIdForEnemy(
+      type,
+      options.appearanceKey,
+      generatedRegistry,
+    );
+    const fallbackBriefId = generatedBriefIdForEnemy(type, options.appearanceKey);
+    if (
+      preferredBriefId !== undefined &&
+      fallbackBriefId !== undefined &&
+      fallbackBriefId !== preferredBriefId
+    ) {
+      const fallbackVariants = generatedRegistry.variants(fallbackBriefId);
+      if (fallbackVariants.length > 0) {
+        const variantRoll = options?.variantRoll;
+        const normalizedRoll =
+          variantRoll === undefined || !Number.isFinite(variantRoll)
+            ? 0
+            : Math.min(0.999999, Math.max(0, variantRoll));
+        const fallbackIndex = Math.floor(normalizedRoll * fallbackVariants.length);
+        const fallbackKey = fallbackVariants[fallbackIndex]?.textureKey;
+        if (fallbackKey !== undefined && scene.textures.exists(fallbackKey)) {
+          return { key: fallbackKey, scale: generated.scale };
+        }
+      }
+    }
   }
 
   const variant =
@@ -638,7 +666,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         type: string,
         options?: { appearanceKey?: string; variantRoll?: number },
       ): ResolvedTexture => {
-        const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey);
+        const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey, generatedRegistry);
         const hasGeneratedVariants =
           briefId !== undefined &&
           generatedRegistry !== null &&

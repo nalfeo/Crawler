@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { classifyRunTermination, parseArgs } from '../../scripts/agent/perf/profile-headless.js';
+import {
+  classifyRunTermination,
+  parseArgs,
+  selectMainThreadProfile,
+} from '../../scripts/agent/perf/profile-headless.js';
 import {
   formatSummary,
   HARNESS_OVERHEAD_WARN_PCT,
@@ -517,6 +521,40 @@ describe('classifyRunTermination', () => {
     expect(classifyRunTermination('note: the Outcome:      VICTORY was logged')).toEqual({
       kind: 'missing',
     });
+  });
+});
+
+describe('selectMainThreadProfile', () => {
+  it('selects the worker-id 0 profile when workers are also present', () => {
+    expect(
+      selectMainThreadProfile([
+        'CPU.20260728.101010.12345.1.001.cpuprofile',
+        'CPU.20260728.101010.12345.0.001.cpuprofile',
+      ]),
+    ).toBe('CPU.20260728.101010.12345.0.001.cpuprofile');
+  });
+
+  it('accepts a single emitted profile unchanged', () => {
+    expect(selectMainThreadProfile(['single-thread.cpuprofile'])).toBe('single-thread.cpuprofile');
+  });
+
+  it('throws when no worker-id 0 profile exists among multiple candidates', () => {
+    expect(() =>
+      selectMainThreadProfile([
+        'CPU.20260728.101010.12345.1.001.cpuprofile',
+        'CPU.20260728.101010.12345.2.001.cpuprofile',
+      ]),
+    ).toThrow(/found 0 candidate\(s\) with worker-ID 0/);
+  });
+
+  it('throws when multiple worker-id 0 profiles exist', () => {
+    expect(() =>
+      selectMainThreadProfile([
+        'CPU.20260728.101010.12345.0.001.cpuprofile',
+        'CPU.20260728.101011.12345.0.002.cpuprofile',
+        'CPU.20260728.101010.12345.1.001.cpuprofile',
+      ]),
+    ).toThrow(/found 2 candidate\(s\) with worker-ID 0/);
   });
 });
 

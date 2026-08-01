@@ -363,6 +363,12 @@ export interface Floor2FamilyProgressMetrics {
   encounterStarted: boolean;
   /** Simulated time when the production encounter first started. */
   encounterStartedMs: number | null;
+  /**
+   * Player level at the moment the boss encounter started. Used to verify that
+   * XP pacing delivers the intended fight level (≥10) before the first Floor 2
+   * boss. Null when the encounter never started.
+   */
+  levelAtEncounterStart: number | null;
   /** Whether the real production boss encounter was defeated. */
   encounterDefeated: boolean;
   /** Simulated time when the production encounter was first defeated. */
@@ -414,6 +420,27 @@ export interface EquipmentPlayabilityMetrics {
 }
 
 /**
+ * Skill and ability progression observed during a run.
+ * Populated from `world.milestoneGrantLog` at run end.
+ */
+export interface SkillRunMetrics {
+  /**
+   * Ordered list of every milestone ability grant that fired.
+   * Each entry records the skill, ability, milestone level, and game time.
+   */
+  grants: Array<{
+    skillId: string;
+    abilityId: string;
+    milestoneLevel: number;
+    gameTimeMs: number;
+  }>;
+  /** Number of distinct ability IDs granted (upgrades only counted once). */
+  uniqueAbilityCount: number;
+  /** Milestone levels reached per skill ID (e.g. `{ swords: [5, 10] }`). */
+  milestonesReached: Record<string, number[]>;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -455,8 +482,14 @@ export interface RunStats {
   quests: QuestMetrics;
   /** Final player level reached */
   finalLevel: number;
-  /** Total XP earned */
+  /** Total player XP at run end, including any seeded start-level baseline. */
   totalXp: number;
+  /**
+   * Player XP at the moment gameplay begins, after scenario/setup/loadout has
+   * finished. Callers can subtract this from `totalXp` to derive XP earned
+   * during the simulated run.
+   */
+  runStartXp?: number;
   /** Gold held by the player at run end */
   totalGold: number;
   /** Durable player-attributed Floor 2 trash kills by family id. */
@@ -482,4 +515,15 @@ export interface RunStats {
   weaponTelemetry?: WeaponTelemetrySummary;
   /** End-of-run deterministic equipment/reward playability metrics. */
   equipmentPlayability?: EquipmentPlayabilityMetrics;
+  /**
+   * Total XP gem value left on the ground when the run ended. These gems are
+   * destroyed by the floor transition (scene restart with fresh world). To
+   * compute floor-local collection efficiency, use
+   * `gainedXp = max(0, totalXp - (runStartXp ?? 0))`, then
+   * `gainedXp / (gainedXp + xpOnGroundAtEnd)`. Optional because pre-existing
+   * test fixtures construct RunStats manually.
+   */
+  xpOnGroundAtEnd?: number;
+  /** Skill milestone ability grants observed during this run. */
+  skills?: SkillRunMetrics;
 }

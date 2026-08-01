@@ -1,0 +1,48 @@
+type: enemy
+mobRole: boss
+name: snailfolk-boss
+floor: 2
+sizeVariant: large
+description: |
+  The Gastropod Godfather, the patient unhurried patriarch of The Slowlane
+  Syndicate — a massive snailfolk boss whose enormous dark shell and wide
+  body radiate implacable authority. The shell is the dominant element:
+  a large, deeply-ridged spiral shell behind the body, dark and heavy, with
+  a slightly wider diameter than the body below it. The shell's spiral
+  patterns are ancient and etched with territorial marks. The soft body
+  below is wide and low, with two thick eyestalks rising from a broad flat
+  head wearing a patient, contemptuous expression.
+
+  Crime-boss authority: the shell has been armored with bolted iron scrap-plates
+  following the spiral ridges, adding to its bulk and darkness. Draped across
+  the body: a heavy dark robe of thick oily fabric, clasped with iron boss-brooch
+  of corroded brass. Thick tentacle-arms end in wide flat hands wearing iron
+  signet rings — the symbols of Slowlane contracts. A heavy chain of iron
+  links rests on the chest like a godfather's medallion.
+
+  Dark Floor 2 palette: deep charcoal-grey and near-black for the shell,
+  slate-blue and dark olive for the soft body, iron-grey and verdigris for
+  the armor plating. No bright colors. Dark, patient menace.
+
+  Silhouette: the shell makes a large oval/round boss-mass above the wide
+  soft body. Front-facing. All elements unified — no thin protrusions.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - The Gastropod Godfather in dark iron-armored shell, heavy oily robe with boss-brooch, iron signet rings on wide hands, patient contemptuous gaze
+  - Gastropod Godfather with ancient bolt-plated dark shell, charcoal robe, iron chain godfather-medallion, wide flat head, two eyestalks
+  - 'The Gastropod Godfather silhouette: massive armored shell behind wide body, Slowlane Syndicate authority, unhurried dark boss presence'
+  - 'Gastropod Godfather maximum shell-mass variant: deeply ridged spiral shell filling upper half, iron-plate armor over dark charcoal spiral'
+
+minVariations: 4

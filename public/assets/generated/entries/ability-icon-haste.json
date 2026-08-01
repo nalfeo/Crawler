@@ -1,0 +1,97 @@
+{
+  "briefId": "ability-icons-batch-01",
+  "spriteName": "ability-icon-haste",
+  "assetPath": "generated/ability-icon-haste.png",
+  "approvedAt": "2026-07-31T21:20:55.592Z",
+  "sourceRun": "generated/runs/ability-icons-batch-01/2026-07-31T21-17-25-f393c076",
+  "variantIndex": 8,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 8,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T21:20:07.592Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design effectively conveys a dynamic, action-oriented concept with the arrow and motion lines. The use of a bold orange color for the arrow contrasts well with the black motion streaks, creating a sense of speed and impact. The design feels appropriate for a Floor 1 ability icon, though it lacks a distinct contradiction or unique twist that would elevate it further."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite adheres to the Crawler style with its hard 1-pixel outlines, clear shading, and limited color palette. However, the shading on the arrow could be slightly more refined to match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite adheres to the Crawler style with its hard 1-pixel outlines, clear shading, and limited color palette. However, the shading on the arrow could be slightly more refined to match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly represents an ability icon with a dynamic arrow and motion lines, aligning well with the brief's requirements for a pixel-art symbol on a transparent background."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the arrow is immediately recognizable at game scale. However, the motion lines could be slightly more distinct to enhance the sense of movement and improve clarity further."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.8,
+    "usage": {
+      "promptTokens": 3370,
+      "completionTokens": 308,
+      "totalTokens": 3678
+    }
+  },
+  "type": "icon",
+  "contentHash": "b44254ff394f67f550ca38eb5fafa9fb369ce98ada903fb2750ee73e541bddda",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 126,
+    "height": 114,
+    "canvasWidth": 140,
+    "canvasHeight": 128
+  },
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": null
+}

@@ -20,6 +20,7 @@ const TEX_ENEMY_SLIME = '__cw_enemy_slime';
 const TEX_ENEMY_BOSS = '__cw_enemy_boss';
 const TEX_GEM = '__cw_gem';
 const TEX_BULLET = '__cw_bullet';
+const TEX_BOSS_CHEST = '__cw_boss_chest';
 const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
 const TEX_AOE_PROJ = '__cw_aoe_proj';
 const TEX_ENEMY_AOE_PROJ = '__cw_enemy_aoe_proj';
@@ -42,6 +43,7 @@ export const PROCEDURAL_TEXTURE_KEYS = {
   enemy_slime: TEX_ENEMY_SLIME,
   enemy_boss: TEX_ENEMY_BOSS,
   gem: TEX_GEM,
+  boss_chest: TEX_BOSS_CHEST,
   gold: TEX_GOLD,
   proj: TEX_BULLET,
   enemy_proj: TEX_ENEMY_BULLET,
@@ -182,6 +184,22 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0x9af0ff, 1);
   g.fillRect(5, 3, 2, 2);
   g.generateTexture(TEX_GEM, 14, 14);
+
+  // Boss chest — warm wood body with metal bands and a bright latch.
+  g.clear();
+  g.fillStyle(0x3b2414, 1);
+  g.fillRoundedRect(4, 12, 28, 16, 4);
+  g.fillStyle(0x6b3f1f, 1);
+  g.fillRoundedRect(4, 8, 28, 10, 4);
+  g.fillStyle(0xb88b4a, 1);
+  g.fillRect(7, 14, 22, 3);
+  g.fillRect(7, 21, 22, 3);
+  g.fillRect(16, 12, 4, 16);
+  g.fillStyle(0xffd76a, 1);
+  g.fillRoundedRect(15, 17, 6, 5, 2);
+  g.lineStyle(2, 0xe7c98a, 0.85);
+  g.strokeRect(4, 8, 28, 20);
+  g.generateTexture(TEX_BOSS_CHEST, 36, 32);
 
   // Player bullet — white elongated pill
   g.clear();

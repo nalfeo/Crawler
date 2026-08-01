@@ -1,0 +1,36 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "icon-batch-pipeline",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 459,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 459
+    }
+  },
+  "tools": {
+    "ask_user": 3,
+    "create": 11,
+    "edit": 39,
+    "filesystem-edit_file": 2,
+    "filesystem-write_file": 2,
+    "get_changes_overview": 1,
+    "glob": 23,
+    "grep": 25,
+    "powershell": 89,
+    "read_agent": 21,
+    "read_powershell": 26,
+    "rename_branch": 2,
+    "rename_session": 1,
+    "rg": 27,
+    "skill": 1,
+    "sql": 1,
+    "task": 2,
+    "view": 183
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

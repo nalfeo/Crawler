@@ -105,6 +105,30 @@ function isExplicitTestScaffoldingExport(name: string): boolean {
  */
 const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
   {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'SAFE_ROOM_EGRESS_SUPPRESS_FRAMES',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'FusedHeadingDebug',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'resolveFloor1AiCollapsePanicDeadlineMs',
+  },
+  {
+    file: 'src/game/ai/bt-ai-provider.ts',
+    name: 'computeCollapsePanicProfile',
+  },
+  {
     file: 'src/game/floor2-reward-bundle-resolver.ts',
     name: '_REWARD_BUNDLE_RARITIES',
   },
@@ -147,6 +171,10 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
   {
     file: 'src/game/floor2-reward-bundle-resolver.ts',
     name: '_rollTierRarity',
+  },
+  {
+    file: 'src/game/floor2-reward-bundle-resolver.ts',
+    name: 'FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT',
   },
   {
     file: 'src/game/generated-equipment-generator.ts',

@@ -51,7 +51,8 @@ const COLOR_FIREBALL_RING = 0xff5522;
 const COLOR_PULSE_SHIELD_INNER = 0xe0f7ff;
 const COLOR_PULSE_SHIELD_RING = 0x38bdf8;
 const COLOR_HEAL_GLOW = 0x86efac;
-const COLOR_WEAPON_ABILITY = 0xc084fc;
+// Shared tint for passive-activation flash bursts.
+const COLOR_ABILITY_ACTIVATE = 0xc084fc;
 const COLOR_ARCANE_BOLT = 0xc084fc;
 const COLOR_FROST_NOVA = 0x93c5fd;
 const COLOR_BUFF_AURA = 0xfef3c7;
@@ -381,12 +382,59 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
-  function weaponAbilityActivate(x: number, y: number): void {
+  function abilityActivateFlash(x: number, y: number): void {
     const depth = WORLD_VFX_DEPTH.levelUpBurst;
     spawnRing(x, y, 0xffffff, 6, 1.6, depth, SPARK_LIFETIME_MS, 0.6);
-    spawnRing(x, y, COLOR_WEAPON_ABILITY, 8, 2.8, depth, SPELL_CAST_LIFETIME_MS, 0.45);
+    spawnRing(x, y, COLOR_ABILITY_ACTIVATE, 8, 2.8, depth, SPELL_CAST_LIFETIME_MS, 0.45);
     for (let i = 0; i < 5; i += 1) {
-      spawnRisingMote(x, y, COLOR_WEAPON_ABILITY, depth);
+      spawnRisingMote(x, y, COLOR_ABILITY_ACTIVATE, depth);
+    }
+  }
+
+  function weaponSwingArc(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.8, Math.min(2.0, intensity));
+    spawnRing(x, y, 0xffffff, 6, 1.4 * clamped, depth, SPARK_LIFETIME_MS, 0.6);
+    spawnRing(x, y, color, 9, 2.1 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.42);
+    const sparks = Math.max(4, Math.round(4 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x + spread(4), y + spread(2), color, depth, 72);
+    }
+  }
+
+  function weaponSwingImpact(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.9, Math.min(2.2, intensity));
+    spawnRing(x, y, 0xffffff, 7, 1.6 * clamped, depth, SPARK_LIFETIME_MS, 0.65);
+    spawnRing(x, y, color, 10, 2.4 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.45);
+    const sparks = Math.max(6, Math.round(7 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x, y, color, depth, 88);
+    }
+  }
+
+  function weaponSwingVolley(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.8, Math.min(2.0, intensity));
+    spawnRing(x, y, color, 8, 1.9 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.35);
+    const motes = Math.max(5, Math.round(6 * clamped));
+    for (let i = 0; i < motes; i += 1) {
+      spawnRisingMote(x + spread(8), y + spread(6), color, depth);
+    }
+    const sparks = Math.max(3, Math.round(4 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x + spread(6), y + spread(4), color, depth, 64);
+    }
+  }
+
+  function weaponSwingSpin(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const clamped = Math.max(0.9, Math.min(2.2, intensity));
+    spawnRing(x, y, 0xffffff, 8, 2.0 * clamped, depth, SPARK_LIFETIME_MS, 0.6);
+    spawnRing(x, y, color, 12, 3.0 * clamped, depth, SPELL_CAST_LIFETIME_MS, 0.4);
+    const sparks = Math.max(7, Math.round(8 * clamped));
+    for (let i = 0; i < sparks; i += 1) {
+      spawnSpark(x, y, color, depth, 92);
     }
   }
 
@@ -503,8 +551,20 @@ export function createEffectsVfx(scene: Phaser.Scene): {
       case 'healGlow':
         healGlow(x, y);
         break;
-      case 'weaponAbilityActivate':
-        weaponAbilityActivate(x, y);
+      case 'abilityActivateFlash':
+        abilityActivateFlash(x, y);
+        break;
+      case 'weaponSwingArc':
+        weaponSwingArc(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
+        break;
+      case 'weaponSwingImpact':
+        weaponSwingImpact(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
+        break;
+      case 'weaponSwingVolley':
+        weaponSwingVolley(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
+        break;
+      case 'weaponSwingSpin':
+        weaponSwingSpin(x, y, event.color ?? COLOR_ABILITY_ACTIVATE, event.intensity ?? 1);
         break;
       case 'arcaneBoltImpact':
         arcaneBoltImpact(x, y, event.color ?? COLOR_ARCANE_BOLT);

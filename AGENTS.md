@@ -32,118 +32,116 @@ The sole maintainer works best answering questions one at a time rather than wri
 
 ## Commands
 
-| Task                      | Command                                   |
-| ------------------------- | ----------------------------------------- |
-| Typecheck                 | `npm run typecheck`                       |
-| Lint                      | `npm run lint`                            |
-| Lint (fix)                | `npm run lint:fix`                        |
-| Format                    | `npm run format`                          |
-| Format (check)            | `npm run format:check`                    |
-| Unit tests                | `npm run test:unit`                       |
-| All tests (4 projects)    | `npm test`                                |
-| Unit tests (watch)        | `npm run test:watch`                      |
-| Integration tests         | `npm run test:integration`                |
-| E2E tests                 | `npm run test:e2e`                        |
-| Coverage (unit)           | `npm run verify:coverage`                 |
-| Dev server                | `npm run dev`                             |
-| Lab mode                  | `npm run lab`                             |
-| DevTools mode             | `npm run devtools`                        |
-| Build                     | `npm run build`                           |
-| Dead code                 | `npm run lint:dead-code`                  |
-| Sprite extract palette    | `npm run sprites:extract-palette`         |
-| Sprite run                | `npm run sprites:run`                     |
-| Sprite gallery            | `npm run sprites:gallery`                 |
-| Sprite approve            | `npm run sprites:approve`                 |
-| Sprite unapprove          | `npm run sprites:unapprove`               |
-| Sprite synth              | `npm run sprites:synth`                   |
-| Sprite batch              | `npm run sprites:batch`                   |
-| Sprite asset plan         | `npm run sprites:asset-plan`              |
-| Sprite plan drafts        | `npm run sprites:plan-drafts`             |
-| Sprite worker             | `npm run sprites:worker`                  |
-| Sprite ingest once        | `npm run sprites:ingest-once`             |
-| Sprite sync catalog       | `npm run sprites:sync-catalog`            |
-| Sprite metadata           | `npm run sprites:metadata`                |
-| Scope changed files       | `npm run scope`                           |
-| Sync branch with main     | `npm run sync:main`                       |
-| Fast verify               | `npm run verify:fast`                     |
-| Full verify               | `npm run verify`                          |
-| Full verify + headless    | `VERIFY_FULL=1 npm run verify`            |
-| Sprite pipeline tests     | `npm run test:sprites`                    |
-| Full verify + knip        | `VERIFY_KNIP=1 npm run verify`            |
-| PR prereq check           | `npm run verify:pr-prereqs`               |
-| Guard telemetry capture   | `npm run telemetry:capture`               |
-| Record apple entry        | `npm run apples:record`                   |
-| Full verify + coverage    | `VERIFY_COVERAGE=1 npm run verify`        |
-| Guard + ledger tests      | `npm run test:guards`                     |
-| Review ledger             | `npm run review:ledger`                   |
-| Docs loop (local)         | `npm run docs:check`                      |
-| Security loop             | `npm run security:check`                  |
-| Health loop               | `npm run health:check`                    |
-| Build + typecheck src     | `npm run build:typed`                     |
-| Typecheck src only        | `npm run typecheck:src`                   |
-| Lint with cache           | `npm run lint:cache`                      |
-| Lint core layer           | `npm run lint:core`                       |
-| Lint game layer           | `npm run lint:game`                       |
-| Lint engine layer         | `npm run lint:engine`                     |
-| Lint labs layer           | `npm run lint:labs`                       |
-| Changed unit tests        | `npm run test:changed`                    |
-| Headless tests            | `npm run test:headless`                   |
-| AI headless runner        | `npm run ai:headless`                     |
-| Sprite enqueue            | `npm run sprites:enqueue`                 |
-| Flash verify              | `npm run verify:flash`                    |
-| Verify core layer         | `npm run verify:core`                     |
-| Verify game layer         | `npm run verify:game`                     |
-| Verify engine layer       | `npm run verify:engine`                   |
-| Verify labs layer         | `npm run verify:labs`                     |
-| Perf baseline             | `npm run perf:baseline`                   |
-| Gameplay fingerprint      | `npm run perf:fingerprint`                |
-| Sim CPU profile           | `npm run perf:profile`                    |
-| Benchmarks                | `npm run bench`                           |
-| Unit test coverage        | `npm run test:coverage`                   |
-| AI hill-climb sweep       | `npm run ai:hill-climb`                   |
-| AI weapon sweep           | `npm run ai:weapon-sweep`                 |
-| AI win-rate sweep         | `npm run ai:winrate-sweep`                |
-| AI A/B decision mode      | `npm run ai:ab-decision-mode`             |
-| AI A/B pathing mode       | `npm run ai:ab-pathing-mode`              |
-| AI navmesh sweep          | `npm run ai:navmesh-sweep`                |
-| AI navmesh seam sweep     | `npm run ai:navmesh-seam-sweep`           |
-| AI gen configs            | `npm run ai:gen-configs`                  |
-| AI sweep eval             | `npm run ai:sweep-eval`                   |
-| AI aggregate shards       | `npm run ai:aggregate-shards`             |
-| Sprite check-in           | `npm run sprites:checkin`                 |
-| Sprite asset PR           | `npm run sprites:asset-pr`                |
-| Sprite normalize items    | `npm run sprites:normalize-item-art`      |
-| Sprite sort assets        | `npm run sprites:sort-assets`             |
-| Sprite gen placeholders   | `npm run sprites:gen-placeholders`        |
-| Sprite fetch gear icons   | `npm run sprites:fetch-gear-icons`        |
-| Sprite placeholder audit  | `npm run sprites:placeholder-audit`       |
-| Sprite backfill types     | `npm run sprites:backfill-manifest-types` |
-| Sprite generate wiring    | `npm run sprites:generate-wiring`         |
-| Sprite reprocess room     | `npm run sprites:reprocess:welcome-room`  |
-| Terrain packs build       | `npm run terrain-packs:build`             |
-| Terrain packs validate    | `npm run terrain-packs:validate`          |
-| Azure setup (provision)   | `npm run setup:azure:provision`           |
-| Azure env setup           | `npm run setup:azure:env`                 |
-| Azure env setup (force)   | `npm run setup:azure:env:force`           |
-| Azure GitHub setup        | `npm run setup:azure:github`              |
-| Check physics defs sync   | `npm run check:physics-defs-sync`         |
-| Check size coverage       | `npm run check:size-coverage`             |
-| Check weight coverage     | `npm run check:weight-coverage`           |
-| Check asset sort order    | `npm run check:sort-assets`               |
-| Check manifest hard-block | `npm run check:manifest-hard-blocked`     |
-| Boss ability status       | `npm run boss-abilities:status`           |
-| Docs index                | `npm run docs:index`                      |
-| Visual review             | `npm run review:visual`                   |
-| Visual review (det.)      | `npm run review:visual:deterministic`     |
-| Visual review (LLM)       | `npm run review:visual:llm`               |
-| Visual review (equip.)    | `npm run review:visual:equipment`         |
-| Producer agent            | `npm run producer`                        |
-| Epic status               | `npm run epic:status`                     |
-| Perf find baseline        | `npm run perf:find-baseline`              |
-| Merge train protection    | `npm run train:protection`                |
-| Train protection status   | `npm run train:protection:status`         |
-| Train protection enable   | `npm run train:protection:enable`         |
-| Train protection rollback | `npm run train:protection:rollback`       |
+| Task                      | Command                                    |
+| ------------------------- | ------------------------------------------ |
+| Typecheck                 | `npm run typecheck`                        |
+| Lint                      | `npm run lint`                             |
+| Lint (fix)                | `npm run lint:fix`                         |
+| Format                    | `npm run format`                           |
+| Format (check)            | `npm run format:check`                     |
+| Unit tests                | `npm run test:unit`                        |
+| All tests (4 projects)    | `npm test`                                 |
+| Unit tests (watch)        | `npm run test:watch`                       |
+| Integration tests         | `npm run test:integration`                 |
+| E2E tests                 | `npm run test:e2e`                         |
+| Coverage (unit)           | `npm run verify:coverage`                  |
+| Dev server                | `npm run dev`                              |
+| Lab mode                  | `npm run lab`                              |
+| DevTools mode             | `npm run devtools`                         |
+| Build                     | `npm run build`                            |
+| Dead code                 | `npm run lint:dead-code`                   |
+| Sprite extract palette    | `npm run sprites:extract-palette`          |
+| Sprite run                | `npm run sprites:run`                      |
+| Sprite gallery            | `npm run sprites:gallery`                  |
+| Sprite approve            | `npm run sprites:approve`                  |
+| Sprite unapprove          | `npm run sprites:unapprove`                |
+| Sprite synth              | `npm run sprites:synth`                    |
+| Sprite batch              | `npm run sprites:batch`                    |
+| Sprite asset plan         | `npm run sprites:asset-plan`               |
+| Sprite plan drafts        | `npm run sprites:plan-drafts`              |
+| Sprite worker             | `npm run sprites:worker`                   |
+| Sprite ingest once        | `npm run sprites:ingest-once`              |
+| Sprite sync catalog       | `npm run sprites:sync-catalog`             |
+| Sprite metadata           | `npm run sprites:metadata`                 |
+| Scope changed files       | `npm run scope`                            |
+| Sync branch with main     | `npm run sync:main`                        |
+| Fast verify               | `npm run verify:fast`                      |
+| Full verify               | `npm run verify`                           |
+| Full verify + headless    | `VERIFY_FULL=1 npm run verify`             |
+| Sprite pipeline tests     | `npm run test:sprites`                     |
+| Full verify + knip        | `VERIFY_KNIP=1 npm run verify`             |
+| PR prereq check           | `npm run verify:pr-prereqs`                |
+| Guard telemetry capture   | `npm run telemetry:capture`                |
+| Record apple entry        | `npm run apples:record`                    |
+| Full verify + coverage    | `VERIFY_COVERAGE=1 npm run verify`         |
+| Guard + ledger tests      | `npm run test:guards`                      |
+| Review ledger             | `npm run review:ledger`                    |
+| Docs loop (local)         | `npm run docs:check`                       |
+| Security loop             | `npm run security:check`                   |
+| Health loop               | `npm run health:check`                     |
+| Build + typecheck src     | `npm run build:typed`                      |
+| Typecheck src only        | `npm run typecheck:src`                    |
+| Lint with cache           | `npm run lint:cache`                       |
+| Lint core layer           | `npm run lint:core`                        |
+| Lint game layer           | `npm run lint:game`                        |
+| Lint engine layer         | `npm run lint:engine`                      |
+| Lint labs layer           | `npm run lint:labs`                        |
+| Changed unit tests        | `npm run test:changed`                     |
+| Headless tests            | `npm run test:headless`                    |
+| AI headless runner        | `npm run ai:headless`                      |
+| Sprite enqueue            | `npm run sprites:enqueue`                  |
+| Flash verify              | `npm run verify:flash`                     |
+| Verify core layer         | `npm run verify:core`                      |
+| Verify game layer         | `npm run verify:game`                      |
+| Verify engine layer       | `npm run verify:engine`                    |
+| Verify labs layer         | `npm run verify:labs`                      |
+| Perf baseline             | `npm run perf:baseline`                    |
+| Gameplay fingerprint      | `npm run perf:fingerprint`                 |
+| Sim CPU profile           | `npm run perf:profile`                     |
+| Benchmarks                | `npm run bench`                            |
+| Unit test coverage        | `npm run test:coverage`                    |
+| AI hill-climb sweep       | `npm run ai:hill-climb`                    |
+| AI weapon sweep           | `npm run ai:weapon-sweep`                  |
+| AI win-rate sweep         | `npm run ai:winrate-sweep`                 |
+| AI gen configs            | `npm run ai:gen-configs`                   |
+| AI sweep eval             | `npm run ai:sweep-eval`                    |
+| AI aggregate shards       | `npm run ai:aggregate-shards`              |
+| Sprite check-in           | `npm run sprites:checkin`                  |
+| Sprite asset PR           | `npm run sprites:asset-pr`                 |
+| Sprite normalize items    | `npm run sprites:normalize-item-art`       |
+| Sprite sort assets        | `npm run sprites:sort-assets`              |
+| Sprite gen placeholders   | `npm run sprites:gen-placeholders`         |
+| Sprite fetch gear icons   | `npm run sprites:fetch-gear-icons`         |
+| Sprite placeholder audit  | `npm run sprites:placeholder-audit`        |
+| Sprite backfill types     | `npm run sprites:backfill-manifest-types`  |
+| Sprite enrich tags        | `npm run sprites:enrich-tags`              |
+| Asset search telemetry    | `npm run sprites:search-telemetry-capture` |
+| Sprite generate wiring    | `npm run sprites:generate-wiring`          |
+| Sprite reprocess room     | `npm run sprites:reprocess:welcome-room`   |
+| Terrain packs build       | `npm run terrain-packs:build`              |
+| Terrain packs validate    | `npm run terrain-packs:validate`           |
+| Azure setup (provision)   | `npm run setup:azure:provision`            |
+| Azure env setup           | `npm run setup:azure:env`                  |
+| Azure env setup (force)   | `npm run setup:azure:env:force`            |
+| Azure GitHub setup        | `npm run setup:azure:github`               |
+| Check physics defs sync   | `npm run check:physics-defs-sync`          |
+| Check size coverage       | `npm run check:size-coverage`              |
+| Check weight coverage     | `npm run check:weight-coverage`            |
+| Check asset sort order    | `npm run check:sort-assets`                |
+| Check manifest hard-block | `npm run check:manifest-hard-blocked`      |
+| Boss ability status       | `npm run boss-abilities:status`            |
+| Docs index                | `npm run docs:index`                       |
+| Visual review             | `npm run review:visual`                    |
+| Visual review (det.)      | `npm run review:visual:deterministic`      |
+| Visual review (LLM)       | `npm run review:visual:llm`                |
+| Visual review (equip.)    | `npm run review:visual:equipment`          |
+| Producer agent            | `npm run producer`                         |
+| Epic status               | `npm run epic:status`                      |
+| Perf find baseline        | `npm run perf:find-baseline`               |
+| Merge train protection    | `npm run train:protection`                 |
+| Train protection status   | `npm run train:protection:status`          |
+| Train protection enable   | `npm run train:protection:enable`          |
+| Train protection rollback | `npm run train:protection:rollback`        |
 
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
@@ -243,7 +241,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 11. **Never weaken explicit human requirements without asking**: Do NOT cut corners by quietly relaxing, disabling, or disregarding an explicit, user-stated requirement for a session — including the feature's own defining parameter — just to make a gate/test pass. This holds in every mode, **including autopilot**. If the only way you can see to get green is to weaken the requirement, STOP and ask the human first (state the trade-off and options); fix the test/gate around the requirement, not the requirement around the test.
 12. **Never bend gameplay to pass seeds; gate on win-RATE, not cherry-picked seeds**: Do not tune game balance to rescue specific pre-existing seed runs, and do not add shortcuts/cheats that hold map structure fixed just to avoid recomputing success/failure rates. **Target: 90%+ of Floor 1 seeds should easily reach a win condition.** If a broad seed sweep shows materially less, treat it as a likely **AI-runner bug or extreme gameplay regression** and fix the root cause — never hand-pick a handful of comfortable seeds to make the gate green.
 13. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). **≥3🍎** → separate-model **plan review** **and** a **code-review loop until no concerns _or_ a 2-round cap then human escalation**; >3🍎 → the plan review must be **adversarial** (one reviewer enumerates ≥2 alternatives and argues against the chosen design) **and** **multi-model review** with adjudication (same 2-round-cap/escalation rule). Every plan review (≥3🍎) records a `plan_divergence` signal so the real design fork-rate can be measured. 1–2🍎 require no review stages (plan-review floor raised 2🍎→3🍎 on 2026-07-07 to match the code-review floor, ADR 0036; dual-plan synthesis retired as a required 4–5🍎 stage on 2026-07-08, ADR 0051 — replaced by the adversarial plan review). The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #11) — escalate to a human instead. Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
-14. **Every game system must be wired or explicitly allowlisted**: Any `*System` exported from `src/core/**` or `src/game/**` MUST be referenced by a real runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. Lab/test references do NOT count. Enforced by `npm run check:wired-systems` (ADR 0039), run in `verify` and the `check-format-and-labs` CI job. Never allowlist a system just to go green (see rule #11) — allowlisting is only for systems intentionally not-yet-wired, and the reason must say so.
+14. **Every game system must be sim-side wired or explicitly allowlisted**: Any `*System` exported from `src/core/**` or `src/game/**` MUST be referenced by a sim-side/shared runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/core/simulation-core-step.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. `MainGameScene.ts`-only, lab, and test references do NOT count. Enforced by `npm run check:wired-systems` (ADR 0039), run in `verify` and the `check-format-and-labs` CI job. Never allowlist a system just to go green (see rule #11) — allowlisting is only for systems intentionally not-yet-wired, and the reason must say so.
 15. **Broad sweeps (>10 runs) use GitHub infrastructure by default**: Prefer GitHub Actions `workflow_dispatch`/CI runners over local or session compute for broad sweeps so sampling is parallelized and local resources stay available. Keep local sweeps for small smoke checks or explicit human override.
 16. **Split investigation from landing implementation**: Investigation/repro/debug sessions can be scrappy and low-overhead when they are not landing code. Once an investigation identifies a fix to ship, open a separate implementation child session/PR and run the normal full process there.
 17. **Sweep Results Viewer deep links are required for any sweep discussion**: Whenever you discuss, start, check, report status for, or summarize results of any sweep (weapon-sweep **or** AI Sweep Eval), include an app-native Sweep Results Viewer reference. Use the canvas `runId` input — `project:sweep-results-viewer runId=<run-id>` — so the viewer opens directly on that session. A raw GitHub Actions URL is a permitted secondary fallback only; never provide it as the sole navigation path.

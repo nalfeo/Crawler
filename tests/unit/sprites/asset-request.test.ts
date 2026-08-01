@@ -41,10 +41,10 @@ function formBody(parts: {
   return lines.join('\n');
 }
 
-/** Extract the verbatim brief text from a fixture body (single-line briefs). */
+/** Extract the verbatim brief text from a fixture body. */
 function fixtureBrief(body: string): string {
-  const marker = '### Brief\n';
-  return body.slice(body.indexOf(marker) + marker.length).trim();
+  const match = body.match(/(?:^|\n)### Brief\s*\n+([\s\S]*?)(?=\n###\s|\n<!--|$)/);
+  return (match?.[1] ?? '').trim();
 }
 
 describe('parseAssetRequestIssueBody', () => {
@@ -366,6 +366,48 @@ describe('parseAssetRequestIssueBody', () => {
       }),
     );
     expect(parsed?.sizeVariant).toBeUndefined();
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
+  it('parses the exact issue #2505 enemy request with explicit floor and default size', () => {
+    const body = issuesFixture.issues['2505']!.body;
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).toMatchObject({
+      name: 'llama-curb-stomper',
+      type: 'enemy',
+      floor: 2,
+      sizeVariant: 'default',
+      briefSentence: fixtureBrief(body),
+      fingerprint: '721ee04ea1a39cfb1df09535efa05ea9a539459b44765f6f3ddbcc4f0c338e51',
+    });
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
+  it('parses the exact issue #2567 raccoon-bottle-rocketeer request with floor 2 and default size', () => {
+    const body = issuesFixture.issues['2567']!.body;
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).toMatchObject({
+      name: 'raccoon-bottle-rocketeer',
+      type: 'enemy',
+      floor: 2,
+      sizeVariant: 'default',
+      briefSentence: fixtureBrief(body),
+      fingerprint: '0e13b752d8f337004ab0b8f3f84f5e84fbb7e2dac551533c9bf1dab52f048887',
+    });
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
+  it('parses the exact issue #2559 ratfolk-sewer-sniper request with floor 2 and default size', () => {
+    const body = issuesFixture.issues['2559']!.body;
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).toMatchObject({
+      name: 'ratfolk-sewer-sniper',
+      type: 'enemy',
+      floor: 2,
+      sizeVariant: 'default',
+      briefSentence: fixtureBrief(body),
+      fingerprint: 'ca795d3e6ff74ad177a8b718bb72fa81cb9701623e85bf02af4224b064fa2da4',
+    });
     expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });
 

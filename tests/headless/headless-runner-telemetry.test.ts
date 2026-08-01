@@ -5,6 +5,7 @@ import type { InputState } from '../../src/shared/input.js';
 import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { spawnXpGem } from '../../src/core/spawners/pickups.js';
 import {
   AIDecisionDebugState,
   AIProgressSuppressionSource,
@@ -103,6 +104,8 @@ describe('headless runner AI telemetry', () => {
 
     expect(stats.finalLevel).toBeGreaterThanOrEqual(3);
     expect(stats.totalXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
+    expect(stats.runStartXp).toBe(stats.totalXp);
+    expect(stats.runStartXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
   });
 
   it('level 1 (default) applies no boost', async () => {
@@ -116,6 +119,56 @@ describe('headless runner AI telemetry', () => {
 
     // No boost applied — player XP/level should not be inflated above a normal start.
     expect(stats.finalLevel).toBeLessThan(2);
+    expect(stats.runStartXp ?? 0).toBe(0);
+  });
+
+  it('reports xpOnGroundAtEnd on the normal completion path', async () => {
+    let spawned = false;
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 1,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (spawned) return;
+            spawned = true;
+            spawnXpGem(world, 900, 900, 5);
+            spawnXpGem(world, 910, 900, 12);
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('timeout');
+    expect(stats.xpOnGroundAtEnd).toBe(17);
+  });
+
+  it('reports xpOnGroundAtEnd on the error path', async () => {
+    let spawned = false;
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 10,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (!spawned) {
+              spawned = true;
+              spawnXpGem(world, 900, 900, 5);
+              spawnXpGem(world, 910, 900, 12);
+            }
+            throw new Error('telemetry crash test');
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('error');
+    expect(stats.error).toContain('telemetry crash test');
+    expect(stats.xpOnGroundAtEnd).toBe(17);
   });
 
   it('counts real Floor 2 enemy deaths without treating director pruning as kills', async () => {
@@ -250,5 +303,61 @@ describe('headless runner weapon telemetry (opt-in)', () => {
     // Same seed → identical telemetry (pure counting over a deterministic sim).
     const again = await run();
     expect(again.weaponTelemetry).toEqual(wt);
+  });
+});
+
+describe('Floor 2 levelAtEncounterStart telemetry', () => {
+  it('is null for all families when no boss encounter has started (1-frame run)', async () => {
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      floorId: 'floor2',
+      maxFrames: 1,
+    });
+
+    expect(stats.floor2Progression).toBeDefined();
+    for (const fam of Object.values(stats.floor2Progression!.families)) {
+      expect(fam.levelAtEncounterStart).toBeNull();
+    }
+  });
+
+  it('captures the player level at the frame the first boss encounter starts', async () => {
+    // Force the first present family's boss encounter to start on frame 1
+    // so we can assert the captured level matches world.playerLevel.level.
+    let capturedLevelAtForce = -1;
+    let targetFamilyId = '';
+    let fired = false;
+
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      floorId: 'floor2',
+      maxFrames: 2,
+      simulationOptions: {
+        postSystems: [
+          (world: GameWorld) => {
+            if (fired) return;
+            const floor2State = world.floorExtendedState?.familyState;
+            if (!floor2State) return;
+            const familyId = floor2State.presentFamilies[0];
+            if (!familyId) return;
+            const encounter = floor2State.bossEncounters?.get(familyId);
+            if (!encounter) return;
+            // Force encounter started and capture the level at the same frame.
+            encounter.started = true;
+            capturedLevelAtForce = world.playerLevel?.level ?? -1;
+            targetFamilyId = familyId;
+            fired = true;
+          },
+        ],
+      },
+    });
+
+    expect(stats.floor2Progression).toBeDefined();
+    const famMetrics = stats.floor2Progression!.families[targetFamilyId];
+    expect(famMetrics).toBeDefined();
+    // The runner captures the level on the frame started first becomes true.
+    // capturedLevelAtForce is the level at that same frame (postSystems run
+    // inside the simulation tick, before telemetry collection).
+    expect(famMetrics!.levelAtEncounterStart).toBe(capturedLevelAtForce);
+    expect(famMetrics!.levelAtEncounterStart).not.toBeNull();
   });
 });

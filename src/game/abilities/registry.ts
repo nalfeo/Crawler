@@ -47,13 +47,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'magic-missile',
-    name: 'Magic Missile',
-    shortLabel: 'MISSILE',
-    description: 'Launch a precise arcane bolt into the nearest enemy.',
-    category: 'combat',
-    kind: 'spell',
-    cooldownFrames: 180,
+    ...ABILITY_PRESENTATION_BY_ID['magic-missile'],
     trigger: { kind: 'enemy_cluster', minEnemies: 1, withinFeet: 10 },
     effects: [
       {
@@ -64,13 +58,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'frost-nova',
-    name: 'Frost Nova',
-    shortLabel: 'FROST',
-    description: 'Burst freezing magic around you, damaging and slowing nearby foes.',
-    category: 'combat',
-    kind: 'spell',
-    cooldownFrames: 900,
+    ...ABILITY_PRESENTATION_BY_ID['frost-nova'],
     trigger: { kind: 'enemy_cluster', minEnemies: 3, withinFeet: 5 },
     effects: [
       {
@@ -83,13 +71,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'bless',
-    name: 'Bless',
-    shortLabel: 'BLESS',
-    description: 'Call down a brief blessing that sharpens your strikes and footwork.',
-    category: 'utility',
-    kind: 'spell',
-    cooldownFrames: 1_200,
+    ...ABILITY_PRESENTATION_BY_ID.bless,
     trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
@@ -105,13 +87,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'stoneskin',
-    name: 'Stoneskin',
-    shortLabel: 'STONE',
-    description: 'Harden your flesh into living granite for a few desperate moments.',
-    category: 'defense',
-    kind: 'spell',
-    cooldownFrames: 1_500,
+    ...ABILITY_PRESENTATION_BY_ID.stoneskin,
     trigger: { kind: 'low_health', healthBelowRatio: 0.75 },
     effects: [
       {
@@ -125,13 +101,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'curse',
-    name: 'Curse',
-    shortLabel: 'CURSE',
-    description: 'Blight a cluster of enemies, dragging their movement into a crawl.',
-    category: 'utility',
-    kind: 'spell',
-    cooldownFrames: 840,
+    ...ABILITY_PRESENTATION_BY_ID.curse,
     trigger: { kind: 'enemy_cluster', minEnemies: 4, withinFeet: 8 },
     effects: [
       {
@@ -144,13 +114,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'vampiric-touch',
-    name: 'Vampiric Touch',
-    shortLabel: 'VAMP',
-    description: 'Rip vitality from the nearest foe and pour it back into yourself.',
-    category: 'combat',
-    kind: 'spell',
-    cooldownFrames: 720,
+    ...ABILITY_PRESENTATION_BY_ID['vampiric-touch'],
     trigger: {
       kind: 'low_health_crowded',
       healthBelowRatio: 0.7,
@@ -170,13 +134,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'haste',
-    name: 'Haste',
-    shortLabel: 'HASTE',
-    description: 'Flood your limbs with quicksilver speed after a strong damage spike.',
-    category: 'utility',
-    kind: 'spell',
-    cooldownFrames: 1_080,
+    ...ABILITY_PRESENTATION_BY_ID.haste,
     trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
@@ -200,13 +158,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   // ---------------------------------------------------------------------------
 
   {
-    id: 'combat-flow',
-    name: 'Combat Flow',
-    shortLabel: 'C.FLOW',
-    description:
-      'Sustained combat discipline yields permanent damage and attack-speed improvements.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['combat-flow'],
     flavorText:
       '"Muscle memory is the cheapest upgrade. The dungeon always offers more." — The Director',
     effects: [
@@ -215,12 +167,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'stalwart-resolve',
-    name: 'Stalwart Resolve',
-    shortLabel: 'STALWRT',
-    description: 'Battle scars calcify into permanent armor and max HP.',
-    category: 'defense',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['stalwart-resolve'],
     flavorText:
       '"The ratings love a survivor. The dungeon loves a meal. You\'re both." — The Director',
     effects: [
@@ -229,12 +176,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'ever-vigilant',
-    name: 'Ever Vigilant',
-    shortLabel: 'VIGILANT',
-    description: 'Constant evasion sharpens reflexes into a permanent speed advantage.',
-    category: 'utility',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['ever-vigilant'],
     flavorText: '"Dodge. Roll. Repeat. The audience thinks it\'s choreography." — The Director',
     effects: [{ type: 'stat_multiply', stat: 'moveSpeed', value: 0.15 }],
   },
@@ -244,13 +186,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   // ---------------------------------------------------------------------------
 
   {
-    id: 'blade-mastery',
-    name: 'Blade Mastery',
-    shortLabel: 'BLADE',
-    description:
-      'Slashing technique reaches its peak — bonus damage and accuracy while a slashing weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['blade-mastery'],
     weaponPrerequisite: 'slashing',
     flavorText: '"The Slashing arts are elegant, if you ignore all the blood." — The Director',
     effects: [
@@ -259,25 +195,13 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'vital-targeting',
-    name: 'Vital Targeting',
-    shortLabel: 'VITAL',
-    description:
-      'Expert stabbing technique exploits gaps in armor — bonus damage while a stabbing weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['vital-targeting'],
     weaponPrerequisite: 'stabbing',
     flavorText: '"The gap between ribs is a six-point rating bump." — The Director',
     effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
   },
   {
-    id: 'brute-force',
-    name: 'Brute Force',
-    shortLabel: 'BRUTE',
-    description:
-      'Relentless smashing builds momentum — bonus damage and armor while a smashing weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['brute-force'],
     weaponPrerequisite: 'smashing',
     flavorText: '"Subtlety is for people who lack upper-body strength." — The Director',
     effects: [
@@ -286,13 +210,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     ],
   },
   {
-    id: 'marksmans-eye',
-    name: "Marksman's Eye",
-    shortLabel: 'MARKS',
-    description:
-      'Long hours at range train your aim — bonus accuracy while a ranged weapon is equipped.',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['marksmans-eye'],
     weaponPrerequisite: 'ranged',
     flavorText: '"The camera loves a player who never misses." — The Director',
     effects: [
@@ -472,40 +390,814 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
       '"Magic is the only force the dungeon respects. You\'re learning the language." — The Director',
     effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
   },
-];
 
-/**
- * Maps each skill ID to the ability ID that is granted when that skill reaches
- * level 5. Used by `skillSystem` to call `grantPassiveAbility` on milestone.
- *
- * This is a second source of truth alongside the skill and ability registries.
- * If a skill ID is renamed, update this map accordingly. The test suite in
- * `tests/game/weapon-skill-abilities.test.ts` cross-checks all 20 entries
- * against `getAllSkillDefinitions()` and `getAllAbilityDefinitions()` at runtime
- * to catch drift.
- */
-export const SKILL_LEVEL5_ABILITY_GRANTS: ReadonlyMap<string, string> = new Map([
-  ['swordsmanship', 'combat-flow'],
-  ['iron-skin', 'stalwart-resolve'],
-  ['sprint', 'ever-vigilant'],
-  ['slashing', 'blade-mastery'],
-  ['stabbing', 'vital-targeting'],
-  ['smashing', 'brute-force'],
-  ['ranged', 'marksmans-eye'],
-  ['throwing', 'rapid-release'],
-  ['forearms', 'iron-resolve'],
-  ['arcane', 'arcane-efficiency'],
-  ['sword', 'keen-swordsman'],
-  ['dagger', 'shadowblade'],
-  ['hammer', 'crushing-momentum'],
-  ['sports-equipment', 'athletes-grit'],
-  ['bow', 'archers-stance'],
-  ['crossbow', 'precision-bolts'],
-  ['pistol', 'hair-trigger'],
-  ['throwing-weapons', 'juggling-arsenal'],
-  ['unarmed', 'bare-knuckle'],
-  ['spellcraft', 'arcane-attunement'],
-]);
+  // ---------------------------------------------------------------------------
+  // Evolved weapon class passives (L15 replacements for L5)
+  // ---------------------------------------------------------------------------
+
+  {
+    ...ABILITY_PRESENTATION_BY_ID['slashing-mastery-evolved'],
+    weaponPrerequisite: 'slashing',
+    flavorText: '"Evolution is natural. Survival is not." — The Director',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['stabbing-precision-evolved'],
+    weaponPrerequisite: 'stabbing',
+    flavorText: '"Speed is the ultimate weapon. Everything else is circumstance." — The Director',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['smashing-force-evolved'],
+    weaponPrerequisite: 'smashing',
+    flavorText: '"Raw power is honest. The audience respects honesty." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'pickupRange', value: 1.0 },
+      { type: 'stat_multiply', stat: 'damage', value: 0.08 },
+    ],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['ranged-marksmanship-evolved'],
+    weaponPrerequisite: 'ranged',
+    flavorText: '"Expert marksmanship turns chaos into choreography." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'accuracy', value: 0.15 },
+      { type: 'stat_multiply', stat: 'projectileSpeed', value: 0.15 },
+    ],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['throwing-trajectory-evolved'],
+    weaponPrerequisite: 'throwing',
+    flavorText: '"A perfect throw is like a perfect scene — timed to the frame." — The Director',
+    effects: [{ type: 'stat_multiply', stat: 'projectileSpeed', value: 0.15 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['forearms-brawler-evolved'],
+    weaponPrerequisite: 'forearms',
+    flavorText: '"The best fighters move by instinct. You\'re getting there." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'accuracy', value: 0.15 },
+      { type: 'stat_multiply', stat: 'damage', value: 0.08 },
+    ],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['arcane-power-evolved'],
+    weaponPrerequisite: 'arcane',
+    flavorText: '"The arcane does not forgive amateurs. You are no longer one." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'accuracy', value: 0.15 },
+      { type: 'stat_multiply', stat: 'damage', value: 0.08 },
+    ],
+  },
+
+  // ─── Placeholder generic abilities for L10/L15/L20 milestones ──────────────────
+  {
+    ...ABILITY_PRESENTATION_BY_ID['placeholder-generic-l10'],
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['placeholder-generic-l15'],
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['placeholder-generic-l20'],
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+
+  // ─── Weapon class ability L5/L10/L15/L20 milestones ─────────────────────────────
+  // Slashing weapon class
+  {
+    id: 'slashing-mastery-base',
+    name: 'Slashing Mastery',
+    shortLabel: 'SLASH',
+    description: '+10% damage with slashing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'slashing',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+  },
+  {
+    id: 'slashing-momentum',
+    name: 'Slashing Momentum',
+    shortLabel: 'MOMENTUM',
+    description: '+1 extra projectile with slashing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'slashing',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'stabbing-precision-base',
+    name: 'Stabbing Precision',
+    shortLabel: 'PREC',
+    description: '+15% attack speed with stabbing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'stabbing',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    id: 'stabbing-tempo',
+    name: 'Stabbing Tempo',
+    shortLabel: 'TEMPO',
+    description: '+1 extra projectile with stabbing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'stabbing',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'smashing-impact-base',
+    name: 'Smashing Impact',
+    shortLabel: 'IMPACT',
+    description: '+10% damage with smashing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'smashing',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+  },
+  {
+    id: 'smashing-momentum',
+    name: 'Smashing Momentum',
+    shortLabel: 'MOMENTUM',
+    description: '+1 extra projectile with smashing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'smashing',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'ranged-accuracy-base',
+    name: 'Ranged Accuracy',
+    shortLabel: 'ACCURATE',
+    description: '+10% damage with ranged weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'ranged',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+  },
+  {
+    id: 'ranged-barrage',
+    name: 'Ranged Barrage',
+    shortLabel: 'BARRAGE',
+    description: '+1 extra projectile with ranged weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'ranged',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'throwing-precision-base',
+    name: 'Throwing Precision',
+    shortLabel: 'PREC',
+    description: '+10% damage with throwing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+  },
+  {
+    id: 'throwing-velocity-evolved',
+    name: 'Throwing Velocity (Evolved)',
+    shortLabel: 'VEL+',
+    description: 'Advanced throwing trajectory',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing',
+    effects: [{ type: 'stat_multiply', stat: 'projectileSpeed', value: 0.15 }],
+  },
+  {
+    id: 'forearms-brawl-base',
+    name: 'Forearms Brawl',
+    shortLabel: 'BRAWL',
+    description: '+15% attack speed with forearms',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'forearms',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    id: 'forearms-combo-evolved',
+    name: 'Forearms Combo (Evolved)',
+    shortLabel: 'COMBO+',
+    description: 'Advanced combo technique',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'forearms',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
+  },
+
+  // ─── Weapon type active abilities (L5/L10/L15/L20 milestones) ────────────────
+  // Sword type abilities
+  {
+    id: 'sword-strike-base',
+    name: 'Sword Strike',
+    shortLabel: 'STRIKE',
+    description: 'Basic sword attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'sword-cleave',
+    name: 'Sword Cleave',
+    shortLabel: 'CLEAVE',
+    description: 'Powerful cleave attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'sword-strike-evolved',
+    name: 'Sword Strike (Evolved)',
+    shortLabel: 'STRIKE+',
+    description: 'Evolved sword strike',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'sword-cleave-evolved',
+    name: 'Sword Cleave (Evolved)',
+    shortLabel: 'CLEAVE+',
+    description: 'Evolved cleave attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Dagger type abilities
+  {
+    id: 'dagger-rapid-strike-base',
+    name: 'Dagger Rapid Strike',
+    shortLabel: 'RAPID',
+    description: 'Fast dagger strikes',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'dagger-flurry',
+    name: 'Dagger Flurry',
+    shortLabel: 'FLURRY',
+    description: 'Multiple rapid strikes',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    id: 'dagger-rapid-strike-evolved',
+    name: 'Dagger Rapid Strike (Evolved)',
+    shortLabel: 'RAPID+',
+    description: 'Evolved rapid strikes',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'dagger-flurry-evolved',
+    name: 'Dagger Flurry (Evolved)',
+    shortLabel: 'FLURRY+',
+    description: 'Evolved flurry attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
+  },
+
+  // Hammer type abilities
+  {
+    id: 'hammer-crush-base',
+    name: 'Hammer Crush',
+    shortLabel: 'CRUSH',
+    description: 'Crushing hammer blow',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'hammer-shatter',
+    name: 'Hammer Shatter',
+    shortLabel: 'SHATTER',
+    description: 'Shattering blow',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'hammer-crush-evolved',
+    name: 'Hammer Crush (Evolved)',
+    shortLabel: 'CRUSH+',
+    description: 'Evolved crush attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'hammer-shatter-evolved',
+    name: 'Hammer Shatter (Evolved)',
+    shortLabel: 'SHATTER+',
+    description: 'Evolved shatter attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Bow type abilities
+  {
+    id: 'bow-shot-base',
+    name: 'Bow Shot',
+    shortLabel: 'SHOT',
+    description: 'Basic bow attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'bow-piercing',
+    name: 'Bow Piercing',
+    shortLabel: 'PIERCE',
+    description: 'Piercing bow shot',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+  },
+  {
+    id: 'bow-shot-evolved',
+    name: 'Bow Shot (Evolved)',
+    shortLabel: 'SHOT+',
+    description: 'Evolved bow shot',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'bow-piercing-evolved',
+    name: 'Bow Piercing (Evolved)',
+    shortLabel: 'PIERCE+',
+    description: 'Evolved piercing shot',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.2 }],
+  },
+
+  // Crossbow type abilities
+  {
+    id: 'crossbow-bolt-base',
+    name: 'Crossbow Bolt',
+    shortLabel: 'BOLT',
+    description: 'Basic crossbow bolt',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'crossbow-barrage',
+    name: 'Crossbow Barrage',
+    shortLabel: 'BARRAGE',
+    description: 'Rapid crossbow fire',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    id: 'crossbow-bolt-evolved',
+    name: 'Crossbow Bolt (Evolved)',
+    shortLabel: 'BOLT+',
+    description: 'Evolved crossbow bolt',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'crossbow-barrage-evolved',
+    name: 'Crossbow Barrage (Evolved)',
+    shortLabel: 'BARRAGE+',
+    description: 'Evolved rapid fire',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
+  },
+
+  // Pistol type abilities
+  {
+    id: 'pistol-shot-base',
+    name: 'Pistol Shot',
+    shortLabel: 'SHOT',
+    description: 'Basic pistol shot',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'pistol-volley',
+    name: 'Pistol Volley',
+    shortLabel: 'VOLLEY',
+    description: 'Rapid pistol fire',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    id: 'pistol-shot-evolved',
+    name: 'Pistol Shot (Evolved)',
+    shortLabel: 'SHOT+',
+    description: 'Evolved pistol shot',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'pistol-volley-evolved',
+    name: 'Pistol Volley (Evolved)',
+    shortLabel: 'VOLLEY+',
+    description: 'Evolved rapid fire',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
+  },
+
+  // Throwing weapons type abilities
+  {
+    id: 'throwing-toss-base',
+    name: 'Throwing Toss',
+    shortLabel: 'TOSS',
+    description: 'Basic throwing attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'throwing-boomerang',
+    name: 'Throwing Boomerang',
+    shortLabel: 'BOOM',
+    description: 'Returning throw attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'throwing-toss-evolved',
+    name: 'Throwing Toss (Evolved)',
+    shortLabel: 'TOSS+',
+    description: 'Evolved throwing toss',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'throwing-scatter',
+    name: 'Throwing Scatter',
+    shortLabel: 'SCATTER',
+    description: 'Scatter throw attack',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Sports equipment type abilities
+  {
+    id: 'sports-swing-base',
+    name: 'Sports Swing',
+    shortLabel: 'SWING',
+    description: 'Basic sports-equipment strike',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'sports-home-run',
+    name: 'Sports Home Run',
+    shortLabel: 'HOMER',
+    description: 'Heavy sports-equipment follow-through',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'sports-swing-evolved',
+    name: 'Sports Swing (Evolved)',
+    shortLabel: 'SWING+',
+    description: 'Evolved sports-equipment strike',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'sports-grand-slam',
+    name: 'Sports Grand Slam',
+    shortLabel: 'SLAM',
+    description: 'Ultimate sports-equipment strike',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Unarmed type abilities
+  {
+    id: 'unarmed-punch-base',
+    name: 'Unarmed Punch',
+    shortLabel: 'PUNCH',
+    description: 'Basic punch',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'unarmed-barrage',
+    name: 'Unarmed Barrage',
+    shortLabel: 'BARRAGE',
+    description: 'Rapid punches',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    id: 'unarmed-punch-evolved',
+    name: 'Unarmed Punch (Evolved)',
+    shortLabel: 'PUNCH+',
+    description: 'Evolved punch',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'unarmed-barrage-evolved',
+    name: 'Unarmed Barrage (Evolved)',
+    shortLabel: 'BARRAGE+',
+    description: 'Evolved barrage',
+    category: 'combat',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
+  },
+
+  // Spellcraft type abilities
+  {
+    id: 'spellcraft-bolt-base',
+    name: 'Spellcraft Bolt',
+    shortLabel: 'BOLT',
+    description: 'Basic spell bolt',
+    category: 'utility',
+    kind: 'passive',
+    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+  },
+  {
+    id: 'spellcraft-cascade',
+    name: 'Spellcraft Cascade',
+    shortLabel: 'CASCADE',
+    description: 'Multiple bolts',
+    category: 'utility',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'spellcraft-bolt-evolved',
+    name: 'Spellcraft Bolt (Evolved)',
+    shortLabel: 'BOLT+',
+    description: 'Evolved spell bolt',
+    category: 'utility',
+    kind: 'passive',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'spellcraft-cascade-evolved',
+    name: 'Spellcraft Cascade (Evolved)',
+    shortLabel: 'CASCADE+',
+    description: 'Evolved cascade',
+    category: 'utility',
+    kind: 'passive',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // ─── Missing evolved / L10 abilities for weapon class skills ────────────────
+
+  // Slashing
+  {
+    id: 'slashing-momentum-evolved',
+    name: 'Slashing Momentum (Evolved)',
+    shortLabel: 'MOMTM+',
+    description: '+2 extra projectiles with slashing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'slashing',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Stabbing
+  {
+    id: 'stabbing-tempo-evolved',
+    name: 'Stabbing Tempo (Evolved)',
+    shortLabel: 'TEMPO+',
+    description: '+2 extra projectiles with stabbing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'stabbing',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Smashing
+  {
+    id: 'smashing-impact-evolved',
+    name: 'Smashing Impact (Evolved)',
+    shortLabel: 'IMPACT+',
+    description: '+15% damage with smashing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'smashing',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'smashing-momentum-evolved',
+    name: 'Smashing Momentum (Evolved)',
+    shortLabel: 'SMSH-M+',
+    description: '+2 extra projectiles with smashing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'smashing',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Ranged
+  {
+    id: 'ranged-accuracy-evolved',
+    name: 'Ranged Accuracy (Evolved)',
+    shortLabel: 'ACCRT+',
+    description: '+15% damage with ranged weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'ranged',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'ranged-barrage-evolved',
+    name: 'Ranged Barrage (Evolved)',
+    shortLabel: 'BARRAGE+',
+    description: '+2 extra projectiles with ranged weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'ranged',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // Throwing class
+  {
+    id: 'throwing-velocity',
+    name: 'Throwing Velocity',
+    shortLabel: 'VEL',
+    description: '+10% projectile speed with throwing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing',
+    effects: [{ type: 'stat_multiply', stat: 'projectileSpeed', value: 0.1 }],
+  },
+  {
+    id: 'throwing-precision-evolved',
+    name: 'Throwing Precision (Evolved)',
+    shortLabel: 'PREC+',
+    description: '+15% damage with throwing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+
+  // Forearms class
+  {
+    id: 'forearms-combo',
+    name: 'Forearms Combo',
+    shortLabel: 'COMBO',
+    description: '+15% attack speed with forearms weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'forearms',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    id: 'forearms-brawl-evolved',
+    name: 'Forearms Brawl (Evolved)',
+    shortLabel: 'BRAWL+',
+    description: '+25% attack speed with forearms weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'forearms',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
+  },
+
+  // Arcane class
+  {
+    id: 'arcane-mastery-base',
+    name: 'Arcane Mastery',
+    shortLabel: 'ARCANE',
+    description: '+10% damage with arcane weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'arcane',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+  },
+  {
+    id: 'arcane-mastery-evolved',
+    name: 'Arcane Mastery (Evolved)',
+    shortLabel: 'ARCANE+',
+    description: '+15% damage with arcane weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'arcane',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    id: 'arcane-efficiency-evolved',
+    name: 'Arcane Efficiency (Evolved)',
+    shortLabel: 'EFFIC+',
+    description: '+15% damage with arcane weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'arcane',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+
+  // ─── Throwing Weapons type abilities ────────────────────────────────────────
+  {
+    id: 'throwingweapons-toss-base',
+    name: 'Throwing Weapons Toss',
+    shortLabel: 'TOSS',
+    description: '+0.1 accuracy with throwing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing-weapons',
+    effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.1 }],
+  },
+  {
+    id: 'throwingweapons-salvo',
+    name: 'Throwing Weapons Salvo',
+    shortLabel: 'SALVO',
+    description: '+1 extra projectile with throwing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing-weapons',
+    effects: [{ type: 'extra_projectile', count: 1 }],
+  },
+  {
+    id: 'throwingweapons-toss-evolved',
+    name: 'Throwing Weapons Toss (Evolved)',
+    shortLabel: 'TOSS+',
+    description: '+0.2 accuracy with throwing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing-weapons',
+    effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.2 }],
+  },
+  {
+    id: 'throwingweapons-salvo-evolved',
+    name: 'Throwing Weapons Salvo (Evolved)',
+    shortLabel: 'SALVO+',
+    description: '+2 extra projectiles with throwing weapons',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'throwing-weapons',
+    effects: [{ type: 'extra_projectile', count: 2 }],
+  },
+
+  // ─── Sports Equipment type abilities ────────────────────────────────────────
+  {
+    id: 'sportsequipment-swing-base',
+    name: 'Sports Equipment Swing',
+    shortLabel: 'SWING',
+    description: '+0.1 accuracy with sports equipment',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'sports-equipment',
+    effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.1 }],
+  },
+  {
+    id: 'sportsequipment-grand-slam',
+    name: 'Sports Equipment Grand Slam',
+    shortLabel: 'SLAM',
+    description: '+10% damage with sports equipment',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'sports-equipment',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
+  },
+  {
+    id: 'sportsequipment-swing-evolved',
+    name: 'Sports Equipment Swing (Evolved)',
+    shortLabel: 'SWING+',
+    description: '+0.2 accuracy with sports equipment',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'sports-equipment',
+    effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.2 }],
+  },
+  {
+    id: 'sportsequipment-grand-slam-evolved',
+    name: 'Sports Equipment Grand Slam (Evolved)',
+    shortLabel: 'SLAM+',
+    description: '+15% damage with sports equipment',
+    category: 'combat',
+    kind: 'passive',
+    weaponPrerequisite: 'sports-equipment',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+];
 
 export function parseAbilityCatalog(raw: unknown): AbilityDefinition[] {
   return abilityCatalogSchema.parse(raw);

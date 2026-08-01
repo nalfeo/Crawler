@@ -63,7 +63,13 @@ describe('planConsolidation', () => {
     {
       number: 3,
       title: 'a',
-      payload: { version: 1, branch: 'assets/a', baseBranch: 'main', assets: [asset()] },
+      payload: {
+        version: 1,
+        branch: 'assets/a',
+        baseBranch: 'main',
+        assets: [asset()],
+        assetRequestIssueNumbers: [1307],
+      },
     },
     {
       number: 7,
@@ -80,6 +86,7 @@ describe('planConsolidation', () => {
             variantIndex: 1,
           }),
         ],
+        assetRequestIssueNumbers: [1307, 1313],
       },
     },
   ];
@@ -92,6 +99,9 @@ describe('planConsolidation', () => {
     expect(plan.assets).toHaveLength(2);
     expect(plan.prBody).toContain('Closes #3');
     expect(plan.prBody).toContain('Closes #7');
+    expect(plan.prBody).toContain('Closes #1307');
+    expect(plan.prBody).toContain('Closes #1313');
+    expect(plan.assetRequestIssueNumbers).toEqual([1307, 1313]);
     expect(plan.commitMessage).toContain('2 approved assets');
     expect(plan.prTitle).toBe('feat(sprites): add 2 approved assets (2 check-ins)');
   });
@@ -161,5 +171,70 @@ describe('runAssetPrConsolidation', () => {
         env: { CI: 'true' },
       }),
     ).rejects.toThrow(/local-only/);
+  });
+
+  it('uses --no-verify for temp-worktree commit and push on successful consolidation', async () => {
+    const commands: string[] = [];
+    const commandCwds: string[] = [];
+    const tempWorktree = '/tmp/asset-pr-worktree';
+    const exec: Exec = (command, args, options) => {
+      commands.push([command, ...args].join(' '));
+      commandCwds.push(`${[command, ...args].join(' ')} ::cwd=${options?.cwd ?? ''}`);
+
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return Promise.resolve({
+          stdout: JSON.stringify([
+            {
+              number: 3,
+              title: 'asset-checkin',
+              body: issueBody('assets/a', [asset()]),
+            },
+          ]),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      if (command === 'git' && args[0] === 'ls-remote') {
+        return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+      }
+      if (command === 'gh' && args[0] === 'pr' && args[1] === 'list') {
+        return Promise.resolve({ stdout: '[]', stderr: '', code: 0 });
+      }
+      if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') {
+        return Promise.resolve({
+          stdout: 'https://github.com/nalfeo/Crawler/pull/9999\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+    };
+
+    const result = await runAssetPrConsolidation('/repo', {
+      exec,
+      makeTempDir: () => Promise.resolve(tempWorktree),
+      removeDir: () => Promise.resolve(),
+      readJson: () => Promise.resolve({} as never),
+      writeJson: () => Promise.resolve(),
+      env: {},
+    });
+
+    expect(result?.prUrl).toBe('https://github.com/nalfeo/Crawler/pull/9999');
+    const commitMessage = result?.plan.commitMessage ?? 'missing-commit-message';
+    const batchBranch = result?.plan.batchBranch ?? 'missing-branch';
+    expect(commands).toContain(`git commit --no-verify -m ${commitMessage}`);
+    expect(commands).toContain(`git push --no-verify -u origin ${batchBranch}`);
+    expect(
+      commandCwds.some((line) =>
+        line.startsWith(`git commit --no-verify -m ${commitMessage} ::cwd=${tempWorktree}`),
+      ),
+    ).toBe(true);
+    expect(
+      commandCwds.some((line) =>
+        line.startsWith(`git push --no-verify -u origin ${batchBranch} ::cwd=${tempWorktree}`),
+      ),
+    ).toBe(true);
   });
 });

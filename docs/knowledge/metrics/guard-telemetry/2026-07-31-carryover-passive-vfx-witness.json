@@ -1,0 +1,43 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "carryover-passive-vfx-witness",
+  "date": "2026-07-31",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 503,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 497
+    },
+    "pr-preflight": {
+      "allow": 3
+    },
+    "pr-review-ledger": {
+      "allow": 2,
+      "skip": 1
+    }
+  },
+  "tools": {
+    "create": 4,
+    "create_pull_request": 6,
+    "edit": 33,
+    "extensions_reload": 1,
+    "get_changes_overview": 1,
+    "glob": 7,
+    "grep": 101,
+    "powershell": 176,
+    "read_powershell": 14,
+    "rename_branch": 3,
+    "rg": 9,
+    "send_session_message": 8,
+    "skill": 1,
+    "task": 2,
+    "task_complete": 9,
+    "update_pull_request": 1,
+    "view": 126,
+    "write_agent": 1
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

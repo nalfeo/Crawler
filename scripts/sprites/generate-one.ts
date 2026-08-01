@@ -43,7 +43,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
-import { buildPrompt, buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
+import {
+  buildPrompt,
+  buildSheetPrompt,
+  buildIconBatchSheetPrompt,
+  loadStyleGuide,
+} from './build-prompt.js';
 import { expandVariations } from './expand-variations.js';
 import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
@@ -285,7 +290,9 @@ export async function generateSheetCore(
   const effectiveBrief = { ...brief, variations: [...expansion.variations] };
 
   const styleGuide = loadStyleGuide(repoRoot);
-  const prompt = buildSheetPrompt(effectiveBrief, styleGuide);
+  const prompt = brief.iconBatch
+    ? buildIconBatchSheetPrompt(effectiveBrief, styleGuide)
+    : buildSheetPrompt(effectiveBrief, styleGuide);
   const singleVariantPrompt = buildPrompt(effectiveBrief, styleGuide);
 
   // References are OUR own highest-quality approved sprites, chosen
@@ -343,26 +350,37 @@ export async function generateSheetCore(
       dislikedSpriteNames: loadDislikedReferenceNames(),
     });
     if (selection.selected.length === 0) {
-      throw new Error(
-        `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
-          `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
-          `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
-          `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
-      );
+      if (presentCandidates.length === 0 && brief.type === 'icon') {
+        // Bootstrap case: no approved icon sprites exist in the manifest yet.
+        // Icons are a new sprite type bootstrapped without pre-existing references;
+        // proceed without reference images rather than aborting.
+        options.warn?.(
+          `generateSheetCore: no reference sprites exist in pool for brief "${brief.name}" ` +
+            `(type="${brief.type}") — proceeding without references (bootstrapping new type).`,
+        );
+      } else {
+        throw new Error(
+          `generateSheetCore: no eligible generated reference sprites for brief "${brief.name}" ` +
+            `(type="${brief.type}"). Generation now sends our own approved sprites as references ` +
+            `(Kenney placeholders are retired), but the generated manifest has none that clear the ` +
+            `quality floor with an on-disk PNG. Approve at least one high-quality sprite first.`,
+        );
+      }
+    } else {
+      referencePngs = selection.selected.map((entry) => {
+        const absolutePath = resolveAssetPath(entry.assetPath);
+        assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
+        return readReference(absolutePath);
+      });
+      referenceSprites = {
+        selectorVersion: SELECTOR_VERSION,
+        seed: selection.seed,
+        requestedCount: selection.requestedCount,
+        eligibleCount: selection.eligibleCount,
+        sameTypeCount: selection.sameTypeCount,
+        selected: selection.selected.map(toReferenceSpriteRef),
+      };
     }
-    referencePngs = selection.selected.map((entry) => {
-      const absolutePath = resolveAssetPath(entry.assetPath);
-      assertResolvedUnderGenerated(absolutePath, publicAssetsRoot, 'generateSheetCore');
-      return readReference(absolutePath);
-    });
-    referenceSprites = {
-      selectorVersion: SELECTOR_VERSION,
-      seed: selection.seed,
-      requestedCount: selection.requestedCount,
-      eligibleCount: selection.eligibleCount,
-      sameTypeCount: selection.sameTypeCount,
-      selected: selection.selected.map(toReferenceSpriteRef),
-    };
   }
 
   const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
@@ -397,6 +415,19 @@ export async function generateSheetCore(
         throw new ProviderError(
           'bad-grid',
           `slicer produced 0 cells from the generated sheet (structural failure)`,
+        );
+      }
+      // Icon-batch exception to ADR 0052: each cell maps to a specific icon ID
+      // by sequential index, so a count mismatch makes every index wrong. This
+      // is fundamentally different from regular sprite sheets (where the honest
+      // count is carried to gallery review). Retry so the model has another
+      // chance to draw the full grid with proper gutters.
+      if (brief.iconBatch && slice.cells.length !== expected) {
+        throw new ProviderError(
+          'bad-grid',
+          `icon-batch slicer produced ${slice.cells.length} cells but brief requires ${expected} ` +
+            `(${brief.generation.sheet.rows}×${brief.generation.sheet.cols} grid). ` +
+            `Retry to let the model draw the full grid with visible gutters.`,
         );
       }
       sliceResult = slice;

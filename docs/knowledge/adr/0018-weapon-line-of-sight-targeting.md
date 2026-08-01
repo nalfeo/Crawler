@@ -109,4 +109,4 @@ Introduce a deterministic tile line-of-sight primitive and gate targeting on
 - Related systems: `weaponSystem`, `fovSystem`, `FloorMap`, `TileMap`.
 - Test files: `tests/ecs/tilemap.test.ts`, `tests/ecs/floor-map.test.ts`,
   `tests/game/weapon-system-coverage.test.ts`.
-- Handoff: `docs/knowledge/handoffs/2026-06-25-weapon-fov-firing.md`.
+- Handoff: `docs/knowledge/handoffs/archive/2026-06-25-weapon-fov-firing.md`.

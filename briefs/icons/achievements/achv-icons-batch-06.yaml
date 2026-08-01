@@ -1,0 +1,53 @@
+name: achv-icons-batch-06
+type: icon
+description: 'Achievement icon batch 6: pixel-art symbols for dungeon achievements on Floor 1.'
+floor: 1
+iconBatch:
+  - id: achv-trap-stepper
+    concept: 'Kaboom!'
+    description: 'Icon for the "Kaboom!" achievement (Step on your first trap and survive.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-trap-tourist
+    concept: 'Frequent Flyer (Traps)'
+    description: 'Icon for the "Frequent Flyer (Traps)" achievement (Trigger 3 traps in one run and survive all of them.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-trap-speedrun
+    concept: "Mine Sweepern't"
+    description: 'Icon for the "Mine Sweepern''t" achievement (Trigger a trap and still clear the room.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-trap-bait
+    concept: 'Bait Technician'
+    description: 'Icon for the "Bait Technician" achievement (Lure 5 enemies through traps in one run.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-wall-hugger
+    concept: 'Geometry Major'
+    description: 'Icon for the "Geometry Major" achievement (Travel 500 feet while hugging room edges.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-zig-zag
+    concept: 'Zig. Zag. Win.'
+    description: 'Icon for the "Zig. Zag. Win." achievement (Make 50 direction changes during one combat encounter.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-never-stop
+    concept: 'No Brake Pedal'
+    description: 'Icon for the "No Brake Pedal" achievement (Go 60 seconds without stopping movement during combat.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-door-dancer
+    concept: 'Door Dancer'
+    description: 'Icon for the "Door Dancer" achievement (Cross the same doorway 10 times during one fight.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-corner-clutch
+    concept: 'Corner Clutch'
+    description: 'Icon for the "Corner Clutch" achievement (Survive 20 seconds while boxed near a corner.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-pickup-under-fire
+    concept: 'Loot Under Fire'
+    description: 'Icon for the "Loot Under Fire" achievement (Collect 8 pickups while enemies are within melee range.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-xp-rush
+    concept: 'XP Rush'
+    description: 'Icon for the "XP Rush" achievement (Gain 3 levels within 60 seconds.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-inventory-tour
+    concept: 'Bag Opened'
+    description: 'Icon for the "Bag Opened" achievement (Open inventory for the first time in a safe room.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-gear-tour
+    concept: 'Wardrobe Change'
+    description: 'Icon for the "Wardrobe Change" achievement (Open equipment for the first time in a safe room.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-fashion-kill
+    concept: 'Fashion Kill'
+    description: 'Icon for the "Fashion Kill" achievement (Equip a new item and defeat an enemy within 5 seconds.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-starter-weapon-clear
+    concept: 'Starter Weapon Legend'
+    description: 'Icon for the "Starter Weapon Legend" achievement (Clear Floor 1 without changing your starting weapon.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-single-skill-run
+    concept: 'One-Track Mind'
+    description: 'Icon for the "One-Track Mind" achievement (Clear Floor 1 while leveling only one skill tree.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
