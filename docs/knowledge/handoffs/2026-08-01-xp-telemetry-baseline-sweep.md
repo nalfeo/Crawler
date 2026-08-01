@@ -146,3 +146,56 @@ search-baseline`, which produces a `combo: undefined` artifact that fails
   the workflow when set (since XP telemetry sweeps are typically baseline/
   measurement runs, not tuning searches) — today it's the caller's
   responsibility to pass `rounds=0` explicitly, as this session did.
+
+## Addendum (same day): Floor 2 broad XP measurement
+
+Requested via cross-session message to add telemetry-only Floor 2 broad
+measurement support, as the same-runner control for sibling implementation run 30693346118. Ported ONLY the `xp-measure` stage (commit `8cbc82fcf` from the
+source branch) — confirmed it does not touch `bt-ai-provider.ts`/
+`bt-ai-tuning.ts` or add the sibling branch's XP-cleanup reset behavior
+(that lives in a separate, unported commit `5d8a146d7`).
+
+Added a dedicated `xp-measure` stage to `sweep-eval.ts` (Stage union,
+`buildMeta()` budget/frame overrides, `evalStandalone()` passthrough,
+`runOne()` branching officialWin/score off `floorId === 'floor1'` so Floor 2
+runs don't get Floor-1's 6-min-budget/safe-room win credit) and a new
+`xp-measure` CI job in `ai-sweep.yml` (new `xp_floor` input, gated on
+`xp_collection && xp_floor != 'floor1'`, fresh Node process per seed, 100k max
+frames / ~1,666,667ms budget). Did not port `fresh-process-result.ts` (not
+required; existing inline marker-parsing sufficed). Floor 2 headless support
+(`floorId: 'floor2'`, `getScenarioDefinition`, `floor2Progression`) was
+pre-existing main infra, not part of this port.
+
+Verified: `tsc --noEmit` clean, `eslint` clean, 75/75 targeted `vitest` tests
+passing (`ai-sweep-workflow.test.ts` + `sweep-eval-search-promotion.test.ts`),
+local smoke test of `--stage xp-measure --floor floor2 --seeds 1` (238s,
+correct output shape). Committed `a3b3d739c`, pushed to origin.
+
+Dispatched and observed real run: GitHub Actions `ai-sweep.yml` run
+[30695098191](https://github.com/nalfeo/Crawler/actions/runs/30695098191)
+(`project:sweep-results-viewer runId=30695098191`) — same combo/train_seeds/
+workers/rounds as the Floor 1 run, plus `validate_seeds=1-20`,
+`xp_floor=floor2`. Completed successfully.
+
+**20-seed Floor 2 baseline for main's current AI (riskRewardFused+legacy, sword):**
+
+- Outcome distribution: victory 10 (50%), timeout 6 (30%), stalled 4 (20%)
+- Victory rate / officialWin rate: 50.0%
+- XP efficiency — all rows: mean 0.5497, median 0.5771; victories only (n=10):
+  mean 0.5716, median 0.5677
+- Final level: mean 15.85, median 17
+- Game duration: mean 1049.2s, median 1095.0s
+- xpSpawned mean 966.8/median 1159; xpCollected mean 555.3/median 627;
+  xpRemaining mean 411.5/median 472
+
+Interpretation: Floor 2 is materially harder than Floor 1 on current main —
+only half of seeds reach victory, and XP efficiency among victories (0.572
+median) is meaningfully lower than Floor 1's (0.688 median). This is the
+control baseline the sibling implementation session should diff against when
+evaluating its Floor 2 XP-collection improvements.
+
+Reported back to creator session ("AI XP collection efficiency") via
+`send_session_message`. No product PR opened for either phase, per the
+explicit investigation/process-light instruction. Apple estimate unchanged
+(2🍎 total — tooling-only ceremony capped at 3🍎 regardless of file count;
+Phase 2 added 4 files on top of Phase 1's port).
