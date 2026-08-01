@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   closeCanonicalPrOnConflict,
   discoverReadyCheckpoints,
+  publishSelectedAssetRequests,
   reconcileCanonicalPr,
   validateExactAssetPayloads,
 } from '../../../scripts/sprites/asset-request-publisher.js';
@@ -351,5 +352,50 @@ describe('canonical generated-art PR reconciliation', () => {
         '"Generated art-only changes eligible for guarded promotion"',
     );
     expect(calls.some((args) => args[0] === 'pr' && args[1] === 'create')).toBe(false);
+  });
+});
+
+describe('asset-request publication path safety', () => {
+  const roots: string[] = [];
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it('rejects traversal in promotedBriefPath before writing to disk', async () => {
+    const repoRoot = mkdtempSync(path.join(os.tmpdir(), 'publisher-repo-'));
+    roots.push(repoRoot);
+    mkdirSync(path.join(repoRoot, 'src', 'shared', 'data'), { recursive: true });
+    writeFileSync(path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json'), '[]\n');
+
+    const store = makeStore();
+    const issueNumber = 77;
+    const fingerprint = `fingerprint-${issueNumber}`;
+    await store.put(
+      issueCheckpointKey(issueNumber, fingerprint),
+      Buffer.from(
+        JSON.stringify({
+          version: 1,
+          issueNumber,
+          fingerprint,
+          stage: 'completed',
+          stages: {},
+          details: {
+            outcome: 'selected-pending-publish',
+            briefId: `brief-${issueNumber}`,
+            runId: `run-${issueNumber}`,
+            selectedIndexes: [0],
+            selectedAt: '2026-07-24T00:00:00.000Z',
+            promotedBriefPath: 'briefs/draft/items/../../../../escape.yaml',
+            promotedBriefYaml: 'id: exploit\n',
+          },
+          updatedAt: '2026-07-24T00:00:00.000Z',
+        }),
+      ),
+    );
+
+    await expect(publishSelectedAssetRequests({ repoRoot, store })).rejects.toMatchObject({
+      kind: 'invalid-brief-path',
+    });
   });
 });

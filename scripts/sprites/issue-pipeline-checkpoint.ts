@@ -311,6 +311,28 @@ export async function runCheckpointStage<T>(
 }
 
 /**
+ * Error kinds that are safe to auto-reset after an infrastructure fix.
+ *
+ * Only a strict subset of transient kinds qualify — kinds that are EXCLUSIVELY
+ * the result of infrastructure failures (push loop exhausted) rather than
+ * operational failures (auth, permissions, network) that share the same kind
+ * string. Specifically:
+ *
+ * - `push-retries-exhausted` — the push retry loop was exhausted due to a
+ *   non-fast-forward rejection; unambiguously an infrastructure issue.
+ *
+ * `null` (unknown/unclassified) is intentionally excluded: `runCheckpointStage`
+ * records `null` for ANY untyped exception, including JSON/Zod/invariant
+ * failures from `reconcileCanonicalPr`. Auto-resetting a `null`-kind failure
+ * would cause a deterministic bug to be retried forever.
+ *
+ * `git-failed` is intentionally excluded: `QueueCommitError('git-failed')` is
+ * also thrown for authentication, permission, and network failures that should
+ * NOT be silently reset on every workflow run.
+ */
+const INFRA_RESETTABLE_KINDS = new Set<string>(['push-retries-exhausted']);
+
+/**
  * If `stage` is exhausted (attempts ≥ maxAttempts) **and** its last recorded
  * error was transient (not in PERMANENT_ERROR_KINDS), this removes the stage
  * entry from the checkpoint so the next `runCheckpointStage` call can retry
@@ -325,24 +347,6 @@ export async function runCheckpointStage<T>(
  * underlying git defect was repaired. Calling this for a stage whose failure
  * was permanent (auth, destination-conflict, etc.) is safe: it is a no-op.
  */
-/**
- * Error kinds that are safe to auto-reset after an infrastructure fix.
- *
- * Only a strict subset of transient kinds qualify — kinds that are EXCLUSIVELY
- * the result of infrastructure failures (push loop exhausted) rather than
- * operational failures (auth, permissions, network) that share the same kind
- * string. Specifically:
- *
- * - `null`  — unknown/unclassified error; no permanent signal in the kind alone.
- * - `push-retries-exhausted` — the push retry loop was exhausted due to a
- *   non-fast-forward rejection; unambiguously an infrastructure issue.
- *
- * `git-failed` is intentionally excluded: `QueueCommitError('git-failed')` is
- * also thrown for authentication, permission, and network failures that should
- * NOT be silently reset on every workflow run.
- */
-const INFRA_RESETTABLE_KINDS = new Set<string | null>([null, 'push-retries-exhausted']);
-
 export async function resetExhaustedTransientStage(
   controller: IssueCheckpointController,
   stage: IssuePipelineStage,
@@ -355,6 +359,7 @@ export async function resetExhaustedTransientStage(
     prior === undefined ||
     prior.status !== 'failed' ||
     prior.attempts < maxAttempts ||
+    errorKind === null ||
     !INFRA_RESETTABLE_KINDS.has(errorKind)
   ) {
     return false;
@@ -394,6 +399,7 @@ const PERMANENT_ERROR_KINDS = new Set([
   'ci-refused',
   'destination-conflict',
   'invalid-asset-path',
+  'invalid-brief-path',
   'run-not-found',
   'summary-invalid',
   'variant-count-mismatch',
