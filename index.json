@@ -1,5 +1,16 @@
 [
   {
+    "commit": "adfb1afa4a4d14168f6f588ed73b3fcb281f1f75",
+    "commitDate": "2026-08-01T09:26:16Z",
+    "commitSubject": "feat: asset-search extension with LLM tag enrichment and NL search (#2600)",
+    "capturedAt": "2026-08-01T10:33:49.702Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30694126775",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/adfb1afa4a4d14168f6f588ed73b3fcb281f1f75.json"
+  },
+  {
     "commit": "d1185a9a78666e8a21515c6afe5435271de7b90e",
     "commitDate": "2026-08-01T09:00:54Z",
     "commitSubject": "chore: auto-junction node_modules in new worktrees via post-checkout hook (#2598)",
