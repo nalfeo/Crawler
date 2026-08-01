@@ -179,6 +179,10 @@ on:
         description: 'Telemetry-only: run validate seeds in fresh Node processes and record optional XP spawn/collection stats (no AI behavior change).'
         type: boolean
         default: false
+      xp_floor:
+        description: 'Optional XP-only measurement floor; floor1 keeps the normal validation panel only'
+        type: string
+        default: 'floor1'
 
 # Read-only: checkout + artifact up/download need nothing more. No default flip here.
 permissions:
@@ -1503,6 +1507,48 @@ jobs:
           path: validate-*.json
           if-no-files-found: error
           retention-days: 7
+
+  # Optional telemetry-only XP measurement panel for a non-Floor-1 floor
+  # (e.g. floor2). Runs the combo's canonical baseline config through the
+  # same fresh-process/record-xp seam `validate` uses when xp_collection is
+  # set, but on `--stage xp-measure` — which skips search/scoring entirely
+  # (deriveRunFacts is Floor-1-calibrated) and just records spawned/
+  # collected/remaining/efficiency XP stats. Runs independently of the
+  # round-search DAG so a same-runner Floor 2 "control" measurement can be
+  # dispatched without paying for a full Floor 1 search. No AI behavior
+  # change: this job only calls the existing headless runner with
+  # recordXpCollection, never touches bt-ai-provider.ts.
+  xp-measure:
+    name: XP-measure ${{ inputs.xp_floor }}
+    needs: preflight
+    if: ${{ inputs.xp_collection && inputs.xp_floor != 'floor1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Run isolated XP measurement panel
+        env:
+          FLOOR: ${{ inputs.xp_floor }}
+          SEEDS: ${{ inputs.validate_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage xp-measure --combo riskRewardFused+legacy \
+            --floor "$FLOOR" --seeds "$SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" \
+            --fresh-process --record-xp \
+            --out "xp-measure-$FLOOR.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xp-measure-${{ inputs.xp_floor }}
+          path: xp-measure-*.json
+          if-no-files-found: error
+          retention-days: 30
 
   # Fan-in: merge every validate shard → recompute totals from rows → leaderboard
   # + safety-gated qualified winner. `if: !cancelled()` so a `fail-fast:false`

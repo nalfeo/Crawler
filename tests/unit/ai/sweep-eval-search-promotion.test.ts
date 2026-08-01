@@ -640,4 +640,16 @@ describe('STANDALONE_SHARD_STAGE', () => {
     expect(printMetaOutput.stage).toBe(standaloneShardMeta.stage);
     expect(printMetaOutput.stage).toBe('search');
   });
+
+  it('records non-default XP measurement budgets in shard metadata', () => {
+    // xp-measure runs on non-Floor-1 floors with a 100k-frame budget instead
+    // of the Floor-1-calibrated defaults; buildMeta's overrides param lets
+    // evalStandalone stamp the ACTUAL budget/frames used onto the shard
+    // instead of silently mislabeling it with Floor-1 constants.
+    const meta = buildMeta('xp-measure', 'floor2', { budgetMs: 1_666_666, maxFrames: 100_000 });
+    expect(meta.stage).toBe('xp-measure');
+    expect(meta.floorId).toBe('floor2');
+    expect(meta.budgetMs).toBe(1_666_666);
+    expect(meta.maxFrames).toBe(100_000);
+  });
 });
