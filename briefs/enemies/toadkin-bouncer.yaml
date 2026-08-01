@@ -25,6 +25,11 @@ sensors:
   enemy:
     facing: front
     toleranceDeg: 20
+
+judge:
+  enabled: true
+  maxVariants: 4
+
 variations:
   - squat toadkin bruiser with arms crossed high over his chest, one brass-knuckle fist visible, dark purple jacket with gold trim
   - stocky front-facing toadkin bouncer with both fists raised close to the torso, tiny earpiece, black velvet-rope jacket with brass trim
