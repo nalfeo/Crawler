@@ -1,0 +1,193 @@
+{
+  "briefId": "beetlefolk-resin-gunner-v1",
+  "spriteName": "beetlefolk-resin-gunner-v1-var-1",
+  "assetPath": "generated/beetlefolk-resin-gunner-v1-var-1.png",
+  "approvedAt": "2026-08-01T05:39:57.729Z",
+  "sourceRun": "generated/runs/beetlefolk-resin-gunner-v1/2026-08-01T05-36-09-f31206ee",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 117,
+    "y": 136,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 117,
+      "y": 136,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 117,
+      "y": 136,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 668 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 85,
+          "y": 214
+        },
+        {
+          "x": 86,
+          "y": 214
+        },
+        {
+          "x": 87,
+          "y": 214
+        },
+        {
+          "x": 88,
+          "y": 214
+        },
+        {
+          "x": 89,
+          "y": 214
+        },
+        {
+          "x": 121,
+          "y": 214
+        },
+        {
+          "x": 122,
+          "y": 214
+        },
+        {
+          "x": 123,
+          "y": 214
+        },
+        {
+          "x": 124,
+          "y": 214
+        },
+        {
+          "x": 125,
+          "y": 214
+        },
+        {
+          "x": 126,
+          "y": 214
+        },
+        {
+          "x": 85,
+          "y": 215
+        },
+        {
+          "x": 86,
+          "y": 215
+        },
+        {
+          "x": 87,
+          "y": 215
+        },
+        {
+          "x": 88,
+          "y": 215
+        },
+        {
+          "x": 89,
+          "y": 215
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 117,
+        "y": 136
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:37:37.476Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The beetlefolk gunner concept is clear and fits the Crawler design language with its combination of a stout beetle-like form and the resin-blaster weapon. The contradiction between the organic beetle and the industrial resin weapon is well-executed, though the humor could be slightly more pronounced."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, shading depth, and palette. The crisp edges and pixel dithering are consistent with the approved sprites."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, shading depth, and palette. The crisp edges and pixel dithering are consistent with the approved sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts the beetlefolk gunner as described, including the hunched posture, wide stance, ridged exoskeleton, glowing amber canister, and dripping resin nozzle."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and readable at game scale, with no visual integrity defects. The gun and beetle form are immediately distinguishable."
+    },
+    "poseOrientation": {
+      "score": 4,
+      "rationale": "The sprite faces the camera at a slight turn, which is effective for readability, though the pose could be slightly more dynamic to enhance engagement."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully visible, including the head, body, legs, and weapon. The sprite is well-framed within the game scale."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the ridged exoskeleton, resin weapon with glowing amber canister, and scarred chitinous shell. The mob's allegiance and role are clear."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4153,
+      "completionTokens": 472,
+      "totalTokens": 4625
+    }
+  },
+  "type": "enemy",
+  "contentHash": "f101a42d6985e9dc213f78d947df8c540513e0ed1cd9b363f411fd99ac326fdf",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 228,
+    "height": 231,
+    "canvasWidth": 256,
+    "canvasHeight": 259
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/beetlefolk-resin-gunner-v1/2026-08-01T05-36-09-f31206ee/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/beetlefolk-resin-gunner-v1/2026-08-01T05-36-09-f31206ee/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/beetlefolk-resin-gunner-v1/2026-08-01T05-36-09-f31206ee/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
