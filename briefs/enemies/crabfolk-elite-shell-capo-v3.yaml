@@ -1,6 +1,6 @@
 type: enemy
 mobRole: elite
-name: crabfolk-elite-shell-capo
+name: crabfolk-elite-shell-capo-v3
 floor: 2
 description: |
   An elite crabfolk capo oozing crime-boss authority — a heavy tank silhouette
@@ -29,9 +29,8 @@ description: |
 sensors:
   enemy:
     facing: front
-    toleranceDeg: 25
   edge:
-    allowMainTouch: true
+    allowMainTouch: false
     allowDetachedEdgeComponents: false
   interiorHoles:
     maxPixels: 256

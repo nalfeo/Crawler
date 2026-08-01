@@ -27,11 +27,12 @@ Estimated 1🍎, actual 1🍎 — pure art brief creation, no code changes.
   Matches the crabfolk family's blue-gray shell tones with gold elite accent.
 - Declared `mobRole: elite` (schema-valid; sits between `normal` and `boss`).
 - No `sizeVariant` — default footprint appropriate for elite (not boss-wide).
-- Used `sensors.enemy.facing: front` with `toleranceDeg: 25` — tighter than the
-  boss's three-quarter facing to enforce the front-facing silhouette spec.
-- Added `sensors.edge` containment block (matching crabfolk-boss pattern) and
-  `sensors.interiorHoles.maxPixels: 256` (tight for a detailed elite, less than
-  the boss's 512).
+- Used `sensors.enemy.facing: front` — enforces the front-facing silhouette spec.
+  (`toleranceDeg` is only honoured for `type: character` briefs; enemy facing is
+  validated by the judge prompt and VLM evaluation instead.)
+- `sensors.edge.allowMainTouch` left at the enemy default (`false`) — enforces that
+  the largest opaque component does not clip the frame edge, matching the stated edge
+  containment intent.
 - `judge.enabled: true, maxVariants: 4` — VLM judge active, 4 candidates to be
   scored on next generation run.
 - Seeded 4 distinct variations covering: direct front-facing authority pose,
@@ -42,13 +43,13 @@ Estimated 1🍎, actual 1🍎 — pure art brief creation, no code changes.
 
 - Python field validation ✅
   - All required fields present: `type: enemy`, `mobRole: elite`,
-    `name: crabfolk-elite-shell-capo`, `floor: 2`, no `sizeVariant`,
+    `name: crabfolk-elite-shell-capo-v3`, `floor: 2`, no `sizeVariant`,
     `sensors.enemy.facing: front`, `judge.enabled: true`,
     `judge.maxVariants: 4`, `minVariations: 4`, 4 variation entries.
 - Pipeline execution ✅ — Issue #2560 was labeled `asset-request`;
   `asset-request.yml` workflow fired and **completed** (run `2026-08-01T05-40-09-030d5b08`):
   - Synthesized brief `crabfolk-elite-shell-capo-v3` (GPT-4o selected candidate 3/3)
-  - 3 variants generated; all selected (each with 1 sensor failure — accepted by judge)
+  - 4 variants generated; 3 selected (each with 1 sensor failure — accepted by judge); 1 candidate rejected
   - Canonical brief renamed to `v3` to match the generated lineage
 
 ## Blockers / notes
@@ -61,10 +62,10 @@ Estimated 1🍎, actual 1🍎 — pure art brief creation, no code changes.
 
 ## Next steps
 
-1. Review the 3 generated variants posted to issue #2560 (run `2026-08-01T05-40-09-030d5b08`).
-2. Approve the winning variant(s) with:
-   `npm run sprites:approve -- <runDir> --variant <N>`
-3. Run `npm run sprites:checkin` to open an `asset-checkin` issue.
-4. The hourly `sprite-queue-reconciler` will batch approved art into an art-only PR via `assets/promote → main`.
-5. After merge, wire into `entity-sprite-mappings.json` via
+1. Review the generated variants posted to issue #2560 (run `2026-08-01T05-40-09-030d5b08`).
+   `asset-request.yml` already ran `Publish selected variants` automatically via
+   `asset-request-publisher.ts`; confirm the 3 selected variants were approved and
+   the canonical `assets/queue` PR was opened by the publisher step.
+2. After the art-only `assets/promote → main` PR merges, wire into
+   `entity-sprite-mappings.json` via
    `npm run sprites:generate-wiring -- --since main`.
