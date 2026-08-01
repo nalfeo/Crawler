@@ -1,0 +1,97 @@
+{
+  "briefId": "ability-icons-batch-01",
+  "spriteName": "ability-icon-brute-force",
+  "assetPath": "generated/ability-icon-brute-force.png",
+  "approvedAt": "2026-07-31T21:20:56.428Z",
+  "sourceRun": "generated/runs/ability-icons-batch-01/2026-07-31T21-17-25-f393c076",
+  "variantIndex": 14,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 14,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T21:20:47.559Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The hammer design is clear and grounded in dark-fantasy aesthetics, with a practical and recognizable form. However, it lacks a strong authored contradiction or unique twist to elevate it to a 5."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style well, with consistent outline weight, shading, and palette depth. The rendering is clean and adheres to the established visual language."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style well, with consistent outline weight, shading, and palette depth. The rendering is clean and adheres to the established visual language."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts a hammer, which fits the description of a pixel-art symbol for an ability icon."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity issues or blending into the background. The hammer is immediately recognizable."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 3370,
+      "completionTokens": 261,
+      "totalTokens": 3631
+    }
+  },
+  "type": "icon",
+  "contentHash": "f618a3b6099635a1e385abe946e5bafbeaa24bb955410746cf9bae2c1fb64bc9",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 117,
+    "height": 114,
+    "canvasWidth": 131,
+    "canvasHeight": 128
+  },
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": null
+}

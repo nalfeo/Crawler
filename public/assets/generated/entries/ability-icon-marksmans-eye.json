@@ -1,0 +1,98 @@
+{
+  "briefId": "ability-icons-batch-01",
+  "spriteName": "ability-icon-marksmans-eye",
+  "assetPath": "generated/ability-icon-marksmans-eye.png",
+  "approvedAt": "2026-07-31T21:20:56.564Z",
+  "sourceRun": "generated/runs/ability-icons-batch-01/2026-07-31T21-17-25-f393c076",
+  "variantIndex": 15,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": false,
+      "sensor": "opaque-ratio",
+      "reason": "opaque ratio 0.679 outside [0.05, 0.65]"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 15,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T21:20:54.396Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design is clear and fits the dark-fantasy aesthetic of Crawler. The target symbol is a recognizable and appropriate choice for an ability icon, and the use of warm tones adds a sense of intensity. However, the concept lacks a strong authored contradiction or unique twist to make it stand out more."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering aligns well with the reference sprites in terms of outline weight, shading, and palette depth. The color stops are distinct, and the shading is consistent with the references. However, the texture could be slightly more refined to match the level of detail in the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering aligns well with the reference sprites in terms of outline weight, shading, and palette depth. The color stops are distinct, and the shading is consistent with the references. However, the texture could be slightly more refined to match the level of detail in the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The icon clearly represents a target, which is a common and recognizable symbol for an ability. It is unambiguous and fits the brief for an ability icon."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and pops well against the dark background in the readability composite. The target and arrow are immediately recognizable at game scale, and there are no visual integrity issues such as floating pixels or transparency holes."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 3370,
+      "completionTokens": 328,
+      "totalTokens": 3698
+    }
+  },
+  "type": "icon",
+  "contentHash": "e42077793975aafe0292c58d3efeceee30b3d0da74f5bf30a5ea8b3f3d0dc11f",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 115,
+    "canvasWidth": 128,
+    "canvasHeight": 129
+  },
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": null
+}
