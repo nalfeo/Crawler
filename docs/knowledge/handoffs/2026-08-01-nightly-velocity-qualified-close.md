@@ -42,3 +42,7 @@ This PR is a **standalone template correction only**. It does **not** close or c
 - Job log inspected: `91356645412`
 - Workflow created issue `#2612` as expected.
 - Attempted to post the required pre-code plan comment to issue #2612 via `gh issue comment`, but this environment returned `HTTP 403`.
+
+## Recovery note
+
+The original PR was created with a `Fixes #2612` closing link. The review correctly identified this as wrong (this PR is a template correction only; #2612 requires a full bottleneck scan). The closing link must be removed from the PR description by the human reviewer before merging.
