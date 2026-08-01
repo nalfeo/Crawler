@@ -44,7 +44,7 @@ function formBody(parts: {
 /** Extract the verbatim brief text from a fixture body. */
 function fixtureBrief(body: string): string {
   const match = body.match(/(?:^|\n)### Brief\s*\n+([\s\S]*?)(?=\n###\s|\n<!--|$)/);
-  return match ? match[1].trim() : '';
+  return match ? (match[1] ?? '').trim() : '';
 }
 
 describe('parseAssetRequestIssueBody', () => {

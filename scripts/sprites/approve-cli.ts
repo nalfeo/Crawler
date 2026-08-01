@@ -30,6 +30,9 @@ import {
 } from './approve.js';
 import { runQueueCommit } from './queue-commit.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
+import { createEnrichTagsProvider, type EnrichTagsRequest } from './enrich-tags.js';
+import { writeShard } from './generated-shards.js';
+import type { ManifestEntry as SharedManifestEntry } from '../../src/shared/generated-assets.js';
 
 interface ParsedArgs {
   readonly runDir: string;
@@ -146,6 +149,44 @@ function exitCodeForError(kind: ApproveError['kind']): number {
       return 4;
     default:
       return 1;
+  }
+}
+
+/**
+ * Best-effort LLM tag enrichment after a successful approval.
+ * Never throws or blocks the approval result — enrichment is optional.
+ */
+async function enrichEntryTags(
+  entry: ManifestEntry,
+  generatedDir: string,
+  _repoRoot: string,
+): Promise<void> {
+  // Skip if tags already present (e.g. from a hand-authored catalog override).
+  const existingTags = entry.catalog?.tags;
+  if (Array.isArray(existingTags) && existingTags.length > 0) return;
+
+  const provider = createEnrichTagsProvider({ env: process.env as Record<string, string> });
+  if (!provider) return;
+
+  const request: EnrichTagsRequest = {
+    manifestKey: entry.spriteName ?? '',
+    type: entry.type ?? null,
+    description: entry.catalog?.description ?? '',
+    briefId: entry.briefId ?? '',
+  };
+
+  try {
+    const tags = await provider.generateTags(request);
+    if (tags.length === 0) return;
+    const updatedEntry: ManifestEntry = { ...entry, catalog: { ...entry.catalog, tags } };
+    const manifestKey = entry.spriteName ?? '';
+    if (manifestKey)
+      writeShard(generatedDir, manifestKey, updatedEntry as unknown as SharedManifestEntry);
+  } catch (err) {
+    process.stderr.write(
+      `⚠ enrich-tags: ${entry.spriteName ?? '(unknown)'}: ` +
+        `${err instanceof Error ? err.message : String(err)}\n`,
+    );
   }
 }
 
@@ -351,6 +392,11 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
           throw err;
         }
       }
+    }
+
+    // Best-effort LLM tag enrichment for fresh approvals. Never blocks.
+    if (!alreadyApproved) {
+      await enrichEntryTags(entry, path.join(publicAssetsDir, 'generated'), repoRoot);
     }
 
     // Durably persist the approved asset onto the remote assets/queue branch so
