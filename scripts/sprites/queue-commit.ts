@@ -22,11 +22,20 @@
  *     live manifest/catalog entries onto that tip via `mergeManifests`/
  *     `mergeCatalogs`. Because the union re-runs against the latest tip on every
  *     retry, a concurrent writer's entry is preserved — no whole-file clobber.
- *   - The push is a plain fast-forward-only push of the new commit to
- *     `refs/heads/assets/queue`: our commit's parent IS the fetched tip, so a
- *     concurrent advance makes the push a non-fast-forward → git rejects it →
- *     we re-fetch and retry. This is a strictly-safer compare-and-swap than
- *     `--force-with-lease` (it can never overwrite a concurrent update).
+ *   - **Normal path**: the push is a plain fast-forward-only push of the new
+ *     commit to `refs/heads/assets/queue`.  Our commit's parent IS the fetched
+ *     tip, so a concurrent advance makes the push a non-fast-forward → git
+ *     rejects it → we re-fetch and retry.
+ *   - **Orphan-reset path**: when `assets/queue` has no common ancestry with
+ *     `main` (an orphan branch), we `reset --hard mainRef` then layer queued art
+ *     back on top via `checkout baseRef -- <art-surface>`.  The resulting commit's
+ *     parent is `mainRef`, NOT the orphan tip, so a plain fast-forward push is
+ *     permanently non-fast-forward.  Instead we push with
+ *     `--force-with-lease=refs/heads/assets/queue:<orphan-sha>` (an explicit-SHA
+ *     lease).  This is still a compare-and-swap: if another writer advances
+ *     `assets/queue` between our fetch and our push, the lease fails with
+ *     `(stale info)` → we re-fetch and retry, preserving the concurrent writer's
+ *     assets in the union.
  *
  * Constitutional §3 (local-only mutation): like check-in/approve, this pushes to
  * a remote from locally-approved assets, so it REFUSES when `process.env.CI` is
