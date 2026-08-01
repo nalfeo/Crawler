@@ -138,9 +138,10 @@ anchor:
   x: 128
   y: 252
 # Seed frame: the approved frame 0 (contact-left pose) from the existing
-# generation.  Providing it as the first reference image tells the model to
-# match this character's identity EXACTLY across all four cells, preventing
-# the row-0-vs-row-1 lighting/outfit-angle drift seen in the original brief.
+# generation.  Providing it as the first reference image is designed to
+# encourage the model to match this character's identity across all four cells,
+# reducing the row-0-vs-row-1 lighting/outfit-angle drift seen in the original
+# brief.  Visual outcome is to be confirmed on first run.
 seedFrames:
   - path: briefs/characters/seeds/player-walk-cycle-female-frame0.png
     note: 'Frame 0 (contact-left pose) — approved reference for identity and palette consistency across all 4 frames'

@@ -39,7 +39,8 @@
  * their own modules with their own unit tests.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
@@ -63,6 +64,7 @@ import {
   type ReferenceSpriteRef,
   type ReferenceSpriteSelection,
   type RunSummary,
+  type SeedFrameRef,
 } from './run-artifacts.js';
 import {
   REFERENCE_COUNT,
@@ -98,6 +100,11 @@ export interface GenerateOneOptions {
   readonly now?: () => Date;
   /** Reference PNG loader injection; defaults to `fs.readFileSync`. */
   readonly readReference?: (absolutePath: string) => Buffer;
+  /**
+   * Canonical-path resolver injection (tests). Defaults to `fs.realpathSync`.
+   * Used to detect seed frame paths that escape the repo root via symlinks.
+   */
+  readonly realpath?: (absolutePath: string) => string;
   /**
    * Absolute path to the generated-sprite manifest the reference selector
    * draws from. Defaults to `<repoRoot>/public/assets/generated/manifest.json`.
@@ -165,6 +172,7 @@ export type RunSummaryIdentity = Pick<
 > & {
   readonly referenceSprites?: RunSummary['referenceSprites'];
   readonly frameSequence?: RunSummary['frameSequence'];
+  readonly seedFrames?: RunSummary['seedFrames'];
 };
 
 /**
@@ -266,6 +274,7 @@ export async function generateSheetCore(
   const now = options.now ?? (() => new Date());
   const createdAt = now();
   const readReference = options.readReference ?? ((p) => readFileSync(p));
+  const resolveRealpath = options.realpath ?? realpathSync;
   // Default to a local store rooted at <outputRoot>/runs — same layout as before.
   const store: RunStore = options.store ?? new LocalRunStore(path.join(outputRoot, 'runs'));
 
@@ -383,18 +392,58 @@ export async function generateSheetCore(
     }
   }
 
+  // Approved asset directory for seed frames: they must live under briefs/ so
+  // that the path space is bounded and sensitive repo files cannot be forwarded
+  // to the image provider as PNG bytes.
+  const approvedSeedRoot = path.resolve(repoRoot, 'briefs');
+  // PNG signature (first 8 bytes of every well-formed PNG file).
+  const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
   // Prepend any declared seed frames so the provider receives them first and
   // the prompt's "Seed frames" section matches the actual image slot indices.
+  const seedFrameRefs: SeedFrameRef[] = [];
   if (brief.seedFrames.length > 0 && supportsReferenceImages) {
     const seedPngs = brief.seedFrames.map((sf) => {
-      const resolved = path.resolve(repoRoot, sf.path);
-      // Prevent path traversal outside the repository root.
-      if (!resolved.startsWith(repoRoot + path.sep) && resolved !== repoRoot) {
+      // Reject absolute paths outright; seeds must be brief-relative.
+      if (path.isAbsolute(sf.path)) {
         throw new Error(
-          `generateSheetCore: seed frame path "${sf.path}" resolves outside the repository root`,
+          `generateSheetCore: seed frame path "${sf.path}" must be relative to the repository root, not absolute`,
         );
       }
-      return readReference(resolved);
+      const resolved = path.resolve(repoRoot, sf.path);
+      // Lexical containment: must resolve inside the approved briefs/ directory.
+      if (!resolved.startsWith(approvedSeedRoot + path.sep)) {
+        throw new Error(
+          `generateSheetCore: seed frame path "${sf.path}" resolves outside the approved seed directory (briefs/)`,
+        );
+      }
+      // Canonical containment: resolve symlinks and re-check to prevent symlink
+      // traversal that bypasses the lexical check above.
+      let canonical: string;
+      try {
+        canonical = resolveRealpath(resolved);
+      } catch {
+        throw new Error(
+          `generateSheetCore: seed frame path "${sf.path}" does not exist or cannot be resolved`,
+        );
+      }
+      if (!canonical.startsWith(approvedSeedRoot + path.sep)) {
+        throw new Error(
+          `generateSheetCore: seed frame path "${sf.path}" resolves (via symlink) outside the approved seed directory (briefs/)`,
+        );
+      }
+      // Read bytes and verify PNG magic to prevent forwarding non-image files.
+      const bytes = readReference(resolved);
+      if (bytes.length < PNG_MAGIC.length || !bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
+        throw new Error(
+          `generateSheetCore: seed frame "${sf.path}" is not a valid PNG (magic bytes mismatch)`,
+        );
+      }
+      seedFrameRefs.push({
+        path: sf.path,
+        contentHash: createHash('sha256').update(bytes).digest('hex'),
+      });
+      return bytes;
     });
     referencePngs = [...seedPngs, ...referencePngs];
   }
@@ -488,6 +537,7 @@ export async function generateSheetCore(
       skippedReason: expansion.skippedReason,
     },
     ...(referenceSprites ? { referenceSprites } : {}),
+    ...(seedFrameRefs.length > 0 ? { seedFrames: seedFrameRefs } : {}),
     ...(brief.frameSequence.enabled
       ? {
           frameSequence: {
