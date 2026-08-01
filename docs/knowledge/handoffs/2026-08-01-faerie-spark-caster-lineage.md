@@ -6,12 +6,7 @@ Issue: #2516
 
 ## Systems touched
 
-- `briefs/enemies/faerie-spark-caster.yaml`
-- `src/shared/generated-assets.ts`
-- `src/engine/phaser-bridge/sprite-kind.ts`
-- `src/engine/PhaserBridge.ts`
-- `tests/unit/phaser-bridge-sprite-kind.test.ts`
-- `tests/unit/faerie-spark-caster-brief.test.ts`
+sprite-pipeline, enemies
 
 ## What changed
 
@@ -32,26 +27,41 @@ Issue: #2516
 
 ## Commands run
 
+- attempted `gh issue comment -R nalfeo/Crawler 2516 --body-file /tmp/faerie-spark-plan.md`
+  to post the required pre-code plan comment
 - `bash scripts/agent/preflight.sh`
 - `npm run sprites:placeholder-audit -- --all | cat`
 - `ls -l node_modules/.bin/tsx || true; npm ls tsx --depth=0 || true; node -v; npm -v`
 - `npm install`
+- `npm run test:unit -- tests/unit/faerie-spark-caster-brief.test.ts`
+- `npm install --package-lock=false`
+- local-only lockfile mirror rewrite attempt to swap Visual Studio package URLs to
+  `registry.npmjs.org`, then `npm install` again
 - `git --no-pager diff --check`
 - `git --no-pager status --short`
 - multiple read-only `rg` / `view` inspections across generated-art wiring and
   Floor 2 faerie assets
+- `parallel_validation` (code review clean; CodeQL skipped due database size)
 
 ## Validation outcomes
 
 - `git diff --check` ✅
+- issue plan comment post ❌ GitHub API returned `HTTP 403: 403 Forbidden`
 - `bash scripts/agent/preflight.sh` ❌ dependency/bootstrap step exited non-zero
 - `npm run sprites:placeholder-audit -- --all` ❌ `tsx: not found`
+- `npm run test:unit -- tests/unit/faerie-spark-caster-brief.test.ts` ❌ `vitest: not found`
 - `npm install` ❌ network/DNS failure fetching npm package tarballs
   (`getaddrinfo ENOTFOUND ms-feed-12.pkgs.visualstudio.com`)
+- `npm install --package-lock=false` ❌ npm/arborist failed while recovering the
+  partial local install (`Cannot read properties of null (reading 'edgesOut')`)
+- lockfile mirror rewrite + `npm install` ❌ still hit additional unreachable
+  Visual Studio package hosts (`ms-feed-25.pkgs.visualstudio.com`)
 - `npm run verify:fast` not run honestly: blocked by the same missing local
   toolchain
 - sprite generation / approval / check-in / observation not run honestly:
   blocked by missing `tsx` + failed dependency restore
+- `parallel_validation` ✅ no review findings; CodeQL reported 0 alerts but was
+  skipped because the JavaScript database is too large in this environment
 
 ## Observe-before-done status
 
