@@ -221,11 +221,15 @@ export function createBridge(repoRoot, opts = {}) {
     },
 
     /**
-     * List recent workflow runs for icon-batch.yml (all statuses, with conclusion).
+     * List recent workflow runs for icon-batch.yml that actually did work
+     * (skipped/cancelled noise from non-icon-batch issue labels is filtered out).
      * @returns {Promise<{ databaseId: number, status: string, conclusion: string|null, displayTitle: string, createdAt: string }[]>}
      */
     async listRecentRuns() {
       try {
+        // Fetch a larger pool (40) to skip the noisy skipped/cancelled runs that
+        // fire whenever any `asset-request` issue is labeled (icon-batch.yml
+        // has a broad issues:labeled trigger and self-skips for other labels).
         const { stdout } = await execFileAsync(
           'gh',
           [
@@ -234,13 +238,23 @@ export function createBridge(repoRoot, opts = {}) {
             '--workflow',
             'icon-batch.yml',
             '--limit',
-            '8',
+            '40',
             '--json',
             'databaseId,status,conclusion,displayTitle,createdAt',
           ],
           { cwd: repoRoot, timeout: 15_000 },
         );
-        return JSON.parse(stdout || '[]');
+        const all = JSON.parse(stdout || '[]');
+        // Keep only runs that did real work: in-progress, queued, or completed
+        // with a meaningful conclusion (success / failure / timed_out).
+        const meaningful = all.filter(
+          (r) =>
+            r.status === 'in_progress' ||
+            r.status === 'queued' ||
+            r.status === 'waiting' ||
+            (r.conclusion && !['skipped', 'cancelled'].includes(r.conclusion)),
+        );
+        return meaningful.slice(0, 8);
       } catch (err) {
         log(`listRecentRuns failed: ${err?.message ?? err}`);
         return [];
