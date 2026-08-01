@@ -1,0 +1,35 @@
+type: enemy
+name: toadkin-bouncer
+floor: 2
+sizeVariant: wide
+description: |
+  A stocky, barrel-chested toadkin bouncer posed front-facing toward the viewer.
+  He must read as a squat melee bruiser at a glance: shoulders clearly wider than
+  hips, thick forearms, heavy legs, and a compact body mass that feels broad and
+  grounded instead of tall. Keep the whole subject fully inside the frame with a
+  clean transparent border all around — no cropped fists, no hat, no detached props.
+
+  Outfit and threat read: a sharp velvet-rope bouncer jacket in dark purple or
+  near-black with crisp gold trim, tailored far too well for a cartel-reality-show
+  dungeon thug. Tiny coiled earpiece visible at one ear. Brass knuckles must be
+  clearly visible on at least one raised fist or crossed forearm. Warty amphibian
+  skin should be lighter than the jacket so the silhouette reads with bold color
+  separation. Wide mouth set in an obvious scowl; no smile, no goofy expression,
+  no tongue hanging out.
+
+  Composition: single subject only, centered, front-facing, fully contained in
+  frame, hard pixel edges, no text, no background, no floating accessories. The
+  silhouette should stay one connected mass with the fists tucked close to the
+  torso — intimidating doorman energy, as if this toad stops people at the door
+  permanently.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+variations:
+  - squat toadkin bruiser with arms crossed high over his chest, one brass-knuckle fist visible, dark purple jacket with gold trim
+  - stocky front-facing toadkin bouncer with both fists raised close to the torso, tiny earpiece, black velvet-rope jacket with brass trim
+  - barrel-chested amphibian enforcer with one fist cocked and one forearm guarding the chest, warty pale-green skin against a near-black jacket
+  - broad-shouldered toadkin doorman in a tailored plum jacket, scowling wide mouth, brass knuckles catching the light on one hand
+  - heavy-legged toadkin bouncer with thick folded arms, gold-trimmed black jacket, compact threatening silhouette, no extra props
+minVariations: 5
