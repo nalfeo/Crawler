@@ -179,6 +179,10 @@ on:
         description: 'Telemetry-only: run validate seeds in fresh Node processes and record optional XP spawn/collection stats (no AI behavior change).'
         type: boolean
         default: false
+      xp_floor:
+        description: 'Floor id for a dedicated xp-measure panel (only runs when xp_collection=true and this is not floor1 — floor1 telemetry stays on the validate job above).'
+        type: string
+        default: 'floor1'
 
 # Read-only: checkout + artifact up/download need nothing more. No default flip here.
 permissions:
@@ -258,6 +262,47 @@ jobs:
           MATRIX_JSON: ${{ steps.matrix.outputs.combos }}
           MATRIX_KEY: combo
         run: node .github/scripts/sweep-budget.mjs
+
+  # Standalone telemetry-only measurement panel for a non-Floor-1 floor (e.g.
+  # floor2). Gated OFF by default and independent of the round-DAG/validate
+  # pipeline above (needs only `preflight`) — this never runs unless a
+  # dispatch explicitly opts in with `xp_collection=true` AND `xp_floor` !=
+  # 'floor1' (Floor-1 XP telemetry stays on the existing `validate` job's
+  # XP_COLLECTION flag). Reuses `validate_seeds`/`weapons`/`workers` rather
+  # than adding a parallel set of seed/weapon inputs. `--stage xp-measure`
+  # (see sweep-eval.ts) forces `--fresh-process --record-xp` and never invokes
+  # the Floor-1-specific deriveRunFacts scoring — outcome-only win semantics,
+  # score always 0. No AI behavior change.
+  xp-measure:
+    name: XP measurement ${{ inputs.xp_floor }}
+    needs: preflight
+    if: ${{ inputs.xp_collection && inputs.xp_floor != 'floor1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Run isolated XP measurement panel
+        env:
+          FLOOR: ${{ inputs.xp_floor }}
+          SEEDS: ${{ inputs.validate_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage xp-measure --combo riskRewardFused+legacy \
+            --floor "$FLOOR" --seeds "$SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" --fresh-process --record-xp \
+            --out "xp-measure-$FLOOR.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xp-measure-${{ inputs.xp_floor }}
+          path: xp-measure-*.json
+          if-no-files-found: error
+          retention-days: 30
 
   # Cross-run resume (`resume_run_id`). ALWAYS runs and ALWAYS emits well-formed
   # `freshCombos`/`resumedCombos`/`hasFreshCombos` outputs — even on the default

@@ -150,6 +150,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
         'weapons',
         'workers',
         'xp_collection',
+        'xp_floor',
       ].sort(),
     );
     expect(inputs.combos).toMatchObject({ type: 'string', default: 'all' });
@@ -167,6 +168,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     // on the new resume-import job's checkout/Node-setup/metadata step).
     expect(inputs.resume_run_id).toMatchObject({ type: 'string', default: '' });
     expect(inputs.xp_collection).toMatchObject({ type: 'boolean', default: false });
+    expect(inputs.xp_floor).toMatchObject({ type: 'string', default: 'floor1' });
   });
 
   it('offers fresh-process XP telemetry for the validation panel', () => {
@@ -176,6 +178,31 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(script).toContain('--fresh-process');
     expect(script).toContain('--record-xp');
     expect(script).toContain('XP_COLLECTION');
+  });
+
+  it('has a standalone xp-measure job gated on xp_collection + a non-floor1 xp_floor, independent of the round-DAG', () => {
+    const doc = loadWorkflow();
+    const job = getJob(doc, 'xp-measure');
+    expect(needsList(job)).toEqual(['preflight']);
+    expect(job.if).toContain('inputs.xp_collection');
+    expect(job.if).toContain("inputs.xp_floor != 'floor1'");
+    const script = allRunSteps(job);
+    expect(script).toContain('--stage xp-measure');
+    expect(script).toContain('--combo riskRewardFused+legacy');
+    expect(script).toContain('--fresh-process');
+    expect(script).toContain('--record-xp');
+    // Reuses the existing validate_seeds/weapons/workers inputs (via this
+    // step's env block) rather than a parallel set of xp-measure-specific
+    // seed/weapon inputs.
+    const runStep = (job.steps ?? []).find((s) => typeof s.run === 'string');
+    expect(runStep?.env).toMatchObject({
+      FLOOR: '${{ inputs.xp_floor }}',
+      SEEDS: '${{ inputs.validate_seeds }}',
+      WEAPONS: '${{ inputs.weapons }}',
+      WORKERS: '${{ inputs.workers }}',
+    });
+    const uploadStep = (job.steps ?? []).find((s) => s.uses?.startsWith('actions/upload-artifact'));
+    expect(uploadStep?.with?.name).toBe('xp-measure-${{ inputs.xp_floor }}');
   });
 
   it('stays read-only with only the metadata permissions required by queue-aware admission and cross-run artifact download', () => {

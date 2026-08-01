@@ -640,4 +640,18 @@ describe('STANDALONE_SHARD_STAGE', () => {
     expect(printMetaOutput.stage).toBe(standaloneShardMeta.stage);
     expect(printMetaOutput.stage).toBe('search');
   });
+
+  it('records non-default XP measurement budgets in shard metadata', () => {
+    const meta = buildMeta('xp-measure', 'floor2', {
+      budgetMs: 1_666_666,
+      maxFrames: 100_000,
+    });
+
+    expect(meta).toMatchObject({
+      stage: 'xp-measure',
+      floorId: 'floor2',
+      budgetMs: 1_666_666,
+      maxFrames: 100_000,
+    });
+  });
 });

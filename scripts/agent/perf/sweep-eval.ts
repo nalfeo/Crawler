@@ -148,7 +148,14 @@ async function runOne(task: EvalTask, shared: EvalShared): Promise<RunRow> {
   // verifier (aggregate-shards) also uses, so a row's (officialWin, score) can
   // never drift between producer and aggregator. Only an over-budget victory is
   // downgraded (scored as a timeout to strip its victory/time bonus).
-  const { officialWin, score } = deriveRunFacts(stats, shared.budgetMs);
+  // deriveRunFacts' safe-room-credited budget check is a Floor-1 mechanic (see
+  // its PRECONDITION doc) — non-Floor-1 measurement runs (e.g. xp-measure on
+  // floor2) fall back to plain outcome-based win semantics with score 0 rather
+  // than misapplying the Floor-1 6-minute budget.
+  const { officialWin, score } =
+    shared.floorId === 'floor1'
+      ? deriveRunFacts(stats, shared.budgetMs)
+      : { officialWin: stats.outcome === 'victory', score: 0 };
   const xp = stats.xpCollection?.floors.at(-1);
   return {
     combo: task.combo,
@@ -671,12 +678,16 @@ export function currentBuildFingerprint(): Pick<
   };
 }
 
-export function buildMeta(stage: string, floorId: string): ShardMeta {
+export function buildMeta(
+  stage: string,
+  floorId: string,
+  overrides: { budgetMs?: number; maxFrames?: number } = {},
+): ShardMeta {
   return {
     schemaVersion: SHARD_SCHEMA_VERSION,
-    budgetMs: FLOOR1_TIME_BUDGET_MS,
+    budgetMs: overrides.budgetMs ?? FLOOR1_TIME_BUDGET_MS,
     floorId,
-    maxFrames: MAX_FRAMES,
+    maxFrames: overrides.maxFrames ?? MAX_FRAMES,
     stage,
     ...currentBuildFingerprint(),
   };
@@ -684,8 +695,14 @@ export function buildMeta(stage: string, floorId: string): ShardMeta {
 
 type SearchArtifact = ShardArtifact & { combo: string; bestConfigId: string };
 
-type Stage = 'search' | 'search-baseline' | 'search-eval' | 'validate';
-const STAGES: readonly Stage[] = ['search', 'search-baseline', 'search-eval', 'validate'];
+type Stage = 'search' | 'search-baseline' | 'search-eval' | 'validate' | 'xp-measure';
+const STAGES: readonly Stage[] = [
+  'search',
+  'search-baseline',
+  'search-eval',
+  'validate',
+  'xp-measure',
+];
 
 /**
  * `meta.stage` value stamped onto every standalone-config shard (both
@@ -814,11 +831,16 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
     throw new Error('--stage search-eval requires --config-id <id> --config-json <json>');
   }
-  if (args.floorId !== 'floor1') {
+  if (args.stage === 'xp-measure' && (!args.freshProcess || !args.recordXpCollection)) {
+    throw new Error('--stage xp-measure requires --fresh-process and --record-xp');
+  }
+  if (args.floorId !== 'floor1' && args.stage !== 'xp-measure') {
     throw new Error(
       `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
         `(the 6-minute budget and safe-room active-time credit are Floor-1-specific). ` +
-        `Non-Floor-1 win semantics are undefined here.`,
+        `Non-Floor-1 win semantics are undefined here. The one exception is ` +
+        `--stage xp-measure, which measures raw XP spawn/collection telemetry and ` +
+        `never invokes the Floor-1-specific deriveRunFacts scoring.`,
     );
   }
   return args;
@@ -829,27 +851,48 @@ function parseArgs(argv: readonly string[]): CliArgs {
  * weapons × trainSeeds, emitting a plain single-config shard. Shared by
  * `--stage search-baseline` and `--stage search-eval` — the two stages that
  * replace the old monolithic per-combo round loop with independently
- * schedulable units of work (one GitHub Actions matrix job each).
+ * schedulable units of work (one GitHub Actions matrix job each). Also reused
+ * by `--stage xp-measure` (via its optional overrides) to run a non-Floor-1
+ * telemetry-only measurement panel through the same fresh-process/worker-pool
+ * plumbing without touching AI behavior.
  */
 async function evalStandalone(
   comboStr: string,
   id: string,
   config: SweepConfig,
-  opts: { trainSeeds: number[]; weapons: string[]; workers: number; floorId: string },
+  opts: {
+    trainSeeds: number[];
+    weapons: string[];
+    workers: number;
+    floorId: string;
+    maxFrames?: number;
+    budgetMs?: number;
+    freshProcess?: boolean;
+    recordXpCollection?: boolean;
+  },
   stage: string,
 ): Promise<ShardArtifact> {
   const shared: EvalShared = {
-    maxFrames: MAX_FRAMES,
-    budgetMs: FLOOR1_TIME_BUDGET_MS,
+    maxFrames: opts.maxFrames ?? MAX_FRAMES,
+    budgetMs: opts.budgetMs ?? FLOOR1_TIME_BUDGET_MS,
     wallCapMs: WALL_CAP_MS,
     floorId: opts.floorId,
+    freshProcess: opts.freshProcess,
+    recordXpCollection: opts.recordXpCollection,
   };
   const rows = await runTasks(
     buildTasks([{ id, config }], comboStr, opts.weapons, opts.trainSeeds),
     shared,
     opts.workers,
   );
-  return { meta: buildMeta(stage, opts.floorId), configs: { [id]: config }, rows };
+  return {
+    meta: buildMeta(stage, opts.floorId, {
+      budgetMs: shared.budgetMs,
+      maxFrames: shared.maxFrames,
+    }),
+    configs: { [id]: config },
+    rows,
+  };
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -864,6 +907,39 @@ async function main(argv: readonly string[]): Promise<void> {
   }
   const combo = parseComboId(args.combo!);
   const start = Date.now();
+
+  if (args.stage === 'xp-measure') {
+    // Telemetry-only measurement panel: each seed runs in its own fresh Node
+    // process (--fresh-process, enforced by parseArgs) with XP spawn/collection
+    // recording on (--record-xp). This never invokes deriveRunFacts' Floor-1
+    // budget scoring (see runOne's floorId guard) — officialWin is plain
+    // outcome-based victory semantics and score is always 0 for non-floor1.
+    // No AI behavior change: this stage only measures, never tunes.
+    const base = baseConfigForCombo(combo);
+    const id = configId(base);
+    console.log(
+      `📊 XP-MEASURE ${args.floorId} · ${comboId(combo)} · seeds ${args.seeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
+    );
+    const artifact = await evalStandalone(
+      comboId(combo),
+      id,
+      base,
+      {
+        trainSeeds: args.seeds,
+        weapons: args.weapons,
+        workers: args.workers,
+        floorId: args.floorId,
+        maxFrames: 100_000,
+        budgetMs: 100_000 * GAME.DELTA_MS,
+        freshProcess: true,
+        recordXpCollection: true,
+      },
+      'xp-measure',
+    );
+    emit(artifact, args.out);
+    console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${artifact.rows.length} runs`);
+    return;
+  }
 
   if (args.stage === 'search') {
     console.log(
