@@ -129,10 +129,9 @@ test('nightly perf filer creates and then reuses one durable issue', async () =>
   });
 });
 
-test('nightly velocity issue body uses fully qualified closes reference', () => {
+test('nightly velocity issue body avoids closing-keyword references', () => {
   const issueNumber = 2612;
-  assert.match(
-    buildVelocityIssueBody(issueNumber),
-    new RegExp(`Closes nalfeo/Crawler#${issueNumber}`),
-  );
+  const body = buildVelocityIssueBody(issueNumber);
+  assert.match(body, new RegExp(`Refs nalfeo/Crawler#${issueNumber}`));
+  assert.doesNotMatch(body, new RegExp(`Closes nalfeo/Crawler#${issueNumber}`));
 });
