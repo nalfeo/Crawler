@@ -1047,6 +1047,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private xpCleanupAnchorX: number = 0;
   private xpCleanupAnchorY: number = 0;
   private xpCleanupStartFrame: number = 0;
+  private xpCleanupCooldownMode: 'local' | 'exit' | null = null;
   private xpCleanupCooldownUntilFrame: number = 0;
   private xpCleanupCombatWindowUntilFrame: number = -1;
 
@@ -1074,9 +1075,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * every frame:
    *
    * - **Track A** (Movement Goal): the exclusive priority Selector that picks
-   *   one movement target per frame. Retreat > ArenaLockin > Interact >
-   *   Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
-   *   `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
+   *   one movement target per frame. Retreat > ArenaLockin > Interact > XP
+   *   Cleanup > Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore.
+   *   Owns `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
    *   arena-lockin priority-slot decision.
    *
    * - **Track B** (Opportunistic): a side-effectful parallel that runs every
@@ -1685,7 +1686,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (this.xpCleanupMode !== null && this.xpCleanupMode !== mode) {
       this.resetXpCleanupSession(false, world.frameCount);
     }
-    if (this.xpCleanupMode === null && world.frameCount < this.xpCleanupCooldownUntilFrame) {
+    if (
+      this.xpCleanupMode === null &&
+      this.xpCleanupCooldownMode === mode &&
+      world.frameCount < this.xpCleanupCooldownUntilFrame
+    ) {
       return null;
     }
     if (
@@ -1772,11 +1777,13 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private resetXpCleanupSession(startCooldown: boolean, frameCount: number): void {
+    const completedMode = this.xpCleanupMode;
     this.xpCleanupMode = null;
     this.xpCleanupAnchorX = 0;
     this.xpCleanupAnchorY = 0;
     this.xpCleanupStartFrame = 0;
-    if (startCooldown) {
+    if (startCooldown && completedMode !== null) {
+      this.xpCleanupCooldownMode = completedMode;
       this.xpCleanupCooldownUntilFrame = frameCount + XP_CLEANUP_COOLDOWN_FRAMES;
     }
   }
@@ -3444,6 +3451,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.xpCleanupAnchorX = 0;
     this.xpCleanupAnchorY = 0;
     this.xpCleanupStartFrame = 0;
+    this.xpCleanupCooldownMode = null;
     this.xpCleanupCooldownUntilFrame = 0;
     this.xpCleanupCombatWindowUntilFrame = -1;
     this.globalDwellActive = false;
@@ -8689,6 +8697,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.xpCleanupAnchorX = 0;
     this.xpCleanupAnchorY = 0;
     this.xpCleanupStartFrame = 0;
+    this.xpCleanupCooldownMode = null;
     this.xpCleanupCooldownUntilFrame = 0;
     this.xpCleanupCombatWindowUntilFrame = -1;
     this.exploreDwell.reset();

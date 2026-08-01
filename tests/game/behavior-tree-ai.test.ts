@@ -3686,12 +3686,51 @@ describe('BehaviorTreeAI', () => {
         expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
       });
 
-      it('clears cleanup eligibility and cooldown when the provider resets', () => {
+      it('allows an exit sweep immediately after a local cleanup reaches its cap', () => {
         const world = createTestWorld({ seed: 45 });
         const player = spawnPlayer(world, 0, 0);
         const enemy = spawnEnemy(world, 5, 0, 20);
         setActiveWeapon(world, getWeaponDef('sword')!);
         const ai = new BehaviorTreeAI({ seed: 45 });
+        ai.poll(createInputState(), world);
+        removeEntity(world.ecs, enemy);
+
+        initializeFloor1Scenario(world, player);
+        const px = world.stores.position.x[player]!;
+        const py = world.stores.position.y[player]!;
+        const gem = spawnXpGem(world, px + 10, py, 5);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.COLLECT);
+
+        world.frameCount += 240;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
+
+        const objective = world.floorScenario?.objective;
+        if (!objective) throw new Error('No floor scenario objective');
+        objective.staircaseUnlocked = true;
+        objective.staircaseDiscovered = false;
+        objective.staircasePos.x = px + 20;
+        objective.staircasePos.y = py;
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+
+        expect(ai.getDecision()).toMatchObject({
+          state: AIState.COLLECT,
+          targetEid: gem,
+        });
+        expect(ai.getDecision().reason).toContain('Sweeping exit-route XP');
+      });
+
+      it('clears cleanup eligibility and cooldown when the provider resets', () => {
+        const world = createTestWorld({ seed: 46 });
+        const player = spawnPlayer(world, 0, 0);
+        const enemy = spawnEnemy(world, 5, 0, 20);
+        setActiveWeapon(world, getWeaponDef('sword')!);
+        const ai = new BehaviorTreeAI({ seed: 46 });
         ai.poll(createInputState(), world);
         removeEntity(world.ecs, enemy);
 
