@@ -96,6 +96,15 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
+function computeXpOnGroundAtEnd(world: GameWorld): number {
+  let total = 0;
+  for (const eid of query(world.ecs, [XpGem])) {
+    if (eid === undefined) continue;
+    total += world.stores.xpGem.value[eid] ?? 0;
+  }
+  return total;
+}
+
 interface EquipmentSpendTelemetry {
   readonly soldOfferKeys: Set<string>;
   goldSpentOnEquipment: number;
@@ -504,6 +513,7 @@ export async function runHeadless(
   if (world.state !== 'playing') {
     throw new Error(`Failed to transition from loadout: state is ${world.state}`);
   }
+  const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
 
   let frameCount = 0;
@@ -1236,6 +1246,7 @@ export async function runHeadless(
       },
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
+      runStartXp,
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
       floor2Progression: collectFloor2Progression(
@@ -1256,14 +1267,7 @@ export async function runHeadless(
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
-      xpOnGroundAtEnd: (() => {
-        let total = 0;
-        for (const eid of query(world.ecs, [XpGem])) {
-          if (eid === undefined) continue;
-          total += world.stores.xpGem.value[eid] ?? 0;
-        }
-        return total;
-      })(),
+      xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1289,12 +1293,9 @@ export async function runHeadless(
 
   // Sum XP gem values remaining on the ground at run end. These gems are
   // destroyed by the scene restart on floor transition (entity world is fresh).
-  // Combined with `totalXp` this lets callers compute collection efficiency.
-  let xpOnGroundAtEnd = 0;
-  for (const eid of query(world.ecs, [XpGem])) {
-    if (eid === undefined) continue;
-    xpOnGroundAtEnd += world.stores.xpGem.value[eid] ?? 0;
-  }
+  // Combined with `totalXp` and `runStartXp` this lets callers compute
+  // floor-local collection efficiency.
+  const xpOnGroundAtEnd = computeXpOnGroundAtEnd(world);
 
   const stats: RunStats = {
     totalFrames: frameCount,
@@ -1334,6 +1335,7 @@ export async function runHeadless(
     },
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
+    runStartXp,
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
     floor2Progression: collectFloor2Progression(

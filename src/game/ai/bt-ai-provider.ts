@@ -7244,7 +7244,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         // Safety gate: don't sweep when an enemy is within engage range.
         const engageRadius = this.getEngageRadius(ctx.world);
-        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, engageRadius)) {
+        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, engageRadius, true)) {
           this.xpSweepTargetEid = null;
           return false;
         }
