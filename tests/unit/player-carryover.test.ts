@@ -45,8 +45,6 @@ import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../src/core/acti
 import { addItem, listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
-import { SKILL_LEVEL5_ABILITY_GRANTS } from '../../src/game/abilities/registry.js';
-
 describe('player floor carryover', () => {
   it('restores run-wide progression without copying the previous floor modifier', () => {
     const source = createTestWorld({ seed: 42 });
@@ -1554,8 +1552,8 @@ describe('player floor carryover', () => {
     expect(sword).toBeDefined();
     expect(equip(source, sourcePlayer, sword!, { force: true }).ok).toBe(true);
 
-    const weaponPassiveId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword');
-    expect(weaponPassiveId).toBeDefined();
+    // Use a weapon-gated passive ability that has weaponPrerequisite: 'sword'
+    const weaponPassiveId = 'keen-swordsman';
     grantPassiveAbility(source, sourcePlayer, weaponPassiveId!);
     abilitySystem(source);
     expect(source.vfxEvents.filter((e) => e.kind === 'abilityActivateFlash')).toHaveLength(1);

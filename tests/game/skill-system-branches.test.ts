@@ -60,11 +60,11 @@ describe('skillSystem — v1 fallback path (no holderEid on event)', () => {
   it('grants level-5 passive ability via v1 fallback using the world player entity', () => {
     const { world, player, state } = setupPlayerWithIronSkin();
 
-    // Omit holderEid → v1 path. threshold[4] = 450 for iron-skin.
+    // Omit holderEid → v1 path. threshold[4] = 920 for iron-skin.
     world.skillUsageEvents.push({
       skillId: 'iron-skin',
       metric: 'damage_dealt',
-      amount: 450,
+      amount: 920,
     });
     skillSystem(world);
 
@@ -103,10 +103,11 @@ describe('skillSystem — v1 fallback path (no holderEid on event)', () => {
     };
     world.playerSkills.set('iron-skin', state);
 
+    // threshold[4] = 920 for iron-skin level 5
     world.skillUsageEvents.push({
       skillId: 'iron-skin',
       metric: 'damage_dealt',
-      amount: 450,
+      amount: 920,
     });
 
     expect(() => skillSystem(world)).not.toThrow();
@@ -117,51 +118,49 @@ describe('skillSystem — v1 fallback path (no holderEid on event)', () => {
 });
 
 describe('skillSystem — milestone fires at levels 10 and 15', () => {
-  it('fires the level-10 milestone (Double Strike: extra_projectile) once', () => {
+  it('fires the level-10 milestone (grants placeholder-generic-l10 ability) once', () => {
     const { world, player, state } = setupPlayerWithSwordsmanship();
     state.itemBonus = 5; // unlock levels up to 20
 
-    // threshold[9] = 325 for swordsmanship level 10.
+    // threshold[9] = 1060 for swordsmanship level 10.
     world.skillUsageEvents.push({
       holderEid: player,
       skillId: 'swordsmanship',
       metric: 'hits_landed',
-      amount: 325,
+      amount: 1060,
     });
     skillSystem(world);
 
     expect(state.level).toBe(10);
     expect(state.triggeredMilestones.has(10)).toBe(true);
 
-    // The milestone effect (extra_projectile count:1) → projectileCount modifier.
-    const milestoneSourceId = `swordsmanship:milestone:10:${player}`;
-    const mod = world.statModifiers.find((m) => m.sourceId === milestoneSourceId);
-    expect(mod!.stat).toBe('projectileCount');
-    expect(mod!.value).toBe(1);
+    // The L10 milestone grants 'placeholder-generic-l10' passive ability.
+    const abilityState = world.abilityStatesByEntity.get(player);
+    expect(abilityState).toBeDefined();
+    expect(abilityState!.passiveAbilityIds).toContain('placeholder-generic-l10');
   });
 
-  it('fires the level-15 milestone (Bladestorm: stat_multiply) once', () => {
+  it('fires the level-15 milestone (grants placeholder-generic-l15, revokes L5 ability) once', () => {
     const { world, player, state } = setupPlayerWithSwordsmanship();
     state.itemBonus = 5;
 
-    // threshold[14] = 675 for swordsmanship level 15.
+    // threshold[14] = 2360 for swordsmanship level 15.
     world.skillUsageEvents.push({
       holderEid: player,
       skillId: 'swordsmanship',
       metric: 'hits_landed',
-      amount: 675,
+      amount: 2360,
     });
     skillSystem(world);
 
     expect(state.level).toBe(15);
     expect(state.triggeredMilestones.has(15)).toBe(true);
 
-    const milestoneSourceId = `swordsmanship:milestone:15:${player}`;
-    const mod = world.statModifiers.find((m) => m.sourceId === milestoneSourceId);
-    expect(mod).toBeDefined();
-    expect(mod!.stat).toBe('damage');
-    expect(mod!.op).toBe('multiply');
-    expect(mod!.value).toBeCloseTo(0.25);
+    // The L15 milestone grants 'placeholder-generic-l15' and revokes the L5 'combat-flow'.
+    const abilityState = world.abilityStatesByEntity.get(player);
+    expect(abilityState).toBeDefined();
+    expect(abilityState!.passiveAbilityIds).toContain('placeholder-generic-l15');
+    expect(abilityState!.passiveAbilityIds).not.toContain('combat-flow');
   });
 
   it('does not fire a milestone twice even when the same event crosses the threshold again', () => {
@@ -173,13 +172,14 @@ describe('skillSystem — milestone fires at levels 10 and 15', () => {
       holderEid: player,
       skillId: 'swordsmanship',
       metric: 'hits_landed',
-      amount: 325,
+      amount: 1060,
     });
     skillSystem(world);
 
-    const countAfterFirst = world.statModifiers.filter(
-      (m) => m.sourceId === `swordsmanship:milestone:10:${player}`,
-    ).length;
+    const abilityStateAfterFirst = world.abilityStatesByEntity.get(player);
+    const countAfterFirst =
+      abilityStateAfterFirst?.passiveAbilityIds.filter((id) => id === 'placeholder-generic-l10')
+        .length ?? 0;
     expect(countAfterFirst).toBe(1);
 
     // Manually rewind the level so the while-loop will try to re-enter level 10,
@@ -195,10 +195,11 @@ describe('skillSystem — milestone fires at levels 10 and 15', () => {
     });
     skillSystem(world);
 
-    // The guard should have blocked the re-fire; still exactly 1 modifier.
-    const countAfterSecond = world.statModifiers.filter(
-      (m) => m.sourceId === `swordsmanship:milestone:10:${player}`,
-    ).length;
+    // The guard should have blocked the re-fire; still exactly 1 passive entry.
+    const abilityStateAfterSecond = world.abilityStatesByEntity.get(player);
+    const countAfterSecond =
+      abilityStateAfterSecond?.passiveAbilityIds.filter((id) => id === 'placeholder-generic-l10')
+        .length ?? 0;
     expect(countAfterSecond).toBe(1);
   });
 });

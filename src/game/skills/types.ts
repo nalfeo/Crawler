@@ -1,5 +1,4 @@
 import type { StatKey } from '../../shared/stats.js';
-import type { CatalogEffect } from '../../shared/progression-effects.js';
 import type { UsageMetric } from '../../shared/skills.js';
 export {
   SKILL_NATURAL_CAP,
@@ -11,13 +10,11 @@ export {
   type PlayerLevel,
 } from '../../shared/skills.js';
 
-export type MilestoneEffect = CatalogEffect;
-
 export interface SkillMilestone {
   level: 5 | 10 | 15 | 20;
   name: string;
   description: string;
-  effect: MilestoneEffect;
+  abilityId: string;
 }
 
 export interface SkillDefinition {

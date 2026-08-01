@@ -6,8 +6,11 @@ import {
 import {
   _REWARD_BUNDLE_AFFINITY_PROB as REWARD_BUNDLE_AFFINITY_PROB,
   _REWARD_BUNDLE_RARITIES as REWARD_BUNDLE_RARITIES,
+  FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT,
+  REWARD_BUNDLE_RESOLVER_VERSION,
   RewardBundleResolutionError,
   _alignmentFromRoll as alignmentFromRoll,
+  _categoryFromRoll as categoryFromRoll,
   resolveEquipmentRewardBundle,
   _resolvePlayerBuildAffinity as resolvePlayerBuildAffinity,
   _rollAffinityAlignment as rollAffinityAlignment,
@@ -17,6 +20,7 @@ import {
   _rarityEligibleBaseIds as rarityEligibleBaseIds,
   _Floor2RewardPoolAuthoringError as Floor2RewardPoolAuthoringError,
   _assertGeneratedRewardInstanceLegal as assertGeneratedRewardInstanceLegal,
+  _partitionBases as partitionBases,
 } from '../../src/game/floor2-reward-bundle-resolver.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import {
@@ -39,7 +43,7 @@ import {
   EQUIPMENT_REWARD_TIER_RARITY_WEIGHTS,
   GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
 } from '../../src/shared/generated-equipment-types.js';
-import { SeededRandom } from '../../src/shared/random.js';
+import { SeededRandom, hashStringToSeed } from '../../src/shared/random.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
@@ -184,13 +188,10 @@ describe('resolvePlayerBuildAffinity', () => {
 });
 
 describe('affinity partitioning — physical/magic/neutral candidates', () => {
-  // A neutral (non-weapon/armor) base must count as non-aligned for BOTH a
-  // physical and a magic player build (see `partitionBases` in
-  // floor2-reward-bundle-resolver.ts: "Opposite affinity OR neutral bases
-  // both count as non-aligned."). This proves the aligned/non-aligned split
-  // stays legal (both pools non-empty, no empty-pool error) for a physical
-  // player, a magic player, and — separately — confirms the neutral base is
-  // actually reachable from the non-aligned pool for either build.
+  // Neutral (non-weapon/armor) bases are the ONLY non-aligned candidates when
+  // present (see `_partitionBases` in floor2-reward-bundle-resolver.ts).
+  // Off-affinity weapons are excluded from the non-aligned pool when neutral
+  // items exist, so magic players are not flooded with unusable physical weapons.
   const NEUTRAL_ARMOR_BASE = 'travelers-cloak';
   const THREE_WAY_BASES = [PHYSICAL_BASE_A, MAGIC_BASE_A, NEUTRAL_ARMOR_BASE] as const;
 
@@ -216,19 +217,21 @@ describe('affinity partitioning — physical/magic/neutral candidates', () => {
         expect(resolvePlayerBuildAffinity(world)).toBe(playerAffinity);
         // Must not throw empty-aligned-pool or empty-nonaligned-pool: the
         // single same-affinity base keeps `aligned` non-empty, and the
-        // opposite-affinity base plus the neutral base keep `nonAligned`
-        // non-empty, regardless of which affinity the player has.
+        // neutral base keeps `nonAligned` non-empty (neutral-preference means
+        // the opposite-affinity weapon is excluded when neutral items exist).
         const bundle = resolveEquipmentRewardBundle(world, `ach-${seed}`, THREE_WAY_BASES, 'tier2');
         const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
         if (instance.baseId === NEUTRAL_ARMOR_BASE) sawNeutralInNonAligned.value = true;
         const oppositeBase = playerAffinity === 'physical' ? MAGIC_BASE_A : PHYSICAL_BASE_A;
         if (instance.baseId === oppositeBase) sawOppositeInNonAligned.value = true;
       }
-      // Not vacuous: across 40 seeds the non-aligned pool (opposite + neutral)
-      // must actually have been drawn at least once, and the neutral base
-      // specifically must have surfaced as a legal draw.
-      expect(sawNeutralInNonAligned.value || sawOppositeInNonAligned.value).toBe(true);
+      // Not vacuous: across 40 seeds the neutral non-aligned pool must
+      // actually have been drawn at least once.
       expect(sawNeutralInNonAligned.value).toBe(true);
+      // Neutral-preference: with neutral items present, the off-affinity weapon
+      // is excluded from the non-aligned pool so it should never appear as a
+      // non-aligned draw.
+      expect(sawOppositeInNonAligned.value).toBe(false);
     },
   );
 
@@ -243,6 +246,65 @@ describe('affinity partitioning — physical/magic/neutral candidates', () => {
     }
     expect(err).toBeInstanceOf(RewardBundleResolutionError);
     expect((err as RewardBundleResolutionError).code).toBe('empty-nonaligned-pool');
+  });
+});
+
+describe('_partitionBases — neutral-preference logic', () => {
+  const PHYSICAL_BASE = 'weapon.iron-cleaver';
+  const MAGIC_BASE = 'weapon.ember-wand';
+  const NEUTRAL_BASE = 'travelers-cloak';
+
+  it('when neutral items exist: non-aligned pool contains only neutral items (no off-affinity weapons)', () => {
+    // Physical player with physical + magic weapon + neutral armor:
+    // non-aligned = [neutral_armor] only (magic weapon excluded despite being non-aligned)
+    const physResult = partitionBases([PHYSICAL_BASE, MAGIC_BASE, NEUTRAL_BASE], 'physical');
+    expect(physResult.aligned).toContain(PHYSICAL_BASE);
+    expect(physResult.nonAligned).toEqual([NEUTRAL_BASE]);
+    expect(physResult.nonAligned).not.toContain(MAGIC_BASE);
+
+    // Magic player with same set:
+    // non-aligned = [neutral_armor] only (physical weapon excluded)
+    const magicResult = partitionBases([PHYSICAL_BASE, MAGIC_BASE, NEUTRAL_BASE], 'magic');
+    expect(magicResult.aligned).toContain(MAGIC_BASE);
+    expect(magicResult.nonAligned).toEqual([NEUTRAL_BASE]);
+    expect(magicResult.nonAligned).not.toContain(PHYSICAL_BASE);
+  });
+
+  it('fallback: when no neutral items exist, non-aligned pool contains all off-affinity candidates', () => {
+    // Weapon-only pool (no neutral items): falls back to full non-aligned (opposite weapons)
+    const physResult = partitionBases([PHYSICAL_BASE, MAGIC_BASE], 'physical');
+    expect(physResult.aligned).toEqual([PHYSICAL_BASE]);
+    expect(physResult.nonAligned).toEqual([MAGIC_BASE]);
+
+    const magicResult = partitionBases([PHYSICAL_BASE, MAGIC_BASE], 'magic');
+    expect(magicResult.aligned).toEqual([MAGIC_BASE]);
+    expect(magicResult.nonAligned).toEqual([PHYSICAL_BASE]);
+  });
+
+  it('full Floor 2 pool: both builds get neutral-only non-aligned pool (32 wearables, not weapon-diluted)', () => {
+    // Physical player: non-aligned = all 32 neutral items (not the magic weapons)
+    const physResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'physical');
+    expect(physResult.aligned.length).toBeGreaterThan(0); // has physical weapons
+    expect(physResult.nonAligned.length).toBe(32); // 32 neutral wearables only
+    for (const id of physResult.nonAligned) {
+      expect(getGeneratedEquipmentBaseAffinity(id)).toBe('neutral');
+    }
+
+    // Magic player: non-aligned = all 32 neutral items (not the physical weapons)
+    const magicResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'magic');
+    expect(magicResult.aligned.length).toBeGreaterThan(0); // has magic weapons
+    expect(magicResult.nonAligned.length).toBe(32); // 32 neutral wearables only (no physical weapons)
+    for (const id of magicResult.nonAligned) {
+      expect(getGeneratedEquipmentBaseAffinity(id)).toBe('neutral');
+    }
+  });
+
+  it('non-aligned pool size is equal for both builds on the full Floor 2 pool (horizontal parity)', () => {
+    const physResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'physical');
+    const magicResult = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, 'magic');
+    // Both builds now draw from the same 32-item neutral pool on non-aligned draws.
+    expect(physResult.nonAligned.length).toBe(magicResult.nonAligned.length);
+    expect(physResult.nonAligned.length).toBe(32);
   });
 });
 
@@ -407,17 +469,13 @@ describe('resolveEquipmentRewardBundle — fail-closed / rollback', () => {
     expect(sawTravelersCloakUncommon).toBe(true);
   });
 
-  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity', () => {
+  it('the real 88-item central reward pool keeps both affinity subpools non-empty for every rarity (using actual resolver partitioning)', () => {
     // Under the decoupled model all bases are eligible for Common draws (no
     // base-stat pre-filtering). The full pool must keep both aligned and
-    // non-aligned partitions non-empty for every player build and rarity.
+    // non-aligned partitions non-empty for every player build and rarity,
+    // using the neutral-preference partitioning that the resolver actually uses.
     for (const playerAffinity of ['physical', 'magic'] as const) {
-      const aligned = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-        (baseId) => getGeneratedEquipmentBaseAffinity(baseId) === playerAffinity,
-      );
-      const nonAligned = FLOOR2_REWARD_POOL_STABLE_IDS.filter(
-        (baseId) => getGeneratedEquipmentBaseAffinity(baseId) !== playerAffinity,
-      );
+      const { aligned, nonAligned } = partitionBases(FLOOR2_REWARD_POOL_STABLE_IDS, playerAffinity);
       expect(aligned.length, `${playerAffinity}-aligned pool must be non-empty`).toBeGreaterThan(0);
       expect(nonAligned.length, `non-${playerAffinity} pool must be non-empty`).toBeGreaterThan(0);
     }
@@ -555,19 +613,14 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect(new Set(uncommonEligible)).toEqual(new Set(FLOOR2_REWARD_POOL_STABLE_IDS));
   });
 
-  it('EXHAUSTIVELY (not sampled) proves every achievement-reachable tier × rarity × player-build partition is non-empty on both sides', () => {
+  it('EXHAUSTIVELY (not sampled) proves every achievement-reachable tier × rarity × player-build partition is non-empty on both sides (using actual resolver partitioning)', () => {
     for (const tier of ['tier1', 'tier2', 'tier3'] as const) {
       for (const rarity of tier === 'tier1'
         ? (['common'] as const)
         : (['common', 'uncommon'] as const)) {
         const eligible = rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, rarity);
         for (const playerAffinity of ['physical', 'magic'] as const) {
-          const aligned = eligible.filter(
-            (id) => getGeneratedEquipmentBaseAffinity(id) === playerAffinity,
-          );
-          const nonAligned = eligible.filter(
-            (id) => getGeneratedEquipmentBaseAffinity(id) !== playerAffinity,
-          );
+          const { aligned, nonAligned } = partitionBases(eligible, playerAffinity);
           expect(
             aligned.length,
             `tier ${tier} rarity ${rarity} ${playerAffinity}-aligned pool must be non-empty`,
@@ -628,6 +681,95 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect((err as Error).message).toMatch(/no physical-aligned candidate/);
   });
 
+  it('throws Floor2RewardPoolAuthoringError when weaponIds is non-empty but no pool bases match any weapon ID', () => {
+    // Need a pool that passes the outer full-pool check (both aligned and
+    // nonAligned are non-empty for every build) but fails the new guard that
+    // fires when weaponIds ∩ bases = ∅. Use a mixed-affinity pool so the outer
+    // check passes, then supply a weaponIds set whose IDs are absent from bases.
+    const onePhysical = FLOOR2_REWARD_POOL_STABLE_IDS.find(
+      (id) => getGeneratedEquipmentBaseAffinity(id) === 'physical',
+    )!;
+    const oneMagic = FLOOR2_REWARD_POOL_STABLE_IDS.find(
+      (id) => getGeneratedEquipmentBaseAffinity(id) === 'magic',
+    )!;
+    const someNeutral = FLOOR2_REWARD_POOL_NON_WEAPON_IDS.slice(0, 2) as string[];
+    const mixedBases = [onePhysical, oneMagic, ...someNeutral];
+    // weaponIds contains IDs that are NOT in mixedBases
+    const absentWeaponIds = new Set([
+      'weapon-that-does-not-exist-1',
+      'weapon-that-does-not-exist-2',
+    ]);
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(mixedBases, absentWeaponIds);
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(
+      /weaponIds is non-empty.*no base.*matches any weapon ID/,
+    );
+  });
+
+  it('throws Floor2RewardPoolAuthoringError for weapon sub-pool missing one affinity (new category-check error path)', () => {
+    // Construct a pool that passes the outer (full-pool) check but fails the
+    // weapon sub-pool check. Use ALL 88 bases — outer check passes because both
+    // physical and magic weapons are present. Supply only PHYSICAL weapon IDs as
+    // weaponIds so the weapon sub-pool is physical-only; a magic player then sees
+    // an empty weapon-aligned partition. The weapon sub-pool affinity check runs
+    // before the non-weapon neutrality check, so this error fires first even
+    // though magic weapons are re-classified as non-weapons in this fixture.
+    const physicalWeaponIds = new Set(
+      FLOOR2_REWARD_POOL_STABLE_IDS.filter(
+        (id) => getGeneratedEquipmentBaseAffinity(id) === 'physical',
+      ),
+    );
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(FLOOR2_REWARD_POOL_STABLE_IDS, physicalWeaponIds);
+    } catch (caught) {
+      err = caught;
+    }
+    // The outer full-pool check passes: the full pool has both magic and physical
+    // weapons, so both affinities are reachable. The weapon sub-pool check fires
+    // next — before the non-weapon neutrality check — because it only sees
+    // physical weapons: the physical player's non-aligned (magic) side is empty,
+    // so "no non-physical weapon candidate" fires first (physical build is checked
+    // first in BUILD_AFFINITIES).
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(/weapon sub-pool.*no non-physical weapon candidate/);
+  });
+
+  it('throws Floor2RewardPoolAuthoringError when weaponIds is an empty set (regression: empty-set category weighting)', () => {
+    // The resolver activates category weighting for any defined weaponIds,
+    // including an empty set — an empty set makes the weapon category pool
+    // permanently empty, so every weapon-category roll would crash at runtime.
+    // The validator must reject an empty weaponIds regardless of the pool.
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(FLOOR2_REWARD_POOL_STABLE_IDS, new Set());
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(/weaponIds is empty/);
+  });
+
+  it('throws Floor2RewardPoolAuthoringError when all pool bases are weapons (regression: all-weapon pool non-weapon category crash)', () => {
+    // An all-weapon pool means the non-weapon category pool is empty; a
+    // non-weapon category roll would always crash at runtime. The validator must
+    // reject this configuration.
+    const allWeaponIds = new Set<string>(FLOOR2_REWARD_POOL_WEAPON_IDS);
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(FLOOR2_REWARD_POOL_WEAPON_IDS, allWeaponIds);
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(/all bases in the pool are weapons/);
+  });
+
   it('rarityEligibleBaseIds returns all bases for every rarity under the decoupled model (no pre-filtering)', () => {
     // Under the decoupled model, non-armor power is affix-driven and bases
     // are never filtered by their inherent stat bonuses. All bases are
@@ -641,5 +783,179 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'rare')).toHaveLength(
       FLOOR2_REWARD_POOL_STABLE_IDS.length,
     );
+  });
+});
+
+describe('categoryFromRoll — exact threshold contract', () => {
+  it('encodes exactly 25% weapon draw weight', () => {
+    expect(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT).toBe(0.25);
+  });
+
+  it('returns weapon when roll < weaponWeight and non-weapon otherwise (exact < threshold)', () => {
+    const w = FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT;
+    expect(categoryFromRoll(0, w)).toBe('weapon');
+    expect(categoryFromRoll(w - 1e-9, w)).toBe('weapon');
+    expect(categoryFromRoll(w, w)).toBe('non-weapon'); // exactly at threshold → non-weapon
+    expect(categoryFromRoll(w + 1e-9, w)).toBe('non-weapon');
+    expect(categoryFromRoll(0.999999, w)).toBe('non-weapon');
+  });
+
+  it('works for arbitrary weight values at the exact threshold boundary', () => {
+    expect(categoryFromRoll(0.5 - 1e-9, 0.5)).toBe('weapon');
+    expect(categoryFromRoll(0.5, 0.5)).toBe('non-weapon');
+    expect(categoryFromRoll(0, 0)).toBe('non-weapon'); // 0% weapon weight → always non-weapon
+    expect(categoryFromRoll(0.999999, 1)).toBe('weapon'); // 100% weapon weight → always weapon
+  });
+
+  it('empirically draws at ~25% weapon / ~75% non-weapon over a uniform stream', () => {
+    const rng = new SeededRandom(9999);
+    const samples = 20_000;
+    let weaponCount = 0;
+    for (let i = 0; i < samples; i += 1) {
+      if (categoryFromRoll(rng.next(), FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT) === 'weapon') {
+        weaponCount += 1;
+      }
+    }
+    const observed = weaponCount / samples;
+    expect(Math.abs(observed - FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT)).toBeLessThan(0.02);
+  });
+});
+
+describe('resolveEquipmentRewardBundle — category-weighted selection (weaponIds provided)', () => {
+  const WEAPON_ID_SET = new Set<string>(FLOOR2_REWARD_POOL_WEAPON_IDS);
+
+  it('resolves without error from the full 88-entry pool with category weighting for both affinities', () => {
+    for (const [i, weaponDef] of [{ id: 'iron-cleaver' }, { id: 'ember-wand' }].entries()) {
+      const world = makeWorld(`category-full-pool-${i}`);
+      setActiveWeapon(world, getWeaponDef(weaponDef.id)!);
+      // Should not throw — both weapon and non-weapon sub-pools are non-empty
+      // and their category-specific validation passes at load time.
+      expect(() =>
+        resolveEquipmentRewardBundle(
+          world,
+          `ach-${i}`,
+          FLOOR2_REWARD_POOL_STABLE_IDS,
+          'tier2',
+          WEAPON_ID_SET,
+        ),
+      ).not.toThrow();
+    }
+  });
+
+  it('is deterministic for the same run key + achievement + tier + affinity', () => {
+    const worldA = makeWorld('category-det');
+    const worldB = makeWorld('category-det');
+    const a = resolveEquipmentRewardBundle(
+      worldA,
+      'ach-det',
+      FLOOR2_REWARD_POOL_STABLE_IDS,
+      'tier2',
+      WEAPON_ID_SET,
+    );
+    const b = resolveEquipmentRewardBundle(
+      worldB,
+      'ach-det',
+      FLOOR2_REWARD_POOL_STABLE_IDS,
+      'tier2',
+      WEAPON_ID_SET,
+    );
+    expect(b.instanceKeys).toEqual(a.instanceKeys);
+    for (let i = 0; i < a.instanceKeys.length; i += 1) {
+      expect(getGeneratedEquipmentInstance(worldB, b.instanceKeys[i]!)).toEqual(
+        getGeneratedEquipmentInstance(worldA, a.instanceKeys[i]!),
+      );
+    }
+  });
+
+  it('empirically draws ~25% weapon and ~75% non-weapon bases across many run keys', () => {
+    const SAMPLES = 400;
+    let weaponCount = 0;
+    for (let seed = 0; seed < SAMPLES; seed += 1) {
+      const world = makeWorld(`category-freq-${seed}`);
+      const bundle = resolveEquipmentRewardBundle(
+        world,
+        'ach-freq',
+        FLOOR2_REWARD_POOL_STABLE_IDS,
+        'tier2',
+        WEAPON_ID_SET,
+      );
+      const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+      if (WEAPON_ID_SET.has(instance.baseId)) weaponCount += 1;
+    }
+    const observedWeaponFraction = weaponCount / SAMPLES;
+    // Empirical frequency should be close to the authored 25% weight.
+    // Allow ±10% variance to keep the test deterministic across seeds.
+    expect(
+      observedWeaponFraction,
+      `weapon fraction ${observedWeaponFraction.toFixed(3)} should be near ${FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT}`,
+    ).toBeGreaterThan(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT - 0.1);
+    expect(observedWeaponFraction).toBeLessThan(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT + 0.1);
+  });
+
+  it('category decision and resolved base are consistent: weapon category → weapon base, non-weapon category → non-weapon base', () => {
+    // Reconstructs the category decision for each sample using the same
+    // deterministic substream key the resolver uses, then asserts that the
+    // resolved base matches the expected category. This detects a bug where
+    // e.g. the non-weapon pool filter is inverted or the wrong sub-pool is
+    // passed to the base-selection draw.
+    const NON_WEAPON_SET = new Set<string>(FLOOR2_REWARD_POOL_NON_WEAPON_IDS);
+    const RUN_KEY_PREFIX = 'category-nonweapon';
+    const ACH_ID = 'ach-nw';
+    const TIER = 'tier2';
+
+    for (let seed = 0; seed < 100; seed += 1) {
+      const runKey = `${RUN_KEY_PREFIX}-${seed}`;
+      const world = makeWorld(runKey);
+      const bundle = resolveEquipmentRewardBundle(
+        world,
+        ACH_ID,
+        FLOOR2_REWARD_POOL_STABLE_IDS,
+        TIER,
+        WEAPON_ID_SET,
+      );
+      const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+      const isWeapon = WEAPON_ID_SET.has(instance.baseId);
+      const isNonWeapon = NON_WEAPON_SET.has(instance.baseId);
+      // Every resolved base must be in exactly one category.
+      expect(isWeapon !== isNonWeapon, `seed ${seed}: base must be weapon or non-weapon`).toBe(
+        true,
+      );
+
+      // Reconstruct the category decision using the same substream key the
+      // resolver uses: reward-bundle:<version>:<runKey>:<achievementId>:category:<tier>
+      const categoryRng = new SeededRandom(
+        hashStringToSeed(
+          `reward-bundle:${REWARD_BUNDLE_RESOLVER_VERSION}:${runKey}:${ACH_ID}:category:${TIER}`,
+        ),
+      );
+      const expectedCategory = categoryFromRoll(
+        categoryRng.next(),
+        FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT,
+      );
+
+      if (expectedCategory === 'weapon') {
+        expect(
+          isWeapon,
+          `seed ${seed}: category roll was 'weapon' but resolved base "${instance.baseId}" is non-weapon`,
+        ).toBe(true);
+      } else {
+        expect(
+          isNonWeapon,
+          `seed ${seed}: category roll was 'non-weapon' but resolved base "${instance.baseId}" is weapon`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('without weaponIds (boss-chest path) still resolves via affinity alignment, unchanged', () => {
+    // Boss chest calls omit weaponIds → the old affinity-partitioned draw runs
+    // as before. Confirm it still resolves without error for both affinities.
+    for (const [i, id] of ['iron-cleaver', 'ember-wand'].entries()) {
+      const world = makeWorld(`boss-chest-no-cat-${i}`);
+      setActiveWeapon(world, getWeaponDef(id)!);
+      expect(() =>
+        resolveEquipmentRewardBundle(world, `boss-${i}`, MIXED_BASES, 'tier2'),
+      ).not.toThrow();
+    }
   });
 });

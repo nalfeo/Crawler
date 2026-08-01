@@ -3111,7 +3111,7 @@ document.getElementById('artsubmit').addEventListener('click',async function(){
     var r=await res.json();
     if(r.ok){closeArtDlg();showToast('\u2713 Requested '+r.name+' \u2014 '+r.url);}
     else{
-      err.textContent=(Array.isArray(r.issues)&&r.issues.length?r.issues.join('\n'):r.error||'Request failed');
+      err.textContent=(Array.isArray(r.issues)&&r.issues.length?r.issues.join('\\n'):r.error||'Request failed');
       err.style.display='block';
     }
   }catch(e){err.textContent=e.message;err.style.display='block';}
