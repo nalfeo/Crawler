@@ -363,6 +363,12 @@ export interface Floor2FamilyProgressMetrics {
   encounterStarted: boolean;
   /** Simulated time when the production encounter first started. */
   encounterStartedMs: number | null;
+  /**
+   * Player level at the moment the boss encounter started. Used to verify that
+   * XP pacing delivers the intended fight level (≥10) before the first Floor 2
+   * boss. Null when the encounter never started.
+   */
+  levelAtEncounterStart: number | null;
   /** Whether the real production boss encounter was defeated. */
   encounterDefeated: boolean;
   /** Simulated time when the production encounter was first defeated. */

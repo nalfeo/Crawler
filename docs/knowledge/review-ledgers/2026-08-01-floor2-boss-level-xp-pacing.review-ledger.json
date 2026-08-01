@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "floor2-boss-level-xp-pacing",
+  "task_title": "Floor 2 XP pacing fix: level-10 at first boss gate",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "plan_divergence": "minor",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "2 blocking (gate false-green on late grind → added stall+time-bound assertions; lower-bound only → added MAX_LEVEL upper bound). 3 non-blocking (FLOOR_2 value=2 too aggressive → changed to value=1; add telemetry unit test → added; ordering note → acknowledged)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
