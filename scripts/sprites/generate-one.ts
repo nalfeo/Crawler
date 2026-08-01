@@ -434,7 +434,10 @@ export async function generateSheetCore(
       }
       // Read bytes and verify PNG magic to prevent forwarding non-image files.
       const bytes = readReference(resolved);
-      if (bytes.length < PNG_MAGIC.length || !bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
+      if (
+        bytes.length < PNG_MAGIC.length ||
+        !bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)
+      ) {
         throw new Error(
           `generateSheetCore: seed frame "${sf.path}" is not a valid PNG (magic bytes mismatch)`,
         );
