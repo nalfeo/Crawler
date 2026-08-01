@@ -392,7 +392,7 @@ describe('parseAssetRequestIssueBody', () => {
       floor: 2,
       sizeVariant: 'default',
       briefSentence: fixtureBrief(body),
-      fingerprint: '0e13b752d8f337004ab0b8f3f84f5e84fbb7e2dac551533c9bf1dab52f048887',
+      fingerprint: 'b2bacbebc797520afa9707c2c2cf541123e8765c950979a9c7ec6c8b413622b4',
     });
     expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });

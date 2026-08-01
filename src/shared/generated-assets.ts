@@ -668,10 +668,11 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
 /**
  * Resolve the generated-sprite brief ID for an enemy entity given its
  * renderer visual type and optional appearance key. When a live registry is
- * supplied, prefer an approved bare-id brief matching the appearance key
- * before falling back to the explicit alias map — this lets a mob gain its own
- * request-aligned lineage the moment dedicated art ships without breaking
- * today's runtime fallback art.
+ * supplied, prefer an approved bare-id brief or the newest approved
+ * `<appearanceKey>-vN` brief matching the appearance key before falling back to
+ * the explicit alias map — this lets a mob gain its own request-aligned
+ * lineage the moment dedicated art ships without breaking today's runtime
+ * fallback art.
  *
  * Returns `undefined` when no generated brief is registered for the
  * type/appearance combination — the entity uses placeholder art.
@@ -688,6 +689,10 @@ export function generatedBriefIdForEnemy(
     if (registry.variants(appearanceKey).length > 0) {
       return appearanceKey;
     }
+    const latestVersionedBriefId = latestVersionedEnemyBriefId(registry, appearanceKey);
+    if (latestVersionedBriefId !== undefined) {
+      return latestVersionedBriefId;
+    }
   }
   if (appearanceKey !== undefined) {
     const byAppearance = GENERATED_BRIEF_BY_APPEARANCE_KEY[appearanceKey];
@@ -696,6 +701,30 @@ export function generatedBriefIdForEnemy(
     }
   }
   return type !== undefined ? GENERATED_BRIEF_BY_TYPE[type] : undefined;
+}
+
+function latestVersionedEnemyBriefId(
+  registry: GeneratedSpriteRegistry,
+  appearanceKey: string,
+): string | undefined {
+  const prefix = `${appearanceKey}-v`;
+  let latestVersion = -1;
+  let latestBriefId: string | undefined;
+  for (const briefId of registry.briefIds()) {
+    if (!briefId.startsWith(prefix)) {
+      continue;
+    }
+    const versionSuffix = briefId.slice(prefix.length);
+    if (!/^\d+$/.test(versionSuffix)) {
+      continue;
+    }
+    const version = Number(versionSuffix);
+    if (version > latestVersion) {
+      latestVersion = version;
+      latestBriefId = briefId;
+    }
+  }
+  return latestBriefId;
 }
 
 /**

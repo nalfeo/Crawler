@@ -470,6 +470,55 @@ describe('generatedBriefIdForEnemy', () => {
     );
   });
 
+  it('prefers the newest dedicated versioned brief in the live registry before a legacy alias fallback', () => {
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'raccoon-thief-var-0': {
+          briefId: 'raccoon-thief',
+          spriteName: 'raccoon-thief-var-0',
+          assetPath: 'generated/raccoon-thief-var-0.png',
+          approvedAt: '2026-08-01T00:00:00.000Z',
+          sourceRun: 'test',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '7/7',
+          judgeScore: '4',
+        },
+        'raccoon-bottle-rocketeer-v1-var-0': {
+          briefId: 'raccoon-bottle-rocketeer-v1',
+          spriteName: 'raccoon-bottle-rocketeer-v1-var-0',
+          assetPath: 'generated/raccoon-bottle-rocketeer-v1-var-0.png',
+          approvedAt: '2026-08-01T00:00:00.000Z',
+          sourceRun: 'test',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '7/7',
+          judgeScore: '4',
+        },
+        'raccoon-bottle-rocketeer-v2-var-0': {
+          briefId: 'raccoon-bottle-rocketeer-v2',
+          spriteName: 'raccoon-bottle-rocketeer-v2-var-0',
+          assetPath: 'generated/raccoon-bottle-rocketeer-v2-var-0.png',
+          approvedAt: '2026-08-01T00:00:00.000Z',
+          sourceRun: 'test',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '7/7',
+          judgeScore: '4',
+        },
+      },
+    });
+
+    expect(generatedBriefIdForEnemy('enemy_rat', 'raccoon-bottle-rocketeer')).toBe('raccoon-thief');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'raccoon-bottle-rocketeer', registry)).toBe(
+      'raccoon-bottle-rocketeer-v2',
+    );
+    expect(
+      pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'raccoon-bottle-rocketeer'),
+    ).toBe('raccoon-bottle-rocketeer-v2-var-0');
+  });
+
   it('reconciles the two singular→plural boss id mismatches', () => {
     // Briefs shipped plural but the archetype ids are singular — the appearance
     // map remaps them so the keys resolve to the real shipped art.
