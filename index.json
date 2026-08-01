@@ -1,5 +1,16 @@
 [
   {
+    "commit": "03462095e3f9b406f7e72d53355d08dd4b2ed54e",
+    "commitDate": "2026-08-01T04:01:06Z",
+    "commitSubject": "Add the llama-curb-stomper enemy brief and lock the issue-form contract (#2527)",
+    "capturedAt": "2026-08-01T05:09:37.064Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30683530495",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/03462095e3f9b406f7e72d53355d08dd4b2ed54e.json"
+  },
+  {
     "commit": "4fcb0b0370fdedada9138e83ce86ef5bcc8696a5",
     "commitDate": "2026-08-01T03:34:04Z",
     "commitSubject": "Add the committed gnome-wheelman enemy brief (#2524)",
