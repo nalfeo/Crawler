@@ -12,7 +12,7 @@
 # seed is injected into the prompt and `generate-one.ts` for how the PNG
 # bytes are prepended to the provider's reference-image list.
 type: character
-name: player-walk-cycle-female-v5
+name: player-walk-cycle-female-v6
 description: |
   THE PLAYER CHARACTER — a scrappy dungeon-crawling CONTESTANT on a televised
   reality-show dungeon crawl. Determined, a little scruffy, clearly the
@@ -82,6 +82,11 @@ description: |
      different camera angle, or reversed direction — it is simply frames 3 and 4
      of the same continuous forward walk, at the SAME scale and SAME floor-line
      height as the top row.
+   - CRITICAL SCALE CONSISTENCY: the character must be drawn at EXACTLY THE SAME
+     pixel size in ALL 4 cells. The head height, body height, and foot-to-head
+     span must be identical in every cell. Do NOT draw the bottom row smaller,
+     larger, or at a different zoom than the top row. Any visible scale difference
+     between cells is a FAILURE.
    - CRITICAL FACING DIRECTION: the character faces RIGHTWARD — a right-facing
      side profile — in ALL 4 cells without exception. This means: face and nose
      point toward the right edge of each cell, satchel strap on the far
@@ -94,25 +99,31 @@ description: |
          drawn visually in FRONT of the torso. These overlap/occlude the far limbs.
        FAR arm and FAR leg = the limbs on the side FURTHEST from the camera,
          drawn visually BEHIND the torso. These are partially hidden by the body.
+   - ARM SWING IS OPPOSITE TO LEGS — this is the defining rule of a walk cycle:
+       When the stride-FORWARD leg is the FAR leg → the stride-FORWARD arm
+         (reaching toward the RIGHT edge of the cell) is the NEAR arm.
+       When the stride-FORWARD leg is the NEAR leg → the stride-FORWARD arm
+         (reaching toward the RIGHT edge of the cell) is the FAR arm.
+       The arm reaching forward MUST visibly extend toward the right edge.
+       The arm swinging back MUST visibly trail behind toward the left edge.
+       Arm swing must be EXAGGERATED enough to read clearly at 40px tall — a
+       subtle wrist-flick is not enough; the whole forearm must swing.
    - FRAME CONTENT — EXACT POSE PER CELL (character faces right in all):
-       Frame 1 / TOP-LEFT: FAR leg is stride-FORWARD (heel planted ahead of body,
-         foot touching the floor in front). NEAR leg is stride-BACK (toe pushing
-         off behind the body, lifted). NEAR arm swings FORWARD (arm reaching ahead),
-         FAR arm swings BACK. Maximum stride spread — legs as far apart as possible
-         while keeping both feet inside the cell.
-       Frame 2 / TOP-RIGHT: PASSING pose. Both legs crossing and passing under the
-         body center — near leg swings through, far leg lifts. Body weight transfers.
-         Both arms near neutral, crossing through center. Clear transition between
-         frame 1 and frame 3.
-       Frame 3 / BOTTOM-LEFT: NEAR leg is now stride-FORWARD (heel planted ahead,
-         foot touching the floor in front). FAR leg is now stride-BACK (toe pushing
-         off behind, lifted). FAR arm swings FORWARD, NEAR arm swings BACK.
-         This is the OPPOSITE contact pose from frame 1 — maximum stride spread,
-         legs as far apart as possible. Character still faces right; only the
-         which-leg-is-forward has swapped, NOT the facing direction.
-       Frame 4 / BOTTOM-RIGHT: PASSING pose again, opposite of frame 2. Near leg
-         lifts, far leg swings through. Arms near neutral, crossing through center.
-         Clear transition between frame 3 and frame 1 (loop).
+       Frame 1 / TOP-LEFT: FAR leg is stride-FORWARD (heel planted, foot on floor
+         ahead of body center). NEAR leg is stride-BACK (toe pushing off, lifted
+         behind). NEAR arm reaches FORWARD toward the RIGHT edge of the cell.
+         FAR arm swings BACK toward the LEFT edge. Maximum visible stride spread.
+       Frame 2 / TOP-RIGHT: PASSING pose. Both legs cross under the body center —
+         legs nearly vertical. NEAR arm and FAR arm both near neutral/vertical,
+         neither clearly forward nor back. Clear visual midpoint between frames 1 and 3.
+       Frame 3 / BOTTOM-LEFT: NEAR leg is now stride-FORWARD (heel planted, foot on
+         floor ahead of body center). FAR leg is now stride-BACK (toe pushing off,
+         lifted behind). FAR arm reaches FORWARD toward the RIGHT edge of the cell.
+         NEAR arm swings BACK toward the LEFT edge. OPPOSITE of frame 1 in every
+         limb position. Maximum visible stride spread. Character still faces right.
+       Frame 4 / BOTTOM-RIGHT: PASSING pose again. Both legs cross under center —
+         legs nearly vertical. Both arms near neutral. Clear visual midpoint between
+         frames 3 and 1 (the loop). Opposite leg crosses compared to frame 2.
    - CRITICAL DETAIL PARITY: render at the SAME fine pixel-art detail level,
      line weight, and shading complexity as this character's other two gender
      variants (player-walk-cycle-male.yaml / player-walk-cycle-other.yaml) —
