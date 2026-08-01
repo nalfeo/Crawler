@@ -41,10 +41,10 @@ function formBody(parts: {
   return lines.join('\n');
 }
 
-/** Extract the verbatim brief text from a fixture body (single-line briefs). */
+/** Extract the verbatim brief text from a fixture body. */
 function fixtureBrief(body: string): string {
-  const marker = '### Brief\n';
-  return body.slice(body.indexOf(marker) + marker.length).trim();
+  const match = body.match(/(?:^|\n)### Brief\s*\n+([\s\S]*?)(?=\n###\s|\n<!--|$)/);
+  return match ? match[1].trim() : '';
 }
 
 describe('parseAssetRequestIssueBody', () => {
@@ -366,6 +366,20 @@ describe('parseAssetRequestIssueBody', () => {
       }),
     );
     expect(parsed?.sizeVariant).toBeUndefined();
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
+  it('parses the exact issue #2505 enemy request with explicit floor and default size', () => {
+    const body = issuesFixture.issues['2505']!.body;
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).toMatchObject({
+      name: 'llama-curb-stomper',
+      type: 'enemy',
+      floor: 2,
+      sizeVariant: 'default',
+      briefSentence: fixtureBrief(body),
+      fingerprint: '721ee04ea1a39cfb1df09535efa05ea9a539459b44765f6f3ddbcc4f0c338e51',
+    });
     expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });
 
