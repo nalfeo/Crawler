@@ -38,7 +38,7 @@ sensors:
     facing: front
     toleranceDeg: 25
   edge:
-    allowMainTouch: true
+    allowMainTouch: false
     allowDetachedEdgeComponents: false
 
 judge:

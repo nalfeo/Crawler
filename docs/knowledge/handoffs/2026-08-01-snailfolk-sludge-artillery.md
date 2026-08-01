@@ -26,11 +26,10 @@ credentials are available in the environment.
 
 ### Brief design decisions
 
-- `type: enemy`, `floor: 2`, `sizeVariant: default` — standard 64×64 hostile sprite, Floor 2 difficulty tier.
+- `type: enemy`, `floor: 2`, `sizeVariant: default` — standard 256×256 hostile sprite, Floor 2 difficulty tier.
 - Front-facing sensor override (`sensors.enemy.facing: front`, `toleranceDeg: 25`) — the brief
   explicitly calls for a front-facing artillery posture; matches snailfolk-boss and imp-chain-brawler patterns.
-- `edge.allowMainTouch: true` — the backpack tank and cannon nozzle will fill a wide upper silhouette; the
-  main body touching the frame edge is expected for a heavily-equipped soldier.
+- `edge.allowMainTouch: false` (default) — the brief description explicitly requires the subject to remain fully inside the frame; the edge sensor correctly rejects any sprite where the main silhouette touches the cell boundary.
 - Description centers the read on the **sludge cannon as visual centerpiece**, with the backpack tank, rubber
   hoses, nozzle, and acid-green slime drip as the dominant visual mass. The snailfolk body (dark olive/slate-blue)
   is grounded below it.
