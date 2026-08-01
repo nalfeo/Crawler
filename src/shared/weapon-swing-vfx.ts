@@ -11,7 +11,7 @@ export interface WeaponSwingVfxSpec {
   readonly intensity?: number;
 }
 
-export const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec>> = {
+const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec>> = {
   'sword-strike-base': { preset: 'swingArc', color: 0xff6b6b, intensity: 1.0 },
   'sword-cleave': { preset: 'volleyTrail', color: 0xff8787, intensity: 1.1 },
   'sword-strike-evolved': { preset: 'impactBurst', color: 0xff4d4d, intensity: 1.2 },
