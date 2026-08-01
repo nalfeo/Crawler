@@ -369,6 +369,20 @@ describe('parseAssetRequestIssueBody', () => {
     expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });
 
+  it('parses the exact issue #2505 enemy request with explicit floor and default size', () => {
+    const body = issuesFixture.issues['2505']!.body;
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).toMatchObject({
+      name: 'llama-curb-stomper',
+      type: 'enemy',
+      floor: 2,
+      sizeVariant: 'default',
+      briefSentence: fixtureBrief(body),
+      fingerprint: '721ee04ea1a39cfb1df09535efa05ea9a539459b44765f6f3ddbcc4f0c338e51',
+    });
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
   it('treats blank and _No response_ size fields as omitted', () => {
     for (const size of ['', '_No response_']) {
       const parsed = parseAssetRequestIssueBody(
