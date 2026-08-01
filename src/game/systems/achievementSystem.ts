@@ -13,7 +13,10 @@ import {
   type AchievementRulePhase,
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
-import { FLOOR2_REWARD_POOL_STABLE_IDS, FLOOR2_REWARD_POOL_WEAPON_IDS } from '../../shared/data/floor2-reward-pool.js';
+import {
+  FLOOR2_REWARD_POOL_STABLE_IDS,
+  FLOOR2_REWARD_POOL_WEAPON_IDS,
+} from '../../shared/data/floor2-reward-pool.js';
 import { getFloor2EquipmentRewardsAccess } from '../../core/floor2-equipment-flags.js';
 import { bandFor, getRelation } from '../../core/faction-relations.js';
 import { isInSafeContext } from '../../core/safe-space.js';

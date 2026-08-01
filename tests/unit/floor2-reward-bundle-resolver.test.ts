@@ -645,7 +645,10 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     const someNeutral = FLOOR2_REWARD_POOL_NON_WEAPON_IDS.slice(0, 2) as string[];
     const mixedBases = [onePhysical, oneMagic, ...someNeutral];
     // weaponIds contains IDs that are NOT in mixedBases
-    const absentWeaponIds = new Set(['weapon-that-does-not-exist-1', 'weapon-that-does-not-exist-2']);
+    const absentWeaponIds = new Set([
+      'weapon-that-does-not-exist-1',
+      'weapon-that-does-not-exist-2',
+    ]);
     let err: unknown;
     try {
       validateFloor2RewardPoolTierEligibility(mixedBases, absentWeaponIds);
@@ -653,7 +656,9 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
       err = caught;
     }
     expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
-    expect((err as Error).message).toMatch(/weaponIds is non-empty.*no base.*matches any weapon ID/);
+    expect((err as Error).message).toMatch(
+      /weaponIds is non-empty.*no base.*matches any weapon ID/,
+    );
   });
 
   it('throws Floor2RewardPoolAuthoringError for weapon sub-pool missing one affinity (new category-check error path)', () => {
@@ -770,10 +775,7 @@ describe('resolveEquipmentRewardBundle — category-weighted selection (weaponId
   const WEAPON_ID_SET = new Set<string>(FLOOR2_REWARD_POOL_WEAPON_IDS);
 
   it('resolves without error from the full 88-entry pool with category weighting for both affinities', () => {
-    for (const [i, weaponDef] of [
-      { id: 'iron-cleaver' },
-      { id: 'ember-wand' },
-    ].entries()) {
+    for (const [i, weaponDef] of [{ id: 'iron-cleaver' }, { id: 'ember-wand' }].entries()) {
       const world = makeWorld(`category-full-pool-${i}`);
       setActiveWeapon(world, getWeaponDef(weaponDef.id)!);
       // Should not throw — both weapon and non-weapon sub-pools are non-empty
@@ -837,9 +839,7 @@ describe('resolveEquipmentRewardBundle — category-weighted selection (weaponId
       observedWeaponFraction,
       `weapon fraction ${observedWeaponFraction.toFixed(3)} should be near ${FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT}`,
     ).toBeGreaterThan(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT - 0.1);
-    expect(
-      observedWeaponFraction,
-    ).toBeLessThan(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT + 0.1);
+    expect(observedWeaponFraction).toBeLessThan(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT + 0.1);
   });
 
   it('category decision and resolved base are consistent: weapon category → weapon base, non-weapon category → non-weapon base', () => {
@@ -878,7 +878,10 @@ describe('resolveEquipmentRewardBundle — category-weighted selection (weaponId
           `reward-bundle:${REWARD_BUNDLE_RESOLVER_VERSION}:${runKey}:${ACH_ID}:category:${TIER}`,
         ),
       );
-      const expectedCategory = categoryFromRoll(categoryRng.next(), FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT);
+      const expectedCategory = categoryFromRoll(
+        categoryRng.next(),
+        FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT,
+      );
 
       if (expectedCategory === 'weapon') {
         expect(
