@@ -1,0 +1,122 @@
+{
+  "briefId": "panda-elite-red-envelope-v1",
+  "spriteName": "panda-elite-red-envelope-v1-var-4",
+  "assetPath": "generated/panda-elite-red-envelope-v1-var-4.png",
+  "approvedAt": "2026-08-01T00:15:00.555Z",
+  "sourceRun": "generated/runs/panda-elite-red-envelope-v1/2026-08-01T00-11-25-5f4f4227",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 120,
+    "y": 132,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 120,
+      "y": 132,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 120,
+      "y": 132,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 120,
+        "y": 132
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:13:24.203Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a commanding panda caster with glowing red envelopes is clear and fits the Crawler design language. The combination of ceremonial robes and magical elements is both darkly humorous and appropriately strange for the floor. However, the contradiction could be pushed further for a more memorable design."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering feels cohesive with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering feels cohesive with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts the described subject, including the red and gold robe, glowing red envelopes, and panda features. The pose and elements align well with the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the glowing envelopes stand out well against the dark background. However, the details of the glowing envelopes could be slightly more distinct at game scale."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at an appropriate angle, facing slightly to the side while maintaining a clear and commanding pose."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The red and gold robe, high mandarin collar, and glowing red envelopes align with the Bamboo Triad theme. However, the bamboo contraband vessels or additional syndicate geometry could be more explicitly incorporated to strengthen the theme adherence."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3998,
+      "completionTokens": 406,
+      "totalTokens": 4404
+    }
+  },
+  "type": "enemy",
+  "contentHash": "e7e945dd165274d6d5b102697fffe09cfe8107a978afbacc3b7ea91d070abab5",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 228,
+    "height": 231,
+    "canvasWidth": 256,
+    "canvasHeight": 259
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-elite-red-envelope-v1/2026-08-01T00-11-25-5f4f4227/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-elite-red-envelope-v1/2026-08-01T00-11-25-5f4f4227/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/panda-elite-red-envelope-v1/2026-08-01T00-11-25-5f4f4227/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
