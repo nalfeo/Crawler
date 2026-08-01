@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  getOverriddenBuiltInFloorManifestIds,
   getAvailableFloorIds,
   getFloorManifest,
   getNextFloorId,
   hasFloorManifest,
   registerFloorManifest,
+  resetBuiltInFloorManifests,
 } from '../../src/shared/floor-registry';
 import {
   floor1Manifest,
@@ -22,8 +24,7 @@ describe('floor-registry', () => {
   const addedIds: string[] = [];
 
   afterEach(() => {
-    // floor-registry has no public delete; overwrite is the only mutation, so we
-    // simply forget the helper-tracked ids. Built-in floor1 is never removed.
+    resetBuiltInFloorManifests();
     addedIds.length = 0;
   });
 
@@ -66,6 +67,24 @@ describe('floor-registry', () => {
     registerFloorManifest('floor-test-overwrite', second);
 
     expect(getFloorManifest('floor-test-overwrite')).toBe(second);
+  });
+
+  it('restores built-in manifests while preserving custom registrations', () => {
+    const contaminatedFloor2 = structuredClone(floor2Manifest);
+    contaminatedFloor2.timer.durationMs += 1;
+    const customManifest = makeManifest('floor-test-custom');
+    addedIds.push('floor-test-custom');
+
+    registerFloorManifest('floor2', contaminatedFloor2);
+    registerFloorManifest('floor-test-custom', customManifest);
+
+    expect(getOverriddenBuiltInFloorManifestIds()).toEqual(['floor2']);
+
+    resetBuiltInFloorManifests();
+
+    expect(getFloorManifest('floor2')).toBe(floor2Manifest);
+    expect(getFloorManifest('floor-test-custom')).toBe(customManifest);
+    expect(getOverriddenBuiltInFloorManifestIds()).toEqual([]);
   });
 
   describe('getNextFloorId', () => {

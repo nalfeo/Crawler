@@ -6,13 +6,19 @@
  */
 import { floor1Manifest, floor2Manifest, type FloorManifestDef } from './floor-manifest.js';
 
-/**
- * Registry of available floor manifests.
- */
-const FLOOR_REGISTRY = new Map<string, FloorManifestDef>([
+const BUILT_IN_FLOOR_MANIFESTS = new Map<string, FloorManifestDef>([
   ['floor1', floor1Manifest],
   ['floor2', floor2Manifest],
 ]);
+
+/**
+ * Registry of available floor manifests.
+ */
+const FLOOR_REGISTRY = new Map<string, FloorManifestDef>(BUILT_IN_FLOOR_MANIFESTS);
+
+function manifestsMatch(left: FloorManifestDef | undefined, right: FloorManifestDef): boolean {
+  return left !== undefined && JSON.stringify(left) === JSON.stringify(right);
+}
 
 /**
  * Get a floor manifest by ID.
@@ -32,11 +38,53 @@ export function getAvailableFloorIds(): string[] {
 
 /**
  * Register a floor manifest (for testing or dynamic loading).
+ *
+ * Overriding a built-in floor (`floor1` / `floor2`) mutates process-global state.
+ * Call `resetBuiltInFloorManifests()` after the scoped override, or run headless
+ * batches in fresh Node processes.
  * @param floorId - Floor identifier.
  * @param manifest - Floor manifest definition.
  */
 export function registerFloorManifest(floorId: string, manifest: FloorManifestDef): void {
   FLOOR_REGISTRY.set(floorId, manifest);
+}
+
+/**
+ * Restore built-in floor manifests to their shipped defaults while preserving any
+ * custom floor registrations.
+ */
+export function resetBuiltInFloorManifests(): void {
+  for (const [floorId, manifest] of BUILT_IN_FLOOR_MANIFESTS) {
+    FLOOR_REGISTRY.set(floorId, manifest);
+  }
+}
+
+/**
+ * Return the built-in floor ids whose registry entries no longer match their
+ * shipped defaults.
+ */
+export function getOverriddenBuiltInFloorManifestIds(): string[] {
+  const overridden: string[] = [];
+  for (const [floorId, manifest] of BUILT_IN_FLOOR_MANIFESTS) {
+    if (!manifestsMatch(FLOOR_REGISTRY.get(floorId), manifest)) {
+      overridden.push(floorId);
+    }
+  }
+  return overridden;
+}
+
+/**
+ * Guard headless runners and other measurement harnesses against process-scoped
+ * floor-manifest contamination.
+ */
+export function assertBuiltInFloorManifestsClean(context = 'floor registry consumer'): void {
+  const overridden = getOverriddenBuiltInFloorManifestIds();
+  if (overridden.length === 0) return;
+  throw new Error(
+    `${context} requires built-in floor manifests to match their shipped defaults before each run. ` +
+      `Detected overridden manifest(s): ${overridden.join(', ')}. ` +
+      `Call resetBuiltInFloorManifests() after scoped overrides or run each batch in a fresh Node process.`,
+  );
 }
 
 /**
