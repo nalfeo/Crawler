@@ -27,9 +27,7 @@ import {
   weaponPrerequisiteMet,
 } from '../../src/game/systems/abilitySystem.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
-import {
-  getAbilityDefinition,
-} from '../../src/game/abilities/registry.js';
+import { getAbilityDefinition } from '../../src/game/abilities/registry.js';
 import { WEAPON_CLASS_SKILL_IDS, WEAPON_TYPE_SKILL_IDS } from '../../src/shared/weapon-skills.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef, clearActiveWeaponDef } from '../../src/core/active-weapon.js';
@@ -174,8 +172,7 @@ describe('skillSystem level-5 ability grants', () => {
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
     const expectedAbilityId =
-      swordDef.milestones.find((m) => m.level === 5)?.abilityId ??
-      getL5AbilityId('sword')!;
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
     expect(abilityState.passiveAbilityIds).toContain(expectedAbilityId);
   });
 
@@ -202,8 +199,7 @@ describe('skillSystem level-5 ability grants', () => {
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
     const expectedAbilityId =
-      swordDef.milestones.find((m) => m.level === 5)?.abilityId ??
-      getL5AbilityId('sword')!;
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
     expect(abilityState.passiveAbilityIds).not.toContain(expectedAbilityId);
   });
 
@@ -218,8 +214,7 @@ describe('skillSystem level-5 ability grants', () => {
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
     const expectedAbilityId =
-      swordDef.milestones.find((m) => m.level === 5)?.abilityId ??
-      getL5AbilityId('sword')!;
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
     const count = abilityState.passiveAbilityIds.filter((id) => id === expectedAbilityId).length;
     expect(count).toBe(1);
   });

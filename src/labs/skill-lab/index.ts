@@ -5,9 +5,7 @@ import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/helpers.js';
 import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import { statSystem } from '../../core/systems/index.js';
-import {
-  getAllAbilityDefinitions,
-} from '../../game/abilities/registry.js';
+import { getAllAbilityDefinitions } from '../../game/abilities/registry.js';
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
 import {
