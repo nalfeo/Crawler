@@ -39,6 +39,7 @@ true` and a small unit test pinning the requested electric-casting direction.
   `registry.npmjs.org`, then `npm install` again
 - `npm run test:unit -- tests/unit/faerie-spark-caster-brief.test.ts tests/unit/phaser-bridge-sprite-kind.test.ts`
 - `npm run verify:fast`
+- `npm run sprites:run -- --brief briefs/enemies/faerie-spark-caster.yaml`
 - `npm run review:ledger -- init --apples 2 --slug faerie-spark-caster-lineage --title "Add faerie spark caster asset lineage"`
 - `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-08-01-faerie-spark-caster-lineage.review-ledger.json`
 - `npm run verify:pr-prereqs`
@@ -63,6 +64,8 @@ true` and a small unit test pinning the requested electric-casting direction.
   before finishing so `package-lock.json` stays unchanged in the repo diff
 - `npm run test:unit -- tests/unit/faerie-spark-caster-brief.test.ts tests/unit/phaser-bridge-sprite-kind.test.ts` ✅
 - `npm run verify:fast` ✅
+- `npm run sprites:run -- --brief briefs/enemies/faerie-spark-caster.yaml` ❌ missing
+  `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` in this cloud/CI environment
 - `npm run review:ledger -- validate ...faerie-spark-caster-lineage.review-ledger.json` ✅
 - `npm run verify:pr-prereqs` ✅
 - sprite generation / approval / check-in / observation still not run honestly:
