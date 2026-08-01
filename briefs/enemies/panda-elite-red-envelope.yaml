@@ -23,3 +23,6 @@ variations:
   - Formal panda spellcaster with rich gold trim, visible panda markings, magical red envelopes
 
 minVariations: 4
+sensors:
+  enemy:
+    allowSpellMedium: true
