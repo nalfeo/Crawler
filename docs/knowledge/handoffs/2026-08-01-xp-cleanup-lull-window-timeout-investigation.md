@@ -1,15 +1,15 @@
-# Handoff: XP-cleanup cooldown re-arm regression (issue #2585) — root cause proven, fix landed, seed 9 NOT fully resolved
+# Handoff: XP-cleanup outcome regression (issue #2585) — efficiency target met, outcome guard failed
 
 **Date:** 2026-08-01
 **Persona:** Game AI Engineer
-**Apples:** 2 estimated, 2 actual
-**PR:** none published (investigation task; explicit user instruction not to publish)
-**Status:** Fix implemented and evidence-backed for seed 11. Seed 9 is **not** proven
-guard-compliant — see "What is NOT resolved" below before merging/publishing.
+**Apples:** 4 estimated, 4 actual
+**PR:** none published (final paired acceptance failed the explicit outcome guard)
+**Status:** Stopped. Efficiency targets pass, but five Floor 2 control victories
+regress to timeout/stall. Do not publish this implementation unchanged.
 
 ## Systems touched
 
-ai, bt-ai-provider, headless-runner (read-only, no changes)
+ai-behavior-tree, ai-combat-balance, inventory, quests, ci-policy
 
 ## Problem
 
@@ -256,3 +256,45 @@ matched confirmations cited in the evidence table above.
   self-deferred (`deferred-dirty`) due to the uncommitted working tree; not
   re-attempted since the source changes here remain intentionally uncommitted
   pending the next-measurement decision above.
+
+## Final exact-base acceptance
+
+The later den-hunt yield gate restored seeds 9 and 11 to victory, but the required
+broad paired panel exposed different outcome regressions. These four GitHub runs
+are the definitive evidence; all earlier runs in this handoff are diagnostic
+history:
+
+| Floor                | Control                                | Implementation                                |
+| -------------------- | -------------------------------------- | --------------------------------------------- |
+| Floor 1, seeds 1–100 | `30712261256`, control SHA `564f91228` | `30712106883`, implementation SHA `82783f3f7` |
+| Floor 2, seeds 1–20  | `30712264985`, control SHA `564f91228` | `30712110545`, implementation SHA `82783f3f7` |
+
+Both SHAs descend from main `b220c37c`; the control has zero diff from main in
+`bt-ai-provider.ts` and `bt-ai-tuning.ts`. Every row ran in a fresh Node process.
+
+### Floor 1
+
+- Control: 100/100 victories; median XP efficiency 77.58%; mean/median final
+  level 5.71/6; mean/median duration 242.15s/240.15s.
+- Implementation: 99/100 victories; median victory XP efficiency 82.65%;
+  mean/median final level 5.99/6; mean/median duration 241.91s/237.03s.
+- The 90% win-rate and 75% efficiency gates pass. Duration does not materially
+  regress. Seed 78 is the only outcome change (`victory -> death`), within the
+  explicitly rate-based Floor 1 guard.
+
+### Floor 2
+
+- Control: 9 victories, 7 timeouts, 4 stalls; victory median efficiency 62.58%;
+  victory mean/median final level 18/18; all-row median duration 1,147.69s.
+- Implementation: 7 victories, 7 timeouts, 6 stalls; victory median efficiency
+  77.71%; victory mean/median final level 19.57/20; all-row median duration
+  1,179.46s.
+- Improvements: seeds 5, 15, and 18 change from timeout to victory.
+- Regressions: control victories 2 and 3 change to timeout; control victories 6,
+  12, and 16 change to stalled.
+- Seeds 9 and 11, which motivated the cooldown and den-hunt fixes, are victories.
+
+The Floor 2 efficiency target passes, but the explicit no-new-timeout/stall guard
+fails. Aggregate improvements cannot waive per-seed regressions. Per the user's
+stop condition, no PR was opened and no cleanup cap, XP curve, drop rate, or
+tuning constant was weakened.

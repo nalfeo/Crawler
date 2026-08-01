@@ -1,0 +1,50 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "ai-xp-collection-efficiency",
+  "date": "2026-08-01",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 1855,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 1855
+    }
+  },
+  "tools": {
+    "apply_patch": 50,
+    "ask_user": 6,
+    "create": 3,
+    "create_session": 2,
+    "edit": 18,
+    "exit_plan_mode": 1,
+    "extensions_reload": 2,
+    "get_session": 7,
+    "glob": 17,
+    "grep": 124,
+    "invoke_canvas_action": 1,
+    "list_agents": 7,
+    "list_canvas_capabilities": 2,
+    "list_powershell": 1,
+    "list_sessions_and_chats": 1,
+    "memory-read_graph": 1,
+    "memory-search_nodes": 1,
+    "open_canvas": 3,
+    "powershell": 409,
+    "read_agent": 28,
+    "read_powershell": 27,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "rg": 198,
+    "send_session_message": 17,
+    "skill": 3,
+    "sql": 22,
+    "stop_powershell": 1,
+    "str_replace": 1,
+    "task": 16,
+    "view": 878,
+    "write_agent": 6
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}
