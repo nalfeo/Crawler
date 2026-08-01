@@ -1,0 +1,22 @@
+type: enemy
+name: imp-chain-brawler
+floor: 2
+description: |
+  A small, scrappy imp in a low crouching brawler stance, weight pitched
+  forward as if lunging straight at the camera. Thick heavy iron chains are the
+  dominant feature: both forearms are wrapped in chunky, clearly readable
+  linked coils, with one loose chain end dangling like a flail. Keep the
+  silhouette compact and melee-threatening at a glance — broad shoulders,
+  tucked legs, horns, tail, and feral glee on its face. Match the imp family
+  palette established by imp-flinger: leathery hide in hot red, ember orange,
+  and charcoal tones with dark iron chain metal. Single subject only,
+  front-facing, fully inside frame, hard pixel edges, no text, no background.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+variations:
+  - front-facing imp with the dangling chain flail hanging from its right forearm and a wide feral grin
+  - front-facing imp with heavier shoulder horns, both chain-wrapped fists raised, tail hooked behind its legs
+  - front-facing imp with one flail chain swinging lower between bent knees and a more charcoal-heavy hide pattern
+minVariations: 6
