@@ -685,7 +685,7 @@ function checkWallAnchoring(def: SetPieceDef, t: CompositionThresholds): CheckRe
   //  2. The commonest hand-made interior arrangement is a counter with a person
   //     standing behind it. That person needs a tile. A membership test calls every
   //     shop counter, reception desk and bar "floating", which is simply wrong.
-  // A gap of 1 tile (2 ft) is standing room; 2+ tiles is genuinely adrift in the
+  // A gap of 1 tile (4 ft) is standing room; 2+ tiles is genuinely adrift in the
   // middle of the room, which is the composition failure this check exists to catch.
   const gap = Math.max(0, Math.floor(t.maxWallGapTiles));
   const touchesWall = (prop: SetPiecePropDef): boolean =>
