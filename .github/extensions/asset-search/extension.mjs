@@ -5,12 +5,16 @@
  * returns matching sprite assets from the generated manifest. Uses MiniSearch
  * for BM25-weighted full-text search over tags, labels, descriptions, and types.
  *
+ * Each shard document is enriched with its source brief's description text
+ * (stored as `briefText`), giving the index richer signal for concept queries.
+ * Tags remain the authoritative, highest-weighted field.
+ *
  * Also writes per-query telemetry to `files/asset-search-telemetry.jsonl` so
  * empty-result queries can be turned into new asset briefs.
  *
  * Tool: search_assets
  *   Input:  { query: string, type?: string, maxResults?: number }
- *   Output: array of { id, label, description, tags, type, assetPath, status, score }
+ *   Output: array of { id, label, description, tags, type, assetPath, score }
  */
 
 import { existsSync, appendFileSync, mkdirSync, statSync, readdirSync } from 'node:fs';
@@ -76,12 +80,12 @@ async function getIndex() {
 
   const ms = new MiniSearch({
     idField: 'id',
-    fields: ['tags', 'label', 'description', 'type'],
-    storeFields: ['id', 'label', 'tags', 'type', 'description', 'assetPath', 'status'],
+    fields: ['tags', 'label', 'description', 'briefText', 'type'],
+    storeFields: ['id', 'label', 'tags', 'type', 'description', 'assetPath'],
     extractField: (doc, field) =>
       field === 'tags' ? doc.tags.join(' ') : String(doc[field] ?? ''),
     searchOptions: {
-      boost: { tags: 3, label: 2, type: 1.5, description: 1 },
+      boost: { tags: 3, label: 2, type: 1.5, description: 1, briefText: 0.6 },
       fuzzy: 0.2,
       prefix: true,
       combineWith: 'OR',
@@ -139,7 +143,6 @@ async function handleSearchAssets(params) {
     tags: r.tags,
     type: r.type,
     assetPath: r.assetPath,
-    status: r.status,
     score: Math.round(r.score * 100) / 100,
   }));
 
@@ -167,11 +170,10 @@ const session = await joinSession({
     {
       name: 'search_assets',
       description:
-        'Search for sprite assets by natural language query. Returns matching sprites ranked by relevance. ' +
-        'Results include both approved generated assets (status: "approved", with assetPath) and ' +
-        'briefs that have been specified but not yet generated (status: "brief-only", no assetPath). ' +
-        'Useful for finding props, mobs, tiles, and other game assets by describing what you need ' +
-        '(e.g. "rusty workshop tools", "ornate altar stone"). ' +
+        'Search for sprite assets by natural language query. Returns matching approved sprites ranked by relevance. ' +
+        'Each asset is indexed by its tags (highest weight), label, description, type, and its source brief text ' +
+        '(lower weight) — so concept queries like "rusty workshop tools" or "glowing ritual altar" match ' +
+        'both explicit tags and the intent captured in the original brief. ' +
         'Empty result queries are logged and drive new asset brief creation.',
       parameters: {
         type: 'object',
