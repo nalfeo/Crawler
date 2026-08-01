@@ -1,4 +1,5 @@
 type: enemy
+mobRole: elite
 name: geese-elite-goosefather
 floor: 2
 description: |

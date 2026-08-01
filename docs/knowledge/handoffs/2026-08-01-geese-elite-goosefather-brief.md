@@ -40,11 +40,14 @@ Handled issue #2569 for the `geese-elite-goosefather` asset request:
   sprite. The correct deliverable for an asset request issue is the committed
   brief; sprite generation and the `generated-assets.ts` wiring update happen
   downstream when the Azure pipeline approves a variant.
-- **Default size**: issue specified "default", which matches `spriteWidth: 2.2` in
-  the enemy data — standard 64×64 output, no `sizeVariant` override needed.
-- **No `mobRole: boss` field**: the Goosefather is an elite, not the family boss
-  (that's `geese-boss` / Don Honkrado). Omitting `mobRole` keeps it as a standard
-  non-boss enemy.
+- **Default size**: issue specified "default", which means the brief inherits the
+  enemy type's standard 256×256 output from `data/sprite-types/enemy.json`; no
+  `sizeVariant` override needed. `spriteWidth: 2.2` in enemy data is only runtime
+  world scaling.
+- **Canonical `mobRole: elite`**: the Goosefather is an elite, not the family boss
+  (that's `geese-boss` / Don Honkrado). Setting `mobRole: elite` preserves the
+  authoritative enemy-role metadata while avoiding boss-specific judging or size
+  hints.
 - **Three variations and `minVariations: 3`**: covers the three main pose reads
   (one-wing-raised command, hands-behind-back authority, open-beak mid-speech)
   giving the pipeline enough variation to find a quality candidate.
