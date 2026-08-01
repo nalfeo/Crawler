@@ -667,21 +667,35 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
 
 /**
  * Resolve the generated-sprite brief ID for an enemy entity given its
- * renderer visual type and optional appearance key. Returns `undefined` when
- * no generated brief is registered for the type/appearance combination —
- * the entity uses placeholder art.
+ * renderer visual type and optional appearance key. When a live registry is
+ * supplied, prefer an approved bare-id brief matching the appearance key
+ * before falling back to the explicit alias map — this lets a mob gain its own
+ * request-aligned lineage the moment dedicated art ships without breaking
+ * today's runtime fallback art.
+ *
+ * Returns `undefined` when no generated brief is registered for the
+ * type/appearance combination — the entity uses placeholder art.
  *
  * Lives in `src/shared/` (no Phaser dep) so both the engine renderer and
  * game-layer projectile-origin helpers can use it.
  */
-export function generatedBriefIdForEnemy(type: string, appearanceKey?: string): string | undefined {
+export function generatedBriefIdForEnemy(
+  type: string | undefined,
+  appearanceKey?: string,
+  registry?: GeneratedSpriteRegistry | null,
+): string | undefined {
+  if (registry !== undefined && registry !== null && appearanceKey !== undefined) {
+    if (registry.variants(appearanceKey).length > 0) {
+      return appearanceKey;
+    }
+  }
   if (appearanceKey !== undefined) {
     const byAppearance = GENERATED_BRIEF_BY_APPEARANCE_KEY[appearanceKey];
     if (byAppearance !== undefined) {
       return byAppearance;
     }
   }
-  return GENERATED_BRIEF_BY_TYPE[type];
+  return type !== undefined ? GENERATED_BRIEF_BY_TYPE[type] : undefined;
 }
 
 /**
@@ -728,8 +742,7 @@ export function getEntityNormalizedWeaponAnchor(
   // Resolve brief via appearance key only; GENERATED_BRIEF_BY_TYPE is not
   // available here (entity kind string is outside the WeaponAnchorWorld
   // contract) and all generated-sprite entities always carry an appearance key.
-  const briefId =
-    appearanceKey !== undefined ? GENERATED_BRIEF_BY_APPEARANCE_KEY[appearanceKey] : undefined;
+  const briefId = generatedBriefIdForEnemy(undefined, appearanceKey, registry);
   if (!briefId) return null;
 
   const variantRoll = (world.stores.sprite.variantRoll as ArrayLike<number>)[eid] ?? eid;

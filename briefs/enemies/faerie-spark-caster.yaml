@@ -1,0 +1,48 @@
+type: enemy
+mobRole: normal
+name: faerie-spark-caster
+floor: 2
+description: |
+  Glitterkin Spark-Caster — a small faerie hovering in a clear spellcasting pose,
+  with both arms raised and palms forward so the magic is unmistakably coming
+  from her hands. She is a single centered subject with a compact body and large,
+  expressive wings that catch and reflect the light from the spell.
+
+  The spell effect is the dominant visual element: bright yellow-white electrical
+  arcs leap between both hands and crackle outward in a tight halo around the
+  casting gesture. Keep the sparks connected to the hands rather than floating as
+  separate symbols. The magic should feel high-voltage, sharp, and dangerous in
+  contrast with the faerie's delicate size.
+
+  Silhouette and pose: floating upright with knees tucked or feet trailing
+  slightly below, torso facing the viewer, wings spread enough to read clearly
+  behind the body without becoming detached side subjects. Fingers splayed. The
+  raised-arm casting silhouette must still read as a faerie even if painted solid
+  black, with the lightning adding a strong crown of motion around the hands.
+
+  Palette and materials: faerie-family iridescent pastels on the wings and small
+  body accents, but a darker outfit underneath so the yellow-white electricity is
+  the brightest and most dominant element. Cool lilac, rose, teal, and soft
+  moonlit tones are welcome on the wings; avoid warm gold clothing that would
+  compete with the spell glow.
+
+  Strict constraints:
+  - One faerie only. No duplicate mirrors, decoys, or extra floating creatures.
+  - No staff, wand, orb, rune circle, or unrelated prop.
+  - No background, no platform, no text, and no detached magical symbols.
+  - Electrical arcs must originate from the hands and remain visually tied to the
+    casting pose.
+
+sensors:
+  enemy:
+    facing: front
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Glitterkin Spark-Caster with both palms forward, compact body, large pastel wings, and a tight bright lightning bridge between her hands
+  - Hovering faerie mage with fingers splayed, darker charcoal-violet outfit, iridescent wings lit by dominant yellow-white sparks bursting outward
+  - Front-facing faerie caster in a high-voltage pose, knees tucked under a floating stance, wings catching electric rim light while the spell crackles from both hands
+  - Small delicate faerie silhouette contrasted against sharp dangerous electricity, arms raised, palms forward, wings open behind the body, lightning as the brightest element
