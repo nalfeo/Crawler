@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6f3104db9f7592905111cbae5012794271477315",
+    "commitDate": "2026-08-01T07:48:13Z",
+    "commitSubject": "fix(xp-pacing): add FLOOR_2 loot bonus and gate test for level-10 at first boss (#2553)",
+    "capturedAt": "2026-08-01T08:56:51.812Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30690898968",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/6f3104db9f7592905111cbae5012794271477315.json"
+  },
+  {
     "commit": "f0e1825f61f32d8302229fcb5c40ebc0f3cef951",
     "commitDate": "2026-08-01T07:02:19Z",
     "commitSubject": "feat(assets): add snailfolk-sludge-artillery enemy brief (#2584)",
