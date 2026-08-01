@@ -198,6 +198,11 @@ export interface HeadlessRunnerConfig {
    */
   questStallFrames?: number;
   /**
+   * Optional deterministic early-stop predicate evaluated once per frame after
+   * telemetry updates. When true, the run exits immediately with current stats.
+   */
+  stopWhen?: (world: GameWorld) => boolean;
+  /**
    * Optional inspection hook invoked with the live `GameWorld` after the run
    * completes (or crashes) but before `runHeadless` returns. Used by CI
    * gates that need to statically enumerate entities/components at the end
@@ -242,7 +247,12 @@ export interface HeadlessRunnerConfig {
 const DEFAULT_CONFIG: Required<
   Omit<
     HeadlessRunnerConfig,
-    'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'onFinish' | 'floor2EquipmentFlags'
+    | 'simulationOptions'
+    | 'recordEvent'
+    | 'forceWeaponId'
+    | 'onFinish'
+    | 'floor2EquipmentFlags'
+    | 'stopWhen'
   >
 > = {
   seed: 12345,
@@ -1064,6 +1074,9 @@ export async function runHeadless(
             floor2EncounterDefeatedMs.set(familyId, world.elapsedMs);
           }
         }
+      }
+      if (mergedConfig.stopWhen?.(world)) {
+        break;
       }
 
       // Telemetry: state-change annotations + periodic samples.

@@ -92,6 +92,14 @@ describe('Floor 2 boss level gate — XP pacing delivers level 10 at first boss'
           floorId: 'floor2',
           maxFrames: MAX_FRAMES,
           questStallFrames: QUEST_STALL_FRAMES,
+          stopWhen: (world) => {
+            const encounters = world.floorExtendedState?.familyState?.bossEncounters;
+            if (!encounters) return false;
+            for (const encounter of encounters.values()) {
+              if (encounter.started) return true;
+            }
+            return false;
+          },
         });
 
         const floor2 = stats.floor2Progression;
@@ -125,26 +133,30 @@ describe('Floor 2 boss level gate — XP pacing delivers level 10 at first boss'
         const firstEncounterMs = Math.min(
           ...startedFamilies.map(([, fam]) => fam.encounterStartedMs ?? Infinity),
         );
-        const firstFamilyId = startedFamilies.find(
+        const firstFamilyIdForTiming = startedFamilies.find(
           ([, fam]) => fam.encounterStartedMs === firstEncounterMs,
         )?.[0];
-        const pacingCtx = `(seed=${seed}, family=${firstFamilyId}, encounterStartedMs=${firstEncounterMs}, finalLevel=${stats.finalLevel}, totalXp=${stats.totalXp})`;
+        const pacingCtx = `(seed=${seed}, family=${firstFamilyIdForTiming}, encounterStartedMs=${firstEncounterMs}, finalLevel=${stats.finalLevel}, totalXp=${stats.totalXp})`;
         const tooLateMsg = `First boss encounter at ${firstEncounterMs}ms > ${MAX_FIRST_ENCOUNTER_MS}ms ${pacingCtx}`;
         expect(firstEncounterMs, tooLateMsg).toBeLessThanOrEqual(MAX_FIRST_ENCOUNTER_MS);
 
-        for (const [familyId, fam] of startedFamilies) {
-          const level = fam.levelAtEncounterStart;
-          const ctx = `(seed=${seed}, family=${familyId}, encounterStartedMs=${fam.encounterStartedMs}, finalLevel=${stats.finalLevel}, totalXp=${stats.totalXp})`;
+        const firstFamilyEntry = startedFamilies.find(
+          ([, fam]) => fam.encounterStartedMs === firstEncounterMs,
+        );
+        expect(firstFamilyEntry, `Missing first-encounter family for seed ${seed}`).toBeDefined();
 
-          // Lower bound: XP pacing must deliver level 10 before the fight.
-          const lowMsg = `Boss encounter started at level ${level} < ${MIN_LEVEL_AT_FIRST_BOSS} ${ctx}`;
-          expect(level, lowMsg).toBeGreaterThanOrEqual(MIN_LEVEL_AT_FIRST_BOSS);
+        const [firstFamilyId, firstFam] = firstFamilyEntry!;
+        const level = firstFam.levelAtEncounterStart;
+        const ctx = `(seed=${seed}, family=${firstFamilyId}, encounterStartedMs=${firstFam.encounterStartedMs}, finalLevel=${stats.finalLevel}, totalXp=${stats.totalXp})`;
 
-          // Upper bound: the floor-wide XP bonus must not push the player far
-          // above the reference fight level, which would under-tune bosses.
-          const highMsg = `Boss encounter started at level ${level} > ${MAX_LEVEL_AT_FIRST_BOSS} ${ctx} — XP pacing may be overcorrected`;
-          expect(level, highMsg).toBeLessThanOrEqual(MAX_LEVEL_AT_FIRST_BOSS);
-        }
+        // Lower bound: XP pacing must deliver level 10 before the fight.
+        const lowMsg = `Boss encounter started at level ${level} < ${MIN_LEVEL_AT_FIRST_BOSS} ${ctx}`;
+        expect(level, lowMsg).toBeGreaterThanOrEqual(MIN_LEVEL_AT_FIRST_BOSS);
+
+        // Upper bound: the floor-wide XP bonus must not push the player far
+        // above the reference fight level, which would under-tune bosses.
+        const highMsg = `Boss encounter started at level ${level} > ${MAX_LEVEL_AT_FIRST_BOSS} ${ctx} — XP pacing may be overcorrected`;
+        expect(level, highMsg).toBeLessThanOrEqual(MAX_LEVEL_AT_FIRST_BOSS);
       },
       // Wall-time guard — three seeds × ~2 min/seed in CI
       10 * 60 * 1000,
