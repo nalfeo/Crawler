@@ -1661,9 +1661,21 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
   ): LootTarget | null {
     if (this.decision.state === AIState.ENGAGE) {
+      // Only forgive a pending local cooldown when this engagement follows a
+      // genuine lull (the previous combat window had already expired) — i.e.
+      // this is a fight separated from the last one by more than the
+      // post-combat lull window, matching the "a new, distinct fight deserves
+      // a fresh cleanup chance" intent. Back-to-back engagements that arrive
+      // *inside* the still-active lull window (combat dense enough that
+      // fights overlap each other's lull windows) do not each get their own
+      // reset — otherwise the cooldown that exists specifically to bound how
+      // often local cleanup can re-fire never gets to apply on combat-dense
+      // floors, letting the mechanism re-arm every few seconds for an entire
+      // run and accumulate an unbounded amount of detour time.
+      const priorLullExpired = world.frameCount > this.xpCleanupCombatWindowUntilFrame;
       this.xpCleanupCombatWindowUntilFrame =
         world.frameCount + XP_CLEANUP_COMBAT_LULL_WINDOW_FRAMES;
-      if (this.xpCleanupCooldownMode === 'local') {
+      if (priorLullExpired && this.xpCleanupCooldownMode === 'local') {
         this.xpCleanupCooldownMode = null;
         this.xpCleanupCooldownUntilFrame = 0;
       }

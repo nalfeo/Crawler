@@ -16,13 +16,47 @@
       "notes": "Adversarial review corrections were incorporated. The required pre-BT spatial gate then rejected exit-only sweeping: optimistic 200ft marginal-detour bounds reached only 55.0% and 69.8%, direct exit corridors held 0-0.9% of remaining XP, while 74.2-78.6% was clustered. Architecture changed to hybrid local/post-combat cluster collection plus bounded exit cleanup."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 fixed provider reset leakage, fresh-process parser failure coverage, the combat-window/session-cap ordering bug, and stale priority documentation. Round 2 fixed mode-coupled cooldowns and per-fight local cooldown reset; final Claude re-review was clean."
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.6-terra",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.4"],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "notes": "Round 2 fixed the two valid cooldown lifecycle findings. GPT-5.6 Terra adjudicated the remaining top-K concern as an intentional bounded-A* tradeoff from the approved architecture, not a correctness defect. Final Claude review was clean."
     }
   }
 }

@@ -3764,6 +3764,62 @@ describe('BehaviorTreeAI', () => {
         expect(ai.getDecision().reason).toContain('local post-combat XP');
       });
 
+      it('does not re-arm a still-fresh local cooldown for back-to-back engagements inside the same lull window', () => {
+        // Regression test for issue #2585: on combat-dense floors, fights can
+        // recur far more often than every XP_CLEANUP_COMBAT_LULL_WINDOW_FRAMES
+        // (180). Each new ENGAGE must only forgive a pending local cooldown
+        // when it follows a genuine lull (the previous combat window already
+        // expired) -- not on every single re-engagement, or the cooldown that
+        // exists to bound how often local cleanup can re-fire never gets a
+        // chance to apply, letting it re-open dozens of times per minute.
+        const world = createTestWorld({ seed: 48 });
+        const player = spawnPlayer(world, 0, 0);
+        const firstEnemy = spawnEnemy(world, 5, 0, 20);
+        setActiveWeapon(world, getWeaponDef('sword')!);
+        const ai = new BehaviorTreeAI({ seed: 48 });
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+        removeEntity(world.ecs, firstEnemy);
+
+        initializeFloor1Scenario(world, player);
+        meetTutorialGoon(world);
+        const px = world.stores.position.x[player]!;
+        const py = world.stores.position.y[player]!;
+        const firstGem = spawnXpGem(world, px + 10, py, 5);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision()).toMatchObject({ state: AIState.COLLECT, targetEid: firstGem });
+
+        // Simulate the gem being collected right away (no more candidates),
+        // so the session completes -- and its cooldown starts -- well before
+        // the first fight's 180-frame lull window has elapsed.
+        removeEntity(world.ecs, firstGem);
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().reason).not.toContain('local post-combat XP');
+
+        // A second, genuinely distinct fight breaks out almost immediately --
+        // still comfortably inside the first fight's lull window.
+        const secondEnemy = spawnEnemy(world, px + 5, py, 20);
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+        removeEntity(world.ecs, secondEnemy);
+
+        spawnXpGem(world, px + 10, py, 5);
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+
+        // The still-fresh cooldown from the first session must hold: this
+        // back-to-back re-engagement happened inside the original lull
+        // window, so the priority XP cleanup behavior specifically must not
+        // immediately re-fire for it (an unrelated, lower-priority collect
+        // behavior may still eventually pick up a nearby gem on its own —
+        // that is not what this regression test is about).
+        expect(ai.getDecision().reason).not.toContain('local post-combat XP');
+      });
+
       it('clears cleanup eligibility and cooldown when the provider resets', () => {
         const world = createTestWorld({ seed: 47 });
         const player = spawnPlayer(world, 0, 0);
