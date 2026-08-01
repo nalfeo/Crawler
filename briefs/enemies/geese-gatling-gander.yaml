@@ -1,0 +1,53 @@
+type: enemy
+name: geese-gatling-gander
+floor: 2
+description: |
+  Honk Mob Gatling Gander — a large aggressive goose soldier with a heavy
+  gatling gun mounted under one wing. The gatling gun is the visual
+  centerpiece: multiple rotating barrels, clearly readable barrel array
+  pointing toward the camera, muzzle smoke curling upward, and spent brass
+  casings tumbling downward near the feet. The weapon dominates the lower
+  half of the silhouette.
+
+  Pose: wings spread half-open for balance while aiming-and-firing. Weight
+  shifted forward for stability. Neck extended forward, beak wide open in
+  a war-cry honk — aggressive attack posture, fully committed. The honk
+  reads as the firing call.
+
+  Goose anatomy landmarks that MUST be present: orange bill with nostril
+  slot (centered, front-facing), black head-cap crown feathers, white
+  chest plumage band. Webbed feet planted wide apart for a stable firing
+  base, toes gripping the ground.
+
+  Feather palette: gray-and-white geese family palette. Primary body
+  feathers in medium-to-dark gray, white chest plumage and face-ring band,
+  off-white wing trim highlights. Avoid bright greens or blues — Floor 2
+  palette is military and industrial.
+
+  Gatling gun materials: dark gunmetal barrel array with subtle steel-blue
+  highlights on the rotating cylinder. A muzzle flash hint or smoke wisp
+  at the tip. Brass-toned casing ejection port near the mount. The gun
+  mount straps to the wing root with thick canvas webbing, industrial and
+  improvised.
+
+  Keep hard 1-pixel outlines, transparent background, single subject
+  centered in frame, no text, no background decoration, no secondary
+  subjects. Readable at 64×64 game scale against a Floor 2 dungeon
+  environment.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+
+judge:
+  enabled: true
+  maxVariants: 16
+
+variations:
+  - 'front-facing Gatling Gander: gatling barrel array center-frame, beak open, wings half-spread, spent casings falling near webbed feet, gray body feathers with white chest band'
+  - 'front-facing Gatling Gander: heavy gun-smoke wisp from muzzle, neck fully extended in war-cry honk, orange bill prominent, barrel tips glinting, dark gunmetal gun body'
+  - 'front-facing Gatling Gander: wider wing-spread for balance, casing ejection port visible, black head-cap crown, white wing-trim highlights, industrial canvas mount straps'
+  - 'front-facing Gatling Gander: lower stance with feet planted far apart, muzzle flash at barrel tips, maximum feral honk expression, gray-dominant feather palette with bold orange bill accent'
+
+minVariations: 2

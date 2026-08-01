@@ -1,0 +1,38 @@
+type: enemy
+name: geese-elite-goosefather
+floor: 2
+description: |
+  The Goosefather Street Marshal — an elite goose crime-boss lieutenant. Immaculate
+  white plumage with a pin-striped suit jacket draped over broad, slightly spread
+  wings. Neck extended tall, beak slightly open in an offer-you-can't-refuse pose.
+  Stands with supreme authority: chest out, posture rigid, eyes half-lidded with
+  contemptuous command. A vivid red boutonniere is pinned to the lapel and gold
+  cufflinks catch the light at the wing-tips. The suit is tailored and pristine —
+  this is not salvage-stitched rags but proper crime-boss finery worn immaculately.
+
+  Palette: the geese family's white-gray feather tones (off-white plumage, cool
+  light-grey wing shading) contrasted with crime-boss gold accents — gold cufflinks,
+  gold lapel pin backing, deep charcoal pin-stripe lines on an eggshell-white jacket
+  body. The red boutonniere is the single saturated accent. Avoid bright greens or
+  blues that read Floor 1; keep the overall read cool and authoritative.
+
+  Silhouette: the neck-extended tall-standing goose silhouette should read as
+  unmistakably a goose from across the screen. The jacket drapes like a cape over
+  the wings rather than fully enclosing them — webbed feet planted wide, tail
+  feathers barely visible beneath the jacket hem. One wing-tip slightly raised as
+  if gesturing to make a point.
+
+  Single centered subject, front-facing, hard pixel edges, fully inside frame,
+  no background, no text.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+
+variations:
+  - Goosefather with neck fully extended and one wing slightly raised, gold cufflinks catching the light, red boutonniere on lapel, beak barely open in a calm command pose
+  - Goosefather with both wing-tips folded down, hands-behind-back authority stance, pin-striped suit jacket crisp and pristine, contemptuous half-lidded eyes
+  - Goosefather in a wider stance with beak open wider as if mid-speech, brilliant white plumage against charcoal pinstripes, red boutonniere dominant accent
+
+minVariations: 3

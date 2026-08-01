@@ -1,0 +1,36 @@
+type: enemy
+name: molefolk-elite-pit-boss
+floor: 2
+description: |
+  A stocky, imposing molefolk pit boss radiating supervisory authority — more
+  dressed-up than regular molefolk miners but still unmistakably earthy.
+  Wide stance with both clawed hands planted on hips, chest forward, exuding
+  foreman confidence. The silhouette should read as compact and broad, not tall
+  and thin — low center of gravity, shoulders wider than hips.
+
+  Outfit: a foreman's hard-hat with a prominent gold badge on the front, dark
+  suspenders over a dress shirt (collar slightly loosened), a mining ledger
+  tucked firmly under one arm, polished leather boots caked in real dungeon dirt,
+  and a gold pocket watch chain catching the light at the vest pocket. The gold
+  accents (badge, watch chain, a gleaming cufflink) pop against the earthy base
+  palette without overwhelming it.
+
+  Species read: velvety brown-gray molefolk fur, wide flat snout, small deep-set
+  eyes, and short stubby claws that are visible on the hands resting at the hips.
+  Palette is The Deepdig Union's earthy brown-gray with elite gold accent —
+  medium brown fur, slate gray shirt, dark suspenders, with gold as the only
+  bright-value material.
+
+  Composition: single centered subject only, front-facing, fully inside frame,
+  hard pixel edges, no background, no text, no floating accessories.
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 20
+variations:
+  - molefolk pit boss with hard-hat gold badge prominent, suspenders over dress shirt, both clawed hands on hips in authority stance, mining ledger under left arm
+  - stocky molefolk foreman with gold pocket-watch chain visible, dirty polished boots, suspenders, wide confident stance, flat snout and small deep-set eyes
+  - broad-shouldered molefolk pit boss with ledger tucked under arm and one hand on hip, hard-hat slightly tilted, earthy brown-gray fur with gold badge gleaming
+  - squat imposing molefolk in foreman hard-hat, dark suspenders over a rumpled dress shirt, dirty boots, claws resting on hips in a wide authoritative stance
+  - molefolk elite foreman silhouette — wide low stance, suspenders, ledger under arm, gold watch chain, boots caked in dirt, gold hard-hat badge catching the light
+minVariations: 5

@@ -1,0 +1,49 @@
+type: enemy
+mobRole: elite
+name: crabfolk-elite-shell-capo
+floor: 2
+description: |
+  An elite crabfolk capo oozing crime-boss authority — a heavy tank silhouette
+  that is wide, low-center, and imposing. The oversized reinforced shell is the
+  dominant visual: extra plating bolted on top of natural chitin, decorated with
+  hand-painted pinstripe lines and gold trim accents. A lit cigar is clamped
+  firmly in one combat claw, smoke curling upward. The other claw is raised
+  slightly — a don's warning gesture.
+
+  Status markers stack visibly: a fine dark suit jacket draped casually over
+  one shoulder, thick gold chain links across the chest, and a look of absolute
+  cold authority in the stalked eyes. Both large claws are visibly armored with
+  additional chitin plating riveted over the natural exoskeleton — these are
+  fighting tools, not decorative.
+
+  Floor 2 cartel palette, crabfolk family tones: blue-gray and slate for the
+  natural shell and chitin, gold and warm brass for the elite trim, pinstripe
+  detail in off-white or cream against dark shell. Deep charcoal for the suit
+  jacket. No bright primaries — authoritative and dark.
+
+  Silhouette: wide and low, dominated by the broad shell dome and the two
+  armored claws extending to either side. Front-facing toward the viewer,
+  centered subject, single character only. Hard pixel edges, no background,
+  no text.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+  interiorHoles:
+    maxPixels: 256
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - crabfolk elite capo front-facing, oversized reinforced shell with pinstripe paint and gold trim, cigar clamped in one armored claw, suit jacket draped over shoulder
+  - crabfolk elite capo wide tank silhouette, extra shell plating with gold elite accent, thick chains across chest, both claws armored and prominent
+  - crabfolk elite capo in cold authority pose, blue-gray chitin with gold-trim boss shell, riveted claw armor, stalked eyes radiating menace
+  - crabfolk elite capo low-center-of-gravity crustacean boss mass, pinstriped shell dome, raised warning claw with lit cigar, dark cartel presence
+
+minVariations: 4

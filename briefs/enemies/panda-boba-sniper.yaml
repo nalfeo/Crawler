@@ -1,0 +1,18 @@
+type: enemy
+name: panda-boba-sniper
+floor: 2
+description: |
+  A panda in a low, crouched sniper stance, body compact and forward-leaning,
+  clearly posed as a long-range precision threat. The panda has classic
+  black-and-white face markings, with one eye aligned through or just above a
+  scope, expression focused and menacing.
+
+  The weapon must read unmistakably as a long sniper rifle with a boba-tea
+  theme: the stock is a sealed takeaway cup, the barrel is a wide straw, and a
+  side drum magazine shows oversized tapioca pearls. Include tactical details
+  like scope hardware, subtle warning markings, and a bipod suggestion while
+  keeping the silhouette clean and readable.
+
+  Palette intent: panda fur in white/black, weapon body in tea-brown and
+  caramel tones with dark pearl accents. Single subject only. Hard pixel edges,
+  no background, no text.
