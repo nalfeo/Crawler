@@ -101,16 +101,17 @@ test('nightly velocity filer creates and then reuses one durable issue', async (
   });
 });
 
-test('buildVelocityIssueBody uses a fully-qualified owner/repo closing reference', () => {
+test('buildVelocityIssueBody uses a non-closing owner/repo issue reference', () => {
   const issueNumber = 9999;
   const body = buildVelocityIssueBody(issueNumber);
   assert.ok(
-    body.includes(`Closes nalfeo/Crawler#${issueNumber}`),
-    `Expected body to contain 'Closes nalfeo/Crawler#${issueNumber}' but got:\n${body}`,
+    body.includes(`Refs nalfeo/Crawler#${issueNumber}`),
+    `Expected body to contain 'Refs nalfeo/Crawler#${issueNumber}' but got:\n${body}`,
   );
   assert.ok(
-    !body.includes(`Closes #${issueNumber}`),
-    `Expected body NOT to contain bare 'Closes #${issueNumber}' but it does`,
+    !body.includes(`Closes nalfeo/Crawler#${issueNumber}`) &&
+      !body.includes(`Closes #${issueNumber}`),
+    `Expected body NOT to contain closing-keyword references for #${issueNumber} but it does`,
   );
 });
 
