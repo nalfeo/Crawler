@@ -91,13 +91,18 @@ In `src/shared/generated-assets.ts` line 636, change:
 'beetlefolk-elite-bugatti': 'beetlefolk-charger',
 ```
 
-to:
+to the approved entry's `briefId`. Check the exact `briefId` field in the approved
+manifest entry (for example `beetlefolk-elite-bugatti-v1`) and use that value:
 
 ```typescript
-'beetlefolk-elite-bugatti': 'beetlefolk-elite-bugatti-var-<N>',
+'beetlefolk-elite-bugatti': 'beetlefolk-elite-bugatti-v1',  // use the actual approved briefId
 ```
 
-where `<N>` is the approved variant number.
+Note: `registry.variants()` groups entries by `briefId`, not by texture key. Using a
+texture key like `beetlefolk-elite-bugatti-var-<N>` would fail to find the asset.
+Copy the `briefId` field directly from the approved manifest entry.
+
+where `<briefId>` is the approved variant's brief identifier from the manifest.
 
 **Then check in + batch PR + observe:**
 

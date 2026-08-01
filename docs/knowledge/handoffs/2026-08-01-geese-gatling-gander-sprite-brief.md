@@ -42,7 +42,7 @@ Authored and committed the sprite brief YAML for `geese-gatling-gander`, the Hon
 | Check in | Asset Forge | `npm run sprites:checkin` → `asset-checkin` issue |
 | Batch art PR | Asset Forge (asset-pr skill) | Art-only, squash-merge |
 | Observe in game | Asset Forge | `npm run dev` or headless probe; before/after screenshot required |
-| Wiring code PR | Asset Forge | Update `src/shared/generated-assets.ts` line 649: `'geese-gatling-gander': 'geese-honker'` → `'geese-gatling-gander': 'geese-gatling-gander'`; run `npm run verify:fast` |
+| Wiring code PR | Asset Forge | Update `src/shared/generated-assets.ts` line 649: `'geese-gatling-gander': 'geese-honker'` → `'geese-gatling-gander': '<approved-briefId>'` where `<approved-briefId>` is the exact `briefId` from the approved manifest entry (e.g. `geese-gatling-gander-v1`); run `npm run verify:fast` |
 
 ## Brief key specs
 

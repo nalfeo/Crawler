@@ -48,11 +48,16 @@ established asset-request brief pattern for Floor 2 enemy sprites:
 
 ## Key Decisions Made
 
-1. **Brief-first, no runtime-alias edit needed**: `generatedBriefIdForEnemy` already
-   auto-detects a dedicated sprite when `registry.variants('raccoon-bottle-rocketeer')`
-   returns results — the existing fallback alias `'raccoon-bottle-rocketeer': 'raccoon-thief'`
-   (line 645 of `src/shared/generated-assets.ts`) is bypassed the moment dedicated art
-   ships, without any manual code change.
+1. **Wiring code change required after art ships**: the issue pipeline synthesizes versioned
+   brief IDs (e.g. `raccoon-bottle-rocketeer-v1`). `generatedBriefIdForEnemy` probes
+   `registry.variants('raccoon-bottle-rocketeer')` first, but the registry groups entries
+   by the `briefId` in the manifest — a versioned entry like `raccoon-bottle-rocketeer-v1`
+   is NOT found by the bare key probe. Once the approved entry's `briefId` is known (e.g.
+   `raccoon-bottle-rocketeer-v1`), update line 645 of `src/shared/generated-assets.ts`
+   from `'raccoon-bottle-rocketeer': 'raccoon-thief'` to
+   `'raccoon-bottle-rocketeer': 'raccoon-bottle-rocketeer-v1'` (using the actual approved
+   `briefId`). Without this code change the raccoon will continue using `raccoon-thief`
+   as its placeholder art even after dedicated sprites land in the registry.
 
 2. **Front-facing sensor**: the issue brief explicitly requires "front-facing", so
    `sensors.enemy.facing: front` with `toleranceDeg: 25` was set.
@@ -66,13 +71,19 @@ established asset-request brief pattern for Floor 2 enemy sprites:
 ## Wiring
 
 The enemy `raccoon-bottle-rocketeer` already exists in `src/shared/data/enemies.floor2.json`
-with `aiType: "ranged"` and `familyId: "raccoons"`. Wiring is handled automatically:
+with `aiType: "ranged"` and `familyId: "raccoons"`.
 
-- Before art ships: entity uses `raccoon-thief` sprite as fallback (live-registry path
-  short-circuits to `raccoon-thief` via the alias table).
-- After art ships (when `raccoon-bottle-rocketeer-var-N.json` appears in
-  `public/assets/generated/entries/`): `registry.variants('raccoon-bottle-rocketeer')`
-  returns the new sprite and no code change is needed.
+- Before art ships: entity uses `raccoon-thief` sprite as fallback (alias table entry
+  `'raccoon-bottle-rocketeer': 'raccoon-thief'` at line 645 of `src/shared/generated-assets.ts`).
+- After art ships: a **manual code change is required**. The issue pipeline synthesizes a
+  versioned `briefId` (e.g. `raccoon-bottle-rocketeer-v1`). `generatedBriefIdForEnemy`
+  probes `registry.variants('raccoon-bottle-rocketeer')` first but the registry groups
+  by exact `briefId`, so a versioned entry is never found by the bare key. Update the
+  alias to the approved entry's `briefId`:
+  ```typescript
+  // src/shared/generated-assets.ts line 645
+  'raccoon-bottle-rocketeer': 'raccoon-bottle-rocketeer-v1',  // use actual approved briefId
+  ```
 
 ## Verification
 
@@ -80,14 +91,17 @@ with `aiType: "ranged"` and `familyId: "raccoons"`. Wiring is handled automatica
 - Fingerprint cross-verified with Node.js one-liner matching `0e13b752...` ✅
 - `npm run verify:pr-prereqs` was not run (no tsx locally); CI will exercise tests.
 - Observe-before-done note: the generated sprite must be confirmed rendering in-game
-  (`npm run dev` or headless probe) after the `assets/queue` PR merges. The wiring
-  is automatic but the visual read (silhouette, palette, scale) needs a human eyeball.
+  (`npm run dev` or headless probe) after the `assets/queue` PR merges. The visual
+  read (silhouette, palette, scale) needs a human eyeball.
 
 ## What's Next / Blockers
 
 - The `assets/queue` PR (#2558) needs the new `raccoon-bottle-rocketeer-var-0.png` to
   appear after the workflow drains. Watch `gh run list --workflow asset-request.yml` for
   the next successful run triggered by this workflow_dispatch.
-- Once art lands, confirm the raccoon family sprites render at the same scale as siblings
-  in the Floor 2 combat scene.
-- No further wiring PRs are needed; the auto-detect path handles it.
+- Once art lands, **a wiring PR is required**: update `src/shared/generated-assets.ts`
+  line 645 to map `'raccoon-bottle-rocketeer'` to the approved entry's `briefId` (e.g.
+  `'raccoon-bottle-rocketeer-v1'`). Check the manifest entry's exact `briefId` field
+  before updating.
+- Confirm the raccoon family sprites render at the same scale as siblings in the Floor 2
+  combat scene after the wiring PR merges.
