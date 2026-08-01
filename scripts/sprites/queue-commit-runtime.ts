@@ -10,7 +10,7 @@
  * never imports node fs/child_process.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Exec } from './checkin.js';
@@ -67,6 +67,14 @@ export function createDefaultQueueCommitDeps(
   return {
     exec,
     copyArtSurface,
+    copyBriefFiles: async (sourceRoot, worktree, briefPaths) => {
+      for (const briefPath of briefPaths) {
+        const src = path.join(sourceRoot, ...briefPath.split('/'));
+        const dst = path.join(worktree, ...briefPath.split('/'));
+        mkdirSync(path.dirname(dst), { recursive: true });
+        copyFileSync(src, dst);
+      }
+    },
     makeTempDir: () => Promise.resolve(mkdtempSync(path.join(tmpdir(), 'asset-queue-commit-'))),
     removeDir: async (dir) => {
       // rmSync can throw EPERM on Windows while git still briefly holds a lock on

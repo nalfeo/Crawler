@@ -399,6 +399,7 @@ const PERMANENT_ERROR_KINDS = new Set([
   'ci-refused',
   'destination-conflict',
   'invalid-asset-path',
+  'invalid-brief-path',
   'run-not-found',
   'summary-invalid',
   'variant-count-mismatch',
