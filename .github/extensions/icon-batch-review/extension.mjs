@@ -71,11 +71,14 @@ function readJsonBody(req) {
 async function buildState() {
   const bridge = createBridge(REPO_ROOT, { warn: (m) => log(m, 'warn') });
   try {
-    const batches = await bridge.listBatches();
-    return { batches, error: null };
+    const [batches, recentRuns] = await Promise.all([
+      bridge.listBatches(),
+      bridge.listRecentRuns(),
+    ]);
+    return { batches, recentRuns, error: null };
   } catch (err) {
     log(`buildState failed: ${err?.message ?? err}`, 'warn');
-    return { batches: [], error: err?.message ?? String(err) };
+    return { batches: [], recentRuns: [], error: err?.message ?? String(err) };
   }
 }
 
@@ -84,6 +87,14 @@ function makeRoutes() {
 
   return {
     jsonRoutes: [
+      {
+        method: 'GET',
+        path: '/_runs',
+        handler: async () => {
+          const runs = await bridge.listRecentRuns();
+          return { json: { runs } };
+        },
+      },
       {
         method: 'POST',
         path: '/_action',
@@ -106,6 +117,28 @@ function makeRoutes() {
             }
           }
 
+          if (action === 'reject') {
+            const { iconId, feedback } = body ?? {};
+            if (!iconId) return { status: 400, json: { error: 'Missing iconId' } };
+            try {
+              await bridge.rejectIcon(iconId, feedback ?? '');
+              return { json: { ok: true, message: `Rejected ${iconId}` } };
+            } catch (err) {
+              return { status: 500, json: { error: err?.message ?? String(err) } };
+            }
+          }
+
+          if (action === 'unreject') {
+            const { iconId } = body ?? {};
+            if (!iconId) return { status: 400, json: { error: 'Missing iconId' } };
+            try {
+              await bridge.unrejectIcon(iconId);
+              return { json: { ok: true, message: `Un-rejected ${iconId}` } };
+            } catch (err) {
+              return { status: 500, json: { error: err?.message ?? String(err) } };
+            }
+          }
+
           return { status: 400, json: { error: `Unknown action: ${action}` } };
         },
       },
@@ -115,7 +148,7 @@ function makeRoutes() {
       {
         method: 'GET',
         path: /^\/icon\/(.+)$/,
-        handler: ({ url }) => {
+        handler: async ({ url }) => {
           const m = url.pathname.match(/^\/icon\/(.+)$/);
           if (!m)
             return {
@@ -132,7 +165,7 @@ function makeRoutes() {
               body: Buffer.from('invalid id'),
             };
           }
-          const buf = bridge.getIconPng(iconId);
+          const buf = await bridge.getIconPng(iconId);
           if (!buf)
             return {
               status: 404,
@@ -161,7 +194,12 @@ async function startInstance(instanceId) {
       instanceId,
       // The harness calls renderHtml(instanceId) lazily at request time.
       // Close over `serverUrl` which is set after the server resolves below.
-      renderHtml: (_id) => renderHtml({ batches: state.batches, baseUrl: serverUrl }),
+      renderHtml: (_id) =>
+        renderHtml({
+          batches: state.batches,
+          recentRuns: state.recentRuns ?? [],
+          baseUrl: serverUrl,
+        }),
       jsonRoutes,
       binaryRoutes,
       log: (msg, level) => log(`[canvas-server] ${msg}`, level),

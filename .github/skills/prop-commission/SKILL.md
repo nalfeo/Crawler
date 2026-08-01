@@ -124,3 +124,4 @@ a placeholder and a brief in flight. State the status of each gap.
 - `.github/skills/sprite-judge/SKILL.md` (per-sprite quality)
 - `docs/agent-os/sprite-style.md` (global style ground truth the contract narrows)
 - `scripts/sprites/brief-schema.ts`, `briefs/README.md`
+- **`asset-search` extension** — `search_assets` tool: check `docs/knowledge/metrics/asset-search/` for `emptyQueries` lists that signal which asset families still need briefs. Each failed query is a candidate brief to commission.

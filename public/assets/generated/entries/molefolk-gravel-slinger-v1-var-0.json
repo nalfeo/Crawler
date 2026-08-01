@@ -1,0 +1,126 @@
+{
+  "briefId": "molefolk-gravel-slinger-v1",
+  "spriteName": "molefolk-gravel-slinger-v1-var-0",
+  "assetPath": "generated/molefolk-gravel-slinger-v1-var-0.png",
+  "approvedAt": "2026-08-01T06:04:01.877Z",
+  "sourceRun": "generated/runs/molefolk-gravel-slinger-v1/2026-08-01T05-56-50-4fffa44b",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 128,
+    "y": 144,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 128,
+      "y": 144,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 128,
+      "y": 144,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 128,
+        "y": 144
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:58:42.792Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a molefolk soldier with mining gear and a gravel-sling is both readable and fits the darkly humorous, authored collision of ideas that defines Crawler. The mining lamp, overalls, and cement-mixer weapon are cohesive and inventive."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the references in terms of outline weight, shading, and palette depth. The rendering feels consistent with the approved in-game sprites."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the references in terms of outline weight, shading, and palette depth. The rendering feels consistent with the approved in-game sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts the described molefolk soldier with all key elements present: overalls, hard hat with lamp, gravel-sling, gloves, and tail."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale. The gravel-sling and crouched pose are immediately recognizable, and there are no visual integrity defects."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a one-third turn, with the face and body angled appropriately for readability and engagement."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, from the top of the hard hat to the feet and tail. Nothing is cropped or missing."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language: mining gear (hard hat, lamp, overalls, gloves), the gravel-sling as an improvised weapon, and the molefolk identity. These elements clearly tie into the Deepdig Union and the Family Matters floor theme."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4117,
+      "completionTokens": 465,
+      "totalTokens": 4582
+    }
+  },
+  "type": "enemy",
+  "contentHash": "e3fa32efb5487b6e71e6d05849fe100913ebce5e2143826ef587a96cbbac317d",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 228,
+    "height": 238,
+    "canvasWidth": 256,
+    "canvasHeight": 266
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/molefolk-gravel-slinger-v1/2026-08-01T05-56-50-4fffa44b/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/molefolk-gravel-slinger-v1/2026-08-01T05-56-50-4fffa44b/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/molefolk-gravel-slinger-v1/2026-08-01T05-56-50-4fffa44b/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

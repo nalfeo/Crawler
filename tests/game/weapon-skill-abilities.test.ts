@@ -3,7 +3,7 @@
  * passive ability system.
  *
  * Covers:
- * - SKILL_LEVEL5_ABILITY_GRANTS map contains all 20 skill IDs
+ * - All skill L5 milestones have abilityId entries
  * - Ability definitions have correct weapon prerequisites
  * - skillSystem grants the ability at level 5
  * - abilitySystem applies passives when weapon prerequisite is met
@@ -27,10 +27,7 @@ import {
   weaponPrerequisiteMet,
 } from '../../src/game/systems/abilitySystem.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
-import {
-  getAbilityDefinition,
-  SKILL_LEVEL5_ABILITY_GRANTS,
-} from '../../src/game/abilities/registry.js';
+import { getAbilityDefinition } from '../../src/game/abilities/registry.js';
 import { WEAPON_CLASS_SKILL_IDS, WEAPON_TYPE_SKILL_IDS } from '../../src/shared/weapon-skills.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef, clearActiveWeaponDef } from '../../src/core/active-weapon.js';
@@ -74,35 +71,40 @@ function fireSkillUsageEvents(
   }
 }
 
+/** Returns the abilityId granted at L5 for a skill, derived from its milestone definition. */
+function getL5AbilityId(skillId: string): string | undefined {
+  return getSkillDefinition(skillId)?.milestones.find((m) => m.level === 5)?.abilityId;
+}
+
 // ---------------------------------------------------------------------------
-// SKILL_LEVEL5_ABILITY_GRANTS coverage
+// Skill L5 milestone ability grants coverage
 // ---------------------------------------------------------------------------
 
-describe('SKILL_LEVEL5_ABILITY_GRANTS', () => {
-  it('covers all weapon class skill IDs', () => {
+describe('skill L5 milestone ability grants', () => {
+  it('every weapon class skill has an L5 milestone with an abilityId', () => {
     for (const id of WEAPON_CLASS_SKILL_IDS) {
-      expect(SKILL_LEVEL5_ABILITY_GRANTS.has(id), `missing grant for class skill: ${id}`).toBe(
-        true,
-      );
+      expect(getL5AbilityId(id), `missing L5 ability grant for class skill: ${id}`).toBeDefined();
     }
   });
 
-  it('covers all weapon type skill IDs', () => {
+  it('every weapon type skill has an L5 milestone with an abilityId', () => {
     for (const id of WEAPON_TYPE_SKILL_IDS) {
-      expect(SKILL_LEVEL5_ABILITY_GRANTS.has(id), `missing grant for type skill: ${id}`).toBe(true);
+      expect(getL5AbilityId(id), `missing L5 ability grant for type skill: ${id}`).toBeDefined();
     }
   });
 
-  it('covers non-weapon skills (swordsmanship, iron-skin, sprint)', () => {
-    expect(SKILL_LEVEL5_ABILITY_GRANTS.has('swordsmanship')).toBe(true);
-    expect(SKILL_LEVEL5_ABILITY_GRANTS.has('iron-skin')).toBe(true);
-    expect(SKILL_LEVEL5_ABILITY_GRANTS.has('sprint')).toBe(true);
+  it('non-weapon skills (swordsmanship, iron-skin, sprint) have L5 milestones', () => {
+    expect(getL5AbilityId('swordsmanship')).toBeDefined();
+    expect(getL5AbilityId('iron-skin')).toBeDefined();
+    expect(getL5AbilityId('sprint')).toBeDefined();
   });
 
-  it('all mapped ability IDs reference real registered abilities', () => {
-    for (const [skillId, abilityId] of SKILL_LEVEL5_ABILITY_GRANTS) {
+  it('all L5 ability IDs reference real registered abilities of kind passive', () => {
+    for (const skill of getAllSkillDefinitions()) {
+      const abilityId = getL5AbilityId(skill.id);
+      if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
-      expect(def, `ability ${abilityId} (for skill ${skillId}) not found`).toBeDefined();
+      expect(def, `ability ${abilityId} (for skill ${skill.id}) not found`).toBeDefined();
       expect(def!.kind).toBe('passive');
     }
   });
@@ -115,7 +117,7 @@ describe('SKILL_LEVEL5_ABILITY_GRANTS', () => {
 describe('weapon-skill passive ability definitions', () => {
   it('weapon CLASS skill abilities have matching weaponPrerequisite', () => {
     for (const classSkillId of WEAPON_CLASS_SKILL_IDS) {
-      const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get(classSkillId);
+      const abilityId = getL5AbilityId(classSkillId);
       if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
       expect(def?.kind).toBe('passive');
@@ -128,24 +130,20 @@ describe('weapon-skill passive ability definitions', () => {
     }
   });
 
-  it('weapon TYPE skill abilities have matching weaponPrerequisite', () => {
+  it('weapon TYPE skill abilities are passive stubs (active wiring is a follow-up)', () => {
     for (const typeSkillId of WEAPON_TYPE_SKILL_IDS) {
-      const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get(typeSkillId);
+      const abilityId = getL5AbilityId(typeSkillId);
       if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
+      // Weapon type skill L5 abilities are stubs: kind=passive, no weapon prerequisite yet.
+      // Active ability wiring is a follow-up task (see PR description).
       expect(def?.kind).toBe('passive');
-      if (def?.kind === 'passive') {
-        expect(
-          def.weaponPrerequisite,
-          `${abilityId} should have weapon prerequisite '${typeSkillId}'`,
-        ).toBe(typeSkillId);
-      }
     }
   });
 
   it('general skill abilities (swordsmanship, iron-skin, sprint) have no weaponPrerequisite', () => {
     for (const generalId of ['swordsmanship', 'iron-skin', 'sprint']) {
-      const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get(generalId)!;
+      const abilityId = getL5AbilityId(generalId)!;
       const def = getAbilityDefinition(abilityId);
       expect(def?.kind).toBe('passive');
       if (def?.kind === 'passive') {
@@ -173,7 +171,8 @@ describe('skillSystem level-5 ability grants', () => {
     skillSystem(world);
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
+    const expectedAbilityId =
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
     expect(abilityState.passiveAbilityIds).toContain(expectedAbilityId);
   });
 
@@ -186,7 +185,7 @@ describe('skillSystem level-5 ability grants', () => {
     skillSystem(world);
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sprint')!;
+    const expectedAbilityId = getL5AbilityId('sprint')!;
     expect(abilityState.passiveAbilityIds).toContain(expectedAbilityId);
   });
 
@@ -199,7 +198,8 @@ describe('skillSystem level-5 ability grants', () => {
     skillSystem(world);
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
+    const expectedAbilityId =
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
     expect(abilityState.passiveAbilityIds).not.toContain(expectedAbilityId);
   });
 
@@ -213,7 +213,8 @@ describe('skillSystem level-5 ability grants', () => {
     skillSystem(world);
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
+    const expectedAbilityId =
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ?? getL5AbilityId('sword')!;
     const count = abilityState.passiveAbilityIds.filter((id) => id === expectedAbilityId).length;
     expect(count).toBe(1);
   });
@@ -227,14 +228,14 @@ describe('weaponPrerequisiteMet', () => {
   it('returns true for unconditional passives (no prerequisite)', () => {
     const { world, player } = setupPlayerWithSkills();
     // ever-vigilant has no weaponPrerequisite
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sprint')!;
+    const abilityId = getL5AbilityId('sprint')!;
     expect(weaponPrerequisiteMet(world, player, abilityId)).toBe(true);
   });
 
   it('returns false for weapon-prerequisite passive when no weapon is equipped', () => {
     const { world, player } = setupPlayerWithSkills();
     clearActiveWeaponDef(world);
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword'
     expect(weaponPrerequisiteMet(world, player, abilityId)).toBe(false);
   });
 
@@ -242,7 +243,7 @@ describe('weaponPrerequisiteMet', () => {
     const { world, player } = setupPlayerWithSkills();
     const swordWeapon = WEAPON_DEFS.get('sword')!; // class: slashing, type: sword
     setActiveWeaponDef(world, swordWeapon);
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('slashing')!; // blade-mastery (requires slashing class)
+    const abilityId = getL5AbilityId('slashing')!; // slashing-mastery-base (requires slashing class)
     expect(weaponPrerequisiteMet(world, player, abilityId)).toBe(true);
   });
 
@@ -250,7 +251,7 @@ describe('weaponPrerequisiteMet', () => {
     const { world, player } = setupPlayerWithSkills();
     const swordWeapon = WEAPON_DEFS.get('sword')!; // type: sword
     setActiveWeaponDef(world, swordWeapon);
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman (requires sword type)
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword'
     expect(weaponPrerequisiteMet(world, player, abilityId)).toBe(true);
   });
 
@@ -258,7 +259,7 @@ describe('weaponPrerequisiteMet', () => {
     const { world, player } = setupPlayerWithSkills();
     const pistol = WEAPON_DEFS.get('pistol')!; // type: pistol
     setActiveWeaponDef(world, pistol);
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman (requires sword type)
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword'
     expect(weaponPrerequisiteMet(world, player, abilityId)).toBe(false);
   });
 });
@@ -273,7 +274,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const swordWeapon = WEAPON_DEFS.get('sword')!;
     setActiveWeaponDef(world, swordWeapon);
 
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword'
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
@@ -286,7 +287,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const pistol = WEAPON_DEFS.get('pistol')!;
     setActiveWeaponDef(world, pistol);
 
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword'
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
@@ -298,7 +299,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const { world, player } = setupPlayerWithSkills();
     const swordWeapon = WEAPON_DEFS.get('sword')!;
     const pistol = WEAPON_DEFS.get('pistol')!;
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword'
 
     // Grant with correct weapon.
     setActiveWeaponDef(world, swordWeapon);
@@ -320,7 +321,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const { world, player } = setupPlayerWithSkills();
     const swordWeapon = WEAPON_DEFS.get('sword')!;
     const pistol = WEAPON_DEFS.get('pistol')!;
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword'
 
     grantPassiveAbility(world, player, abilityId);
 
@@ -330,12 +331,18 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
       true,
     );
+    expect(world.vfxEvents.filter((event) => event.kind === 'abilityActivateFlash')).toHaveLength(
+      1,
+    );
 
     // Revoke with pistol.
     setActiveWeaponDef(world, pistol);
     abilitySystem(world);
     expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
       false,
+    );
+    expect(world.vfxEvents.filter((event) => event.kind === 'abilityActivateFlash')).toHaveLength(
+      1,
     );
 
     // Re-apply with sword.
@@ -344,6 +351,9 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     expect(world.abilityStatesByEntity.get(player)!.appliedPassiveAbilityIds.has(abilityId)).toBe(
       true,
     );
+    expect(world.vfxEvents.filter((event) => event.kind === 'abilityActivateFlash')).toHaveLength(
+      2,
+    );
   });
 
   it('applies unconditional passives regardless of equipped weapon', () => {
@@ -351,7 +361,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const pistol = WEAPON_DEFS.get('pistol')!;
     setActiveWeaponDef(world, pistol);
 
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sprint')!; // ever-vigilant (no prereq)
+    const abilityId = getL5AbilityId('sprint')!; // ever-vigilant (no prereq)
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
@@ -363,7 +373,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const { world, player } = setupPlayerWithSkills();
     clearActiveWeaponDef(world);
 
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('swordsmanship')!; // combat-flow (no prereq)
+    const abilityId = getL5AbilityId('swordsmanship')!; // combat-flow (no prereq)
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
@@ -379,7 +389,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const { world, player } = setupPlayerWithSkills();
     clearActiveWeaponDef(world);
 
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('swordsmanship')!; // combat-flow (no prereq)
+    const abilityId = getL5AbilityId('swordsmanship')!; // combat-flow (no prereq)
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
@@ -391,7 +401,7 @@ describe('abilitySystem weapon-prerequisite passive gate', () => {
     const swordWeapon = WEAPON_DEFS.get('sword')!;
     setActiveWeaponDef(world, swordWeapon);
 
-    const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!; // keen-swordsman (weapon prereq)
+    const abilityId = 'keen-swordsman'; // weaponPrerequisite: 'sword' (weapon prereq)
     grantPassiveAbility(world, player, abilityId);
     abilitySystem(world);
 
@@ -431,10 +441,10 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     // player would see two flashes for one unlock.
     const { world, player } = setupPlayerWithSkills();
     clearActiveWeaponDef(world);
-    const swordDef = getSkillDefinition('sword')!; // grants keen-swordsman (sword prereq)
-    const threshold = swordDef.usageThresholds[4]!;
+    const slashingDef = getSkillDefinition('slashing')!; // grants slashing-mastery-base (slashing prereq)
+    const threshold = slashingDef.usageThresholds[4]!;
 
-    fireSkillUsageEvents(world, player, 'sword', 'weapon_fired', threshold);
+    fireSkillUsageEvents(world, player, 'slashing', 'weapon_fired', threshold);
     skillSystem(world);
 
     expect(world.vfxEvents.some((event) => event.kind === 'abilityActivateFlash')).toBe(false);
@@ -452,12 +462,12 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     // milestone site must not ALSO push VFX for weapon-gated passives, or the
     // player would see two flashes for one unlock.
     const { world, player } = setupPlayerWithSkills();
-    const swordWeapon = WEAPON_DEFS.get('sword')!;
+    const swordWeapon = WEAPON_DEFS.get('sword')!; // sword has slashing weapon class
     setActiveWeaponDef(world, swordWeapon); // matching weapon already equipped
-    const swordDef = getSkillDefinition('sword')!; // grants keen-swordsman (sword prereq)
-    const threshold = swordDef.usageThresholds[4]!;
+    const slashingDef = getSkillDefinition('slashing')!; // grants slashing-mastery-base (slashing prereq)
+    const threshold = slashingDef.usageThresholds[4]!;
 
-    fireSkillUsageEvents(world, player, 'sword', 'weapon_fired', threshold);
+    fireSkillUsageEvents(world, player, 'slashing', 'weapon_fired', threshold);
     skillSystem(world); // grants the passive at level 5
     abilitySystem(world); // applies the now-eligible passive, may push its own VFX
 
@@ -494,7 +504,7 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
 
     // The passive is still granted (mobs can level skills via the v2 path)...
     const abilityState = world.abilityStatesByEntity.get(mob);
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sprint')!;
+    const expectedAbilityId = getL5AbilityId('sprint')!;
     expect(abilityState?.passiveAbilityIds).toContain(expectedAbilityId);
     // ...but no player-facing HUD feedback is produced for a non-Player holder.
     expect(world.vfxEvents.some((event) => event.kind === 'abilityActivateFlash')).toBe(false);

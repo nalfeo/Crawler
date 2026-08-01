@@ -1,0 +1,189 @@
+{
+  "briefId": "gnome-wheelman-v1",
+  "spriteName": "gnome-wheelman-v1-var-1",
+  "assetPath": "generated/gnome-wheelman-v1-var-1.png",
+  "approvedAt": "2026-08-01T00:36:16.385Z",
+  "sourceRun": "generated/runs/gnome-wheelman-v1/2026-08-01T00-34-24-8fb86fef",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 347,
+    "y": 122,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 347,
+      "y": 122,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 347,
+      "y": 122,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 683 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 624,
+          "y": 82
+        },
+        {
+          "x": 625,
+          "y": 82
+        },
+        {
+          "x": 626,
+          "y": 82
+        },
+        {
+          "x": 627,
+          "y": 82
+        },
+        {
+          "x": 628,
+          "y": 82
+        },
+        {
+          "x": 629,
+          "y": 82
+        },
+        {
+          "x": 624,
+          "y": 83
+        },
+        {
+          "x": 625,
+          "y": 83
+        },
+        {
+          "x": 626,
+          "y": 83
+        },
+        {
+          "x": 627,
+          "y": 83
+        },
+        {
+          "x": 628,
+          "y": 83
+        },
+        {
+          "x": 327,
+          "y": 84
+        },
+        {
+          "x": 328,
+          "y": 84
+        },
+        {
+          "x": 624,
+          "y": 84
+        },
+        {
+          "x": 625,
+          "y": 84
+        },
+        {
+          "x": 626,
+          "y": 84
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 347,
+        "y": 122
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:36:05.245Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a gnome on a rickety motorized unicycle with a large wrench is both unique and fits the darkly humorous and offbeat tone of Crawler. The combination of a whimsical gnome and a dangerous, improvised vehicle is a strong contradiction that aligns with the design language."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of hard 1-pixel outlines and distinct color stops is consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of hard 1-pixel outlines and distinct color stops is consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a gnome on a motorized unicycle with a raised wrench, goggles, and a patched leather vest. The unicycle's exposed gears and exhaust pipe are also present, fulfilling the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is mostly clear, with the gnome's raised wrench and unicycle being distinguishable. However, the exhaust smoke slightly blends into the background, which could be improved for better readability."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The gnome is facing the camera at an appropriate angle, with a dynamic pose that conveys motion and action."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple elements from the floor and theme design language, including the industrial and improvisational aesthetic of the unicycle, the patched leather vest, the goggles, and the oversized wrench. The brass-and-blue color scheme is also present, aligning with the Cog Combine theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 5126,
+      "completionTokens": 445,
+      "totalTokens": 5571
+    }
+  },
+  "type": "enemy",
+  "contentHash": "b2b368fc33409e86f985111ea307219cfb01b5fc2adab53c4d4af3e4ef897e3e",
+  "opaqueBounds": {
+    "x": 38,
+    "y": 38,
+    "width": 631,
+    "height": 180,
+    "canvasWidth": 707,
+    "canvasHeight": 256
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/gnome-wheelman-v1/2026-08-01T00-34-24-8fb86fef/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/gnome-wheelman-v1/2026-08-01T00-34-24-8fb86fef/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/gnome-wheelman-v1/2026-08-01T00-34-24-8fb86fef/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

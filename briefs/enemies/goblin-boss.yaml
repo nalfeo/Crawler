@@ -1,0 +1,45 @@
+type: enemy
+mobRole: boss
+name: goblin-boss
+floor: 2
+sizeVariant: large
+description: |
+  Nana Snaggle Grubwix, matriarch of The Snaggle Cartel. A squat, wide-bodied
+  goblin crime boss radiating authority through sheer bulk and menace. Shorter
+  than tall, with a barrel chest and powerful arms — a compact rectangular
+  boss-mass silhouette. Dressed in dark-fantasy cartel finery: a heavy patched
+  waistcoat assembled from scavenged leather and iron scrap plates, multiple
+  chains of bone and corroded brass, and a wide-brimmed salvage hat dripping
+  with tarnished trinkets. Green warty skin with dark shadows under hooded,
+  calculating eyes. One oversized hand rests against a bone-studded iron
+  gorget fused into her chest regalia. Scarred, tattooed, weathered — a goblin
+  who has survived everything Floor 2 can throw. Front-facing toward the
+  viewer, slight three-quarter stance allowed.
+
+  Floor 2 palette: deep greens and olive for skin, rusted iron and charcoal
+  for armor plates, tarnished brass and dull bone for chains. No bright
+  primaries. Color reads as dark, grim authority.
+
+  Silhouette: short and wide, low center of gravity. The wide hat plus broad
+  shoulders creates a trapezoid boss-mass. No thin floating accessories —
+  all props fused into the body silhouette.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 30
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Nana Snaggle Grubwix in heavy scrap-plate waistcoat, bone-and-brass chains, wide salvage hat, bone-studded iron gorget, front-facing authority pose
+  - Nana Snaggle Grubwix with patched leather coat reinforced with bolted iron strips, tarnished trinket-laden hat tilted forward, scarred warty face
+  - Nana Snaggle Grubwix displaying iron-fist authority — thick arms crossed, rusted pauldrons, heavy chain gorget, dark calculating eyes
+  - Nana Snaggle Grubwix in hooded goblin-matriarch silhouette, wide body draped in layered dark salvage furs and corroded chain regalia
+
+minVariations: 4

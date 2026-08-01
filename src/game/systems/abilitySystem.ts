@@ -781,6 +781,7 @@ function applyPassive(
   holderEid: number,
   passiveId: string,
   state: AbilityState,
+  suppressActivationVfx = false,
 ): void {
   const def = getAbilityDefinition(passiveId);
   if (def === undefined || def.kind !== 'passive') return;
@@ -806,7 +807,11 @@ function applyPassive(
   // long ago. General passives instead get their one-time milestone VFX (and the
   // skillPassiveUnlocked announcement) from the level-5 skill milestone grant
   // site — see skillSystem.ts.
-  if (def.weaponPrerequisite !== undefined && hasComponent(world.ecs, holderEid, Player)) {
+  if (
+    !suppressActivationVfx &&
+    def.weaponPrerequisite !== undefined &&
+    hasComponent(world.ecs, holderEid, Player)
+  ) {
     const px = world.stores.position.x[holderEid] ?? 0;
     const py = world.stores.position.y[holderEid] ?? 0;
     pushVfxEvent(world.vfxEvents, { kind: 'abilityActivateFlash', x: px, y: py });
@@ -831,7 +836,11 @@ function revokePassive(
   state.appliedPassiveAbilityIds.delete(passiveId);
 }
 
-export function synchronizeAbilityPassives(world: GameWorld, holderEid: number): void {
+export function synchronizeAbilityPassives(
+  world: GameWorld,
+  holderEid: number,
+  options?: { suppressActivationVfx?: boolean },
+): void {
   const state = getOrCreateAbilityState(world, holderEid);
   for (const passiveId of [...state.appliedPassiveAbilityIds]) {
     if (!state.grantOwnership.passiveSourcesByAbilityId.has(passiveId)) {
@@ -852,7 +861,7 @@ export function synchronizeAbilityPassives(world: GameWorld, holderEid: number):
       const alreadyApplied = state.appliedPassiveAbilityIds.has(passiveId);
 
       if (prereqMet && !alreadyApplied) {
-        applyPassive(world, holderEid, passiveId, state);
+        applyPassive(world, holderEid, passiveId, state, options?.suppressActivationVfx === true);
       } else if (!prereqMet && alreadyApplied) {
         revokePassive(world, holderEid, passiveId, state);
       }

@@ -1,0 +1,52 @@
+type: enemy
+name: beetlefolk-elite-bugatti
+floor: 2
+description: |
+  Bugatti Chitin Lieutenant — a sleek elite beetlefolk soldier wearing a fitted
+  racing jacket and a glossy, iridescent shell. Styled like a high-end crime boss
+  who loves speed: aerodynamic silhouette that reads noticeably more streamlined
+  and refined than regular beetlefolk bruisers. The shell is dark and iridescent
+  — deep charcoal-black with a subtle blue-violet sheen — polished to a mirror
+  finish, a stark contrast to the rust-and-grime of lower-rank beetle kin.
+  A single bold gold racing stripe runs down the center of the shell from
+  the neck to the tail. Sunglasses on: wide, wraparound tinted lenses, cool and
+  confident. Collar of the racing jacket is popped up around the neck. The jacket
+  itself is form-fitting with minimal bulk, giving a fast, low-drag profile.
+  Posture is upright and assured — not hunched like a regular grunt, but squared
+  shoulders, slight forward lean, weight balanced like someone about to sprint.
+  The overall silhouette reads: elite, quick, and faintly dangerous in an
+  extremely well-dressed way.
+  Six legs (three per side) tuck close to the streamlined body; they do not
+  break the aerodynamic outline. Two thin, forward-angled antennae suggest speed
+  rather than mass. Mandibles are present but refined — not the blunt-force
+  chompers of the boss, but sharper, precision-focused.
+  Beetle family color palette: dark iridescent shell (charcoal-black, blue-violet
+  highlight), gold accent (racing stripe, cuffs, collar edge), and the racing
+  jacket in a saturated contrast color (see variations).
+  Floor 2 treatment: no grime, no rust — this creature is immaculate. The
+  contrast between its polished appearance and the dungeon environment is
+  deliberate; it signals elite status visually.
+  Front-facing camera angle, full body from head to feet visible, single centered
+  subject. Hard pixel edges, transparent background.
+  IMPORTANT: absolutely no text, letters, signs, labels, or words anywhere in the
+  image. No background scenery, no floor shadow, no extra subjects.
+variations:
+  - crimson racing jacket with gold frame sunglasses; racing stripe angled
+    slightly left; gold cuff trim; assertive stance with one leg slightly forward
+  - jet-black racing jacket with chrome mirror-lens wraparound shades; racing
+    stripe clean down the center; minimal collar pop; coolly neutral stance
+  - deep cobalt blue jacket with tinted iridescent lens shades that match the
+    shell sheen; racing stripe broken into two parallel gold lines; collar fully
+    popped; slight forward lean telegraphing aggression
+minVariations: 6
+sensors:
+  edge:
+    allowMainTouch: true
+  enemy:
+    facing: front
+    toleranceDeg: 35
+  interiorHoles:
+    maxPixels: 400
+judge:
+  enabled: true
+  maxVariants: 8

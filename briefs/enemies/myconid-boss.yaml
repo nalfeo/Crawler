@@ -1,0 +1,47 @@
+type: enemy
+mobRole: boss
+name: myconid-boss
+floor: 2
+sizeVariant: large
+description: |
+  The Sovereign Cap, ancient patriarch-fungus of The Sporeholders — a massive,
+  slow-burning myconid boss whose sheer age and size radiates fungal dread.
+  A thick central stalk body topped by an enormous, heavy mushroom cap that
+  fills the upper frame — the cap is the dominant visual element, wide and
+  heavy, drooping slightly at the edges from its own weight. The cap is deeply
+  ridged with age, spotted with bioluminescent vents and corrupted pore-lines.
+  The body below is thick and gnarled, supported by two root-like leg pillars.
+
+  Crime-boss character: the cap is draped with a hanging cloak of woven
+  mycelium-silk and salvage iron chains, as if wearing a heavy mantle of
+  office. Small glowing spore-pods dangle from the cap edges like ornaments.
+  Corrupt industrial salvage fused to the stalk: iron scrap-ring collar,
+  corroded brass spore-vents, carved bone rune-plates bolted to the trunk.
+
+  Dark Floor 2 palette: deep charcoal-grey and mottled dark green for the
+  stalk, dirty off-white and pale sage for cap underside, poisonous pale
+  blue-green bioluminescent glow from pore vents (dim, not neon). Verdigris
+  and rust for iron fittings.
+
+  Silhouette: dominated by the wide heavy cap at top. Stalk and legs form
+  a compact base. One connected boss mass — no isolated floating pieces.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - The Sovereign Cap with massive age-ridged mushroom cap draped in mycelium-silk cloak, iron chain mantle, dim bioluminescent pore-vents
+  - Sovereign Cap with ancient gnarled stalk, iron salvage collar, corroded brass fittings, wide cap edge drooping with age and authority
+  - The Sovereign Cap in full patriarch display — enormous cap breadth, bone rune-plates bolted to stalk, spore-pod ornaments, poisoned glow
+  - 'Sovereign Cap silhouette-first: wide heavy cap top, thick stalk body, root-pillar legs, one unified boss-mass of ancient corrupted fungus'
+
+minVariations: 4

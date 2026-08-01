@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "magic-build-parity",
+  "task_title": "Fix magic build gear acquisition parity (Floor 2 reward pool neutral-preference)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "adversarial": false,
+      "plan_divergence": "convergent",
+      "concerns_count": 1,
+      "resolved_count": 0,
+      "notes": "rubber-duck gpt-5.4; one blocking concern raised: pool-symmetry != acquisition parity — needs headless validation of filled-slots-by-level-10. Unresolved: the observe-before-done policy requires a before/after observation in the game or headless pipeline. Deterministic unit tests confirm equal non-aligned pool sizes (32 neutral items each), which addresses the pool-asymmetry root cause, but does not constitute before/after observation of actual gameplay draws. A headless equipment-position measurement is captured as a follow-up item in the handoff but was not performed in this session."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "code-review agent (claude-sonnet-5) over full diff; all usages consistent, implementation correct, tests appropriately updated, fallback behavior verified against actual boss-chest weapon-only pool. No findings."
+        }
+      ]
+    }
+  }
+}

@@ -428,8 +428,49 @@ describe('generatedBriefIdForEnemy', () => {
     expect(generatedBriefIdForEnemy('enemy_family_boss', 'batfolk-boss')).toBe('batfolk-boss');
     expect(generatedBriefIdForEnemy('enemy_rat', 'goblin-grunt')).toBe('goblin-grunt');
     expect(generatedBriefIdForEnemy('enemy_rat', 'geese-honker')).toBe('geese-honker');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'gnome-elite-pinstripe-artillerist')).toBe(
+      'gnome-elite-pinstripe-artillerist',
+    );
     expect(generatedBriefIdForEnemy('enemy_slime', 'cave-slime')).toBe('cave-slime');
     expect(generatedBriefIdForEnemy('enemy_rat', 'crystal-scuttler')).toBe('crystal-scuttler');
+  });
+
+  it('prefers a dedicated bare-id brief in the live registry before a legacy alias fallback', () => {
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'faerie-blink-var-0': {
+          briefId: 'faerie-blink',
+          spriteName: 'faerie-blink-var-0',
+          assetPath: 'generated/faerie-blink-var-0.png',
+          approvedAt: '2026-08-01T00:00:00.000Z',
+          sourceRun: 'test',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '7/7',
+          judgeScore: '4',
+        },
+        'faerie-spark-caster-var-0': {
+          briefId: 'faerie-spark-caster',
+          spriteName: 'faerie-spark-caster-var-0',
+          assetPath: 'generated/faerie-spark-caster-var-0.png',
+          approvedAt: '2026-08-01T00:00:00.000Z',
+          sourceRun: 'test',
+          variantIndex: 0,
+          anchor: null,
+          sensorScore: '7/7',
+          judgeScore: '4',
+        },
+      },
+    });
+
+    expect(generatedBriefIdForEnemy('enemy_rat', 'faerie-spark-caster')).toBe('faerie-blink');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'faerie-spark-caster', registry)).toBe(
+      'faerie-spark-caster',
+    );
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'faerie-spark-caster')).toBe(
+      'faerie-spark-caster-var-0',
+    );
   });
 
   it('reconciles the two singular→plural boss id mismatches', () => {

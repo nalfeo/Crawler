@@ -1,0 +1,130 @@
+{
+  "briefId": "geese-elite-goosefather-v1",
+  "spriteName": "geese-elite-goosefather-v1-var-0",
+  "assetPath": "generated/geese-elite-goosefather-v1-var-0.png",
+  "approvedAt": "2026-08-01T05:52:29.794Z",
+  "sourceRun": "generated/runs/geese-elite-goosefather-v1/2026-08-01T05-50-36-831804bc",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 257,
+    "y": 326,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 257,
+      "y": 326,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 257,
+      "y": 326,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 257,
+        "y": 326
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:51:50.810Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The Goosefather concept is well-executed, combining the absurdity of a goose in a mob boss role with dark humor and a clear contradiction between the mundane (a tailored suit) and the threatening (imposing goose anatomy). The design feels authored and fits the Crawler aesthetic."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is consistent with the approved references and maintains the same production finish."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is consistent with the approved references and maintains the same production finish."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts the Goosefather as described in the brief, with the pin-striped suit, red boutonniere, gold cufflinks, and menacing smirk all present and unambiguous."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The imposing stance and outstretched wings are immediately recognizable."
+    },
+    "poseOrientation": {
+      "score": 4,
+      "rationale": "The Goosefather is slightly more front-facing than the ideal one-third-to-two-thirds turn, but the pose still conveys authority and presence effectively."
+    },
+    "bossPresence": {
+      "score": 4,
+      "rationale": "The Goosefather has a larger and more imposing silhouette than a standard mob, but it could benefit from additional elements to emphasize its boss status, such as a larger weapon or more exaggerated features."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The Goosefather is fully framed, with all parts of the body visible, including the head, torso, wings, and feet. The sprite is well-composed within the frame."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language, including the tailored suit, red boutonniere, gold cufflinks, and menacing goose features. The design clearly communicates allegiance and rank within the Honk Mob."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4207,
+      "completionTokens": 546,
+      "totalTokens": 4753
+    }
+  },
+  "type": "enemy",
+  "contentHash": "3cfb7737fccd9b16c0bf46372ea47f12b74ca0618d6c67dc3d890f1d1e6ea2a9",
+  "opaqueBounds": {
+    "x": 32,
+    "y": 32,
+    "width": 448,
+    "height": 525,
+    "canvasWidth": 512,
+    "canvasHeight": 589
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/geese-elite-goosefather-v1/2026-08-01T05-50-36-831804bc/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/geese-elite-goosefather-v1/2026-08-01T05-50-36-831804bc/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/geese-elite-goosefather-v1/2026-08-01T05-50-36-831804bc/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
