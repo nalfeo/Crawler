@@ -3,8 +3,10 @@
  *
  * Reads:
  *  - `briefs/icons/**\/*.yaml` to enumerate known batches and their icon ids
- *  - `public/assets/generated/entries/*.json` shards to find approved icons
- *  - `public/assets/generated/<iconId>.png` to serve icon previews
+ *  - `public/assets/generated/entries/*.json` shards (local worktree) for approved icons
+ *  - `origin/assets/queue` branch (via git show) for icons committed by CI runs
+ *  - `briefs/icons/.icon-rejections.json` for human-rejected icons
+ *  - `public/assets/generated/<iconId>.png` (local or queue branch) to serve previews
  *
  * Dispatches:
  *  - `gh workflow run icon-batch.yml` for generate/run actions
@@ -13,7 +15,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -22,16 +24,73 @@ const execFileAsync = promisify(execFile);
 /**
  * @param {string} repoRoot
  * @param {{ warn?: (msg: string) => void }} [opts]
- * @returns {{ listBatches: () => Promise<BatchSummary[]>, dispatchWorkflow: (action: string, batchIds?: string) => Promise<void>, getIconPng: (iconId: string) => Buffer | null }}
  */
 export function createBridge(repoRoot, opts = {}) {
   const log = opts.warn ?? (() => {});
   const BRIEFS_DIR = path.join(repoRoot, 'briefs', 'icons');
   const SHARDS_DIR = path.join(repoRoot, 'public', 'assets', 'generated', 'entries');
   const GENERATED_DIR = path.join(repoRoot, 'public', 'assets', 'generated');
+  const REJECTIONS_FILE = path.join(BRIEFS_DIR, '.icon-rejections.json');
 
-  /** @returns {Map<string, boolean>} approved icon ids */
-  function loadApprovedIds() {
+  // ── Queue-branch icon cache ──────────────────────────────────────────────
+  /** @type {Map<string,boolean>|null} */
+  let _queueApproved = null;
+  let _queueCacheTs = 0;
+  const QUEUE_TTL_MS = 90_000;
+
+  async function getQueueApprovedIds() {
+    const now = Date.now();
+    if (_queueApproved !== null && now - _queueCacheTs < QUEUE_TTL_MS) return _queueApproved;
+    const approved = new Map();
+    try {
+      await execFileAsync('git', ['fetch', 'origin', 'assets/queue', '--depth=1', '--quiet'], {
+        cwd: repoRoot,
+        timeout: 20_000,
+      });
+      const { stdout: listing } = await execFileAsync(
+        'git',
+        [
+          'ls-tree',
+          '--name-only',
+          '-r',
+          'origin/assets/queue',
+          '--',
+          'public/assets/generated/entries/',
+        ],
+        { cwd: repoRoot },
+      );
+      const files = listing
+        .trim()
+        .split('\n')
+        .filter((f) => f.endsWith('.json') && f.trim());
+      // Read shards in parallel, 12 at a time
+      for (let i = 0; i < files.length; i += 12) {
+        await Promise.all(
+          files.slice(i, i + 12).map(async (f) => {
+            try {
+              const { stdout } = await execFileAsync('git', ['show', `origin/assets/queue:${f}`], {
+                cwd: repoRoot,
+              });
+              const shard = JSON.parse(stdout);
+              if (shard?.spriteName) approved.set(shard.spriteName, true);
+            } catch {
+              /* skip corrupt/missing */
+            }
+          }),
+        );
+      }
+    } catch (err) {
+      log(`getQueueApprovedIds: ${err?.message ?? err}`);
+    }
+    _queueApproved = approved;
+    _queueCacheTs = now;
+    return approved;
+  }
+
+  // ── Local helpers ────────────────────────────────────────────────────────
+
+  /** @returns {Map<string, boolean>} approved icon ids from local worktree shards */
+  function loadLocalApprovedIds() {
     const approved = new Map();
     if (!existsSync(SHARDS_DIR)) return approved;
     for (const f of readdirSync(SHARDS_DIR)) {
@@ -46,6 +105,16 @@ export function createBridge(repoRoot, opts = {}) {
       }
     }
     return approved;
+  }
+
+  /** @returns {{ iconId: string, feedback: string, rejectedAt: string }[]} */
+  function loadRejections() {
+    if (!existsSync(REJECTIONS_FILE)) return [];
+    try {
+      return JSON.parse(readFileSync(REJECTIONS_FILE, 'utf8')) ?? [];
+    } catch {
+      return [];
+    }
   }
 
   /** @returns {string[]} all YAML brief paths under briefs/icons/ */
@@ -110,11 +179,17 @@ export function createBridge(repoRoot, opts = {}) {
 
   return {
     /**
-     * List all batches with their approval status.
+     * List all batches with their approval/rejection status.
+     * Checks both the local worktree shards AND the assets/queue remote branch.
      * @returns {Promise<BatchSummary[]>}
      */
     async listBatches() {
-      const approved = loadApprovedIds();
+      const [localApproved, queueApproved] = await Promise.all([
+        Promise.resolve(loadLocalApprovedIds()),
+        getQueueApprovedIds(),
+      ]);
+      const allApproved = new Map([...localApproved, ...queueApproved]);
+      const rejectedSet = new Set(loadRejections().map((r) => r.iconId));
       const briefPaths = collectBriefPaths();
       const batches = [];
       for (const briefPath of briefPaths) {
@@ -126,7 +201,9 @@ export function createBridge(repoRoot, opts = {}) {
         } catch (err) {
           log(`bridge: could not parse ${briefPath}: ${err.message}`);
         }
-        const approvedEntries = entries.filter((e) => approved.has(e.id));
+        const approvedEntries = entries.filter(
+          (e) => allApproved.has(e.id) && !rejectedSet.has(e.id),
+        );
         batches.push({
           briefId,
           category,
@@ -135,7 +212,8 @@ export function createBridge(repoRoot, opts = {}) {
           approved: approvedEntries.length,
           entries: entries.map((e) => ({
             ...e,
-            isApproved: approved.has(e.id),
+            isApproved: allApproved.has(e.id),
+            isRejected: rejectedSet.has(e.id),
           })),
         });
       }
@@ -143,10 +221,10 @@ export function createBridge(repoRoot, opts = {}) {
     },
 
     /**
-     * List active (queued / in-progress) workflow runs for icon-batch.yml.
-     * @returns {Promise<{ databaseId: number, status: string, displayTitle: string, createdAt: string }[]>}
+     * List recent workflow runs for icon-batch.yml (all statuses, with conclusion).
+     * @returns {Promise<{ databaseId: number, status: string, conclusion: string|null, displayTitle: string, createdAt: string }[]>}
      */
-    async listActiveRuns() {
+    async listRecentRuns() {
       try {
         const { stdout } = await execFileAsync(
           'gh',
@@ -156,16 +234,15 @@ export function createBridge(repoRoot, opts = {}) {
             '--workflow',
             'icon-batch.yml',
             '--limit',
-            '10',
+            '8',
             '--json',
-            'databaseId,status,displayTitle,createdAt',
+            'databaseId,status,conclusion,displayTitle,createdAt',
           ],
           { cwd: repoRoot, timeout: 15_000 },
         );
-        const all = JSON.parse(stdout || '[]');
-        return all.filter((r) => ['in_progress', 'queued', 'waiting'].includes(r.status));
+        return JSON.parse(stdout || '[]');
       } catch (err) {
-        log(`listActiveRuns failed: ${err?.message ?? err}`);
+        log(`listRecentRuns failed: ${err?.message ?? err}`);
         return [];
       }
     },
@@ -188,18 +265,56 @@ export function createBridge(repoRoot, opts = {}) {
     },
 
     /**
-     * Read a generated icon PNG as a Buffer (null if not found).
+     * Read a generated icon PNG as a Buffer.
+     * Tries local worktree first, then falls back to origin/assets/queue branch.
      * @param {string} iconId
-     * @returns {Buffer | null}
+     * @returns {Promise<Buffer | null>}
      */
-    getIconPng(iconId) {
-      const pngPath = path.join(GENERATED_DIR, `${iconId}.png`);
-      if (!existsSync(pngPath)) return null;
-      try {
-        return readFileSync(pngPath);
-      } catch {
-        return null;
+    async getIconPng(iconId) {
+      // Try local worktree first (fast path)
+      const localPath = path.join(GENERATED_DIR, `${iconId}.png`);
+      if (existsSync(localPath)) {
+        try {
+          return readFileSync(localPath);
+        } catch {
+          /* fall through */
+        }
       }
+      // Try the queue branch (icons committed by CI runs)
+      try {
+        const { stdout } = await execFileAsync(
+          'git',
+          ['show', `origin/assets/queue:public/assets/generated/${iconId}.png`],
+          { cwd: repoRoot, encoding: 'buffer', timeout: 10_000 },
+        );
+        return stdout;
+      } catch {
+        /* not found or no queue branch */
+      }
+      return null;
+    },
+
+    /**
+     * Mark an icon as rejected (writes to briefs/icons/.icon-rejections.json).
+     * @param {string} iconId
+     * @param {string} [feedback]
+     */
+    async rejectIcon(iconId, feedback = '') {
+      let rejections = loadRejections();
+      rejections = rejections.filter((r) => r.iconId !== iconId);
+      rejections.push({ iconId, feedback, rejectedAt: new Date().toISOString() });
+      writeFileSync(REJECTIONS_FILE, JSON.stringify(rejections, null, 2) + '\n');
+      return { ok: true };
+    },
+
+    /**
+     * Remove a rejection for an icon (un-reject).
+     * @param {string} iconId
+     */
+    async unrejectIcon(iconId) {
+      const rejections = loadRejections().filter((r) => r.iconId !== iconId);
+      writeFileSync(REJECTIONS_FILE, JSON.stringify(rejections, null, 2) + '\n');
+      return { ok: true };
     },
   };
 }
