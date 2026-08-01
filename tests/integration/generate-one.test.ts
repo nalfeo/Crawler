@@ -712,3 +712,140 @@ describe('generateOne — exact-cell slice gate at 16 (Bug B honest happy path)'
     expect(existsSync(result.summaryPath)).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seed-frame prepending
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WALK_CYCLE_WITH_SEED_YAML = `
+type: character
+name: walk-seed-test
+size: { width: 64, height: 64 }
+palette: { id: test-palette }
+anchor: { x: 32, y: 63 }
+tags: [character, walk-cycle]
+prompt: A test character walking in place.
+seedFrames:
+  - path: seeds/frame0.png
+    note: Approved frame 0 seed
+generation:
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
+frameSequence:
+  enabled: true
+  frameCount: 4
+  frameRate: 8
+  loop: true
+sensors:
+  anchor:
+    mode: center-of-mass
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
+`.trim();
+
+const WALK_CYCLE_TRAVERSAL_YAML = `
+type: character
+name: walk-traversal-test
+size: { width: 64, height: 64 }
+palette: { id: test-palette }
+anchor: { x: 32, y: 63 }
+tags: [character, walk-cycle]
+prompt: A test character walking in place.
+seedFrames:
+  - path: ../../outside-repo/secret.png
+generation:
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
+frameSequence:
+  enabled: true
+  frameCount: 4
+  frameRate: 8
+  loop: true
+sensors:
+  anchor:
+    mode: center-of-mass
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
+`.trim();
+
+describe('generateOne — seed frames are prepended to referencePngs', () => {
+  let root: string;
+  let outputRoot: string;
+
+  const SEED_BYTES = Buffer.from('SEED_FRAME_MARKER_BYTES');
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-seedframes-'));
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    mkdirSync(path.join(root, 'docs', 'agent-os'), { recursive: true });
+    mkdirSync(path.join(root, 'briefs', 'characters'), { recursive: true });
+    mkdirSync(path.join(root, 'seeds'), { recursive: true });
+    writeFileSync(path.join(root, 'data', 'palettes', 'test-palette.json'), PALETTE_JSON);
+    writeFileSync(path.join(root, 'docs', 'agent-os', 'sprite-style.md'), STYLE_GUIDE);
+    writeFileSync(path.join(root, 'seeds', 'frame0.png'), SEED_BYTES);
+    outputRoot = path.join(root, 'generated');
+  }, 30_000);
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('prepends seed frame PNGs before the style reference sprites in referencePngs', async () => {
+    const briefPath = path.join(root, 'briefs', 'characters', 'walk-seed-test.yaml');
+    writeFileSync(briefPath, WALK_CYCLE_WITH_SEED_YAML);
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+
+    const readRef = (absolutePath: string): Buffer => {
+      if (absolutePath.endsWith('frame0.png')) return SEED_BYTES;
+      return Buffer.from(absolutePath);
+    };
+
+    const { provider, lastRequest } = makeCapturingProvider(sheet);
+
+    await generateOne({
+      briefPath,
+      provider,
+      repoRoot: root,
+      outputRoot,
+      now: () => new Date('2026-06-04T12:00:00.000Z'),
+      readReference: readRef,
+      loadReferenceCandidates: () => REFERENCE_CANDIDATES,
+      referenceAssetExists: () => true,
+    });
+
+    const req = lastRequest();
+    expect(req).not.toBeNull();
+    // First reference PNG must be the seed frame.
+    expect(req!.referencePngs.length).toBeGreaterThan(0);
+    expect(req!.referencePngs[0]).toEqual(SEED_BYTES);
+    // Remaining entries must NOT be the seed (they're style references).
+    const rest = req!.referencePngs.slice(1);
+    expect(rest.length).toBeGreaterThan(0);
+    expect(rest.every((buf) => !buf.equals(SEED_BYTES))).toBe(true);
+  });
+
+  it('rejects a seed frame path that escapes the repository root', async () => {
+    const briefPath = path.join(root, 'briefs', 'characters', 'walk-traversal-test.yaml');
+    writeFileSync(briefPath, WALK_CYCLE_TRAVERSAL_YAML);
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+
+    await expect(
+      generateOne({
+        briefPath,
+        provider: makeMockProvider(sheet),
+        repoRoot: root,
+        outputRoot,
+        now: () => new Date('2026-06-04T12:00:00.000Z'),
+        readReference: () => Buffer.from('bytes'),
+        loadReferenceCandidates: () => REFERENCE_CANDIDATES,
+        referenceAssetExists: () => true,
+      }),
+    ).rejects.toThrow(/resolves outside the repository root/);
+  });
+});
