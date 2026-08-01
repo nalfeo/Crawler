@@ -101,6 +101,19 @@ test('nightly velocity filer creates and then reuses one durable issue', async (
   });
 });
 
+test('buildVelocityIssueBody uses a fully-qualified owner/repo closing reference', () => {
+  const issueNumber = 9999;
+  const body = buildVelocityIssueBody(issueNumber);
+  assert.ok(
+    body.includes(`Closes nalfeo/Crawler#${issueNumber}`),
+    `Expected body to contain 'Closes nalfeo/Crawler#${issueNumber}' but got:\n${body}`,
+  );
+  assert.ok(
+    !body.includes(`Closes #${issueNumber}`),
+    `Expected body NOT to contain bare 'Closes #${issueNumber}' but it does`,
+  );
+});
+
 test('nightly perf filer creates and then reuses one durable issue', async () => {
   const harness = createHarness();
   const first = await runWithHarness(runNightlyPerfIssue, harness);
