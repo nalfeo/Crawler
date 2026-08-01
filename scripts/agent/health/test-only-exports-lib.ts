@@ -366,6 +366,17 @@ const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     file: 'src/shared/terrain-pack-variants.ts',
     name: 'GROUND_DECAL_DENSITY',
   },
+  // floor-registry: test-isolation helpers exposed so headless regression tests
+  // and per-test afterEach blocks can verify and reset manifest contamination
+  // without embedding the detection logic in each test file.
+  {
+    file: 'src/shared/floor-registry.ts',
+    name: 'resetBuiltInFloorManifests',
+  },
+  {
+    file: 'src/shared/floor-registry.ts',
+    name: 'getOverriddenBuiltInFloorManifestIds',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {

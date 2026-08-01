@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import { floor1Manifest } from '../../src/shared/floor-manifest.js';
 import { getFloorManifest, resetBuiltInFloorManifests } from '../../src/shared/floor-registry.js';
 
 afterEach(() => {
@@ -21,5 +22,12 @@ describe('runHeadless floor-registry contamination guard', () => {
     ).rejects.toThrow(
       /resetBuiltInFloorManifests\(\).*fresh Node process|fresh Node process.*resetBuiltInFloorManifests\(\)/,
     );
+  });
+
+  it('throws when the exported floor1Manifest object is mutated directly', () => {
+    expect(() => {
+      // floor1Manifest is deep-frozen; any mutation attempt throws in strict mode.
+      (floor1Manifest as { timer: { durationMs: number } }).timer.durationMs += 1;
+    }).toThrow(TypeError);
   });
 });

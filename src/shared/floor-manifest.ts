@@ -241,9 +241,20 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
   return parsed;
 }
 
+function deepFreeze<T extends object>(obj: T): T {
+  for (const val of Object.values(obj)) {
+    if (val !== null && typeof val === 'object') {
+      deepFreeze(val as object);
+    }
+  }
+  return Object.freeze(obj);
+}
+
 /**
  * Validated Floor 1 manifest, loaded at module initialization.
+ * Deep-frozen to prevent accidental mutation; use floor-registry.ts for mutable
+ * working copies.
  * @deprecated Use floor-registry.ts instead
  */
-export const floor1Manifest: FloorManifestDef = loadFloorManifest('floor1');
-export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
+export const floor1Manifest: FloorManifestDef = deepFreeze(loadFloorManifest('floor1'));
+export const floor2Manifest: FloorManifestDef = deepFreeze(loadFloorManifest('floor2'));

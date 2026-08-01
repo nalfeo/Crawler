@@ -124,7 +124,7 @@ import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
 import { floor1EnemyPack, floor2EnemyPack } from '../shared/enemy-packs.js';
-import { floor1Manifest } from '../shared/floor-manifest.js';
+import { getFloorManifest } from '../shared/floor-registry.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
@@ -1727,8 +1727,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // sign can detect and avoid landing on top of an NPC (see placeWelcomeSigns).
 
   // Place ambient props using the floor manifest config (if present).
-  if (floor1Manifest.props !== undefined) {
-    placePropsForFloor(world, floorMap, floor1Manifest.props, world.rng);
+  const floor1RegistryManifest = getFloorManifest('floor1')!;
+  if (floor1RegistryManifest.props !== undefined) {
+    placePropsForFloor(world, floorMap, floor1RegistryManifest.props, world.rng);
   }
 
   const starterWeaponPool = getFloor1StarterWeaponPool(floor1Config.starterWeapons, {
@@ -1858,7 +1859,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   // Spawn NPCs from placement definitions (if available in manifest)
   const floor1State = world.floorScenario;
-  const npcPlacements = floor1Manifest.npcPlacements;
+  const npcPlacements = getFloorManifest('floor1')!.npcPlacements;
   const occupiedNpcTiles = new Set<string>();
   let spawnReachableMask =
     world.floorMap == null
