@@ -2,12 +2,9 @@
  * Index builder for the asset-search extension.
  *
  * Reads all non-placeholder shards from `public/assets/generated/entries/`
- * AND all brief YAML files from `briefs/`. Returns a flat array of documents
- * suitable for MiniSearch indexing.
- *
- * Documents have a `status` field:
- *   "approved"   — an approved generated sprite with a real asset path
- *   "brief-only" — a brief that has no approved variants yet
+ * and enriches each document with text from the corresponding brief in
+ * `briefs/` (looked up by `entry.briefId`). Brief text is included as a
+ * lower-weight `briefText` field so tags remain the authoritative signal.
  *
  * Cannot import TypeScript modules — all I/O is reimplemented inline.
  */
@@ -24,26 +21,22 @@ const SHARDS_DIR = path.join(GENERATED_DIR, 'entries');
 const BRIEFS_DIR = path.join(REPO_ROOT, 'briefs');
 const BASE_GENERATED_TAGS = ['generated', 'pipeline-approved'];
 
-/** Max description chars stored in the index per brief (briefs can be very long). */
-const MAX_BRIEF_DESC_CHARS = 800;
+/** Max chars of brief description to store per shard (briefs can be very long). */
+const MAX_BRIEF_TEXT_CHARS = 800;
 
 /**
- * Build the full corpus: approved shards + brief-only briefs (those with no
- * approved variant yet).
+ * Build the full corpus: approved shards, each enriched with its brief text.
  */
 export function buildCorpus() {
-  const shardDocs = buildShardCorpus();
-  // Build set of brief IDs already covered by at least one approved shard.
-  const approvedBriefIds = new Set(shardDocs.map((d) => d.briefId).filter(Boolean));
-  const briefDocs = buildBriefCorpus(approvedBriefIds);
-  return [...shardDocs, ...briefDocs];
+  const briefMap = buildBriefMap();
+  return buildShardCorpus(briefMap);
 }
 
 // ---------------------------------------------------------------------------
 // Shard corpus
 // ---------------------------------------------------------------------------
 
-function buildShardCorpus() {
+function buildShardCorpus(briefMap) {
   if (!existsSync(SHARDS_DIR)) return [];
   const keys = listShardKeys();
   const docs = [];
@@ -56,7 +49,7 @@ function buildShardCorpus() {
       continue;
     }
     if (isPlaceholder(entry)) continue;
-    docs.push(toShardDocument(key, entry));
+    docs.push(toShardDocument(key, entry, briefMap));
   }
   return docs;
 }
@@ -96,7 +89,10 @@ function deriveTags(entry) {
   return entry?.type ? [entry.type, ...BASE_GENERATED_TAGS] : [...BASE_GENERATED_TAGS];
 }
 
-function toShardDocument(key, entry) {
+function toShardDocument(key, entry, briefMap) {
+  const briefId = entry.briefId ?? '';
+  // Brief text enriches search signal for the asset without replacing tags.
+  const briefText = briefId ? resolveBriefText(briefMap.get(briefId), key, entry) : '';
   return {
     id: `generated:${key}`,
     // Use the shard key as the canonical label — spriteName is not trusted because
@@ -105,23 +101,37 @@ function toShardDocument(key, entry) {
     label: key,
     tags: deriveTags(entry),
     type: entry.type ?? '',
-    description:
-      entry.catalog?.description ?? `Generated sprite from brief: ${entry.briefId ?? key}.`,
+    description: entry.catalog?.description ?? `Generated sprite from brief: ${briefId || key}.`,
+    briefText,
     assetPath: entry.assetPath ?? '',
-    briefId: entry.briefId ?? '',
-    status: 'approved',
+    briefId,
   };
 }
 
+function resolveBriefText(brief, key, entry) {
+  if (!brief) return '';
+  const candidates = [entry?.spriteName, key, key.includes('/') ? key.slice(key.lastIndexOf('/') + 1) : key]
+    .filter((v) => typeof v === 'string' && v.length > 0)
+    .map((v) => v.trim());
+  for (const candidate of candidates) {
+    const itemText = brief.itemTextById.get(candidate);
+    if (itemText) return itemText;
+  }
+  return brief.topLevelText;
+}
+
 // ---------------------------------------------------------------------------
-// Brief corpus
+// Brief map (id → description text, for shard enrichment)
 // ---------------------------------------------------------------------------
 
-function buildBriefCorpus(approvedBriefIds) {
-  if (!existsSync(BRIEFS_DIR)) return [];
-  const files = listBriefFiles();
-  const docs = [];
-  for (const filePath of files) {
+/**
+ * Build a map from brief name → capped description text.
+ * Used to enrich shard documents without indexing un-generated briefs.
+ */
+function buildBriefMap() {
+  if (!existsSync(BRIEFS_DIR)) return new Map();
+  const map = new Map();
+  for (const filePath of listBriefFiles()) {
     let raw;
     try {
       raw = readFileSync(filePath, 'utf8');
@@ -135,39 +145,38 @@ function buildBriefCorpus(approvedBriefIds) {
       continue;
     }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
-
     const name = typeof parsed.name === 'string' ? parsed.name.trim() : null;
     if (!name) continue;
-
-    // Skip briefs already covered by an approved shard variant.
-    if (approvedBriefIds.has(name)) continue;
-
-    const type = typeof parsed.type === 'string' ? parsed.type.trim() : '';
-    // `description` may be a multi-line string; `prompt` is the same or an
-    // expanded form. Use whichever is available, capped for index size.
-    const rawDesc =
+    // `description` is the human-readable intent; fall back to `prompt` for
+    // minimal briefs that only define a `prompt` key.
+    const rawText =
       typeof parsed.description === 'string'
         ? parsed.description
         : typeof parsed.prompt === 'string'
           ? parsed.prompt
           : '';
-    const description = rawDesc.slice(0, MAX_BRIEF_DESC_CHARS);
-
-    const tags = Array.isArray(parsed.tags) ? parsed.tags.filter((t) => typeof t === 'string') : [];
-    const effectiveTags = tags.length > 0 ? tags : [type, 'brief'].filter(Boolean);
-
-    docs.push({
-      id: `brief:${name}`,
-      label: name,
-      tags: effectiveTags,
-      type,
-      description,
-      assetPath: '',
-      briefId: name,
-      status: 'brief-only',
-    });
+    const itemTextById = new Map();
+    if (Array.isArray(parsed.iconBatch)) {
+      for (const icon of parsed.iconBatch) {
+        if (!icon || typeof icon !== 'object' || Array.isArray(icon)) continue;
+        const id = typeof icon.id === 'string' ? icon.id.trim() : '';
+        if (!id) continue;
+        const itemRawText =
+          typeof icon.description === 'string'
+            ? icon.description
+            : typeof icon.prompt === 'string'
+              ? icon.prompt
+              : '';
+        if (!itemRawText) continue;
+        itemTextById.set(id, itemRawText.slice(0, MAX_BRIEF_TEXT_CHARS));
+      }
+    }
+    const topLevelText = rawText ? rawText.slice(0, MAX_BRIEF_TEXT_CHARS) : '';
+    if (topLevelText || itemTextById.size > 0) {
+      map.set(name, { topLevelText, itemTextById });
+    }
   }
-  return docs;
+  return map;
 }
 
 function listBriefFiles() {
