@@ -383,6 +383,20 @@ describe('parseAssetRequestIssueBody', () => {
     expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });
 
+  it('parses the exact issue #2559 ratfolk-sewer-sniper request with floor 2 and default size', () => {
+    const body = issuesFixture.issues['2559']!.body;
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).toMatchObject({
+      name: 'ratfolk-sewer-sniper',
+      type: 'enemy',
+      floor: 2,
+      sizeVariant: 'default',
+      briefSentence: fixtureBrief(body),
+      fingerprint: 'ca795d3e6ff74ad177a8b718bb72fa81cb9701623e85bf02af4224b064fa2da4',
+    });
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
   it('treats blank and _No response_ size fields as omitted', () => {
     for (const size of ['', '_No response_']) {
       const parsed = parseAssetRequestIssueBody(
