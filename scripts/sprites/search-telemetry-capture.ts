@@ -54,6 +54,12 @@ function parseArgs(argv: ReadonlyArray<string>): { sessionSlug: string } {
         'Example: npm run sprites:search-telemetry-capture -- my-session-2026-08-01',
     );
   }
+  // Enforce kebab-case slug to prevent path traversal (e.g. "../../package").
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
+    throw new Error(
+      `Invalid session slug: "${slug}". Must be kebab-case (e.g. "my-session-2026-08-01").`,
+    );
+  }
   return { sessionSlug: slug };
 }
 

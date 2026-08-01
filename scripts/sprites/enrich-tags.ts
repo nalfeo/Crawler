@@ -24,6 +24,14 @@ import { resolveAzureChatConfig, type CreateProviderOptions } from './provider/f
 // Re-export TextProviderError so callers can catch-by-type without an extra import.
 export { TextProviderError };
 
+/** Minimum number of valid tags the LLM must return. */
+export const MIN_TAGS = 5;
+/** Maximum number of tags returned (LLM response is capped to this). */
+export const MAX_TAGS = 15;
+
+/** Regex for a valid tag: lowercase letters, digits, and hyphens only. */
+const VALID_TAG_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+
 /** Minimal description of a sprite needed to generate enrichment tags. */
 export interface EnrichTagsRequest {
   /** The manifest shard key, e.g. `"anvil-v1-var-0"`. */
@@ -158,13 +166,13 @@ export class AzureEnrichTagsProvider implements EnrichTagsProvider {
     }
 
     const tags = parseTagsResponse(content);
-    if (tags.length === 0) {
+    if (tags.length < MIN_TAGS) {
       throw new TextProviderError(
         'malformed',
-        `Azure chat (enrich-tags) returned no usable tags: ${content.slice(0, 200)}`,
+        `Azure chat (enrich-tags) returned ${tags.length} tag(s) — expected at least ${MIN_TAGS}: ${content.slice(0, 200)}`,
       );
     }
-    return tags;
+    return tags.slice(0, MAX_TAGS);
   }
 }
 
@@ -296,6 +304,7 @@ function cleanTags(raw: unknown[]): string[] {
     if (typeof item !== 'string') continue;
     const tag = item.trim().toLowerCase().replace(/\s+/g, '-');
     if (tag.length === 0 || tag.length > 50) continue;
+    if (!VALID_TAG_RE.test(tag)) continue;
     if (seen.has(tag)) continue;
     seen.add(tag);
     out.push(tag);

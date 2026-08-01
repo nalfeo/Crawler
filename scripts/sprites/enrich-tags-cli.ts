@@ -27,7 +27,9 @@ import {
   writeShard,
   keyFromShardRelPath,
 } from './generated-shards.js';
+import { formatJsonFiles } from './catalog-io.js';
 import { createEnrichTagsProvider, type EnrichTagsRequest } from './enrich-tags.js';
+import { isPlaceholderManifestEntry } from '../../src/shared/generated-catalog.js';
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
 
 const DEFAULT_GENERATED_DIR = path.join('public', 'assets', 'generated');
@@ -97,8 +99,7 @@ function printHelp(): void {
 }
 
 function isPlaceholder(entry: ManifestEntry): boolean {
-  if ((entry as Record<string, unknown>)['placeholder'] === true) return true;
-  return typeof entry.assetPath === 'string' && entry.assetPath.includes('-placeholder');
+  return isPlaceholderManifestEntry(entry);
 }
 
 function hasExistingTags(entry: ManifestEntry): boolean {
@@ -118,7 +119,7 @@ function buildRequest(key: string, entry: ManifestEntry): EnrichTagsRequest {
 async function processKeys(
   keys: string[],
   generatedDir: string,
-  provider: NonNullable<ReturnType<typeof createEnrichTagsProvider>>,
+  provider: NonNullable<ReturnType<typeof createEnrichTagsProvider>> | null,
   args: CliArgs,
 ): Promise<{ enriched: number; skipped: number; failed: number }> {
   let enriched = 0;
@@ -171,7 +172,7 @@ async function processKeys(
 
         try {
           const request = buildRequest(key, entry);
-          const tags = await provider.generateTags(request);
+          const tags = await provider!.generateTags(request);
           const updatedEntry: ManifestEntry = {
             ...entry,
             catalog: {
@@ -179,7 +180,8 @@ async function processKeys(
               tags,
             },
           };
-          writeShard(generatedDir, key, updatedEntry);
+          const shardPath = writeShard(generatedDir, key, updatedEntry);
+          await formatJsonFiles([shardPath]);
           done++;
           enriched++;
         } catch (err) {
@@ -211,17 +213,21 @@ async function main(): Promise<number> {
     ? args.generatedDir
     : path.join(repoRoot, args.generatedDir);
 
-  const provider = createEnrichTagsProvider({
-    env: process.env as Record<string, string>,
-    timeoutMs: ENRICH_TIMEOUT_MS,
-  });
-  if (!provider) {
-    process.stderr.write(
-      'enrich-tags: Azure OpenAI chat deployment not configured.\n' +
-        'Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and\n' +
-        'AZURE_OPENAI_CHAT_DEPLOYMENT (or AZURE_OPENAI_VISION_DEPLOYMENT) in your env.\n',
-    );
-    return 1;
+  // Provider is not needed for dry-run — only require it when actually writing.
+  let provider: NonNullable<ReturnType<typeof createEnrichTagsProvider>> | null = null;
+  if (!args.dryRun) {
+    provider = createEnrichTagsProvider({
+      env: process.env as Record<string, string>,
+      timeoutMs: ENRICH_TIMEOUT_MS,
+    });
+    if (!provider) {
+      process.stderr.write(
+        'enrich-tags: Azure OpenAI chat deployment not configured.\n' +
+          'Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and\n' +
+          'AZURE_OPENAI_CHAT_DEPLOYMENT (or AZURE_OPENAI_VISION_DEPLOYMENT) in your env.\n',
+      );
+      return 1;
+    }
   }
 
   let keys: string[];

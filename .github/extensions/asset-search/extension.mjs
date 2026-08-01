@@ -151,40 +151,52 @@ async function handleSearchAssets(params) {
 }
 
 // ---------------------------------------------------------------------------
-// Extension entry point
+// Extension entry point — side-effect module, called at top level
 // ---------------------------------------------------------------------------
 
-export default async function start() {
-  const session = await joinSession();
-
-  session.registerTool('search_assets', {
-    description:
-      'Search for sprite assets by natural language query. Returns matching sprites ranked by relevance. ' +
-      'Useful for finding props, mobs, tiles, and other game assets by describing what you need ' +
-      '(e.g. "rusty workshop tools", "ornate altar stone"). ' +
-      'Empty result queries are logged and drive new asset brief creation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description:
-            'Natural language description of the asset (e.g. "rusty iron anvil", "glowing crystal", "wooden crate").',
+const session = await joinSession({
+  tools: [
+    {
+      name: 'search_assets',
+      description:
+        'Search for sprite assets by natural language query. Returns matching sprites ranked by relevance. ' +
+        'Useful for finding props, mobs, tiles, and other game assets by describing what you need ' +
+        '(e.g. "rusty workshop tools", "ornate altar stone"). ' +
+        'Empty result queries are logged and drive new asset brief creation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description:
+              'Natural language description of the asset (e.g. "rusty iron anvil", "glowing crystal", "wooden crate").',
+          },
+          type: {
+            type: 'string',
+            description:
+              'Optional SpriteType filter. Valid values: weapon, equipment, enemy, item, prop, tile, vfx, character, icon. Applied after search.',
+            enum: [
+              'weapon',
+              'equipment',
+              'enemy',
+              'item',
+              'prop',
+              'tile',
+              'vfx',
+              'character',
+              'icon',
+            ],
+          },
+          maxResults: {
+            type: 'number',
+            description: 'Maximum results to return. Default 20, max 200.',
+          },
         },
-        type: {
-          type: 'string',
-          description:
-            'Optional SpriteType filter: prop, mob, weapon, tile, npc, icon, equipment, player, projectile, vfx. Applied after search.',
-        },
-        maxResults: {
-          type: 'number',
-          description: 'Maximum results to return. Default 20, max 200.',
-        },
+        required: ['query'],
       },
-      required: ['query'],
+      handler: handleSearchAssets,
     },
-    handler: handleSearchAssets,
-  });
+  ],
+});
 
-  session.log('[asset-search] extension started');
-}
+session.log('[asset-search] extension started');

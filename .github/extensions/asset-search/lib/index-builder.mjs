@@ -59,7 +59,10 @@ function listShardKeys() {
 }
 
 function isPlaceholder(entry) {
-  if (entry?.placeholder === true) return true;
+  // Mirror src/shared/generated-catalog.ts:isPlaceholderManifestEntry exactly.
+  // An explicit boolean `placeholder` field is authoritative — `false` forces
+  // "not a placeholder" even when the asset path looks placeholder-like.
+  if (typeof entry?.placeholder === 'boolean') return entry.placeholder;
   return typeof entry?.assetPath === 'string' && entry.assetPath.includes('-placeholder');
 }
 
@@ -72,7 +75,10 @@ function deriveTags(entry) {
 function toDocument(key, entry) {
   return {
     id: `generated:${key}`,
-    label: entry.spriteName ?? key,
+    // Use the shard key as the canonical label — spriteName is not trusted because
+    // legacy shards can share a brief-wide spriteName across multiple variants.
+    // (mirrors src/shared/generated-catalog.ts:97-100)
+    label: key,
     tags: deriveTags(entry),
     type: entry.type ?? '',
     description:

@@ -32,6 +32,7 @@ import { runQueueCommit } from './queue-commit.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 import { createEnrichTagsProvider, type EnrichTagsRequest } from './enrich-tags.js';
 import { writeShard } from './generated-shards.js';
+import { formatJsonFilesSync } from './catalog-io.js';
 import type { ManifestEntry as SharedManifestEntry } from '../../src/shared/generated-assets.js';
 
 interface ParsedArgs {
@@ -180,8 +181,14 @@ async function enrichEntryTags(
     if (tags.length === 0) return;
     const updatedEntry: ManifestEntry = { ...entry, catalog: { ...entry.catalog, tags } };
     const manifestKey = entry.spriteName ?? '';
-    if (manifestKey)
-      writeShard(generatedDir, manifestKey, updatedEntry as unknown as SharedManifestEntry);
+    if (manifestKey) {
+      const shardPath = writeShard(
+        generatedDir,
+        manifestKey,
+        updatedEntry as unknown as SharedManifestEntry,
+      );
+      formatJsonFilesSync([shardPath]);
+    }
   } catch (err) {
     process.stderr.write(
       `⚠ enrich-tags: ${entry.spriteName ?? '(unknown)'}: ` +
@@ -267,6 +274,11 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
       for (const e of entries) {
         process.stdout.write(`  ${e.spriteName} → ${e.assetPath}\n`);
       }
+
+      // Best-effort LLM tag enrichment for each freshly approved icon. Never blocks.
+      await Promise.all(
+        entries.map((e) => enrichEntryTags(e, path.join(publicAssetsDir, 'generated'), repoRoot)),
+      );
 
       // Queue-commit all approved icons as a batch.
       if (process.env.CI === undefined) {
