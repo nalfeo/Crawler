@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e74d6b57fcf862f45bc01cecd77d54ebd0e14f2b",
+    "commitDate": "2026-08-01T04:35:26Z",
+    "commitSubject": "Add dedicated faerie-spark-caster lineage and prefer it over blink fallback (#2523)",
+    "capturedAt": "2026-08-01T05:42:20.149Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30684602385",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/e74d6b57fcf862f45bc01cecd77d54ebd0e14f2b.json"
+  },
+  {
     "commit": "ae536c746ce811dcd1850d29bca7610589aa550e",
     "commitDate": "2026-08-01T04:16:11Z",
     "commitSubject": "fix(sprites): use force-with-lease for orphan-reset push to assets/queue (#2543)",
