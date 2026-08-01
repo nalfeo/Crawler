@@ -46,6 +46,11 @@ normal generation/check-in workflow is blocked in this sandbox.
 - `npm ci` ❌
   - Blocked by network resolution failure fetching the package feed
     (`ENOTFOUND ms-feed-12.pkgs.visualstudio.com`).
+- `npm run verify:pr-prereqs` ✅
+  - Passed, and classified the diff as docs/art-only so a review ledger is not required.
+- `parallel_validation` ✅
+  - CodeQL skipped as trivial/art-only; code review returned no findings (the dedicated
+    review binary is unavailable in this environment, so the validation surfaced no comments).
 
 ## Blockers / notes
 
