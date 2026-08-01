@@ -1,0 +1,137 @@
+{
+  "briefId": "toadkin-bouncer",
+  "spriteName": "toadkin-bouncer-var-1",
+  "assetPath": "generated/toadkin-bouncer-var-1.png",
+  "approvedAt": "2026-08-01T17:05:51.728Z",
+  "sourceRun": "generated/runs/toadkin-bouncer/2026-08-01T17-02-32-88367d6a",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 140,
+    "y": 124,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 140,
+      "y": 124,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 140,
+      "y": 124,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 140,
+        "y": 124
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T17:03:46.676Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a toadkin bouncer is well-executed, with a clear identity as a stocky, intimidating figure in a sharp bouncer jacket. The combination of a formal outfit with a brutish, warty toad appearance creates a strong authored contradiction that fits the Crawler aesthetic."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite adheres closely to the reference style in terms of outline, shading, and palette. However, the shading on the jacket could use slightly more contrast to match the depth seen in the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite adheres closely to the reference style in terms of outline, shading, and palette. However, the shading on the jacket could use slightly more contrast to match the depth seen in the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the brief perfectly, with a squat, barrel-chested toadkin in a dark purple jacket with gold trim, a visible earpiece, and brass knuckles. The scowl is clear, and the pose is appropriately intimidating."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and reads well at game scale. The fists are tucked close to the torso, and the overall shape is compact and grounded, as specified in the brief."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully contained within the frame, with no cropped elements or floating accessories. The character is centered and well-framed."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the tailored bouncer jacket, gold trim, earpiece, and brass knuckles. The warty skin and scowl further emphasize the toadkin's role as an intimidating enforcer for the Croak Family."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4257,
+      "completionTokens": 462,
+      "totalTokens": 4719
+    }
+  },
+  "type": "enemy",
+  "contentHash": "c3aa6e798b0424736f4f5821326b756e787aff4dec938e4f9985c15a43125a02",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 239,
+    "height": 226,
+    "canvasWidth": 269,
+    "canvasHeight": 256
+  },
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\toadkin-bouncer\\2026-08-01T17-02-32-88367d6a\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\toadkin-bouncer\\2026-08-01T17-02-32-88367d6a\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\toadkin-bouncer\\2026-08-01T17-02-32-88367d6a\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "enemy",
+      "fantasy",
+      "dungeon",
+      "cave",
+      "horror",
+      "small",
+      "dark",
+      "arcane",
+      "creature",
+      "monster",
+      "toad"
+    ]
+  }
+}
