@@ -133,11 +133,7 @@ interface BackgroundSample {
   readonly isTransparent: boolean;
 }
 
-function findBgColumns(
-  sheet: PNG,
-  bg: BackgroundSample,
-  threshold: number,
-): boolean[] {
+function findBgColumns(sheet: PNG, bg: BackgroundSample, threshold: number): boolean[] {
   const result = new Array<boolean>(sheet.width).fill(true);
   const thresholdSq = threshold * threshold;
   for (let x = 0; x < sheet.width; x++) {
@@ -164,11 +160,7 @@ function findBgColumns(
   return result;
 }
 
-function findBgRows(
-  sheet: PNG,
-  bg: BackgroundSample,
-  threshold: number,
-): boolean[] {
+function findBgRows(sheet: PNG, bg: BackgroundSample, threshold: number): boolean[] {
   const result = new Array<boolean>(sheet.height).fill(true);
   const thresholdSq = threshold * threshold;
   for (let y = 0; y < sheet.height; y++) {
