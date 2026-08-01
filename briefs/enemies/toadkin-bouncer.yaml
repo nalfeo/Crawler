@@ -1,7 +1,6 @@
 type: enemy
 name: toadkin-bouncer
 floor: 2
-sizeVariant: wide
 description: |
   A stocky, barrel-chested toadkin bouncer posed front-facing toward the viewer.
   He must read as a squat melee bruiser at a glance: shoulders clearly wider than

@@ -25,9 +25,9 @@ normal generation/check-in workflow is blocked in this sandbox.
   squat/wide build, velvet-rope bouncer jacket in dark purple/black with gold trim,
   visible brass knuckles, tiny earpiece, scowling amphibian face, single subject,
   hard pixel edges, and full containment inside the frame.
-- Used `sizeVariant: wide` plus an explicit `sensors.enemy.facing: front` override to
-  bias the pipeline toward the requested broad frontal silhouette while leaving the
-  rest of the enemy defaults unchanged.
+- Kept the default enemy size footprint and used an explicit
+  `sensors.enemy.facing: front` override so the generator/judge target the requested
+  broad frontal silhouette without changing inherited dimensions.
 - Seeded 5 variations around the allowed pose space (`arms crossed` vs `fists raised`)
   so the judge has multiple silhouette-distinct candidates to compare.
 
@@ -35,7 +35,7 @@ normal generation/check-in workflow is blocked in this sandbox.
 
 - `python` + `yaml.safe_load(...)` on `briefs/enemies/toadkin-bouncer.yaml` ✅
   - Parsed keys: `description`, `floor`, `minVariations`, `name`, `sensors`,
-    `sizeVariant`, `type`, `variations`
+    `type`, `variations`
   - Confirmed `type: enemy`, `name: toadkin-bouncer`, `floor: 2`, `variations: 5`
 - `npm run sprites:run -- --brief briefs/enemies/toadkin-bouncer.yaml` ❌
   - Failed before brief execution because repo dependencies are not installed in this
