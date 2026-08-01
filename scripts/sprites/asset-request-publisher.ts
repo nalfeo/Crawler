@@ -22,6 +22,7 @@ import {
   isTransientPipelineError,
   issuePipelineCheckpointSchema,
   markIssuePipelineTerminal,
+  resetExhaustedTransientStage,
   runCheckpointStage,
 } from './issue-pipeline-checkpoint.js';
 import { QueueCommitError, runQueueCommit } from './queue-commit.js';
@@ -128,6 +129,16 @@ export async function publishSelectedAssetRequests(
         fingerprint: item.checkpoint.fingerprint,
         now,
       });
+      // If the publish stage exhausted all its attempts on transient failures
+      // (e.g. git push bugs fixed between runs), clear the attempt record so
+      // runCheckpointStage can retry from scratch. Permanent failures (auth,
+      // destination-conflict, etc.) are left untouched.
+      const wasPublishReset = await resetExhaustedTransientStage(controller, 'publish');
+      if (wasPublishReset) {
+        logger.info(
+          `issue #${item.checkpoint.issueNumber}: reset transient-exhausted publish stage; will retry`,
+        );
+      }
       const result = await runCheckpointStage(
         controller,
         'publish',

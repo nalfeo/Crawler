@@ -5,6 +5,7 @@ import {
   IssuePipelineCheckpointError,
   loadIssueCheckpoint,
   markIssuePipelineTerminal,
+  resetExhaustedTransientStage,
   runCheckpointStage,
 } from '../../../scripts/sprites/issue-pipeline-checkpoint.js';
 import { QueueCommitError } from '../../../scripts/sprites/queue-commit.js';
@@ -148,6 +149,154 @@ describe('issue pipeline checkpoints', () => {
       details: {
         outcome: 'selected-pending-publish',
       },
+    });
+  });
+
+  describe('resetExhaustedTransientStage', () => {
+    const schema = z.object({ ok: z.boolean() }).strict();
+
+    /** Write a checkpoint directly with a specific publish-stage failure state. */
+    async function seedPublishFailures(
+      store: ReturnType<typeof makeStore>,
+      attempts: number,
+      kind: string | null = null,
+    ) {
+      const ctrl = controller(store);
+      // `runCheckpointStage` with transient errors retries to maxAttempts
+      // within a single call, so we can't get partial attempts from it.
+      // Seed the checkpoint directly via the store to simulate intermediate states.
+      const raw = {
+        version: 1,
+        issueNumber: 42,
+        fingerprint: 'request-fingerprint',
+        stage: 'publish',
+        updatedAt: '2026-07-24T12:00:00.000Z',
+        stages: {
+          publish: {
+            status: 'failed',
+            attempts,
+            updatedAt: '2026-07-24T12:00:00.000Z',
+            ...(kind !== null
+              ? { error: { kind, message: 'failed' } }
+              : { error: { kind: null, message: 'transient' } }),
+          },
+        },
+      };
+      store.mem.set(ctrl.key, Buffer.from(`${JSON.stringify(raw)}\n`));
+    }
+
+    it('returns false and leaves the checkpoint untouched when stage has not failed', async () => {
+      const store = makeStore();
+      const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
+      expect(wasReset).toBe(false);
+      // No checkpoint was even written.
+      const cp = await loadIssueCheckpoint(controller(store));
+      expect(cp.stages['publish']).toBeUndefined();
+    });
+
+    it('returns false when stage succeeded (status completed)', async () => {
+      const store = makeStore();
+      await runCheckpointStage(controller(store), 'publish', schema, async () => ({ ok: true }));
+      const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
+      expect(wasReset).toBe(false);
+      const cp = await loadIssueCheckpoint(controller(store));
+      expect(cp.stages['publish']).toMatchObject({ status: 'completed' });
+    });
+
+    it('returns false when stage failed but attempts are below the ceiling', async () => {
+      const store = makeStore();
+      await seedPublishFailures(store, 2, null); // 2 < 3
+      const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
+      expect(wasReset).toBe(false);
+      const cp = await loadIssueCheckpoint(controller(store));
+      expect(cp.stages['publish']).toMatchObject({ status: 'failed', attempts: 2 });
+    });
+
+    it('returns false when publish is exhausted with a permanent error', async () => {
+      const store = makeStore();
+      await seedPublishFailures(store, 3, 'destination-conflict'); // permanent
+      const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
+      expect(wasReset).toBe(false);
+      const cp = await loadIssueCheckpoint(controller(store));
+      expect(cp.stages['publish']).toMatchObject({ status: 'failed', attempts: 3 });
+    });
+
+    it('resets and returns true when publish is exhausted with transient failures', async () => {
+      const store = makeStore();
+      await seedPublishFailures(store, 3, null); // transient (null kind)
+      const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
+      expect(wasReset).toBe(true);
+      const cp = await loadIssueCheckpoint(controller(store));
+      expect(cp.stages['publish']).toBeUndefined();
+    });
+
+    it('resets transient exhaustion with push-retries-exhausted kind', async () => {
+      const store = makeStore();
+      await seedPublishFailures(store, 3, 'push-retries-exhausted'); // explicit resettable kind
+      const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
+      expect(wasReset).toBe(true);
+    });
+
+    it('returns false for git-failed (too broad; covers auth/permission failures)', async () => {
+      const store = makeStore();
+      await seedPublishFailures(store, 3, 'git-failed'); // git-failed is NOT auto-resettable
+      const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
+      expect(wasReset).toBe(false);
+    });
+
+    it('does not disturb other completed stages when resetting publish', async () => {
+      const store = makeStore();
+      // Seed a checkpoint that has BOTH a completed generate stage and an
+      // exhausted transient publish stage so isolation is genuinely tested.
+      const ctrl = controller(store);
+      const raw = {
+        version: 1,
+        issueNumber: 42,
+        fingerprint: 'request-fingerprint',
+        stage: 'publish',
+        updatedAt: '2026-07-24T12:00:00.000Z',
+        stages: {
+          generate: {
+            status: 'completed',
+            attempts: 1,
+            updatedAt: '2026-07-24T11:00:00.000Z',
+            output: { runId: 'r1' },
+          },
+          publish: {
+            status: 'failed',
+            attempts: 3,
+            updatedAt: '2026-07-24T12:00:00.000Z',
+            error: { kind: null, message: 'transient push failure' },
+          },
+        },
+      };
+      store.mem.set(ctrl.key, Buffer.from(`${JSON.stringify(raw)}\n`));
+
+      await resetExhaustedTransientStage(ctrl, 'publish');
+
+      const cpAfter = await loadIssueCheckpoint(ctrl);
+      expect(cpAfter.stages['generate']).toMatchObject({
+        status: 'completed',
+        output: { runId: 'r1' },
+      });
+      expect(cpAfter.stages['publish']).toBeUndefined();
+    });
+
+    it('allows runCheckpointStage to succeed after a transient-exhausted reset', async () => {
+      const store = makeStore();
+      await seedPublishFailures(store, 3, 'push-retries-exhausted');
+
+      // Without reset, runCheckpointStage would throw "already exhausted".
+      await expect(
+        runCheckpointStage(controller(store), 'publish', schema, async () => ({ ok: true })),
+      ).rejects.toThrow(/already exhausted/);
+
+      // After reset, runCheckpointStage should succeed.
+      await resetExhaustedTransientStage(controller(store), 'publish');
+      const result = await runCheckpointStage(controller(store), 'publish', schema, async () => ({
+        ok: true,
+      }));
+      expect(result).toEqual({ output: { ok: true }, resumed: false });
     });
   });
 
