@@ -135,14 +135,18 @@ export function buildPrompt(brief: Brief, styleGuide: string): string {
  * appeared only at the top.
  */
 export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: number): string {
+  const seedIdentityOnly =
+    brief.seedFrames.length > 0 && brief.seedFrames.every((sf) => sf.identityOnly);
   const count = variants ?? variantCount(brief);
-  const rules = typeRulesBlock(brief);
+  const rules = typeRulesBlock(brief, seedIdentityOnly);
   const variationsBlock = thematicVariationsBlock(brief.variations);
   const addenda = designLanguageAddendaBlocks(brief.name, brief.floor, brief.theme?.designLanguage);
   return [
     styleGuide,
     '',
-    ...(brief.seedFrames.length > 0 ? [seedFrameBlock(brief.seedFrames.length), ''] : []),
+    ...(brief.seedFrames.length > 0
+      ? [seedFrameBlock(brief.seedFrames.length, seedIdentityOnly), '']
+      : []),
     floorContextBlock(brief.floor),
     ...addenda,
     '',
@@ -303,12 +307,16 @@ function outputSizeBlock(brief: Brief): string {
  * See `docs/knowledge/game-design/art-style-guide.md` ("Character Proportions",
  * "Rendering"), which is the authoritative source this block implements.
  */
-function cartoonFigureRules(seedFrameCount: number): readonly string[] {
+function cartoonFigureRules(seedFrameCount: number, identityOnly = false): readonly string[] {
   const refNote =
     seedFrameCount > 0
-      ? `- **About the attached reference images:** The first ${seedFrameCount} image${
-          seedFrameCount > 1 ? 's are SEED FRAMES' : ' is a SEED FRAME'
-        } (see "Seed frames" section above) — match ${seedFrameCount > 1 ? 'them' : 'it'} EXACTLY in character identity, face and head shape, hair style and colour, outfit and accessory details, colour palette, line weight, and cel-shading style. The remaining reference images provide technique context only: copy their outline weight, palette discipline, and pixel resolution, but NOT their figure proportions or rendering density.`
+      ? identityOnly
+        ? `- **About the attached reference images:** The first ${seedFrameCount} image${
+            seedFrameCount > 1 ? 's are SEED FRAMES' : ' is a SEED FRAME'
+          } (see "Seed frames" section above) — match ${seedFrameCount > 1 ? 'their' : 'its'} CHARACTER IDENTITY (face, hair, outfit, colours, line weight, cel-shading) exactly, but DO NOT copy ${seedFrameCount > 1 ? 'their' : 'its'} pose. Each cell must use the pose described in the per-cell instructions. The remaining reference images provide technique context only.`
+        : `- **About the attached reference images:** The first ${seedFrameCount} image${
+            seedFrameCount > 1 ? 's are SEED FRAMES' : ' is a SEED FRAME'
+          } (see "Seed frames" section above) — match ${seedFrameCount > 1 ? 'them' : 'it'} EXACTLY in character identity, face and head shape, hair style and colour, outfit and accessory details, colour palette, line weight, and cel-shading style. The remaining reference images provide technique context only: copy their outline weight, palette discipline, and pixel resolution, but NOT their figure proportions or rendering density.`
       : '- **About the attached reference images:** copy their TECHNIQUE ONLY — outline weight, palette discipline, pixel resolution and crispness. Do NOT copy their figure proportions or rendering density. Several references are older, more realistically-proportioned and more heavily textured art that this brief is deliberately moving away from.';
   return [
     '- **Art style (overrides the style preamble for this subject):** draw a CARTOON figure in the tradition of EarthBound, Chrono Trigger, Undertale and Zelda: A Link to the Past. Charming and chunky, NOT gritty, NOT painterly, NOT semi-realistic, NOT photoreal.',
@@ -326,11 +334,25 @@ function cartoonFigureRules(seedFrameCount: number): readonly string[] {
  * attached reference images are approved seed frames whose identity must be
  * matched exactly, not merely referenced for technique.  Placed at the very top
  * of the sheet prompt so it is the first thing the model reads.
+ *
+ * When `identityOnly` is true (e.g. walk-cycle multi-frame sheets), the block
+ * instructs the model to match character appearance but NOT the pose — each
+ * output cell must use the distinct pose described in the brief.
  */
-function seedFrameBlock(count: number): string {
+function seedFrameBlock(count: number, identityOnly: boolean): string {
   const s = count === 1 ? '' : 's';
   const areIs = count === 1 ? 'is a SEED FRAME' : 'are SEED FRAMES';
   const themIt = count === 1 ? 'it' : 'them';
+  if (identityOnly) {
+    return [
+      '## Seed frames (IDENTITY REFERENCE — read before all other instructions)',
+      `The first ${count} attached reference image${s} ${areIs} — already-approved frame${s} from this exact walk cycle, not general style references.`,
+      '',
+      `CRITICAL: Use the seed frame${s} to lock in CHARACTER IDENTITY ONLY — face and head shape, hair style and colour, outfit and accessory details, colour palette, line weight, and cel-shading style must match ${themIt} exactly. DO NOT copy the POSE (limb positions, leg spread, arm angle, body stance) from the seed frame${s}. Each cell in the output sheet must show the DISTINCT POSE described in the per-cell instructions below — the poses will be completely different from the seed frame${s}.`,
+      '',
+      `Match ${themIt} as your PRIMARY VISUAL REFERENCE for character appearance. The poses for each cell are specified separately in the sheet layout instructions — follow those poses exactly while keeping the character looking identical to the seed frame${s}.`,
+    ].join('\n');
+  }
   return [
     '## Seed frames (HIGHEST PRIORITY — read before all other instructions)',
     `The first ${count} attached reference image${s} ${areIs} — already-approved frame${s} from this exact walk cycle, not general style references.`,
@@ -341,7 +363,7 @@ function seedFrameBlock(count: number): string {
   ].join('\n');
 }
 
-function typeRulesBlock(brief: Brief): string | null {
+function typeRulesBlock(brief: Brief, seedIdentityOnly = false): string | null {
   if (brief.type === 'enemy') {
     const { cellW, cellH } = cellDims(brief);
     const { loH, hiH } = sourceFootprint(brief);
@@ -365,7 +387,7 @@ function typeRulesBlock(brief: Brief): string | null {
         : [];
     return [
       '## Mob rules',
-      ...cartoonFigureRules(brief.seedFrames.length),
+      ...cartoonFigureRules(brief.seedFrames.length, seedIdentityOnly),
       facingLine,
       ...bossLines,
       '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
@@ -390,7 +412,7 @@ function typeRulesBlock(brief: Brief): string | null {
     const breatheHi = Math.round((cellH - loH) / 2);
     return [
       '## Character rules',
-      ...cartoonFigureRules(brief.seedFrames.length),
+      ...cartoonFigureRules(brief.seedFrames.length, seedIdentityOnly),
       '- Keep the character generally camera-facing at a one-third-to-two-thirds turn, with a clear eye line toward camera. Never use a full side profile.',
       `- **Height normalization:** default to a ${brief.size.height}px-tall final character read. In a ${cellW}×${cellH} source cell this is roughly ${loH}-${hiH} source pixels tall (top of head to sole of feet) with small top/bottom breathing room (about ${breatheLo}-${breatheHi} source pixels each). Measure that span from the TOP OF THE BIG HEAD to the soles — do not shrink the body to make room for the head, and do not center a tiny figure in a large empty box.`,
       '- **Hair readability:** hair is a bold simple mass with a clear silhouette (braids/locs/twists/afro shape must read as one deliberate shape). Do not collapse hair into a tiny cap, and do not blend hair into skin or background.',

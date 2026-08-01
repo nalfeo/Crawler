@@ -259,6 +259,13 @@ export const briefSchema = z
               .string()
               .optional()
               .describe("Optional description of this frame's role in the cycle"),
+            /**
+             * When true, the generated prompt tells the model to match the
+             * character identity (face, hair, outfit, palette) from this seed
+             * frame but NOT to copy its pose.  Use for walk-cycle seeds where
+             * each output cell must show a distinct limb position.
+             */
+            identityOnly: z.boolean().optional().default(false),
           })
           .strict(),
       )

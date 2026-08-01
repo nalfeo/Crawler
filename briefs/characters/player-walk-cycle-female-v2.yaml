@@ -12,7 +12,7 @@
 # seed is injected into the prompt and `generate-one.ts` for how the PNG
 # bytes are prepended to the provider's reference-image list.
 type: character
-name: player-walk-cycle-female-v2
+name: player-walk-cycle-female-v5
 description: |
   THE PLAYER CHARACTER — a scrappy dungeon-crawling CONTESTANT on a televised
   reality-show dungeon crawl. Determined, a little scruffy, clearly the
@@ -75,25 +75,44 @@ description: |
      and the body. Keep each arm close against the torso (a relaxed walking
      swing, not held away from the body) so no background-colour gap opens
      up between an upper arm and the torso.
-   - CRITICAL SHEET LAYOUT: all 4 poses sit in a 2×2 grid, read in row-major
-     order — top-left, top-right, bottom-left, bottom-right — mapping
-     directly to contact-left, passing-left, contact-right, passing-right.
-     Each of the 4 cells is a separate, self-contained pose; do NOT draw one
-     continuous scene spanning multiple cells, and do NOT treat the top row
-     and bottom row as two different camera heights or moments — they are
-     simply the next two frames in the SAME walk cycle, at the SAME scale and
-     SAME floor-line height as the top row.
-   - CRITICAL FACING DIRECTION: the character faces the SAME way — a
-     right-facing side profile — in ALL 4 cells, with no exceptions. The
-     labels "contact-right" and "passing-right" name WHICH FOOT is forward/in
-     contact with the ground during the stride, NOT a change in which
-     direction the character is facing or turning toward the viewer. Do NOT
-     mirror, flip, or turn the character to face left (or face the viewer) in
-     the bottom-left ("contact-right") or any other cell. In every cell the
-     face/nose points the same way, and the satchel strap sits on the SAME
-     shoulder/side of the back in every cell — a strap or face flipping to
-     the opposite side between cells is always a FAILURE, exactly like a
-     bled or cut-off limb.
+   - CRITICAL SHEET LAYOUT: the sheet is a 2×2 grid of 4 SEQUENTIAL walk-cycle
+     frames. Read in row-major order: top-left = frame 1, top-right = frame 2,
+     bottom-left = frame 3, bottom-right = frame 4. All 4 frames belong to ONE
+     continuous looping walk cycle. The bottom row is NOT a mirror, return trip,
+     different camera angle, or reversed direction — it is simply frames 3 and 4
+     of the same continuous forward walk, at the SAME scale and SAME floor-line
+     height as the top row.
+   - CRITICAL FACING DIRECTION: the character faces RIGHTWARD — a right-facing
+     side profile — in ALL 4 cells without exception. This means: face and nose
+     point toward the right edge of each cell, satchel strap on the far
+     shoulder in every cell, torso angled the same way in every cell.
+     Do NOT mirror, flip, or turn the character leftward in any cell.
+     The bottom-left cell (frame 3) is the most common failure point: it must
+     show the character STILL facing right — it is never a mirrored or reversed pose.
+   - NEAR vs FAR LIMBS — for a character facing right in side-view:
+       NEAR arm and NEAR leg = the limbs on the side CLOSEST to the camera,
+         drawn visually in FRONT of the torso. These overlap/occlude the far limbs.
+       FAR arm and FAR leg = the limbs on the side FURTHEST from the camera,
+         drawn visually BEHIND the torso. These are partially hidden by the body.
+   - FRAME CONTENT — EXACT POSE PER CELL (character faces right in all):
+       Frame 1 / TOP-LEFT: FAR leg is stride-FORWARD (heel planted ahead of body,
+         foot touching the floor in front). NEAR leg is stride-BACK (toe pushing
+         off behind the body, lifted). NEAR arm swings FORWARD (arm reaching ahead),
+         FAR arm swings BACK. Maximum stride spread — legs as far apart as possible
+         while keeping both feet inside the cell.
+       Frame 2 / TOP-RIGHT: PASSING pose. Both legs crossing and passing under the
+         body center — near leg swings through, far leg lifts. Body weight transfers.
+         Both arms near neutral, crossing through center. Clear transition between
+         frame 1 and frame 3.
+       Frame 3 / BOTTOM-LEFT: NEAR leg is now stride-FORWARD (heel planted ahead,
+         foot touching the floor in front). FAR leg is now stride-BACK (toe pushing
+         off behind, lifted). FAR arm swings FORWARD, NEAR arm swings BACK.
+         This is the OPPOSITE contact pose from frame 1 — maximum stride spread,
+         legs as far apart as possible. Character still faces right; only the
+         which-leg-is-forward has swapped, NOT the facing direction.
+       Frame 4 / BOTTOM-RIGHT: PASSING pose again, opposite of frame 2. Near leg
+         lifts, far leg swings through. Arms near neutral, crossing through center.
+         Clear transition between frame 3 and frame 1 (loop).
    - CRITICAL DETAIL PARITY: render at the SAME fine pixel-art detail level,
      line weight, and shading complexity as this character's other two gender
      variants (player-walk-cycle-male.yaml / player-walk-cycle-other.yaml) —
@@ -137,13 +156,6 @@ size:
 anchor:
   x: 128
   y: 252
-# Seed frame: the approved frame 0 (contact-left pose) from the existing
-# generation.  Providing it as the first reference image tells the model to
-# match this character's identity EXACTLY across all four cells, preventing
-# the row-0-vs-row-1 lighting/outfit-angle drift seen in the original brief.
-seedFrames:
-  - path: briefs/characters/seeds/player-walk-cycle-female-frame0.png
-    note: 'Frame 0 (contact-left pose) — approved reference for identity and palette consistency across all 4 frames'
 frameSequence:
   enabled: true
   frameCount: 4
@@ -159,7 +171,7 @@ sensors:
   anchor:
     mode: center-of-mass
   interiorHoles:
-    maxPixels: 64
+    maxPixels: 80
 judge:
   enabled: false
 minVariations: 0
@@ -169,3 +181,4 @@ tags:
   - walk-cycle
   - animation
   - gender-female
+  - v5

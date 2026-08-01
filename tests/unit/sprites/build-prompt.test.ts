@@ -711,7 +711,9 @@ describe('buildSheetPrompt — frameSequence (walk-cycle) mode', () => {
 });
 
 describe('buildSheetPrompt — seedFrames (reference-frame identity pinning)', () => {
-  function makeWalkBriefWithSeeds(seedFrames: Array<{ path: string; note?: string }>): Brief {
+  function makeWalkBriefWithSeeds(
+    seedFrames: Array<{ path: string; note?: string; identityOnly?: boolean }>,
+  ): Brief {
     return briefSchema.parse({
       type: 'character',
       name: 'test-walk-brief',
@@ -777,5 +779,52 @@ describe('buildSheetPrompt — seedFrames (reference-frame identity pinning)', (
     const brief = makeWalkBriefWithSeeds([]);
     const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain('copy their TECHNIQUE ONLY');
+  });
+
+  describe('identityOnly mode', () => {
+    it('uses IDENTITY REFERENCE heading (not HIGHEST PRIORITY) when all seeds are identityOnly', () => {
+      const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png', identityOnly: true }]);
+      const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+      expect(out).toContain('## Seed frames (IDENTITY REFERENCE');
+      expect(out).not.toContain('HIGHEST PRIORITY');
+    });
+
+    it('uses HIGHEST PRIORITY heading when identityOnly is false (default)', () => {
+      const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png', identityOnly: false }]);
+      const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+      expect(out).toContain('## Seed frames (HIGHEST PRIORITY');
+    });
+
+    it('instructs DO NOT copy POSE when identityOnly is true', () => {
+      const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png', identityOnly: true }]);
+      const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+      expect(out).toContain('DO NOT copy the POSE');
+      expect(out).not.toContain('INDISTINGUISHABLE');
+    });
+
+    it('uses INDISTINGUISHABLE wording when identityOnly is false', () => {
+      const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png' }]);
+      const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+      expect(out).toContain('INDISTINGUISHABLE');
+      expect(out).not.toContain('DO NOT copy the POSE');
+    });
+
+    it('overrides cartoonFigureRules reference note to identity-only when all seeds are identityOnly', () => {
+      const brief = makeWalkBriefWithSeeds([{ path: 'seeds/frame0.png', identityOnly: true }]);
+      const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+      expect(out).toContain('match its CHARACTER IDENTITY');
+      expect(out).toContain('DO NOT copy its pose');
+      expect(out).not.toContain('match it EXACTLY in character identity');
+    });
+
+    it('still applies HIGHEST PRIORITY mode when only some seeds have identityOnly (mixed)', () => {
+      const brief = makeWalkBriefWithSeeds([
+        { path: 'seeds/frame0.png', identityOnly: true },
+        { path: 'seeds/frame1.png', identityOnly: false },
+      ]);
+      const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+      // mixed: identityOnly only triggers when ALL seeds have it
+      expect(out).toContain('## Seed frames (HIGHEST PRIORITY');
+    });
   });
 });
