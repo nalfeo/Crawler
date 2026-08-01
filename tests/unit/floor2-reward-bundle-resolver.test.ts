@@ -6,8 +6,10 @@ import {
 import {
   _REWARD_BUNDLE_AFFINITY_PROB as REWARD_BUNDLE_AFFINITY_PROB,
   _REWARD_BUNDLE_RARITIES as REWARD_BUNDLE_RARITIES,
+  FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT,
   RewardBundleResolutionError,
   _alignmentFromRoll as alignmentFromRoll,
+  _categoryFromRoll as categoryFromRoll,
   resolveEquipmentRewardBundle,
   _resolvePlayerBuildAffinity as resolvePlayerBuildAffinity,
   _rollAffinityAlignment as rollAffinityAlignment,
@@ -641,5 +643,153 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
     expect(rarityEligibleBaseIds(FLOOR2_REWARD_POOL_STABLE_IDS, 'rare')).toHaveLength(
       FLOOR2_REWARD_POOL_STABLE_IDS.length,
     );
+  });
+});
+
+describe('categoryFromRoll — exact threshold contract', () => {
+  it('encodes exactly 25% weapon draw weight', () => {
+    expect(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT).toBe(0.25);
+  });
+
+  it('returns weapon when roll < weaponWeight and non-weapon otherwise (exact < threshold)', () => {
+    const w = FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT;
+    expect(categoryFromRoll(0, w)).toBe('weapon');
+    expect(categoryFromRoll(w - 1e-9, w)).toBe('weapon');
+    expect(categoryFromRoll(w, w)).toBe('non-weapon'); // exactly at threshold → non-weapon
+    expect(categoryFromRoll(w + 1e-9, w)).toBe('non-weapon');
+    expect(categoryFromRoll(0.999999, w)).toBe('non-weapon');
+  });
+
+  it('works for arbitrary weight values at the exact threshold boundary', () => {
+    expect(categoryFromRoll(0.5 - 1e-9, 0.5)).toBe('weapon');
+    expect(categoryFromRoll(0.5, 0.5)).toBe('non-weapon');
+    expect(categoryFromRoll(0, 0)).toBe('non-weapon'); // 0% weapon weight → always non-weapon
+    expect(categoryFromRoll(0.999999, 1)).toBe('weapon'); // 100% weapon weight → always weapon
+  });
+
+  it('empirically draws at ~25% weapon / ~75% non-weapon over a uniform stream', () => {
+    const rng = new SeededRandom(9999);
+    const samples = 20_000;
+    let weaponCount = 0;
+    for (let i = 0; i < samples; i += 1) {
+      if (categoryFromRoll(rng.next(), FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT) === 'weapon') {
+        weaponCount += 1;
+      }
+    }
+    const observed = weaponCount / samples;
+    expect(Math.abs(observed - FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT)).toBeLessThan(0.02);
+  });
+});
+
+describe('resolveEquipmentRewardBundle — category-weighted selection (weaponIds provided)', () => {
+  const WEAPON_ID_SET = new Set(FLOOR2_REWARD_POOL_WEAPON_IDS);
+
+  it('resolves without error from the full 88-entry pool with category weighting for both affinities', () => {
+    for (const [i, weaponDef] of [
+      { id: 'iron-cleaver' },
+      { id: 'ember-wand' },
+    ].entries()) {
+      const world = makeWorld(`category-full-pool-${i}`);
+      setActiveWeapon(world, getWeaponDef(weaponDef.id)!);
+      // Should not throw — both weapon and non-weapon sub-pools are non-empty
+      // and their category-specific validation passes at load time.
+      expect(() =>
+        resolveEquipmentRewardBundle(
+          world,
+          `ach-${i}`,
+          FLOOR2_REWARD_POOL_STABLE_IDS,
+          'tier2',
+          WEAPON_ID_SET,
+        ),
+      ).not.toThrow();
+    }
+  });
+
+  it('is deterministic for the same run key + achievement + tier + affinity', () => {
+    const worldA = makeWorld('category-det');
+    const worldB = makeWorld('category-det');
+    const a = resolveEquipmentRewardBundle(
+      worldA,
+      'ach-det',
+      FLOOR2_REWARD_POOL_STABLE_IDS,
+      'tier2',
+      WEAPON_ID_SET,
+    );
+    const b = resolveEquipmentRewardBundle(
+      worldB,
+      'ach-det',
+      FLOOR2_REWARD_POOL_STABLE_IDS,
+      'tier2',
+      WEAPON_ID_SET,
+    );
+    expect(b.instanceKeys).toEqual(a.instanceKeys);
+    for (let i = 0; i < a.instanceKeys.length; i += 1) {
+      expect(getGeneratedEquipmentInstance(worldB, b.instanceKeys[i]!)).toEqual(
+        getGeneratedEquipmentInstance(worldA, a.instanceKeys[i]!),
+      );
+    }
+  });
+
+  it('empirically draws ~25% weapon and ~75% non-weapon bases across many run keys', () => {
+    const SAMPLES = 400;
+    let weaponCount = 0;
+    for (let seed = 0; seed < SAMPLES; seed += 1) {
+      const world = makeWorld(`category-freq-${seed}`);
+      const bundle = resolveEquipmentRewardBundle(
+        world,
+        'ach-freq',
+        FLOOR2_REWARD_POOL_STABLE_IDS,
+        'tier2',
+        WEAPON_ID_SET,
+      );
+      const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+      if (WEAPON_ID_SET.has(instance.baseId)) weaponCount += 1;
+    }
+    const observedWeaponFraction = weaponCount / SAMPLES;
+    // Empirical frequency should be close to the authored 25% weight.
+    // Allow ±10% variance to keep the test deterministic across seeds.
+    expect(
+      observedWeaponFraction,
+      `weapon fraction ${observedWeaponFraction.toFixed(3)} should be near ${FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT}`,
+    ).toBeGreaterThan(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT - 0.1);
+    expect(
+      observedWeaponFraction,
+    ).toBeLessThan(FLOOR2_REWARD_WEAPON_CATEGORY_WEIGHT + 0.1);
+  });
+
+  it('non-weapon draws always resolve to a non-weapon (armor/accessory) base', () => {
+    // Over a broad sample, every resolved base is either a weapon or non-weapon.
+    // Specifically test that no non-weapon draw mistakenly yields a weapon base.
+    let sawNonWeaponDraw = false;
+    for (let seed = 0; seed < 100; seed += 1) {
+      const world = makeWorld(`category-nonweapon-${seed}`);
+      const bundle = resolveEquipmentRewardBundle(
+        world,
+        'ach-nw',
+        FLOOR2_REWARD_POOL_STABLE_IDS,
+        'tier2',
+        WEAPON_ID_SET,
+      );
+      const instance = getGeneratedEquipmentInstance(world, bundle.instanceKeys[0]!)!;
+      const isWeapon = WEAPON_ID_SET.has(instance.baseId);
+      const isNonWeapon = FLOOR2_REWARD_POOL_NON_WEAPON_IDS.includes(instance.baseId as never);
+      // Every resolved base must be in exactly one of the two categories.
+      expect(isWeapon !== isNonWeapon).toBe(true);
+      if (isNonWeapon) sawNonWeaponDraw = true;
+    }
+    // With 75% non-weapon weight and 100 samples, at least one non-weapon is certain.
+    expect(sawNonWeaponDraw).toBe(true);
+  });
+
+  it('without weaponIds (boss-chest path) still resolves via affinity alignment, unchanged', () => {
+    // Boss chest calls omit weaponIds → the old affinity-partitioned draw runs
+    // as before. Confirm it still resolves without error for both affinities.
+    for (const [i, id] of ['iron-cleaver', 'ember-wand'].entries()) {
+      const world = makeWorld(`boss-chest-no-cat-${i}`);
+      setActiveWeapon(world, getWeaponDef(id)!);
+      expect(() =>
+        resolveEquipmentRewardBundle(world, `boss-${i}`, MIXED_BASES, 'tier2'),
+      ).not.toThrow();
+    }
   });
 });
