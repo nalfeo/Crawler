@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-sprites, tooling, agent-tooling
+sprite-pipeline, sprite-workflow, mcp-tooling
 
 ## Problem
 
