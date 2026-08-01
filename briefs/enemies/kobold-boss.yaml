@@ -1,0 +1,45 @@
+type: enemy
+mobRole: boss
+name: kobold-boss
+floor: 2
+sizeVariant: large
+description: |
+  King Skritt the Unburnt, fire-scorched warlord of The Emberkin Clan — a
+  compact, hunched but powerful kobold boss radiating volcanic authority.
+  Low-slung reptilian body with thick haunches, hunched posture creating
+  a dense boss-mass. Heavily scarred red-orange scales dulled to deep rust
+  and charcoal from countless fire exposures — this kobold survived the
+  flame that kills his kin. Outfitted in crude salvage war-regalia: bolted
+  iron scrap plates fastened over his torso with leather straps, a crown of
+  fused scrap-metal slag welded into a jagged spiky headpiece, and a heavy
+  cloak of thick woven metal chain draped over hunched shoulders.
+
+  Dark Floor 2 palette: deep rust-red and char-black scales as the primary,
+  dulled iron-grey and verdigris for armor plating, dull amber for eye glow
+  (ember deep inside, not bright). No bright reds or oranges that read Floor 1.
+
+  Facing: three-quarter toward camera, hunched-forward stance. The silhouette
+  reads as wide and dangerous despite the compact size — a coiled threat.
+
+  Silhouette: wide, low-slung, armored dome with haunches and hunched body
+  creating a heavy trapezoidal mass. No thin protrusions.
+
+sensors:
+  enemy:
+    facing: three-quarter
+    toleranceDeg: 35
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - King Skritt the Unburnt in scorched iron-plate armor, jagged slag-metal crown, chain cloak, hunched forward, ember-glow eyes
+  - King Skritt with deep rust-red charred scales, riveted scrap-plate torso armor, wide-haunched three-quarter stance, battle-worn warlord presence
+  - King Skritt bearing the Emberkin warlord crown — fused scrap-metal headpiece of welded rebar spikes, heavy chain drape, compact coiled menace
+  - 'King Skritt silhouette: squat wide armored shape, chain-mail cloak pooled around shoulders, thick haunches, the unburnt scales of a survivor'
+
+minVariations: 4
