@@ -22,11 +22,20 @@
  *     live manifest/catalog entries onto that tip via `mergeManifests`/
  *     `mergeCatalogs`. Because the union re-runs against the latest tip on every
  *     retry, a concurrent writer's entry is preserved — no whole-file clobber.
- *   - The push is a plain fast-forward-only push of the new commit to
- *     `refs/heads/assets/queue`: our commit's parent IS the fetched tip, so a
- *     concurrent advance makes the push a non-fast-forward → git rejects it →
- *     we re-fetch and retry. This is a strictly-safer compare-and-swap than
- *     `--force-with-lease` (it can never overwrite a concurrent update).
+ *   - **Normal path**: the push is a plain fast-forward-only push of the new
+ *     commit to `refs/heads/assets/queue`.  Our commit's parent IS the fetched
+ *     tip, so a concurrent advance makes the push a non-fast-forward → git
+ *     rejects it → we re-fetch and retry.
+ *   - **Orphan-reset path**: when `assets/queue` has no common ancestry with
+ *     `main` (an orphan branch), we `reset --hard mainRef` then layer queued art
+ *     back on top via `checkout baseRef -- <art-surface>`.  The resulting commit's
+ *     parent is `mainRef`, NOT the orphan tip, so a plain fast-forward push is
+ *     permanently non-fast-forward.  Instead we push with
+ *     `--force-with-lease=refs/heads/assets/queue:<orphan-sha>` (an explicit-SHA
+ *     lease).  This is still a compare-and-swap: if another writer advances
+ *     `assets/queue` between our fetch and our push, the lease fails with
+ *     `(stale info)` → we re-fetch and retry, preserving the concurrent writer's
+ *     assets in the union.
  *
  * Constitutional §3 (local-only mutation): like check-in/approve, this pushes to
  * a remote from locally-approved assets, so it REFUSES when `process.env.CI` is
@@ -235,6 +244,9 @@ export function isNonFastForwardRejection(stderr: string): boolean {
     s.includes('fetch first') ||
     s.includes('tip of your current branch is behind') ||
     s.includes('remote contains work that you do') ||
+    // Force-with-lease rejection: the remote ref advanced past the expected SHA.
+    // Git outputs "(stale info)" when the lease's expected SHA no longer matches.
+    s.includes('stale info') ||
     // Expected-old-OID mismatch: a lost server-side ref-transaction race.
     (s.includes('cannot lock ref') && s.includes('but expected'))
   );
@@ -330,6 +342,13 @@ export async function runQueueCommit(
         // never check the queue branch out by name, so there is no
         // "branch already checked out" clash with the caller's worktree.
         await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
+        // Track whether we resolved an orphan-history condition via reset+checkout.
+        // When true, the new commit's parent is mainRef (NOT the orphan queue tip),
+        // so a plain fast-forward push is impossible — we must use --force-with-lease
+        // scoped to the exact orphan SHA we fetched.  That is still a compare-and-swap:
+        // if another writer advanced assets/queue between our fetch and push,
+        // the lease fails and we retry (just like the non-fast-forward retry).
+        let usedOrphanReset = false;
         if (branchExists) {
           // First try a normal merge.
           let merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
@@ -364,6 +383,7 @@ export async function runQueueCommit(
             }
             await runGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
             merge = { code: 0, stdout: '', stderr: '' };
+            usedOrphanReset = true;
           }
           if (merge.code !== 0) {
             throw new QueueCommitError(
@@ -399,16 +419,33 @@ export async function runQueueCommit(
         await mustGit(deps.exec, worktree, ['commit', '--no-verify', '-m', options.message]);
         const newCommit = (await mustGit(deps.exec, worktree, ['rev-parse', 'HEAD'])).trim();
 
-        // Plain (non-force) push: our commit's parent is the fetched tip, so a
-        // concurrent advance makes this a non-fast-forward → git rejects it and
-        // we retry. This is the compare-and-swap: it can NEVER overwrite a
-        // concurrent update (unlike --force-with-lease).
-        const push = await runGit(deps.exec, repoRoot, [
-          'push',
-          '--no-verify',
-          remote,
-          `${newCommit}:refs/heads/${queueBranch}`,
-        ]);
+        // Push strategy depends on whether we resolved an orphan-history situation.
+        //
+        // Normal path: our commit's parent IS the fetched queue tip — a plain
+        // fast-forward push is a strict CAS that can never overwrite a concurrent
+        // update.  A non-ff rejection means a concurrent writer advanced the branch
+        // while we worked; we re-fetch and retry.
+        //
+        // Orphan-reset path: our commit's parent is mainRef, NOT the orphan tip, so
+        // the plain fast-forward push is permanently non-fast-forward regardless of
+        // any concurrent advance.  We must use --force-with-lease scoped to the exact
+        // orphan SHA we fetched (baseRef).  This is still a CAS: if another writer
+        // advanced assets/queue between our fetch and our push, the lease mismatches
+        // and we retry (same as the non-ff retry on the normal path).
+        let pushArgs: string[];
+        if (usedOrphanReset) {
+          const baseSha = (await mustGit(deps.exec, repoRoot, ['rev-parse', baseRef])).trim();
+          pushArgs = [
+            'push',
+            '--no-verify',
+            `--force-with-lease=refs/heads/${queueBranch}:${baseSha}`,
+            remote,
+            `${newCommit}:refs/heads/${queueBranch}`,
+          ];
+        } else {
+          pushArgs = ['push', '--no-verify', remote, `${newCommit}:refs/heads/${queueBranch}`];
+        }
+        const push = await runGit(deps.exec, repoRoot, pushArgs);
         if (push.code === 0) {
           return { status: 'committed', branch: queueBranch, commit: newCommit, attempts: attempt };
         }

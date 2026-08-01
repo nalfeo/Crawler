@@ -310,7 +310,10 @@ describe('runQueueCommit (control flow)', () => {
       if (args[0] === 'reset') return { code: 0 }; // reset --hard
       if (args[0] === 'checkout') return { code: 0 }; // checkout baseRef -- art surface
       if (args[0] === 'diff') return { code: 1 }; // staged diff present
-      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'rev-parse') {
+        // Return distinguishable SHAs: HEAD → new commit, baseRef → orphan tip
+        return args[1] === 'HEAD' ? { stdout: 'newcommitsha\n' } : { stdout: 'orphansha\n' };
+      }
       return {};
     });
 
@@ -334,6 +337,10 @@ describe('runQueueCommit (control flow)', () => {
     ).toBe(true);
     // No --allow-unrelated-histories flag anywhere.
     expect(line.some((l) => l.includes('allow-unrelated-histories'))).toBe(false);
+    // Push uses --force-with-lease scoped to the orphan SHA (usedOrphanReset = true).
+    const pushLine = line.find((l) => l.startsWith('git push'));
+    expect(pushLine).toContain('--force-with-lease=refs/heads/assets/queue:orphansha');
+    expect(pushLine).not.toContain('--force-with-lease=refs/heads/assets/queue:newcommitsha');
   });
 
   it('does NOT reset/checkout for other merge failures (content conflict)', async () => {
@@ -376,7 +383,7 @@ describe('runQueueCommit (control flow)', () => {
   });
 
   it('succeeds when the orphan has no art (pathspec error is treated as empty queue)', async () => {
-    const { exec } = makeFakeExec((_command, args) => {
+    const { exec, calls } = makeFakeExec((_command, args) => {
       if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
       if (args[0] === 'merge')
         return { code: 1, stderr: 'fatal: refusing to merge unrelated histories' };
@@ -384,12 +391,18 @@ describe('runQueueCommit (control flow)', () => {
       if (args[0] === 'checkout')
         return { code: 1, stderr: 'error: pathspec did not match any file(s) known to git' };
       if (args[0] === 'diff') return { code: 1 }; // staged diff present
-      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'rev-parse') {
+        return args[1] === 'HEAD' ? { stdout: 'newcommitsha\n' } : { stdout: 'orphansha\n' };
+      }
       return {};
     });
 
     const result = await runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' });
     expect(result.status).toBe('committed');
+    // Even with no existing art on the orphan, the push uses --force-with-lease.
+    const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    const pushLine = line.find((l) => l.startsWith('git push'));
+    expect(pushLine).toContain('--force-with-lease=refs/heads/assets/queue:orphansha');
   });
 
   it('returns a no-op (no commit/push) when nothing is staged', async () => {
@@ -546,6 +559,9 @@ describe('runQueueCommit (control flow)', () => {
       'hint: Updates were rejected because the tip of your current branch is behind',
       'hint: Updates were rejected because the remote contains work that you do not have',
       'NON-FAST-FORWARD',
+      // Force-with-lease failure: remote advanced past the expected SHA.
+      ' ! [rejected]        sha -> assets/queue (stale info)',
+      'STALE INFO',
       // Lost server-side ref-transaction race: the expected-old-OID mismatch. A
       // plain push CAN hit this on GitHub without a non-ff phrase; re-fetch +
       // re-union + re-push is the correct CAS response, so it must retry.
@@ -1058,6 +1074,117 @@ describe('runQueueCommit (real git)', () => {
       });
       expect(Buffer.compare(blob, PNG_BYTES)).toBe(0);
       expect(Buffer.compare(blob, PNG_BYTES_B)).not.toBe(0);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'migrates an orphan assets/queue and preserves both writers on a stale-lease retry',
+    async () => {
+      // Regression for the orphan-reset path (Bug #3 fix).
+      //
+      // Scenario:
+      //   1. Seed main as normal.
+      //   2. Create an orphan assets/queue that has NO common ancestor with main
+      //      (simulates the real live state: the branch was seeded with --orphan).
+      //      Put one existing asset (delta) on the orphan so we verify it survives.
+      //   3. Stage a NEW asset (beta) in the live working tree.
+      //   4. Intercept the push so that BEFORE the first push attempt, an
+      //      out-of-band writer advances assets/queue with gamma. The orphan-tip
+      //      SHA the callee fetched is now stale → `--force-with-lease` fails with
+      //      `(stale info)` → retry re-fetches the new tip and unions beta on top.
+      //   5. Assert:
+      //      - result.status === 'committed', result.attempts === 2
+      //      - All three entries (delta from orphan, beta from this writer, gamma
+      //        from the concurrent writer) coexist on assets/queue — no clobber.
+      //      - PNG bytes for beta round-trip correctly.
+      //      - Caller's HEAD/branch/index are untouched.
+
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+
+      // ── Step 2: craft an orphan assets/queue on the bare origin ──────────────
+      //
+      // Use a scratch clone to build the orphan commit, then push it to origin.
+      const scratchDir = mkdtempSync(path.join(tmpdir(), 'qc-orphan-'));
+      cleanups.push(scratchDir);
+
+      const originUrl = gitSync(liveDir, 'remote', 'get-url', 'origin').trim();
+      gitSync(scratchDir, 'init', '-b', 'orphan-work');
+      gitSync(scratchDir, 'config', 'user.email', 'test@example.com');
+      gitSync(scratchDir, 'config', 'user.name', 'Orphan Seeder');
+      gitSync(scratchDir, 'config', 'commit.gpgsign', 'false');
+      gitSync(scratchDir, 'remote', 'add', 'origin', originUrl);
+
+      // Seed the orphan with an existing asset (delta) so we confirm it survives.
+      const genDir = path.join(scratchDir, 'public', 'assets', 'generated');
+      mkdirSync(genDir, { recursive: true });
+      writeFileSync(path.join(genDir, 'delta.png'), PNG_BYTES);
+      writeJson(path.join(scratchDir, 'public', 'assets', 'generated', 'entries', 'delta.json'), {
+        assetPath: 'generated/delta.png',
+        spriteName: 'delta',
+      });
+      gitSync(scratchDir, 'add', '-A');
+      gitSync(scratchDir, 'commit', '-m', 'orphan seed delta');
+      // Force-push as assets/queue so origin has an orphan branch.
+      gitSync(scratchDir, 'push', '--force', 'origin', 'HEAD:refs/heads/assets/queue');
+
+      // ── Step 3: stage beta in the LIVE clone ─────────────────────────────────
+      stageAssetOnDisk(liveDir, 'beta', PNG_BYTES_B);
+
+      // ── Step 4: intercept push, inject out-of-band advance BEFORE first push ─
+      const base = realGitDeps(liveDir);
+      let advanced = false;
+      const wrappedExec: Exec = async (command, args, options) => {
+        if (command === 'git' && args[0] === 'push' && !advanced) {
+          advanced = true;
+          // Advance assets/queue out-of-band with gamma BEFORE the first push
+          // attempt.  The callee's force-with-lease is scoped to the orphan SHA
+          // it fetched; gamma's push moves the tip beyond that SHA → the lease
+          // returns `(stale info)` → should retry and union beta on top of gamma.
+          advanceQueueOutOfBand(liveDir, 'gamma', PNG_BYTES);
+        }
+        return base.exec(command, args, options);
+      };
+
+      const headBefore = gitSync(liveDir, 'rev-parse', 'HEAD').trim();
+      const branchBefore = gitSync(liveDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+      const statusBefore = gitSync(liveDir, 'status', '--porcelain');
+
+      // ── Step 5: run and assert ────────────────────────────────────────────────
+      const result = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/beta.png',
+            manifestKey: 'beta',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        { ...base, exec: wrappedExec },
+        { message: 'orphan-migration beta' },
+      );
+
+      expect(result.status).toBe('committed');
+      expect(result.attempts).toBe(2); // first push stale → retry succeeds
+
+      const m = queueManifest(liveDir);
+      // All three entries must coexist — orphan art (delta), this write (beta),
+      // concurrent writer (gamma) — the retry unioned, it did not clobber.
+      expect(Object.keys(m.entries).sort()).toEqual(['beta', 'delta', 'gamma']);
+
+      // beta's PNG round-trips correctly through the migration.
+      const blob = execFileSync('git', ['show', 'FETCH_HEAD:public/assets/generated/beta.png'], {
+        cwd: liveDir,
+        maxBuffer: 1 << 20,
+      });
+      expect(Buffer.compare(blob, PNG_BYTES_B)).toBe(0);
+
+      // Caller repo is untouched.
+      expect(gitSync(liveDir, 'rev-parse', 'HEAD').trim()).toBe(headBefore);
+      expect(gitSync(liveDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(branchBefore);
+      expect(gitSync(liveDir, 'status', '--porcelain')).toBe(statusBefore);
     },
     GIT_TIMEOUT_MS,
   );
