@@ -23,7 +23,11 @@ import { questSystem } from '../../src/core/systems/questSystem.js';
 import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
 import { getFloor2NeutralTrash } from '../../src/shared/enemy-packs.js';
-import { getFloorManifest, registerFloorManifest } from '../../src/shared/floor-registry.js';
+import {
+  getFloorManifest,
+  registerFloorManifest,
+  resetBuiltInFloorManifests,
+} from '../../src/shared/floor-registry.js';
 import { FLOOR2_FIND_SETTLEMENT_QUEST_ID, getQuestDef } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -76,7 +80,7 @@ function serializeFloor(floor: FloorMap): Record<string, unknown> {
 }
 
 afterEach(() => {
-  registerFloorManifest('floor2', structuredClone(originalFloor2Manifest));
+  resetBuiltInFloorManifests();
 });
 
 describe('initializeFloor2Scenario manifest validation', () => {
