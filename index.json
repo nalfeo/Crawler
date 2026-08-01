@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a862211444c3443284afd99d5a0ebe38974b28e4",
+    "commitDate": "2026-08-01T20:10:36Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2657)",
+    "capturedAt": "2026-08-01T21:06:25.198Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30716426103",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/a862211444c3443284afd99d5a0ebe38974b28e4.json"
+  },
+  {
     "commit": "f0d41ba321565368abfab9df21cac8aeb9498ae4",
     "commitDate": "2026-08-01T19:57:36Z",
     "commitSubject": "feat(assets): add panda elite red-envelope request brief (#2520)",
