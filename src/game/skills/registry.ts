@@ -119,6 +119,122 @@ const skillCatalogSchema = z.array(skillSchema).superRefine((skills, ctx) => {
 
 /** Real skills — all silly-skill content deferred to v2. */
 const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
+  // ─── Generic Skills (kept for backward compatibility, grant L5 passives only) ──────
+  {
+    id: 'swordsmanship',
+    name: 'Swordsmanship',
+    description: 'Proficiency with swords. The blade becomes an extension of your will.',
+    category: 'combat',
+    usageMetric: 'hits_landed',
+    usageThresholds: [
+      15, 40, 90, 160, 260, 380, 520, 680, 860, 1060, 1280, 1520, 1780, 2060, 2360, 2680, 3020,
+      3380, 3760, 4160,
+    ],
+    perLevelBonus: { damage: 1 },
+    milestones: [
+      {
+        level: 5,
+        name: 'Flow State',
+        description: '+15% damage',
+        abilityId: 'combat-flow',
+      },
+      {
+        level: 10,
+        name: 'Intermediate',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l10',
+      },
+      {
+        level: 15,
+        name: 'Advanced',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l15',
+      },
+      {
+        level: 20,
+        name: 'Mastery',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l20',
+      },
+    ],
+  },
+  {
+    id: 'iron-skin',
+    name: 'Iron Skin',
+    description: 'Your body hardens with each hit taken. Damage withstood builds resilience.',
+    category: 'defense',
+    usageMetric: 'damage_dealt',
+    usageThresholds: [
+      50, 140, 310, 570, 920, 1360, 1890, 2510, 3220, 4020, 4910, 5890, 6960, 8120, 9370, 10710,
+      12140, 13660, 15270, 16970,
+    ],
+    perLevelBonus: { maxHp: 4 },
+    milestones: [
+      {
+        level: 5,
+        name: 'Stalwart',
+        description: '+20 HP',
+        abilityId: 'stalwart-resolve',
+      },
+      {
+        level: 10,
+        name: 'Intermediate',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l10',
+      },
+      {
+        level: 15,
+        name: 'Advanced',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l15',
+      },
+      {
+        level: 20,
+        name: 'Mastery',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l20',
+      },
+    ],
+  },
+  {
+    id: 'sprint',
+    name: 'Sprint',
+    description: 'Running becomes a way of life. The faster you move, the faster you think.',
+    category: 'utility',
+    usageMetric: 'distance_dodged_near_threat',
+    usageThresholds: [
+      100, 280, 620, 1140, 1850, 2750, 3840, 5120, 6590, 8250, 10100, 12140, 14370, 16790, 19400,
+      22200, 25190, 28370, 31740, 35290,
+    ],
+    perLevelBonus: { moveSpeed: 0.8 },
+    milestones: [
+      {
+        level: 5,
+        name: 'Ever Vigilant',
+        description: '+10% move speed',
+        abilityId: 'ever-vigilant',
+      },
+      {
+        level: 10,
+        name: 'Intermediate',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l10',
+      },
+      {
+        level: 15,
+        name: 'Advanced',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l15',
+      },
+      {
+        level: 20,
+        name: 'Mastery',
+        description: 'Placeholder',
+        abilityId: 'placeholder-generic-l20',
+      },
+    ],
+  },
+
   // ─── Weapon Class Skills (slow leveling · damage focus, grant passives) ──────
   // Each fires on `weapon_fired`; threshold[1] ≈ 80 so level 2 lands by floor 1 end.
   {

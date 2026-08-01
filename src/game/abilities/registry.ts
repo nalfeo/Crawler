@@ -390,6 +390,65 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
       '"Magic is the only force the dungeon respects. You\'re learning the language." — The Director',
     effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
   },
+
+  // ---------------------------------------------------------------------------
+  // Evolved weapon class passives (L15 replacements for L5)
+  // ---------------------------------------------------------------------------
+
+  {
+    ...ABILITY_PRESENTATION_BY_ID['slashing-mastery-evolved'],
+    weaponPrerequisite: 'slashing',
+    flavorText: '"Evolution is natural. Survival is not." — The Director',
+    effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['stabbing-precision-evolved'],
+    weaponPrerequisite: 'stabbing',
+    flavorText: '"Speed is the ultimate weapon. Everything else is circumstance." — The Director',
+    effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['smashing-force-evolved'],
+    weaponPrerequisite: 'smashing',
+    flavorText: '"Raw power is honest. The audience respects honesty." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'pickupRange', value: 1.0 },
+      { type: 'stat_multiply', stat: 'damage', value: 0.08 },
+    ],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['ranged-marksmanship-evolved'],
+    weaponPrerequisite: 'ranged',
+    flavorText: '"Expert marksmanship turns chaos into choreography." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'accuracy', value: 0.15 },
+      { type: 'stat_multiply', stat: 'projectileSpeed', value: 0.15 },
+    ],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['throwing-trajectory-evolved'],
+    weaponPrerequisite: 'throwing',
+    flavorText: '"A perfect throw is like a perfect scene — timed to the frame." — The Director',
+    effects: [{ type: 'stat_multiply', stat: 'projectileSpeed', value: 0.15 }],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['forearms-brawler-evolved'],
+    weaponPrerequisite: 'forearms',
+    flavorText: '"The best fighters move by instinct. You\'re getting there." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'accuracy', value: 0.15 },
+      { type: 'stat_multiply', stat: 'damage', value: 0.08 },
+    ],
+  },
+  {
+    ...ABILITY_PRESENTATION_BY_ID['arcane-power-evolved'],
+    weaponPrerequisite: 'arcane',
+    flavorText: '"The arcane does not forgive amateurs. You are no longer one." — The Director',
+    effects: [
+      { type: 'stat_add', stat: 'accuracy', value: 0.15 },
+      { type: 'stat_multiply', stat: 'damage', value: 0.08 },
+    ],
+  },
 ];
 
 /**

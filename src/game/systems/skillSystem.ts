@@ -6,7 +6,7 @@ import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
 import { applyCatalogEffect } from './progressionEffects.js';
-import { grantAbilitySources, queueAbilityTrigger } from './abilitySystem.js';
+import { grantAbilitySources, queueAbilityTrigger, revokeAbilitySources } from './abilitySystem.js';
 import { SKILL_LEVEL5_ABILITY_GRANTS, getAbilityDefinition } from '../abilities/registry.js';
 import { skillAbilityGrantSourceId } from '../../shared/abilities.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
@@ -171,17 +171,33 @@ function applyMilestone(
     });
   }
 
-  // TODO: If milestone has an abilityId, grant it (once ability system is updated)
-  // if (milestone.abilityId !== undefined) {
-  //   const targetEid = holderEid ?? query(world.ecs, [Player])[0];
-  //   if (targetEid !== undefined) {
-  //     grantAbilitySources(world, targetEid, [
-  //       {
-  //         kind: 'passive' | 'active',
-  //         abilityId: milestone.abilityId,
-  //         sourceId: skillAbilityGrantSourceId(skillId, level),
-  //       },
-  //     ]);
-  //   }
-  // }
+  // If milestone has an abilityId, grant it
+  if (milestone.abilityId !== undefined) {
+    const targetEid = holderEid ?? query(world.ecs, [Player])[0];
+    if (targetEid !== undefined) {
+      const sourceId = skillAbilityGrantSourceId(skillId, level);
+
+      // Handle upgrade logic: L15 replaces L5, L20 replaces L10
+      let revokeSourceIds: string[] = [];
+      if (level === 15) {
+        revokeSourceIds.push(skillAbilityGrantSourceId(skillId, 5));
+      } else if (level === 20) {
+        revokeSourceIds.push(skillAbilityGrantSourceId(skillId, 10));
+      }
+
+      // Revoke the old ability(ies) first
+      for (const oldSourceId of revokeSourceIds) {
+        revokeAbilitySources(world, targetEid, [oldSourceId]);
+      }
+
+      // Grant the new ability
+      grantAbilitySources(world, targetEid, [
+        {
+          kind: 'passive',
+          abilityId: milestone.abilityId,
+          sourceId,
+        },
+      ]);
+    }
+  }
 }
