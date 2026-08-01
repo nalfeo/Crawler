@@ -24,6 +24,7 @@ import { createBloodyFootprintState } from '../shared/blood-surfaces.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
 import type { WeaponTelemetry } from './weapon-telemetry.js';
+import type { XpCollectionTelemetry } from './xp-collection-telemetry.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
   createBarrierRegistry,
@@ -265,6 +266,8 @@ export interface GameWorld {
    * assign a collector via `createWeaponTelemetry()`. See `weapon-telemetry.ts`.
    */
   weaponTelemetry?: WeaponTelemetry;
+  /** Optional per-floor emitted/collected XP telemetry. Undefined unless explicitly enabled. */
+  xpCollectionTelemetry?: XpCollectionTelemetry;
   /**
    * Max REALIZED knockback displacement (feet) applied to any entity this frame.
    * Reset to 0 at the top of `knockbackSystem` and accumulated (max) there after

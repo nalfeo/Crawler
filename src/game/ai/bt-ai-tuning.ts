@@ -180,6 +180,18 @@ export const SAFE_LOOT_ENEMY_CLEARANCE_FT = RANGED_MULTI_THREAT_SCAN_FT * 1.5;
 // an opportunistic "grab it since I'm already clear" pickup, not a dedicated
 // loot run (that remains Collect's job once no threat is nearby at all).
 export const LOOT_DETOUR_MAX_FT = 15;
+// Bounded post-combat XP cleanup. The anchor radius prevents a chain of nearby
+// gems from walking the AI across the whole map, while the time cap and cooldown
+// keep objective progress dominant.
+export const LOCAL_XP_CLEANUP_RADIUS_FT = 32;
+export const XP_CLEANUP_ENEMY_CLEARANCE_FT = 30;
+export const XP_CLEANUP_MAX_FRAMES = 240;
+export const XP_CLEANUP_COOLDOWN_FRAMES = 180;
+export const XP_CLEANUP_COMBAT_LULL_WINDOW_FRAMES = 180;
+export const XP_CLEANUP_MAX_PATH_CHECKS = 5;
+// Final-exit cleanup accepts only gems whose optimistic marginal detour
+// (player→gem→exit minus player→exit) stays inside this bound.
+export const EXIT_XP_CLEANUP_DETOUR_BUDGET_FT = 50;
 // Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
 // reversal keeps the player juking and prevents it from grinding into one wall
 // forever; far longer than any oscillation so it reads as intentional kiting.

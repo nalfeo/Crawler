@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addComponent, query, set } from 'bitecs';
+import { addComponent, query, removeEntity, set } from 'bitecs';
 import {
   spawnBehaviorEnemy,
   spawnEnemy,
@@ -3601,6 +3601,82 @@ describe('BehaviorTreeAI', () => {
       ai.poll(createInputState(), world);
 
       expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    });
+
+    describe('bounded priority XP cleanup', () => {
+      it('collects nearby post-combat XP before resuming a distant progress objective', () => {
+        const world = createTestWorld({ seed: 42 });
+        const player = spawnPlayer(world, 0, 0);
+        const enemy = spawnEnemy(world, 5, 0, 20);
+        setActiveWeapon(world, getWeaponDef('sword')!);
+        const ai = new BehaviorTreeAI({ seed: 42 });
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+        removeEntity(world.ecs, enemy);
+
+        initializeFloor1Scenario(world, player);
+        const px = world.stores.position.x[player]!;
+        const py = world.stores.position.y[player]!;
+        const gem = spawnXpGem(world, px + 10, py, 5);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+
+        expect(ai.getDecision()).toMatchObject({
+          state: AIState.COLLECT,
+          targetEid: gem,
+        });
+        expect(ai.getDecision().reason).toContain('local post-combat XP');
+      });
+
+      it('abandons cleanup immediately when a nearby living enemy appears', () => {
+        const world = createTestWorld({ seed: 43 });
+        const player = spawnPlayer(world, 0, 0);
+        const firstEnemy = spawnEnemy(world, 5, 0, 20);
+        setActiveWeapon(world, getWeaponDef('sword')!);
+        const ai = new BehaviorTreeAI({ seed: 43 });
+        ai.poll(createInputState(), world);
+        removeEntity(world.ecs, firstEnemy);
+
+        initializeFloor1Scenario(world, player);
+        const px = world.stores.position.x[player]!;
+        const py = world.stores.position.y[player]!;
+        spawnXpGem(world, px + 10, py, 5);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.COLLECT);
+
+        spawnEnemy(world, px + 5, py, 20);
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+
+        expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
+      });
+
+      it('ends a cleanup session at the fixed frame budget', () => {
+        const world = createTestWorld({ seed: 44 });
+        const player = spawnPlayer(world, 0, 0);
+        const enemy = spawnEnemy(world, 5, 0, 20);
+        setActiveWeapon(world, getWeaponDef('sword')!);
+        const ai = new BehaviorTreeAI({ seed: 44 });
+        ai.poll(createInputState(), world);
+        removeEntity(world.ecs, enemy);
+
+        initializeFloor1Scenario(world, player);
+        const px = world.stores.position.x[player]!;
+        const py = world.stores.position.y[player]!;
+        spawnXpGem(world, px + 10, py, 5);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.COLLECT);
+
+        world.frameCount += 240;
+        ai.poll(createInputState(), world);
+
+        expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
+      });
     });
   });
 });

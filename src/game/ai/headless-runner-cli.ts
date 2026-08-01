@@ -71,6 +71,7 @@ async function main(): Promise<void> {
     floorId: args.floorId,
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
+    recordXpCollection: args.xpCollection,
     weaponPersonas: args.weaponPersonas,
     merchantWeaponPurchase: args.merchantWeaponPurchase,
     settlementReturnRouting: args.settlementReturnRouting,
@@ -96,6 +97,13 @@ async function main(): Promise<void> {
   console.log(`Final Level:  ${stats.finalLevel}`);
   console.log(`Total XP:     ${stats.totalXp}`);
   console.log(`Total Gold:   ${stats.totalGold}`);
+  if (stats.xpCollection) {
+    for (const floor of stats.xpCollection.floors) {
+      console.log(
+        `XP Collection (${floor.floorId}): ${floor.collected}/${floor.spawned} (${(floor.efficiency * 100).toFixed(1)}%), ${floor.remaining} remaining`,
+      );
+    }
+  }
   console.log('');
   console.log(`Total Frames: ${stats.totalFrames}`);
   console.log(`Game Time:    ${(stats.gameTimeMs / 1000).toFixed(1)}s`);

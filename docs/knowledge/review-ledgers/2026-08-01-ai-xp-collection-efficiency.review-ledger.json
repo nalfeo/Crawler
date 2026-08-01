@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "ai-xp-collection-efficiency",
+  "task_title": "Improve AI XP collection efficiency",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review corrections were incorporated. The required pre-BT spatial gate then rejected exit-only sweeping: optimistic 200ft marginal-detour bounds reached only 55.0% and 69.8%, direct exit corridors held 0-0.9% of remaining XP, while 74.2-78.6% was clustered. Architecture changed to hybrid local/post-combat cluster collection plus bounded exit cleanup."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

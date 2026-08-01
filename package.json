@@ -50,6 +50,7 @@
     "ai:gen-configs": "tsx scripts/agent/perf/gen-configs.ts",
     "ai:sweep-eval": "tsx scripts/agent/perf/sweep-eval.ts",
     "ai:aggregate-shards": "tsx scripts/agent/perf/aggregate-shards.ts",
+    "ai:xp-sweep": "tsx scripts/agent/perf/xp-collection-sweep.ts",
     "ai:round-plan": "tsx scripts/agent/perf/round-plan.ts",
     "velocity:scan": "tsx scripts/agent/velocity/bottleneck-scan.ts",
     "velocity:pack": "tsx scripts/agent/velocity/task-pack.ts",
