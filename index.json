@@ -1,5 +1,16 @@
 [
   {
+    "commit": "be61812b8ab3a6bb75dc948e9cb6f5a55ec99a63",
+    "commitDate": "2026-08-01T08:15:57Z",
+    "commitSubject": "feat(briefs): batch 22 enemy sprite briefs (Floor 2 expansion) (#2593)",
+    "capturedAt": "2026-08-01T09:08:54.525Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30691828891",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/be61812b8ab3a6bb75dc948e9cb6f5a55ec99a63.json"
+  },
+  {
     "commit": "6f3104db9f7592905111cbae5012794271477315",
     "commitDate": "2026-08-01T07:48:13Z",
     "commitSubject": "fix(xp-pacing): add FLOOR_2 loot bonus and gate test for level-10 at first boss (#2553)",
