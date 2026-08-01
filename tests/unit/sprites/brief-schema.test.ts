@@ -20,6 +20,7 @@ const validBrief: Brief = {
     { path: 'docs/refs/sword-1.png', note: 'silhouette inspiration' },
     { path: 'docs/refs/sword-2.png', note: 'palette anchor' },
   ],
+  seedFrames: [],
   generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
   sensors: {},
   variations: [],

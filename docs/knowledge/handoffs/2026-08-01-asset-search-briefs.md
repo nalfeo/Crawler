@@ -9,7 +9,7 @@ commissioned-but-not-yet-generated concepts in one search pass.
 
 ## Systems touched
 
-asset-pipeline
+sprite-workflow, mcp-tooling
 
 ## Files touched
 
