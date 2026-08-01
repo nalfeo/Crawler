@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1fa49b2a8bbd3b7876158661f6ce93a5610b67f3",
+    "commitDate": "2026-08-01T04:54:43Z",
+    "commitSubject": "feat(sprites): harden boss briefs + enforce full-body framing in judge (#2502)",
+    "capturedAt": "2026-08-01T05:44:21.701Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30685181820",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/1fa49b2a8bbd3b7876158661f6ce93a5610b67f3.json"
+  },
+  {
     "commit": "e74d6b57fcf862f45bc01cecd77d54ebd0e14f2b",
     "commitDate": "2026-08-01T04:35:26Z",
     "commitSubject": "Add dedicated faerie-spark-caster lineage and prefer it over blink fallback (#2523)",
