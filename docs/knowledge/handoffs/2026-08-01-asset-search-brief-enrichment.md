@@ -9,7 +9,7 @@ without polluting results with sprites that don't yet exist.
 
 ## Systems touched
 
-asset-pipeline
+sprite-workflow, mcp-tooling
 
 ## Files touched
 
