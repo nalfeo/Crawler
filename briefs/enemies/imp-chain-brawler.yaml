@@ -11,6 +11,10 @@ description: |
   palette established by imp-flinger: leathery hide in hot red, ember orange,
   and charcoal tones with dark iron chain metal. Single subject only,
   front-facing, fully inside frame, hard pixel edges, no text, no background.
+judge:
+  enabled: true
+  maxVariants: 4
+
 sensors:
   enemy:
     facing: front
