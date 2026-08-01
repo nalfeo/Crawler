@@ -15,6 +15,7 @@ import type { CollisionResult } from './collisionSystem.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemByIndex } from '../../shared/items.js';
 import { PICKUP_SPARKLE_COLORS, pushVfxEvent, type PickupKind } from '../../shared/vfx-events.js';
+import { recordCollectedXp } from '../xp-collection-telemetry.js';
 
 /** Queue a cosmetic collect-sparkle at a pickup's position (render-only). */
 function emitPickupSparkle(world: GameWorld, eid: number, kind: PickupKind): void {
@@ -60,6 +61,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       const currentScore = world.stores.broadcastScore.current[playerEid] ?? 0;
       world.stores.broadcastScore.current[playerEid] = currentScore + gemValue;
       world.playerLevel.xp += gemValue;
+      recordCollectedXp(world, gemValue);
       emitPickupSparkle(world, otherEid, 'gem');
       removeEntity(world.ecs, otherEid);
       continue;

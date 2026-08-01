@@ -149,6 +149,7 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
         'validate_seeds',
         'weapons',
         'workers',
+        'xp_collection',
       ].sort(),
     );
     expect(inputs.combos).toMatchObject({ type: 'string', default: 'all' });
@@ -165,6 +166,16 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     // feature existed (not scheduling-identical -- baseline now always waits
     // on the new resume-import job's checkout/Node-setup/metadata step).
     expect(inputs.resume_run_id).toMatchObject({ type: 'string', default: '' });
+    expect(inputs.xp_collection).toMatchObject({ type: 'boolean', default: false });
+  });
+
+  it('offers fresh-process XP telemetry for the validation panel', () => {
+    const doc = loadWorkflow();
+    const validate = getJob(doc, 'validate');
+    const script = allRunSteps(validate);
+    expect(script).toContain('--fresh-process');
+    expect(script).toContain('--record-xp');
+    expect(script).toContain('XP_COLLECTION');
   });
 
   it('stays read-only with only the metadata permissions required by queue-aware admission and cross-run artifact download', () => {

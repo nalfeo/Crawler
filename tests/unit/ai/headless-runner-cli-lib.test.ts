@@ -61,6 +61,12 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(cli('--no-weapon-personas').weaponPersonas).toBe(false);
   });
 
+  it('keeps XP collection telemetry opt-in', () => {
+    expect(cli().xpCollection).toBe(false);
+    expect(cli('--xp-collection').xpCollection).toBe(true);
+    expect(helpText()).toContain('--xp-collection');
+  });
+
   it('throws on an invalid --decision-mode', () => {
     expect(() => cli('--decision-mode', 'bogus')).toThrow(/Invalid --decision-mode/);
   });

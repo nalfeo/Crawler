@@ -128,23 +128,28 @@ interface EvalShared {
   budgetMs: number;
   wallCapMs: number;
   floorId: string;
+  freshProcess?: boolean;
+  recordXpCollection?: boolean;
 }
 
 /** Execute one headless run and reduce it to a scored, win-classified row. */
 async function runOne(task: EvalTask, shared: EvalShared): Promise<RunRow> {
-  const ai = new BehaviorTreeAI({ ...task.config, seed: task.seed });
-  const stats: RunStats = await runHeadless(ai, {
-    seed: task.seed,
-    maxFrames: shared.maxFrames,
-    maxWallTimeMs: shared.wallCapMs,
-    forceWeaponId: task.weapon,
-    floorId: shared.floorId,
-  });
+  const stats: RunStats = shared.freshProcess
+    ? runOneInFreshProcess(task, shared)
+    : await runHeadless(new BehaviorTreeAI({ ...task.config, seed: task.seed }), {
+        seed: task.seed,
+        maxFrames: shared.maxFrames,
+        maxWallTimeMs: shared.wallCapMs,
+        forceWeaponId: task.weapon,
+        floorId: shared.floorId,
+        recordXpCollection: shared.recordXpCollection,
+      });
   // Derive the SSOT win + composite score through the shared helper the fan-in
   // verifier (aggregate-shards) also uses, so a row's (officialWin, score) can
   // never drift between producer and aggregator. Only an over-budget victory is
   // downgraded (scored as a timeout to strip its victory/time bonus).
   const { officialWin, score } = deriveRunFacts(stats, shared.budgetMs);
+  const xp = stats.xpCollection?.floors.at(-1);
   return {
     combo: task.combo,
     configId: task.configId,
@@ -159,7 +164,43 @@ async function runOne(task: EvalTask, shared: EvalShared): Promise<RunRow> {
     gold: stats.totalGold,
     minHealthPercent: stats.health.minHealthPercent,
     finalLevel: stats.finalLevel,
+    ...(xp
+      ? {
+          xpSpawned: xp.spawned,
+          xpCollected: xp.collected,
+          xpRemaining: xp.remaining,
+          xpEfficiency: xp.efficiency,
+        }
+      : {}),
   };
+}
+
+function runOneInFreshProcess(task: EvalTask, shared: EvalShared): RunStats {
+  const worker = fileURLToPath(new URL('./isolated-sweep-run-worker.ts', import.meta.url));
+  const payload = Buffer.from(
+    JSON.stringify({
+      config: task.config,
+      seed: task.seed,
+      weapon: task.weapon,
+      maxFrames: shared.maxFrames,
+      wallCapMs: shared.wallCapMs,
+      floorId: shared.floorId,
+      recordXpCollection: shared.recordXpCollection ?? false,
+    }),
+  ).toString('base64url');
+  const child = spawnSync(process.execPath, ['--import', 'tsx', worker, '--payload', payload], {
+    encoding: 'utf8',
+    timeout: shared.wallCapMs + 60_000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const marker = 'ISOLATED_SWEEP_RESULT=';
+  const resultLine = child.stdout?.split(/\r?\n/).find((line) => line.startsWith(marker));
+  if (child.error || child.status !== 0 || !resultLine) {
+    throw new Error(
+      `Fresh-process sweep run failed (seed=${task.seed}, weapon=${task.weapon}, status=${child.status}): ${child.error?.message ?? child.stderr ?? child.stdout}`,
+    );
+  }
+  return JSON.parse(resultLine.slice(marker.length)) as RunStats;
 }
 
 /** Run a batch of tasks, using the worker pool when concurrency > 1. */
@@ -685,6 +726,8 @@ interface CliArgs {
    *  to compute "this run's expected provenance" for `round-plan.ts --mode
    *  resume-check`, without duplicating `buildMeta`'s field list anywhere else. */
   printMeta: boolean;
+  freshProcess: boolean;
+  recordXpCollection: boolean;
 }
 
 function parseArgs(argv: readonly string[]): CliArgs {
@@ -705,6 +748,8 @@ function parseArgs(argv: readonly string[]): CliArgs {
     legacyBaseline: null,
     out: null,
     printMeta: false,
+    freshProcess: false,
+    recordXpCollection: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -757,6 +802,10 @@ function parseArgs(argv: readonly string[]): CliArgs {
       i++;
     } else if (arg === '--print-meta') {
       args.printMeta = true;
+    } else if (arg === '--fresh-process') {
+      args.freshProcess = true;
+    } else if (arg === '--record-xp') {
+      args.recordXpCollection = true;
     }
   }
   if (!args.combo && !args.printMeta) {
@@ -939,6 +988,8 @@ async function main(argv: readonly string[]): Promise<void> {
     budgetMs: FLOOR1_TIME_BUDGET_MS,
     wallCapMs: WALL_CAP_MS,
     floorId: args.floorId,
+    freshProcess: args.freshProcess,
+    recordXpCollection: args.recordXpCollection,
   };
   // The finalist rows are tagged with the combo under test; the incumbent rows
   // are always tagged riskRewardFused+legacy so the aggregator groups + dedups them.

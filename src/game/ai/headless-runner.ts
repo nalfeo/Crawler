@@ -25,6 +25,10 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
+import {
+  createXpCollectionTelemetry,
+  summarizeXpCollection,
+} from '../../core/xp-collection-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import {
@@ -220,6 +224,8 @@ export interface HeadlessRunnerConfig {
    * unaffected.
    */
   recordWeaponTelemetry?: boolean;
+  /** Opt-in per-floor spawned/collected/remaining XP telemetry. */
+  recordXpCollection?: boolean;
   /** Use weapon-specific stat and gear personas. Default true; false preserves the legacy control. */
   weaponPersonas?: boolean;
   /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
@@ -268,6 +274,7 @@ const DEFAULT_CONFIG: Required<
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
+  recordXpCollection: false,
   weaponPersonas: true,
   merchantWeaponPurchase: false,
   settlementReturnRouting: false,
@@ -479,6 +486,9 @@ export async function runHeadless(
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
   scenario.configureWorld(world, playerEid);
+  if (mergedConfig.recordXpCollection) {
+    world.xpCollectionTelemetry = createXpCollectionTelemetry(world.floorId, world.playerLevel.xp);
+  }
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.
@@ -632,6 +642,13 @@ export async function runHeadless(
     }
     return { grants, uniqueAbilityCount, milestonesReached };
   };
+
+  const collectOptionalRunTelemetry = (): Pick<RunStats, 'weaponTelemetry' | 'xpCollection'> => ({
+    ...(world.weaponTelemetry
+      ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+      : {}),
+    ...(world.xpCollectionTelemetry ? { xpCollection: summarizeXpCollection(world) } : {}),
+  });
 
   const buildFloor2HuntMetrics = (): NonNullable<RunStats['floor2Progression']>['hunt'] => ({
     huntTimeMs: floor2HuntTimeMs,
@@ -1282,9 +1299,7 @@ export async function runHeadless(
         equipmentSpendTelemetry.goldSpentOnEquipment,
       ),
       skills: collectSkillMetrics(),
-      ...(world.weaponTelemetry
-        ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
-        : {}),
+      ...collectOptionalRunTelemetry(),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1365,9 +1380,7 @@ export async function runHeadless(
       equipmentSpendTelemetry.goldSpentOnEquipment,
     ),
     skills: collectSkillMetrics(),
-    ...(world.weaponTelemetry
-      ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
-      : {}),
+    ...collectOptionalRunTelemetry(),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

@@ -2,6 +2,7 @@ import { addComponent, set } from 'bitecs';
 import { DroppedItem, Gold, Position, Size, Sprite, Weight, XpGem } from '../components.js';
 import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
+import { recordSpawnedXp } from '../xp-collection-telemetry.js';
 import { createEntity } from './entity-core.js';
 
 export function spawnXpGem(
@@ -27,6 +28,7 @@ export function spawnXpGem(
     }),
   );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
+  recordSpawnedXp(world, value);
 
   return eid;
 }

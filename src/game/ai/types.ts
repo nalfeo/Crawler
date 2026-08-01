@@ -5,6 +5,7 @@
  */
 import type { GameWorld } from '../../core/world.js';
 import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
+import type { XpCollectionSummary } from '../../core/xp-collection-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 
@@ -507,6 +508,8 @@ export interface RunStats {
    * `undefined` otherwise, so default runs and the Floor-1 gate are unaffected.
    */
   weaponTelemetry?: WeaponTelemetrySummary;
+  /** Opt-in per-floor emitted, collected, and remaining XP rollup. */
+  xpCollection?: XpCollectionSummary;
   /** End-of-run deterministic equipment/reward playability metrics. */
   equipmentPlayability?: EquipmentPlayabilityMetrics;
   /** Skill milestone ability grants observed during this run. */

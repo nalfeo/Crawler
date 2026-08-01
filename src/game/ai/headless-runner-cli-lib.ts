@@ -27,6 +27,7 @@ export interface CLIArgs {
   floorId: string;
   startPlayerLevel: number;
   weaponTelemetry: boolean;
+  xpCollection: boolean;
   weaponPersonas: boolean;
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
@@ -57,6 +58,7 @@ export function defaultCLIArgs(
     floorId: 'floor1',
     startPlayerLevel: 1,
     weaponTelemetry: false,
+    xpCollection: false,
     weaponPersonas: true,
     // Kept in sync with the game-runtime DEFAULT_CONFIG (bt-ai-tuning.ts) so the
     // manual `npm run ai:headless` CLI matches production unless a caller
@@ -151,6 +153,8 @@ export function parseArgs(
       i++;
     } else if (arg === '--weapon-telemetry') {
       args.weaponTelemetry = true;
+    } else if (arg === '--xp-collection') {
+      args.xpCollection = true;
     } else if (arg === '--weapon-personas') {
       args.weaponPersonas = true;
     } else if (arg === '--no-weapon-personas') {
@@ -210,6 +214,7 @@ Options:
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
+  --xp-collection         Collect + print per-floor spawned/collected/remaining XP
   --weapon-personas       Enable weapon-specific stat/gear personas (default)
   --no-weapon-personas    Disable weapon personas for the legacy A/B control
   --merchant-weapon-purchase
