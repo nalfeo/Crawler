@@ -15166,7 +15166,13 @@
       "width": 8,
       "height": 8,
       "description": "Backstage holding area. Contestants discover the show's rules and choose a power before the dungeon swallows them. Clustered composition with diagonal weighting: living-corner chaos lower-left, spell-broker authority upper-right, merchant queue crossing the Z-path.",
-      "tags": ["tutorial", "welcome", "hub", "production-set", "reality-show"],
+      "tags": [
+        "tutorial",
+        "welcome",
+        "hub",
+        "production-set",
+        "reality-show"
+      ],
       "placement": {
         "verticalAlign": "top"
       },
@@ -15789,7 +15795,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 6.49,
+              "widthFt": 5.46,
               "heightFt": 3.5,
               "anchorBase": true
             },
@@ -15828,7 +15834,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-              "widthFt": 5.13,
+              "widthFt": 6.57,
               "heightFt": 3.4
             }
           ]
@@ -15938,7 +15944,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-              "widthFt": 7.22,
+              "widthFt": 7.05,
               "heightFt": 6.8,
               "anchorBase": true
             }
@@ -15959,7 +15965,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 6.48,
+              "widthFt": 4.25,
               "heightFt": 4,
               "anchorBase": true
             },
