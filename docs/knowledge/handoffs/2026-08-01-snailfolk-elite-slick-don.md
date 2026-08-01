@@ -48,15 +48,17 @@ The `snailfolk-elite-slick-don` archetype is pre-wired in `enemies.floor2.json`:
 
 ### CI pipeline status
 
-The asset-request workflow (run #30686146471) was triggered automatically when issue #2571 was
-labeled `asset-request`. At handoff time, the pipeline had:
+The asset-request workflow (run #30686146471) completed successfully:
 - ✅ Queued and started processing
 - ✅ Brief synthesized from issue description (gpt-4o selected candidate 1/3)
 - ✅ Brief promoted to `briefs/draft/enemies/snailfolk-elite-slick-don.yaml` in Azure
-- ⏳ Generating → postprocessing → judging sprite variants
+- ✅ Sprite generated, postprocessed, and judged
+- ✅ **3 variants selected for publication: variant 4, variant 7, variant 14** (all 0 sensor failures)
+- ✅ Brief: `snailfolk-elite-slick-don-v1`, Run: `2026-08-01T05-46-45-40047e73`
+- ⏳ `sprites:publish-selected` step updating the art PR (`assets/queue` branch, PR #2558)
 
-The committed brief in `briefs/enemies/snailfolk-elite-slick-don.yaml` serves as the canonical
-authored reference and will be promoted by CI or used directly on the next pipeline run.
+The committed brief in `briefs/enemies/snailfolk-elite-slick-don.yaml` is the canonical authored
+reference. The pipeline used the Azure-stored draft brief for generation.
 
 ## GitHub issue plan comment
 
