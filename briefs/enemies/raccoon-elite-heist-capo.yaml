@@ -1,0 +1,63 @@
+type: enemy
+name: raccoon-elite-heist-capo
+floor: 2
+description: |
+  An elite raccoon heist capo — leaner and sharper than the common raccoon grunt,
+  radiating the confidence of someone who has never been caught. Compact upright
+  posture, weight balanced, arms slightly out from the body in a professional ready-stance.
+
+  Clothing: sleek black turtleneck sweater (three shades of near-black/very-dark-charcoal
+  to give it texture — highlight ridge, mid, shadow), form-fitting dark charcoal trousers
+  tucked into ankle-height black boots. Fitted dark leather gloves on both hands.
+  A small dark beret sits at a precise angle on the head — confident, not rakish.
+  One forearm bears a slim fine watch with a pale gold or silver face (tiny but readable).
+
+  Heist prop: a rolled-up blueprint tube or scroll case tucked under one arm —
+  cream or tan rolled paper, rubber-banded closed, maybe a small gear or lock symbol
+  visible on the label. This is the single clearest read-at-a-glance prop.
+
+  Raccoon biology: natural dark-grey and charcoal fur on the body, the iconic white
+  eye-mask stripe across the face in clean white/pale grey, black nose, and dark
+  eye markings. The face should be front-facing, intent expression — professional,
+  not feral. Ringed tail shows behind or to the side: dark grey with black bands.
+
+  Palette grounding (raccoon family: hudColor #525258):
+  - Body fur: dark charcoal rgb(60,60,64) shadow, rgb(82,82,88) mid, rgb(108,108,116) light
+  - Mask/eye stripe: bright white rgb(220,220,224) for the eye mask area; near-black rgb(28,24,32) for eye patches
+  - Turtleneck/outfit: near-black rgb(22,22,26) deep, rgb(38,38,44) mid, rgb(54,54,62) highlight sheen
+  - Blueprint tube: warm tan rgb(188,160,100) highlight, rgb(148,120,72) mid
+  - Watch accent: pale gold rgb(196,168,80) — ONE small detail only, never fill large areas
+  - Outline: near-black rgb(16,14,18) as single-pixel contour only
+
+  COLOUR ASSIGNMENT IS EXPLICIT. Each ramp belongs to one material only. The pale gold
+  watch accent must NEVER spread to the face, fur, or gloves. The near-black outline
+  must NEVER become a large body fill — outfit shading uses rgb(22,22,26) through rgb(54,54,62).
+  The white eye-mask stripe is the face's brightest element; do not use it on clothing.
+
+  Hard negatives: no brown-paper bag or garbage can props (that's the grunt register),
+  no overly wide stance (keep it trim and elite), no balaclava or ski-mask (the turtleneck
+  and beret are enough), no visible tail ring above the body silhouette. Blueprint tube is
+  clean and professional, not torn.
+
+  Single subject, front-facing toward viewer, centered, fully inside frame, hard pixel
+  edges, transparent background, no text, no background decoration.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: false
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Elite capo in black turtleneck and beret, blueprint tube tucked under left arm, fine watch on right wrist, intent front-facing expression, slim silhouette
+  - Capo with slightly raised chin, beret at a sharper angle, gloved hands visible at sides, blueprint tube under arm, raccoon eye-mask stripe prominent
+  - Capo leaning faintly forward, blueprint tube gripped under arm at a slight angle, watch glinting, dark charcoal trousers with clean boot line, composed stance
+  - Capo with both arms visible, blueprint tube under left arm and right gloved hand slightly raised, professional ready-stance, beret, white mask-stripe face
+
+minVariations: 6
