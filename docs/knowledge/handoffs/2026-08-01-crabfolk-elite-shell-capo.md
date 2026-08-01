@@ -18,7 +18,7 @@ Estimated 1🍎, actual 1🍎 — pure art brief creation, no code changes.
 
 ## Summary
 
-- Added enemy brief at `briefs/enemies/crabfolk-elite-shell-capo-v1.yaml` for
+- Added enemy brief at `briefs/enemies/crabfolk-elite-shell-capo-v3.yaml` for
   issue nalfeo/Crawler#2560.
 - The brief encodes the requested elite crabfolk capo: wide/low-center tank
   silhouette, oversized reinforced shell with pinstripe paint and gold trim,
@@ -45,11 +45,11 @@ Estimated 1🍎, actual 1🍎 — pure art brief creation, no code changes.
     `name: crabfolk-elite-shell-capo`, `floor: 2`, no `sizeVariant`,
     `sensors.enemy.facing: front`, `judge.enabled: true`,
     `judge.maxVariants: 4`, `minVariations: 4`, 4 variation entries.
-- `npm run verify:fast` ❌ — pre-existing environment blocker (empty
-  `node_modules`, network-isolated sandbox). Not caused by this change.
-  The brief is pure YAML and cannot affect TypeScript or ESLint output.
-- Issue #2560 is labeled `asset-request`; the `asset-request.yml` workflow
-  fires automatically on new issues with that label. No manual trigger needed.
+- Pipeline execution ✅ — Issue #2560 was labeled `asset-request`;
+  `asset-request.yml` workflow fired and **completed** (run `2026-08-01T05-40-09-030d5b08`):
+  - Synthesized brief `crabfolk-elite-shell-capo-v3` (GPT-4o selected candidate 3/3)
+  - 3 variants generated; all selected (each with 1 sensor failure — accepted by judge)
+  - Canonical brief renamed to `v3` to match the generated lineage
 
 ## Blockers / notes
 
@@ -61,13 +61,10 @@ Estimated 1🍎, actual 1🍎 — pure art brief creation, no code changes.
 
 ## Next steps
 
-1. Confirm `asset-request.yml` workflow run fired for issue #2560 and
-   generation completes without errors.
-2. When candidates land, invoke `sprite-judge` skill to review the 4 variants.
-3. Approve the winning variant with:
+1. Review the 3 generated variants posted to issue #2560 (run `2026-08-01T05-40-09-030d5b08`).
+2. Approve the winning variant(s) with:
    `npm run sprites:approve -- <runDir> --variant <N>`
-4. Run `npm run sprites:checkin` to open an `asset-checkin` issue.
-5. Batch with open `asset-checkin` issues via `npm run sprites:asset-pr` and
-   merge the art-only PR.
-6. After merge, wire into `entity-sprite-mappings.json` via
+3. Run `npm run sprites:checkin` to open an `asset-checkin` issue.
+4. The hourly `sprite-queue-reconciler` will batch approved art into an art-only PR via `assets/promote → main`.
+5. After merge, wire into `entity-sprite-mappings.json` via
    `npm run sprites:generate-wiring -- --since main`.
