@@ -24,6 +24,18 @@ description: |
   Keep hard pixel edges, transparent background, no text, no extra props, and
   no rider companions. Readable at game scale in a three-quarter enemy pose for
   Floor 2's salvage-industrial dungeon palette.
+sensors:
+  enemy:
+    facing: three-quarter
+    toleranceDeg: 45
+  edge:
+    allowMainTouch: false
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
 variations:
   - exposed spoke wheel with the bright wrench raised high in mid-swing
   - enclosed mono-wheel pod with brass patches and the wrench held low and ready
