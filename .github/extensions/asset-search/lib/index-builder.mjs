@@ -92,7 +92,7 @@ function deriveTags(entry) {
 function toShardDocument(key, entry, briefMap) {
   const briefId = entry.briefId ?? '';
   // Brief text enriches search signal for the asset without replacing tags.
-  const briefText = briefId ? (briefMap.get(briefId) ?? '') : '';
+  const briefText = briefId ? resolveBriefText(briefMap.get(briefId), key, entry) : '';
   return {
     id: `generated:${key}`,
     // Use the shard key as the canonical label — spriteName is not trusted because
@@ -106,6 +106,18 @@ function toShardDocument(key, entry, briefMap) {
     assetPath: entry.assetPath ?? '',
     briefId,
   };
+}
+
+function resolveBriefText(brief, key, entry) {
+  if (!brief) return '';
+  const candidates = [entry?.spriteName, key, key.includes('/') ? key.slice(key.lastIndexOf('/') + 1) : key]
+    .filter((v) => typeof v === 'string' && v.length > 0)
+    .map((v) => v.trim());
+  for (const candidate of candidates) {
+    const itemText = brief.itemTextById.get(candidate);
+    if (itemText) return itemText;
+  }
+  return brief.topLevelText;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +155,26 @@ function buildBriefMap() {
         : typeof parsed.prompt === 'string'
           ? parsed.prompt
           : '';
-    if (rawText) map.set(name, rawText.slice(0, MAX_BRIEF_TEXT_CHARS));
+    const itemTextById = new Map();
+    if (Array.isArray(parsed.iconBatch)) {
+      for (const icon of parsed.iconBatch) {
+        if (!icon || typeof icon !== 'object' || Array.isArray(icon)) continue;
+        const id = typeof icon.id === 'string' ? icon.id.trim() : '';
+        if (!id) continue;
+        const itemRawText =
+          typeof icon.description === 'string'
+            ? icon.description
+            : typeof icon.prompt === 'string'
+              ? icon.prompt
+              : '';
+        if (!itemRawText) continue;
+        itemTextById.set(id, itemRawText.slice(0, MAX_BRIEF_TEXT_CHARS));
+      }
+    }
+    const topLevelText = rawText ? rawText.slice(0, MAX_BRIEF_TEXT_CHARS) : '';
+    if (topLevelText || itemTextById.size > 0) {
+      map.set(name, { topLevelText, itemTextById });
+    }
   }
   return map;
 }
