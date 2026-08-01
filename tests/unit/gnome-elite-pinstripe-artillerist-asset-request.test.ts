@@ -14,8 +14,8 @@ describe('gnome-elite-pinstripe-artillerist asset request', () => {
     const registry = buildGeneratedSpriteRegistry(loadShippedManifest());
     const variants = registry.variants(BRIEF_ID);
     expect(variants.length).toBeGreaterThan(0);
-    expect(variants.some((entry) => entry.textureKey === 'gnome-elite-pinstripe-artillerist-var-0')).toBe(
-      true,
-    );
+    expect(
+      variants.some((entry) => entry.textureKey === 'gnome-elite-pinstripe-artillerist-var-0'),
+    ).toBe(true);
   });
 });
