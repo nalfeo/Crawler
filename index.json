@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0fa391202e7d7ada8ca2fb11273cf6d26dafbd01",
+    "commitDate": "2026-08-01T19:25:21Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2652)",
+    "capturedAt": "2026-08-01T20:31:58.503Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30715176864",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/0fa391202e7d7ada8ca2fb11273cf6d26dafbd01.json"
+  },
+  {
     "commit": "81433c30a5f0fd1d176b7ed301be8279c475c90b",
     "commitDate": "2026-08-01T18:54:51Z",
     "commitSubject": "feat(sprites): add approved imp-chain-brawler variant 9 asset (#2634)",
