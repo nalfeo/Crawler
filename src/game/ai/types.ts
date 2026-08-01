@@ -414,6 +414,27 @@ export interface EquipmentPlayabilityMetrics {
 }
 
 /**
+ * Skill and ability progression observed during a run.
+ * Populated from `world.milestoneGrantLog` at run end.
+ */
+export interface SkillRunMetrics {
+  /**
+   * Ordered list of every milestone ability grant that fired.
+   * Each entry records the skill, ability, milestone level, and game time.
+   */
+  grants: Array<{
+    skillId: string;
+    abilityId: string;
+    milestoneLevel: number;
+    gameTimeMs: number;
+  }>;
+  /** Number of distinct ability IDs granted (upgrades only counted once). */
+  uniqueAbilityCount: number;
+  /** Milestone levels reached per skill ID (e.g. `{ swords: [5, 10] }`). */
+  milestonesReached: Record<string, number[]>;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -482,4 +503,6 @@ export interface RunStats {
   weaponTelemetry?: WeaponTelemetrySummary;
   /** End-of-run deterministic equipment/reward playability metrics. */
   equipmentPlayability?: EquipmentPlayabilityMetrics;
+  /** Skill milestone ability grants observed during this run. */
+  skills?: SkillRunMetrics;
 }

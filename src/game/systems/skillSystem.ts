@@ -153,6 +153,14 @@ function applyMilestone(
         },
       ]);
 
+      // Append to the run-level milestone grant log (read by headless runner).
+      world.milestoneGrantLog.push({
+        skillId,
+        abilityId: milestone.abilityId,
+        milestoneLevel: level,
+        gameTimeMs: world.elapsedMs,
+      });
+
       // Player-only, one-time unlock feedback.
       if (hasComponent(world.ecs, targetEid, Player)) {
         const px = world.stores.position.x[targetEid] ?? 0;
