@@ -53,6 +53,7 @@ export class QueueCommitError extends Error {
       | 'ci-refused'
       | 'destination-conflict'
       | 'invalid-asset-path'
+      | 'invalid-brief-path'
       | 'git-failed'
       | 'push-retries-exhausted',
     message: string,
@@ -85,6 +86,17 @@ export interface QueueCommitDeps {
     srcRepoRoot: string,
     destRepoRoot: string,
     assets: readonly CheckinAsset[],
+  ) => Promise<void>;
+  /**
+   * Copy brief YAML files from `sourceRoot` into the worktree at the same
+   * repo-relative path. Optional: only called when `QueueCommitOptions.briefs`
+   * is non-empty. A default fs-based implementation is provided by
+   * `createDefaultQueueCommitDeps`.
+   */
+  readonly copyBriefFiles?: (
+    sourceRoot: string,
+    worktree: string,
+    briefPaths: readonly string[],
   ) => Promise<void>;
   /** Create + return an empty temp directory for the throwaway worktree. */
   readonly makeTempDir: () => Promise<string>;
@@ -128,6 +140,15 @@ export interface QueueCommitOptions {
    * disposable, fully validated staging tree while git still runs in repoRoot.
    */
   readonly sourceRoot?: string;
+  /**
+   * Repo-relative POSIX paths of brief YAML files to include alongside the art
+   * surface in this commit (e.g. `briefs/enemies/panda-boba-sniper.yaml`).
+   * Each path must be under `briefs/` with no traversal. The file is read from
+   * `sourceRoot + briefPath` and written to the worktree at the same path.
+   * Staged BEFORE the no-op guard so a commit that updates only a brief (with
+   * identical art bytes) still lands as `committed` rather than `noop`.
+   */
+  readonly briefs?: readonly string[];
   /**
    * Narrow CI capability for the trusted asset-request publisher, or the
    * equally narrow theme-equipment-set publisher (ADR 0073). Ordinary
@@ -185,6 +206,35 @@ export function assertSafeAssetPaths(assets: readonly CheckinAsset[]): void {
         'invalid-asset-path',
         `Asset path must be under the staged art surface (generated/), got: ${p}. ` +
           `Paths outside generated/ are copied but never staged, silently no-op'ing the commit.`,
+      );
+    }
+  }
+}
+
+/**
+ * Validate that each brief path is a safe repo-relative POSIX path under
+ * `briefs/` with no absolute paths or traversal (`..`). Throws
+ * `QueueCommitError('invalid-brief-path')` on the first violation.
+ */
+export function assertSafeBriefPaths(briefs: readonly string[]): void {
+  for (const p of briefs) {
+    if (typeof p !== 'string' || p.trim() === '') {
+      throw new QueueCommitError('invalid-brief-path', `Empty brief path`);
+    }
+    if (p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.includes('\\')) {
+      throw new QueueCommitError(
+        'invalid-brief-path',
+        `Brief path must be a repo-relative POSIX path, got: ${p}`,
+      );
+    }
+    const segments = p.split('/');
+    if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+      throw new QueueCommitError('invalid-brief-path', `Unsafe brief path: ${p}`);
+    }
+    if (!p.startsWith('briefs/')) {
+      throw new QueueCommitError(
+        'invalid-brief-path',
+        `Brief path must be under briefs/, got: ${p}`,
       );
     }
   }
@@ -273,6 +323,9 @@ export async function runQueueCommit(
 
   assertSafeAssetPaths(assets);
 
+  const briefs = options.briefs ?? [];
+  assertSafeBriefPaths(briefs);
+
   const remote = options.remote ?? 'origin';
   const queueBranch = options.queueBranch ?? 'assets/queue';
   const baseBranch = options.baseBranch ?? 'main';
@@ -281,7 +334,7 @@ export async function runQueueCommit(
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  if (assets.length === 0) {
+  if (assets.length === 0 && briefs.length === 0) {
     return { status: 'noop', branch: queueBranch, attempts: 0 };
   }
 
@@ -360,12 +413,13 @@ export async function runQueueCommit(
             // the three-way diff from.
             //
             // Strategy: reset the worktree to main's clean state, then layer
-            // the queued art files back on top from the orphan tip.  Non-art
-            // files on the orphan are discarded (they violate the art-only
-            // queue discipline and main always has the canonical version).
-            // The art surface is fully preserved: queued sprites that are
-            // already on the branch survive, and copyArtSurface adds the
-            // newly approved ones in the next step.
+            // the queued art AND brief files back on top from the orphan tip.
+            // Non-art/non-brief files on the orphan are discarded (they violate
+            // the art-only queue discipline and main always has the canonical
+            // version).  The art+brief surfaces are fully preserved: queued
+            // sprites and briefs already on the branch survive, and
+            // copyArtSurface/copyBriefFiles adds the newly approved ones in the
+            // next step.
             await mustGit(deps.exec, worktree, ['reset', '--hard', mainRef]);
             const artCheckout = await runGit(deps.exec, worktree, [
               'checkout',
@@ -381,7 +435,26 @@ export async function runQueueCommit(
                 `assets/queue orphan art checkout failed: ${artCheckout.stderr}`,
               );
             }
+            // Restore any brief files that are already on the orphan queue tip so
+            // they are not lost by the hard reset. Like art, a "pathspec did not
+            // match" is fine (no briefs queued yet).
+            const briefCheckout = await runGit(deps.exec, worktree, [
+              'checkout',
+              baseRef,
+              '--',
+              'briefs/',
+            ]);
+            if (
+              briefCheckout.code !== 0 &&
+              !briefCheckout.stderr.toLowerCase().includes('pathspec')
+            ) {
+              throw new QueueCommitError(
+                'destination-conflict',
+                `assets/queue orphan brief checkout failed: ${briefCheckout.stderr}`,
+              );
+            }
             await runGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
+            await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);
             merge = { code: 0, stdout: '', stderr: '' };
             usedOrphanReset = true;
           }
@@ -408,6 +481,15 @@ export async function runQueueCommit(
         // Fixed allowlist: only the generated art surface (PNGs + shards) can
         // ever be staged.
         await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
+
+        // Copy brief YAML files (if any) and stage them. This MUST happen before
+        // the no-op guard so a commit that touches only a brief file (identical
+        // art bytes already on the queue) still lands as `committed` rather than
+        // `noop`, preventing the brief from silently disappearing.
+        if (briefs.length > 0 && deps.copyBriefFiles) {
+          await deps.copyBriefFiles(sourceRoot, worktree, briefs);
+          await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);
+        }
 
         // No-op guard: if nothing staged, the queue already carries identical
         // bytes — skip the commit+push so repeated identical saves don't churn.

@@ -232,6 +232,7 @@ while IFS= read -r file; do
   case "$file" in
     public/assets/generated/*) ;;
     src/shared/data/sprite-catalog.json) ;;
+    briefs/*) ;;
     docs/*) ;;
     *)
       art_only=false
@@ -283,6 +284,7 @@ while IFS= read -r file; do
     tests/e2e/*) ;;
     docs/*) ;;
     public/*) ;;
+    briefs/*) ;;
     .github/*) ;;
     src/shared/data/sprite-catalog.json) ;;
     package.json)

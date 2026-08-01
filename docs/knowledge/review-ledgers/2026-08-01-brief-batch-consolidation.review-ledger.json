@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "brief-batch-consolidation",
+  "task_title": "feat(sprites): brief-batch consolidation command and queue-commit brief bundling",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": false,
+      "notes": "",
+      "model": "claude-opus-4.8",
+      "verdict": "approved",
+      "concerns": [
+        "B1: brief git add must be before noop guard",
+        "B2: orphan-reset discards queued briefs",
+        "N1: use three-dot diff for brief-only classification",
+        "N2: explicit file path checkout not wildcard",
+        "N4: do not auto-close source PRs",
+        "S1: validate brief paths against traversal"
+      ],
+      "resolutions": {
+        "B1": "fixed in queue-commit.ts: brief stage+add before diff --cached --quiet guard",
+        "B2": "fixed in queue-commit.ts: orphan-reset now restores briefs/ from queue tip",
+        "N1": "fixed in brief-batch.ts: uses origin/main...origin/<headRef> three-dot diff",
+        "N2": "fixed in brief-batch.ts: iterates pr.briefPaths and checks out each path individually",
+        "N4": "fixed in brief-batch.ts: runBriefBatchConsolidation never closes source PRs, only prints instructions",
+        "S1": "fixed in queue-commit.ts: assertSafeBriefPaths() validates no absolute paths, no .. traversal, must start with briefs/"
+      }
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

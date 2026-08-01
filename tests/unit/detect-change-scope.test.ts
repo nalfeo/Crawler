@@ -1089,6 +1089,20 @@ const cases: Case[] = [
     // visual_touched=true, asset_visual_touched=true because art files are in the diff.
     expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
+  // Brief YAML files alone: still art_only and gameplay_safe (design data, no sim impact).
+  {
+    name: 'brief-only (enemies): art_only=true, gameplay_safe=true',
+    files: ['briefs/enemies/panda-boba-sniper.yaml', 'briefs/enemies/ratfolk-elite-underboss.yaml'],
+    //                         art   docs  gsafe sponly sptch sim   cov   vis   game  asset devt
+    expected: F(true, false, true, false, false, false, false, false, false, false, false),
+  },
+  // Brief + art together (queue-commit bundles them): still art_only and gameplay_safe.
+  {
+    name: 'art + brief (bundled queue-commit): art_only=true, gameplay_safe=true',
+    files: ['public/assets/generated/panda-boba-sniper-var-0.png', 'briefs/enemies/panda-boba-sniper.yaml'],
+    //                         art   docs  gsafe sponly sptch sim   cov   vis   game  asset devt
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
+  },
 ];
 
 describe('detect-art-only.sh change-scope classifier', () => {

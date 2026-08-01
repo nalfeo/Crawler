@@ -161,6 +161,7 @@ export async function publishSelectedAssetRequests(
               message: `art: publish issue #${item.checkpoint.issueNumber} selected variants`,
               maxAttempts: 3,
               sourceRoot: item.stageRoot,
+              briefs: [item.checkpoint.details.promotedBriefPath],
               ciAuthorization: { caller: 'asset-request-publisher' },
               validateDestination: validateExactAssetPayloads,
             },
