@@ -1,0 +1,6 @@
+{
+  "name": "asset-search",
+  "description": "Natural-language sprite asset search powered by MiniSearch. Registers the search_assets tool for use by set-piece-designer and other agents.",
+  "version": "1.0.0",
+  "project": true
+}
