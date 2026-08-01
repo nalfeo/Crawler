@@ -34,6 +34,7 @@ import {
   type AIPathingModeValue,
   type RunStats,
   type LevelUpEvent,
+  type SkillRunMetrics,
 } from './types.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
@@ -620,6 +621,16 @@ export async function runHeadless(
       suppressedProgressNavCount: decisionStateCounts[suppressedState] ?? 0,
       suppressedProgressNavMs: decisionStateMs[suppressedState] ?? 0,
     };
+  };
+
+  const collectSkillMetrics = (): SkillRunMetrics => {
+    const grants = world.milestoneGrantLog.map((g) => ({ ...g }));
+    const uniqueAbilityCount = new Set(grants.map((g) => g.abilityId)).size;
+    const milestonesReached: Record<string, number[]> = {};
+    for (const g of grants) {
+      (milestonesReached[g.skillId] ??= []).push(g.milestoneLevel);
+    }
+    return { grants, uniqueAbilityCount, milestonesReached };
   };
 
   const buildFloor2HuntMetrics = (): NonNullable<RunStats['floor2Progression']>['hunt'] => ({
@@ -1270,6 +1281,7 @@ export async function runHeadless(
         playerEid,
         equipmentSpendTelemetry.goldSpentOnEquipment,
       ),
+      skills: collectSkillMetrics(),
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
@@ -1352,6 +1364,7 @@ export async function runHeadless(
       playerEid,
       equipmentSpendTelemetry.goldSpentOnEquipment,
     ),
+    skills: collectSkillMetrics(),
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),
