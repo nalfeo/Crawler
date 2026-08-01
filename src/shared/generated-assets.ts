@@ -602,7 +602,7 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   'kobold-boss': 'kobold-boss',
   'kobold-torch': 'kobold-torch',
   'kobold-elite-dragon-capo': 'kobold-torch',
-  'kobold-roman-candle': 'kobold-torch',
+  'kobold-roman-candle': 'kobold-roman-candle-v1',
   'myconid-boss': 'myconid-boss',
   'myconid-spore': 'myconid-spore',
   'myconid-elite-don-agaric': 'myconid-spore',

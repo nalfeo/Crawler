@@ -428,6 +428,9 @@ describe('generatedBriefIdForEnemy', () => {
     expect(generatedBriefIdForEnemy('enemy_family_boss', 'batfolk-boss')).toBe('batfolk-boss');
     expect(generatedBriefIdForEnemy('enemy_rat', 'goblin-grunt')).toBe('goblin-grunt');
     expect(generatedBriefIdForEnemy('enemy_rat', 'geese-honker')).toBe('geese-honker');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'kobold-roman-candle')).toBe(
+      'kobold-roman-candle-v1',
+    );
     expect(generatedBriefIdForEnemy('enemy_slime', 'cave-slime')).toBe('cave-slime');
     expect(generatedBriefIdForEnemy('enemy_rat', 'crystal-scuttler')).toBe('crystal-scuttler');
   });
