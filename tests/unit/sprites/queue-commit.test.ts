@@ -310,7 +310,10 @@ describe('runQueueCommit (control flow)', () => {
       if (args[0] === 'reset') return { code: 0 }; // reset --hard
       if (args[0] === 'checkout') return { code: 0 }; // checkout baseRef -- art surface
       if (args[0] === 'diff') return { code: 1 }; // staged diff present
-      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'rev-parse') {
+        // Return distinguishable SHAs: HEAD → new commit, baseRef → orphan tip
+        return args[1] === 'HEAD' ? { stdout: 'newcommitsha\n' } : { stdout: 'orphansha\n' };
+      }
       return {};
     });
 
@@ -334,6 +337,10 @@ describe('runQueueCommit (control flow)', () => {
     ).toBe(true);
     // No --allow-unrelated-histories flag anywhere.
     expect(line.some((l) => l.includes('allow-unrelated-histories'))).toBe(false);
+    // Push uses --force-with-lease scoped to the orphan SHA (usedOrphanReset = true).
+    const pushLine = line.find((l) => l.startsWith('git push'));
+    expect(pushLine).toContain('--force-with-lease=refs/heads/assets/queue:orphansha');
+    expect(pushLine).not.toContain('--force-with-lease=refs/heads/assets/queue:newcommitsha');
   });
 
   it('does NOT reset/checkout for other merge failures (content conflict)', async () => {
@@ -376,7 +383,7 @@ describe('runQueueCommit (control flow)', () => {
   });
 
   it('succeeds when the orphan has no art (pathspec error is treated as empty queue)', async () => {
-    const { exec } = makeFakeExec((_command, args) => {
+    const { exec, calls } = makeFakeExec((_command, args) => {
       if (args[0] === 'ls-remote') return { stdout: 'deadbeef\trefs/heads/assets/queue\n' };
       if (args[0] === 'merge')
         return { code: 1, stderr: 'fatal: refusing to merge unrelated histories' };
@@ -384,12 +391,18 @@ describe('runQueueCommit (control flow)', () => {
       if (args[0] === 'checkout')
         return { code: 1, stderr: 'error: pathspec did not match any file(s) known to git' };
       if (args[0] === 'diff') return { code: 1 }; // staged diff present
-      if (args[0] === 'rev-parse') return { stdout: 'sha\n' };
+      if (args[0] === 'rev-parse') {
+        return args[1] === 'HEAD' ? { stdout: 'newcommitsha\n' } : { stdout: 'orphansha\n' };
+      }
       return {};
     });
 
     const result = await runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' });
     expect(result.status).toBe('committed');
+    // Even with no existing art on the orphan, the push uses --force-with-lease.
+    const line = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    const pushLine = line.find((l) => l.startsWith('git push'));
+    expect(pushLine).toContain('--force-with-lease=refs/heads/assets/queue:orphansha');
   });
 
   it('returns a no-op (no commit/push) when nothing is staged', async () => {
@@ -546,6 +559,9 @@ describe('runQueueCommit (control flow)', () => {
       'hint: Updates were rejected because the tip of your current branch is behind',
       'hint: Updates were rejected because the remote contains work that you do not have',
       'NON-FAST-FORWARD',
+      // Force-with-lease failure: remote advanced past the expected SHA.
+      ' ! [rejected]        sha -> assets/queue (stale info)',
+      'STALE INFO',
       // Lost server-side ref-transaction race: the expected-old-OID mismatch. A
       // plain push CAN hit this on GitHub without a non-ff phrase; re-fetch +
       // re-union + re-push is the correct CAS response, so it must retry.

@@ -235,6 +235,9 @@ export function isNonFastForwardRejection(stderr: string): boolean {
     s.includes('fetch first') ||
     s.includes('tip of your current branch is behind') ||
     s.includes('remote contains work that you do') ||
+    // Force-with-lease rejection: the remote ref advanced past the expected SHA.
+    // Git outputs "(stale info)" when the lease's expected SHA no longer matches.
+    s.includes('stale info') ||
     // Expected-old-OID mismatch: a lost server-side ref-transaction race.
     (s.includes('cannot lock ref') && s.includes('but expected'))
   );
@@ -330,6 +333,13 @@ export async function runQueueCommit(
         // never check the queue branch out by name, so there is no
         // "branch already checked out" clash with the caller's worktree.
         await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
+        // Track whether we resolved an orphan-history condition via reset+checkout.
+        // When true, the new commit's parent is mainRef (NOT the orphan queue tip),
+        // so a plain fast-forward push is impossible — we must use --force-with-lease
+        // scoped to the exact orphan SHA we fetched.  That is still a compare-and-swap:
+        // if another writer advanced assets/queue between our fetch and push,
+        // the lease fails and we retry (just like the non-fast-forward retry).
+        let usedOrphanReset = false;
         if (branchExists) {
           // First try a normal merge.
           let merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
@@ -364,6 +374,7 @@ export async function runQueueCommit(
             }
             await runGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
             merge = { code: 0, stdout: '', stderr: '' };
+            usedOrphanReset = true;
           }
           if (merge.code !== 0) {
             throw new QueueCommitError(
@@ -399,16 +410,33 @@ export async function runQueueCommit(
         await mustGit(deps.exec, worktree, ['commit', '--no-verify', '-m', options.message]);
         const newCommit = (await mustGit(deps.exec, worktree, ['rev-parse', 'HEAD'])).trim();
 
-        // Plain (non-force) push: our commit's parent is the fetched tip, so a
-        // concurrent advance makes this a non-fast-forward → git rejects it and
-        // we retry. This is the compare-and-swap: it can NEVER overwrite a
-        // concurrent update (unlike --force-with-lease).
-        const push = await runGit(deps.exec, repoRoot, [
-          'push',
-          '--no-verify',
-          remote,
-          `${newCommit}:refs/heads/${queueBranch}`,
-        ]);
+        // Push strategy depends on whether we resolved an orphan-history situation.
+        //
+        // Normal path: our commit's parent IS the fetched queue tip — a plain
+        // fast-forward push is a strict CAS that can never overwrite a concurrent
+        // update.  A non-ff rejection means a concurrent writer advanced the branch
+        // while we worked; we re-fetch and retry.
+        //
+        // Orphan-reset path: our commit's parent is mainRef, NOT the orphan tip, so
+        // the plain fast-forward push is permanently non-fast-forward regardless of
+        // any concurrent advance.  We must use --force-with-lease scoped to the exact
+        // orphan SHA we fetched (baseRef).  This is still a CAS: if another writer
+        // advanced assets/queue between our fetch and our push, the lease mismatches
+        // and we retry (same as the non-ff retry on the normal path).
+        let pushArgs: string[];
+        if (usedOrphanReset) {
+          const baseSha = (await mustGit(deps.exec, repoRoot, ['rev-parse', baseRef])).trim();
+          pushArgs = [
+            'push',
+            '--no-verify',
+            `--force-with-lease=refs/heads/${queueBranch}:${baseSha}`,
+            remote,
+            `${newCommit}:refs/heads/${queueBranch}`,
+          ];
+        } else {
+          pushArgs = ['push', '--no-verify', remote, `${newCommit}:refs/heads/${queueBranch}`];
+        }
+        const push = await runGit(deps.exec, repoRoot, pushArgs);
         if (push.code === 0) {
           return { status: 'committed', branch: queueBranch, commit: newCommit, attempts: attempt };
         }
