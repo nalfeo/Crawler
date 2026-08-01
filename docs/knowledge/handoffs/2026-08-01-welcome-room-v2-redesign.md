@@ -6,13 +6,14 @@
 
 ## Summary
 
-Replaced the existing `welcome-room-v2` entry in `src/shared/data/set-pieces.json` with a
-ground-up 8×8 set piece. The old entry used 28 `source:"sheet"` Kenney sprite references —
+Added a new `welcome-room-v2` entry in `src/shared/data/set-pieces.json` as a
+ground-up 8×8 set piece. The prior `welcome-room` entry uses 28 `source:"sheet"` Kenney sprite references —
 completely illegal. The new room uses exclusively `source:"catalog"` sprites from the approved
 welcome-room generated-art catalog, plus three `source:"npc"` NPC anchors.
 
 **Design:** Crawler reality-show backstage holding area. Narrative verb: "The player discovers
-the rules of the show and chooses which power to chase." Composition mode: DIAGONAL from
+the rules of the show and chooses which power to chase." Composition mode: CLUSTERED with
+diagonal weighting from
 lower-left (living corner chaos) to upper-right (spell broker authority), with the merchant
 queue crossing the Z-path in between.
 
@@ -39,12 +40,11 @@ queue crossing the Z-path in between.
 
 ## Files touched
 
-- `src/shared/data/set-pieces.json` — `welcome-room-v2` entry (index 13) completely replaced
+- `src/shared/data/set-pieces.json` — added `welcome-room-v2` entry (index 13)
 
 ## Systems touched
 
-- **set-pieces data** — composition, vignettes, floor/wall ring, NPC anchors
-- **review ledger** — `docs/knowledge/review-ledgers/2026-08-01-welcome-room-v2-redesign.review-ledger.json`
+mapgen, agent-personas, devtools, ci-policy
 
 ## Key technical fixes applied during session
 
@@ -75,14 +75,14 @@ npm run verify:pr-prereqs                   → ✅ (after handoff committed)
   subjective scorecard (all ≥7/10) is more meaningful than the lab-chrome-confused LLM verdict.
   Resolving this requires adding `window.__visualReview` instrumentation to the set-piece lab
   (`src/labs/set-piece-lab/index.ts`) — a separate task.
-- **Sync conflict**: commit `778099db6` (docs/lookbook) has a persistent merge conflict with
-  main. Non-blocking — the worktree-level file is unaffected. Needs manual resolution in a
-  separate session.
+- **Sync conflict**: the historical conflict note is now stale; this branch has been synced to
+  `origin/main`.
 
 ## Recommended next steps
 
 1. Wire `welcome-room-v2` into the game's welcome-room selector so it can be A/B tested against
-   `welcome-room` in a headless run
+   `welcome-room` in a headless run (this session's redesign is a non-shipping draft until that
+   wiring lands)
 2. Add `window.__visualReview` signal to `set-piece-lab` so LLM visual judge produces grounded
    pixel-level feedback
 3. Apply the same layer-level feet audit to other set pieces that may have incorrect

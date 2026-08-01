@@ -64,6 +64,10 @@
     await new Promise((r) => setTimeout(r, 200));
   }
 
+  if (!allLoaded()) {
+    throw new Error(`Set-piece scene did not finish loading within ${DEADLINE_MS}ms`);
+  }
+
   await new Promise((r) => setTimeout(r, 1000));
 
   window.__visualReviewClip = null;

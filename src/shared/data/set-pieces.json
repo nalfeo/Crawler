@@ -13800,7 +13800,7 @@
       "sizing": "exact",
       "width": 7,
       "height": 7,
-      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off â€” the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
+      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
       "tags": ["reality-show", "welcome", "floor1", "named"],
       "placement": {
         "verticalAlign": "top"
@@ -15076,7 +15076,7 @@
       "sizing": "exact",
       "width": 8,
       "height": 8,
-      "description": "Backstage holding area. Contestants discover the show's rules and choose a power before the dungeon swallows them. Diagonal composition: living-corner chaos lower-left, spell-broker authority upper-right, merchant queue crossing the Z-path.",
+      "description": "Backstage holding area. Contestants discover the show's rules and choose a power before the dungeon swallows them. Clustered composition with diagonal weighting: living-corner chaos lower-left, spell-broker authority upper-right, merchant queue crossing the Z-path.",
       "tags": ["tutorial", "welcome", "hub", "production-set", "reality-show"],
       "placement": {
         "verticalAlign": "top"
