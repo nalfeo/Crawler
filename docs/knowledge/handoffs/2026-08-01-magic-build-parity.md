@@ -14,7 +14,7 @@ equipment-rewards, floor2-content
 
 ## Apples
 
-3🍎 estimated, 2🍎 actual (📉 under — issue was surgical once root cause was confirmed; no new content needed)
+3🍎 estimated, 2🍎 actual (📈 over — issue was surgical once root cause was confirmed; no new content needed)
 
 ## What Was Done
 

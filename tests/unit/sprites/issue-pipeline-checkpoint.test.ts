@@ -221,13 +221,13 @@ describe('issue pipeline checkpoints', () => {
       expect(cp.stages['publish']).toMatchObject({ status: 'failed', attempts: 3 });
     });
 
-    it('resets and returns true when publish is exhausted with transient failures', async () => {
+    it('returns false when publish is exhausted with null kind (null is not auto-resettable)', async () => {
       const store = makeStore();
-      await seedPublishFailures(store, 3, null); // transient (null kind)
+      await seedPublishFailures(store, 3, null); // null kind is NOT in INFRA_RESETTABLE_KINDS
       const wasReset = await resetExhaustedTransientStage(controller(store), 'publish');
-      expect(wasReset).toBe(true);
+      expect(wasReset).toBe(false);
       const cp = await loadIssueCheckpoint(controller(store));
-      expect(cp.stages['publish']).toBeUndefined();
+      expect(cp.stages['publish']).toMatchObject({ status: 'failed', attempts: 3 });
     });
 
     it('resets transient exhaustion with push-retries-exhausted kind', async () => {
@@ -266,7 +266,7 @@ describe('issue pipeline checkpoints', () => {
             status: 'failed',
             attempts: 3,
             updatedAt: '2026-07-24T12:00:00.000Z',
-            error: { kind: null, message: 'transient push failure' },
+            error: { kind: 'push-retries-exhausted', message: 'push loop exhausted' },
           },
         },
       };

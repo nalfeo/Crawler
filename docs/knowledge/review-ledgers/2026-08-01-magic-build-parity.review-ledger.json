@@ -11,8 +11,8 @@
       "adversarial": false,
       "plan_divergence": "convergent",
       "concerns_count": 1,
-      "resolved_count": 1,
-      "notes": "rubber-duck gpt-5.4; one blocking concern raised: pool-symmetry != acquisition parity — needs headless validation of filled-slots-by-level-10. Resolved: (a) a deterministic unit test already asserts both builds get equal-size neutral non-aligned pools (32 items each) — this is an exact proxy for the root cause described in the issue; (b) a full headless equipment-position measurement would be a separate follow-up issue (out of scope at 3🍎, not blocked on it). Reviewer confirmed plan_divergence: convergent (directly one of the issue's listed options). Two non-blocking concerns noted: hard-exclusion may reduce variety (acknowledged — acceptable tradeoff per issue direction), and boss chests remain weapon-only (scoped out, correct by design). Suggestion to add authoring guard captured in handoff as future improvement."
+      "resolved_count": 0,
+      "notes": "rubber-duck gpt-5.4; one blocking concern raised: pool-symmetry != acquisition parity — needs headless validation of filled-slots-by-level-10. Unresolved: the observe-before-done policy requires a before/after observation in the game or headless pipeline. Deterministic unit tests confirm equal non-aligned pool sizes (32 neutral items each), which addresses the pool-asymmetry root cause, but does not constitute before/after observation of actual gameplay draws. A headless equipment-position measurement is captured as a follow-up item in the handoff but was not performed in this session."
     },
     "code_review": {
       "clean": true,

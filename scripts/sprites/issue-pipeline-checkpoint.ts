@@ -333,15 +333,19 @@ export async function runCheckpointStage<T>(
  * operational failures (auth, permissions, network) that share the same kind
  * string. Specifically:
  *
- * - `null`  — unknown/unclassified error; no permanent signal in the kind alone.
  * - `push-retries-exhausted` — the push retry loop was exhausted due to a
  *   non-fast-forward rejection; unambiguously an infrastructure issue.
+ *
+ * `null` (unknown/unclassified) is intentionally excluded: `runCheckpointStage`
+ * records `null` for ANY untyped exception, including JSON/Zod/invariant
+ * failures from `reconcileCanonicalPr`. Auto-resetting a `null`-kind failure
+ * would cause a deterministic bug to be retried forever.
  *
  * `git-failed` is intentionally excluded: `QueueCommitError('git-failed')` is
  * also thrown for authentication, permission, and network failures that should
  * NOT be silently reset on every workflow run.
  */
-const INFRA_RESETTABLE_KINDS = new Set<string | null>([null, 'push-retries-exhausted']);
+const INFRA_RESETTABLE_KINDS = new Set<string>(['push-retries-exhausted']);
 
 export async function resetExhaustedTransientStage(
   controller: IssueCheckpointController,
@@ -355,6 +359,7 @@ export async function resetExhaustedTransientStage(
     prior === undefined ||
     prior.status !== 'failed' ||
     prior.attempts < maxAttempts ||
+    errorKind === null ||
     !INFRA_RESETTABLE_KINDS.has(errorKind)
   ) {
     return false;
