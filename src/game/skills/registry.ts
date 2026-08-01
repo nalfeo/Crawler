@@ -543,8 +543,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 5,
         name: 'Close Quarters',
-        description: '+0.1 accuracy with daggers',
-        abilityId: 'shadowblade',
+        description: 'Rapid strike technique — quick follow-up attack with daggers',
+        abilityId: 'dagger-rapid-strike-base',
       },
       {
         level: 10,

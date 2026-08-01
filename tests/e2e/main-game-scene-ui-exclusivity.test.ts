@@ -186,12 +186,14 @@ describe('MainGameScene UI exclusivity', () => {
     expect(combatFlow?.details).not.toContain('INACTIVE');
     expect(combatFlow?.details).toContain('Damage +5%');
 
-    const shadowblade = state.abilityLoadoutVisibleEntries.find(
-      (entry) => entry.id === 'shadowblade',
+    const daggerRapidStrike = state.abilityLoadoutVisibleEntries.find(
+      (entry) => entry.id === 'dagger-rapid-strike-base',
     );
-    expect(shadowblade, 'shadowblade should be visible in the rendered loadout list').toBeDefined();
-    expect(shadowblade?.details).toContain('INACTIVE');
-    expect(shadowblade?.details).toContain('requires a dagger');
+    expect(
+      daggerRapidStrike,
+      'dagger-rapid-strike-base should be visible in the rendered loadout list',
+    ).toBeDefined();
+    expect(daggerRapidStrike?.details).toContain('PASSIVE');
 
     const combatFlowIndex = state.abilityLoadoutVisibleEntries.findIndex(
       (entry) => entry.id === 'combat-flow',
