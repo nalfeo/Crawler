@@ -25,6 +25,7 @@ Consolidated the approved `slime-var-3` sprite (brief: `slime`, variant 3) from 
 Brief match 5/5, readability 5/5, figure framing 5/5.
 
 **Art PR #2631** (`copilot/assetscheckin-20260801-165005-f6e86d`):
+
 - Added `public/assets/generated/slime-var-3.png` (86 KB, 345×256 RGBA)
 - Added `public/assets/generated/entries/slime-var-3.json` (manifest entry, all sensors OK)
 - Art-only diff (fast lane: typecheck/lint/format/unit only — no gameplay gates)
@@ -79,6 +80,7 @@ new opaque width 309px → new scale = 22.4 / 309 ≈ 0.072.
 the slime reads clearly at game scale on dark floor tiles.
 
 **Steps for wiring PR**:
+
 1. Apply the JSON patch above
 2. `npm run verify:fast` (typecheck + lint)
 3. `npm run check:wired-systems` (verify wiring guard)
@@ -90,12 +92,14 @@ the slime reads clearly at game scale on dark floor tiles.
 ### Environment constraints (for reference)
 
 This session ran in a GitHub Actions CI environment with:
+
 - No npm network access (node_modules empty, `npm install` blocked by DNS proxy)
 - GitHub API blocked (DNS monitoring proxy) — `gh issue comment` and `gh pr merge` unavailable
 - `npm run sprites:asset-pr` blocked by Constitutional §3 (CI environment detection)
 - `npm run sprites:generate-wiring` blocked (no node_modules)
 
 Manual workarounds used:
+
 - Art files checked out via `git checkout origin/assets/checkin-* -- path/to/files`
 - Plan comment posted via `engine-tools-reply_to_comment` on intake comment #5152408676
 - Push via `engine-tools-report_progress`
@@ -103,9 +107,9 @@ Manual workarounds used:
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `public/assets/generated/slime-var-3.png` | Added (86 KB, 345×256 RGBA) |
+| File                                               | Change                              |
+| -------------------------------------------------- | ----------------------------------- |
+| `public/assets/generated/slime-var-3.png`          | Added (86 KB, 345×256 RGBA)         |
 | `public/assets/generated/entries/slime-var-3.json` | Added (manifest entry, 7/7 sensors) |
 
 ## PR Links
