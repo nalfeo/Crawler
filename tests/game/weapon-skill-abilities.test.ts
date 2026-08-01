@@ -173,7 +173,9 @@ describe('skillSystem level-5 ability grants', () => {
     skillSystem(world);
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
+    const expectedAbilityId =
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ??
+      SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
     expect(abilityState.passiveAbilityIds).toContain(expectedAbilityId);
   });
 
@@ -199,7 +201,9 @@ describe('skillSystem level-5 ability grants', () => {
     skillSystem(world);
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
+    const expectedAbilityId =
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ??
+      SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
     expect(abilityState.passiveAbilityIds).not.toContain(expectedAbilityId);
   });
 
@@ -213,7 +217,9 @@ describe('skillSystem level-5 ability grants', () => {
     skillSystem(world);
 
     const abilityState = world.abilityStatesByEntity.get(player)!;
-    const expectedAbilityId = SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
+    const expectedAbilityId =
+      swordDef.milestones.find((m) => m.level === 5)?.abilityId ??
+      SKILL_LEVEL5_ABILITY_GRANTS.get('sword')!;
     const count = abilityState.passiveAbilityIds.filter((id) => id === expectedAbilityId).length;
     expect(count).toBe(1);
   });
@@ -440,10 +446,10 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     // player would see two flashes for one unlock.
     const { world, player } = setupPlayerWithSkills();
     clearActiveWeaponDef(world);
-    const swordDef = getSkillDefinition('sword')!; // grants keen-swordsman (sword prereq)
-    const threshold = swordDef.usageThresholds[4]!;
+    const slashingDef = getSkillDefinition('slashing')!; // grants slashing-mastery-base (slashing prereq)
+    const threshold = slashingDef.usageThresholds[4]!;
 
-    fireSkillUsageEvents(world, player, 'sword', 'weapon_fired', threshold);
+    fireSkillUsageEvents(world, player, 'slashing', 'weapon_fired', threshold);
     skillSystem(world);
 
     expect(world.vfxEvents.some((event) => event.kind === 'abilityActivateFlash')).toBe(false);
@@ -461,12 +467,12 @@ describe('level-5 milestone unlock feedback (VFX + announcement)', () => {
     // milestone site must not ALSO push VFX for weapon-gated passives, or the
     // player would see two flashes for one unlock.
     const { world, player } = setupPlayerWithSkills();
-    const swordWeapon = WEAPON_DEFS.get('sword')!;
+    const swordWeapon = WEAPON_DEFS.get('sword')!; // sword has slashing weapon class
     setActiveWeaponDef(world, swordWeapon); // matching weapon already equipped
-    const swordDef = getSkillDefinition('sword')!; // grants keen-swordsman (sword prereq)
-    const threshold = swordDef.usageThresholds[4]!;
+    const slashingDef = getSkillDefinition('slashing')!; // grants slashing-mastery-base (slashing prereq)
+    const threshold = slashingDef.usageThresholds[4]!;
 
-    fireSkillUsageEvents(world, player, 'sword', 'weapon_fired', threshold);
+    fireSkillUsageEvents(world, player, 'slashing', 'weapon_fired', threshold);
     skillSystem(world); // grants the passive at level 5
     abilitySystem(world); // applies the now-eligible passive, may push its own VFX
 

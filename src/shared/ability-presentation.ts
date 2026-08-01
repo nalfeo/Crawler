@@ -841,6 +841,34 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'active',
     cooldownFrames: 720,
   },
+  // Placeholder abilities for generic skills (L10, L15, L20 milestones)
+  'placeholder-generic-l10': {
+    id: 'placeholder-generic-l10',
+    name: 'Intermediate Mastery',
+    shortLabel: 'INTER',
+    description: 'Placeholder for L10 milestone abilities (to be implemented).',
+    category: 'combat',
+    kind: 'passive',
+    passiveEffectSummary: 'TBD',
+  },
+  'placeholder-generic-l15': {
+    id: 'placeholder-generic-l15',
+    name: 'Advanced Mastery',
+    shortLabel: 'ADV',
+    description: 'Placeholder for L15 milestone abilities (to be implemented).',
+    category: 'combat',
+    kind: 'passive',
+    passiveEffectSummary: 'TBD',
+  },
+  'placeholder-generic-l20': {
+    id: 'placeholder-generic-l20',
+    name: 'Ultimate Mastery',
+    shortLabel: 'ULT',
+    description: 'Placeholder for L20 milestone abilities (to be implemented).',
+    category: 'combat',
+    kind: 'passive',
+    passiveEffectSummary: 'TBD',
+  },
 } as const satisfies Readonly<Record<string, AbilityPresentation>>;
 
 export function getAbilityPresentation(id: string): AbilityPresentation | undefined {
