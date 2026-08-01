@@ -3725,12 +3725,51 @@ describe('BehaviorTreeAI', () => {
         expect(ai.getDecision().reason).toContain('Sweeping exit-route XP');
       });
 
-      it('clears cleanup eligibility and cooldown when the provider resets', () => {
+      it('allows a new fight to open a fresh local cleanup session', () => {
         const world = createTestWorld({ seed: 46 });
+        const player = spawnPlayer(world, 0, 0);
+        const firstEnemy = spawnEnemy(world, 5, 0, 20);
+        setActiveWeapon(world, getWeaponDef('sword')!);
+        const ai = new BehaviorTreeAI({ seed: 46 });
+        ai.poll(createInputState(), world);
+        removeEntity(world.ecs, firstEnemy);
+
+        initializeFloor1Scenario(world, player);
+        meetTutorialGoon(world);
+        const px = world.stores.position.x[player]!;
+        const py = world.stores.position.y[player]!;
+        const gem = spawnXpGem(world, px + 10, py, 5);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.COLLECT);
+
+        world.frameCount += 240;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().reason).not.toContain('local post-combat XP');
+
+        const nextEnemy = spawnEnemy(world, px + 5, py, 20);
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+        removeEntity(world.ecs, nextEnemy);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+
+        expect(ai.getDecision()).toMatchObject({
+          state: AIState.COLLECT,
+          targetEid: gem,
+        });
+        expect(ai.getDecision().reason).toContain('local post-combat XP');
+      });
+
+      it('clears cleanup eligibility and cooldown when the provider resets', () => {
+        const world = createTestWorld({ seed: 47 });
         const player = spawnPlayer(world, 0, 0);
         const enemy = spawnEnemy(world, 5, 0, 20);
         setActiveWeapon(world, getWeaponDef('sword')!);
-        const ai = new BehaviorTreeAI({ seed: 46 });
+        const ai = new BehaviorTreeAI({ seed: 47 });
         ai.poll(createInputState(), world);
         removeEntity(world.ecs, enemy);
 

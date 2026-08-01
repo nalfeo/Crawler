@@ -1663,6 +1663,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (this.decision.state === AIState.ENGAGE) {
       this.xpCleanupCombatWindowUntilFrame =
         world.frameCount + XP_CLEANUP_COMBAT_LULL_WINDOW_FRAMES;
+      if (this.xpCleanupCooldownMode === 'local') {
+        this.xpCleanupCooldownMode = null;
+        this.xpCleanupCooldownUntilFrame = 0;
+      }
     }
     const exit = this.getFinalExitTarget(world);
     if (
