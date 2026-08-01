@@ -17,7 +17,7 @@ export const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwing
   'sword-strike-evolved': { preset: 'impactBurst', color: 0xff4d4d, intensity: 1.2 },
   'sword-cleave-evolved': { preset: 'spinRing', color: 0xff3b3b, intensity: 1.25 },
 
-  shadowblade: { preset: 'swingArc', color: 0xa78bfa, intensity: 1.0 },
+  'dagger-rapid-strike-base': { preset: 'swingArc', color: 0xa78bfa, intensity: 1.0 },
   'dagger-flurry': { preset: 'volleyTrail', color: 0xc4b5fd, intensity: 1.1 },
   'dagger-rapid-strike-evolved': { preset: 'impactBurst', color: 0x8b5cf6, intensity: 1.2 },
   'dagger-flurry-evolved': { preset: 'spinRing', color: 0x7c3aed, intensity: 1.25 },
