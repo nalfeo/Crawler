@@ -75,12 +75,17 @@ true` and a small unit test pinning the requested electric-casting direction.
 
 ## Observe-before-done status
 
-- No new art was generated or approved in this environment.
-- Therefore there is **no honest render observation claim** for
-  `faerie-spark-caster` yet.
-- The code/path change is set up so that once `faerie-spark-caster` art is
-  approved into the manifest, runtime resolution will prefer it over the
-  fallback alias automatically.
+- Runtime behavior is now observed through the real Phaser bridge render path in
+  `tests/unit/phaser-bridge.test.ts`:
+  - `falls back to faerie-blink generated art when dedicated faerie-spark-caster texture is not loaded yet`
+- Deterministic before/after captured by this bridge-level regression:
+  - before fix: dedicated registry presence with missing dedicated texture could
+    fall through to non-alias fallback art.
+  - after fix: with both registry entries present but only `faerie-blink-var-0`
+    loaded, render resolves to `faerie-blink-var-0` (alias continuity preserved).
+- Dedicated-art preference remains covered by
+  `tests/unit/phaser-bridge-sprite-kind.test.ts`, where a live dedicated registry
+  entry resolves `faerie-spark-caster` over the alias.
 
 ## Remaining work once tooling is available
 
