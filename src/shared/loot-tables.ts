@@ -163,6 +163,18 @@ export const LOOT_TABLES = {
       { type: 'item' as const, itemId: 'old-sock', value: 1, chance: 0.08, min: 1, max: 1 },
     ],
   } satisfies LootTable,
+
+  // Floor 2 floor-level bonus: adds 1 XP per kill on top of BASIC_MELEE (1 XP) → 2 XP/kill total.
+  // Matches the FLOOR_1 pattern (+1 bonus on Floor 1 → 2 XP/kill total).
+  // Starting at level 5 (66 XP), reaching level 10 (200 XP) requires 134 XP = ~67 kills.
+  // With Floor 2's ambient director spawning continuously this is achievable before
+  // the first boss den encounter, so the level-10 fight level is delivered as intended.
+  FLOOR_2: {
+    id: 'floor_2',
+    entries: [
+      { type: 'xp' as const, value: 1, chance: 1.0, min: 1, max: 1 },
+    ],
+  } satisfies LootTable,
 } as const;
 
 /**
