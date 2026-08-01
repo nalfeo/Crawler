@@ -659,9 +659,11 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
   it('throws Floor2RewardPoolAuthoringError for weapon sub-pool missing one affinity (new category-check error path)', () => {
     // Construct a pool that passes the outer (full-pool) check but fails the
     // weapon sub-pool check. Use ALL 88 bases — outer check passes because both
-    // physical and magic weapons are present. But supply only PHYSICAL weapon
-    // IDs as weaponIds so the weapon sub-pool is physical-only; a magic player
-    // then sees an empty weapon-aligned partition.
+    // physical and magic weapons are present. Supply only PHYSICAL weapon IDs as
+    // weaponIds so the weapon sub-pool is physical-only; a magic player then sees
+    // an empty weapon-aligned partition. The weapon sub-pool affinity check runs
+    // before the non-weapon neutrality check, so this error fires first even
+    // though magic weapons are re-classified as non-weapons in this fixture.
     const physicalWeaponIds = new Set(
       FLOOR2_REWARD_POOL_STABLE_IDS.filter(
         (id) => getGeneratedEquipmentBaseAffinity(id) === 'physical',
@@ -674,11 +676,43 @@ describe('Floor 2 reward pool tier eligibility — authoring validation (mechani
       err = caught;
     }
     // The outer full-pool check passes: the full pool has both magic and physical
-    // weapons, so both affinities are reachable. The weapon sub-pool check fails
-    // because it only sees physical weapons — a magic player finds no magic-aligned
-    // weapon candidate.
+    // weapons, so both affinities are reachable. The weapon sub-pool check fires
+    // next — before the non-weapon neutrality check — because it only sees
+    // physical weapons: the physical player's non-aligned (magic) side is empty,
+    // so "no non-physical weapon candidate" fires first (physical build is checked
+    // first in BUILD_AFFINITIES).
     expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
-    expect((err as Error).message).toMatch(/weapon sub-pool.*no magic-aligned weapon candidate/);
+    expect((err as Error).message).toMatch(/weapon sub-pool.*no non-physical weapon candidate/);
+  });
+
+  it('throws Floor2RewardPoolAuthoringError when weaponIds is an empty set (regression: empty-set category weighting)', () => {
+    // The resolver activates category weighting for any defined weaponIds,
+    // including an empty set — an empty set makes the weapon category pool
+    // permanently empty, so every weapon-category roll would crash at runtime.
+    // The validator must reject an empty weaponIds regardless of the pool.
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(FLOOR2_REWARD_POOL_STABLE_IDS, new Set());
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(/weaponIds is empty/);
+  });
+
+  it('throws Floor2RewardPoolAuthoringError when all pool bases are weapons (regression: all-weapon pool non-weapon category crash)', () => {
+    // An all-weapon pool means the non-weapon category pool is empty; a
+    // non-weapon category roll would always crash at runtime. The validator must
+    // reject this configuration.
+    const allWeaponIds = new Set<string>(FLOOR2_REWARD_POOL_WEAPON_IDS);
+    let err: unknown;
+    try {
+      validateFloor2RewardPoolTierEligibility(FLOOR2_REWARD_POOL_WEAPON_IDS, allWeaponIds);
+    } catch (caught) {
+      err = caught;
+    }
+    expect(err).toBeInstanceOf(Floor2RewardPoolAuthoringError);
+    expect((err as Error).message).toMatch(/all bases in the pool are weapons/);
   });
 
   it('rarityEligibleBaseIds returns all bases for every rarity under the decoupled model (no pre-filtering)', () => {
@@ -733,7 +767,7 @@ describe('categoryFromRoll — exact threshold contract', () => {
 });
 
 describe('resolveEquipmentRewardBundle — category-weighted selection (weaponIds provided)', () => {
-  const WEAPON_ID_SET = new Set(FLOOR2_REWARD_POOL_WEAPON_IDS);
+  const WEAPON_ID_SET = new Set<string>(FLOOR2_REWARD_POOL_WEAPON_IDS);
 
   it('resolves without error from the full 88-entry pool with category weighting for both affinities', () => {
     for (const [i, weaponDef] of [
@@ -814,7 +848,7 @@ describe('resolveEquipmentRewardBundle — category-weighted selection (weaponId
     // resolved base matches the expected category. This detects a bug where
     // e.g. the non-weapon pool filter is inverted or the wrong sub-pool is
     // passed to the base-selection draw.
-    const NON_WEAPON_SET = new Set(FLOOR2_REWARD_POOL_NON_WEAPON_IDS);
+    const NON_WEAPON_SET = new Set<string>(FLOOR2_REWARD_POOL_NON_WEAPON_IDS);
     const RUN_KEY_PREFIX = 'category-nonweapon';
     const ACH_ID = 'ach-nw';
     const TIER = 'tier2';
