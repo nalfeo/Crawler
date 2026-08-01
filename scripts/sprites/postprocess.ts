@@ -453,6 +453,96 @@ export function removeEnclosedBackgroundRegions(
 }
 
 /**
+ * Fill enclosed transparent holes — transparent pixels (alpha=0) that are
+ * completely surrounded by opaque pixels, i.e. not reachable from any border
+ * pixel by a 4-connected path through other transparent pixels.
+ *
+ * These holes are pipeline artifacts: `alpha-threshold` binarises
+ * semi-transparent interior pixels → if the pixel rounds DOWN to alpha=0, it
+ * becomes a transparent hole inside an otherwise-opaque silhouette. This is
+ * distinct from the background-colour enclosed-region problem handled by
+ * `removeEnclosedBackgroundRegions`, and affects transparent-background sprites
+ * (enemies, props, items) where `backgroundSource` is not available.
+ *
+ * Algorithm:
+ *   1. BFS flood-fill from every border pixel that is transparent → marks the
+ *      connected exterior transparent region ("outside").
+ *   2. Any transparent pixel NOT reachable from the border is an interior hole.
+ *   3. Fill each interior hole pixel with the average colour of its opaque
+ *      4-connected neighbours (or black if none), at alpha=255.
+ *
+ * Exported for direct unit testing.
+ */
+export function fillEnclosedTransparentHoles(image: RgbaImage): RgbaImage {
+  const { width, height } = image;
+  if (width === 0 || height === 0) return image;
+  const dst = new Uint8Array(image.data);
+  const total = width * height;
+
+  // Step 1: BFS from all border-transparent pixels to find the exterior.
+  const exterior = new Uint8Array(total); // 1 = reachable from border
+  const queue: number[] = [];
+
+  const enqueue = (idx: number): void => {
+    if (!exterior[idx] && (dst[idx * 4 + 3] ?? 0) === 0) {
+      exterior[idx] = 1;
+      queue.push(idx);
+    }
+  };
+
+  for (let x = 0; x < width; x++) {
+    enqueue(x); // top row
+    enqueue((height - 1) * width + x); // bottom row
+  }
+  for (let y = 1; y < height - 1; y++) {
+    enqueue(y * width); // left column
+    enqueue(y * width + (width - 1)); // right column
+  }
+
+  let qi = 0;
+  while (qi < queue.length) {
+    const idx = queue[qi++] as number;
+    const x = idx % width;
+    const y = (idx - x) / width;
+    if (x > 0) enqueue(idx - 1);
+    if (x < width - 1) enqueue(idx + 1);
+    if (y > 0) enqueue(idx - width);
+    if (y < height - 1) enqueue(idx + width);
+  }
+
+  // Step 2: fill interior holes with the average of opaque 4-neighbours.
+  for (let idx = 0; idx < total; idx++) {
+    if (exterior[idx] || (dst[idx * 4 + 3] ?? 0) !== 0) continue;
+    // Enclosed transparent hole — fill it.
+    const x = idx % width;
+    const y = (idx - x) / width;
+    let r = 0,
+      g = 0,
+      b = 0,
+      n = 0;
+    const tryNeighbour = (nx: number, ny: number): void => {
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) return;
+      const ni = ny * width + nx;
+      if ((dst[ni * 4 + 3] ?? 0) === 0) return;
+      r += dst[ni * 4] ?? 0;
+      g += dst[ni * 4 + 1] ?? 0;
+      b += dst[ni * 4 + 2] ?? 0;
+      n++;
+    };
+    tryNeighbour(x - 1, y);
+    tryNeighbour(x + 1, y);
+    tryNeighbour(x, y - 1);
+    tryNeighbour(x, y + 1);
+    dst[idx * 4] = n > 0 ? Math.round(r / n) : 0;
+    dst[idx * 4 + 1] = n > 0 ? Math.round(g / n) : 0;
+    dst[idx * 4 + 2] = n > 0 ? Math.round(b / n) : 0;
+    dst[idx * 4 + 3] = 255;
+  }
+
+  return { width, height, data: dst };
+}
+
+/**
  * Re-run background removal on an image that was already keyed once but has
  * since passed through a resampling (resize) step.
  *

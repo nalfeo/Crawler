@@ -1,18 +1,24 @@
 # Enemy post-processing pipeline template
 #
-# Enemies include enclosed-region cleanup (for eyes, mouths, etc.).
-# A second enclosed-region pass runs after alpha-threshold to fill any
-# interior transparency holes that the binarization step introduces from
+# Enemies include enclosed-region cleanup (for background-coloured pockets).
+# A post-alpha transparent-hole-fill pass runs after alpha-threshold to fill
+# any interior transparency holes that binarization introduces from
 # semi-transparent interior pixels in the model output.
+#
+# NOTE: the old `post-alpha-enclosed-regions` (type: enclosed-region-cleanup)
+# was a no-op for enemies because `enclosed-region-cleanup` bails out when
+# `ctx.backgroundSource` is null. The `transparent-hole-fill` module type is
+# the correct replacement — it works on pure alpha=0 holes, needs no background
+# reference, and runs unconditionally.
 
 extends: base.yml
 name: enemy-postprocess-pipeline
 description: Pipeline for enemies - includes enclosed-region cleanup and post-alpha hole fill
 
 modules:
-  post-alpha-enclosed-regions:
-    description: Second enclosed-region pass after alpha-threshold fills holes created by binarization.
-    type: enclosed-region-cleanup
+  post-alpha-transparent-hole-fill:
+    description: Fills interior transparency holes (alpha=0 pixels enclosed by opaque pixels) created by alpha-threshold binarization.
+    type: transparent-hole-fill
     enabled: true
     params: {}
 
@@ -25,5 +31,5 @@ pipeline:
   - speckle-cleanup
   - palette-quantize
   - alpha-threshold
-  - post-alpha-enclosed-regions
+  - post-alpha-transparent-hole-fill
   - trim-and-fit

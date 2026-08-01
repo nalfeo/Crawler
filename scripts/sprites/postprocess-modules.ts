@@ -20,6 +20,7 @@ import {
   fitWithinNearest,
   scaleToMinDimension,
   cropRectWithMargin,
+  fillEnclosedTransparentHoles,
   type OpaqueRect,
 } from './postprocess.js';
 import { resizeSpriteStrategy } from './size-variants.js';
@@ -242,6 +243,26 @@ export const postprocessModules: Record<string, ModuleHandler> = {
   'alpha-threshold': (image, _params, ctx) => {
     const result = hardThresholdAlpha(image);
     ctx.pushStep('alpha-threshold', 'Alpha threshold', result);
+    return result;
+  },
+
+  /**
+   * Fill any transparent pixels that are completely enclosed by opaque pixels.
+   *
+   * This is the post-alpha-threshold companion fix for transparent-background
+   * sprite types (enemies, props, items). The `alpha-threshold` step binarises
+   * semi-transparent interior pixels; those that round DOWN to alpha=0 become
+   * enclosed transparent holes that the `interior-transparency-holes` sensor
+   * will reject. This module fills them with the average colour of their opaque
+   * 4-connected neighbours, restoring a solid silhouette.
+   *
+   * Unlike `enclosed-region-cleanup` (which works on background-coloured pockets
+   * and requires a `backgroundSource`), this module operates on pure transparency
+   * and needs no background reference — it runs unconditionally.
+   */
+  'transparent-hole-fill': (image, _params, ctx) => {
+    const result = fillEnclosedTransparentHoles(image);
+    ctx.pushStep('transparent-hole-fill', 'Interior transparent hole fill', result);
     return result;
   },
 
