@@ -22,11 +22,20 @@
  *     live manifest/catalog entries onto that tip via `mergeManifests`/
  *     `mergeCatalogs`. Because the union re-runs against the latest tip on every
  *     retry, a concurrent writer's entry is preserved — no whole-file clobber.
- *   - The push is a plain fast-forward-only push of the new commit to
- *     `refs/heads/assets/queue`: our commit's parent IS the fetched tip, so a
- *     concurrent advance makes the push a non-fast-forward → git rejects it →
- *     we re-fetch and retry. This is a strictly-safer compare-and-swap than
- *     `--force-with-lease` (it can never overwrite a concurrent update).
+ *   - **Normal path**: the push is a plain fast-forward-only push of the new
+ *     commit to `refs/heads/assets/queue`.  Our commit's parent IS the fetched
+ *     tip, so a concurrent advance makes the push a non-fast-forward → git
+ *     rejects it → we re-fetch and retry.
+ *   - **Orphan-reset path**: when `assets/queue` has no common ancestry with
+ *     `main` (an orphan branch), we `reset --hard mainRef` then layer queued art
+ *     back on top via `checkout baseRef -- <art-surface>`.  The resulting commit's
+ *     parent is `mainRef`, NOT the orphan tip, so a plain fast-forward push is
+ *     permanently non-fast-forward.  Instead we push with
+ *     `--force-with-lease=refs/heads/assets/queue:<orphan-sha>` (an explicit-SHA
+ *     lease).  This is still a compare-and-swap: if another writer advances
+ *     `assets/queue` between our fetch and our push, the lease fails with
+ *     `(stale info)` → we re-fetch and retry, preserving the concurrent writer's
+ *     assets in the union.
  *
  * Constitutional §3 (local-only mutation): like check-in/approve, this pushes to
  * a remote from locally-approved assets, so it REFUSES when `process.env.CI` is
@@ -44,6 +53,7 @@ export class QueueCommitError extends Error {
       | 'ci-refused'
       | 'destination-conflict'
       | 'invalid-asset-path'
+      | 'invalid-brief-path'
       | 'git-failed'
       | 'push-retries-exhausted',
     message: string,
@@ -76,6 +86,17 @@ export interface QueueCommitDeps {
     srcRepoRoot: string,
     destRepoRoot: string,
     assets: readonly CheckinAsset[],
+  ) => Promise<void>;
+  /**
+   * Copy brief YAML files from `sourceRoot` into the worktree at the same
+   * repo-relative path. Optional: only called when `QueueCommitOptions.briefs`
+   * is non-empty. A default fs-based implementation is provided by
+   * `createDefaultQueueCommitDeps`.
+   */
+  readonly copyBriefFiles?: (
+    sourceRoot: string,
+    worktree: string,
+    briefPaths: readonly string[],
   ) => Promise<void>;
   /** Create + return an empty temp directory for the throwaway worktree. */
   readonly makeTempDir: () => Promise<string>;
@@ -120,6 +141,15 @@ export interface QueueCommitOptions {
    */
   readonly sourceRoot?: string;
   /**
+   * Repo-relative POSIX paths of brief YAML files to include alongside the art
+   * surface in this commit (e.g. `briefs/enemies/panda-boba-sniper.yaml`).
+   * Each path must be under `briefs/` with no traversal. The file is read from
+   * `sourceRoot + briefPath` and written to the worktree at the same path.
+   * Staged BEFORE the no-op guard so a commit that updates only a brief (with
+   * identical art bytes) still lands as `committed` rather than `noop`.
+   */
+  readonly briefs?: readonly string[];
+  /**
    * Narrow CI capability for the trusted asset-request publisher, or the
    * equally narrow theme-equipment-set publisher (ADR 0073). Ordinary
    * CLI/sidecar callers omit this and remain hard-refused under CI. Each
@@ -128,7 +158,10 @@ export interface QueueCommitOptions {
    * generic "any CI caller" path.
    */
   readonly ciAuthorization?: {
-    readonly caller: 'asset-request-publisher' | 'theme-equipment-publisher';
+    readonly caller:
+      | 'asset-request-publisher'
+      | 'theme-equipment-publisher'
+      | 'icon-batch-publisher';
   };
   /**
    * Optional same-key conflict guard. Runs inside every CAS attempt against the
@@ -173,6 +206,35 @@ export function assertSafeAssetPaths(assets: readonly CheckinAsset[]): void {
         'invalid-asset-path',
         `Asset path must be under the staged art surface (generated/), got: ${p}. ` +
           `Paths outside generated/ are copied but never staged, silently no-op'ing the commit.`,
+      );
+    }
+  }
+}
+
+/**
+ * Validate that each brief path is a safe repo-relative POSIX path under
+ * `briefs/` with no absolute paths or traversal (`..`). Throws
+ * `QueueCommitError('invalid-brief-path')` on the first violation.
+ */
+export function assertSafeBriefPaths(briefs: readonly string[]): void {
+  for (const p of briefs) {
+    if (typeof p !== 'string' || p.trim() === '') {
+      throw new QueueCommitError('invalid-brief-path', `Empty brief path`);
+    }
+    if (p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.includes('\\')) {
+      throw new QueueCommitError(
+        'invalid-brief-path',
+        `Brief path must be a repo-relative POSIX path, got: ${p}`,
+      );
+    }
+    const segments = p.split('/');
+    if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+      throw new QueueCommitError('invalid-brief-path', `Unsafe brief path: ${p}`);
+    }
+    if (!p.startsWith('briefs/')) {
+      throw new QueueCommitError(
+        'invalid-brief-path',
+        `Brief path must be under briefs/, got: ${p}`,
       );
     }
   }
@@ -232,6 +294,9 @@ export function isNonFastForwardRejection(stderr: string): boolean {
     s.includes('fetch first') ||
     s.includes('tip of your current branch is behind') ||
     s.includes('remote contains work that you do') ||
+    // Force-with-lease rejection: the remote ref advanced past the expected SHA.
+    // Git outputs "(stale info)" when the lease's expected SHA no longer matches.
+    s.includes('stale info') ||
     // Expected-old-OID mismatch: a lost server-side ref-transaction race.
     (s.includes('cannot lock ref') && s.includes('but expected'))
   );
@@ -258,6 +323,9 @@ export async function runQueueCommit(
 
   assertSafeAssetPaths(assets);
 
+  const briefs = options.briefs ?? [];
+  assertSafeBriefPaths(briefs);
+
   const remote = options.remote ?? 'origin';
   const queueBranch = options.queueBranch ?? 'assets/queue';
   const baseBranch = options.baseBranch ?? 'main';
@@ -266,7 +334,7 @@ export async function runQueueCommit(
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  if (assets.length === 0) {
+  if (assets.length === 0 && briefs.length === 0) {
     return { status: 'noop', branch: queueBranch, attempts: 0 };
   }
 
@@ -327,8 +395,69 @@ export async function runQueueCommit(
         // never check the queue branch out by name, so there is no
         // "branch already checked out" clash with the caller's worktree.
         await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
+        // Track whether we resolved an orphan-history condition via reset+checkout.
+        // When true, the new commit's parent is mainRef (NOT the orphan queue tip),
+        // so a plain fast-forward push is impossible — we must use --force-with-lease
+        // scoped to the exact orphan SHA we fetched.  That is still a compare-and-swap:
+        // if another writer advanced assets/queue between our fetch and push,
+        // the lease fails and we retry (just like the non-fast-forward retry).
+        let usedOrphanReset = false;
         if (branchExists) {
-          const merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
+          // First try a normal merge.
+          let merge = await runGit(deps.exec, worktree, ['merge', '--no-edit', mainRef]);
+          if (merge.code !== 0 && merge.stderr.toLowerCase().includes('unrelated histories')) {
+            // The queue branch is an orphan (no common ancestor with main).
+            // This can happen when the branch was seeded with --orphan or had
+            // its history squashed.  A straight merge would produce conflicts
+            // on every non-art file because git has no merge base to compute
+            // the three-way diff from.
+            //
+            // Strategy: reset the worktree to main's clean state, then layer
+            // the queued art AND brief files back on top from the orphan tip.
+            // Non-art/non-brief files on the orphan are discarded (they violate
+            // the art-only queue discipline and main always has the canonical
+            // version).  The art+brief surfaces are fully preserved: queued
+            // sprites and briefs already on the branch survive, and
+            // copyArtSurface/copyBriefFiles adds the newly approved ones in the
+            // next step.
+            await mustGit(deps.exec, worktree, ['reset', '--hard', mainRef]);
+            const artCheckout = await runGit(deps.exec, worktree, [
+              'checkout',
+              baseRef,
+              '--',
+              ...ASSET_SURFACE_PATHS,
+            ]);
+            // "pathspec did not match any file(s)" → the orphan has no staged
+            // art yet; that is fine — copyArtSurface will add the first batch.
+            if (artCheckout.code !== 0 && !artCheckout.stderr.toLowerCase().includes('pathspec')) {
+              throw new QueueCommitError(
+                'destination-conflict',
+                `assets/queue orphan art checkout failed: ${artCheckout.stderr}`,
+              );
+            }
+            // Restore any brief files that are already on the orphan queue tip so
+            // they are not lost by the hard reset. Like art, a "pathspec did not
+            // match" is fine (no briefs queued yet).
+            const briefCheckout = await runGit(deps.exec, worktree, [
+              'checkout',
+              baseRef,
+              '--',
+              'briefs/',
+            ]);
+            if (
+              briefCheckout.code !== 0 &&
+              !briefCheckout.stderr.toLowerCase().includes('pathspec')
+            ) {
+              throw new QueueCommitError(
+                'destination-conflict',
+                `assets/queue orphan brief checkout failed: ${briefCheckout.stderr}`,
+              );
+            }
+            await runGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
+            await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);
+            merge = { code: 0, stdout: '', stderr: '' };
+            usedOrphanReset = true;
+          }
           if (merge.code !== 0) {
             throw new QueueCommitError(
               'destination-conflict',
@@ -353,6 +482,21 @@ export async function runQueueCommit(
         // ever be staged.
         await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
 
+        // Copy brief YAML files (if any) and stage them. This MUST happen before
+        // the no-op guard so a commit that touches only a brief file (identical
+        // art bytes already on the queue) still lands as `committed` rather than
+        // `noop`, preventing the brief from silently disappearing.
+        if (briefs.length > 0) {
+          if (!deps.copyBriefFiles) {
+            throw new QueueCommitError(
+              'invalid-brief-path',
+              'briefs provided but deps.copyBriefFiles is not wired — cannot stage brief files',
+            );
+          }
+          await deps.copyBriefFiles(sourceRoot, worktree, briefs);
+          await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);
+        }
+
         // No-op guard: if nothing staged, the queue already carries identical
         // bytes — skip the commit+push so repeated identical saves don't churn.
         const staged = await runGit(deps.exec, worktree, ['diff', '--cached', '--quiet']);
@@ -363,16 +507,33 @@ export async function runQueueCommit(
         await mustGit(deps.exec, worktree, ['commit', '--no-verify', '-m', options.message]);
         const newCommit = (await mustGit(deps.exec, worktree, ['rev-parse', 'HEAD'])).trim();
 
-        // Plain (non-force) push: our commit's parent is the fetched tip, so a
-        // concurrent advance makes this a non-fast-forward → git rejects it and
-        // we retry. This is the compare-and-swap: it can NEVER overwrite a
-        // concurrent update (unlike --force-with-lease).
-        const push = await runGit(deps.exec, repoRoot, [
-          'push',
-          '--no-verify',
-          remote,
-          `${newCommit}:refs/heads/${queueBranch}`,
-        ]);
+        // Push strategy depends on whether we resolved an orphan-history situation.
+        //
+        // Normal path: our commit's parent IS the fetched queue tip — a plain
+        // fast-forward push is a strict CAS that can never overwrite a concurrent
+        // update.  A non-ff rejection means a concurrent writer advanced the branch
+        // while we worked; we re-fetch and retry.
+        //
+        // Orphan-reset path: our commit's parent is mainRef, NOT the orphan tip, so
+        // the plain fast-forward push is permanently non-fast-forward regardless of
+        // any concurrent advance.  We must use --force-with-lease scoped to the exact
+        // orphan SHA we fetched (baseRef).  This is still a CAS: if another writer
+        // advanced assets/queue between our fetch and our push, the lease mismatches
+        // and we retry (same as the non-ff retry on the normal path).
+        let pushArgs: string[];
+        if (usedOrphanReset) {
+          const baseSha = (await mustGit(deps.exec, repoRoot, ['rev-parse', baseRef])).trim();
+          pushArgs = [
+            'push',
+            '--no-verify',
+            `--force-with-lease=refs/heads/${queueBranch}:${baseSha}`,
+            remote,
+            `${newCommit}:refs/heads/${queueBranch}`,
+          ];
+        } else {
+          pushArgs = ['push', '--no-verify', remote, `${newCommit}:refs/heads/${queueBranch}`];
+        }
+        const push = await runGit(deps.exec, repoRoot, pushArgs);
         if (push.code === 0) {
           return { status: 'committed', branch: queueBranch, commit: newCommit, attempts: attempt };
         }
@@ -450,6 +611,14 @@ function isAuthorizedAssetPublisher(env: NodeJS.ProcessEnv, options: QueueCommit
       env.GITHUB_ACTIONS === 'true' &&
       typeof env.GITHUB_WORKFLOW_REF === 'string' &&
       env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/theme-equipment.yml@')
+    );
+  }
+  if (caller === 'icon-batch-publisher') {
+    return (
+      env.SPRITES_ALLOW_CI_ICON_BATCH_PUBLISH === 'true' &&
+      env.GITHUB_ACTIONS === 'true' &&
+      typeof env.GITHUB_WORKFLOW_REF === 'string' &&
+      env.GITHUB_WORKFLOW_REF.includes('/.github/workflows/icon-batch.yml@')
     );
   }
   return false;

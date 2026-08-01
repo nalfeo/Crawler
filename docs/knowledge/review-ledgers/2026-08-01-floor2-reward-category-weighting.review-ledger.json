@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-01",
+  "session_slug": "floor2-reward-category-weighting",
+  "task_title": "Floor 2 reward category weighting: 25% weapon / 75% non-weapon",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Reviewer raised 4 concerns: (1) version bump to v2 risks rerolling boss-chest saves unnecessarily — reverted to v1 since new category substream key has no collision with existing v1 keys; (2) non-weapon affinity assumption should be validated in the authoring check — added neutrality assertion; (3) validator should eagerly throw on empty weaponIds intersection — removed silent inner guard; (4) weapon sub-pool validation should cover all tier×rarity combos — implemented. All 4 resolved."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "3 concerns: (1) version bump was unnecessary — reverted to v1; (2) validator empty-intersection guard missing — added explicit throw; (3) silent weaponBases.length guard could swallow authoring errors — removed inner guard in favor of eager throw. All 3 addressed."
+        }
+      ]
+    }
+  }
+}

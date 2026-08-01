@@ -12,9 +12,9 @@ describe('skill registry', () => {
   });
 
   it('returns skill definition by id', () => {
-    const def = getSkillDefinition('swordsmanship');
+    const def = getSkillDefinition('slashing');
     expect(def).toBeDefined();
-    expect(def!.id).toBe('swordsmanship');
+    expect(def!.id).toBe('slashing');
   });
 
   it('all skills have usageThresholds of length SKILL_HARD_CAP', () => {

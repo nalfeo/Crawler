@@ -1,0 +1,53 @@
+name: achv-icons-batch-04
+type: icon
+description: 'Achievement icon batch 4: pixel-art symbols for dungeon achievements on Floor 1.'
+floor: 1
+iconBatch:
+  - id: achv-just-in-time
+    concept: 'Just In Time™'
+    description: 'Icon for the "Just In Time™" achievement (Take the stairs with less than 15 seconds left.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-time-rich
+    concept: 'Ahead of Schedule'
+    description: 'Icon for the "Ahead of Schedule" achievement (Take the stairs with over 90 seconds left.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-camera-friendly
+    concept: 'Camera-Friendly'
+    description: 'Icon for the "Camera-Friendly" achievement (Avoid standing still for more than 3 seconds during combat.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-panic-dodge
+    concept: 'Panic Dodge'
+    description: 'Icon for the "Panic Dodge" achievement (Avoid lethal damage by dodging within 1 second of impact.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-crowd-surfing
+    concept: 'Crowd Surfing'
+    description: 'Icon for the "Crowd Surfing" achievement (Move through 20 nearby enemies without dying.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-doorframe-duelist
+    concept: 'Doorframe Duelist'
+    description: 'Icon for the "Doorframe Duelist" achievement (Defeat an elite while never leaving one doorway area.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-no-potion
+    concept: 'No Potion Policy'
+    description: 'Icon for the "No Potion Policy" achievement (Finish Floor 1 without consuming a healing item.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-no-safe-shop
+    concept: 'No Shopping Spree'
+    description: 'Icon for the "No Shopping Spree" achievement (Finish Floor 1 without opening inventory or equipment screens.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-loot-vacuum
+    concept: 'Loot Vacuum'
+    description: 'Icon for the "Loot Vacuum" achievement (Collect 30 pickups before the Floor 1 boss fight.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-gem-hoarder
+    concept: 'Gem Hoarder'
+    description: 'Icon for the "Gem Hoarder" achievement (Collect 50 XP gems in one run.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-gold-goblin
+    concept: 'Gold Goblin'
+    description: 'Icon for the "Gold Goblin" achievement (Collect 250 gold on Floor 1.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-broke-speedrun
+    concept: 'Broke%'
+    description: 'Icon for the "Broke%" achievement (Take the stairs with less than 30 gold in inventory.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-found
+    concept: 'Found the Main Event'
+    description: 'Icon for the "Found the Main Event" achievement (Enter the boss room on Floor 1.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-first-hit
+    concept: 'Opening Statement'
+    description: 'Icon for the "Opening Statement" achievement (Land the first hit on the boss.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-no-hit-30
+    concept: 'Grace Under Ratings'
+    description: 'Icon for the "Grace Under Ratings" achievement (Survive 30 seconds in boss fight without taking damage.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-boss-ten-seconds
+    concept: 'Fast Programming'
+    description: 'Icon for the "Fast Programming" achievement (Defeat the Floor 1 boss in under 10 seconds.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

@@ -74,7 +74,7 @@ modules:
     type: trim-and-fit
     enabled: true
     params:
-      minDimension: 64
+      minDimension: 256
 
 # Pipeline: sequence of modules to execute for this template.
 pipeline:

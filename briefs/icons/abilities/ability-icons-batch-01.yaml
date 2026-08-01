@@ -1,0 +1,36 @@
+name: 'ability-icons-batch-01'
+description: >-
+  Ability icon batch 01a: pixel-art symbols for ACTIVE and core SPELL abilities (part 1 of 4).
+  Pixel-art symbols on transparent background; frames are composited separately.
+type: icon
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells:
+      - [1, 0]
+      - [1, 1]
+      - [1, 2]
+      - [1, 3]
+      - [2, 0]
+      - [2, 1]
+      - [2, 2]
+      - [2, 3]
+      - [3, 0]
+      - [3, 1]
+      - [3, 2]
+      - [3, 3]
+    nativeCanvas: 1024
+iconBatch:
+  - id: ability-icon-battle-focus
+    concept: 'Battle Focus'
+    description: 'ACTIVE ability — Land enough hits to convert momentum into damage. Symbol: a rising fist or crossed swords with a momentum arc, bold and readable.'
+  - id: ability-icon-veteran-instinct
+    concept: 'Veteran Instinct'
+    description: 'PASSIVE ability — Constant battlefield awareness improves your armor and pickup range. Symbol: an open eye over a shield, or a radar-sweep arc, vigilant and solid.'
+  - id: ability-icon-magic-missile
+    concept: 'Magic Missile'
+    description: 'SPELL ability — Launch a precise arcane bolt into the nearest enemy. Symbol: a glowing arcane projectile or pointed bolt with a magical trail.'
+  - id: ability-icon-frost-nova
+    concept: 'Frost Nova'
+    description: 'SPELL ability — Burst freezing magic around you, damaging and slowing nearby foes. Symbol: a snowflake burst or radial ice-spike explosion, cold blue.'

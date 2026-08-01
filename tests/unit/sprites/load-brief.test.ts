@@ -361,6 +361,22 @@ describe('loadBrief', () => {
       expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/sensors/);
     });
   });
+
+  it('loads the committed imp-chain-brawler brief with the intended front-facing overrides', () => {
+    const projectRoot = path.resolve('.');
+    const briefPath = path.join(projectRoot, 'briefs', 'enemies', 'imp-chain-brawler.yaml');
+
+    const { brief } = loadBrief(briefPath, { projectRoot });
+
+    expect(brief.name).toBe('imp-chain-brawler');
+    expect(brief.type).toBe('enemy');
+    expect(brief.floor).toBe(2);
+    expect(brief.sensors.enemy?.facing).toBe('front');
+    expect(brief.sensors.enemy?.toleranceDeg).toBe(20);
+    expect(brief.variations).toHaveLength(3);
+    expect(brief.prompt).toContain('heavy iron chains');
+    expect(brief.prompt).toContain('front-facing');
+  });
 });
 
 describe('mergeMinimalIntoDefaults — size variants', () => {
@@ -560,6 +576,46 @@ describe('loadBriefFromYaml', () => {
         loadPalette: () => [[0, 0, 0]],
       }),
     ).toThrow(/failed validation/);
+  });
+
+  it('defaults character/enemy/prop/equipment briefs to 256x256 from type defaults', () => {
+    const typeCases = ['character', 'enemy', 'prop', 'equipment'] as const;
+    for (const type of typeCases) {
+      const brief = loadBriefFromYaml(
+        [`type: ${type}`, `name: ${type}-default-size`, 'description: "default size check"'].join(
+          '\n',
+        ),
+        {
+          projectRoot: process.cwd(),
+          loadPalette: () => [
+            [0, 0, 0],
+            [255, 255, 255],
+          ],
+        },
+      );
+      expect(brief.size).toEqual({ width: 256, height: 256 });
+    }
+  });
+
+  it('keeps explicit per-brief size overrides for enemy defaults', () => {
+    const brief = loadBriefFromYaml(
+      [
+        'type: enemy',
+        'name: enemy-size-override',
+        'description: "override size check"',
+        'size: { width: 96, height: 80 }',
+        'anchor: { x: 48, y: 79 }',
+      ].join('\n'),
+      {
+        projectRoot: process.cwd(),
+        loadPalette: () => [
+          [0, 0, 0],
+          [255, 255, 255],
+        ],
+      },
+    );
+    expect(brief.size).toEqual({ width: 96, height: 80 });
+    expect(brief.anchor).toEqual({ x: 48, y: 79 });
   });
 });
 

@@ -21,13 +21,52 @@ npm run setpiece:score -- <id> --json   # machine-readable
 **Precondition:** a completed blockout. Dressing without zones produces scattered
 props, which is the failure mode this whole loop exists to eliminate.
 
-## Non-negotiable: declare feet on every prop
+## Dress by vignette, not by prop type
 
-`SET_PIECE_TILE_SIZE = 16`px and `PIXELS_PER_FOOT = 8`, so **1 tile = 2 feet**. A prop
-with no `widthFt`/`heightFt` is contain-fit to its tile extent — it renders at
-whatever size the grid implies, not the size the object should be. Twelve of thirteen
-shipped rooms declare feet on **zero** props; the one curated room declares them on
-all of them. This is the single largest cause of "props don't feel like they fit".
+The blockout produced a vignette list. The dress loop is **not** "add props until
+density is green" — it is "dress each vignette until it tells its micro-story, then
+check the score."
+
+The order matters:
+
+1. **Dress the focal vignette first** — the cluster containing the focal object. This
+   is where the room's identity lives. Get it right before touching the perimeter.
+2. **Dress the secondary vignettes** — each should encode a specific story beat, not
+   just fill space.
+3. **Dress the perimeter** — shelving, trim, posters, radiators. This is the last
+   step, not the first.
+4. **Protect the breathing room** — the intentionally empty zone from the blockout is
+   protected. Do not fill it even if density is failing.
+
+**If density is failing after all vignettes are dressed,** the vignettes are too
+sparse, not the room. Add depth to each vignette (stacking, clutter on surfaces) before
+adding new props in the open floor.
+
+### Vignette dressing heuristics
+
+Each vignette should pass a "could you name it?" test: if a screenshot shows only
+that cluster in isolation, would you recognize it as the intended vignette?
+
+- A **reading corner** should show a resting surface, a light source, reading material,
+  and at least one sign of use (half-read, bookmarked, worn).
+- A **guard post** should show a duty position (stool/chair facing outward), evidence
+  of occupancy (container, weapon rack) and evidence of neglect or anxiety
+  (overturned cup, scratched marks).
+- A **crafting station** should show the raw material, the tool, and the product in
+  three stages.
+- A **service counter** should show the transaction surface, what is being sold, and
+  the service position.
+
+If a vignette cannot pass the "could you name it?" test, it needs either more specific
+props or a different vignette identity.
+
+Set-piece authoring uses **`FEET_PER_TILE = 4`** from
+`scripts/agent/set-piece/composition-score.ts`; do **not** derive room scale from the
+16px editor sprite size. A prop with no `widthFt`/`heightFt` is contain-fit to its tile
+extent — it renders at whatever size the grid implies, not the size the object should
+be. Twelve of thirteen shipped rooms declare feet on **zero** props; the one curated
+room declares them on all of them. This is the single largest cause of "props don't feel
+like they fit".
 
 Reference sizes (real-world, feet):
 

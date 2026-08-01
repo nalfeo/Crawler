@@ -22,9 +22,10 @@ import {
   isTransientPipelineError,
   issuePipelineCheckpointSchema,
   markIssuePipelineTerminal,
+  resetExhaustedTransientStage,
   runCheckpointStage,
 } from './issue-pipeline-checkpoint.js';
-import { QueueCommitError, runQueueCommit } from './queue-commit.js';
+import { assertSafeBriefPaths, QueueCommitError, runQueueCommit } from './queue-commit.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
 import type { RunStore } from './store/types.js';
@@ -128,6 +129,16 @@ export async function publishSelectedAssetRequests(
         fingerprint: item.checkpoint.fingerprint,
         now,
       });
+      // If the publish stage exhausted all its attempts on transient failures
+      // (e.g. git push bugs fixed between runs), clear the attempt record so
+      // runCheckpointStage can retry from scratch. Permanent failures (auth,
+      // destination-conflict, etc.) are left untouched.
+      const wasPublishReset = await resetExhaustedTransientStage(controller, 'publish');
+      if (wasPublishReset) {
+        logger.info(
+          `issue #${item.checkpoint.issueNumber}: reset transient-exhausted publish stage; will retry`,
+        );
+      }
       const result = await runCheckpointStage(
         controller,
         'publish',
@@ -142,6 +153,17 @@ export async function publishSelectedAssetRequests(
               error instanceof Error ? error.message : String(error),
             );
           }
+          // briefs/draft/** is gitignored in the repo; queue-commit must
+          // commit the brief to the canonical non-draft path so `git add`
+          // stages it correctly.  Promote: briefs/draft/<type>/<name>.yaml →
+          // briefs/<type>/<name>.yaml and materialise that file in stageRoot.
+          const briefQueuePath = toCanonicalQueueBriefPath(
+            item.checkpoint.details.promotedBriefPath,
+          );
+          const briefQueueAbs = resolveSafeBriefDestination(item.stageRoot, briefQueuePath);
+          mkdirSync(path.dirname(briefQueueAbs), { recursive: true });
+          writeFileSync(briefQueueAbs, item.checkpoint.details.promotedBriefYaml, 'utf8');
+
           const queueResult = await runQueueCommit(
             options.repoRoot,
             item.assets,
@@ -150,6 +172,7 @@ export async function publishSelectedAssetRequests(
               message: `art: publish issue #${item.checkpoint.issueNumber} selected variants`,
               maxAttempts: 3,
               sourceRoot: item.stageRoot,
+              briefs: [briefQueuePath],
               ciAuthorization: { caller: 'asset-request-publisher' },
               validateDestination: validateExactAssetPayloads,
             },
@@ -241,7 +264,7 @@ async function prepareCheckpoint(
     mkdirSync(path.dirname(stageCatalog), { recursive: true });
     copyFileSync(sourceCatalog, stageCatalog);
 
-    const briefPath = path.join(stageRoot, checkpoint.details.promotedBriefPath);
+    const briefPath = resolveSafeBriefDestination(stageRoot, checkpoint.details.promotedBriefPath);
     mkdirSync(path.dirname(briefPath), { recursive: true });
     writeFileSync(briefPath, checkpoint.details.promotedBriefYaml, 'utf8');
 
@@ -302,9 +325,26 @@ async function validatePreparedTargets(items: readonly PreparedPublish[]): Promi
         firstByKey.set(key, item);
         continue;
       }
+
       await validateExactAssetPayloads(prior.stageRoot, item.stageRoot, [asset]);
     }
   }
+}
+
+function toCanonicalQueueBriefPath(briefPath: string): string {
+  const queuePath = briefPath.replace(/^briefs\/draft\//, 'briefs/');
+  assertSafeBriefPaths([queuePath]);
+  return queuePath;
+}
+
+function resolveSafeBriefDestination(stageRoot: string, briefPath: string): string {
+  assertSafeBriefPaths([briefPath]);
+  const destination = path.resolve(stageRoot, ...briefPath.split('/'));
+  const stageRootAbs = path.resolve(stageRoot);
+  if (destination !== stageRootAbs && !destination.startsWith(`${stageRootAbs}${path.sep}`)) {
+    throw new QueueCommitError('invalid-brief-path', `Brief path escapes stage root: ${briefPath}`);
+  }
+  return destination;
 }
 
 export async function validateExactAssetPayloads(

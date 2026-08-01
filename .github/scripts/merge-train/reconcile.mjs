@@ -11,6 +11,7 @@ import { listTrustedAppCheckRunsForRef, resolveCandidateCheckState } from './che
 import {
   isTrainFastPathPushRun,
   parseStateComment,
+  shouldSkipSubstantiveReview,
   STATE_MARKER as RECOVERY_STATE_MARKER,
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
@@ -294,6 +295,10 @@ async function eligible(pr) {
   const review = await listReviewThreads(token, owner, repo, pr.number);
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
   const closingIssues = await listClosingIssues(token, owner, repo, pr.number);
+  const changedFiles =
+    String(pr.head?.ref || '').trim() === 'assets/promote'
+      ? await paginate(token, `/repos/${owner}/${repo}/pulls/${pr.number}/files`)
+      : [];
   const approvalRejection = humanApprovalRejection({
     pullRequest: pr,
     closingIssues,
@@ -363,6 +368,9 @@ async function eligible(pr) {
     reviews: review.reviews || [],
     humanApprovalDisposition: approvalRejection,
     lifecyclePhase,
+    // Scope-constrained escape hatch for asset-promotion PRs where Copilot cannot
+    // review image-only diffs. Mixed diffs do not bypass substantive review.
+    skipSubstantiveReview: shouldSkipSubstantiveReview(pr, changedFiles),
   };
   const admission = isAdmissible(prFacts, requiredAdmissionChecks);
   if (!admission.eligible) {

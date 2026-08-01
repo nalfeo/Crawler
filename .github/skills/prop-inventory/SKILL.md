@@ -40,6 +40,10 @@ contract**. Without the contract you cannot judge fit, only availability.
    **Include the stacking layer** — what sits _on_ each surface — or the room will
    fail the layer-depth check later.
 2. **Search the catalog for each entry.** Match on concept, not on filename.
+   Use the `search_assets` tool (provided by the `asset-search` extension) for
+   semantic search — query with natural language like `"rusted iron storage"` or
+   `"wooden furniture workshop"` to find relevant sprites by tag, not just filename.
+   For example: `search_assets({ query: "ornate stone altar dungeon", type: "prop" })`.
 3. **Score each candidate against the room art contract** — not against the global
    style guide, which everything already passes:
    - **Theme fit** — does it belong to this room's fiction?
@@ -108,3 +112,4 @@ kept props (they can run in parallel — dress with placeholders while art gener
 - `.github/skills/prop-commission/SKILL.md` (next step for gaps)
 - `.github/skills/placeholder-audit/SKILL.md` (sibling: what existing art can retire a placeholder)
 - `src/shared/set-piece-types.ts` — `SpriteRef` union
+- **`asset-search` extension** — `search_assets` tool for semantic tag-based search (e.g. `search_assets({ query: "rusted iron workshop", type: "prop" })`)

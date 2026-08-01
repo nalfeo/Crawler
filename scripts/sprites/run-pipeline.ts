@@ -425,26 +425,36 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
 
   // Shared judge-call argument shape. `provider` is passed explicitly (already
   // null-checked by each path) so this stays a pure function of the variant.
-  const buildJudgeArgs = (e: ProcessedVariant, provider: VisionProvider) => ({
-    processed: e.processed,
-    referencePngs: args.referencePngs,
-    brief,
-    styleGuide: args.styleGuide,
-    provider,
-    variantIndex: e.index,
-    // The judge sidecar (`NN.judge.json`) is written with `writeFileSync`, so
-    // `processedDir` must be a real local path. For non-local stores
-    // `store.resolve()` returns a blob URL that `path.join` would mangle into
-    // an ENOENT path. Omit it off-local: the scorecard is still embedded in
-    // the run summary, so no judge data is lost.
-    ...(args.store.backend === 'local'
-      ? { processedDir: args.store.resolve(args.storeKey('processed')) }
-      : {}),
-    variantPath: e.processedPath,
-    ...(args.judgeCache ? { cache: args.judgeCache } : {}),
-    ...(args.now ? { now: args.now } : {}),
-    ...(args.env ? { env: args.env } : {}),
-  });
+  const buildJudgeArgs = (e: ProcessedVariant, provider: VisionProvider) => {
+    // For icon-batch briefs each cell is a different concept. Supply the
+    // cell-specific concept/description as `briefMatchInstructions` so the
+    // judge evaluates the right subject, not the generic sheet-level prompt.
+    const iconBatchEntry = brief.iconBatch?.[e.index];
+    const cellBriefMatchInstructions = iconBatchEntry
+      ? [iconBatchEntry.concept, iconBatchEntry.description].filter(Boolean).join(' — ')
+      : undefined;
+    return {
+      processed: e.processed,
+      referencePngs: args.referencePngs,
+      brief,
+      styleGuide: args.styleGuide,
+      provider,
+      variantIndex: e.index,
+      // The judge sidecar (`NN.judge.json`) is written with `writeFileSync`, so
+      // `processedDir` must be a real local path. For non-local stores
+      // `store.resolve()` returns a blob URL that `path.join` would mangle into
+      // an ENOENT path. Omit it off-local: the scorecard is still embedded in
+      // the run summary, so no judge data is lost.
+      ...(args.store.backend === 'local'
+        ? { processedDir: args.store.resolve(args.storeKey('processed')) }
+        : {}),
+      variantPath: e.processedPath,
+      ...(cellBriefMatchInstructions ? { briefMatchInstructions: cellBriefMatchInstructions } : {}),
+      ...(args.judgeCache ? { cache: args.judgeCache } : {}),
+      ...(args.now ? { now: args.now } : {}),
+      ...(args.env ? { env: args.env } : {}),
+    };
+  };
 
   if (concurrency === 1) {
     // Sequential judging keeps Azure rate-limit headroom predictable and makes

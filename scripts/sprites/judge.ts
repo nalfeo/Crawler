@@ -62,7 +62,7 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v9';
+const PROMPT_TEMPLATE_VERSION = 'v10';
 
 export const JUDGE_HARD_BLOCK_PHRASE = 'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME';
 
@@ -73,6 +73,7 @@ export type Evaluator =
   | 'readability'
   | 'pose_orientation'
   | 'boss_presence'
+  | 'figure_framing'
   | 'presentation'
   | 'theme_adherence';
 
@@ -103,6 +104,7 @@ export interface JudgeScorecard {
   readonly readability: EvaluatorResult;
   readonly poseOrientation?: EvaluatorResult;
   readonly bossPresence?: EvaluatorResult;
+  readonly figureFraming?: EvaluatorResult;
   readonly presentation?: EvaluatorResult;
   /**
    * Floor/theme design-language adherence. Only present (and only
@@ -188,6 +190,13 @@ export interface JudgeVariantOptions {
    * path derived from `variantIndex`.
    */
   readonly variantPath?: string;
+  /**
+   * When set, overrides `brief.prompt` as the brief-match instructions passed
+   * to the judge and included in the cache key. Used by icon-batch judging to
+   * supply each cell's specific concept/description rather than the generic
+   * sheet prompt.
+   */
+  readonly briefMatchInstructions?: string;
 }
 
 /** Zod schema for the model's structured response. Single source of truth. */
@@ -206,6 +215,7 @@ const legacyJudgeResponseSchema = z
     readability: evaluatorPayloadSchema,
     pose_orientation: evaluatorPayloadSchema.optional(),
     boss_presence: evaluatorPayloadSchema.optional(),
+    figure_framing: evaluatorPayloadSchema.optional(),
     presentation: evaluatorPayloadSchema.optional(),
     theme_adherence: evaluatorPayloadSchema.optional(),
   })
@@ -294,6 +304,7 @@ function validateOptionalAxes<T extends LegacyJudgeResponse | JudgeResponse>(
 ): { success: true; data: T } | { success: false; error: z.ZodError } {
   const expectedOptionalAxes = new Map<string, boolean>([
     ['theme_adherence', hasAddendum],
+    ['figure_framing', brief.type === 'enemy' || brief.type === 'character'],
     [
       'pose_orientation',
       (brief.type === 'enemy' || brief.type === 'character') &&
@@ -435,6 +446,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
   // composition work. The orchestrator only calls judgeVariant when
   // `brief.judge.enabled === true`, so the cache will never be
   // queried for a judge-disabled brief.
+  const briefMatchInstructions = options.briefMatchInstructions ?? options.brief.prompt;
   const cacheKey = options.cache
     ? options.cache.computeKey({
         modelDeployment: options.provider.modelDeployment,
@@ -443,7 +455,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
         referencePngs: options.referencePngs,
         systemInstructions,
         userPrompt,
-        briefMatchInstructions: options.brief.prompt,
+        briefMatchInstructions,
         floor: options.brief.floor,
         designLanguageAddenda: designLanguageAddendaBlock(designLanguageAddenda),
       })
@@ -552,6 +564,9 @@ function buildScorecard(args: {
     ['reference_style_match', args.payload.reference_style_match],
     ['brief_match', args.payload.brief_match],
     ['readability', args.payload.readability],
+    ...(args.payload.figure_framing
+      ? ([['figure_framing', args.payload.figure_framing]] as const)
+      : []),
     ...(args.payload.pose_orientation
       ? ([['pose_orientation', args.payload.pose_orientation]] as const)
       : []),
@@ -578,6 +593,7 @@ function buildScorecard(args: {
     readability: args.payload.readability,
     poseOrientation: args.payload.pose_orientation,
     bossPresence: args.payload.boss_presence,
+    figureFraming: args.payload.figure_framing,
     presentation: args.payload.presentation,
     themeAdherence: args.payload.theme_adherence,
     passed: rejectedBy.length === 0 && !(hardBlock?.blocked ?? false),
@@ -603,18 +619,19 @@ function buildSystemInstructions(
   // Skip pose_orientation for briefs that explicitly request a front-facing pose:
   // the axis checks for a 1/3-to-2/3 turn and would incorrectly penalise a sprite
   // that correctly follows a `facing: front` brief.
-  const hasPoseAxis =
-    (brief.type === 'enemy' || brief.type === 'character') &&
-    brief.sensors?.enemy?.facing !== 'front';
+  const hasFigureFramingAxis = brief.type === 'enemy' || brief.type === 'character';
+  const hasPoseAxis = hasFigureFramingAxis && brief.sensors?.enemy?.facing !== 'front';
   const hasBossAxis = brief.type === 'enemy' && brief.mobRole === 'boss';
   const hasPresentationAxis = ['equipment', 'item', 'prop'].includes(brief.type);
   const axisCount =
     4 +
+    Number(hasFigureFramingAxis) +
     Number(hasPoseAxis) +
     Number(hasBossAxis) +
     Number(hasPresentationAxis) +
     Number(hasAddendum);
   let nextAxisNumber = 5;
+  const figureFramingAxisNumber = hasFigureFramingAxis ? nextAxisNumber++ : null;
   const poseAxisNumber = hasPoseAxis ? nextAxisNumber++ : null;
   const bossAxisNumber = hasBossAxis ? nextAxisNumber++ : null;
   const presentationAxisNumber = hasPresentationAxis ? nextAxisNumber++ : null;
@@ -624,6 +641,7 @@ function buildSystemInstructions(
     'reference_style_match',
     'brief_match',
     'readability',
+    ...(hasFigureFramingAxis ? ['figure_framing'] : []),
     ...(hasPoseAxis ? ['pose_orientation'] : []),
     ...(hasBossAxis ? ['boss_presence'] : []),
     ...(hasPresentationAxis ? ['presentation'] : []),
@@ -663,6 +681,19 @@ function buildSystemInstructions(
     '                    punched through the body, disconnected/floating pixel islands,',
     '                    detached limbs/fragments, and broken contiguous silhouette.',
     '                    These defects should score readability <= 2.',
+    ...(hasFigureFramingAxis
+      ? [
+          '',
+          `  ${figureFramingAxisNumber}. figure_framing — Is the character or mob fully framed from its`,
+          '                      highest visible extent to its lowest visible extent, with',
+          '                      the whole body visible in-frame? A bust, portrait, or',
+          '                      figure cropped at the waist, mid-body, or lower-body',
+          '                      scores <= 2. For upright humanoid figures, head/torso/feet',
+          '                      should all be visible when that anatomy is present.',
+          '                      A pure 90-degree side profile where no face is visible',
+          '                      also scores <= 2.',
+        ]
+      : []),
     ...(hasPoseAxis
       ? [
           '',
@@ -785,6 +816,7 @@ function buildUserPrompt(brief: Brief, referenceCount: number, hasAddendum: bool
 function judgeAxisCount(brief: Brief, hasAddendum: boolean): number | string {
   const count =
     4 +
+    Number(brief.type === 'enemy' || brief.type === 'character') +
     Number(
       (brief.type === 'enemy' || brief.type === 'character') &&
         brief.sensors?.enemy?.facing !== 'front',

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-31",
+  "session_slug": "fix-asset-pr-admission-policy",
+  "task_title": "Exempt asset PRs from substantive-copilot-review gate and allow docs in art_only",
+  "estimated_apples": 2,
+  "stages": {}
+}

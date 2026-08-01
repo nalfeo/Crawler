@@ -1,0 +1,53 @@
+name: achv-icons-batch-03
+type: icon
+description: 'Achievement icon batch 3: pixel-art symbols for dungeon achievements on Floor 1.'
+floor: 1
+iconBatch:
+  - id: achv-milestone-hunter
+    concept: 'Milestone Hunter'
+    description: 'Icon for the "Milestone Hunter" achievement (Trigger 4 skill milestones in one Floor 1 run.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-loadout-locked-in
+    concept: 'Locked In'
+    description: 'Icon for the "Locked In" achievement (Open abilities and assign your first bar setup.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-respec-ritual
+    concept: 'Button-Masher Buildcraft'
+    description: 'Icon for the "Button-Masher Buildcraft" achievement (Change your abilities bar 3 times in a run.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-cooldown-miser
+    concept: 'Cooldown Miser'
+    description: 'Icon for the "Cooldown Miser" achievement (Finish a fight with every ability off cooldown after casting at least once.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-arcane-barrage
+    concept: 'Arcane Barrage'
+    description: 'Icon for the "Arcane Barrage" achievement (Cast 20 spells on Floor 1.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-weapon-scholar
+    concept: 'Weapon Scholar'
+    description: 'Icon for the "Weapon Scholar" achievement (Land hits with 3 different weapon classes in one run.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-stat-point-spender
+    concept: 'Point Investor'
+    description: 'Icon for the "Point Investor" achievement (Spend your first stat point.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-maxed-core
+    concept: 'Core Values'
+    description: 'Icon for the "Core Values" achievement (Invest 15 total stat points in one Floor 1 run.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-ouch-less
+    concept: 'Mostly Untouched'
+    description: 'Icon for the "Mostly Untouched" achievement (Clear one combat room without taking damage.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-no-hit-floor1
+    concept: 'Untouchable TV'
+    description: 'Icon for the "Untouchable TV" achievement (Finish Floor 1 without taking damage.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-ten-hp-ending
+    concept: 'One-Digit Ending'
+    description: 'Icon for the "One-Digit Ending" achievement (Take the stairs with under 10 HP.) — difficulty: hard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-five-hp-ending
+    concept: 'Heartbeat Finale'
+    description: 'Icon for the "Heartbeat Finale" achievement (Take the stairs with under 5 HP.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-clutch-heal
+    concept: 'Medical Drama'
+    description: 'Icon for the "Medical Drama" achievement (Use a heal while below 15 HP and survive.) — difficulty: standard, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-safe-room-sprinter
+    concept: 'Nervous Pace'
+    description: 'Icon for the "Nervous Pace" achievement (Enter and leave a safe room in under 5 seconds.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-safe-room-breather
+    concept: 'Tea Break'
+    description: 'Icon for the "Tea Break" achievement (Spend at least 45 seconds in the safe room.) — difficulty: basic, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'
+  - id: achv-late-stairs
+    concept: 'Buzzer Beater'
+    description: 'Icon for the "Buzzer Beater" achievement (Take the stairs with less than 5 seconds left.) — difficulty: brutal, floor 1. Symbol should be bold, immediately readable, pixel-art style, transparent background.'

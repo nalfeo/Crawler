@@ -50,10 +50,15 @@ export const ASSET_SURFACE_PATHS = ['public/assets/generated'] as const;
  * art-only classifier agree by construction. It stays a superset of
  * {@link ASSET_SURFACE_PATHS} so branches created before check-ins stopped
  * writing the catalog still reconcile.
+ *
+ * `briefs/` is included so queue-commit branches that bundle brief YAML files
+ * alongside the generated art are still classified as art-only by the
+ * reconcile guard.
  */
 export const ART_SURFACE_ALLOWLIST = [
   'public/assets/generated',
   'src/shared/data/sprite-catalog.json',
+  'briefs',
 ] as const;
 
 /** Label applied to every check-in tracking issue. */

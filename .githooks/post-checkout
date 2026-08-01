@@ -1,0 +1,42 @@
+#!/usr/bin/env sh
+# post-checkout: auto-create a node_modules junction/symlink in new worktrees so
+# commands work immediately without waiting for preflight to do it reactively.
+# Runs after `git checkout`, `git switch`, and `git worktree add`.
+# Args: <prev-ref> <new-ref> <checkout-type>  (checkout-type=1=branch, 0=file)
+set -eu
+
+checkout_type="${3:-0}"
+[ "$checkout_type" = "1" ] || exit 0
+
+repo_root="$(git rev-parse --show-toplevel)"
+common_git_dir="$(git rev-parse --git-common-dir)"
+
+# Resolve the main worktree root (parent of the shared .git directory)
+main_root="$(cd "$common_git_dir/.." && pwd -P)"
+repo_root_real="$(cd "$repo_root" && pwd -P)"
+
+# No-op when we ARE the main worktree
+[ "$repo_root_real" = "$main_root" ] && exit 0
+
+# No-op if node_modules already exists (real dir, symlink, or junction)
+[ -e "$repo_root/node_modules" ] && exit 0
+
+main_nm="$main_root/node_modules"
+[ -d "$main_nm" ] || exit 0
+
+_uname="$(uname -s 2>/dev/null || echo unknown)"
+case "$_uname" in
+  MINGW*|MSYS*|CYGWIN*)
+    if command -v cygpath >/dev/null 2>&1; then
+      win_link="$(cygpath -w "$repo_root/node_modules")"
+      win_target="$(cygpath -w "$main_nm")"
+      cmd //c mklink //J "$win_link" "$win_target" >/dev/null 2>&1 \
+        && printf '✓ node_modules junction → %s\n' "$main_nm" \
+        || printf 'Warning: could not create node_modules junction\n' >&2
+    fi
+    ;;
+  *)
+    ln -sf "$main_nm" "$repo_root/node_modules" \
+      && printf '✓ node_modules junction → %s\n' "$main_nm"
+    ;;
+esac

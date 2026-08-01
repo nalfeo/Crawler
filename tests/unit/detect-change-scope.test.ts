@@ -211,12 +211,12 @@ const cases: Case[] = [
   {
     name: 'docs markdown',
     files: ['docs/architecture.md'],
-    expected: F(false, true, true, false, false, false, false, false, false, false, false),
+    expected: F(true, true, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'docs knowledge metric json',
     files: ['docs/knowledge/metrics/apples/2026-07-08-adr-cleanup.json'],
-    expected: F(false, true, true, false, false, false, false, false, false, false, false),
+    expected: F(true, true, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'spec markdown',
@@ -851,7 +851,7 @@ const cases: Case[] = [
   {
     name: 'handoff alone → neutral companion',
     files: ['docs/knowledge/handoffs/2026-07-19-my-feature.md'],
-    expected: F(false, true, true, false, false, false, false, false, false, false, false),
+    expected: F(true, true, true, false, false, false, false, false, false, false, false),
   },
   // Security-impact surfaces: dependencies_touched.
   {
@@ -1073,6 +1073,37 @@ const cases: Case[] = [
     name: 'art-only scope regression: art_only=true, docs_only=false → workflow fast-path via art_only',
     files: ['public/assets/generated/sprites.png'],
     // docs_only=false, art_only=true: security-review.yml must use art_only to gate fast-path
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
+  },
+  // Mixed art + docs (CI Recovery adds handoff/review-ledger to asset PR): still art_only.
+  // docs/* is in the art_only allowlist so the heavy sim gates are still suppressed.
+  {
+    name: 'art + docs mixed (CI Recovery handoff on asset PR) → art_only=true, docs_only=false',
+    files: [
+      'public/assets/generated/hero.png',
+      'src/shared/data/sprite-catalog.json',
+      'docs/knowledge/handoffs/2026-07-31-example.md',
+      'docs/knowledge/review-ledgers/2026-07-31-example.review-ledger.json',
+    ],
+    // art_only=true, docs_only=false (art files break docs_only), gameplay_safe=true.
+    // visual_touched=true, asset_visual_touched=true because art files are in the diff.
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
+  },
+  // Brief YAML files alone: still art_only and gameplay_safe (design data, no sim impact).
+  {
+    name: 'brief-only (enemies): art_only=true, gameplay_safe=true',
+    files: ['briefs/enemies/panda-boba-sniper.yaml', 'briefs/enemies/ratfolk-elite-underboss.yaml'],
+    //                         art   docs  gsafe sponly sptch sim   cov   vis   game  asset devt
+    expected: F(true, false, true, false, false, false, false, false, false, false, false),
+  },
+  // Brief + art together (queue-commit bundles them): still art_only and gameplay_safe.
+  {
+    name: 'art + brief (bundled queue-commit): art_only=true, gameplay_safe=true',
+    files: [
+      'public/assets/generated/panda-boba-sniper-var-0.png',
+      'briefs/enemies/panda-boba-sniper.yaml',
+    ],
+    //                         art   docs  gsafe sponly sptch sim   cov   vis   game  asset devt
     expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
 ];

@@ -1,0 +1,46 @@
+type: enemy
+mobRole: boss
+name: llama-boss
+floor: 2
+sizeVariant: tall
+description: |
+  Don Paco 'The Gob', the grand patriarch of The Spit Syndicate — a regal,
+  imperious llama crime boss. Tall elegant neck rising from a heavy stocky
+  body, producing a distinctive tall boss silhouette. The neck and head
+  together account for roughly the upper third of the frame. Dressed in a
+  dark, heavily-embellished crime boss outfit: a long robe or heavy cloak of
+  deep charcoal wool trimmed with tarnished gold brocade, iron salvage medals
+  pinned across a broad chest, and a flat-crowned boss hat or ornate iron
+  headpiece. Classic llama features preserved: long neck, split upper lip with
+  slight contemptuous sneer, large expressive eyes with the aloof superiority
+  of a cartel don.
+
+  Dark Floor 2 palette: deep charcoal and slate grey for the wool body, rusted
+  gold and tarnished brass for regalia accents, dark caramel or dusty brown
+  for the face/neck fur. No bright whites.
+
+  Expression: aristocratic contempt — neck drawn back slightly, chin raised,
+  half-lidded eyes. Front-facing toward camera with neck slightly arched.
+
+  Silhouette: the neck creates a tall narrow top with a wide heavy body base.
+  All accessories fused into the body mass — no floating prop items.
+
+sensors:
+  enemy:
+    facing: front
+    toleranceDeg: 25
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - Don Paco in charcoal floor-length cloak with tarnished gold trim, iron salvage medals, flat-crowned boss hat, contemptuous sneer
+  - Don Paco with neck-arched superiority pose, heavy dark wool body mantle, corroded brass chain collar, aloof half-lidded llama eyes
+  - Don Paco wearing deep slate robe with gold brocade, rusted iron pauldrons fused to shoulders, ornate iron headpiece, cartel don presence
+  - Don Paco silhouette-first — tall neck, wide body, heavy boss-cloak mass, face bearing the contempt of Floor 2's most arrogant crime lord
+
+minVariations: 4

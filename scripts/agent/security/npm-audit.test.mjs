@@ -8,10 +8,14 @@ import { test } from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
 import {
   AUDIT_EXCEPTIONS,
+  KNOWN_EXPIRY_ARRAY_NAMES,
+  TEMP_DEPENDENCY_EXCEPTIONS,
   evaluateAudit,
   evaluateTemporaryDependencyExceptions,
   extractAuditExceptionsFromSource,
+  extractNamedExceptionsFromSource,
   findReasonRestatementViolations,
+  findUnknownExpiryArrays,
 } from './npm-audit.mjs';
 
 const ACTIVE_DATE = new Date('2026-07-24T00:00:00Z');
@@ -102,6 +106,198 @@ test('extractAuditExceptionsFromSource handles an empty array declaration', () =
   assert.deepEqual(result, []);
 });
 
+test('extractNamedExceptionsFromSource extracts AUDIT_EXCEPTIONS by name', () => {
+  const source = `export const AUDIT_EXCEPTIONS = ${JSON.stringify(SYNTHETIC_EXCEPTIONS, null, 2)};`;
+  const result = extractNamedExceptionsFromSource(source, 'AUDIT_EXCEPTIONS');
+  assert.deepEqual(result, SYNTHETIC_EXCEPTIONS);
+});
+
+test('extractNamedExceptionsFromSource extracts TEMP_DEPENDENCY_EXCEPTIONS by name', () => {
+  const fixture = [
+    {
+      packageName: 'some-pkg',
+      field: 'overrides',
+      version: '1.2.3',
+      expiresOn: '2026-09-01',
+      reason: 'Synthetic fixture.',
+    },
+  ];
+  const source = `export const TEMP_DEPENDENCY_EXCEPTIONS = ${JSON.stringify(fixture, null, 2)};`;
+  const result = extractNamedExceptionsFromSource(source, 'TEMP_DEPENDENCY_EXCEPTIONS');
+  assert.deepEqual(result, fixture);
+});
+
+test('extractNamedExceptionsFromSource throws for a missing array', () => {
+  assert.throws(
+    () => extractNamedExceptionsFromSource('export const OTHER = [];', 'MISSING_ARRAY'),
+    /Could not find MISSING_ARRAY declaration/,
+  );
+});
+
+test('KNOWN_EXPIRY_ARRAY_NAMES lists both exception arrays', () => {
+  assert.ok(KNOWN_EXPIRY_ARRAY_NAMES.includes('AUDIT_EXCEPTIONS'));
+  assert.ok(KNOWN_EXPIRY_ARRAY_NAMES.includes('TEMP_DEPENDENCY_EXCEPTIONS'));
+});
+
+test('findUnknownExpiryArrays returns empty for source with only known arrays', () => {
+  const source = `
+export const AUDIT_EXCEPTIONS = [{ expiresOn: '2026-08-01' }
+];
+export const TEMP_DEPENDENCY_EXCEPTIONS = [{ expiresOn: '2026-08-01' }
+];
+`;
+  assert.deepEqual(findUnknownExpiryArrays(source), []);
+});
+
+test('findUnknownExpiryArrays detects an unknown expiresOn-bearing array', () => {
+  const source = `
+export const AUDIT_EXCEPTIONS = [{ expiresOn: '2026-08-01' }
+];
+export const FOO_EXCEPTIONS = [{ expiresOn: '2026-09-01' }
+];
+`;
+  assert.deepEqual(findUnknownExpiryArrays(source), ['FOO_EXCEPTIONS']);
+});
+
+test('findUnknownExpiryArrays detects same-line unknown expiresOn-bearing array', () => {
+  const source = `
+export const AUDIT_EXCEPTIONS = [{ expiresOn: '2026-08-01' }];
+export const FOO_EXCEPTIONS = [{ expiresOn: '2026-09-01' }];
+`;
+  assert.deepEqual(findUnknownExpiryArrays(source), ['FOO_EXCEPTIONS']);
+});
+
+test('findUnknownExpiryArrays ignores arrays without expiresOn', () => {
+  const source = `
+export const AUDIT_EXCEPTIONS = [{ expiresOn: '2026-08-01' }
+];
+export const ALLOWLIST = ['foo', 'bar'
+];
+`;
+  assert.deepEqual(findUnknownExpiryArrays(source), []);
+});
+
+test('CLI exits 1 for TEMP_DEPENDENCY_EXCEPTIONS expiresOn extension without reason update', (t) => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-temp-guard-test-'));
+  t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+
+  const scriptRelPath = path.join('scripts', 'agent', 'security', 'npm-audit.mjs');
+  const scriptDir = path.join(tempDir, 'scripts', 'agent', 'security');
+  mkdirSync(scriptDir, { recursive: true });
+
+  const realSource = readFileSync(SCRIPT, 'utf8');
+  // Replace the TEMP_DEPENDENCY_EXCEPTIONS block in base to have an earlier expiry.
+  const baseSource = realSource.replace(
+    /export const TEMP_DEPENDENCY_EXCEPTIONS = \[[\s\S]*?\];/,
+    `export const TEMP_DEPENDENCY_EXCEPTIONS = [
+  {
+    packageName: 'temp-test-pkg',
+    field: 'overrides',
+    version: '1.0.0',
+    expiresOn: '2026-07-01',
+    reason: 'Temp reason — unchanged.',
+  },
+];`,
+  );
+  // Same entry in current, but expiresOn bumped without changing reason.
+  const currentSource = realSource.replace(
+    /export const TEMP_DEPENDENCY_EXCEPTIONS = \[[\s\S]*?\];/,
+    `export const TEMP_DEPENDENCY_EXCEPTIONS = [
+  {
+    packageName: 'temp-test-pkg',
+    field: 'overrides',
+    version: '1.0.0',
+    expiresOn: '2026-09-01',
+    reason: 'Temp reason — unchanged.',
+  },
+];`,
+  );
+
+  const git = (args) =>
+    spawnSync('git', args, {
+      cwd: tempDir,
+      encoding: 'utf8',
+      env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', HOME: tempDir },
+    });
+
+  git(['init']);
+  git(['config', 'user.email', 'test@example.com']);
+  git(['config', 'user.name', 'Test']);
+
+  writeFileSync(path.join(scriptDir, 'npm-audit.mjs'), baseSource);
+  git(['add', scriptRelPath]);
+  git(['commit', '-m', 'base: old temp expiry']);
+  const baseSha = git(['rev-parse', 'HEAD']).stdout.trim();
+
+  writeFileSync(path.join(scriptDir, 'npm-audit.mjs'), currentSource);
+  git(['add', scriptRelPath]);
+  git(['commit', '-m', 'bump temp expiry without updating reason']);
+
+  const scriptInTempRepo = path.join(scriptDir, 'npm-audit.mjs');
+  const result = spawnSync(process.execPath, [scriptInTempRepo], {
+    cwd: tempDir,
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_BASE_SHA: baseSha },
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /TEMP_DEPENDENCY_EXCEPTIONS extension for "temp-test-pkg"/);
+  assert.match(result.stderr, /2026-07-01 -> 2026-09-01/);
+  assert.match(result.stderr, /restated, current justification/);
+});
+
+test('CLI exits 2 when current source contains an unknown expiresOn-bearing array', (t) => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-unknown-array-test-'));
+  t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+
+  const scriptRelPath = path.join('scripts', 'agent', 'security', 'npm-audit.mjs');
+  const scriptDir = path.join(tempDir, 'scripts', 'agent', 'security');
+  mkdirSync(scriptDir, { recursive: true });
+
+  const realSource = readFileSync(SCRIPT, 'utf8');
+  // Base is unmodified.
+  const baseSource = realSource;
+  // Current has a new expiresOn-bearing array not in KNOWN_EXPIRY_ARRAY_NAMES.
+  // Insert it right after the TEMP_DEPENDENCY_EXCEPTIONS block.
+  const currentSource = realSource.replace(
+    /export const TEMP_DEPENDENCY_EXCEPTIONS = \[[\s\S]*?\];/,
+    (match) =>
+      match +
+      `\n\nexport const NEW_UNKNOWN_EXCEPTIONS = [\n  { packageName: 'x', expiresOn: '2026-09-01' }\n];`,
+  );
+
+  const git = (args) =>
+    spawnSync('git', args, {
+      cwd: tempDir,
+      encoding: 'utf8',
+      env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', HOME: tempDir },
+    });
+
+  git(['init']);
+  git(['config', 'user.email', 'test@example.com']);
+  git(['config', 'user.name', 'Test']);
+
+  writeFileSync(path.join(scriptDir, 'npm-audit.mjs'), baseSource);
+  git(['add', scriptRelPath]);
+  git(['commit', '-m', 'base: clean source']);
+  const baseSha = git(['rev-parse', 'HEAD']).stdout.trim();
+
+  writeFileSync(path.join(scriptDir, 'npm-audit.mjs'), currentSource);
+  git(['add', scriptRelPath]);
+  git(['commit', '-m', 'add unguarded expiresOn array']);
+
+  const scriptInTempRepo = path.join(scriptDir, 'npm-audit.mjs');
+  const result = spawnSync(process.execPath, [scriptInTempRepo], {
+    cwd: tempDir,
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_BASE_SHA: baseSha },
+  });
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /NEW_UNKNOWN_EXCEPTIONS/);
+  assert.match(result.stderr, /KNOWN_EXPIRY_ARRAY_NAMES/);
+});
+
 test('CLI exits 1 with package-specific error when expiresOn extends without reason update', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-cli-guard-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
@@ -183,7 +379,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
           severity: 'high',
           via: [
             {
-              source: 1124334,
+              source: 1130591,
               url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
               severity: 'high',
             },
@@ -458,6 +654,7 @@ test('rejects temporary dependency exceptions with impossible expiresOn date', (
   );
 });
 
+
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.
 // New entries: add the advisory URL, expiry date, and the reason text here.
@@ -499,6 +696,30 @@ test('no real audit exception is already expired', () => {
     'One or more audit exceptions have expired. Fix the underlying vulnerability ' +
       '(upgrade to a patched version) rather than extending the expiry date.',
   );
+});
+
+// Properties of the real, live TEMP_DEPENDENCY_EXCEPTIONS list. Mirror the
+// AUDIT_EXCEPTIONS guards so both arrays stay well-formed.
+test('every real temp dependency exception has a well-formed expiresOn date', () => {
+  for (const exception of TEMP_DEPENDENCY_EXCEPTIONS) {
+    assert.match(
+      exception.expiresOn,
+      /^\d{4}-\d{2}-\d{2}$/,
+      `${exception.packageName} expiresOn must be YYYY-MM-DD`,
+    );
+    const parsed = new Date(`${exception.expiresOn}T23:59:59.999Z`);
+    assert.equal(
+      Number.isNaN(parsed.getTime()),
+      false,
+      `${exception.packageName} expiresOn must parse as a valid date`,
+    );
+    const roundTripped = parsed.toISOString().slice(0, 10);
+    assert.equal(
+      roundTripped,
+      exception.expiresOn,
+      `${exception.packageName} expiresOn '${exception.expiresOn}' is not a real calendar date (normalises to ${roundTripped})`,
+    );
+  }
 });
 
 test('blocks fast-uri — no exception after package upgrade to 3.1.4', () => {
