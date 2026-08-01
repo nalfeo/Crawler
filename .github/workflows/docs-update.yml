@@ -97,6 +97,16 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Refresh remote tracking refs so --force-with-lease in create-pull-request
+      # uses accurate data.  The initial fetch-depth: 0 checkout can leave a
+      # stale ref for automation/docs-update (e.g. the branch was deleted after
+      # the previous PR was merged), and the 25-second Prettier pre-push hook
+      # creates a window where the remote can change.  Pruning here ensures the
+      # lease check sees reality, not a stale snapshot.
+      - name: Prune stale remote tracking refs
+        if: steps.changes.outputs.changed == 'true'
+        run: git fetch --prune origin
+
       - name: Open docs automation PR
         if: steps.changes.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
