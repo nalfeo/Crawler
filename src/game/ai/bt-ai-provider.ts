@@ -1674,7 +1674,11 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const exit = this.getFinalExitTarget(world);
     const mode = exit ? 'exit' : 'local';
-    if (mode === 'local' && world.frameCount > this.xpCleanupCombatWindowUntilFrame) {
+    if (
+      mode === 'local' &&
+      this.xpCleanupMode === null &&
+      world.frameCount > this.xpCleanupCombatWindowUntilFrame
+    ) {
       this.resetXpCleanupSession(false, world.frameCount);
       return null;
     }

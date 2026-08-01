@@ -3672,9 +3672,17 @@ describe('BehaviorTreeAI', () => {
         ai.poll(createInputState(), world);
         expect(ai.getDecision().state).toBe(AIState.COLLECT);
 
-        world.frameCount += 240;
+        world.frameCount += 181;
+        ai.poll(createInputState(), world);
+        expect(ai.getDecision().state).toBe(AIState.COLLECT);
+
+        world.frameCount += 59;
         ai.poll(createInputState(), world);
 
+        expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
+
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
         expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
       });
 
