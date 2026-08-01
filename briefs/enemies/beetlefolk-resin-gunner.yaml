@@ -29,8 +29,6 @@ sensors:
   enemy:
     facing: front
     toleranceDeg: 25
-  edge:
-    allowMainTouch: true
 variations:
   - resin-blaster with a bulbous amber canister mounted on top, compound eyes glowing faintly, wide-leg combat stance
   - resin-blaster held at a slight upward angle, oversized nozzle with ribbed rings, beetle shell showing scratched wear
