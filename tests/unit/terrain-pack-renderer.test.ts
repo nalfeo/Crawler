@@ -30,8 +30,8 @@ import {
 import { PIXELS_PER_FOOT } from '../../src/shared/units.js';
 import { getTerrainPack } from '../../src/shared/terrain-pack-registry.js';
 import {
+  _computeRawMask8,
   MASK_BIT,
-  computeRawMask8,
   neighborMask8InTerrain,
   normalizeBlob47Mask,
 } from '../../src/shared/terrain-pack-mask.js';
@@ -459,8 +459,8 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       const t = floorMap.terrain[ny * 4 + nx] as TerrainType;
       return t === TerrainType.STONE_WALL || t === TerrainType.CAVE_WALL;
     };
-    const rawLeft = computeRawMask8(1, 1, 4, 3, isWallLike);
-    const rawRight = computeRawMask8(2, 1, 4, 3, isWallLike);
+    const rawLeft = _computeRawMask8(1, 1, 4, 3, isWallLike);
+    const rawRight = _computeRawMask8(2, 1, 4, 3, isWallLike);
     const leftFrame = pack.wallAutotile.masks.find(
       (m) => m.maskId === normalizeBlob47Mask(rawLeft),
     )!.frameIndex;
@@ -634,7 +634,7 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     let cursor = 0;
     for (let ty = 0; ty < size; ty++) {
       for (let tx = 0; tx < size; tx++) {
-        const mask = normalizeBlob47Mask(computeRawMask8(tx, ty, size, size, isWallLike, true));
+        const mask = normalizeBlob47Mask(_computeRawMask8(tx, ty, size, size, isWallLike, true));
         expect(mask).toBe(255);
         if (mask !== 255) {
           cursor += 1; // skip underdraw stamp

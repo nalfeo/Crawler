@@ -12,10 +12,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  _computeRawMask8,
   BLOB47_CANONICAL_MASKS,
   CORNER_ADJACENCY,
   MASK_BIT,
-  computeRawMask8,
   computeRawMask8Grid,
   edgeWangMaskFromOccupancy,
   edgeWangStubSpan,
@@ -105,25 +105,25 @@ describe('computeRawMask8 / neighborMask8InTerrain — bit order + OOB handling'
   it('sets bits in the pinned order N=1,E=2,S=4,W=8,NE=16,SE=32,SW=64,NW=128', () => {
     const allMatch = () => true;
     // 3x3 grid, center tile (1,1): every neighbour matches -> full 255.
-    expect(computeRawMask8(1, 1, 3, 3, allMatch)).toBe(255);
+    expect(_computeRawMask8(1, 1, 3, 3, allMatch)).toBe(255);
   });
 
   it('treats out-of-bounds neighbours as non-matching (bit stays 0)', () => {
     const allMatch = () => true;
     // Top-left corner tile (0,0) of a 3x3 grid: N, W, NE, NW, SW are all OOB.
     // Only E, S, SE are in-bounds and match.
-    const mask = computeRawMask8(0, 0, 3, 3, allMatch);
+    const mask = _computeRawMask8(0, 0, 3, 3, allMatch);
     expect(mask).toBe(MASK_BIT.E | MASK_BIT.S | MASK_BIT.SE);
   });
 
   it('a 1x1 grid has every neighbour out of bounds -> raw mask 0', () => {
     const allMatch = () => true;
-    expect(computeRawMask8(0, 0, 1, 1, allMatch)).toBe(0);
+    expect(_computeRawMask8(0, 0, 1, 1, allMatch)).toBe(0);
   });
 
   it('only sets the bit for a neighbour that individually matches', () => {
     // Only the N neighbour of (1,1) in a 3x3 grid matches.
-    const mask = computeRawMask8(1, 1, 3, 3, (nx, ny) => nx === 1 && ny === 0);
+    const mask = _computeRawMask8(1, 1, 3, 3, (nx, ny) => nx === 1 && ny === 0);
     expect(mask).toBe(MASK_BIT.N);
   });
 
@@ -231,7 +231,7 @@ describe('computeRawMask8Grid — closure-free hot-loop variant', () => {
         for (let ty = 0; ty < 3; ty++) {
           for (let tx = 0; tx < 3; tx++) {
             expect(computeRawMask8Grid(solid, tx, ty, 3, 3, oob)).toBe(
-              computeRawMask8(tx, ty, 3, 3, matches, oob),
+              _computeRawMask8(tx, ty, 3, 3, matches, oob),
             );
           }
         }
@@ -250,7 +250,7 @@ describe('computeRawMask8Grid — closure-free hot-loop variant', () => {
       for (let ty = 0; ty < height; ty++) {
         for (let tx = 0; tx < width; tx++) {
           expect(computeRawMask8Grid(solid, tx, ty, width, height, oob)).toBe(
-            computeRawMask8(tx, ty, width, height, matches, oob),
+            _computeRawMask8(tx, ty, width, height, matches, oob),
           );
         }
       }

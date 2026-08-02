@@ -176,7 +176,7 @@ export const FULLY_OPAQUE_BLOB47_MASK = 255;
  *     against solid rock (see `PACK_WALL_MASK_NEIGHBOR_TERRAIN_TYPES` in
  *     `terrain-renderer.ts` for the analogous in-bounds VOID/rock rule).
  */
-export function computeRawMask8(
+function computeRawMask8(
   tx: number,
   ty: number,
   width: number,
@@ -202,6 +202,13 @@ export function computeRawMask8(
   if (at(-1, -1)) mask |= MASK_BIT.NW;
   return mask;
 }
+
+/**
+ * Intentional non-production export for labs/tests that need the predicate-based
+ * reference implementation. Runtime code should prefer `computeRawMask8Grid` or
+ * `neighborMask8InTerrain`.
+ */
+export const _computeRawMask8 = computeRawMask8;
 
 /**
  * Closure-free variant of {@link computeRawMask8} over a precomputed solidity
