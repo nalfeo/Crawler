@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c1c43a832a3608cfae78f3c6711ec54c3875e6f7",
+    "commitDate": "2026-08-02T07:51:58Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2681)",
+    "capturedAt": "2026-08-02T08:47:26.010Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30738659126",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/c1c43a832a3608cfae78f3c6711ec54c3875e6f7.json"
+  },
+  {
     "commit": "82ed1896e9008f07abe8ab75094a6d07665a8c73",
     "commitDate": "2026-08-02T07:29:13Z",
     "commitSubject": "Landscape-only mobile support with safe-area-aware HUD layout (#2674)",
