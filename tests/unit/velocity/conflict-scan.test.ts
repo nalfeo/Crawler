@@ -344,7 +344,14 @@ describe('CLI entrypoint and validation', () => {
 
       const result = spawnSync(
         process.execPath,
-        [TSX_PATH, SCRIPT_PATH, '--max-nonsource-rate', 'bad', '--out', join(root, 'files/report.json')],
+        [
+          TSX_PATH,
+          SCRIPT_PATH,
+          '--max-nonsource-rate',
+          'bad',
+          '--out',
+          join(root, 'files/report.json'),
+        ],
         {
           cwd: root,
           encoding: 'utf8',

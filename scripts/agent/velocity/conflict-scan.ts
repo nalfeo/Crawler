@@ -323,7 +323,11 @@ function readFlagValue(argv: readonly string[], name: string): string | undefine
   return value;
 }
 
-function parseNumberFlag(argv: readonly string[], name: string, fallback?: number): number | undefined {
+function parseNumberFlag(
+  argv: readonly string[],
+  name: string,
+  fallback?: number,
+): number | undefined {
   const raw = readFlagValue(argv, name);
   if (raw === undefined) return fallback;
 
@@ -336,7 +340,8 @@ function parseNumberFlag(argv: readonly string[], name: string, fallback?: numbe
 }
 
 export function isDirectExecution(argvEntry: string | undefined, moduleUrl: string): boolean {
-  return Boolean(argvEntry) && moduleUrl === pathToFileURL(argvEntry).href;
+  if (!argvEntry) return false;
+  return moduleUrl === pathToFileURL(argvEntry).href;
 }
 
 function main(): void {
