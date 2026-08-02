@@ -10,9 +10,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  ZERO_SAFE_AREA_INSETS,
-  computeDesignSafeInsets,
-  type SafeAreaInsets,
+  _ZERO_SAFE_AREA_INSETS as ZERO_SAFE_AREA_INSETS,
+  _computeDesignSafeInsets as computeDesignSafeInsets,
+  type _SafeAreaInsets as SafeAreaInsets,
 } from '../../src/engine/safe-area.js';
 
 /** iPhone 13 Pro landscape, header hidden — measured from the real lab canvas. */

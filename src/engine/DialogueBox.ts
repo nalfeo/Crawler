@@ -75,7 +75,7 @@ export function createDialogueBox(
   const anchorX = options.anchorX ?? screenW / 2;
   // Bottom anchor, lifted clear of the home-indicator band on notched devices
   // (`getSafeAreaInsets` is zero on desktop and when the band misses the canvas).
-  const bottomY = (): number => (options.bottomY ?? screenH - 88) - getSafeAreaInsets(scene).bottom;
+  const bottomY = (): number => options.bottomY ?? screenH - 88 - getSafeAreaInsets(scene).bottom;
 
   const container = scene.add.container(0, 0).setDepth(depth).setScrollFactor(0).setVisible(false);
 

@@ -34,7 +34,7 @@ const SCALE_RESIZE_EVENT = 'resize';
 const CSS_VAR_PREFIX = '--crawler-safe-area-inset-';
 
 /** Inset distances from each edge. Units depend on the producer (CSS or design px). */
-export interface SafeAreaInsets {
+interface SafeAreaInsets {
   readonly top: number;
   readonly right: number;
   readonly bottom: number;
@@ -42,7 +42,7 @@ export interface SafeAreaInsets {
 }
 
 /** No-inset value — the desktop case and the safe fallback everywhere else. */
-export const ZERO_SAFE_AREA_INSETS: SafeAreaInsets = {
+const ZERO_SAFE_AREA_INSETS: SafeAreaInsets = {
   top: 0,
   right: 0,
   bottom: 0,
@@ -85,7 +85,7 @@ function toPositive(value: number): number {
  * own `design / displayed` ratio, and clamped to the design size so a
  * degenerate rect can never produce an inset that exceeds the canvas.
  */
-export function computeDesignSafeInsets(options: ComputeDesignSafeInsetsOptions): SafeAreaInsets {
+function computeDesignSafeInsets(options: ComputeDesignSafeInsetsOptions): SafeAreaInsets {
   const designWidth = options.designWidth ?? GAME.WIDTH;
   const designHeight = options.designHeight ?? GAME.HEIGHT;
   const { canvas, viewport, insets } = options;
@@ -128,7 +128,7 @@ function parsePx(value: string): number {
  * publishes as `--crawler-safe-area-inset-*`. Returns zeros when the properties
  * are absent (older entry point, non-browser env, or a device with no cutout).
  */
-export function readCssSafeAreaInsets(
+function readCssSafeAreaInsets(
   doc: Document | undefined = globalThis.document,
 ): SafeAreaInsets {
   if (!doc?.documentElement || typeof getComputedStyle !== 'function') {
@@ -142,6 +142,14 @@ export function readCssSafeAreaInsets(
     left: parsePx(style.getPropertyValue(`${CSS_VAR_PREFIX}left`)),
   };
 }
+
+/**
+ * Test-scaffolding exports: underscore-prefixed so guard scripts treat them as
+ * intentional non-production API.
+ */
+export type _SafeAreaInsets = SafeAreaInsets;
+export const _ZERO_SAFE_AREA_INSETS: SafeAreaInsets = ZERO_SAFE_AREA_INSETS;
+export const _computeDesignSafeInsets = computeDesignSafeInsets;
 
 /** Live canvas rect for a scene, or `null` when there is no laid-out canvas. */
 function readCanvasRect(scene: Phaser.Scene): CanvasRect | null {

@@ -57,9 +57,9 @@ import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import {
-  ZERO_SAFE_AREA_INSETS,
+  _ZERO_SAFE_AREA_INSETS as ZERO_SAFE_AREA_INSETS,
   getSafeAreaInsets,
-  type SafeAreaInsets,
+  type _SafeAreaInsets as SafeAreaInsets,
 } from '../../engine/safe-area.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
