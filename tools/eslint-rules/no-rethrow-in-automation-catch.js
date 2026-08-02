@@ -12,10 +12,12 @@
  * Deliberately narrow on two axes, because a noisy guard costs as much agent
  * time as the bug it prevents:
  *
- * 1. Only a direct `throw <caughtParam>` is reported. Wrapped errors
- *    (`throw new Error(..., { cause: err })`) and throws inside a nested
- *    function declared in the catch body (a different execution context) are
- *    not reported.
+ * 1. Only throws that actually ESCAPE the catch are reported. A throw inside a
+ *    nested function declared in the catch body (a different execution
+ *    context), or inside a nested `try` that has its own handler, is not
+ *    reported. The thrown VALUE is irrelevant: `throw error`,
+ *    `throw new Error(..., { cause: error })` and `throw someOtherError` all
+ *    unwind the loop and abandon the remaining items identically.
  *
  * 2. Only catches lexically inside a LOOP body — with no intervening function
  *    boundary — are reported. That is the shape with the blast radius: the
@@ -29,12 +31,6 @@
  * ones (Class C of the regression retrospective: guards must prove they do not
  * false-positive).
  */
-
-function getCatchParamName(catchClause) {
-  const param = catchClause.param;
-  if (!param || param.type !== 'Identifier') return null;
-  return param.name;
-}
 
 const FUNCTION_TYPES = new Set([
   'FunctionDeclaration',
@@ -79,15 +75,12 @@ const noRethrowInAutomationCatchRule = {
     schema: [],
     messages: {
       rethrow:
-        "Do not re-throw the caught error '{{name}}' from a catch inside a loop. The throw escapes the loop, so it does not just fail this item — it abandons every remaining item in the batch (a re-thrown non-422 update-branch error deadlocked the merge queue for ~90 minutes this way). Log the error and `continue` to the next item instead. If this throw genuinely must propagate, silence it with an `// eslint-disable-next-line crawler/no-rethrow-in-automation-catch` comment explaining who catches it and why abandoning the remaining items is correct.",
+        'Do not throw from a catch inside a loop. The throw escapes the loop, so it does not just fail this item — it abandons every remaining item in the batch (a re-thrown non-422 update-branch error deadlocked the merge queue for ~90 minutes this way). Wrapping the error (`throw new Error(msg, { cause: err })`) does not help — it unwinds the loop just the same. Log the error and `continue` to the next item instead. If this throw genuinely must propagate, silence it with an `// eslint-disable-next-line crawler/no-rethrow-in-automation-catch` comment explaining who catches it and why abandoning the remaining items is correct.',
     },
   },
   create(context) {
     return {
       CatchClause(catchClause) {
-        const name = getCatchParamName(catchClause);
-        if (!name) return;
-
         const sourceCode = context.sourceCode ?? context.getSourceCode();
 
         // Only loop-scoped catches have the "abandons the rest of the batch"
@@ -101,18 +94,23 @@ const noRethrowInAutomationCatchRule = {
           if (!node || typeof node.type !== 'string') return;
 
           // A throw inside a nested function/arrow runs in a different
-          // execution context — not a rethrow of this catch.
+          // execution context — not an escape from this catch.
           if (FUNCTION_TYPES.has(node.type)) return;
 
-          // A nested catch that shadows the same binding name owns its own
-          // rethrows; its CatchClause visit reports them.
-          if (node.type === 'CatchClause' && getCatchParamName(node) === name) return;
+          if (node.type === 'TryStatement') {
+            // A throw inside a nested `try` that HAS a handler is caught there,
+            // so it does not escape the loop. The nested CatchClause reports its
+            // own escaping throws when ESLint visits it.
+            if (!node.handler) visit(node.block);
+            visit(node.finalizer);
+            return;
+          }
 
           if (node.type === 'ThrowStatement') {
-            const arg = node.argument;
-            if (arg && arg.type === 'Identifier' && arg.name === name) {
-              context.report({ node, messageId: 'rethrow', data: { name } });
-            }
+            context.report({ node, messageId: 'rethrow' });
+            // An expression inside the thrown value cannot itself throw
+            // synchronously at this level in any shape worth a second report.
+            return;
           }
 
           for (const key of sourceCode.visitorKeys[node.type] ?? []) {

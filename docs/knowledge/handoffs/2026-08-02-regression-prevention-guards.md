@@ -113,7 +113,12 @@ No blockers. Highest-value follow-ups, in order:
 5. **Recall gap in the lint rule** — it does not see a rethrow in a helper _called from_ a
    loop, nor a batch expressed as `Promise.all(items.map(...))`. Revisit if a deadlock
    recurs through either shape.
-6. **Process control from the retrospective that is not yet mechanized**: every
+6. **Expiry-bump detection in `check:allowlist-expiry`** — compare time-bounded entries
+   against the base revision and reject an increased `expiresOn` whose `reason` is
+   unchanged (the npm-audit / Knip guards already do this base-ref comparison). Raised by
+   the code-review stage; deferred because it needs base-revision plumbing this checker
+   does not have. Recorded in ADR 0082 Risks.
+7. **Process control from the retrospective that is not yet mechanized**: every
    human/shepherd/CI-god intervention should close with either a deterministic check or a
    dated accepted-risk entry. Roughly a third of the 20 closed with neither.
 
@@ -174,6 +179,11 @@ No blockers. Highest-value follow-ups, in order:
   list to be governed by `check:allowlist-expiry` (reason + expiry) from the moment it is
   created — which this session's own control would have caught, had the list been named
   recognizably.
+- **A guard's own prose can trip the guard.** Adding an illustrative
+  `const HIDDEN_ALLOWLIST = []; export { … }` example to a comment in
+  `allowlist-expiry-lib.ts` made `check:allowlist-expiry` report itself. Discovery is
+  text-based by design (cheap, no parser), so example code in comments inside a scanned
+  root must be written so it does not match the very pattern being scanned for.
 - **`check:extensions` should assert a loaded-_count_, not just absence of bare imports.**
   The class-G receipt is "extension silently not loading"; the current check verifies a
   necessary but not sufficient condition.

@@ -172,6 +172,14 @@ the new contract.
   is to be fail-closed. Discovery also scans only `scripts/` and `.github/scripts/`, so the
   "every allowlist in the repo" guarantee is really "every allowlist in the automation
   roots"; widening the scan is a follow-up.
+- **Expiry dates can be bumped without restating the reason.** `check:allowlist-expiry`
+  validates only the _current_ state of a time-bounded entry, so an unexpired date always
+  passes and nothing detects the same reason being carried forward under a fresh deadline —
+  the exact "extend it again" failure the remediation text forbids in prose. The npm-audit
+  and Knip guards already compare against the base revision; giving this check the same
+  base-ref diff (reject an increased `expiresOn` whose `reason` is byte-identical) is the
+  named follow-up. Raised by the separate-model code review and deferred as its own change
+  because it needs base-revision plumbing that does not exist in this checker.
 - **A persistently failing oldest PR still blocks FIFO admission.** The `break` after a
   BEHIND PR is intentional ordering (newer PRs must not leapfrog), so a PR that fails
   `update-branch` every cycle will keep blocking admission. This is pre-existing behavior

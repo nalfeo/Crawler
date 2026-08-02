@@ -143,6 +143,13 @@ export const ALLOWLIST_EXPORT_NAME_RE = /(ALLOWLIST|SUPPRESSIONS|EXCEPTIONS|EXEM
 /** Matches `export const FOO_ALLOWLIST` style declarations in TS/JS source. */
 const EXPORTED_CONST_RE = /^\s*export\s+const\s+([A-Za-z_$][\w$]*)/gm;
 
+/**
+ * Matches an `export { A, B as C }` specifier list (but not `export type { … }`,
+ * which exports no value). A list declared privately and exported separately is
+ * exported just as publicly as `export const`, so discovery must see it too.
+ */
+const EXPORT_SPECIFIER_LIST_RE = /(?:^|[\s;])export\s+(?!type[\s{])\{([^}]*)\}/gm;
+
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** True when `value` is a syntactically well-formed AND real calendar date. */
@@ -380,6 +387,26 @@ export function findExportedConstNames(source: string): readonly string[] {
   while ((match = EXPORTED_CONST_RE.exec(source)) !== null) {
     names.push(match[1]!);
   }
+
+  // Declaring a list privately and publishing it via a separate export
+  // specifier list is the same public surface as `export const`, so it must
+  // not escape discovery.
+  EXPORT_SPECIFIER_LIST_RE.lastIndex = 0;
+  while ((match = EXPORT_SPECIFIER_LIST_RE.exec(source)) !== null) {
+    for (const rawSpecifier of match[1]!.split(',')) {
+      const specifier = rawSpecifier.trim();
+      if (specifier.length === 0) continue;
+      // Ignore per-specifier `type` marks (`export { type X }`) — no value.
+      if (/^type\s/.test(specifier)) continue;
+      // `A as B` publishes B; a bare `A` publishes A.
+      const aliasMatch = /^[A-Za-z_$][\w$]*\s+as\s+([A-Za-z_$][\w$]*)$/.exec(specifier);
+      const exported = aliasMatch ? aliasMatch[1]! : specifier;
+      if (!/^[A-Za-z_$][\w$]*$/.test(exported)) continue;
+      if (exported === 'default') continue;
+      if (!names.includes(exported)) names.push(exported);
+    }
+  }
+
   return names;
 }
 

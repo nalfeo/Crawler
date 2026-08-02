@@ -10,7 +10,7 @@ const ruleTester = new RuleTester({
 });
 
 describe('no-rethrow-in-automation-catch', () => {
-  it('reports loop-scoped rethrows of the caught binding and nothing else', () => {
+  it('reports every loop-escaping throw from a loop-scoped catch and nothing else', () => {
     ruleTester.run('no-rethrow-in-automation-catch', rule, {
       valid: [
         // --- Negative controls: shapes that must NEVER be reported. ---
@@ -25,10 +25,9 @@ describe('no-rethrow-in-automation-catch', () => {
         // Log-and-continue inside a loop: the sanctioned shape.
         `for (const pr of prs) { try { await updateBranch(pr); } catch (error) { console.warn(error); continue; } }`,
         `try { await updateBranch(pr); } catch (error) { console.warn('update-branch failed', error); }`,
-        // Throwing a *new* error is out of scope (narrow rule).
-        `for (const x of xs) { try { work(); } catch (error) { throw new Error('wrapped', { cause: error }); } }`,
-        // Throwing an unrelated binding is not a rethrow of the caught error.
-        `const fatal = new Error('boom'); for (const x of xs) { try { work(); } catch (error) { console.warn(error); throw fatal; } }`,
+        // A throw inside a nested try that has its OWN handler never reaches
+        // the loop, so it is not an escape.
+        `for (const x of xs) { try { work(); } catch (error) { try { cleanup(); } catch { console.warn('cleanup failed'); } } }`,
         // Nested function inside the catch: different execution context.
         `for (const x of xs) { try { work(); } catch (error) { queue.push(() => { throw error; }); } }`,
         `for (const x of xs) { try { work(); } catch (error) { function replay() { throw error; } register(replay); } }`,
@@ -49,6 +48,22 @@ describe('no-rethrow-in-automation-catch', () => {
         },
         {
           code: `for (const x of xs) { try { work(); } catch (error) { throw error; } }`,
+          errors: [{ messageId: 'rethrow' }],
+        },
+        {
+          // A WRAPPED error unwinds the loop identically to a bare rethrow —
+          // the thrown value is irrelevant to the blast radius.
+          code: `for (const x of xs) { try { work(); } catch (error) { throw new Error('wrapped', { cause: error }); } }`,
+          errors: [{ messageId: 'rethrow' }],
+        },
+        {
+          // So does throwing an entirely unrelated binding.
+          code: `const fatal = new Error('boom'); for (const x of xs) { try { work(); } catch (error) { console.warn(error); throw fatal; } }`,
+          errors: [{ messageId: 'rethrow' }],
+        },
+        {
+          // A catch with no binding still abandons the batch when it throws.
+          code: `for (const x of xs) { try { work(); } catch { throw new Error('fatal'); } }`,
           errors: [{ messageId: 'rethrow' }],
         },
         {

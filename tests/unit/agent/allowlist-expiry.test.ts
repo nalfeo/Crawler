@@ -239,6 +239,26 @@ describe('findExportedConstNames / isAllowlistExportName', () => {
     ]);
   });
 
+  it('discovers names published through an export specifier list', () => {
+    const source = [
+      'const HIDDEN_ALLOWLIST = [];',
+      'const LOCAL_LIST = [];',
+      'const IRRELEVANT = 1;',
+      'export { HIDDEN_ALLOWLIST, LOCAL_LIST as SNEAKY_EXEMPTIONS };',
+    ].join('\n');
+    expect(findExportedConstNames(source)).toEqual(['HIDDEN_ALLOWLIST', 'SNEAKY_EXEMPTIONS']);
+  });
+
+  it('ignores type-only exports and deduplicates re-exported const names', () => {
+    const source = [
+      'export type { FooAllowlistEntry };',
+      'export const FOO_ALLOWLIST = [];',
+      'export { FOO_ALLOWLIST };',
+      'export { type BarAllowlist };',
+    ].join('\n');
+    expect(findExportedConstNames(source)).toEqual(['FOO_ALLOWLIST']);
+  });
+
   it('is stateless across repeated calls (regex lastIndex is reset)', () => {
     const source = 'export const A_ALLOWLIST = [];\nexport const B_EXCEPTIONS = [];';
     expect(findExportedConstNames(source)).toEqual(findExportedConstNames(source));

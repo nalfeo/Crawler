@@ -9,13 +9,22 @@
       "completed": true,
       "reviewer_model": "gpt-5.6-sol",
       "concerns_count": 6,
-      "resolved_count": 4,
-      "plan_divergence": "major",
-      "notes": "Adversarial separate-model plan review (rubber-duck, gpt-5.6-sol) against the implementation. 6 concerns. FIXED: (1) allowlist registration keyed on bare export name, so a new `export const ALLOWLIST` in any file rode on the orphaned-systems registration - now keyed file#name with an anti-bypass negative-control test; (2) asset-integrity collapsed an unreadable-but-existing PNG to undefined hash, silently accepting it - now emits a finding; (3) merge-scope.sh fell back to local main while silent-reverts.ts defaults to origin/main, so an offline clone reported can_run=true then died - now emits base_ref and verify-fast forwards it as SILENT_REVERT_BASE_REF; (4) merge-scope treated a git rev-list FAILURE as no-merges - now can_run=false. ACCEPTED AS DOCUMENTED RESIDUAL RISK: (5) ESLint rule recall gap (helper-called-from-loop, Promise.all(map)) - deliberate precision-over-recall trade to avoid a class-C guard, recorded in ADR Risks with forEachSafe wrapper as the named follow-up; (6) registry check is an ID-integrity slice, not all of class D - ADR reworded to say so explicitly and schema-derived fixtures named as the top follow-up. Also noted: a persistently failing oldest PR still blocks FIFO admission by design (the break is intentional ordering); pre-existing behaviour, strictly improved by removing the process crash, logged as follow-up."
+      "resolved_count": 6,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial separate-model plan review (rubber-duck, gpt-5.6-sol) against the implementation. 6 concerns. FIXED: (1) allowlist registration keyed on bare export name, so a new `export const ALLOWLIST` in any file rode on the orphaned-systems registration - now keyed file#name with an anti-bypass negative-control test; (2) asset-integrity collapsed an unreadable-but-existing PNG to undefined hash, silently accepting it - now emits a finding; (3) merge-scope.sh fell back to local main while silent-reverts.ts defaults to origin/main, so an offline clone reported can_run=true then died - now emits base_ref and verify-fast forwards it as SILENT_REVERT_BASE_REF; (4) merge-scope treated a git rev-list FAILURE as no-merges - now can_run=false. ACCEPTED AS DOCUMENTED RESIDUAL RISK: (5) ESLint rule recall gap (helper-called-from-loop, Promise.all(map)) - deliberate precision-over-recall trade to avoid a class-C guard, recorded in ADR Risks with forEachSafe wrapper as the named follow-up; (6) registry check is an ID-integrity slice, not all of class D - ADR reworded to say so explicitly and schema-derived fixtures named as the top follow-up. Also noted: a persistently failing oldest PR still blocks FIFO admission by design (the break is intentional ordering); pre-existing behaviour, strictly improved by removing the process crash, logged as follow-up. DISPOSITION: 6/6 concerns dispositioned — 4 fixed in code, 2 accepted as documented residual risk in ADR 0082 Risks (recorded, not silently dropped)."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Separate-model code review of the full branch diff. 3 medium concerns, all dispositioned. FIXED: (1) eslint rule only saw `throw <caughtParam>`, so `throw new Error(msg,{cause:err})` / `throw otherErr` escaped a loop-scoped catch with identical blast radius — rule now reports every throw that ESCAPES an in-scope catch (nested functions and nested try-with-handler still excluded); the 2 newly-surfaced merge-train sites were reviewed as legitimate (runTrainBuildLoop catches them) and explicitly suppressed with rationale. (2) allowlist anti-bypass discovery only matched `export const NAME`, so `const HIDDEN_ALLOWLIST=[]` published via an export specifier list was ungoverned — discovery now also parses export specifier lists incl. `as` aliases, skipping type-only exports. DEFERRED (documented in ADR 0082 Risks + handoff follow-up #7): (3) no base-revision comparison, so a time-bounded expiry can be bumped repeatedly without restating its reason — needs base-ref diffing like the npm-audit/knip guards, its own change."
+        }
+      ]
     }
   }
 }
