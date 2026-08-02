@@ -159,7 +159,8 @@ describe('findAllowlistFindings — time-bounded rules', () => {
       entry: entry.key,
     });
     expect(finding?.message).toContain('2026-01-05');
-    expect(finding?.remediation).toContain("don't extend the date");
+    expect(finding?.message).toContain("don't extend the date");
+    expect(finding?.remediation).toContain('remove the entry');
   });
 });
 
@@ -190,7 +191,7 @@ describe('findAllowlistFindings — tracked-permanent rules', () => {
       reason: GOOD_REASON,
       expiresOn: '2027-01-01',
     };
-    expect(kinds(trackedPermanent([entry])).sort()).toEqual([
+    expect([...kinds(trackedPermanent([entry]))].sort()).toEqual([
       'missing-removal-condition',
       'missing-tracking-ref',
       'unexpected-expiry',

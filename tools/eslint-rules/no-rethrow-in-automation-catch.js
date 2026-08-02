@@ -9,10 +9,25 @@
  * the Node process exited non-zero mid-run, and the merge queue deadlocked for
  * ~90 minutes with no reconciler to unstick it.
  *
- * Deliberately narrow: only a direct `throw <caughtParam>` is reported. Wrapped
- * errors (`throw new Error(..., { cause: err })`) and throws inside a nested
- * function declared in the catch body (different execution context) are not
- * reported — narrow and true beats broad and noisy.
+ * Deliberately narrow on two axes, because a noisy guard costs as much agent
+ * time as the bug it prevents:
+ *
+ * 1. Only a direct `throw <caughtParam>` is reported. Wrapped errors
+ *    (`throw new Error(..., { cause: err })`) and throws inside a nested
+ *    function declared in the catch body (a different execution context) are
+ *    not reported.
+ *
+ * 2. Only catches lexically inside a LOOP body — with no intervening function
+ *    boundary — are reported. That is the shape with the blast radius: the
+ *    reconcile deadlock happened because the throw escaped the
+ *    `for (const pr of queued)` loop, so it did not merely fail one PR, it
+ *    abandoned every remaining queued PR. A rethrow in a standalone helper
+ *    (e.g. `ensureLabel`) propagates to that helper's caller, which is normal
+ *    error plumbing and is explicitly NOT a finding here.
+ *
+ * This is why the rule reports 1 real site rather than 24 mostly-legitimate
+ * ones (Class C of the regression retrospective: guards must prove they do not
+ * false-positive).
  */
 
 function getCatchParamName(catchClause) {
@@ -27,6 +42,33 @@ const FUNCTION_TYPES = new Set([
   'ArrowFunctionExpression',
 ]);
 
+const LOOP_TYPES = new Set([
+  'ForStatement',
+  'ForOfStatement',
+  'ForInStatement',
+  'WhileStatement',
+  'DoWhileStatement',
+]);
+
+/**
+ * True when `catchClause` sits inside a loop body without crossing a function
+ * boundary first — i.e. an escaping throw abandons the loop's remaining
+ * iterations (the remaining work items), not just this one.
+ *
+ * Walks ancestors outward and stops at the first function boundary: a catch
+ * inside a helper *called from* a loop is not in scope, only one lexically
+ * nested in the loop.
+ */
+function isInsideLoopBody(catchClause, sourceCode) {
+  const ancestors = sourceCode.getAncestors(catchClause);
+  for (let i = ancestors.length - 1; i >= 0; i -= 1) {
+    const ancestor = ancestors[i];
+    if (FUNCTION_TYPES.has(ancestor.type)) return false;
+    if (LOOP_TYPES.has(ancestor.type)) return true;
+  }
+  return false;
+}
+
 const noRethrowInAutomationCatchRule = {
   meta: {
     type: 'problem',
@@ -37,7 +79,7 @@ const noRethrowInAutomationCatchRule = {
     schema: [],
     messages: {
       rethrow:
-        "Do not re-throw the caught error '{{name}}' here. In queue/recovery automation an uncaught throw kills the Node process mid-run and stalls the pipeline (a re-thrown non-422 update-branch error deadlocked the merge queue for ~90 minutes). Log the error and continue/skip this item instead — e.g. `console.warn(...)` then `continue`/`return`. If this throw genuinely must propagate, silence it with an `// eslint-disable-next-line crawler/no-rethrow-in-automation-catch` comment explaining who catches it.",
+        "Do not re-throw the caught error '{{name}}' from a catch inside a loop. The throw escapes the loop, so it does not just fail this item — it abandons every remaining item in the batch (a re-thrown non-422 update-branch error deadlocked the merge queue for ~90 minutes this way). Log the error and `continue` to the next item instead. If this throw genuinely must propagate, silence it with an `// eslint-disable-next-line crawler/no-rethrow-in-automation-catch` comment explaining who catches it and why abandoning the remaining items is correct.",
     },
   },
   create(context) {
@@ -47,6 +89,10 @@ const noRethrowInAutomationCatchRule = {
         if (!name) return;
 
         const sourceCode = context.sourceCode ?? context.getSourceCode();
+
+        // Only loop-scoped catches have the "abandons the rest of the batch"
+        // blast radius. Helper-level rethrows are ordinary error plumbing.
+        if (!isInsideLoopBody(catchClause, sourceCode)) return;
 
         // Own traversal (rather than parent-pointer walking) because ESLint
         // only assigns `parent` to nodes it has already entered, and the catch

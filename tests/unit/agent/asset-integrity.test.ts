@@ -284,23 +284,19 @@ const ENTRIES_DIR = 'public/assets/generated/entries';
 const ASSETS_ROOT = 'public/assets';
 
 /**
- * Orphan shards that exist on main today and are NOT this test's to fix.
+ * Orphan shards tolerated by this corpus test.
  *
- * `rhea-vale-v1-var-0-walk` was deliberately deleted when the gender-matched
- * walk-cycle sheets replaced it (see
- * docs/knowledge/handoffs/2026-07-30-gender-player-walk-cycles.md), and its PNG
- * was removed by PR #2322 — the file has never existed at that path in git
- * history. The shard was then resurrected by a later chore commit, which is
- * precisely the silent-revert class this check exists to catch.
+ * Intentionally EMPTY. The one historical entry
+ * (`rhea-vale-v1-var-0-walk`) was deleted rather than tolerated: its PNG was
+ * removed by PR #2322 when gender-matched walk-cycle sheets replaced it, and
+ * the shard was silently resurrected by a later chore commit (#2663) — exactly
+ * the silent-revert class this check exists to catch.
  *
- * The gate itself is NOT weakened: the CLI still exits 1 on this shard. Only
- * this test tolerates it, and only for shards already known to be orphaned, so
- * a *new* orphan still fails. Deleting the shard makes this list shrink to
- * zero; that is the intended fix, and it needs an owner outside this file set.
+ * Keep this at zero. An orphan shard means a sprite nothing can load, so the
+ * correct response is to restore the PNG or delete the shard, never to add an
+ * entry here.
  */
-const KNOWN_ORPHAN_SHARDS: readonly string[] = [
-  'public/assets/generated/entries/rhea-vale-v1-var-0-walk.json',
-];
+const KNOWN_ORPHAN_SHARDS: readonly string[] = [];
 
 function collectShardFiles(absDir: string, relDir: string): string[] {
   const out: string[] = [];

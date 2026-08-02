@@ -574,9 +574,16 @@ function toAllowlistKey(file: string, name: string): string {
   return `${file}#${name}`;
 }
 
-/** Build a path-scoped allowlist set from explicit file + symbol entries. */
+/**
+ * Build a path-scoped allowlist set from explicit file + symbol entries.
+ *
+ * Takes only the keying fields (`file`, `name`) so callers — including tests
+ * that build synthetic allowlists — do not have to supply governance metadata
+ * that plays no part in lookup. The governance fields on the real entries are
+ * enforced by `check-allowlist-expiry.ts`.
+ */
 export function buildTestScaffoldAllowlist(
-  entries: readonly TestScaffoldAllowlistEntry[],
+  entries: readonly Pick<TestScaffoldAllowlistEntry, 'file' | 'name'>[],
 ): ReadonlySet<string> {
   return new Set(entries.map((entry) => toAllowlistKey(entry.file, entry.name)));
 }
