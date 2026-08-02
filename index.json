@@ -1,5 +1,16 @@
 [
   {
+    "commit": "df98c5f418aa3bbe184af4cada884c75d6bae1ee",
+    "commitDate": "2026-08-02T06:14:00Z",
+    "commitSubject": "Rewrite Floor 1 quest-giver dialogue around the crew's shared history (#2670)",
+    "capturedAt": "2026-08-02T07:20:51.063Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30735883303",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/df98c5f418aa3bbe184af4cada884c75d6bae1ee.json"
+  },
+  {
     "commit": "460ced32a92139d585db1a29c9269d4982ed92da",
     "commitDate": "2026-08-02T05:47:09Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2671)",
