@@ -135,7 +135,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
   }),
   weapon({
     id: 'fireball',
-    name: 'Fireball',
+    name: 'Fire Wand',
     slots: ['mainHand'],
     statBonuses: {},
     rarity: 'uncommon',

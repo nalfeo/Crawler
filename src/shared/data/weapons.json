@@ -117,7 +117,7 @@
   },
   {
     "id": "fireball",
-    "name": "Fireball",
+    "name": "Fire Wand",
     "weaponType": 3,
     "baseDamage": 8,
     "cooldownMs": 800,
