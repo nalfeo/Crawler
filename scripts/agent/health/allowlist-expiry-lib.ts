@@ -395,17 +395,21 @@ export function isAllowlistExportName(name: string): boolean {
  */
 export function findUnregisteredAllowlists(
   discoveredExports: readonly DiscoveredAllowlistExport[],
-  registeredSourceNames: readonly string[],
+  registeredExportKeys: readonly string[],
 ): readonly AllowlistFinding[] {
-  const registered = new Set(registeredSourceNames);
+  // Keys are `file#exportName`. Matching on the bare name would let any new
+  // export reuse a already-registered name (e.g. the very generic `ALLOWLIST`)
+  // in a different file and slip past this fail-closed rule entirely.
+  const registered = new Set(registeredExportKeys);
   const findings: AllowlistFinding[] = [];
   const seen = new Set<string>();
 
   for (const discovered of discoveredExports) {
     if (!isAllowlistExportName(discovered.name)) continue;
-    if (registered.has(discovered.name)) continue;
 
     const dedupeKey = `${discovered.file}#${discovered.name}`;
+    if (registered.has(dedupeKey)) continue;
+
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 

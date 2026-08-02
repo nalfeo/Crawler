@@ -128,14 +128,20 @@ const GOVERNED_SOURCES: readonly GovernedAllowlistSource[] = [
  * exemption lists, so there is nothing to govern. Each needs a written reason —
  * this is the one escape hatch and it stays auditable.
  */
+/**
+ * Allowlist-SHAPED exports that grant no exemptions and therefore need no
+ * governance. Keyed by `file#exportName`, never by name alone: a bare name
+ * would exempt any future same-named export anywhere in the repo, which is
+ * precisely the bypass this anti-bypass rule exists to close.
+ */
 const NON_GOVERNED_ALLOWLIST_EXPORTS: Readonly<Record<string, string>> = {
-  ALLOWLIST_EXPORT_NAME_RE:
+  'scripts/agent/health/allowlist-expiry-lib.ts#ALLOWLIST_EXPORT_NAME_RE':
     'The detection regex used by this guard itself (allowlist-expiry-lib.ts). It grants no ' +
     'exemptions; it is what finds them.',
-  REQUIRED_ALLOWLIST_FIELDS:
+  'scripts/agent/health/orphaned-systems-lib.ts#REQUIRED_ALLOWLIST_FIELDS':
     'Schema metadata: the list of field NAMES every orphaned-systems allowlist entry must ' +
     'carry. It grants no exemptions, so it has nothing to expire.',
-  ART_SURFACE_ALLOWLIST:
+  'scripts/sprites/checkin.ts#ART_SURFACE_ALLOWLIST':
     'Path-classification constant that must match detect-art-only.sh exactly; it defines which ' +
     'paths count as art, not which findings are suppressed.',
 };
@@ -208,9 +214,22 @@ function discoverAllowlistExports(): readonly DiscoveredAllowlistExport[] {
 // Main
 // ---------------------------------------------------------------------------
 
-function registeredExportNames(): readonly string[] {
+/**
+ * Registration keys are `file#exportName`, not bare names.
+ *
+ * Keying on the name alone means a brand-new `export const ALLOWLIST` in any
+ * scanned file is silently considered registered, because the orphaned-systems
+ * list already claims that (very generic) name. That is a straight bypass of a
+ * rule whose entire purpose is to be fail-closed, so registration is scoped to
+ * the exact file that declares it.
+ */
+function registeredExportKeys(): readonly string[] {
   return [
-    ...GOVERNED_SOURCES.flatMap((source) => [source.name, ...(source.alsoCoversExportNames ?? [])]),
+    ...GOVERNED_SOURCES.flatMap((source) =>
+      [source.name, ...(source.alsoCoversExportNames ?? [])].map(
+        (exportName) => `${source.file}#${exportName}`,
+      ),
+    ),
     ...Object.keys(NON_GOVERNED_ALLOWLIST_EXPORTS),
   ];
 }
@@ -229,7 +248,7 @@ function main(): void {
   const governanceFindings = findAllowlistFindings(GOVERNED_SOURCES, today);
   const unregisteredFindings = findUnregisteredAllowlists(
     discoverAllowlistExports(),
-    registeredExportNames(),
+    registeredExportKeys(),
   );
 
   for (const finding of [...governanceFindings, ...unregisteredFindings]) {

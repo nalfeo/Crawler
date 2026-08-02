@@ -140,8 +140,23 @@ function scanCorpus(shardFiles: readonly string[]): CorpusScan {
     const fileExists = isFile(absAsset);
     // Hash only when we will actually compare — one read per PNG, and none at
     // all for the ~125 legitimately unhashed legacy entries.
-    const actualHash =
-      fileExists && contentHash !== undefined ? (hashFile(absAsset) ?? undefined) : undefined;
+    let actualHash: string | undefined;
+    if (fileExists && contentHash !== undefined) {
+      const hashed = hashFile(absAsset);
+      if (hashed === null) {
+        // The file exists but could not be read (permissions, truncation, a
+        // corrupt object). Collapsing this to `undefined` would make it
+        // indistinguishable from "no contentHash declared" and the shard would
+        // pass silently — the exact silent-accept shape this guard exists to
+        // prevent. Report it instead.
+        malformed.push({
+          shardFile,
+          reason: `declares a contentHash but its asset "${assetPath}" exists and could not be read for hashing`,
+        });
+        continue;
+      }
+      actualHash = hashed;
+    }
 
     records.push({ shardFile, spriteName, assetPath, contentHash, actualHash, fileExists });
   }

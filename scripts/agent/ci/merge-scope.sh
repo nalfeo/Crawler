@@ -15,6 +15,13 @@
 # Emits two flags on stdout:
 #   has_merge=<bool>   branch contains >=1 merge commit vs the mainline base
 #   can_run=<bool>     the guard can actually resolve history here
+#   base_ref=<ref>     the mainline ref that resolved (origin/main or main)
+#
+# base_ref MUST be forwarded to the guard as SILENT_REVERT_BASE_REF. This
+# classifier falls back to a local `main` when `origin/main` is absent (offline
+# work), but the guard itself defaults to `origin/main`; without forwarding, an
+# offline clone with only local `main` reports can_run=true and the guard then
+# dies resolving a ref that does not exist.
 #
 # The guard itself fails CLOSED (exit 2) when it cannot resolve merge bases,
 # which is right for CI but wrong for a developer's shallow clone: that is a
@@ -29,7 +36,7 @@
 set -euo pipefail
 
 emit() {
-  printf 'has_merge=%s\ncan_run=%s\n' "$1" "$2"
+  printf 'has_merge=%s\ncan_run=%s\nbase_ref=%s\n' "$1" "$2" "${3:-}"
 }
 
 # Not a git work tree (or git unavailable) → nothing to inspect, nothing to run.
@@ -49,23 +56,32 @@ fi
 
 # Resolve the merge base against the mainline: origin/main first (matches the
 # base CI uses), then local main for offline work.
-base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
-if [ -z "$base" ]; then
+base_ref=''
+if base="$(git merge-base HEAD origin/main 2>/dev/null)" && [ -n "$base" ]; then
+  base_ref='origin/main'
+elif base="$(git merge-base HEAD main 2>/dev/null)" && [ -n "$base" ]; then
+  base_ref='main'
+else
   echo "merge-scope: no merge base vs origin/main|main — guard cannot run." >&2
   emit false false
   exit 0
 fi
 
-# `--merges` lists commits with >1 parent. The trailing `|| true` keeps a
-# transient git error from crashing under `set -o pipefail`; an empty result
-# only ever degrades toward "no merge commit", and CI remains the backstop.
-merges="$(git rev-list --merges "$base..HEAD" 2>/dev/null || true)"
-
-echo "merge-scope: base=${base}" >&2
-
-if [ -z "$(printf '%s' "$merges" | tr -d '[:space:]')" ]; then
-  emit false true
+# `--merges` lists commits with >1 parent. A git FAILURE here is not the same as
+# "no merges": it means we could not determine the answer, so report
+# can_run=false and let the caller skip with remediation text rather than
+# silently concluding the branch is linear.
+if ! merges="$(git rev-list --merges "$base..HEAD" 2>/dev/null)"; then
+  echo "merge-scope: git rev-list failed — guard cannot run." >&2
+  emit false false
   exit 0
 fi
 
-emit true true
+echo "merge-scope: base=${base} base_ref=${base_ref}" >&2
+
+if [ -z "$(printf '%s' "$merges" | tr -d '[:space:]')" ]; then
+  emit false true "$base_ref"
+  exit 0
+fi
+
+emit true true "$base_ref"

@@ -259,7 +259,7 @@ describe('findUnregisteredAllowlists', () => {
   it('flags an allowlist-shaped export that is not registered', () => {
     const findings = findUnregisteredAllowlists(
       [{ name: 'SNEAKY_EXEMPTIONS', file: 'scripts/agent/health/sneaky.ts' }],
-      ['KNIP_SUPPRESSIONS'],
+      ['scripts/agent/health/knip-suppressions.ts#KNIP_SUPPRESSIONS'],
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({
@@ -270,15 +270,32 @@ describe('findUnregisteredAllowlists', () => {
     expect(findings[0]?.remediation).toContain('check-allowlist-expiry.ts');
   });
 
-  it('does not flag registered names or non-allowlist names', () => {
+  it('does not flag registered file#name pairs or non-allowlist names', () => {
     const findings = findUnregisteredAllowlists(
       [
         { name: 'KNIP_SUPPRESSIONS', file: 'scripts/agent/health/knip-suppressions.ts' },
         { name: 'WEAPON_DEFS', file: 'scripts/agent/health/other.ts' },
       ],
-      ['KNIP_SUPPRESSIONS'],
+      ['scripts/agent/health/knip-suppressions.ts#KNIP_SUPPRESSIONS'],
     );
     expect(findings).toEqual([]);
+  });
+
+  it('still flags a registered NAME declared in a different file (anti-bypass)', () => {
+    // Registration is scoped to file#name precisely so that a brand-new
+    // `export const ALLOWLIST` cannot ride on the very generic name the
+    // orphaned-systems list already claims. Matching on the bare name would
+    // silently exempt this and defeat the whole fail-closed rule.
+    const findings = findUnregisteredAllowlists(
+      [{ name: 'ALLOWLIST', file: 'scripts/agent/health/brand-new-bypass.ts' }],
+      ['scripts/agent/health/orphaned-systems-lib.ts#ALLOWLIST'],
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      kind: 'unregistered-allowlist',
+      source: 'ALLOWLIST',
+      file: 'scripts/agent/health/brand-new-bypass.ts',
+    });
   });
 
   it('reports one finding per file+name pair, deduplicated', () => {

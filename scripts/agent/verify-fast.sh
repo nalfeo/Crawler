@@ -291,9 +291,14 @@ if [ -z "${VERIFY_FAST_SKIP_SILENT_REVERTS:-}" ]; then
   merge_scope="$(bash "$script_dir/ci/merge-scope.sh" 2>/dev/null || true)"
   has_merge="$(printf '%s\n' "$merge_scope" | grep -E '^has_merge=' | tail -n1 || true)"
   can_run="$(printf '%s\n' "$merge_scope" | grep -E '^can_run=' | tail -n1 || true)"
+  base_ref="$(printf '%s\n' "$merge_scope" | grep -E '^base_ref=' | tail -n1 | cut -d= -f2- || true)"
   if [ "$has_merge" = "has_merge=true" ] && [ "$can_run" = "can_run=true" ]; then
     echo "🔍 Extra step: Silent merge-revert guard (branch contains a merge commit)..."
-    npx tsx scripts/agent/health/silent-reverts.ts
+    # Forward the ref merge-scope actually resolved. It falls back to a local
+    # `main` for offline work, while the guard defaults to `origin/main`; without
+    # this the guard would die resolving a ref that does not exist here.
+    SILENT_REVERT_BASE_REF="${base_ref:-origin/main}" \
+      npx tsx scripts/agent/health/silent-reverts.ts
   elif [ "$can_run" = "can_run=false" ]; then
     echo "   ⏭️  Skipping silent merge-revert guard: history is not resolvable here"
     echo "      (shallow clone or no merge base). CI runs it on every PR with fetch-depth: 0."
