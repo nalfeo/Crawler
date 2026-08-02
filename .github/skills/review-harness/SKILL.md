@@ -9,17 +9,19 @@ description: >-
   apple estimate, reviewing the plan with a separate model (≥3🍎), an ADVERSARIAL
   plan review that red-teams the design with ≥2 alternatives (>3🍎), looping
   code-review agents until no concerns or a 2-round cap then human escalation
-  (≥3🍎), multi-model code-review with adjudication (>3🍎), and
-  writing/validating the review ledger that the `pr-review-ledger` guard enforces
-  before `create_pull_request`.
+  (≥3🍎), an independent grade of the actual diff by an uninvolved model (≥3🍎),
+  multi-model code-review with adjudication (>3🍎), and writing/validating the
+  review ledger that the `pr-review-ledger` guard enforces before
+  `create_pull_request`. A 1–2🍎 change needs NO ledger at all.
 ---
 
 # Review Harness
 
 Scale the amount of review a change gets to its **apple complexity**, then prove
-it happened with a committed **review ledger**. The `pr-review-ledger` guard
-hard-denies `create_pull_request` for a code-touching branch that lacks a valid
-ledger for its declared tier, so this skill is the path to a green PR.
+it happened with a committed **review ledger**. A **1–2🍎 change needs no ledger
+at all** (those tiers require no review stages). At **≥3🍎** you must commit one,
+and the `pr-review-ledger` guard hard-denies `create_pull_request` for any ledger
+that is present but incomplete for its declared tier.
 
 > Stage-by-stage recipes with concrete `task`-tool calls and CLI commands live in
 > [`references/plan-review.md`](references/plan-review.md),
@@ -29,22 +31,27 @@ ledger for its declared tier, so this skill is the path to a green PR.
 
 ## When this is mandatory
 
-For **any** code-touching change you intend to PR. "Code-touching" = anything
+For any **≥3🍎** code-touching change you intend to PR. "Code-touching" = anything
 that is not purely docs (`docs/**`, root `*.md`/`*.txt`), art
 (`public/assets/**`, `briefs/**`, `data/palettes/**`), or dependency lockfiles.
-`src/**` is **always** code. If in doubt, you need a ledger.
+`src/**` is **always** code.
+
+**1–2🍎 changes require no ledger and no review stages.** Because the tier is only
+readable from a ledger, the guard cannot tell a skipped 4🍎 ledger from a
+legitimate 1🍎 one — so at ≥3🍎 the ledger is on **you**, backed by the
+`independent_grade` stage. Do not under-declare apples to dodge it (rule #12).
 
 The required review **stages** scale with the apple estimate you declared at the
 start of the session (see `docs/agent-os/policies/complexity-policy.md`).
 
 ## Tier matrix (estimated apples → required ledger stages)
 
-| apples | plan review        | code review (loop) | multi-model review |
-| ------ | ------------------ | ------------------ | ------------------ |
-| 1🍎    | —                  | —                  | —                  |
-| 2🍎    | —                  | —                  | —                  |
-| 3🍎    | ✅                 | ✅                 | —                  |
-| 4–5🍎  | ✅ **adversarial** | ✅                 | ✅                 |
+| apples | ledger      | plan review        | code review (loop) | multi-model review | independent grade |
+| ------ | ----------- | ------------------ | ------------------ | ------------------ | ----------------- |
+| 1🍎    | **none**    | —                  | —                  | —                  | —                 |
+| 2🍎    | **none**    | —                  | —                  | —                  | —                 |
+| 3🍎    | ✅ required | ✅                 | ✅                 | —                  | ✅                |
+| 4–5🍎  | ✅ required | ✅ **adversarial** | ✅                 | ✅                 | ✅                |
 
 - **plan review** (≥3🍎): before writing code, have a _separate model_ review the
   plan; address every concern. Every required plan review records
@@ -67,6 +74,13 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
   **multiple models**; a final reasoning model adjudicates which concerns are
   valid and the right remedy; **delegate** the fixes; **loop until clean _or_
   escalate to a human**.
+- **independent grade** (≥3🍎): a model that reviewed **nothing** on this change
+  grades the **actual diff** against five fixed criteria. Run
+  `npm run review:grade -- prompt <path>`, dispatch the printed packet to an
+  uninvolved model, then `npm run review:grade -- record <path> --model <m>
+--file <reply>`. The validator rejects a grader that appears in any other stage,
+  and `record` recomputes the verdict — a criterion below 3 or a blocker finding
+  cannot be recorded as a pass.
 
 ### Bounded loop: cap at 2 rounds, then escalate
 
@@ -113,21 +127,30 @@ stage). Never re-score down just to dodge a stage (rule #12).
 6. **Multi-model review + adjudication loop** (>3🍎) → record
    `multi_model_review`. See
    [`references/code-review-loop.md`](references/code-review-loop.md).
-7. **Validate the ledger** and make sure it is committed on your branch:
+7. **Independent grade** (≥3🍎), last — it grades the final diff, so run it after
+   the code-review fixes have landed:
+   ```
+   npm run review:grade -- prompt <path>            # packet + excluded models
+   npm run review:grade -- record <path> --model <graderModel> --file <reply>
+   ```
+   A `fail` verdict is not a dead end, but it is not a quiet pass either: fix the
+   findings and re-grade, or record the `escalated_to_human` reason `record`
+   writes for you and tell the human.
+8. **Validate the ledger** and make sure it is committed on your branch:
    ```
    npm run review:ledger -- validate <path>
    ```
    Exit 0 = the guard will allow your PR. Exit 1 = it prints exactly which stage
    is incomplete.
-8. Run the focused PR-prerequisite check:
+9. Run the focused PR-prerequisite check:
    ```
    npm run verify:pr-prereqs
    ```
    Do **not** run full `npm run verify` merely because you are opening a PR; CI
    owns the full suite unless a human explicitly requests a local run or targeted
    diagnosis requires it.
-9. Write the dated handoff (pr-preflight still requires it), then
-   `create_pull_request`.
+10. Write the dated handoff (pr-preflight still requires it), then
+    `create_pull_request`.
 
 ## Recording stages
 
@@ -146,10 +169,12 @@ npm run review:ledger -- stage <path> code_review --json '{"clean":true,"rounds"
   last review round clean (**or** a valid `escalated_to_human` terminal state after
   ≥2 rounds), downward-only `apples_rescored_from`, etc. The exact rules live in
   `scripts/agent/review/ledger.mjs` (the single source of truth).
-- It does **not** verify truthfulness. Like the handoff requirement, the ledger
-  is an honor-system artifact — its value is the forcing function + audit trail,
-  not cryptographic proof. Do not game it; the point is the review actually
-  happened.
+- It does **not** verify truthfulness, and since 2026-08-02 it does not even see
+  a ledger you never wrote. Like the handoff requirement, the ledger is an
+  honor-system artifact — its value is the forcing function + audit trail, not
+  cryptographic proof. The `independent_grade` stage is the counterweight: it is
+  the one stage judged from the diff by a model with no stake in the change.
+  Do not game it; the point is the review actually happened.
 
 ## Honesty rules (non-negotiable)
 
