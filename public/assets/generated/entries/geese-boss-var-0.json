@@ -2,121 +2,44 @@
   "briefId": "geese-boss",
   "spriteName": "geese-boss-var-0",
   "assetPath": "generated/geese-boss-var-0.png",
-  "approvedAt": "2026-07-31T19:35:07.585Z",
-  "sourceRun": "generated/runs/geese-boss/2026-07-31T19-20-13-621e53a7",
+  "approvedAt": "2026-07-08T02:46:21.682Z",
+  "sourceRun": "generated/runs/geese-boss/2026-07-08T02-42-19-28e76d2b",
   "variantIndex": 0,
   "anchor": {
-    "x": 271,
-    "y": 335,
+    "x": 33,
+    "y": 35,
     "source": "derived"
   },
   "anchors": {
     "hold": {
-      "x": 271,
-      "y": 335,
+      "x": 33,
+      "y": 35,
       "source": "derived"
     },
     "centerOfGravity": {
-      "x": 271,
-      "y": 335,
+      "x": 33,
+      "y": 35,
       "source": "derived"
     }
   },
   "sensorScore": "7/7",
   "judgeScore": "5",
-  "sensorBreakdown": [
-    {
-      "ok": true,
-      "sensor": "dimensions-exact"
-    },
-    {
-      "ok": true,
-      "sensor": "alpha-binary"
-    },
-    {
-      "ok": true,
-      "sensor": "palette-membership"
-    },
-    {
-      "ok": true,
-      "sensor": "opaque-bbox-fits"
-    },
-    {
-      "ok": true,
-      "sensor": "opaque-ratio"
-    },
-    {
-      "ok": true,
-      "sensor": "interior-transparency-holes"
-    },
-    {
-      "ok": true,
-      "sensor": "anchor-center-of-mass",
-      "anchor": {
-        "x": 271,
-        "y": 335
-      }
-    }
-  ],
-  "judgeScorecard": {
-    "variantIndex": 0,
-    "modelDeployment": "gpt-4o",
-    "judgedAt": "2026-07-31T19:21:45.736Z",
-    "designLanguage": {
-      "score": 5,
-      "rationale": "The sprite captures the absurd yet imposing nature of a mafia godfather goose. The combination of the goose's natural features with crime-boss attire is both darkly humorous and coherent with the Crawler aesthetic."
-    },
-    "referenceStyleMatch": {
-      "score": 5,
-      "rationale": "The rendering matches the approved references in terms of outline weight, shading, and palette depth. The sprite feels like it belongs in the same visual family as the references."
-    },
-    "styleMatch": {
-      "score": 5,
-      "rationale": "The rendering matches the approved references in terms of outline weight, shading, and palette depth. The sprite feels like it belongs in the same visual family as the references."
-    },
-    "briefMatch": {
-      "score": 5,
-      "rationale": "The sprite unambiguously depicts a mafia godfather goose with the specified features: a wide, low-slung body, pinstripe waistcoat, fedora, cigar, and a foot resting on a brass gear. The orange bill and white plumage are unmistakably goose-like."
-    },
-    "readability": {
-      "score": 5,
-      "rationale": "The silhouette is clear and instantly recognizable as a goose in crime-boss attire, even at game scale. The sprite avoids visual integrity defects and maintains a strong silhouette."
-    },
-    "bossPresence": {
-      "score": 5,
-      "rationale": "The sprite has a substantial, imposing presence with its wide, dense body and dominant stance. It reads as a boss-scale enemy, filling its intended frame effectively."
-    },
-    "themeAdherence": {
-      "score": 5,
-      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language: the mafia regalia (pinstripe waistcoat, fedora, cigar) and the goose-specific features (orange bill, white plumage). The brass gear throne ties into the industrial salvage motif."
-    },
-    "passed": true,
-    "minScore": 5,
-    "rejectedBy": [],
-    "hardBlockEvaluated": true,
-    "hardBlocked": false,
-    "hardBlockInstruction": null,
-    "hardBlockRationale": null,
-    "confidence": 0.95,
-    "usage": {
-      "promptTokens": 4307,
-      "completionTokens": 429,
-      "totalTokens": 4736
-    }
-  },
   "type": "enemy",
-  "contentHash": "a900b2d67c20806166d481f9f44d4a675db75ee25d6f098a986ac87657fe26d8",
-  "opaqueBounds": {
-    "x": 34,
-    "y": 34,
-    "width": 444,
-    "height": 574,
-    "canvasWidth": 512,
-    "canvasHeight": 642
-  },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\geese-boss\\2026-07-31T19-20-13-621e53a7\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\geese-boss\\2026-07-31T19-20-13-621e53a7\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\geese-boss\\2026-07-31T19-20-13-621e53a7\\postprocess.pipeline.effective.yaml",
+  "contentHash": "cd094994a54fe0b74608b49856b15c5c783952cc55cb71111d60bc0248addcaa",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-boss\\2026-07-08T02-42-19-28e76d2b\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 4,
+    "width": 48,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "catalog": {
+    "description": "Don Honkrado the Godgoose \u2014 mafia godfather goose, Floor 2 boss. Square compact body, tucked neck, pinstripe salvage-strap waistcoat, brass gear cufflinks, wide-brim fedora, cigar in beak. Current sprite is 64x64 v1; a 128x128 large-variant regeneration from the authored brief is pending."
+  }
 }
