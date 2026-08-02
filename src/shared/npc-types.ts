@@ -64,13 +64,13 @@ const TUTORIAL_GOON_DEF: NpcDef = {
   name: 'Tutorial Goon',
   dialogue: [
     {
-      text: "Hey, contestant! I'm the Tutorial Goon. Welcome to the Welcome Office — enjoy it while it lasts.",
+      text: "Contestant. Badge up. I'm your Floor 1 instructor — real one, by the way. Came in the same door you did, got far enough that they offered me a desk instead of a grave.",
     },
     {
-      text: 'No XP drops until you check in with me. Done now — watch the XP bar and hit level 2 first.',
+      text: "XP was switched off until you checked in. Policy, not spite. It's on now — kill things, watch the bar, hit level 2 before anything out there gets ambitious.",
     },
     {
-      text: 'After level 2, I unlock your boss-door quest: clear 6 rats + 4 slimes. But the boss door only opens once you have ALSO squared away the merchant and the spell broker.',
+      text: "Nobody clears this floor on reflexes. You clear it on volume. Thin out the rats and slimes and the doors start cooperating. I've watched a lot of people learn that the expensive way.",
     },
   ],
   quests: [
@@ -90,13 +90,13 @@ const SHOPKEEPER_DEF: NpcDef = {
   name: 'Sweaty Merchant',
   dialogue: [
     {
-      text: "Oh-ho, a new contestant! Come closer, don't be shy. I'm a merchant of... refined tastes.",
+      text: 'A live one! Come in. Everyone here teaches you to *hit* things. I teach you the part that actually kills contestants — walking down those stairs in the kit you arrived in.',
     },
     {
-      text: "I'll sell you something nice. But first — fetch me a rat tail. They tend to lose them in the deeper, far-flung rooms of this dungeon.",
+      text: "Fetch me a tail. A good one, from the deep rooms, still got some *spring* in it. Then we'll talk about what I can put on you.",
     },
     {
-      text: 'Bring it straight back. No wiping it off. I like them... authentic. Hehe.',
+      text: "Don't clean it. Don't ask. It's not for the shop. It's for the room.",
     },
   ],
   quests: [
@@ -116,13 +116,13 @@ const SPELL_QUEST_GIVER_DEF: NpcDef = {
   name: 'Spell Broker',
   dialogue: [
     {
-      text: 'I handle post-boss rewards. Beat the Slime Rat, then come back to me to claim your spellbook.',
+      text: "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
     },
     {
-      text: 'When the Learn a Spell modal opens, pick one of the three offered spellbooks. Press [B] to configure your abilities bar.',
+      text: "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
     },
     {
-      text: 'Your abilities bar supports up to ten spells. In this slice, unlocked spells auto-trigger from their cooldown + combat conditions.',
+      text: '...Did he send you for a tail? He did. Of course he did. Take the long way back, contestant. Knock first.',
     },
   ],
   quests: [
@@ -139,23 +139,24 @@ const SPELL_QUEST_GIVER_DEF: NpcDef = {
 
 /** Lines shown when the player has the rat tail and is ready to hand it over. */
 export const SHOPKEEPER_RETURN_DIALOGUE: readonly string[] = [
-  "Is that... oh, you actually got it. And it's still moist. Good contestant.",
-  'Give it here. *sniff* Ahhh. Worth every coin. Now — let me show you my wares.',
+  "Oh, that's a *lovely* one. Look at the length on it. Somebody is going to have a very pleasant off-season.",
+  "Yes, yes, hand it over — I'll put it somewhere safe. Now spend your gold. Anything you don't wear down those stairs is just set dressing on your corpse.",
 ];
 
 /** Lines shown after the prize is returned but before a purchase is made. */
 export const SHOPKEEPER_SHOP_DIALOGUE: readonly string[] = [
-  'Back for the good stuff? Smart. Take a look — gold only, no refunds, no judgement.',
+  "Back for the good stuff? Sensible. Gold only, no refunds, no judgement — I'm in no position to judge anyone.",
 ];
 
 /** Lines shown once the player owns equipment but has not equipped it yet. */
 export const SHOPKEEPER_EQUIP_HINT_DIALOGUE: readonly string[] = [
-  'Put it on, put it on! Open your pack and equip it. I want to see how it looks on you.',
+  "Owning it does nothing, contestant. *Wearing* it does everything. Open your pack, put it on. Humour me — I don't get a lot of visitors and I'd like to see it on someone.",
 ];
 
 /** Lines shown after the questline is fully complete. */
 export const SHOPKEEPER_DONE_DIALOGUE: readonly string[] = [
-  'Looks marvellous on you. Pleasure doing business, contestant. Bring me more tails sometime.',
+  "Marvellous. Truly. Off you go — and if the Broker's sulking when you see him, that's not about you.",
+  "It's about a scheduling matter. Season-long thing. Pleasure doing business.",
 ];
 
 /**
@@ -163,18 +164,57 @@ export const SHOPKEEPER_DONE_DIALOGUE: readonly string[] = [
  * Goon's opening quest. The merchant refuses to do business and sends them back.
  */
 export const SHOPKEEPER_LOCKED_DIALOGUE: readonly string[] = [
-  "Whoa — I don't deal with fresh meat. Go check in with the Tutorial Goon first.",
-  'Finish his warm-up, then come back and we can talk business.',
+  "Ah — no. No no no. The Goon clears you first. He's very firm about the order of things.",
+  "*Very* firm. Go on, get signed off, I'll keep your slot warm.",
 ];
 
 /**
  * Lines shown by the Spell Broker before the player has finished the Tutorial
  * Goon's opening quest.
  */
-export const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
-  'Not yet, contestant. Go see the Tutorial Goon and finish his warm-up first.',
-  "Once the Goon clears you, come back and we'll talk spellbooks.",
+const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
+  "Not yet. The Goon clears you, the Merchant dresses you, *then* you're my problem. That's the order.",
+  "I didn't write the order. I'd have written it differently. I'd have written a lot of things differently.",
 ];
+
+// ---- Spell Broker contextual dialogue ----
+
+/**
+ * Lines shown by the Spell Broker once the player has claimed their spellbook
+ * reward (goal flag `floor1-boss-spellbook-claimed`). Closes his beat: the
+ * ability is live, and his real grievance is with the other two, not the player.
+ */
+const SPELL_BROKER_POST_CLAIM_DIALOGUE: readonly string[] = [
+  "It's live. It'll fire itself when the conditions are right — stop babysitting it and go fight.",
+  "You know what the worst part is? I *like* them. Both of them. I've liked them for more seasons than he can count, and he used to be able to count. Go on. Kill something.",
+];
+
+/** Inputs for {@link selectSpellBrokerDialogue}, derived from world state. */
+interface SpellBrokerDialogueState {
+  /** The Spell Broker is still gated behind the Goon's opening quest. */
+  readonly locked: boolean;
+  /** The player has claimed their spellbook reward. */
+  readonly spellbookClaimed: boolean;
+}
+
+/**
+ * Pick the Spell Broker's contextual dialogue for the current quest progress.
+ *
+ * Priority (highest first): locked (gated behind the Goon) > post-spellbook
+ * claim. Returns `null` when neither applies, signalling the caller to fall back
+ * to the Broker's default authored dialogue.
+ */
+export function selectSpellBrokerDialogue(
+  state: SpellBrokerDialogueState,
+): readonly string[] | null {
+  if (state.locked) {
+    return SPELL_QUEST_GIVER_LOCKED_DIALOGUE;
+  }
+  if (state.spellbookClaimed) {
+    return SPELL_BROKER_POST_CLAIM_DIALOGUE;
+  }
+  return null;
+}
 
 // ---- Tutorial Goon contextual dialogue ----
 
@@ -183,9 +223,9 @@ export const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
  * stairs to Floor 2 are live.
  */
 export const TUTORIAL_GOON_POST_BOSS_DIALOGUE: readonly string[] = [
-  'You did it! Boss dropped, room cleared.',
-  'Stairs are live. Descend when you are ready.',
-  'Floor 2 will hit harder. Keep moving and kite smart.',
+  'Boss down. Room clear. Stairs are live.',
+  "This is the part where I don't come with you. That was the deal I signed — I get the floor, the floor gets me. Best offer anyone's ever made me and I still think about it.",
+  "Floor 2 hits harder and the locals hold grudges. Keep moving, keep kiting. Go on — I've got a room to get back to.",
 ];
 
 /**
@@ -194,9 +234,9 @@ export const TUTORIAL_GOON_POST_BOSS_DIALOGUE: readonly string[] = [
  * Previously this was a silent auto-accept with no goon line.
  */
 export const TUTORIAL_GOON_LEAVE_FLOOR_DIALOGUE: readonly string[] = [
-  "There it is — that's the boss door unsealing. The Director's cleared you for the main event.",
-  'Last gig on this floor: drop the Floor Boss, then sprint for the stairs down to Floor 2.',
-  "Don't dawdle. The cameras love a clean exit, and the show waits for nobody.",
+  "Hear that? Door's unsealing. All three signed. You're the Director's problem now.",
+  'Floor Boss, then the stairs. Everything we drilled, in that order — outlast it, out-gear it, out-burst it.',
+  "Don't linger on the threshold. The cameras hate hesitation and so do I.",
 ];
 
 /**
@@ -205,9 +245,9 @@ export const TUTORIAL_GOON_LEAVE_FLOOR_DIALOGUE: readonly string[] = [
  * they aren't left wondering why the door won't open.
  */
 export const TUTORIAL_GOON_NUDGE_DIALOGUE: readonly string[] = [
-  "Pest quota? Filled. But that boss door's still bolted shut, hotshot.",
-  'House rules: no boss until the Sweaty Merchant and the Spell Broker both sign off on you.',
-  'Go find them, run their errands, then come back and we talk stairs.',
+  "Pest quota, filled. Boss door, still bolted. Three signatures on that door and I'm only one of them.",
+  "The Merchant has to gear you. The Broker has to arm you. And no, they will not take my word for it — the Merchant *would*, but the Broker's made a whole thing of it this season, and the Merchant's not allowed to agree with me in front of him.",
+  "It's a room, contestant. Long time, three people, one room. Go get signed off.",
 ];
 
 /** Inputs for {@link selectTutorialGoonDialogue}, derived from world state. */

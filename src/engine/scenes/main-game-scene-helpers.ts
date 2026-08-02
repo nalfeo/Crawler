@@ -15,13 +15,13 @@ import {
 } from '../lighting/light-field.js';
 import {
   getNpcDef,
+  selectSpellBrokerDialogue,
   selectTutorialGoonDialogue,
   SHOPKEEPER_DONE_DIALOGUE,
   SHOPKEEPER_EQUIP_HINT_DIALOGUE,
   SHOPKEEPER_LOCKED_DIALOGUE,
   SHOPKEEPER_RETURN_DIALOGUE,
   SHOPKEEPER_SHOP_DIALOGUE,
-  SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../shared/npc-types.js';
 import {
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
@@ -235,8 +235,16 @@ export function resolveDialogueLines(
     }
     // not-met / awaiting-prize: the merchant's initial fetch request.
   }
-  if (defId === 'spell-quest-giver' && deps.spellQuestGiver?.isLocked?.(world)) {
-    return [...SPELL_QUEST_GIVER_LOCKED_DIALOGUE];
+  if (defId === 'spell-quest-giver') {
+    const brokerLines = selectSpellBrokerDialogue({
+      locked: deps.spellQuestGiver?.isLocked?.(world) === true,
+      spellbookClaimed:
+        world.goalFlags.get('floor1-boss-spellbook-claimed') === true &&
+        world.featureUnlocks.spells === true,
+    });
+    if (brokerLines) {
+      return [...brokerLines];
+    }
   }
   const def = getNpcDef(defId);
   return def?.dialogue.map((line) => line.text) ?? [];
