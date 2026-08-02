@@ -19,7 +19,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { GAME_H, GAME_W } from './e2e-constants.js';
+import { E2E_LAB_BASE_URL, GAME_H, GAME_W } from './e2e-constants.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 
@@ -221,5 +221,70 @@ describe('landscape safe-area layout at 844×390 (iPhone 13 Pro)', () => {
       baselineHudBottom - layout.insets.bottom,
       0,
     );
+  });
+});
+
+/**
+ * Landscape-only enforcement. Web content cannot lock orientation on iOS, so
+ * portrait is handled by an interstitial in the shipped game shell
+ * (`index.html`). Gated on `pointer: coarse`, so a narrow *desktop* window must
+ * be unaffected — that distinction is what this suite pins.
+ */
+describe('portrait rotate interstitial', () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  async function readShellState(
+    viewport: { width: number; height: number },
+    hasTouch: boolean,
+  ): Promise<{ noticeShown: boolean; gameVisible: boolean }> {
+    const context = await browser.newContext({ viewport, hasTouch, isMobile: hasTouch });
+    const page = await context.newPage();
+    try {
+      // Only the shell markup/CSS is under test here, so `commit` is enough —
+      // no need to wait for Phaser to boot the game.
+      await page.goto(`${E2E_LAB_BASE_URL}/`, { waitUntil: 'commit', timeout: 45_000 });
+      await page.waitForSelector('#rotate-notice', { state: 'attached', timeout: 30_000 });
+      // Awaited (not returned) so the `finally` below cannot close the context
+      // out from under an in-flight evaluate.
+      return await page.evaluate(() => {
+        const notice = document.getElementById('rotate-notice');
+        const game = document.getElementById('game-container');
+        return {
+          noticeShown: notice ? getComputedStyle(notice).display !== 'none' : false,
+          gameVisible: game ? getComputedStyle(game).visibility !== 'hidden' : false,
+        };
+      });
+    } finally {
+      await context.close();
+    }
+  }
+
+  it('covers the game with a rotate prompt on a portrait touch device', async () => {
+    const state = await readShellState({ width: 390, height: 844 }, true);
+
+    expect(state.noticeShown).toBe(true);
+    expect(state.gameVisible).toBe(false);
+  });
+
+  it('stays out of the way on the landscape touch target', async () => {
+    const state = await readShellState(VIEWPORT, true);
+
+    expect(state.noticeShown).toBe(false);
+    expect(state.gameVisible).toBe(true);
+  });
+
+  it('never blocks a narrow desktop window (fine pointer)', async () => {
+    const state = await readShellState({ width: 500, height: 900 }, false);
+
+    expect(state.noticeShown).toBe(false);
+    expect(state.gameVisible).toBe(true);
   });
 });

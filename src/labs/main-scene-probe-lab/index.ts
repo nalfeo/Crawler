@@ -134,7 +134,6 @@ interface MainSceneInternals {
   getInteractionHintBounds?(): ScreenBounds | null;
   hudUi?: {
     isMapOverlayOpen(): boolean;
-    getAbilityBarBounds?(): ScreenBounds;
     getBottomCenterBounds?(): ScreenBounds;
     getMinimapBounds?(): ScreenBounds | null;
     getNavigationBounds?(): {
@@ -977,7 +976,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           surfaces.push({ name, bounds });
         }
       };
-      push('abilityBar', hud?.getAbilityBarBounds?.());
+      // NB: `getAbilityBarBounds()` reports authored design constants, not the
+      // transformed group position, so it is deliberately excluded — the
+      // ability bar is covered by its parent group (`bottomCenter`).
       push('bottomCenter', hud?.getBottomCenterBounds?.());
       push('minimap', hud?.getMinimapBounds?.());
       push('radar', navigation?.radar);
