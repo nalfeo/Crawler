@@ -36,8 +36,8 @@
     "y": 7,
     "width": 114,
     "height": 59,
-    "canvasWidth": 144,
-    "canvasHeight": 95
+    "canvasWidth": 128,
+    "canvasHeight": 73
   },
   "catalog": {
     "tags": ["item", "generated", "pipeline-approved"]
