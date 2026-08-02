@@ -10,7 +10,6 @@ import shellMainBranchDelete from './guards/shell-main-branch-delete.mjs';
 import shellGhPrCreate from './guards/shell-gh-pr-create.mjs';
 import shellRmRfRepo from './guards/shell-rm-rf-repo.mjs';
 import shellUnsafePortKill from './guards/shell-unsafe-port-kill.mjs';
-import authoringMainSync from './guards/authoring-main-sync.mjs';
 import editDeterminism from './guards/edit-determinism.mjs';
 import editPhaserInCore from './guards/edit-phaser-in-core.mjs';
 import editRepoMdJunk from './guards/edit-repo-md-junk.mjs';
@@ -26,7 +25,6 @@ const guards = [
   shellGhPrCreate,
   shellRmRfRepo,
   shellUnsafePortKill,
-  authoringMainSync,
   editDeterminism,
   editPhaserInCore,
   editRepoMdJunk,

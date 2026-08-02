@@ -17,7 +17,6 @@ Loaded automatically because it lives under `.github/extensions/`.
 | `shell-gh-pr-create`         | `powershell`, `bash`                    | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                                                                 |
 | `shell-rm-rf-repo`           | `powershell`, `bash`                    | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`.                                      |
 | `shell-unsafe-port-kill`     | `powershell`                            | **deny** | `Get-NetTCPConnection` / `Win32_Process` + `Stop-Process` server-kill commands on legacy shared ports unless they are scoped to the current worktree path.                                                             |
-| `authoring-main-sync`        | all except `create_pull_request`        | allow    | Measures active authoring intervals and safely rebases after 30 active minutes when clean; otherwise adds a non-blocking checkpoint/sync reminder.                                                                     |
 | `edit-determinism`           | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                                                                |
 | `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                                                       |
 | `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                                                                |
@@ -135,7 +134,8 @@ protecting you.
 **Run `extensions_reload` immediately after every `git pull`/rebase onto main.**
 
 This was found empirically: a long-running session started 2026-07-25T06:08 and
-`authoring-main-sync` merged at 19:12 the same day. Over the next two days that
+`authoring-main-sync` (a per-tool guard, since removed) merged at 19:12 the same
+day. Over the next two days that
 session recorded **10 guard events, all PR-time**. A single `extensions_reload`
 took it to 12 within seconds, with `authoring-main-sync` firing on the very next
 `grep` and `powershell` call.
