@@ -1,0 +1,28 @@
+type: enemy
+name: panda-elite-red-envelope
+floor: 2
+description: |
+  An elite panda caster in a formal red-and-gold outfit, reading clearly as a
+  ranged spellcaster rather than a brawler. Upright, authoritative posture with
+  one hand raised and the other clutching a fan of glowing red envelopes that
+  act as the spell medium. The envelopes emit obvious golden magical light.
+
+  The panda's black-and-white facial and body markings must still be visible
+  beneath the formal wear. Outfit details should feel richer and more ornate
+  than the regular panda bruiser: mandarin collar jacket, gold embroidery,
+  refined trim, and ceremonial wealth-signaling accents.
+
+  The silhouette should stay compact and readable as a single centered subject
+  with hard pixel edges, no background, no text, and no extra floating props
+  beyond the envelope magic. The overall read is "elite red-envelope caster"
+  first, panda second, melee bruiser never.
+
+variations:
+  - Red-and-gold panda envelope mage with envelopes fanned wide and bright gold spell light
+  - Elite panda caster in embroidered mandarin jacket, one raised hand, glowing envelope stack
+  - Formal panda spellcaster with rich gold trim, visible panda markings, magical red envelopes
+
+minVariations: 4
+sensors:
+  enemy:
+    allowSpellMedium: true

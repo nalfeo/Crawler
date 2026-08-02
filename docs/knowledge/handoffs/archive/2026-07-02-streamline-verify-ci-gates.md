@@ -39,7 +39,7 @@ Three guard/CI streamlining fixes, all evidence-driven from a 3-day
 session/PR + guard-telemetry audit (we were effectively running the headless
 suite ~4× per change: local `verify` + PR CI + merge-gate + main-push):
 
-1. **Dedup local `verify`** — `scripts/agent/verify.sh` now defers *only* the
+1. **Dedup local `verify`** — `scripts/agent/verify.sh` now defers _only_ the
    headless gate behind `VERIFY_FULL=1` (mirrors the existing `VERIFY_COVERAGE=1`
    pattern). Typecheck/lint/format/unit/integration/pr-prereqs/build still run
    every time; integration + build stay local because they cover gaps the CI
@@ -55,7 +55,7 @@ suite ~4× per change: local `verify` + PR CI + merge-gate + main-push):
    fail-closes (all-false) when set-but-empty.
 3. **Commit-lint targets the PR title** — `commit-lint.yml` now lints the PR
    title (via `PR_TITLE` env → `printf` → `commitlint --config
-   commitlint.title.config.cjs`) instead of every WIP commit that squash-merge
+commitlint.title.config.cjs`) instead of every WIP commit that squash-merge
    discards. New `commitlint.title.config.cjs` sets `ignores: []` to close the
    `(#n)` title bypass.
 
@@ -69,7 +69,7 @@ New/changed files: `scripts/agent/verify.sh`, `scripts/agent/ci/detect-art-only.
 
 - **Follow-up session (separate branch): raise the review-harness code-review
   floor to 3🍎.** Decided with the human this session: the local code-review loop
-  currently runs for *all* tiers incl. 1🍎, costing ~5–6 min/round for marginal
+  currently runs for _all_ tiers incl. 1🍎, costing ~5–6 min/round for marginal
   value on trivial changes. A dedicated session ("Raise code-review floor to
   3🍎") is implementing it as its own 3🍎 PR (code review required ≥3🍎; plan
   review stays ≥2🍎). It edits `ledger.mjs` + tests + guard help text + policy
@@ -77,7 +77,7 @@ New/changed files: `scripts/agent/verify.sh`, `scripts/agent/ci/detect-art-only.
 - **Guard-telemetry repair** is in flight in another session
   (`nalfeo-guard-telemetry-repair`), fixing read/write contamination + adding
   `npm run telemetry:capture`. Both follow-ups touch `AGENTS.md` +
-  `.github/copilot-instructions.md` in *different* sections — expect trivial,
+  `.github/copilot-instructions.md` in _different_ sections — expect trivial,
   auto-mergeable conflicts; rebase before merge.
 
 ## Blockers
@@ -111,7 +111,7 @@ all correct. Full `npm run verify` run at end of session (see PR).
 - **Title-specific commitlint config (`ignores: []`).** The base config ignores
   `(#n)`-suffixed messages; reusing it for the title would let untyped titles
   pass. A separate config closes that.
-- **Guard *removal* and review-harness policy were explicitly OUT of scope** for
+- **Guard _removal_ and review-harness policy were explicitly OUT of scope** for
   this PR (documented in ADR 0035) — the review-floor change is a separate PR.
 
 ## Retrospective
@@ -129,7 +129,7 @@ all correct. Full `npm run verify` run at end of session (see PR).
 ### Mistakes Made
 
 - First cut of the `SCOPE_FILES_OVERRIDE` hook used `-n "$VAR"`, so a
-  *set-but-empty* override fell through to real git diffing (nondeterministic in
+  _set-but-empty_ override fell through to real git diffing (nondeterministic in
   a test). Code-review round 1 caught it; fixed with presence detection
   (`${VAR+x}`) + an empty-string test case. Early signal: any env-driven test
   hook must distinguish unset from set-but-empty.

@@ -15,6 +15,7 @@ import Phaser from 'phaser';
 
 import { PIXEL_UI } from './pixel-ui.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
+import { getSafeAreaInsets, onSafeAreaChange } from './safe-area.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 
@@ -72,7 +73,9 @@ export function createDialogueBox(
   const width = Math.round(options.width ?? Math.min(560, virtualWidth() - 48));
   const depth = options.depth ?? 1100;
   const anchorX = options.anchorX ?? screenW / 2;
-  const bottomY = options.bottomY ?? screenH - 88;
+  // Bottom anchor, lifted clear of the home-indicator band on notched devices
+  // (`getSafeAreaInsets` is zero on desktop and when the band misses the canvas).
+  const bottomY = (): number => options.bottomY ?? screenH - 88 - getSafeAreaInsets(scene).bottom;
 
   const container = scene.add.container(0, 0).setDepth(depth).setScrollFactor(0).setVisible(false);
 
@@ -196,11 +199,15 @@ export function createDialogueBox(
     container.setScale(uiScale);
     container.setPosition(
       Math.round(anchorX - (width * uiScale) / 2),
-      Math.round(bottomY - h * uiScale),
+      Math.round(bottomY() - h * uiScale),
     );
   }
 
   relayout();
+
+  const unsubscribeSafeArea = onSafeAreaChange(scene, () => {
+    relayout();
+  });
 
   const unsubscribeScale = onUiScaleChange(scene, (next) => {
     uiScale = next;
@@ -257,6 +264,7 @@ export function createDialogueBox(
     },
     destroy(): void {
       unsubscribeScale();
+      unsubscribeSafeArea();
       container.destroy();
     },
   };

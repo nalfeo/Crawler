@@ -9,7 +9,7 @@
 
 [`asset-forge`](../../../.github/agents/asset-forge.agent.md) — the invocable
 form of this persona; it runs the full scope → brief → generate → judge →
-approve → check-in → batch-PR → wire → observe loop. For a full themed
+approve → queue → wire → observe loop. For a full themed
 collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-theme-forge.agent.md).
 
 ## Responsibilities
@@ -46,8 +46,8 @@ collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-them
   generated sheet. Use it before any approval.
 - [`placeholder-audit`](../../../.github/skills/placeholder-audit/SKILL.md) —
   find which placeholders real art can now replace.
-- [`asset-pr`](../../../.github/skills/asset-pr/SKILL.md) — fold every open
-  `asset-checkin` issue into one art-only PR.
+- [`asset-pr`](../../../.github/skills/asset-pr/SKILL.md) — **legacy drain only**: fold
+  leftover `asset-checkin` issues into one art-only PR. Do not use for new approvals.
 - [`theme-equipment-forge`](../../../.github/skills/theme-equipment-forge/SKILL.md)
   — build a complete themed equipment collection.
 - [`visual-review`](../../../.github/skills/visual-review/SKILL.md) — confirm the

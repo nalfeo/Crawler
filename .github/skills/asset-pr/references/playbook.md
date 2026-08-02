@@ -1,7 +1,13 @@
-# Asset PR — playbook
+# Asset PR — playbook (legacy drain)
+
+> ⚠️ **This playbook covers the legacy `asset-checkin` drain path.** The normal
+> art-landing flow since Jul 2026 is: `sprites:approve` (automatically pushes to
+> `assets/queue`) → hourly `sprite-queue-reconciler.yml` cron → single
+> `assets/promote → main` PR. Run `sprites:asset-pr` only to drain legacy
+> `asset-checkin` issues or orphaned `assets/checkin-*` branches that pre-date
+> the reconciler.
 
 Detailed recipes for consolidating `asset-checkin` issues into one game PR.
-Read this before doing anything non-trivial with `gh` or git here.
 
 ## The data model
 
@@ -44,10 +50,11 @@ JSON into `{ number, title, payload }[]`.
    orphaned branch (restricted to `ASSET_SURFACE_PATHS` — same as the queue).
 7. `git worktree add <tmp> -b assets/batch-… origin/main` (the session branch is
    never touched).
-8. For each issue-backed source branch: read its `manifest.json` + `sprite-catalog.json` via
-   `git show <ref>:<path>` (text-safe), and materialize each approved PNG with
-   `git checkout <ref> -- <path>` (object-store → worktree, **binary-safe** — no
-   blob ever passes through stdout).
+8. For each issue-backed source branch: materialize each approved PNG and its
+   per-asset manifest shard (`entries/<manifestKey>.json`) with
+   `git checkout <ref> -- <path>` (binary-safe — no blob passes through stdout).
+   Because every shard is keyed by `manifestKey`, disjoint check-ins never touch
+   the same path; no JSON union step is needed.
 9. For each orphaned branch: overlay only its AM-scoped paths via
    `git checkout <ref> -- <paths>`. Later branches win on collision
    (last-writer semantics, same as the queue union).
@@ -56,19 +63,21 @@ JSON into `{ number, title, payload }[]`.
     the PR URL.
 12. `finally`: `git worktree remove --force` + delete the temp dir.
 
-The pure pieces (`parseOpenAssetIssues`, `planConsolidation`, `mergeManifests`,
-`mergeCatalogs`, `parseAssetIssueBody`) are unit-tested in
-`tests/unit/sprites/asset-pr.test.ts` and `asset-issues.test.ts`.
+The pure pieces (`parseOpenAssetIssues`, `planConsolidation`, `parseAssetIssueBody`)
+are unit-tested in `tests/unit/sprites/asset-pr.test.ts` and `asset-issues.test.ts`.
+(`mergeManifests`/`mergeCatalogs` remain in `asset-issues.ts` and are tested but are
+no longer called by the drain executor — the shard-overlay approach supersedes them.)
 `scanOrphanedCheckinBranches` is unit-tested in `reconcile-queue.test.ts` (Layer 2b).
 
-## Why union instead of `git merge`
+## Why shard-overlay instead of `git merge`
 
-Every check-in branch edits the same `manifest.json` and `sprite-catalog.json`
-off `main`, so a plain N-way merge conflicts on those two text files every time.
-The PNGs never collide (each variant has a globally-unique
-`<briefId>-var-<n>.png` filename keyed to its content). So the backend copies the
-PNGs straight in and resolves the two JSON files deterministically with the union
-helpers — no merge-conflict handling, fully reproducible.
+Legacy check-in branches written by `scripts/sprites/checkin.ts` each edited the
+same aggregate `manifest.json` off `main`, so a plain N-way merge conflicted on that
+file every time. The PNGs never collide (each variant has a globally-unique
+`<briefId>-var-<n>.png` filename). The drain executor sidesteps the conflict by
+checking out only per-asset shard files (`entries/<manifestKey>.json`) — disjoint
+by key — so no JSON merge step is needed. The aggregate manifest and catalog are
+derived from the shards at read time.
 
 ## Merge facts (authoritative)
 
@@ -121,18 +130,22 @@ conflicts with newer work, delete the branch on the remote first:
 
 - If that asset is no longer wanted: close the stale issue
   (`gh issue close <n> --comment "branch pruned; superseded"`) and re-run.
-- If it's still wanted: re-approve + `npm run sprites:checkin` to regenerate the
-  branch + issue, then re-run.
+- If it's still wanted: re-approve via the current flow (`npm run sprites:approve
+  -- <runDir> --variant <N>`, which pushes to `assets/queue`) — the reconciler
+  will pick it up. Then remove the stale issue before re-running `sprites:asset-pr`
+  if the legacy drain is still needed for other issues.
 
 **The PR opened but a check-in branch's asset is missing from the diff:**
 confirm the payload's `assets[].assetPath` matches a real file on the branch
 (`git show origin/<branch>:public/assets/<assetPath> | wc -c`). A mismatch means
 the issue payload drifted from the branch — re-check-in is the clean fix.
 
-**The union looks wrong** (a manifest entry or catalog id got dropped/overwritten
-unexpectedly): do **not** hand-edit the JSON in the PR. Reproduce in a unit test
-against `mergeManifests` / `mergeCatalogs`, fix the helper, and re-run the
-consolidation (close the bad PR first).
+**A shard file looks wrong** (a `entries/<key>.json` has unexpected content):
+do **not** hand-edit the JSON in the PR. Confirm the shard's content on the
+source branch (`git show origin/<branch>:public/assets/generated/entries/<key>.json`).
+If it is wrong on the source branch, the check-in itself is stale — re-approve via
+`npm run sprites:approve -- <runDir> --variant <N>` (which pushes to `assets/queue`)
+and close the bad PR before re-running `sprites:asset-pr`.
 
 **A non-art file showed up in the PR:** the `changes` CI job will route it
 through the full suite (correct, fail-safe). Investigate where it came from —
@@ -146,12 +159,12 @@ If you must consolidate by hand (script unavailable), per source branch:
 ```bash
 git worktree add /tmp/batch -b assets/batch-manual origin/main
 cd /tmp/batch
-# For each asset listed in each issue payload:
+# For each asset listed in each issue payload, check out the PNG and its shard:
 git checkout origin/<branch> -- public/assets/generated/<file>.png
-# Then union the two JSON files by hand using the same key/id rules:
-#   manifest.json  → union entries by key (later check-in wins)
-#   sprite-catalog → union array by `id` (later check-in wins)
-git add public/assets/generated src/shared/data/sprite-catalog.json
+git checkout origin/<branch> -- public/assets/generated/entries/<manifestKey>.json
+# Repeat for each asset/branch. Because shards are keyed by manifestKey,
+# disjoint check-ins never collide — no JSON union step is needed.
+git add public/assets/generated
 git commit -m "feat(sprites): consolidate approved assets"
 git push -u origin assets/batch-manual
 gh pr create --base main --head assets/batch-manual \
@@ -159,4 +172,4 @@ gh pr create --base main --head assets/batch-manual \
   --body "$(printf 'Consolidated asset check-ins.\n\nCloses #3\nCloses #7\n')"
 ```
 
-Prefer the script — the manual path is error-prone for the JSON union.
+Prefer the script — the manual path is error-prone and skips the orphaned-branch scan.

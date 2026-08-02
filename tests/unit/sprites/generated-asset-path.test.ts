@@ -4,6 +4,7 @@ import {
   GENERATED_ASSET_PREFIX,
   assertResolvedUnderGenerated,
   isSafeGeneratedAssetPath,
+  resolveGeneratedAssetPath,
 } from '../../../scripts/sprites/generated-asset-path.js';
 
 describe('isSafeGeneratedAssetPath', () => {
@@ -54,5 +55,21 @@ describe('assertResolvedUnderGenerated', () => {
   it('throws when the resolved path is the generated root itself', () => {
     const root = path.resolve(publicAssetsRoot, 'generated');
     expect(() => assertResolvedUnderGenerated(root, publicAssetsRoot, 'ctx')).toThrow();
+  });
+});
+
+describe('resolveGeneratedAssetPath', () => {
+  const publicAssetsRoot = path.resolve('/repo', 'public', 'assets');
+
+  it('returns an absolute in-tree path for safe generated assets', () => {
+    expect(resolveGeneratedAssetPath('generated/items/lamp.png', publicAssetsRoot, 'ctx')).toBe(
+      path.resolve(publicAssetsRoot, 'generated', 'items', 'lamp.png'),
+    );
+  });
+
+  it('throws before any caller can use a traversal path', () => {
+    expect(() =>
+      resolveGeneratedAssetPath('generated/../../etc/passwd.png', publicAssetsRoot, 'ctx'),
+    ).toThrow(/not a safe generated\/\*\.png path/);
   });
 });

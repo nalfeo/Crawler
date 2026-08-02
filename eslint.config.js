@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import inventorybagLaneAccessRule from './tools/eslint-rules/inventorybag-lane-access.js';
+import noRethrowInAutomationCatchRule from './tools/eslint-rules/no-rethrow-in-automation-catch.js';
 
 const layerImportPatterns = (layer) => [
   layer,
@@ -15,6 +16,7 @@ const layerImportPatterns = (layer) => [
 const crawlerLocalPlugin = {
   rules: {
     'no-direct-inventorybag-lane-read': inventorybagLaneAccessRule,
+    'no-rethrow-in-automation-catch': noRethrowInAutomationCatchRule,
   },
 };
 
@@ -109,6 +111,21 @@ export default tseslint.config(
     },
     rules: {
       'crawler/no-direct-inventorybag-lane-read': 'error',
+    },
+  },
+  {
+    // Class B (automation liveness): a re-thrown error in the merge-train or
+    // CI-recovery loops propagates to the top level, kills the Node process
+    // mid-run, and leaves the queue with nobody to unstick it — exactly how a
+    // re-thrown non-422 update-branch error deadlocked the merge queue for
+    // ~90 minutes. These loops must log and skip, never throw.
+    files: ['.github/scripts/merge-train/**/*.mjs', '.github/scripts/ci-recovery/**/*.mjs'],
+    ignores: ['**/*.test.mjs'],
+    plugins: {
+      crawler: crawlerLocalPlugin,
+    },
+    rules: {
+      'crawler/no-rethrow-in-automation-catch': 'error',
     },
   },
   {

@@ -64,4 +64,10 @@ describe('MainGameScene — Broker reputation callback wiring', () => {
     const closeBlock = source.slice(closeGuardIdx, nextIndexIdx);
     expect(closeBlock).not.toContain('broker');
   });
+
+  it('reuses a stable dialogue snapshot while a conversation is active', () => {
+    expect(source).toContain('this.activeConversationLines ??');
+    expect(source).toContain('this.activeConversationLines = [...activeDialogue];');
+    expect(source).toContain('this.activeConversationLines = null;');
+  });
 });
