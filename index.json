@@ -1,5 +1,16 @@
 [
   {
+    "commit": "951bb9b20d80dffc5231b0709b8f62efbf990cef",
+    "commitDate": "2026-08-01T23:44:57Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2663)",
+    "capturedAt": "2026-08-02T00:40:33.657Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30723953213",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/951bb9b20d80dffc5231b0709b8f62efbf990cef.json"
+  },
+  {
     "commit": "bdb877cd822368d1873d11f20fbeb0669f8fcdcd",
     "commitDate": "2026-08-01T23:31:27Z",
     "commitSubject": "feat(sprites): PR3 — retire checkin/asset-pr flow, route all approvals through reconciler (#2662)",
