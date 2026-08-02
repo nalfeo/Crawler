@@ -12,10 +12,12 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
+import { createRepoRequire } from '../../shared/node-modules-resolver.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXT_DIR, '..', '..', '..', '..');
+const requireFromRepo = createRepoRequire(REPO_ROOT, import.meta.url);
+const { parse: parseYaml } = requireFromRepo('yaml');
 const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
 const SHARDS_DIR = path.join(GENERATED_DIR, 'entries');
 const BRIEFS_DIR = path.join(REPO_ROOT, 'briefs');

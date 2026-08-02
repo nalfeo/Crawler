@@ -269,6 +269,16 @@ test('a pre-cutover v1 ledger stays valid without independent_grade', () => {
   assert.equal(validateLedger(l).ok, true);
 });
 
+test('PR/guard boundary validation rejects newly-added v1 ledgers regardless of date', () => {
+  const l = tier3();
+  delete l.stages.independent_grade;
+  l.schema_version = 'review-ledger/v1';
+  l.date = '2026-07-01';
+  const r = validateLedger(l, { requireCurrentSchema: true });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /must be 'review-ledger\/v2' for newly added ledgers/);
+});
+
 test("independent_grade cannot claim 'pass' over a criterion below 3", () => {
   const grade = validGrade();
   grade.criteria[GRADE_CRITERIA[0]] = 2;
@@ -297,6 +307,14 @@ test('independent_grade findings are schema-validated and must match findings_co
   const joined = r.errors.join('; ');
   assert.match(joined, /severity must be exactly one of/);
   assert.match(joined, /must equal findings\.length/);
+});
+
+test('independent_grade requires findings when findings_count is non-zero', () => {
+  const bad = validGrade({ findings_count: 1 });
+  delete bad.findings;
+  const r = validateLedger({ ...tier3(), stages: { ...tier3().stages, independent_grade: bad } });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /findings must be present when findings_count is non-zero/);
 });
 
 test('the grader must be independent of the model that AUTHORED the change', () => {
@@ -347,6 +365,10 @@ test("independent_grade verdict 'fail' WITH a valid escalation is accepted", () 
         independent_grade: validGrade({
           verdict: 'fail',
           findings_count: 2,
+          findings: [
+            { severity: 'major', file: 'scripts/agent/review/ledger.mjs', detail: 'issue A' },
+            { severity: 'minor', file: 'scripts/agent/review/ledger.mjs', detail: 'issue B' },
+          ],
           escalated_to_human: { reason: '1 blocker finding', unresolved_findings: 1 },
         }),
       },

@@ -233,7 +233,9 @@ function main() {
       console.error('');
       console.error('The >=3🍎 independent_grade stage is filled in by the grader CLI:');
       console.error('  npm run review:grade -- prompt <path>');
-      console.error('  npm run review:grade -- record <path> --model <graderModel> --file <reply>');
+      console.error(
+        '  npm run review:grade -- record <path> --model <graderModel> --implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>',
+      );
       return 1;
   }
 }

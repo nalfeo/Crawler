@@ -616,6 +616,8 @@ function validateIndependentGrade(stage, errors, _apples, ctx = {}) {
 
   if (!isNonNegInt(stage.findings_count)) {
     errors.push(`${tag}.findings_count must be an integer >= 0`);
+  } else if (stage.findings_count > 0 && stage.findings === undefined) {
+    errors.push(`${tag}.findings must be present when findings_count is non-zero`);
   }
 
   // `parseGradeResponse` recomputes the verdict from the scores and findings,
@@ -706,7 +708,7 @@ const STAGE_VALIDATORS = {
  * @param {unknown} obj
  * @returns {{ok:boolean, estimatedApples:number|null, requiredStages:string[], errors:string[], summary:string}}
  */
-export function validateLedger(obj) {
+export function validateLedger(obj, opts = {}) {
   const errors = [];
   if (!isPlainObject(obj)) {
     return {
@@ -725,6 +727,10 @@ export function validateLedger(obj) {
   }
   if (!isNonEmptyString(obj.date) || !DATE_RE.test(obj.date)) {
     errors.push('date must be a YYYY-MM-DD string');
+  } else if (opts.requireCurrentSchema === true && obj.schema_version !== SCHEMA_VERSION) {
+    errors.push(
+      `schema_version must be '${SCHEMA_VERSION}' for newly added ledgers at PR/guard boundaries (got ${JSON.stringify(obj.schema_version)}); '${LEGACY_SCHEMA_VERSION}' is accepted only for historical corpus validation`,
+    );
   } else if (obj.date >= SCHEMA_V2_CUTOVER_DATE && obj.schema_version !== SCHEMA_VERSION) {
     // v1 is accepted ONLY as history. Without this, a new >=3🍎 ledger could
     // simply declare v1 and skip `independent_grade` entirely, since the v2
@@ -805,7 +811,7 @@ export function validateLedger(obj) {
 }
 
 /** Parse + validate ledger JSON text. */
-export function validateLedgerText(text) {
+export function validateLedgerText(text, opts = {}) {
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -818,11 +824,11 @@ export function validateLedgerText(text) {
       summary: 'invalid ledger (JSON parse error)',
     };
   }
-  return validateLedger(parsed);
+  return validateLedger(parsed, opts);
 }
 
 /** Read + validate a ledger file. `filePath` may be absolute or relative to `cwd`. */
-export function validateLedgerFile(filePath, cwd = '.') {
+export function validateLedgerFile(filePath, cwd = '.', opts = {}) {
   let text;
   try {
     text = readFileSync(resolve(cwd, filePath), 'utf-8');
@@ -835,7 +841,7 @@ export function validateLedgerFile(filePath, cwd = '.') {
       summary: 'invalid ledger (read error)',
     };
   }
-  return validateLedgerText(text);
+  return validateLedgerText(text, opts);
 }
 
 /** Format a validation result for human/CLI output. */

@@ -24,7 +24,7 @@ npm run review:ledger -- stage <path> multi_model_review --json '{...}'
 # 2b. independent_grade is NOT hand-written — the grader CLI fills it in from
 #     the real diff, after your code-review fixes have landed.
 npm run review:grade -- prompt <path>
-npm run review:grade -- record <path> --model <graderModel> --file <reply>
+npm run review:grade -- record <path> --model <graderModel> --implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>
 
 # 3. Validate (exit 0 = guard will allow your PR). `validate` with no path
 #    picks the newest ledger in the directory.

@@ -54,7 +54,7 @@ dated handoffs.
 ### 4. Deduped the agent instructions
 
 `AGENTS.md` is now the single canonical agent contract.
-`.github/copilot-instructions.md` went 106 → 43 lines and is a pointer file with
+`.github/copilot-instructions.md` is now a compact pointer file with
 a "where each rule lives" table. Content unique to the old copilot-instructions
 (Project Context, Test Strategy, PR-review contract, the draft-PR merge bullet,
 the ECS system shape, the no-Phaser-in-core note, apple accounting) was folded
@@ -149,12 +149,11 @@ so binding a grade to the tree it actually graded needs a git-side check
 - `npm run docs:check` — 0 blocking
 - `npm run lint`, `npx prettier --check` — clean
 
-## Known unrelated breakage (do not attribute to this change)
+## Follow-up completed after review feedback
 
-`npm run check:extensions` reports 2 bare-import violations in
-`.github/extensions/asset-search/` (`minisearch`, `yaml`). Confirmed present on
-a stashed baseline. Orthogonal extension; fix wants its own session using
-`createRepoRequire()`.
+The extension bare-import issue called out in review feedback is now fixed:
+`.github/extensions/asset-search/lib/index-builder.mjs` switched the `yaml`
+import to `createRepoRequire(...)`, matching extension policy.
 
 ## Follow-ups
 

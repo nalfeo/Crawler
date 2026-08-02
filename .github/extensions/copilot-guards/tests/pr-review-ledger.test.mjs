@@ -156,11 +156,16 @@ test('decideLedger: code diff, ledger added but on main (not added) -> allow wit
 });
 
 test('decideLedger: code diff, valid ledger ADDED -> allow with context', () => {
+  let optsSeen = null;
   const d = decideLedger(['src/core/x.ts', LEDGER], [LEDGER], {
-    validateFile: () => okResult,
+    validateFile: (_path, opts) => {
+      optsSeen = opts;
+      return okResult;
+    },
   });
   assert.equal(d.decision, 'allow');
   assert.match(d.additionalContext, /valid review ledger/);
+  assert.equal(optsSeen?.requireCurrentSchema, true);
 });
 
 test('decideLedger: code diff, invalid ledger ADDED -> deny aggregating errors', () => {

@@ -45,7 +45,8 @@ function missingLedgerNotice(files) {
     'If this is ≥3🍎, author one with the review-harness skill, then commit it on this branch:',
     '  npm run review:ledger -- init --apples <3..5> --slug <kebab-slug> --title "<title>"',
     "  npm run review:ledger -- stage <path> <stage> --json '{...}'   # per review stage",
-    '  npm run review:grade -- <path>                                 # independent grader',
+    '  npm run review:grade -- prompt <path>',
+    '  npm run review:grade -- record <path> --model <graderModel> --implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>',
     '  npm run review:ledger -- validate <path>',
     '',
     'Required stages by apple tier: 1–2 → (none, no ledger); 3 → plan_review + code_review + independent_grade; 4–5 → + multi_model_review (the plan_review must be ADVERSARIAL — see ADR 0051).',
@@ -64,7 +65,8 @@ function missingLedgerNotice(files) {
  */
 function decideLedger(files, addedFiles, opts = {}) {
   const cwd = opts.cwd || '.';
-  const validateFile = opts.validateFile || ((p) => validateLedgerFile(p, cwd));
+  const validateFile =
+    opts.validateFile || ((p, extra = {}) => validateLedgerFile(p, cwd, extra));
 
   if (!Array.isArray(files) || files.length === 0) {
     return { decision: 'skip' };
@@ -85,7 +87,11 @@ function decideLedger(files, addedFiles, opts = {}) {
     return { decision: 'allow', additionalContext: missingLedgerNotice(files) };
   }
 
-  const results = ledgers.map((p) => ({ path: p, result: validateFile(p) }));
+  const added = new Set(findReviewLedgerPaths(addedFiles));
+  const results = ledgers.map((p) => ({
+    path: p,
+    result: validateFile(p, { requireCurrentSchema: added.has(p) }),
+  }));
   const invalid = results.filter((x) => !x.result.ok);
   if (invalid.length > 0) {
     const reason = [

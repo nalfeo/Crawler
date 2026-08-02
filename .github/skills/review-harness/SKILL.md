@@ -39,7 +39,7 @@ that is not purely docs (`docs/**`, root `*.md`/`*.txt`), art
 **1–2🍎 changes require no ledger and no review stages.** Because the tier is only
 readable from a ledger, the guard cannot tell a skipped 4🍎 ledger from a
 legitimate 1🍎 one — so at ≥3🍎 the ledger is on **you**, backed by the
-`independent_grade` stage. Do not under-declare apples to dodge it (rule #12).
+`independent_grade` stage. Do not under-declare apples to dodge it (rule #11).
 
 The required review **stages** scale with the apple estimate you declared at the
 start of the session (see `docs/agent-os/policies/complexity-policy.md`).
@@ -58,7 +58,7 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
   `plan_divergence: convergent | minor | major_fork` (the fork-rate instrumentation
   signal — ADR 0051). (Floor raised 2🍎 → 3🍎 on 2026-07-07 to match the
   code-review floor, which moved to 3🍎 on 2026-07-02 / ADR 0036. A 2🍎 change now
-  requires **no** review stages — the ledger just records the tier.)
+  requires **no** review stages and **no** ledger file.)
 - **adversarial plan review** (4–5🍎): the top-tier plan review must **red-team**
   the design — enumerate **≥2 alternative approaches** and argue against the chosen
   one — recording `adversarial: true` and `alternatives_considered ≥ 2`. This
@@ -78,7 +78,8 @@ start of the session (see `docs/agent-os/policies/complexity-policy.md`).
   grades the **actual diff** against five fixed criteria. Run
   `npm run review:grade -- prompt <path>`, dispatch the printed packet to an
   uninvolved model, then `npm run review:grade -- record <path> --model <m>
---file <reply>`. The validator rejects a grader that appears in any other stage,
+--implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>`.
+ The validator rejects a grader that appears in any other stage,
   and `record` recomputes the verdict — a criterion below 3 or a blocker finding
   cannot be recorded as a pass.
 
@@ -93,7 +94,7 @@ The `code_review` and `multi_model_review` loops are **not** unbounded. If after
   unresolved concerns; record `{ after_round, reason, unresolved_concerns }` with
   `after_round` = the final round index (nothing may follow the escalation).
 - It is an explicit **recorded terminal state a human must act on** — never a
-  silent skip. Escalating beats weakening a gate (rule #12). Exact schema:
+  silent skip. Escalating beats weakening a gate (rule #11). Exact schema:
   [`references/ledger-recipes.md`](references/ledger-recipes.md).
 
 ### Downward-only apple re-scoring
@@ -103,7 +104,7 @@ and only when the **actual diff** justifies it. Record `apples_rescored_from` (t
 original higher estimate) + `rescore_reason` at the ledger top level; the validator
 rejects upward/no-op re-scores. A downward re-score lowers the required tier — so
 **prune** any now-unrequired incomplete stages (the validator checks every present
-stage). Never re-score down just to dodge a stage (rule #12).
+stage). Never re-score down just to dodge a stage (rule #11).
 
 ## Workflow
 
@@ -131,7 +132,7 @@ stage). Never re-score down just to dodge a stage (rule #12).
    the code-review fixes have landed:
    ```
    npm run review:grade -- prompt <path>            # packet + excluded models
-   npm run review:grade -- record <path> --model <graderModel> --file <reply>
+   npm run review:grade -- record <path> --model <graderModel> --implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>
    ```
    A `fail` verdict is not a dead end, but it is not a quiet pass either: fix the
    findings and re-grade, or record the `escalated_to_human` reason `record`
@@ -180,7 +181,7 @@ npm run review:ledger -- stage <path> code_review --json '{"clean":true,"rounds"
 
 - Never weaken a stage to make the validator pass. If a review surfaced a concern
   you could not resolve, fix it or escalate to the human — do **not** lower
-  `concerns_count` or flip `clean` to true. (Project rule #12.)
+  `concerns_count` or flip `clean` to true. (Project rule #11.)
 - Loop reviews until genuinely no concerns remain, not until the count is
   convenient.
 - Use **distinct** models where the tier demands it — two calls to the same model

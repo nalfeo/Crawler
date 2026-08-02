@@ -9,7 +9,7 @@
 //   #    in NEITHER the plan review nor the code review (the packet prints the
 //   #    excluded list). Save the reply, then record it:
 //   npm run review:grade -- record <ledgerPath> --model <graderModel>
-//     --implementer <authoringModel> --file <replyPath>
+//     --implementer <authoringModel> --file <replyPath> --head-sha <packetHeadSha>
 //
 // `record` recomputes the verdict from the scores/findings, writes the stage,
 // and re-validates the whole ledger — exiting non-zero if the ledger is not
@@ -18,6 +18,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import process from 'node:process';
+import { execFileSync } from 'node:child_process';
 
 import { formatLedgerResult, validateLedger } from './ledger.mjs';
 import {
@@ -60,6 +61,10 @@ function writeOut(path, text) {
   writeFileSync(path, text, 'utf-8');
 }
 
+function git(args) {
+  return execFileSync('git', args, { encoding: 'utf-8' });
+}
+
 function cmdPrompt(positional, flags) {
   const path = positional[0];
   if (!path) {
@@ -80,6 +85,15 @@ function cmdPrompt(positional, flags) {
     console.error(`prompt: cannot collect the diff: ${err.message}`);
     return 1;
   }
+  if (diff.truncated) {
+    console.error(
+      'prompt: diff exceeds the grading size limit and was truncated; refusing to emit a grade packet for partial diffs',
+    );
+    console.error(
+      'prompt: split the change into smaller chunks or reduce scope, then re-run `npm run review:grade -- prompt ...`',
+    );
+    return 1;
+  }
   const packet = buildGradingPacket({ ledger, diff });
 
   if (typeof flags.out === 'string') {
@@ -87,6 +101,21 @@ function cmdPrompt(positional, flags) {
     console.log(`Wrote grading packet to ${flags.out}`);
   } else {
     console.log(packet.prompt);
+  }
+  if (typeof flags['packet-out'] === 'string') {
+    writeOut(
+      flags['packet-out'],
+      `${JSON.stringify(
+        {
+          head_sha: packet.headSha,
+          excluded_models: packet.excludedModels,
+          criteria: packet.criteria,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    console.log(`Wrote grading packet metadata to ${flags['packet-out']}`);
   }
   console.error(`\n[grader] head_sha: ${packet.headSha}`);
   console.error(
@@ -101,7 +130,7 @@ function cmdRecord(positional, flags) {
   const path = positional[0];
   if (!path) {
     console.error(
-      "record: usage: record <ledgerPath> --model <graderModel> --implementer <authoringModel> (--file <replyPath> | --json '<reply>') [--head-sha <sha>]",
+      "record: usage: record <ledgerPath> --model <graderModel> --implementer <authoringModel> (--file <replyPath> | --json '<reply>') (--head-sha <sha> | --packet <packetPath>)",
     );
     return 1;
   }
@@ -139,17 +168,58 @@ function cmdRecord(positional, flags) {
   }
 
   let headSha = typeof flags['head-sha'] === 'string' ? flags['head-sha'] : null;
-  if (!headSha) {
+  if (typeof flags.packet === 'string') {
+    let packet;
     try {
-      headSha = collectDiff({
-        baseRef: typeof flags.base === 'string' ? flags.base : 'main',
-      }).headSha;
+      packet = JSON.parse(readFileSync(flags.packet, 'utf-8'));
     } catch (err) {
+      console.error(`record: cannot read packet metadata ${flags.packet}: ${err.message}`);
+      return 1;
+    }
+    if (typeof packet.head_sha !== 'string' || packet.head_sha.trim().length === 0) {
+      console.error(`record: packet metadata ${flags.packet} must include a non-empty head_sha`);
+      return 1;
+    }
+    const packetHead = packet.head_sha.trim();
+    if (headSha && headSha !== packetHead) {
       console.error(
-        `record: cannot resolve the graded sha (${err.message}); pass --head-sha <sha> explicitly`,
+        `record: --head-sha (${headSha}) does not match packet head_sha (${packetHead})`,
       );
       return 1;
     }
+    headSha = packetHead;
+  }
+  if (!headSha) {
+    console.error(
+      'record: pass the graded commit with --head-sha <sha> (or --packet <packetPath> from prompt --packet-out)',
+    );
+    return 1;
+  }
+  let currentHead;
+  try {
+    currentHead = git(['rev-parse', 'HEAD']).trim();
+  } catch (err) {
+    console.error(`record: cannot resolve current HEAD: ${err.message}`);
+    return 1;
+  }
+  let dirty = false;
+  try {
+    dirty = git(['status', '--porcelain']).trim().length > 0;
+  } catch (err) {
+    console.error(`record: cannot verify working tree cleanliness: ${err.message}`);
+    return 1;
+  }
+  if (dirty) {
+    console.error(
+      'record: working tree is dirty; commit/stash changes before recording so the grade binds to a clean tree',
+    );
+    return 1;
+  }
+  if (currentHead !== headSha) {
+    console.error(
+      `record: graded head_sha (${headSha}) does not match current HEAD (${currentHead}); re-run prompt/grade for current diff`,
+    );
+    return 1;
   }
 
   let parsed;
@@ -191,9 +261,9 @@ function main() {
       return cmdRecord(positional, flags);
     default:
       console.error('Usage: review:grade <prompt|record> <ledgerPath> [...]');
-      console.error('  prompt  <ledgerPath> [--base <ref>] [--out <file>]');
+      console.error('  prompt  <ledgerPath> [--base <ref>] [--out <file>] [--packet-out <file>]');
       console.error(
-        "  record  <ledgerPath> --model <graderModel> --implementer <authoringModel> (--file <replyPath> | --json '<reply>') [--head-sha <sha>]",
+        "  record  <ledgerPath> --model <graderModel> --implementer <authoringModel> (--file <replyPath> | --json '<reply>') (--head-sha <sha> | --packet <packetPath>)",
       );
       return 1;
   }
