@@ -106,8 +106,10 @@ function computeDesignSafeInsets(options: ComputeDesignSafeInsetsOptions): SafeA
   const rightOverlap = canvasRight - (viewport.width - toPositive(insets.right));
   const bottomOverlap = canvasBottom - (viewport.height - toPositive(insets.bottom));
 
-  const clampX = (overlap: number): number => Math.min(designWidth, Math.max(0, overlap) * scaleX);
-  const clampY = (overlap: number): number => Math.min(designHeight, Math.max(0, overlap) * scaleY);
+  const clampX = (overlap: number): number =>
+    Math.min(designWidth, Math.max(0, overlap) * scaleX);
+  const clampY = (overlap: number): number =>
+    Math.min(designHeight, Math.max(0, overlap) * scaleY);
 
   return {
     top: clampY(topOverlap),
@@ -181,7 +183,12 @@ export function getSafeAreaInsets(scene: Phaser.Scene): SafeAreaInsets {
 
 /** True when two inset sets are equal (used to suppress no-op relayouts). */
 function insetsEqual(a: SafeAreaInsets, b: SafeAreaInsets): boolean {
-  return a.top === b.top && a.right === b.right && a.bottom === b.bottom && a.left === b.left;
+  return (
+    a.top === b.top &&
+    a.right === b.right &&
+    a.bottom === b.bottom &&
+    a.left === b.left
+  );
 }
 
 /**
