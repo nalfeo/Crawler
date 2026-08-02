@@ -283,6 +283,13 @@ export async function requestWithBackoff(
       return await execute();
     } catch (error) {
       if (!isRetryableError(error) || attempt >= maxAttempts) {
+        // This is a RETRY loop over attempts at a single request, not a batch
+        // loop over work items. There are no "remaining items" to abandon: once
+        // the error is non-retryable or attempts are exhausted, propagating to
+        // the caller is the contract of requestWithBackoff, and each caller
+        // decides whether to skip its own item. Swallowing here would silently
+        // return undefined and corrupt every caller's result handling.
+        // eslint-disable-next-line crawler/no-rethrow-in-automation-catch
         throw error;
       }
       const delayMs = computeBackoffDelayMs(error, attempt, baseDelayMs, maxDelayMs);
@@ -440,7 +447,9 @@ function stalenessScore(pullRequest, now = new Date()) {
   const progressAge = Number.isFinite(stateProgressMs)
     ? Math.max(nowMs - stateProgressMs, 0)
     : Number.MAX_SAFE_INTEGER;
-  const updateAge = Number.isFinite(updatedMs) ? Math.max(nowMs - updatedMs, 0) : Number.MAX_SAFE_INTEGER;
+  const updateAge = Number.isFinite(updatedMs)
+    ? Math.max(nowMs - updatedMs, 0)
+    : Number.MAX_SAFE_INTEGER;
   const blockerSeverity = Array.isArray(pullRequest?.recoveryState?.blockers)
     ? pullRequest.recoveryState.blockers.length
     : 0;

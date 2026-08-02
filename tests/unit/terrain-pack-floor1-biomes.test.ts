@@ -257,7 +257,20 @@ describe('buildTerrainLayer — Floor 1 per-family pack assignment', () => {
    */
   it('stamps each pack tile at its own tile coordinate, not a shared origin', () => {
     const { scene, rt } = createPackScene(allKeys);
-    const floorMap = makeFloorMap([TerrainType.STONE_WALL, TerrainType.STONE_WALL], 2, 1);
+    // A wall row over a floor row. The floor row matters: a wall is only
+    // underdrawn when its blob47 frame has an open edge (an enclosed
+    // mask-255 frame is opaque across the whole cell and needs no underdraw),
+    // so an all-wall fixture would have no underdraw to locate.
+    const floorMap = makeFloorMap(
+      [
+        TerrainType.STONE_WALL,
+        TerrainType.STONE_WALL,
+        TerrainType.STONE_FLOOR,
+        TerrainType.STONE_FLOOR,
+      ],
+      2,
+      2,
+    );
 
     buildTerrainLayer(scene, floorMap, { terrainPacks: floor1Packs });
 
@@ -274,7 +287,7 @@ describe('buildTerrainLayer — Floor 1 per-family pack assignment', () => {
     // conventions differ by exactly a half tile, which is what keeps the
     // underdraw registered to the same cell as the wall it sits beneath.
     const floorKeys = new Set(dungeonPack.floorPool.map((v) => v.textureKey));
-    const underdraw = rt.stamps.filter((s) => floorKeys.has(s.key));
+    const underdraw = rt.stamps.filter((s) => floorKeys.has(s.key) && s.y < tileSize);
     expect(underdraw).toHaveLength(2);
     expect(underdraw.map((s) => s.x)).toEqual([tileSize / 2, tileSize + tileSize / 2]);
     expect(underdraw.map((s) => s.y)).toEqual([tileSize / 2, tileSize / 2]);

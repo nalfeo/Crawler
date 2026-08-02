@@ -5,14 +5,10 @@ import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 export const SYNC_STATE_RELATIVE_PATH = 'files/main-sync-state.json';
-export const ACTIVE_SYNC_INTERVAL_MS = 30 * 60 * 1000;
-export const ACTIVE_GAP_LIMIT_MS = 5 * 60 * 1000;
-export const SYNC_REMINDER_INTERVAL_MS = 5 * 60 * 1000;
 
 function defaultState() {
   return {
     schema: 'crawler-main-sync/v1',
-    activeAuthoringMs: 0,
   };
 }
 
@@ -68,13 +64,7 @@ function resultState(state, result, now) {
     lastMessage: result.message,
     ...(result.headSha ? { headSha: result.headSha } : {}),
     ...(result.mainSha ? { mainSha: result.mainSha } : {}),
-    ...(result.status === 'success'
-      ? {
-          lastSuccessAt: new Date(now).toISOString(),
-          activeAuthoringMs: 0,
-          lastActivityAt: new Date(now).toISOString(),
-        }
-      : {}),
+    ...(result.status === 'success' ? { lastSuccessAt: new Date(now).toISOString() } : {}),
   };
 }
 
@@ -207,80 +197,6 @@ export function attemptMainSync({
     }
     return result;
   }
-}
-
-function timestamp(value) {
-  const parsed = Date.parse(value ?? '');
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function trackAuthoringActivity({
-  cwd = process.cwd(),
-  now = Date.now(),
-  runSync = attemptMainSync,
-} = {}) {
-  const state = readSyncState(cwd);
-  const lastActivityAt = timestamp(state.lastActivityAt);
-  const activityGap = lastActivityAt === null ? 0 : Math.max(0, now - lastActivityAt);
-  const activeDelta = activityGap > 0 && activityGap <= ACTIVE_GAP_LIMIT_MS ? activityGap : 0;
-  const activeAuthoringMs = Number(state.activeAuthoringMs || 0) + activeDelta;
-  const activityState = {
-    ...state,
-    activeAuthoringMs,
-    lastActivityAt: new Date(now).toISOString(),
-  };
-  writeSyncState(cwd, activityState);
-
-  if (activeAuthoringMs < ACTIVE_SYNC_INTERVAL_MS) {
-    return { due: false, activeAuthoringMs, warning: null };
-  }
-
-  // Throttle repeated sync attempts: if a recent non-success attempt was
-  // recorded, skip calling runSync to avoid a git fetch (or any other work)
-  // on every tool call while the worktree stays in the same state.
-  const lastAttemptAt = timestamp(state.lastAttemptAt);
-  const recentFailedAttempt =
-    lastAttemptAt !== null &&
-    state.lastResult &&
-    state.lastResult !== 'success' &&
-    now - lastAttemptAt < SYNC_REMINDER_INTERVAL_MS;
-
-  const syncResult = recentFailedAttempt
-    ? {
-        status: state.lastResult,
-        branchChanged: false,
-        message: state.lastMessage ?? 'Sync pending.',
-      }
-    : runSync({ cwd, reason: 'periodic-active', now });
-
-  if (syncResult.status === 'success') {
-    return {
-      due: true,
-      activeAuthoringMs,
-      syncResult,
-      warning: syncResult.branchChanged
-        ? 'Periodic main sync rebased the branch; rerun affected validation before publication.'
-        : null,
-    };
-  }
-
-  const refreshed = readSyncState(cwd);
-  const lastReminderAt = timestamp(refreshed.lastReminderAt);
-  const shouldRemind = lastReminderAt === null || now - lastReminderAt >= SYNC_REMINDER_INTERVAL_MS;
-  if (!shouldRemind) {
-    return { due: true, activeAuthoringMs, syncResult, warning: null };
-  }
-
-  writeSyncState(cwd, {
-    ...refreshed,
-    lastReminderAt: new Date(now).toISOString(),
-  });
-  return {
-    due: true,
-    activeAuthoringMs,
-    syncResult,
-    warning: `${syncResult.message} The 30-active-minute sync remains due.`,
-  };
 }
 
 function cliReason(args) {

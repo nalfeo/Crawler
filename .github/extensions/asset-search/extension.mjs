@@ -22,9 +22,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { joinSession } from '@github/copilot-sdk/extension';
 import { buildCorpus } from './lib/index-builder.mjs';
+import { createRepoRequire } from '../shared/node-modules-resolver.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXT_DIR, '..', '..', '..');
+const requireFromRepo = createRepoRequire(REPO_ROOT, import.meta.url);
 const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
 const SHARDS_DIR = path.join(GENERATED_DIR, 'entries');
 const BRIEFS_DIR = path.join(REPO_ROOT, 'briefs');
@@ -75,8 +77,12 @@ async function getIndex() {
   const fp = shardsFingerprint();
   if (indexState.ms && indexState.fingerprint === fp) return indexState.ms;
 
-  // Dynamic import so MiniSearch is loaded on first use.
-  const { default: MiniSearch } = await import('minisearch');
+  // Loaded on first use. Must go through createRepoRequire, not a bare
+  // specifier: extensions run sandboxed with no bare-specifier resolution, and
+  // in a git worktree node_modules lives in the main checkout. A bare import
+  // here makes the whole extension fail to load — silently, at use time.
+  // Enforced by `npm run check:extensions`.
+  const MiniSearch = requireFromRepo('minisearch');
 
   const ms = new MiniSearch({
     idField: 'id',

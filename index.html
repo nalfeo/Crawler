@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -11,6 +11,19 @@
     />
     <title>Crawler</title>
     <style>
+      /*
+       * Re-publish the display-cutout insets as custom properties so the engine
+       * can read them (src/engine/safe-area.ts). `env()` is only meaningful with
+       * `viewport-fit=cover` above, and reading a custom property — rather than
+       * `env()` directly — lets e2e harnesses inject a real device's insets on a
+       * desktop browser, which always reports zero.
+       */
+      :root {
+        --crawler-safe-area-inset-top: env(safe-area-inset-top, 0px);
+        --crawler-safe-area-inset-right: env(safe-area-inset-right, 0px);
+        --crawler-safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+        --crawler-safe-area-inset-left: env(safe-area-inset-left, 0px);
+      }
       * {
         margin: 0;
         padding: 0;
@@ -74,6 +87,55 @@
         flex: 1;
         min-height: 0;
       }
+      /*
+       * Landscape-only. Orientation lock is unavailable to web content on iOS,
+       * so portrait is handled with an interstitial rather than a rotate API:
+       * on a touch device held in portrait the game is hidden behind a prompt.
+       * Gated on `pointer: coarse` so a narrow desktop window is unaffected.
+       */
+      #rotate-notice {
+        display: none;
+      }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate-notice {
+          position: fixed;
+          inset: 0;
+          z-index: 200;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          padding: calc(24px + env(safe-area-inset-top, 0px))
+            calc(24px + env(safe-area-inset-right, 0px))
+            calc(24px + env(safe-area-inset-bottom, 0px))
+            calc(24px + env(safe-area-inset-left, 0px));
+          background: #05070f;
+          color: #e2e8f0;
+          text-align: center;
+          font-family:
+            ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+            monospace;
+        }
+        #rotate-notice-icon {
+          font-size: 44px;
+          line-height: 1;
+        }
+        #rotate-notice-title {
+          font-size: 16px;
+          color: #7ee0ff;
+          letter-spacing: 0.04em;
+        }
+        #rotate-notice-body {
+          font-size: 13px;
+          max-width: 30ch;
+          line-height: 1.5;
+          color: #cbd5e1;
+        }
+        #game-container {
+          visibility: hidden;
+        }
+      }
     </style>
   </head>
   <body>
@@ -85,6 +147,13 @@
         <a class="app-switch-link app-switch-link--active" href="/">Game</a>
       </nav>
     </header>
+    <div id="rotate-notice" role="alert" aria-live="polite">
+      <div id="rotate-notice-icon" aria-hidden="true">⟳</div>
+      <div id="rotate-notice-title">Rotate your device</div>
+      <div id="rotate-notice-body">
+        Crawler is played in landscape. Turn your device sideways to continue.
+      </div>
+    </div>
     <div id="game-container"></div>
     <script>
       (() => {

@@ -13800,7 +13800,7 @@
       "sizing": "exact",
       "width": 7,
       "height": 7,
-      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
+      "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off \u2014 the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
       "tags": ["reality-show", "welcome", "floor1", "named"],
       "placement": {
         "verticalAlign": "top"
@@ -14115,8 +14115,8 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-rug-var-0"
               },
-              "widthFt": 7,
-              "heightFt": 3.62
+              "widthFt": 3.41,
+              "heightFt": 1.76
             }
           ],
           "width": 1.75,

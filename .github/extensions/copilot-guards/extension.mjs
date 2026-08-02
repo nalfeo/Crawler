@@ -7,10 +7,10 @@ import { dispatch } from './lib/dispatcher.mjs';
 
 import shellForcePushMain from './guards/shell-force-push-main.mjs';
 import shellMainBranchDelete from './guards/shell-main-branch-delete.mjs';
+import shellBluntMergeStrategy from './guards/shell-blunt-merge-strategy.mjs';
 import shellGhPrCreate from './guards/shell-gh-pr-create.mjs';
 import shellRmRfRepo from './guards/shell-rm-rf-repo.mjs';
 import shellUnsafePortKill from './guards/shell-unsafe-port-kill.mjs';
-import authoringMainSync from './guards/authoring-main-sync.mjs';
 import editDeterminism from './guards/edit-determinism.mjs';
 import editPhaserInCore from './guards/edit-phaser-in-core.mjs';
 import editRepoMdJunk from './guards/edit-repo-md-junk.mjs';
@@ -23,10 +23,10 @@ import prReviewLedger from './guards/pr-review-ledger.mjs';
 const guards = [
   shellForcePushMain,
   shellMainBranchDelete,
+  shellBluntMergeStrategy,
   shellGhPrCreate,
   shellRmRfRepo,
   shellUnsafePortKill,
-  authoringMainSync,
   editDeterminism,
   editPhaserInCore,
   editRepoMdJunk,
