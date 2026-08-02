@@ -430,11 +430,21 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
       } else {
         git(['reset', '--hard', baseSha]);
         if (unmergedFiles.length > 0) {
+          // Aborting the remaining entries is the intended behaviour here: a
+          // conflicting PR invalidates the cumulative candidate, so there is no
+          // meaningful "next entry" to continue to. `runTrainBuildLoop` catches
+          // this and reports `action: 'conflict'` — the process does not die.
+          // eslint-disable-next-line crawler/no-rethrow-in-automation-catch
           throw new MergeTrainConflictError(
             `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
             { cause: error },
           );
         }
+        // Same contract: `runTrainBuildLoop` catches this as a retryable build
+        // failure and promotes the validated prefix. The candidate base is
+        // already `reset --hard`, so continuing the loop would stack later PRs
+        // on an unbuilt base.
+        // eslint-disable-next-line crawler/no-rethrow-in-automation-catch
         throw new Error(
           `PR #${entry.number} candidate merge failed operationally: ${operationalError.message}`,
           { cause: operationalError },

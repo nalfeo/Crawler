@@ -59,3 +59,21 @@ export function assertResolvedUnderGenerated(
     );
   }
 }
+
+/**
+ * Resolve a generated asset path only after validating both the raw path shape
+ * and the post-resolve containment. Returns the absolute path on success and
+ * throws with `context` on any malformed or escaping path.
+ */
+export function resolveGeneratedAssetPath(
+  assetPath: string,
+  publicAssetsRoot: string,
+  context: string,
+): string {
+  if (!isSafeGeneratedAssetPath(assetPath)) {
+    throw new Error(`${context}: assetPath "${assetPath}" is not a safe generated/*.png path.`);
+  }
+  const resolvedAbsolutePath = path.resolve(publicAssetsRoot, assetPath);
+  assertResolvedUnderGenerated(resolvedAbsolutePath, publicAssetsRoot, context);
+  return resolvedAbsolutePath;
+}

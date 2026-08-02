@@ -77,8 +77,12 @@ async function getIndex() {
   const fp = shardsFingerprint();
   if (indexState.ms && indexState.fingerprint === fp) return indexState.ms;
 
-  // Lazily load MiniSearch from repo node_modules (worktree-safe resolver).
-  const { default: MiniSearch } = requireFromRepo('minisearch');
+  // Loaded on first use. Must go through createRepoRequire, not a bare
+  // specifier: extensions run sandboxed with no bare-specifier resolution, and
+  // in a git worktree node_modules lives in the main checkout. A bare import
+  // here makes the whole extension fail to load — silently, at use time.
+  // Enforced by `npm run check:extensions`.
+  const MiniSearch = requireFromRepo('minisearch');
 
   const ms = new MiniSearch({
     idField: 'id',
