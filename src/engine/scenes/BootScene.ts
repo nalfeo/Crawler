@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SHEETS } from '../sprites/index.js';
+import { SHEETS, SPRITES, TILE_SPRITES, type TileVisualDef } from '../sprites/index.js';
 import { MainGameScene } from './MainGameScene.js';
 import { createLogger } from '../../shared/logger.js';
 import {
@@ -7,19 +7,42 @@ import {
   GENERATED_SPRITE_REGISTRY_KEY,
   preloadGeneratedSprites,
 } from '../generatedAssets/index.js';
-import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  type GeneratedSpriteRegistry,
+} from '../../shared/generated-assets.js';
 import { preloadTerrainPacks } from '../sprites/terrain-pack-visuals.js';
 import { GAME } from '../../shared/constants.js';
 import { getRenderScale } from '../render-scale.js';
 
+/**
+ * Derive the set of sheet keys actually referenced by runtime sprite and tile
+ * definitions.  Filtering SHEETS with this set ensures we never load a sheet
+ * that has no consumer, and avoids drift when new sheets are added to SHEETS
+ * without a corresponding sprite entry.
+ */
+function computeUsedSheetKeys(): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const sprite of SPRITES) {
+    keys.add(sprite.sheetKey);
+  }
+  for (const visual of Object.values(TILE_SPRITES) as Array<TileVisualDef | undefined>) {
+    if (visual !== undefined) {
+      keys.add(visual.sheetKey);
+    }
+  }
+  return keys;
+}
+
 const logger = createLogger('engine:boot-scene');
 const GENERATED_SPRITE_LOAD_TIMEOUT_MS = 15000;
-const CRITICAL_SHEET_KEYS = new Set([
-  'kenney-tiny-dungeon',
-  'kenney-tiny-town',
-  'kenney-roguelike-rpg-pack',
-  'custom-pixel-sprites',
-]);
+
+/** Mark a named boot stage in the browser performance timeline (no-op in Node). */
+function markBoot(label: string): void {
+  if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+    performance.mark(label);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Loading screen layout constants
@@ -45,6 +68,12 @@ const STATUS_Y = BAR_Y + BAR_H + 14;
 export class BootScene extends Phaser.Scene {
   static readonly KEY = 'BootScene';
   private startedMainGame = false;
+  /**
+   * Manifest fetch kicked off in preload() so it runs in parallel with sprite
+   * sheet loading.  create() awaits this Promise instead of starting a fresh
+   * fetch, eliminating the sequential preload→fetch gap.
+   */
+  private pendingRegistryFetch: Promise<GeneratedSpriteRegistry> | undefined;
 
   // Loading screen elements (alive for the duration of preload + sprite fetch)
   private loadingProgressFill?: Phaser.GameObjects.Rectangle;
@@ -56,6 +85,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
+    markBoot('boot:preload-start');
     if (!this.load) {
       logger.warn('Phaser loader unavailable during preload');
       return;
@@ -87,13 +117,14 @@ export class BootScene extends Phaser.Scene {
       this.loadingStatusText?.setText(`Loading ${file.key}...`);
     });
 
-    const criticalSheets = SHEETS.filter((sheet) => CRITICAL_SHEET_KEYS.has(sheet.key));
-    logger.info('Preloading critical sprite sheets', {
-      criticalCount: criticalSheets.length,
-      deferredCount: SHEETS.length - criticalSheets.length,
+    const usedSheetKeys = computeUsedSheetKeys();
+    const sheetsToLoad = SHEETS.filter((s) => usedSheetKeys.has(s.key));
+    logger.info('Preloading used sprite sheets', {
+      count: sheetsToLoad.length,
+      total: SHEETS.length,
     });
 
-    for (const sheet of criticalSheets) {
+    for (const sheet of sheetsToLoad) {
       logger.debug('Queueing sprite sheet', { key: sheet.key, path: sheet.path });
       this.load.spritesheet(sheet.key, sheet.path, {
         frameWidth: sheet.frameWidth,
@@ -113,9 +144,15 @@ export class BootScene extends Phaser.Scene {
     // Seed an empty registry so consumers (e.g. InventoryUI) always read
     // a non-null value even before the manifest fetch resolves.
     this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, emptyGeneratedSpriteRegistry());
+
+    // Kick off the manifest fetch immediately so it runs in parallel with the
+    // sprite sheet loading above.  create() will await the result.
+    this.pendingRegistryFetch = fetchGeneratedSpriteRegistry();
+    markBoot('boot:manifest-fetch-start');
   }
 
   create(): void {
+    markBoot('boot:preload-end');
     // Fetch and queue generated sprites, then start the main game scene once
     // the sprites are loaded. This ensures approved custom art is available
     // before MainGameScene renders any entities.
@@ -215,6 +252,11 @@ export class BootScene extends Phaser.Scene {
     try {
       this.loadingStatusText?.setText('Loading custom artwork...');
       const registry = await fetchGeneratedSpriteRegistry();
+      // Reuse the fetch that was started in preload(); fall back to a fresh
+      // call if preload() was skipped (e.g. headless test environments).
+      const registry = await (this.pendingRegistryFetch ?? fetchGeneratedSpriteRegistry());
+      markBoot('boot:manifest-fetch-end');
+      this.loadingStatusText?.setText('Loading custom artwork...');
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
 
       if (registry.size === 0 || !this.load) {
@@ -238,6 +280,7 @@ export class BootScene extends Phaser.Scene {
 
       // Wait for all generated sprite loads to complete, then start the game.
       // If the load cycle stalls, continue after a timeout so boot cannot hang.
+      markBoot('boot:sprites-load-start');
       await new Promise<void>((resolve) => {
         let settled = false;
         let loaded = 0;
@@ -279,6 +322,8 @@ export class BootScene extends Phaser.Scene {
         this.load.start();
       });
       this.setLoadingProgress(1);
+      markBoot('boot:sprites-load-end');
+      this.setLoadingProgress(1);
       this.startMainGame();
     } catch (err) {
       logger.warn('Generated sprite load failed; continuing with built-in sprites', {
@@ -294,6 +339,7 @@ export class BootScene extends Phaser.Scene {
       return;
     }
     this.startedMainGame = true;
+    markBoot('boot:game-start');
     this.scene.start(MainGameScene.KEY);
   }
 }

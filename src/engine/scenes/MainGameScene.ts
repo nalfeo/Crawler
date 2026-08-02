@@ -173,6 +173,13 @@ const FLOOR_1_COMMENTARY = {
 } as const;
 const logger = createLogger('engine:main-game-scene');
 
+/** Mark a named stage in the browser performance timeline (no-op in Node). */
+function markGame(label: string): void {
+  if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+    performance.mark(label);
+  }
+}
+
 function resolveSetPieceLightEmission(
   spriteId: string,
 ): { radiusFt: number; intensity: number } | null {
@@ -788,6 +795,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create(): void {
+    markGame('game:create-start');
     const worldSeed = this.options.worldSeed ?? 42;
     this.world = createGameWorld({
       seed: worldSeed,
@@ -998,14 +1006,18 @@ export class MainGameScene extends Phaser.Scene {
     // right stepPx, and so a scene restart resets any prior live tweaks. Routing
     // through setLightingConfig() gives clamping + a stepPx-change rebuild.
     this.setLightingConfig({ ...DEFAULT_LIGHTING_CONFIG, ...this.options.lightingConfig });
+    markGame('game:terrain-bake-start');
     this.drawFloorTerrain();
+    markGame('game:terrain-bake-end');
     this.ensureUiCamera();
     this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
     this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
     this.runFovSystemWithPerf(this.world);
+    markGame('game:lighting-start');
     this.updateLightingOverlay(true);
+    markGame('game:lighting-end');
     this.bridge.sync(this.world);
     this.updateOverlayText();
     if (typeof window !== 'undefined') {
@@ -1067,6 +1079,29 @@ export class MainGameScene extends Phaser.Scene {
       };
     }
 
+    markGame('game:create-end');
+    if (typeof performance !== 'undefined' && typeof performance.measure === 'function') {
+      try {
+        const terrain = performance.measure(
+          'game:terrain-bake',
+          'game:terrain-bake-start',
+          'game:terrain-bake-end',
+        );
+        const lighting = performance.measure(
+          'game:lighting',
+          'game:lighting-start',
+          'game:lighting-end',
+        );
+        const total = performance.measure('game:create', 'game:create-start', 'game:create-end');
+        logger.info('MainGameScene.create() timing', {
+          totalMs: Math.round(total.duration),
+          terrainBakeMs: Math.round(terrain.duration),
+          lightingMs: Math.round(lighting.duration),
+        });
+      } catch {
+        // Marks may be missing in headless / test environments — safe to ignore.
+      }
+    }
     this.events.once('shutdown', () => {
       logger.info('Main game scene shutdown');
       this.inputCapture?.destroy();
