@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a95d47e242105e4ee4120e3d56aab789e548ef3e",
+    "commitDate": "2026-08-02T18:23:36Z",
+    "commitSubject": "Deterministic controls for the top-5 regression classes (registry/asset integrity, silent-revert gate, allowlist expiry, automation-liveness lint) (#2695)",
+    "capturedAt": "2026-08-02T19:32:56.902Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30761523944",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/a95d47e242105e4ee4120e3d56aab789e548ef3e.json"
+  },
+  {
     "commit": "16707de91c5292a63cec1051ee8c07abda397018",
     "commitDate": "2026-08-02T16:50:44Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (150 art paths) (#2696)",
