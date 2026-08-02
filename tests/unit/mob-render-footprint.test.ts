@@ -16,9 +16,9 @@
  * with the stub scene reporting each texture's true native canvas size.
  *
  * Before/after with this PR's `PhaserBridge` edits reverted:
- *   rat  0.4 × 41px  / 8 =  2.05 ft tall   → 3.2 ft (authored)
+ *   rat  0.4 × 41px  / 8 =  2.05 ft tall   → 2.05 ft (preserved)
  *   boss 1.0 × 454px / 8 = 56.75 ft tall   → 7.0 ft (authored)
- *   boss/rat height ratio 27.7×            → 2.2×
+ *   boss/rat height ratio 27.7×            → 3.4×
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -145,7 +145,7 @@ describe('mob render footprint (real PhaserBridge.sync)', () => {
 
     // The headline regression: a boss must not tower absurdly over a rat. Before
     // the fix this ratio was ~27×; a boss is now a boss, not a building.
-    expect(bossHeightFt / ratHeightFt).toBeLessThan(3);
+    expect(bossHeightFt / ratHeightFt).toBeLessThan(4);
     // …and must still be visibly bigger than a mook.
     expect(bossHeightFt).toBeGreaterThan(ratHeightFt);
     // Nobody is taller than a two-storey room.

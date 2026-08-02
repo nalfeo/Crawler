@@ -38,11 +38,11 @@ const MAX_MOB_HEIGHT_FT = 12;
 
 /**
  * Widest / narrowest a mob may draw once its height is fitted to the authored
- * feet. The measured spread today is ≈1.5 ft (a tall goose gunner) to ≈11.6 ft
+ * feet. The measured spread today is ≈0.94 ft (the narrowest approved mook) to ≈11.6 ft
  * (a gnome on a car, authored wide on purpose), so this band admits every
  * approved variant while still catching an order-of-magnitude aspect error.
  */
-const MIN_MOB_WIDTH_FT = 1;
+const MIN_MOB_WIDTH_FT = 0.9;
 const MAX_MOB_WIDTH_FT = 14;
 
 /**
@@ -53,15 +53,14 @@ const MAX_MOB_WIDTH_FT = 14;
  */
 const MOOK_HEIGHT_FT = MAPPINGS.renderKinds.enemy_rat?.generated?.heightFt ?? 0;
 
-const ENTRIES_DIR = path.resolve(
-  import.meta.dirname,
-  '../../public/assets/generated/entries',
-);
+const ENTRIES_DIR = path.resolve(import.meta.dirname, '../../public/assets/generated/entries');
 
 interface ManifestShard {
   readonly spriteName?: string;
   readonly type?: string;
   readonly opaqueBounds?: {
+    readonly x: number;
+    readonly y: number;
     readonly width: number;
     readonly height: number;
     readonly canvasWidth: number;
@@ -117,15 +116,17 @@ describe('mob footprint guard', () => {
     for (const { name, shard } of shards) {
       const bounds = shard.opaqueBounds;
       expect(bounds, `${name} has no opaqueBounds; its drawn size cannot be derived`).toBeDefined();
+      expect(bounds!.x, `${name} opaque bounds x is negative`).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y, `${name} opaque bounds y is negative`).toBeGreaterThanOrEqual(0);
       expect(bounds!.width, `${name} has empty opaque bounds`).toBeGreaterThan(0);
       expect(bounds!.height, `${name} has empty opaque bounds`).toBeGreaterThan(0);
       expect(
-        bounds!.width,
-        `${name} opaque bounds are wider than its canvas`,
+        bounds!.x + bounds!.width,
+        `${name} opaque bounds overflow canvas width`,
       ).toBeLessThanOrEqual(bounds!.canvasWidth);
       expect(
-        bounds!.height,
-        `${name} opaque bounds are taller than its canvas`,
+        bounds!.y + bounds!.height,
+        `${name} opaque bounds overflow canvas height`,
       ).toBeLessThanOrEqual(bounds!.canvasHeight);
     }
   });

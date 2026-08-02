@@ -1307,6 +1307,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = resolveBaseScale(img, preferred);
+            img.setScale(visual.baseScale);
             // Invalidate the cached weapon anchor so the next game-layer access
             // recomputes from the updated variant entry.
             world.entityWeaponAnchors.delete(eid);
@@ -1328,6 +1329,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = resolveBaseScale(img, preferred);
+            img.setScale(visual.baseScale);
           }
         }
         if (entityType === 'player') {
@@ -1344,6 +1346,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = resolveBaseScale(img, preferred);
+            img.setScale(visual.baseScale);
             if (
               generatedAnimationByTexture.has(preferred.key) &&
               (img as Partial<Phaser.GameObjects.Sprite>).anims === undefined &&

@@ -28,8 +28,11 @@ from newer art rendered 4–8× oversized — that is the "HUGE mobs" report.
 Fix: mob size is now **authored in world feet** and fitted to the variant's opaque
 bounds.
 
-- `entity-sprite-mappings.json`: added `generated.heightFt` to all 8 enemy render kinds
-  (mooks/spawners 2.4–3.2 ft, bosses 7.0 ft). `player` deliberately keeps the pixel
+- `entity-sprite-mappings.json`: added `generated.heightFt` to all 8 enemy render kinds.
+  Legacy sane footprints are preserved exactly for existing 64px/128px art
+  (rat 2.05 ft, slime/baby slime 2.25 ft, rat nest 3.05 ft, slime pool 2.4 ft,
+  rat-slime 6.98 ft, slime-rat 3.98 ft); only the oversized family boss is
+  re-authored to 7.0 ft. `player` deliberately keeps the pixel
   multiplier — `tests/unit/player-npc-scale-parity.test.ts` pins it to the welcome-room
   NPC.
 - `src/shared/generated-assets.ts`: new pure `resolveGeneratedFootprintScale()`, a thin
@@ -44,11 +47,15 @@ bounds.
 - `computeEnemyScale` is untouched: cosmetic `sizeScale` (±10%) and the spawn pop still
   multiply on top.
 
-**Observed in the real artifact** (bridge-level test driving the real
-`PhaserBridge.sync` over the real shipped manifest shards, per rule #9 —
-`tests/unit/mob-render-footprint.test.ts`): Floor 1 rat **2.05 ft → 3.2 ft** tall;
-Floor 2 goblin family boss **56.75 ft → 7.0 ft**; boss/rat drawn-height ratio
-**27.7× → 2.2×**.
+**Observed in the real artifact** (`tests/e2e/mob-footprint-render-observation.test.ts`,
+headless Playwright booting the live `combat-arena-lab`): a live Floor 1 rat
+renders inside the authored **2.05 ft ±20%** band, a live Floor 2 family boss
+renders inside the authored **7.0 ft ±20%** band, and the boss/rat drawn-height
+ratio drops from the legacy **27.7×** blow-up to **<4×** in the running Phaser
+scene. The wider live band accounts for the same deterministic mob squash/stretch
+motion the shipped game applies on top of the authored base scale; the
+bridge-level backstop (`tests/unit/mob-render-footprint.test.ts`) still proves
+the underlying scale math against the shipped manifest shards.
 
 Deterministic backstop added (`tests/unit/mob-footprint-guard.test.ts`, mutation-tested):
 every generated enemy render kind must declare a `heightFt` in a sane band, and every
@@ -66,7 +73,7 @@ when the canvas default changed to 256.
   path.
 - **One `heightFt` per render kind, not per archetype.** All 61 Floor 2 non-boss
   archetypes route through `spriteTexture: 1` → `enemy_rat` and resolve their own art via
-  the global appearance-key registry — the *same* code path Floor 1 rats use. Footprint
+  the global appearance-key registry — the _same_ code path Floor 1 rats use. Footprint
   therefore cannot be split by code path. Floor 2 bosses use `spriteTexture: 5` →
   `enemy_family_boss`, which has its own knob.
 - **Rejected** per-archetype `spriteWidth`/`spriteHeight` from `enemies.floor*.json` as the
@@ -77,14 +84,11 @@ when the canvas default changed to 256.
 
 ## What's Next / Blockers
 
-- **OPEN QUESTION / success gate:** the standard mook height of **3.2 ft** is *not yet
-  confirmed by the maintainer*. It was chosen because it matches the Floor 1 rat's
-  pre-existing *canvas* footprint, but it makes the rat's *visible* art grow from ~2.05 ft
-  to 3.2 ft. If the answer is a different number, it is a one-line data change in
-  `entity-sprite-mappings.json` (plus the boss number, currently 7.0 ft) — no code change.
-- No PR was opened (not requested). A ≥3🍎 review harness + review ledger is required
-  before publishing one.
-- Follow-up worth considering: give the *sprite pipeline* the same feet vocabulary so a
+- If future art direction wants a different _authored_ mob scale, the render path is now a
+  one-line data change in `entity-sprite-mappings.json` instead of a hidden canvas-size
+  coupling.
+- Published PRs for this 3🍎 branch require the review harness + committed review ledger.
+- Follow-up worth considering: give the _sprite pipeline_ the same feet vocabulary so a
   brief declares its intended footprint, letting the guard compare authored intent against
   authored render size instead of only bounding the ratio.
 
@@ -99,7 +103,7 @@ when the canvas default changed to 256.
   `opaqueBounds` **with `canvasWidth`/`canvasHeight`**, which makes an offline,
   no-Phaser deterministic size guard possible. Any future "is this art the right size on
   screen" question should be answered from those shards.
-- `mobRole` exists in sprite *briefs* but not in manifest *entries*, so the runtime cannot
+- `mobRole` exists in sprite _briefs_ but not in manifest _entries_, so the runtime cannot
   key sizing on role — role-dependent sizing has to come from the render kind.
 
 ### Mistakes Made
@@ -123,6 +127,6 @@ when the canvas default changed to 256.
 - Several render kinds still carry both `scale` and `heightFt`. Once every generated kind
   (including `player`) is authored in feet, `scale` can be deleted and the fallback path
   removed — worth a small dedicated session.
-- The guard bounds width but not the ratio of authored height to what the brief *asked
-  for*. Wiring brief intent into the manifest would let the guard catch "the art is fine
+- The guard bounds width but not the ratio of authored height to what the brief _asked
+  for_. Wiring brief intent into the manifest would let the guard catch "the art is fine
   but the wiring is wrong" as well.

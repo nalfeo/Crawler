@@ -61,7 +61,7 @@
         "briefId": "rat-v1",
         "pinnedTextureKey": "rat-v1-var-9",
         "scale": 0.4,
-        "heightFt": 3.2
+        "heightFt": 2.05
       }
     },
     "enemy_slime": {
@@ -72,7 +72,7 @@
         "briefId": "slime-v1",
         "pinnedTextureKey": "slime-v1-var-9",
         "scale": 0.4,
-        "heightFt": 3.2
+        "heightFt": 2.25
       }
     },
     "enemy_spawner_rats_nest": {
@@ -105,7 +105,7 @@
         "briefId": "baby-slime-v1",
         "pinnedTextureKey": "baby-slime-v1-var-8",
         "scale": 0.4,
-        "heightFt": 3.2
+        "heightFt": 2.25
       }
     },
     "enemy_boss": {
@@ -132,7 +132,7 @@
         "briefId": "slime-rat-boss",
         "pinnedTextureKey": "slime-rat-boss-var-1",
         "scale": 0.6,
-        "heightFt": 7.0
+        "heightFt": 3.98
       }
     },
     "enemy_family_boss": {
