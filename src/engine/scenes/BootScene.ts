@@ -7,7 +7,10 @@ import {
   GENERATED_SPRITE_REGISTRY_KEY,
   preloadGeneratedSprites,
 } from '../generatedAssets/index.js';
-import { emptyGeneratedSpriteRegistry, type GeneratedSpriteRegistry } from '../../shared/generated-assets.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  type GeneratedSpriteRegistry,
+} from '../../shared/generated-assets.js';
 import { preloadTerrainPacks } from '../sprites/terrain-pack-visuals.js';
 
 const logger = createLogger('engine:boot-scene');
