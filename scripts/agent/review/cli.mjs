@@ -88,6 +88,18 @@ function scaffoldStage(name, apples = null) {
       return { clean: false, rounds: [] };
     case 'multi_model_review':
       return { clean: false, adjudicator_model: '', rounds: [] };
+    case 'independent_grade':
+      // Scaffolded with invalid placeholders on purpose: this stage must be
+      // filled in by `npm run review:grade -- record`, never hand-written from
+      // the author's own opinion of the change.
+      return {
+        completed: false,
+        grader_model: '',
+        head_sha: '',
+        criteria: {},
+        verdict: '',
+        findings_count: 0,
+      };
     default:
       return {};
   }
@@ -217,6 +229,10 @@ function main() {
       console.error('  init     --apples N --slug S --title T [--date YYYY-MM-DD] [--force]');
       console.error("  stage    <path> <stageName> --json '{...}'");
       console.error('  validate [path]');
+      console.error('');
+      console.error('The >=3🍎 independent_grade stage is filled in by the grader CLI:');
+      console.error('  npm run review:grade -- prompt <path>');
+      console.error('  npm run review:grade -- record <path> --model <graderModel> --file <reply>');
       return 1;
   }
 }

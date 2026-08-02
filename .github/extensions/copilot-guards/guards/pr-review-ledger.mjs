@@ -1,11 +1,19 @@
-// pr-review-ledger: hard-denies create_pull_request for a code-touching
-// branch that has not committed a valid, complete review ledger.
+// pr-review-ledger: hard-denies create_pull_request for a code-touching branch
+// that committed an INCOMPLETE or INVALID review ledger.
 //
 // The ledger (docs/knowledge/review-ledgers/YYYY-MM-DD-<slug>.review-ledger.json)
 // records WHICH apple-scaled review stages the change went through. This guard
 // validates COMPLETENESS for the declared apple tier — it does not (and cannot)
 // verify truthfulness; that is an artifact-trust model, same as the handoff
 // requirement in pr-preflight.
+//
+// A MISSING ledger no longer denies. 1–2🍎 changes require no review stages, so
+// their ledgers were content-free files that existed only to satisfy this guard
+// (49% of the committed corpus). The tier is only knowable FROM the ledger, so
+// dropping the low-tier file necessarily makes the ≥3🍎 ledger an artifact-trust
+// gate rather than a hard one — a missing ledger now surfaces a reminder instead.
+// The compensating control is the independent grader (`npm run review:grade`),
+// whose `independent_grade` stage is a REQUIRED ≥3🍎 stage validated here.
 //
 // Scope: only code-touching diffs. Docs-only / art-only / dependency-lockfile-
 // only diffs are skipped (see lib/pr-scope.mjs for the strict allowlist).
@@ -25,21 +33,22 @@ import {
   LEDGER_DIR,
 } from '../../../../scripts/agent/review/ledger.mjs';
 
-function missingLedgerReason(files) {
+function missingLedgerNotice(files) {
   const code = codeFiles(files);
   const shown = code.slice(0, 12);
   const more = code.length > 12 ? ` (+${code.length - 12} more)` : '';
   return [
-    `No review ledger found for this code-touching change. Per docs/agent-os/policies/review-harness-policy.md, every code change must commit a review ledger under ${LEDGER_DIR}/ recording the apple-scaled review stages it went through.`,
+    `pr-review-ledger: no review ledger on this code-touching branch. That is CORRECT for a 1–2🍎 change (no review stages are required, so no ledger is needed). If you estimated this change at 3🍎 or more, per docs/agent-os/policies/review-harness-policy.md you MUST commit one under ${LEDGER_DIR}/ before merging.`,
     '',
     `Code files in this diff:\n${shown.map((f) => `  • ${f}`).join('\n')}${more}`,
     '',
-    'Author one with the review-harness skill, then commit it on this branch:',
-    '  npm run review:ledger -- init --apples <1..5> --slug <kebab-slug> --title "<title>"',
+    'If this is ≥3🍎, author one with the review-harness skill, then commit it on this branch:',
+    '  npm run review:ledger -- init --apples <3..5> --slug <kebab-slug> --title "<title>"',
     "  npm run review:ledger -- stage <path> <stage> --json '{...}'   # per review stage",
+    '  npm run review:grade -- <path>                                 # independent grader',
     '  npm run review:ledger -- validate <path>',
     '',
-    'Required stages by apple tier: 1–2 → (none, ledger only); 3 → plan_review + code_review; 4–5 → + multi_model_review (the plan_review must be ADVERSARIAL — see ADR 0051).',
+    'Required stages by apple tier: 1–2 → (none, no ledger); 3 → plan_review + code_review + independent_grade; 4–5 → + multi_model_review (the plan_review must be ADVERSARIAL — see ADR 0051).',
   ].join('\n');
 }
 
@@ -70,7 +79,10 @@ function decideLedger(files, addedFiles, opts = {}) {
 
   const ledgers = findReviewLedgerPaths(addedFiles);
   if (ledgers.length === 0) {
-    return { decision: 'deny', reason: missingLedgerReason(files) };
+    // Artifact-trust: a 1–2🍎 change legitimately has no ledger, and the tier is
+    // only readable FROM a ledger, so this cannot be a hard gate without
+    // reinstating the content-free low-tier file. Remind, do not deny.
+    return { decision: 'allow', additionalContext: missingLedgerNotice(files) };
   }
 
   const results = ledgers.map((p) => ({ path: p, result: validateFile(p) }));
@@ -136,4 +148,4 @@ export default {
   },
 };
 
-export { decideLedger, missingLedgerReason, gatherDecision };
+export { decideLedger, missingLedgerNotice, gatherDecision };

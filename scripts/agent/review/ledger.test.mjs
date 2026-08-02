@@ -9,7 +9,25 @@ import {
   normalizeRepoPath,
   LEDGER_PATH_RE,
   SCHEMA_VERSION,
+  GRADE_CRITERIA,
+  priorReviewModels,
 } from './ledger.mjs';
+
+// A valid independent_grade stage: a grader model that appears in NO other
+// stage, a graded sha, and every criterion scored 1..5.
+function validGrade(extra = {}) {
+  const criteria = {};
+  for (const c of GRADE_CRITERIA) criteria[c] = 4;
+  return {
+    completed: true,
+    grader_model: 'independent-grader-model',
+    head_sha: 'a'.repeat(40),
+    criteria,
+    verdict: 'pass',
+    findings_count: 0,
+    ...extra,
+  };
+}
 
 function cleanRound(extra = {}) {
   return { round: 1, models: ['m1'], concerns_count: 0, resolved_count: 0, clean: true, ...extra };
@@ -66,6 +84,7 @@ function tier4(overrides = {}) {
         adjudicator_model: 'gpt-5.4',
         rounds: [mmRound({ concerns_count: 3, valid_count: 2, resolved_count: 2 })],
       },
+      independent_grade: validGrade(),
     },
     ...overrides,
   };
@@ -130,6 +149,7 @@ function tier3(overrides = {}) {
         plan_divergence: 'minor',
       },
       code_review: { clean: true, rounds: [cleanRound({ concerns_count: 1, resolved_count: 1 })] },
+      independent_grade: validGrade(),
     },
     ...overrides,
   };
@@ -138,17 +158,155 @@ function tier3(overrides = {}) {
 test('requiredStagesForApples maps tiers correctly', () => {
   assert.deepEqual(requiredStagesForApples(1), []);
   assert.deepEqual(requiredStagesForApples(2), []);
-  assert.deepEqual(requiredStagesForApples(3), ['plan_review', 'code_review']);
+  assert.deepEqual(requiredStagesForApples(3), ['plan_review', 'code_review', 'independent_grade']);
   assert.deepEqual(requiredStagesForApples(4), [
     'plan_review',
     'code_review',
     'multi_model_review',
+    'independent_grade',
   ]);
   assert.deepEqual(requiredStagesForApples(5), [
     'plan_review',
     'code_review',
     'multi_model_review',
+    'independent_grade',
   ]);
+});
+
+test('independent_grade is required only on schema v2 (historical v1 ledgers stay valid)', () => {
+  for (const apples of [3, 4, 5]) {
+    assert.equal(
+      requiredStagesForApples(apples, 'review-ledger/v1').includes('independent_grade'),
+      false,
+      `v1 ${apples}🍎 must not require independent_grade`,
+    );
+    assert.equal(
+      requiredStagesForApples(apples, 'review-ledger/v2').includes('independent_grade'),
+      true,
+    );
+  }
+  // 1-2🍎 never requires it, on any schema version.
+  assert.deepEqual(requiredStagesForApples(2, 'review-ledger/v2'), []);
+});
+
+test('a v1 3🍎 ledger without independent_grade is still valid', () => {
+  const led = tier3();
+  led.schema_version = 'review-ledger/v1';
+  delete led.stages.independent_grade;
+  const r = validateLedger(led);
+  assert.equal(r.ok, true, r.errors.join('; '));
+  assert.deepEqual(r.requiredStages, ['plan_review', 'code_review']);
+});
+
+test('a v2 3🍎 ledger WITHOUT independent_grade is rejected', () => {
+  const led = tier3();
+  delete led.stages.independent_grade;
+  const r = validateLedger(led);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /required stage 'independent_grade' is missing/);
+});
+
+test('an unknown schema_version is rejected and names the supported set', () => {
+  const r = validateLedger(tier3({ schema_version: 'review-ledger/v9' }));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /schema_version must be one of/);
+});
+
+// ---------------------------------------------------------------------------
+// independent_grade (schema v2)
+// ---------------------------------------------------------------------------
+
+test('independent_grade requires a grader model that reviewed nothing else', () => {
+  // 'gpt-5.4' is tier3's plan reviewer -> must not be the grader.
+  const r = validateLedger(
+    tier3({
+      stages: {
+        ...tier3().stages,
+        independent_grade: validGrade({ grader_model: 'gpt-5.4' }),
+      },
+    }),
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /must be INDEPENDENT/);
+});
+
+test('priorReviewModels collects every model from the other stages', () => {
+  const models = priorReviewModels(tier4().stages);
+  assert.ok(models.includes('gpt-5.4'), 'plan reviewer + adjudicator');
+  assert.ok(models.includes('m1'), 'code_review round model');
+  assert.ok(models.includes('m2'), 'multi_model_review round model');
+  assert.equal(new Set(models).size, models.length, 'deduplicated');
+});
+
+test('independent_grade requires every criterion scored 1..5 and rejects unknown criteria', () => {
+  const bad = validGrade();
+  bad.criteria = { ...bad.criteria, correctness: 0, bogus_criterion: 3 };
+  const r = validateLedger(tier3({ stages: { ...tier3().stages, independent_grade: bad } }));
+  assert.equal(r.ok, false);
+  const msg = r.errors.join('; ');
+  assert.match(msg, /criteria\.correctness must be an integer 1\.\.5/);
+  assert.match(msg, /unknown criteria: bogus_criterion/);
+});
+
+test('independent_grade requires head_sha so a grade cannot be carried across a rewrite', () => {
+  const r = validateLedger(
+    tier3({
+      stages: { ...tier3().stages, independent_grade: validGrade({ head_sha: '' }) },
+    }),
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /head_sha must be the non-empty git sha/);
+});
+
+test("independent_grade verdict 'fail' requires an escalated_to_human record", () => {
+  const r = validateLedger(
+    tier3({
+      stages: { ...tier3().stages, independent_grade: validGrade({ verdict: 'fail' }) },
+    }),
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /requires an escalated_to_human record/);
+});
+
+test("independent_grade verdict 'fail' WITH a valid escalation is accepted", () => {
+  const r = validateLedger(
+    tier3({
+      stages: {
+        ...tier3().stages,
+        independent_grade: validGrade({
+          verdict: 'fail',
+          findings_count: 2,
+          escalated_to_human: { reason: '1 blocker finding', unresolved_findings: 1 },
+        }),
+      },
+    }),
+  );
+  assert.equal(r.ok, true, r.errors.join('; '));
+});
+
+test('independent_grade rejects escalated_to_human alongside a passing verdict', () => {
+  const r = validateLedger(
+    tier3({
+      stages: {
+        ...tier3().stages,
+        independent_grade: validGrade({
+          escalated_to_human: { reason: 'x', unresolved_findings: 1 },
+        }),
+      },
+    }),
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /only valid alongside verdict 'fail'/);
+});
+
+test('independent_grade rejects an invalid verdict value', () => {
+  const r = validateLedger(
+    tier3({
+      stages: { ...tier3().stages, independent_grade: validGrade({ verdict: 'maybe' }) },
+    }),
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /verdict must be one of: pass, fail/);
 });
 
 test('a complete tier-4 ledger is valid', () => {
@@ -262,7 +420,12 @@ test('4🍎 no longer requires dual_plan_synthesis (adversarial plan_review repl
   assert.equal('dual_plan_synthesis' in led.stages, false);
   const r = validateLedger(led);
   assert.equal(r.ok, true, r.errors.join('; '));
-  assert.deepEqual(r.requiredStages, ['plan_review', 'code_review', 'multi_model_review']);
+  assert.deepEqual(r.requiredStages, [
+    'plan_review',
+    'code_review',
+    'multi_model_review',
+    'independent_grade',
+  ]);
 });
 
 test('4🍎 may still carry a valid legacy dual_plan_synthesis stage (validated-if-present)', () => {

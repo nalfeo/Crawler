@@ -6,7 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import test from 'node:test';
 
-import { attemptMainSync, readSyncState, writeSyncState } from './sync-main.mjs';
+import { attemptMainSync, readSyncState } from './sync-main.mjs';
 
 function git(cwd, args, env = {}) {
   return execFileSync('git', args, {

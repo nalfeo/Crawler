@@ -92,7 +92,12 @@ function initLedgerInTemp(apples) {
 
 test('init at 4🍎 scaffolds adversarial plan_review + no dual_plan_synthesis (ADR 0051)', () => {
   const led = initLedgerInTemp(4);
-  assert.deepEqual(Object.keys(led.stages), ['plan_review', 'code_review', 'multi_model_review']);
+  assert.deepEqual(Object.keys(led.stages), [
+    'plan_review',
+    'code_review',
+    'multi_model_review',
+    'independent_grade',
+  ]);
   assert.equal('dual_plan_synthesis' in led.stages, false);
   // adversarial + instrumentation fields scaffolded as invalid placeholders to force the author to fill them.
   assert.equal(led.stages.plan_review.adversarial, false);
@@ -102,7 +107,7 @@ test('init at 4🍎 scaffolds adversarial plan_review + no dual_plan_synthesis (
 
 test('init at 3🍎 scaffolds plan_divergence but NOT adversarial/alternatives (ADR 0051)', () => {
   const led = initLedgerInTemp(3);
-  assert.deepEqual(Object.keys(led.stages), ['plan_review', 'code_review']);
+  assert.deepEqual(Object.keys(led.stages), ['plan_review', 'code_review', 'independent_grade']);
   assert.equal(led.stages.plan_review.plan_divergence, '');
   assert.equal('adversarial' in led.stages.plan_review, false);
   assert.equal('alternatives_considered' in led.stages.plan_review, false);
@@ -111,4 +116,18 @@ test('init at 3🍎 scaffolds plan_divergence but NOT adversarial/alternatives (
 test('init at 2🍎 scaffolds no required stages', () => {
   const led = initLedgerInTemp(2);
   assert.deepEqual(led.stages, {});
+});
+
+test('init at 3🍎 scaffolds independent_grade with placeholders the grader CLI must fill', () => {
+  const led = initLedgerInTemp(3);
+  const grade = led.stages.independent_grade;
+  assert.equal(grade.completed, false);
+  assert.equal(grade.grader_model, '');
+  assert.equal(grade.head_sha, '');
+  assert.deepEqual(grade.criteria, {});
+});
+
+test('init at 2🍎 scaffolds no independent_grade', () => {
+  const led = initLedgerInTemp(2);
+  assert.equal('independent_grade' in led.stages, false);
 });

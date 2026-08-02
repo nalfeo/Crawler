@@ -125,6 +125,7 @@
     "docs:index": "tsx scripts/agent/docs/build-system-index.ts --apply",
     "verify:coverage": "vitest run --project unit --coverage",
     "review:ledger": "node scripts/agent/review/cli.mjs",
+    "review:grade": "node scripts/agent/review/grade-cli.mjs",
     "test:mutate": "node scripts/agent/review/mutation-cli.mjs",
     "review:visual": "npm run review:visual:deterministic && npm run review:visual:llm",
     "review:visual:deterministic": "vitest run --project e2e tests/e2e/inventory-flow.test.ts tests/e2e/hud-overlap-visual.test.ts",
