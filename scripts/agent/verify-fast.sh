@@ -220,11 +220,29 @@ else
   npx vitest run --changed --project sprites --reporter=dot --passWithNoTests
 fi
 
-echo "🔍 Step 3/3: Physics-defs sync + Size + Weight coverage checks..."
+echo "🔍 Step 3/3: Data-contract + integrity + coverage checks..."
 # physics-defs-sync is cheap and checks data drift (a docs-only entity-sizing.md
 # edit is gameplay_safe yet must still be validated against the code), so it always
 # runs.
 npx tsx scripts/agent/health/check-physics-defs-sync.ts
+
+# The three integrity guards below are pure JSON/file reads (no sim, no git, no
+# subprocess) and together cost well under a second, so they always run — the
+# whole point is that a data-contract break is caught at edit time rather than by
+# a red CI job or, worse, by a human noticing broken art in-game.
+#
+#  - registry-integrity: duplicate/blank ids WITHIN a registry file and ACROSS
+#    sibling files sharing one logical id namespace. The cross-file case is the
+#    one no per-file loader can see (achievements.floor1 + floor2 tier collision).
+#  - asset-integrity: the shard ↔ PNG ↔ contentHash triple over the entire
+#    committed corpus, so a stale hash or an orphaned shard is found once rather
+#    than by eye (welcome-room stale shard hashes, resurrected walk shard).
+#  - allowlist-expiry: every governed allowlist entry still has a specific
+#    reason and an unexpired / correctly-shaped deadline (npm audit exceptions
+#    went red because an allowlist quietly expired on a date).
+npx tsx scripts/agent/health/check-registry-integrity.ts
+npx tsx scripts/agent/health/check-asset-integrity.ts
+npx tsx scripts/agent/health/check-allowlist-expiry.ts
 
 # size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
 # imports only src/core, src/shared and src/game/ai, so a change set classified
@@ -253,6 +271,39 @@ if [ "$run_size_weight" -eq 1 ]; then
 else
   echo "   ⏭️  Skipping size + weight coverage: change set is gameplay_safe (headless-sim inputs unchanged)."
   echo "      Force them with 'npm run check:size-coverage' / 'npm run check:weight-coverage'."
+fi
+
+# ── Silent merge-revert guard (local, merge-commit-only) ────────────────────
+# The CI job `check-silent-reverts` is the authoritative gate, but it only runs
+# on `pull_request`. That made the guard purely post-hoc: two main-merges (PR
+# #2022's Don Paco boss-ability rows, PR #2365's upstream test-only-exports
+# wrapper) silently discarded upstream content and needed a human to notice and
+# reconstruct it. Running the same guard the moment the merge is created moves
+# the detection from "after review" to "before the next commit".
+#
+# Gated on the branch actually containing a merge commit so the overwhelmingly
+# common linear-branch case pays nothing. Skipped (never failed) on a shallow
+# clone or an unresolvable base: the guard fails closed by design, and a local
+# shallow checkout is a tooling state, not a branch defect. CI re-runs it with
+# fetch-depth: 0 on every PR, so skipping locally cannot weaken the gate.
+if [ -z "${VERIFY_FAST_SKIP_SILENT_REVERTS:-}" ]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  merge_scope="$(bash "$script_dir/ci/merge-scope.sh" 2>/dev/null || true)"
+  has_merge="$(printf '%s\n' "$merge_scope" | grep -E '^has_merge=' | tail -n1 || true)"
+  can_run="$(printf '%s\n' "$merge_scope" | grep -E '^can_run=' | tail -n1 || true)"
+  base_ref="$(printf '%s\n' "$merge_scope" | grep -E '^base_ref=' | tail -n1 | cut -d= -f2- || true)"
+  if [ "$has_merge" = "has_merge=true" ] && [ "$can_run" = "can_run=true" ]; then
+    echo "🔍 Extra step: Silent merge-revert guard (branch contains a merge commit)..."
+    # Forward the ref merge-scope actually resolved. It falls back to a local
+    # `main` for offline work, while the guard defaults to `origin/main`; without
+    # this the guard would die resolving a ref that does not exist here.
+    SILENT_REVERT_BASE_REF="${base_ref:-origin/main}" \
+      npx tsx scripts/agent/health/silent-reverts.ts
+  elif [ "$can_run" = "can_run=false" ]; then
+    echo "   ⏭️  Skipping silent merge-revert guard: history is not resolvable here"
+    echo "      (shallow clone or no merge base). CI runs it on every PR with fetch-depth: 0."
+    echo "      To run it locally: 'git fetch --unshallow origin' then 'npm run check:silent-reverts'."
+  fi
 fi
 
 echo "✅ Fast verification passed."
