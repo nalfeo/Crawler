@@ -66,11 +66,21 @@ describe('BootScene generated sprite preload gate', () => {
   });
 
   it('advances the reserved 80→100% segment on both success and error file events', () => {
-    expect(source).toMatch(/this\.load\.on\(Phaser\.Loader\.Events\.FILE_COMPLETE, onFileResolved\);/);
-    expect(source).toMatch(/this\.load\.on\(Phaser\.Loader\.Events\.FILE_LOAD_ERROR, onFileResolved\);/);
-    expect(source).toMatch(/this\.load\.off\(Phaser\.Loader\.Events\.FILE_COMPLETE, onFileResolved\);/);
-    expect(source).toMatch(/this\.load\.off\(Phaser\.Loader\.Events\.FILE_LOAD_ERROR, onFileResolved\);/);
-    expect(source).toMatch(/this\.setLoadingProgress\(0\.8 \+ 0\.2 \* \(loaded \/ queued\.length\)\);/);
+    expect(source).toMatch(
+      /this\.load\.on\(Phaser\.Loader\.Events\.FILE_COMPLETE, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.load\.on\(Phaser\.Loader\.Events\.FILE_LOAD_ERROR, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.load\.off\(Phaser\.Loader\.Events\.FILE_COMPLETE, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.load\.off\(Phaser\.Loader\.Events\.FILE_LOAD_ERROR, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.setLoadingProgress\(0\.8 \+ 0\.2 \* \(loaded \/ queued\.length\)\);/,
+    );
   });
 
   // Render-fix linchpin: terrain-pack textures must be queued in preload() so
