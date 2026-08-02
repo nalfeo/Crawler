@@ -29,6 +29,7 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TerrainType, BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { getTerrainPack } from '../../src/shared/terrain-pack-registry.js';
+import { getTileVisual } from '../../src/engine/sprites/tile-visuals.js';
 import { FULLY_OPAQUE_BLOB47_MASK } from '../../src/shared/terrain-pack-mask.js';
 import {
   createBakeScene,
@@ -225,27 +226,84 @@ describe('terrain bake — clears', () => {
     expect(scene.rt.clearCount).toBe(0);
   });
 
-  it('still clears an inked cover cell when the opaque repaint cannot happen', () => {
-    // Same enclosed-wall map, but the wall atlas texture is NOT loaded, so
-    // the wall falls through to a path that does not opaquely repaint the
-    // full cell. With the pack's ability to ink removed as well, the bake
-    // must not leave stale pixels: this is the conservative branch, and it
-    // is what the old unconditional clear was really protecting.
-    const map = makeMap([
-      [W, W, W],
-      [W, F, W],
-      [W, W, W],
-    ]);
+  it('still clears an inked cover cell when no opaque repaint can destroy the ink', () => {
+    // The clear is not dead code: it is what upholds the decal-clipping
+    // invariant on the conservative branches. This map is built so the clear
+    // MUST fire — a large floor interior so `industrial-cave`'s decals clear
+    // the DECAL_MIN_GROUND_FRACTION bar and actually stamp (inking the wall
+    // ring they overhang), with the wall atlas and every floor pool texture
+    // withheld so the cover pass falls through to the generated-PNG branch,
+    // which is not guaranteed opaque and therefore cannot cancel the clear.
+    const size = 16;
+    const rows: TerrainType[][] = [];
+    for (let ty = 0; ty < size; ty++) {
+      const row: TerrainType[] = [];
+      for (let tx = 0; tx < size; tx++) {
+        const edge = tx === 0 || ty === 0 || tx === size - 1 || ty === size - 1;
+        row.push(edge ? TerrainType.STONE_WALL : TerrainType.STONE_FLOOR);
+      }
+      rows.push(row);
+    }
+    const map = makeMap(rows);
+
     const pack = getTerrainPack('industrial-cave');
-    // Load everything EXCEPT the wall atlas + floor pools, forcing the
-    // fallback path for cover cells while decals/linework can still ink.
-    const withoutOpaqueRepaint = packTextureKeys(pack).filter(
-      (k) => k !== pack.wallAutotile.textureKey && !pack.floorPool.some((v) => v.textureKey === k),
-    );
-    const scene = createBakeScene({ loadedTextures: withoutOpaqueRepaint });
-    buildTerrainLayer(scene.scene, map, { terrainPackId: 'industrial-cave' });
-    // The bake must still produce commands; the assertion that matters is
-    // that it did not silently skip protecting the fallback path.
-    expect(scene.rt.stampCount + scene.rt.fillCount).toBeGreaterThan(0);
+    const decalKeys = (pack.groundDecals ?? []).map((d) => d.textureKey);
+    expect(decalKeys.length).toBeGreaterThan(0);
+    const wallFallbackKey = getTileVisual(TerrainType.STONE_WALL)?.textureKey;
+    expect(wallFallbackKey).toBeTruthy();
+
+    const scene = createBakeScene({
+      loadedTextures: [...decalKeys, wallFallbackKey!],
+      record: true,
+    });
+    const result = buildTerrainLayer(scene.scene, map, { terrainPackId: 'industrial-cave' });
+
+    // Decals really did stamp, so there really is cross-cell ink to erase...
+    expect(result.packGroundDecalCount).toBeGreaterThan(0);
+    // ...and the cover pass really did clear the cells they bled into.
+    expect(scene.rt.clearCount).toBeGreaterThan(0);
+    // Only inked cover cells are cleared — never every wall.
+    expect(scene.rt.clearCount).toBeLessThan(result.generatedCount);
+    for (const c of scene.rt.clears) {
+      expect(c.w).toBe(4 * 8);
+      expect(c.h).toBe(4 * 8);
+    }
+  });
+});
+
+describe('terrain bake — width-derived generated scale can overflow its cell', () => {
+  it('clears the cell below a generated tile that is taller than it is wide', () => {
+    // `resolveGeneratedScale` derives scale from the source WIDTH only, so a
+    // generated PNG twice as tall as it is wide renders a full extra tile row
+    // past the bottom of its own cell. That is untracked cross-cell ink, and
+    // the cover pass below it must still clear — otherwise skipping the clear
+    // would turn a latent art defect into a visible one.
+    //
+    // Row 0 is a generated STONE_FLOOR; row 1 is a wall painted in the cover
+    // pass. No terrain pack is passed, so the wall takes the generated path
+    // too and never opaquely repaints via a pool stamp.
+    const map = makeMap([[TerrainType.STONE_FLOOR], [TerrainType.STONE_WALL]]);
+    const generatedKeys = [TerrainType.STONE_FLOOR, TerrainType.STONE_WALL].map((t) => {
+      const key = getTileVisual(t)?.textureKey;
+      if (!key) throw new Error(`expected a generated textureKey on ${TerrainType[t]}`);
+      return key;
+    });
+
+    const tall = createBakeScene({
+      loadedTextures: generatedKeys,
+      sourceImageSize: { width: 256, height: 512 },
+      record: true,
+    });
+    buildTerrainLayer(tall.scene, map);
+    expect(tall.rt.clears).toHaveLength(1);
+    expect(tall.rt.clears[0]!.y).toBe(4 * 8);
+
+    // The same map with square art overflows nothing, so no clear at all.
+    const square = createBakeScene({
+      loadedTextures: generatedKeys,
+      sourceImageSize: { width: 256, height: 256 },
+    });
+    buildTerrainLayer(square.scene, map);
+    expect(square.rt.clearCount).toBe(0);
   });
 });

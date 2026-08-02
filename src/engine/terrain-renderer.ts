@@ -551,27 +551,54 @@ export function buildTerrainLayer(
   // marks a key whose texture is missing or has an unusable width, so that tile
   // deterministically falls through to the Kenney sheet path below.
   const generatedScaleCache = new Map<string, number | null>();
+  /**
+   * Extra tile ROWS a generated stamp covers below its own cell, per texture key.
+   *
+   * The scale above is derived from WIDTH alone, so a generated PNG that is
+   * taller than it is wide renders past the bottom of its tile. Square art (all
+   * of it today) overflows nothing. Rather than assume squareness, the overflow
+   * is measured and fed into `inkedCells`, so the cover pass keeps clearing
+   * cells that a tall tile actually bled into.
+   */
+  const generatedOverflowRowsCache = new Map<string, number>();
   const resolveGeneratedScale = (textureKey: string): number | null => {
     const cached = generatedScaleCache.get(textureKey);
     if (cached !== undefined) return cached;
     let scale: number | null = null;
+    let overflowRows = 0;
     if (textureExists(textureKey)) {
-      const source = scene.textures.get(textureKey).getSourceImage() as { width?: number };
+      const source = scene.textures.get(textureKey).getSourceImage() as {
+        width?: number;
+        height?: number;
+      };
       const srcWidth = typeof source?.width === 'number' ? source.width : 0;
-      if (srcWidth > 0) scale = tileSize / srcWidth;
+      const srcHeight = typeof source?.height === 'number' ? source.height : 0;
+      if (srcWidth > 0) {
+        scale = tileSize / srcWidth;
+        overflowRows = Math.max(0, Math.ceil((srcHeight * scale) / tileSize) - 1);
+      }
     }
     generatedScaleCache.set(textureKey, scale);
+    generatedOverflowRowsCache.set(textureKey, overflowRows);
     return scale;
   };
 
   /**
    * Cells a cross-tile stamp has actually put ink into, in TILE coordinates.
    *
-   * Only the ground-decal pass can mark a cell it does not own: a decal spans
-   * up to `spanTiles` and is deliberately allowed to hang off its ground so the
-   * wall pass clips it (see the decal pass below). Pool variants, wall frames,
-   * linework tiles and linework props are all single-cell stamps whose art is
-   * byte-restored at the borders, so none of them can bleed into a neighbour.
+   * Only the ground-decal pass can mark a cell it does not own *by design*: a
+   * decal spans up to `spanTiles` and is deliberately allowed to hang off its
+   * ground so the wall pass clips it (see the decal pass below). Pool variants,
+   * wall frames, linework tiles and linework props are all single-cell stamps —
+   * square frames scaled to exactly `tileSize`, and the props' only rotation is
+   * a quarter turn, which preserves a square's bounds — so none of them can
+   * bleed into a neighbour.
+   *
+   * The two legacy fallback paths (generated single PNGs and Kenney sheet
+   * frames) scale by WIDTH only, so non-square art would render past the bottom
+   * of its cell. That is not true of any shipped tile today, but it is a
+   * property of the ART rather than of this code, so the overflow is measured
+   * and marked here instead of assumed away.
    *
    * The cover pass consults this to decide whether a cell needs clearing at
    * all. On a pack with no `groundDecals` (Floor 1) nothing is ever marked and
@@ -581,6 +608,19 @@ export function buildTerrainLayer(
    * clone for each one, breaking the in-flight quad batch every time.
    */
   const inkedCells = new Uint8Array(width * height);
+
+  /**
+   * Mark the `rows` cells directly below `(tx, ty)` as inked.
+   *
+   * Used by the two width-scaled fallback paths, whose stamps are the only
+   * non-decal ones that can exceed their own cell. Clamped to the map, so an
+   * overflow off the bottom edge marks nothing.
+   */
+  const markVerticalOverflow = (tx: number, ty: number, rows: number): void => {
+    for (let ty2 = ty + 1; ty2 <= Math.min(height - 1, ty + rows); ty2++) {
+      inkedCells[ty2 * width + tx] = 1;
+    }
+  };
 
   /**
    * Per-cell "reads as solid for a neighbouring wall's blob47 mask" grid,
@@ -797,10 +837,12 @@ export function buildTerrainLayer(
             scaleY: generatedScale,
           });
           generatedCount++;
+          markVerticalOverflow(tx, ty, generatedOverflowRowsCache.get(visual.textureKey) ?? 0);
         } else if (visual && textureExists(visual.sheetKey)) {
           const sheet = getSheet(visual.sheetKey);
           const frameSize = sheet?.frameWidth ?? tileSize;
           const scale = tileSize / frameSize;
+          const frameHeight = sheet?.frameHeight ?? frameSize;
           const frame = resolveFrame(visual, floorMap.terrain, width, height, tx, ty, terrain);
           // Same conservatism as the generated branch: a Kenney frame may carry
           // its own transparency.
@@ -812,6 +854,11 @@ export function buildTerrainLayer(
             scaleY: scale,
           });
           spriteCount++;
+          markVerticalOverflow(
+            tx,
+            ty,
+            Math.max(0, Math.ceil((frameHeight * scale) / tileSize) - 1),
+          );
         } else {
           // rt.fill() queues a fill command into Phaser 4's DynamicTexture buffer.
           // Commands are NOT visible until rt.render() is called below.

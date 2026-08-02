@@ -193,6 +193,13 @@ export function packTextureKeys(pack: TerrainPackDef): string[] {
 export function createBakeScene(options: {
   loadedTextures: Iterable<string>;
   record?: boolean;
+  /**
+   * Reported source-image size for the generated-tile path. Defaults to the
+   * square 256x256 of the approved generated PNGs. A test can report a TALLER
+   * source to exercise the width-derived-scale overflow path, since
+   * `resolveGeneratedScale` scales by width alone.
+   */
+  sourceImageSize?: { width: number; height: number };
 }): TerrainBakeScene {
   const loaded = new Set(options.loadedTextures);
   const rt = new CountingRenderTexture(options.record ?? false);
@@ -216,7 +223,9 @@ export function createBakeScene(options: {
         state.textureExistsCalls++;
         return loaded.has(key);
       },
-      get: () => ({ getSourceImage: () => ({ width: 256, height: 256 }) }),
+      get: () => ({
+        getSourceImage: () => options.sourceImageSize ?? { width: 256, height: 256 },
+      }),
     },
   } as unknown as Phaser.Scene;
   return Object.assign(state, { scene });

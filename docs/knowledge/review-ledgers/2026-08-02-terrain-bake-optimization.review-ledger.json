@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-02",
+  "session_slug": "terrain-bake-optimization",
+  "task_title": "Terrain bake optimization: eliminate redundant clears, wall underdraw, and per-tile CPU work",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Blocking: (1) command counts do not prove the wall-clock goal - resolved by measuring game:terrain-bake in the real booted scene, median of 5 boots per build (2113.2ms -> 161.9ms); (2) opaque texels are necessary but not sufficient for byte identity - resolved by a full old/new Floor 1 screenshot diff (0/1440000 differing pixels) plus a same-build control run; (3) Step 4 (deferred off-camera bake) violates the bounded contract - Step 4 was not implemented, Steps 1-3 beat the gate. Non-blocking: (4) generated-PNG and Kenney fallback paths scale by WIDTH only so non-square art could bleed into an untracked cover cell - FIXED: overflow rows are now measured from the source height and marked in inkedCells, with a regression test. (5) suggested a simpler no-decal fast path instead of the ink grid - kept the grid, since it also drives Floor 2 (which has decals) to zero clears at the cost of one Uint8Array. (6) confirmed pickPoolCombo builds a fresh SeededRandom per tile so the underdraw skip cannot desync RNG - counter-invariance assertions added. (7) reordering suggestion - noted, all steps landed and measured together."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.6"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "One Medium finding: the clear-path test asserted only that the bake produced commands, and the decal set never actually fired on its 3x3 map, so no test exercised rt.clear(). Replaced with a 16x16 walled-room fixture that withholds the wall atlas and floor pools so decals really stamp and the cover pass really clears; verified by mutation (deleting the rt.clear call now fails 2 tests). Reviewer confirmed clear-skip soundness on every cover branch, ink-tracking completeness, RNG determinism (pickPoolCombo builds a fresh SeededRandom per tile), computeRawMask8Grid bit-order equivalence, TERRAIN_FLAGS derivation, stamp-config cache immutability, and TerrainLayerResult counter integrity."
+        }
+      ]
+    }
+  }
+}
