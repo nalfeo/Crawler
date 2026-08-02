@@ -23,6 +23,7 @@ import {
   type HudFamilyRelationshipsState,
 } from './HudFamilyRelationships.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
+import { getSafeAreaInsets, onSafeAreaChange } from './safe-area.js';
 import { computeVitalsScale } from './HudVitalsLayout.js';
 import { GAME } from '../shared/constants.js';
 import type { FamilyRelationshipsLayout } from './HudFamilyRelationships.js';
@@ -146,17 +147,22 @@ export function createHudUI(scene: Phaser.Scene): {
     const w = GAME.WIDTH;
     const h = GAME.HEIGHT;
     const cx = w / 2;
+    // Inset the edge-anchored corner groups out of the display cutout / home
+    // indicator bands. Zero on desktop and on any device whose unsafe bands
+    // fall inside the letterbox (see src/engine/safe-area.ts).
+    const safe = getSafeAreaInsets(scene);
 
-    bottomLeft.setScale(s).setPosition(0, h * (1 - s));
+    bottomLeft.setScale(s).setPosition(safe.left, h * (1 - s) - safe.bottom);
     bottomCenter
       .setScale(bottomCenterScale)
-      .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale));
-    topCenter.setScale(s).setPosition(cx * (1 - s), 0);
-    bottomRight.setScale(s).setPosition(w * (1 - s), h * (1 - s));
+      .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale) - safe.bottom);
+    topCenter.setScale(s).setPosition(cx * (1 - s), safe.top);
+    bottomRight.setScale(s).setPosition(w * (1 - s) - safe.right, h * (1 - s) - safe.bottom);
   }
 
   applyScale();
   const offUiScaleChange = onUiScaleChange(scene, applyScale);
+  const offSafeAreaChange = onSafeAreaChange(scene, applyScale);
 
   // When true, a full-screen panel (character/equipment/inventory screen) is
   // open, so the whole HUD is hidden and sync() is a no-op.
@@ -228,6 +234,7 @@ export function createHudUI(scene: Phaser.Scene): {
 
   function destroy(): void {
     offUiScaleChange();
+    offSafeAreaChange();
     healthBar.destroy();
     xpBar.destroy();
     floorTimer.destroy();

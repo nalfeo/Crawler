@@ -56,6 +56,11 @@ import {
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
+import {
+  ZERO_SAFE_AREA_INSETS,
+  getSafeAreaInsets,
+  type SafeAreaInsets,
+} from '../../engine/safe-area.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
@@ -126,8 +131,22 @@ interface MainSceneInternals {
    * against the flagstone spawn room instead of the cave.
    */
   lightOverlayRt?: { visible: boolean };
+  getInteractionHintBounds?(): ScreenBounds | null;
   hudUi?: {
     isMapOverlayOpen(): boolean;
+    getAbilityBarBounds?(): ScreenBounds;
+    getBottomCenterBounds?(): ScreenBounds;
+    getMinimapBounds?(): ScreenBounds | null;
+    getNavigationBounds?(): {
+      radar: ScreenBounds | null;
+      questTracker: ScreenBounds | null;
+      familyPanel: ScreenBounds | null;
+    };
+    getEncounterProbeBounds?(): {
+      timerPanel: ScreenBounds;
+      bossPanel: ScreenBounds | null;
+      announcementPanel: ScreenBounds | null;
+    };
     getFamilyRelationshipsState(): {
       visible: boolean;
       bounds: ScreenBounds | null;
@@ -407,6 +426,12 @@ export interface MainSceneState {
   readonly settlementShopArchetypeIds: readonly string[];
 }
 
+/** Safe-area insets plus every edge-anchored screen-space surface (design space). */
+export interface SafeAreaLayoutProbe {
+  readonly insets: SafeAreaInsets;
+  readonly surfaces: Array<{ readonly name: string; readonly bounds: ScreenBounds }>;
+}
+
 export interface FamilyHudProbeState {
   readonly mapOverlayOpen: boolean;
   readonly visible: boolean;
@@ -586,6 +611,12 @@ export interface MainSceneProbeApi {
   openBossRewardPicker(): void;
   /** Measured layout for the currently open real modal picker. */
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
+  /**
+   * Design-space safe-area insets currently in force plus the bounds of every
+   * edge-anchored screen-space surface, so an e2e gate can assert none of them
+   * intrude into the display-cutout / home-indicator bands.
+   */
+  getSafeAreaLayout(): SafeAreaLayoutProbe;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Advance the paused simulation by N fixed steps using the real scene seam. */
@@ -933,6 +964,36 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
+
+    getSafeAreaLayout: (): SafeAreaLayoutProbe => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const hud = scene?.hudUi;
+      const navigation = hud?.getNavigationBounds?.();
+      const encounter = hud?.getEncounterProbeBounds?.();
+      const surfaces: SafeAreaLayoutProbe['surfaces'] = [];
+      const push = (name: string, bounds: ScreenBounds | null | undefined): void => {
+        if (bounds && bounds.width > 0 && bounds.height > 0) {
+          surfaces.push({ name, bounds });
+        }
+      };
+      push('abilityBar', hud?.getAbilityBarBounds?.());
+      push('bottomCenter', hud?.getBottomCenterBounds?.());
+      push('minimap', hud?.getMinimapBounds?.());
+      push('radar', navigation?.radar);
+      push('questTracker', navigation?.questTracker);
+      push('familyPanel', navigation?.familyPanel);
+      push('floorTimer', encounter?.timerPanel);
+      push('bossBar', encounter?.bossPanel);
+      push('announcement', encounter?.announcementPanel);
+      push('interactionHint', scene?.getInteractionHintBounds?.());
+      push('modalFooter', scene?.modalPicker?.getLayoutSnapshot()?.footer);
+      push('modalPanel', scene?.modalPicker?.getLayoutSnapshot()?.panel);
+      return {
+        insets: phaserScene ? getSafeAreaInsets(phaserScene) : ZERO_SAFE_AREA_INSETS,
+        surfaces,
+      };
+    },
 
     setWorldState: (state) => {
       const world = getScene()?.world;

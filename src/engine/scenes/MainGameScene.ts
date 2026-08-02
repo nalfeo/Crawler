@@ -55,7 +55,8 @@ import { createInputCapture } from '../InputCapture.js';
 import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
-import { getUiScale, onUiScaleChange } from '../ui-scale.js';
+import { getUiScale, onUiScaleChange, type ScreenBounds } from '../ui-scale.js';
+import { getSafeAreaInsets, onSafeAreaChange } from '../safe-area.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
@@ -151,6 +152,8 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+/** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
+const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
 const SET_PIECE_LIGHT_RADIUS_FT = 20;
 const SET_PIECE_LIGHT_INTENSITY = 0.7;
@@ -647,6 +650,7 @@ export class MainGameScene extends Phaser.Scene {
   private interactionHint?: Phaser.GameObjects.Text;
 
   private offInteractionHintScale?: () => void;
+  private offInteractionHintSafeArea?: () => void;
 
   /** Screen-space pixel-themed NPC dialogue box shown while a line is active. */
   private dialogueBox?: DialogueBox;
@@ -739,6 +743,7 @@ export class MainGameScene extends Phaser.Scene {
   private achievementToast?: Phaser.GameObjects.Text;
 
   private offMobileButtonScale?: () => void;
+  private offMobileButtonSafeArea?: () => void;
 
   private floorCompletionMessageShown = false;
 
@@ -1132,8 +1137,12 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.destroy();
       this.offInteractionHintScale?.();
       this.offInteractionHintScale = undefined;
+      this.offInteractionHintSafeArea?.();
+      this.offInteractionHintSafeArea = undefined;
       this.offMobileButtonScale?.();
       this.offMobileButtonScale = undefined;
+      this.offMobileButtonSafeArea?.();
+      this.offMobileButtonSafeArea = undefined;
       this.inventoryButton?.destroy();
       this.inventoryButton = undefined;
       this.equipButton?.destroy();
@@ -1218,6 +1227,27 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.sessionRecorder = undefined;
     });
+  }
+
+  /**
+   * Screen-space bounds of the bottom-centre interaction hint / Talk button,
+   * or `null` when it is not showing. Test/automation affordance so e2e probes
+   * can assert this canvas-rendered tap target clears the safe-area bands.
+   */
+  getInteractionHintBounds(): ScreenBounds | null {
+    if (!this.interactionHint?.visible) {
+      return null;
+    }
+    const bounds = this.interactionHint.getBounds();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Baseline Y for the bottom-anchored interaction hint, lifted clear of the
+   * home-indicator band on notched devices (zero inset elsewhere).
+   */
+  private interactionHintY(): number {
+    return GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
   }
 
   private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -2294,7 +2324,7 @@ export class MainGameScene extends Phaser.Scene {
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHint = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN, '', {
+      .text(GAME.WIDTH / 2, this.interactionHintY(), '', {
         fontFamily: 'monospace',
         fontSize: '22px',
         fontStyle: 'bold',
@@ -2313,10 +2343,13 @@ export class MainGameScene extends Phaser.Scene {
     });
     const applyInteractionHintScale = (scale: number): void => {
       const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);
-      this.interactionHint?.setScale(hintScale).setY(GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN);
+      this.interactionHint?.setScale(hintScale).setY(this.interactionHintY());
     };
     applyInteractionHintScale(getUiScale(this));
     this.offInteractionHintScale = onUiScaleChange(this, applyInteractionHintScale);
+    this.offInteractionHintSafeArea = onSafeAreaChange(this, () => {
+      applyInteractionHintScale(getUiScale(this));
+    });
 
     // Top-left on-screen buttons for inventory ([I]) and equipment ([G]) so the
     // pack and gear are reachable on touch devices with no keyboard.
@@ -2326,7 +2359,7 @@ export class MainGameScene extends Phaser.Scene {
       onTap: () => void,
     ): Phaser.GameObjects.Text =>
       this.add
-        .text(16, y, label, {
+        .text(MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left, y, label, {
           fontFamily: 'monospace',
           fontSize: '20px',
           fontStyle: 'bold',
@@ -2341,19 +2374,20 @@ export class MainGameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true })
         .setVisible(false)
         .on('pointerdown', onTap);
-    this.inventoryButton = makeCornerButton(16, '🎒 Bag', () => {
+    const cornerButtonTop = (): number => MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).top;
+    this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
       this.queuedInventoryToggle = true;
     });
-    this.equipButton = makeCornerButton(72, '⚔ Gear', () => {
+    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
       this.queuedEquip = true;
     });
-    this.achievementsButton = makeCornerButton(128, '🏆 Awards', () => {
+    this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
       this.queuedAchievementsToggle = true;
     });
-    this.abilitiesButton = makeCornerButton(184, '🔮 Skills', () => {
+    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(240, '✕ Shop', () => {
+    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
       this.queuedQuartermasterToggle = true;
     });
     const applyMobileButtonScale = (scale: number): void => {
@@ -2363,18 +2397,34 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
+      // Re-anchor to the current safe rect (rotation can change the insets).
+      const top = cornerButtonTop();
+      const left = MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left;
+      for (const button of [
+        this.inventoryButton,
+        this.equipButton,
+        this.achievementsButton,
+        this.abilitiesButton,
+        this.quartermasterButton,
+      ]) {
+        button?.setX(left);
+      }
+      this.inventoryButton?.setY(top);
       // Keep buttons clear of each other when scaled.
       const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
-      this.equipButton?.setY(16 + bagH);
+      this.equipButton?.setY(top + bagH);
       const gearH = (this.equipButton?.height ?? 44) * buttonScale + 8;
-      this.achievementsButton?.setY(16 + bagH + gearH);
+      this.achievementsButton?.setY(top + bagH + gearH);
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
-      this.abilitiesButton?.setY(16 + bagH + gearH + awardsH);
+      this.abilitiesButton?.setY(top + bagH + gearH + awardsH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
-      this.quartermasterButton?.setY(16 + bagH + gearH + awardsH + skillsH);
+      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + skillsH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
+    this.offMobileButtonSafeArea = onSafeAreaChange(this, () => {
+      applyMobileButtonScale(getUiScale(this));
+    });
 
     // Screen-space NPC dialogue box — bottom-center, well above the interaction hint
     this.dialogueBox = createDialogueBox(this, {
