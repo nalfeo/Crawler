@@ -22,13 +22,20 @@ Added a styled loading screen with animated progress bar shown during two moment
 
 ## Verification
 
+- Running artifact observation (`npm run dev`):
+  - **Before**: Boot and floor transition both presented as a frozen wait (no visible progress feedback).
+  - **After (BootScene)**: title/tagline + loading bar render immediately; bar advances through preload then generated-sprite phase to full before entering `MainGameScene`; status text updates per file via `fileprogress`.
+  - **After (MainGameScene floor transition)**: floor-complete overlay now shows a bar that animates from empty to full before `scene.restart()` executes.
+- Regression coverage:
+  - `tests/unit/boot-scene-generated-sprite-gate.test.ts` now asserts first-cycle listener teardown (`off('progress')`, `off('fileprogress')`) and second-cycle accounting/cleanup on both `FILE_COMPLETE` and `FILE_LOAD_ERROR` with `0.8 + 0.2 * (...)` mapping.
 - Reviewed by rubber-duck agent (claude-sonnet-4.6) for plan bugs; 3 issues found and fixed
 - Code review passed (claude-opus-4.6, round 1, 0 concerns)
-- CI will validate compilation; local deps unavailable in sandbox
 
 ## Apples
 
 Estimated: 🍎🍎🍎 | Actual: 🍎🍎🍎
+
+Canonical apple metrics file committed: `docs/knowledge/metrics/apples/2026-08-02-loading-screen-progress-bar.json`
 
 ## Systems touched
 

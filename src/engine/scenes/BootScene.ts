@@ -164,7 +164,6 @@ export class BootScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(2);
 
-    const innerW = BAR_W - 2;
     const innerH = BAR_H - 2;
     this.loadingProgressFill = this.add
       .rectangle(BAR_X + 1, BAR_Y + 1, 0, innerH, LOADING_BAR_COLOR, 1)
