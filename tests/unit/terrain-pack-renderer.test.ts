@@ -171,6 +171,18 @@ function makeLineworkFloorMap(seed = 4242): FloorMap {
 }
 
 const pack = getTerrainPack('industrial-cave');
+
+/** Atlas frameIndex the pack assigns to a given canonical blob47 mask. */
+function maskFrameIndex(maskId: number): number {
+  const entry = pack.wallAutotile.masks.find((m) => m.maskId === maskId);
+  if (!entry) throw new Error(`pack has no frame for mask ${maskId}`);
+  return entry.frameIndex;
+}
+
+/** Terrain types the pack stamps from the wall atlas (i.e. cover cells). */
+function isPackWall(terrain: TerrainType): boolean {
+  return terrain === TerrainType.STONE_WALL || terrain === TerrainType.CAVE_WALL;
+}
 const packWallScale = tileSize / pack.wallAutotile.cellPx;
 const packPoolScale = tileSize / 64;
 
@@ -611,12 +623,24 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
     // the accent stamp reuses the SAME frameIndex as its tile's base wall
     // stamp (mask-aware sharing, refinement #3) and comes immediately after
     // it (one extra stamp per accented tile, never its own tile).
-    // Each wall tile gets an underdraw before the wall stamp.
-    let expectedStampCount = size * size * 2; // 1 underdraw + 1 wall per tile
+    // A wall tile gets a floorPool underdraw only when its blob47 frame has
+    // an open edge, because only an open edge carries a transparent inset
+    // quadrant for the underdraw to show through. In this fully enclosed
+    // all-wall grid every tile normalizes to mask 255, so none of them are
+    // underdrawn at all.
+    const isWallLike = (nx: number, ny: number): boolean =>
+      floorMap.terrain[ny * size + nx] === TerrainType.STONE_WALL;
+    let expectedStampCount = 0;
     let cursor = 0;
     for (let ty = 0; ty < size; ty++) {
       for (let tx = 0; tx < size; tx++) {
-        cursor += 1; // skip underdraw stamp
+        const mask = normalizeBlob47Mask(computeRawMask8(tx, ty, size, size, isWallLike, true));
+        expect(mask).toBe(255);
+        if (mask !== 255) {
+          cursor += 1; // skip underdraw stamp
+          expectedStampCount += 1;
+        }
+        expectedStampCount += 1; // wall stamp
         const wallStamp = rt.stamps[cursor]!;
         expect(wallStamp.key).toBe(pack.wallAutotile.textureKey);
         cursor += 1;
@@ -638,7 +662,10 @@ describe('buildTerrainLayer — terrain-pack atlas frame stamping (refinement #8
       }
     }
     expect(rt.stamps).toHaveLength(expectedStampCount);
-    expect(expectedStampCount).toBe(size * size * 2 + result.packWallAccentedCount);
+    // Every tile here is enclosed (mask 255), so the bake emits exactly one
+    // wall stamp per tile plus one stamp per accented tile — and zero
+    // underdraws, which is the whole point of the mask-255 skip.
+    expect(expectedStampCount).toBe(size * size + result.packWallAccentedCount);
   });
 
   it('wall underdraw is deterministic: same seed+position gives same underdraw tile', () => {
@@ -760,13 +787,43 @@ describe('buildTerrainLayer — ground decals are clipped by walls, not excluded
     const firstWallIndex = rt.stamps.findIndex((s) => s.key === pack.wallAutotile.textureKey);
     expect(firstWallIndex).toBeGreaterThan(lastDecalIndex);
 
-    // One region clear per cover (wall) cell — the wall silhouette is inset and
-    // does not fill its own cell, so decal overhang inside the inset must go.
-    expect(rt.clears).toHaveLength(result.packWallCount);
+    // The invariant is that decal overhang can never survive inside a wall
+    // cell. The bake satisfies it one of two ways per cover cell: either it
+    // clears the cell, or the cell ends in a repaint that is opaque across
+    // the full cell (a mask-255 wall frame, or a floorPool underdraw beneath
+    // an inset frame). Assert the invariant itself rather than the clear,
+    // so the perf work — which replaced most clears with the observation
+    // that an opaque repaint already destroys the ink — is still gated.
+    const clearedCells = new Set(rt.clears.map((c) => `${c.x / tileSize},${c.y / tileSize}`));
     for (const c of rt.clears) {
       expect(c.w).toBe(tileSize);
       expect(c.h).toBe(tileSize);
     }
+    const poolKeys = new Set(
+      [...pack.floorPool, ...pack.corridorPool].map((variant) => variant.textureKey),
+    );
+    const cellOf = (s: StampCall): string =>
+      `${Math.floor(s.x / tileSize)},${Math.floor(s.y / tileSize)}`;
+    const opaqueRepainted = new Set(
+      rt.stamps
+        .filter(
+          (s) =>
+            poolKeys.has(s.key) ||
+            (s.key === pack.wallAutotile.textureKey && s.frame === maskFrameIndex(255)),
+        )
+        .map(cellOf),
+    );
+
+    let coverCells = 0;
+    for (let ty = 0; ty < size; ty++) {
+      for (let tx = 0; tx < size; tx++) {
+        if (!isPackWall(floorMap.terrain[ty * size + tx]!)) continue;
+        coverCells += 1;
+        const cell = `${tx},${ty}`;
+        expect(clearedCells.has(cell) || opaqueRepainted.has(cell)).toBe(true);
+      }
+    }
+    expect(coverCells).toBe(result.packWallCount);
   });
 
   it('rejects a large decal set inside a one-tile corridor (ground-fraction floor)', () => {

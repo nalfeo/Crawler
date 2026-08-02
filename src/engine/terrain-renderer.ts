@@ -990,13 +990,8 @@ export function buildTerrainLayer(
   }[] = [];
   const lineworkScaleFor = (cellPx: number): number => tileSize / cellPx;
   /** Immutable per-scale linework stamp configs; see `poolStampConfig`. */
-  const lineworkStampConfigCache = new Map<
-    number,
-    ReturnType<typeof buildLineworkStampConfig>
-  >();
-  const lineworkStampConfig = (
-    scale: number,
-  ): ReturnType<typeof buildLineworkStampConfig> => {
+  const lineworkStampConfigCache = new Map<number, ReturnType<typeof buildLineworkStampConfig>>();
+  const lineworkStampConfig = (scale: number): ReturnType<typeof buildLineworkStampConfig> => {
     let cached = lineworkStampConfigCache.get(scale);
     if (!cached) {
       cached = buildLineworkStampConfig(scale);
