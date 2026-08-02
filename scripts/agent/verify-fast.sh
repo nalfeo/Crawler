@@ -255,4 +255,32 @@ else
   echo "      Force them with 'npm run check:size-coverage' / 'npm run check:weight-coverage'."
 fi
 
+# ── Silent merge-revert guard (local, merge-commit-only) ────────────────────
+# The CI job `check-silent-reverts` is the authoritative gate, but it only runs
+# on `pull_request`. That made the guard purely post-hoc: two main-merges (PR
+# #2022's Don Paco boss-ability rows, PR #2365's upstream test-only-exports
+# wrapper) silently discarded upstream content and needed a human to notice and
+# reconstruct it. Running the same guard the moment the merge is created moves
+# the detection from "after review" to "before the next commit".
+#
+# Gated on the branch actually containing a merge commit so the overwhelmingly
+# common linear-branch case pays nothing. Skipped (never failed) on a shallow
+# clone or an unresolvable base: the guard fails closed by design, and a local
+# shallow checkout is a tooling state, not a branch defect. CI re-runs it with
+# fetch-depth: 0 on every PR, so skipping locally cannot weaken the gate.
+if [ -z "${VERIFY_FAST_SKIP_SILENT_REVERTS:-}" ]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  merge_scope="$(bash "$script_dir/ci/merge-scope.sh" 2>/dev/null || true)"
+  has_merge="$(printf '%s\n' "$merge_scope" | grep -E '^has_merge=' | tail -n1 || true)"
+  can_run="$(printf '%s\n' "$merge_scope" | grep -E '^can_run=' | tail -n1 || true)"
+  if [ "$has_merge" = "has_merge=true" ] && [ "$can_run" = "can_run=true" ]; then
+    echo "🔍 Extra step: Silent merge-revert guard (branch contains a merge commit)..."
+    npx tsx scripts/agent/health/silent-reverts.ts
+  elif [ "$can_run" = "can_run=false" ]; then
+    echo "   ⏭️  Skipping silent merge-revert guard: history is not resolvable here"
+    echo "      (shallow clone or no merge base). CI runs it on every PR with fetch-depth: 0."
+    echo "      To run it locally: 'git fetch --unshallow origin' then 'npm run check:silent-reverts'."
+  fi
+fi
+
 echo "✅ Fast verification passed."
