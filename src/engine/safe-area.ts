@@ -106,10 +106,8 @@ function computeDesignSafeInsets(options: ComputeDesignSafeInsetsOptions): SafeA
   const rightOverlap = canvasRight - (viewport.width - toPositive(insets.right));
   const bottomOverlap = canvasBottom - (viewport.height - toPositive(insets.bottom));
 
-  const clampX = (overlap: number): number =>
-    Math.min(designWidth, Math.max(0, overlap) * scaleX);
-  const clampY = (overlap: number): number =>
-    Math.min(designHeight, Math.max(0, overlap) * scaleY);
+  const clampX = (overlap: number): number => Math.min(designWidth, Math.max(0, overlap) * scaleX);
+  const clampY = (overlap: number): number => Math.min(designHeight, Math.max(0, overlap) * scaleY);
 
   return {
     top: clampY(topOverlap),
@@ -130,9 +128,7 @@ function parsePx(value: string): number {
  * publishes as `--crawler-safe-area-inset-*`. Returns zeros when the properties
  * are absent (older entry point, non-browser env, or a device with no cutout).
  */
-function readCssSafeAreaInsets(
-  doc: Document | undefined = globalThis.document,
-): SafeAreaInsets {
+function readCssSafeAreaInsets(doc: Document | undefined = globalThis.document): SafeAreaInsets {
   if (!doc?.documentElement || typeof getComputedStyle !== 'function') {
     return ZERO_SAFE_AREA_INSETS;
   }
@@ -183,12 +179,7 @@ export function getSafeAreaInsets(scene: Phaser.Scene): SafeAreaInsets {
 
 /** True when two inset sets are equal (used to suppress no-op relayouts). */
 function insetsEqual(a: SafeAreaInsets, b: SafeAreaInsets): boolean {
-  return (
-    a.top === b.top &&
-    a.right === b.right &&
-    a.bottom === b.bottom &&
-    a.left === b.left
-  );
+  return a.top === b.top && a.right === b.right && a.bottom === b.bottom && a.left === b.left;
 }
 
 /**
