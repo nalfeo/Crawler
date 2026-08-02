@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SHEETS } from '../sprites/index.js';
+import { SHEETS, SPRITES, TILE_SPRITES, type TileVisualDef } from '../sprites/index.js';
 import { MainGameScene } from './MainGameScene.js';
 import { createLogger } from '../../shared/logger.js';
 import {
@@ -12,6 +12,25 @@ import {
   type GeneratedSpriteRegistry,
 } from '../../shared/generated-assets.js';
 import { preloadTerrainPacks } from '../sprites/terrain-pack-visuals.js';
+
+/**
+ * Derive the set of sheet keys actually referenced by runtime sprite and tile
+ * definitions.  Filtering SHEETS with this set ensures we never load a sheet
+ * that has no consumer, and avoids drift when new sheets are added to SHEETS
+ * without a corresponding sprite entry.
+ */
+function computeUsedSheetKeys(): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const sprite of SPRITES) {
+    keys.add(sprite.sheetKey);
+  }
+  for (const visual of Object.values(TILE_SPRITES) as Array<TileVisualDef | undefined>) {
+    if (visual !== undefined) {
+      keys.add(visual.sheetKey);
+    }
+  }
+  return keys;
+}
 
 const logger = createLogger('engine:boot-scene');
 const GENERATED_SPRITE_LOAD_TIMEOUT_MS = 15000;
@@ -53,9 +72,14 @@ export class BootScene extends Phaser.Scene {
       });
     });
 
-    logger.info('Preloading all sprite sheets', { count: SHEETS.length });
+    const usedSheetKeys = computeUsedSheetKeys();
+    const sheetsToLoad = SHEETS.filter((s) => usedSheetKeys.has(s.key));
+    logger.info('Preloading used sprite sheets', {
+      count: sheetsToLoad.length,
+      total: SHEETS.length,
+    });
 
-    for (const sheet of SHEETS) {
+    for (const sheet of sheetsToLoad) {
       logger.debug('Queueing sprite sheet', { key: sheet.key, path: sheet.path });
       this.load.spritesheet(sheet.key, sheet.path, {
         frameWidth: sheet.frameWidth,

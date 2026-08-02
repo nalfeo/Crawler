@@ -73,13 +73,13 @@ All 6 sheets now load in `preload()`. The extra 2 sheets (`kenney-tiny-battle`, 
 | `boot:sprites-load-end` | generated sprite load done |
 | `boot:game-start` | MainGameScene.start() called |
 | `game:create-start` | MainGameScene.create() begins |
-| `game:terrain-start` | drawFloorTerrain() begins |
-| `game:terrain-end` | drawFloorTerrain() done |
+| `game:terrain-bake-start` | drawFloorTerrain() begins |
+| `game:terrain-bake-end` | drawFloorTerrain() done |
 | `game:lighting-start` | updateLightingOverlay() begins |
 | `game:lighting-end` | updateLightingOverlay() done |
 | `game:create-end` | MainGameScene.create() done |
 
-`game:create-end` also calls `performance.measure('game:total-create', 'game:create-start', 'game:create-end')` and logs the duration via `logger.info`. Use Chrome DevTools → Performance panel → User Timings to see all marks.
+`game:create-end` also calls `performance.measure('game:create', 'game:create-start', 'game:create-end')` and logs the duration via `logger.info`. Use Chrome DevTools → Performance panel → User Timings to see all marks.
 
 ## What was NOT changed
 
@@ -104,5 +104,5 @@ The manifest parallelization saves time equal to `fetchGeneratedSpriteRegistry()
 ## Known limitations / future work
 
 - `pendingRegistryFetch` is not cleared on scene stop/restart. BootScene is a one-shot scene in current game flow so this is benign. If BootScene were ever reused, the stale Promise would be reused — add an `init()` reset if needed.
-- `kenney-tiny-battle` and `kenney-tiny-ski` are loaded but have no sprite consumers in `SPRITES[]`. They're 13.5KB combined. Consider removing them from `SHEETS` in a future cleanup.
+- `kenney-tiny-battle` and `kenney-tiny-ski` remain in `SHEETS` (they're 13.5KB combined) but are no longer loaded at boot — `computeUsedSheetKeys()` derives the load list from `SPRITES`/`TILE_SPRITES`, so both are automatically excluded. They can be removed from `SHEETS` in a future cleanup once confirmed permanently unused.
 - Largest startup cost is `buildTerrainLayer()` (33,600 tile stamps into a 7,680×4,480px RenderTexture). This is not addressed here — it would require pre-baked terrain textures or chunked/deferred rendering, which is a larger architecture change.
