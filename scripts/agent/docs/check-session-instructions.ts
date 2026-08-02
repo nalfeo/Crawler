@@ -1,24 +1,36 @@
 #!/usr/bin/env node
 /**
- * docs/check-session-instructions.ts — Keep the two top-level session
- * instruction files aligned on required session policy bullets.
+ * docs/check-session-instructions.ts — Keep the required session policy
+ * bullets in exactly one canonical home, and keep the pointer file pointing.
  *
- * Deterministic, LLM-free. Asserts that both `AGENTS.md` and
- * `.github/copilot-instructions.md` contain the same explicit required rules:
- *   1. give an upfront recommendation verdict (recommended / risky /
- *      not recommended) with a short reason
- *   2. write plans in session chat unless the human explicitly asks for a file
- *   3. detach from published PRs unless the human pre-declared local ownership
- *   4. default broad sweeps (>10 runs) to GitHub workflow infrastructure
- *   5. treat investigation-only sessions as lightweight and split landing fixes
- *   6. cap tooling-only ceremony at 3 apples
+ * Deterministic, LLM-free.
+ *
+ * This check used to require the bullets to be *mirrored* verbatim in both
+ * `AGENTS.md` and `.github/copilot-instructions.md`. That enforced the very
+ * triplication it was meant to protect: every policy edit needed three
+ * synchronized edits (here, `AGENTS.md`, and `docs/agent-os/policies/`), and
+ * the copies drifted anyway. `AGENTS.md` is now the single canonical home for
+ * session policy, and `.github/copilot-instructions.md` is a pointer file.
+ *
+ * So this now asserts two things:
+ *   1. `AGENTS.md` still contains every required session policy bullet:
+ *      - give an upfront recommendation verdict (recommended / risky /
+ *        not recommended) with a short reason
+ *      - write plans in session chat unless the human explicitly asks for a file
+ *      - detach from published PRs unless the human pre-declared local ownership
+ *      - default broad sweeps (>10 runs) to GitHub workflow infrastructure
+ *      - treat investigation-only sessions as lightweight and split landing fixes
+ *      - cap tooling-only ceremony at 3 apples
+ *   2. `.github/copilot-instructions.md` links to `AGENTS.md` and does NOT
+ *      restate those bullets, so the duplication cannot creep back.
  */
 
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 
-const DOCS = ['AGENTS.md', '.github/copilot-instructions.md'] as const;
+const CANONICAL_DOC = 'AGENTS.md';
+const POINTER_DOC = '.github/copilot-instructions.md';
 
 const REQUIRED_LINES = [
   '- **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.',
@@ -32,19 +44,32 @@ const REQUIRED_LINES = [
 async function main(): Promise<void> {
   const report = new Report('docs-check-session-instructions');
 
-  for (const file of DOCS) {
-    const text = readFileSync(fromRepo(file), 'utf8');
-    for (const line of REQUIRED_LINES) {
-      if (!text.includes(line)) {
-        report.error(
-          `Top-level session instruction is missing the mirrored required policy line: \`${line}\``,
-          {
-            file,
-            remediation:
-              'Copy the exact mirrored policy bullet into both AGENTS.md and .github/copilot-instructions.md.',
-          },
-        );
-      }
+  const canonical = readFileSync(fromRepo(CANONICAL_DOC), 'utf8');
+  for (const line of REQUIRED_LINES) {
+    if (!canonical.includes(line)) {
+      report.error(
+        `Canonical session instructions are missing a required policy line: \`${line}\``,
+        {
+          file: CANONICAL_DOC,
+          remediation: `Restore the policy bullet in ${CANONICAL_DOC}, its single canonical home.`,
+        },
+      );
+    }
+  }
+
+  const pointer = readFileSync(fromRepo(POINTER_DOC), 'utf8');
+  if (!pointer.includes('AGENTS.md')) {
+    report.error(`Pointer file does not link to the canonical session instructions.`, {
+      file: POINTER_DOC,
+      remediation: `Link to ${CANONICAL_DOC} instead of restating session policy.`,
+    });
+  }
+  for (const line of REQUIRED_LINES) {
+    if (pointer.includes(line)) {
+      report.error(`Session policy bullet is duplicated outside its canonical home: \`${line}\``, {
+        file: POINTER_DOC,
+        remediation: `Delete the copy and link to ${CANONICAL_DOC}; each rule has exactly one home.`,
+      });
     }
   }
 

@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-02",
+  "session_slug": "agent-os-ceremony-reduction",
+  "task_title": "Cut review-harness ceremony in half and add an independent grader for 3+ apples",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "convergent",
+      "notes": "Plan reviewed before implementation; concerns on schema cutover, verdict recomputation, head_sha validation, and author/grader independence were incorporated before final code review."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5"],
+          "concerns_count": 14,
+          "resolved_count": 14,
+          "clean": true,
+          "notes": "Addressed actionable review findings across ledger validation, grader CLI guidance, docs command correctness, and policy citation consistency."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.6-flash",
+      "implementer_model": "claude-opus-5",
+      "head_sha": "fbf2db83ecc85cb565afabf271ee59358bb4b721",
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "findings": [],
+      "notes": "Diff-level grading found no blocker-severity concerns after the hardening fixes and documentation corrections."
+    }
+  }
+}

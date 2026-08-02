@@ -32,11 +32,26 @@ test('summarizePrereqResult surfaces both failure sections', () => {
   assert.match(r.failures[1], /\[pr-review-ledger\]/);
 });
 
-test('evaluatePrereqs fails when code diff has no handoff and no ledger', () => {
+test('evaluatePrereqs fails on a missing handoff, but a missing ledger is only a note', () => {
   const r = evaluatePrereqs([CODE_FILE], [], '.');
   assert.equal(r.ok, false);
   assert.match(r.failures.join('\n'), /No new handoff file added/);
-  assert.match(r.failures.join('\n'), /No review ledger found/);
+  // A 1-2🍎 change legitimately has no ledger, so its absence cannot fail the
+  // prereq check — it surfaces as a reminder instead.
+  assert.doesNotMatch(r.failures.join('\n'), /review ledger/i);
+  assert.match(r.notes.join('\n'), /no review ledger on this code-touching branch/);
+});
+
+test('evaluatePrereqs still fails when an ADDED ledger is invalid for its tier', () => {
+  const r = evaluatePrereqs([CODE_FILE, HANDOFF, LEDGER], [HANDOFF, LEDGER], '.', {
+    validateFile: () => ({
+      ok: false,
+      summary: 'invalid ledger: 1 problem(s)',
+      errors: ['plan_review.completed must be true'],
+    }),
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.failures.join('\n'), /plan_review\.completed must be true/);
 });
 
 test('evaluatePrereqs passes when handoff + valid 1-apple ledger are added', () => {

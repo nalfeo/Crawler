@@ -34,8 +34,6 @@ Each note uses Basic Memory's conventions so it can be parsed into a graph:
 - [[Conventions and Invariants]]
 - [[Systems Map]]
 - [[Decisions Index]]
-- [[Current State 2026-07-03]] (latest — supersedes 2026-06-26)
-- [[Current State 2026-06-26]]
 
 ## Enabling Basic Memory
 
@@ -50,5 +48,9 @@ basic-memory sync
 ## Maintenance
 
 When a durable fact changes, update the relevant note here AND, if it is a
-structured entity/relation, update `docs/knowledge/agent-memory.jsonl`. Keep
-`[[Current State ...]]` dated and rename it as it is refreshed.
+structured entity/relation, update `docs/knowledge/agent-memory.jsonl`.
+
+Notes in this KB record **durable** facts only. Do not add dated point-in-time
+status snapshots: they drift within days and then read as live status. Live
+status lives in the handoffs (`docs/knowledge/handoffs/`, indexed by
+`INDEX.md`), which are dated by construction.
