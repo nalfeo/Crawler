@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-agent-tooling
+ci-policy, docs-tooling, agent-memory, agent-personas
 
 ## Task
 
