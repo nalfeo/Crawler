@@ -35,12 +35,12 @@ Total: **14 denials → 28+ avoidable tool calls** across the captured session w
 Every denial creates a minimum 2-step retry loop (denial → create ledger / fix prereqs →
 retry `create_pull_request`). The `pr-review-ledger` guard is the top friction point.
 
-### Previous scan signal (2026-07-25 handoff)
+### Previous scan signal (2026-07-26 handoff)
 
-The 2026-07-25 velocity engineer handoff (written after running `velocity:scan --limit 60`)
+The 2026-07-26 velocity engineer handoff (written after running `velocity:scan --limit 60`)
 noted: "median PR is 86% idle between open and final push — that is agent attention, not
-infrastructure." This is consistent with the guard data: agents are not running
-`verify:pr-prereqs` before `create_pull_request`, so the guard fires and forces a retry.
+infrastructure." That metric measures idle time after a PR is open, so it is a separate
+bottleneck from the pre-open `create_pull_request` guard denials documented here.
 
 ## Fix
 
@@ -85,9 +85,11 @@ The change:
 | Test coverage       | 0 tests for guard friction finding | 3 new tests                          |
 
 Expected outcome: agents reading the scan output now know exactly which command to run
-to prevent the denial on the next PR. The next scan (re-run with `velocity:scan --limit
-60` after 7+ days) should show reduced `pr-review-ledger` deny counts if agents act on
-the finding.
+to prevent the denial on the next PR. Note: `docs/knowledge/metrics/guard-telemetry/*.json`
+accumulates historical files, so cumulative deny totals are monotonic and should not be
+used as a decrease metric. After 7+ days, measure impact on a post-change cohort only
+(files dated after 2026-08-02) by comparing the `pr-review-ledger` deny rate (denies ÷
+sessions) versus the ~8/900+ baseline above.
 
 ## Verification
 
@@ -102,8 +104,9 @@ Refs nalfeo/Crawler#2686
 
 ## Recommended next steps
 
-1. Re-run `npm run velocity:scan -- --limit 60` after 7+ days of PRs to compare guard
-   deny counts. Expect `pr-review-ledger` to trend down as agents act on the finding.
+1. Re-run `npm run velocity:scan -- --limit 60` after 7+ days and evaluate a post-change
+   cohort (files dated after 2026-08-02): compare `pr-review-ledger` deny rate (denies ÷
+   sessions) against the ~8/900+ baseline.
 2. Consider adding the `pr-review-ledger` remediation hint to the `pr-review-ledger`
    guard's own denial message (it already includes `npm run review:ledger -- init ...`
    but does not mention `verify:pr-prereqs`). This would be a separate 1🍎 change.
