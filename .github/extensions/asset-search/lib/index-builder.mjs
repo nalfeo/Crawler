@@ -12,10 +12,17 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
+import { createRepoRequire } from '../../shared/node-modules-resolver.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXT_DIR, '..', '..', '..', '..');
+
+// Extensions run sandboxed with no bare-specifier resolution, and a git
+// worktree has no node_modules of its own. createRepoRequire anchors the
+// require at the main checkout's node_modules so this loads in both layouts.
+// Enforced by `npm run check:extensions`.
+const requireFromRepo = createRepoRequire(REPO_ROOT, import.meta.url);
+const { parse: parseYaml } = requireFromRepo('yaml');
 const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
 const SHARDS_DIR = path.join(GENERATED_DIR, 'entries');
 const BRIEFS_DIR = path.join(REPO_ROOT, 'briefs');
@@ -110,7 +117,11 @@ function toShardDocument(key, entry, briefMap) {
 
 function resolveBriefText(brief, key, entry) {
   if (!brief) return '';
-  const candidates = [entry?.spriteName, key, key.includes('/') ? key.slice(key.lastIndexOf('/') + 1) : key]
+  const candidates = [
+    entry?.spriteName,
+    key,
+    key.includes('/') ? key.slice(key.lastIndexOf('/') + 1) : key,
+  ]
     .filter((v) => typeof v === 'string' && v.length > 0)
     .map((v) => v.trim());
   for (const candidate of candidates) {

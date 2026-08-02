@@ -326,6 +326,37 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:knip-suppressions
 
+      # Allowlist governance guard: generalizes the knip/npm-audit expiry rule to
+      # EVERY allowlist, suppression, and exception list in the repo. Each entry
+      # must carry a specific reason plus either an unexpired `expiresOn`
+      # (time-bounded) or a tracking ref + removal condition (tracked-permanent).
+      # Fail-closed: an allowlist-shaped export that is not registered is itself
+      # a finding, so a new allowlist cannot silently escape governance.
+      # Receipt: `npm audit` went red in CI because an exception list quietly
+      # expired on a date nobody was watching.
+      - name: Allowlist governance + expiry guard
+        run: npm run check:allowlist-expiry
+
+      # Registry integrity guard: duplicate/blank ids within a registry file and,
+      # critically, ACROSS sibling files that share one logical id namespace
+      # (achievements.floor1.json + achievements.floor2.json). Per-file Zod
+      # loaders structurally cannot see the cross-file case, which is how a
+      # Floor-2 tier4 achievement collided with a sibling PR's rows and needed a
+      # human escalation to untangle.
+      - name: Registry ID integrity guard
+        run: npm run check:registry-integrity
+
+      # Asset identity guard: verifies the shard ↔ PNG ↔ contentHash triple over
+      # the ENTIRE committed corpus, not just newly added entries, so latent
+      # defects surface once instead of being discovered by eye in-game.
+      # Receipts: 55 welcome-room shards kept stale contentHashes after their
+      # PNGs were restored (red unit tests, CI-recovery intervention), a sprite
+      # shipped whose filename and pixels disagreed, and an orphaned walk shard
+      # was resurrected by a chore commit after its PNG was intentionally deleted.
+      - name: Asset manifest identity guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:asset-integrity
+
       # Exact-version guard: block any PR that introduces a semver range into
       # direct deps, devDeps, optionalDeps, or overrides. Ranges allow unrelated
       # lockfile regeneration to silently advance a package version before
