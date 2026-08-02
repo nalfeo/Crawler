@@ -52,6 +52,7 @@
     "ai:aggregate-shards": "tsx scripts/agent/perf/aggregate-shards.ts",
     "ai:round-plan": "tsx scripts/agent/perf/round-plan.ts",
     "velocity:scan": "tsx scripts/agent/velocity/bottleneck-scan.ts",
+    "velocity:conflict-scan": "tsx scripts/agent/velocity/conflict-scan.ts",
     "velocity:pack": "tsx scripts/agent/velocity/task-pack.ts",
     "velocity:experiment": "tsx scripts/agent/velocity/experiment.ts",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",

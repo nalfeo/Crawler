@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -11,6 +11,15 @@
     />
     <title>Crawler Labs</title>
     <style>
+      /* See index.html — the engine reads these (src/engine/safe-area.ts), and
+         labs must resolve them identically so lab-driven e2e geometry matches
+         the shipped game. */
+      :root {
+        --crawler-safe-area-inset-top: env(safe-area-inset-top, 0px);
+        --crawler-safe-area-inset-right: env(safe-area-inset-right, 0px);
+        --crawler-safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+        --crawler-safe-area-inset-left: env(safe-area-inset-left, 0px);
+      }
       * {
         margin: 0;
         padding: 0;

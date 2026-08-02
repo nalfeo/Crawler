@@ -254,7 +254,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('star-lance', 'Star Lance', 'Looks like a comet. Hits like one too.', L),
   wpn('bone-club', 'Baseball Bat', 'Heavy swing, simple results.', C, [customTag('Smelly Stuff')]),
   wpn('plasma-pistol', 'Pistol', 'A standard sidearm with no sci-fi extras.', R),
-  wpn('fireball', 'Fireball', 'A compact sphere of bad decisions and splash damage.', U),
+  wpn('fireball', 'Fire Wand', 'A compact sphere of bad decisions and splash damage.', U),
   wpn('laser', 'Laser', 'A continuous beam for contestants who hate subtlety.', R),
   wpn('punch', 'Punch', 'Your own two knuckles and a bad attitude.', C),
   wpn('landmine', 'Landmine', 'Set it, bait it, and let the room solve itself.', U),
