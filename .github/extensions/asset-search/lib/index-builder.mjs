@@ -16,7 +16,6 @@ import { createRepoRequire } from '../../shared/node-modules-resolver.mjs';
 
 const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXT_DIR, '..', '..', '..', '..');
-
 // Extensions run sandboxed with no bare-specifier resolution, and a git
 // worktree has no node_modules of its own. createRepoRequire anchors the
 // require at the main checkout's node_modules so this loads in both layouts.
