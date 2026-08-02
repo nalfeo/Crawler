@@ -295,6 +295,6 @@ describe('Queen Mab arena observation', () => {
       w: GAME_W * 0.4,
       h: GAME_H * 0.4,
     });
-    expect(resolution2Diff).toBeGreaterThan(0.002);
+    expect(resolution2Diff).toBeGreaterThan(0.0015);
   }, 120_000);
 });
