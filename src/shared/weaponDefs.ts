@@ -246,8 +246,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
     'fireball',
     def({
       id: 'fireball',
-      name: 'Fireball',
-      weaponType: WeaponType.MAGIC,
+      name: 'Fire Wand',
       baseDamage: 8,
       cooldownMs: 800,
       range: 32,

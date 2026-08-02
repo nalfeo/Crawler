@@ -241,8 +241,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
   },
   fireball: {
     id: 'fireball',
-    name: 'Fireball',
-    shortLabel: 'FIRE',
+    name: 'Fire Wand',
     description: 'Hurl a ball of fire that explodes in an area, burning enemies.',
     category: 'combat',
     kind: 'spell',
