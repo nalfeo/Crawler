@@ -1,5 +1,5 @@
 {
-  "schema_version": "review-ledger/v1",
+  "schema_version": "review-ledger/v2",
   "date": "2026-08-02",
   "session_slug": "terrain-bake-optimization",
   "task_title": "Terrain bake optimization: eliminate redundant clears, wall underdraw, and per-tile CPU work",
@@ -27,6 +27,23 @@
           "notes": "One Medium finding: the clear-path test asserted only that the bake produced commands, and the decal set never actually fired on its 3x3 map, so no test exercised rt.clear(). Replaced with a 16x16 walled-room fixture that withholds the wall atlas and floor pools so decals really stamp and the cover pass really clears; verified by mutation (deleting the rt.clear call now fails 2 tests). Reviewer confirmed clear-skip soundness on every cover branch, ink-tracking completeness, RNG determinism (pickPoolCombo builds a fresh SeededRandom per tile), computeRawMask8Grid bit-order equivalence, TERRAIN_FLAGS derivation, stamp-config cache immutability, and TerrainLayerResult counter integrity."
         }
       ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-sonnet-3.7",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "9f393d0e18e8c701f1293cea492cef8f5ee03bb8",
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "findings": [],
+      "notes": "Independent diff grading of the substantive post-merge tree found no blocker-severity concerns after excluding the separate review-artifact-only schema/index cleanup commit."
     }
   }
 }
