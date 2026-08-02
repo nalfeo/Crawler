@@ -151,7 +151,7 @@ describe('set-piece declared feet match the shipped art', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('keeps floor-decal opaque footprints within declared contain-fit bounds', () => {
+  it('declares floor-decal footprints that survive the contain-fit unchanged', () => {
     const wrong: string[] = [];
     for (const { piece, prop, layer, index } of measured) {
       if (prop.kind !== 'floor') continue;
@@ -162,9 +162,9 @@ describe('set-piece declared feet match the shipped art', () => {
       if (!native) continue;
 
       const drawn = drawnFeet(native, layer.widthFt, layer.heightFt, true);
-      if (drawn.w - layer.widthFt > 0.05 || drawn.h - layer.heightFt > 0.05) {
+      if (Math.abs(drawn.w - layer.widthFt) > 0.05 || Math.abs(drawn.h - layer.heightFt) > 0.05) {
         wrong.push(
-          `${piece}/${prop.id} L${index}: declares max ${layer.widthFt}x${layer.heightFt}ft, ` +
+          `${piece}/${prop.id} L${index}: declares ${layer.widthFt}x${layer.heightFt}ft, ` +
             `contain-fit draws ${drawn.w.toFixed(2)}x${drawn.h.toFixed(2)}ft`,
         );
       }
