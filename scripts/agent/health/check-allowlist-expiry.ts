@@ -164,7 +164,7 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set(['node_modules', 'dist'
 
 /**
  * Test files declare allowlist-shaped FIXTURE strings (npm-audit.test.mjs builds
- * `export const FOO_EXCEPTIONS = ...` source snippets to exercise its own
+ * `FOO_EXCEPTIONS` export snippets to exercise its own
  * guard). Those are test data, not real allowlists, so they must not trip
  * discovery.
  */

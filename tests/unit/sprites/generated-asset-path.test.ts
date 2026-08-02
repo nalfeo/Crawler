@@ -62,9 +62,9 @@ describe('resolveGeneratedAssetPath', () => {
   const publicAssetsRoot = path.resolve('/repo', 'public', 'assets');
 
   it('returns an absolute in-tree path for safe generated assets', () => {
-    expect(
-      resolveGeneratedAssetPath('generated/items/lamp.png', publicAssetsRoot, 'ctx'),
-    ).toBe(path.resolve(publicAssetsRoot, 'generated', 'items', 'lamp.png'));
+    expect(resolveGeneratedAssetPath('generated/items/lamp.png', publicAssetsRoot, 'ctx')).toBe(
+      path.resolve(publicAssetsRoot, 'generated', 'items', 'lamp.png'),
+    );
   });
 
   it('throws before any caller can use a traversal path', () => {

@@ -407,67 +407,67 @@ export function findExportedConstNames(source: string): readonly string[] {
     }
   }
 
-return names;
+  return names;
 }
 
 function findExportConstStatements(source: string): readonly string[] {
-const out: string[] = [];
-const re = /\bexport\s+const\b/g;
-let match: RegExpExecArray | null;
-while ((match = re.exec(source)) !== null) {
-  const statement = readTopLevelStatement(source, match.index + match[0].length);
-  if (!statement) continue;
-  out.push(statement);
-}
-return out;
+  const out: string[] = [];
+  const re = /\bexport\s+const\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(source)) !== null) {
+    const statement = readTopLevelStatement(source, match.index + match[0].length);
+    if (!statement) continue;
+    out.push(statement);
+  }
+  return out;
 }
 
 function readTopLevelStatement(source: string, start: number): string {
-let depthParen = 0;
-let depthBracket = 0;
-let depthBrace = 0;
-let quote: '"' | "'" | '`' | null = null;
-let escaped = false;
-for (let i = start; i < source.length; i++) {
-  const ch = source[i]!;
-  const next = source[i + 1] ?? '';
-  if (quote) {
-    if (escaped) {
-      escaped = false;
+  let depthParen = 0;
+  let depthBracket = 0;
+  let depthBrace = 0;
+  let quote: '"' | "'" | '`' | null = null;
+  let escaped = false;
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i]!;
+    const next = source[i + 1] ?? '';
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) quote = null;
       continue;
     }
-    if (ch === '\\') {
-      escaped = true;
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') i++;
       continue;
     }
-    if (ch === quote) quote = null;
-    continue;
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') depthParen++;
+    else if (ch === ')') depthParen = Math.max(0, depthParen - 1);
+    else if (ch === '[') depthBracket++;
+    else if (ch === ']') depthBracket = Math.max(0, depthBracket - 1);
+    else if (ch === '{') depthBrace++;
+    else if (ch === '}') depthBrace = Math.max(0, depthBrace - 1);
+    else if (ch === ';' && depthParen === 0 && depthBracket === 0 && depthBrace === 0) {
+      return source.slice(start, i);
+    }
   }
-  if (ch === '/' && next === '/') {
-    while (i < source.length && source[i] !== '\n') i++;
-    continue;
-  }
-  if (ch === '/' && next === '*') {
-    i += 2;
-    while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++;
-    i++;
-    continue;
-  }
-  if (ch === '"' || ch === "'" || ch === '`') {
-    quote = ch;
-    continue;
-  }
-  if (ch === '(') depthParen++;
-  else if (ch === ')') depthParen = Math.max(0, depthParen - 1);
-  else if (ch === '[') depthBracket++;
-  else if (ch === ']') depthBracket = Math.max(0, depthBracket - 1);
-  else if (ch === '{') depthBrace++;
-  else if (ch === '}') depthBrace = Math.max(0, depthBrace - 1);
-  else if (ch === ';' && depthParen === 0 && depthBracket === 0 && depthBrace === 0) {
-    return source.slice(start, i);
-  }
-}
-return source.slice(start);
+  return source.slice(start);
 }
 
 function splitTopLevel(source: string): readonly string[] {
