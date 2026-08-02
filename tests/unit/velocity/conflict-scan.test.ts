@@ -1,15 +1,27 @@
+import { execFileSync, spawnSync } from 'node:child_process';
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   buildReport,
   classify,
   computeOverlaps,
+  collectCommits,
   deriveFindings,
+  isDirectExecution,
+  isKnownAggregatePath,
   parseGitLog,
   render,
+  resolveMainlineRef,
   type ConflictReport,
 } from '../../../scripts/agent/velocity/conflict-scan';
 
 const NOW = '2026-08-01T00:00:00.000Z';
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const SCRIPT_PATH = resolve(TEST_DIR, '../../../scripts/agent/velocity/conflict-scan.ts');
+const TSX_PATH = resolve(TEST_DIR, '../../../node_modules/tsx/dist/cli.mjs');
 
 function log(entries: Array<{ sha: string; day: string; files: string[] }>): string {
   return entries
@@ -23,6 +35,13 @@ describe('classify', () => {
     expect(classify('src/core/world.ts')).toBe('source');
     expect(classify('.github/scripts/ci-recovery/router.mjs')).toBe('source');
     expect(classify('scripts/agent/preflight.sh')).toBe('source');
+  });
+
+  describe('isKnownAggregatePath', () => {
+    it('recognizes generated aggregate paths only', () => {
+      expect(isKnownAggregatePath('docs/knowledge/handoffs/INDEX.md')).toBe(true);
+      expect(isKnownAggregatePath('package.json')).toBe(false);
+    });
   });
 
   it('treats docs, data and config as non-source', () => {
@@ -172,9 +191,10 @@ describe('deriveFindings', () => {
     ...over,
   });
 
-  it('calls out artifact shape when non-source collides more than code', () => {
+  it('calls out non-source hotspots without assuming all are aggregates', () => {
     const findings = deriveFindings(base({}));
-    expect(findings.some((f) => f.includes('artifact-shape'))).toBe(true);
+    expect(findings.some((f) => f.includes('generated aggregates'))).toBe(true);
+    expect(findings.some((f) => f.includes('hand-authored config'))).toBe(true);
   });
 
   it('does not call out artifact shape when code collides more', () => {
@@ -184,7 +204,7 @@ describe('deriveFindings', () => {
         nonSource: { touches: 5, overlapEvents: 0, overlapRatePct: 0 },
       }),
     );
-    expect(findings.some((f) => f.includes('artifact-shape'))).toBe(false);
+    expect(findings.some((f) => f.includes('generated aggregates'))).toBe(false);
   });
 
   it('names the worst file in each category', () => {
@@ -210,5 +230,131 @@ describe('deriveFindings', () => {
     );
     expect(findings.some((f) => f.includes('docs/INDEX.md'))).toBe(true);
     expect(findings.some((f) => f.includes('src/MainGameScene.ts'))).toBe(true);
+  });
+
+  it('uses aggregate-specific advice only for known aggregate paths', () => {
+    const findings = deriveFindings(
+      base({
+        top: [
+          {
+            path: 'package.json',
+            category: 'non-source',
+            touches: 5,
+            overlapEvents: 4,
+            contendedDays: 2,
+          },
+        ],
+      }),
+    );
+    expect(findings.some((f) => f.includes('Worst non-source file: package.json'))).toBe(true);
+    expect(findings.some((f) => f.includes('Inspect whether it is generated shared output'))).toBe(
+      true,
+    );
+    expect(findings.some((f) => f.includes('prefer deriving, sharding'))).toBe(false);
+  });
+});
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+function makeRepo(prefix: string): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  git(root, 'init', '--initial-branch=main');
+  git(root, 'config', 'user.name', 'Test User');
+  git(root, 'config', 'user.email', 'test@example.com');
+  return root;
+}
+
+describe('mainline history collection', () => {
+  it('resolves the local main branch when origin/main is absent', () => {
+    const root = makeRepo('conflict-scan-mainline-');
+    try {
+      writeFileSync(join(root, 'shared.md'), 'main\n');
+      git(root, 'add', 'shared.md');
+      git(root, 'commit', '-m', 'main touch');
+      expect(resolveMainlineRef(root)).toBe('refs/heads/main');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('collects first-parent mainline history instead of feature-branch commits', () => {
+    const root = makeRepo('conflict-scan-history-');
+    try {
+      writeFileSync(join(root, 'shared.md'), 'main\n');
+      git(root, 'add', 'shared.md');
+      git(root, 'commit', '-m', 'main touch');
+
+      git(root, 'checkout', '-b', 'feature');
+      writeFileSync(join(root, 'feature-only.md'), 'feature\n');
+      git(root, 'add', 'feature-only.md');
+      git(root, 'commit', '-m', 'feature touch');
+
+      const commits = collectCommits(root, 365);
+      expect(commits.map((commit) => commit.files)).toEqual([['shared.md']]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('CLI entrypoint and validation', () => {
+  it('matches direct execution even when the script path contains spaces', () => {
+    expect(
+      isDirectExecution(
+        '/tmp/conflict scan/scripts/agent/velocity/conflict-scan.ts',
+        'file:///tmp/conflict%20scan/scripts/agent/velocity/conflict-scan.ts',
+      ),
+    ).toBe(true);
+  });
+
+  it('runs successfully from a spaced path and writes the report', () => {
+    const root = makeRepo('conflict scan repo ');
+    try {
+      writeFileSync(join(root, 'shared.md'), 'main\n');
+      git(root, 'add', 'shared.md');
+      git(root, 'commit', '-m', 'main touch');
+
+      const scriptDir = join(root, 'scripts', 'agent', 'velocity');
+      mkdirSync(scriptDir, { recursive: true });
+      const copiedScript = join(scriptDir, 'conflict-scan.ts');
+      copyFileSync(SCRIPT_PATH, copiedScript);
+
+      const outPath = join(root, 'files', 'report.json');
+      const result = spawnSync(process.execPath, [TSX_PATH, copiedScript, '--out', outPath], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Report →');
+      expect(readFileSync(outPath, 'utf8')).toContain('"schema": "crawler-velocity-conflicts/v1"');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a non-numeric max-nonsource-rate threshold', () => {
+    const root = makeRepo('conflict-scan-threshold-');
+    try {
+      writeFileSync(join(root, 'shared.md'), 'main\n');
+      git(root, 'add', 'shared.md');
+      git(root, 'commit', '-m', 'main touch');
+
+      const result = spawnSync(
+        process.execPath,
+        [TSX_PATH, SCRIPT_PATH, '--max-nonsource-rate', 'bad', '--out', join(root, 'files/report.json')],
+        {
+          cwd: root,
+          encoding: 'utf8',
+        },
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('--max-nonsource-rate must be a finite number');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

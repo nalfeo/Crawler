@@ -144,12 +144,13 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Train protection rollback | `npm run train:protection:rollback`        |
 | Conflict overlap scan     | `npm run velocity:conflict-scan`           |
 
-`npm run velocity:conflict-scan` reports the **same-day file overlap rate** — how often
-two squash-merged commits touched the same file on the same day, which is the
-precondition for a merge conflict. It splits the rate into source vs non-source
-(docs/JSON/config) files: a high non-source rate means an aggregate file should be
-derived, sharded, or uncommitted rather than the code refactored. Pass
-`--max-nonsource-rate <pct>` to use it as a gate (non-zero exit above the threshold).
+`npm run velocity:conflict-scan` reports a **same-day file co-touch proxy** — how often
+two squash-merged commits touched the same file on the same day on mainline history.
+It splits the rate into source vs non-source (docs/JSON/config) files: a high
+non-source rate can point to shared aggregates or config hot spots, but inspect
+the hottest files before deciding whether to derive/shard them or refactor the
+surrounding workflow. Pass `--max-nonsource-rate <pct>` to use it as a policy gate
+on that proxy (non-zero exit above the threshold).
 
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.

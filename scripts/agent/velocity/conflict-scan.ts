@@ -1,36 +1,40 @@
 /**
  * Conflict scan — turns "which files keep colliding?" into a tracked number.
  *
- * Crawler merges many PRs per day, all squash-merged onto `main`. Two sessions
- * that touch the same file on the same day are the *precondition* for a merge
- * conflict: whichever lands second has to rebase across the first. The metric
- * below counts exactly that precondition — it needs no conflict-resolution
- * telemetry, only committed history, so it can be recomputed identically at any
- * time and compared across windows.
+ * Crawler merges many PRs per day, all squash-merged onto `main`. When two
+ * merged commits touch the same file on the same day, that is a useful proxy
+ * for coordination pressure on shared files. The metric below tracks that
+ * same-day co-touch proxy from committed history alone, so it can be
+ * recomputed identically at any time and compared across windows. It is
+ * observational: not every co-touch required a rebase, and not every rebase
+ * appears as a same-day co-touch.
  *
  * Definitions (all per file, per calendar day, on first-parent `main` history):
  *   touches        commits in the window that modified the file
  *   overlap events for a (file, day) touched by N distinct commits: N - 1
- *                  (the first commit is free; every later one had to rebase)
+ *                  (the first touch is free; each later touch is additional
+ *                  same-day co-touch on the mainline)
  *   overlap rate   overlap events ÷ touches
  *
- * The rate is reported separately for **source** files (code that conflicts
- * because behavior genuinely changed) and **non-source** files (docs, JSON,
- * config — where conflicts are usually an artifact-shape problem: an aggregate
- * file that should have been derived or sharded). The non-source rate is the
- * number the W1 artifact-shape work is gated on.
+ * The rate is reported separately for **source** files and **non-source**
+ * files (docs, JSON, config). A high non-source rate often points to shared
+ * aggregates or config hot spots, but the hottest files still need inspection
+ * before deciding whether to derive/shard them or refactor the surrounding
+ * workflow.
  *
  *   npm run velocity:conflict-scan -- [--days 120] [--top 20]
  *                                     [--out files/velocity-conflicts.json]
  *                                     [--max-nonsource-rate 3]
  *
- * `--max-nonsource-rate` turns the scan into a gate: the process exits 1 when
- * the non-source overlap rate (in percent) exceeds the given threshold. Without
- * it the scan is purely observational and always exits 0.
+ * `--max-nonsource-rate` turns the scan into a policy gate on this proxy: the
+ * process exits 1 when the non-source overlap rate (in percent) exceeds the
+ * given threshold. Without it the scan is purely observational and always
+ * exits 0.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /** Extensions treated as source code. Everything else is an artifact. */
 const SOURCE_EXTENSIONS = [
@@ -86,9 +90,15 @@ export interface ConflictReport {
   findings: string[];
 }
 
+const KNOWN_AGGREGATE_PATHS = [/^docs\/knowledge\/handoffs\/INDEX\.md$/] as const;
+
 export function classify(path: string): 'source' | 'non-source' {
   const lower = path.toLowerCase();
   return SOURCE_EXTENSIONS.some((ext) => lower.endsWith(ext)) ? 'source' : 'non-source';
+}
+
+export function isKnownAggregatePath(path: string): boolean {
+  return KNOWN_AGGREGATE_PATHS.some((pattern) => pattern.test(path));
 }
 
 /**
@@ -188,17 +198,20 @@ export function deriveFindings(report: Omit<ConflictReport, 'findings'>): string
 
   if (report.nonSource.overlapRatePct > report.source.overlapRatePct) {
     findings.push(
-      'Non-source files collide more often than code does. That is an artifact-shape ' +
-        'problem, not an architecture problem — derive or shard the aggregates rather ' +
-        'than refactoring the code that writes them.',
+      'Non-source files co-touch more often than code does. Review the hottest non-source ' +
+        'paths first: generated aggregates often want deriving or sharding, while ' +
+        'hand-authored config can reflect real coordination work.',
     );
   }
 
   const worstNonSource = report.top.find((o) => o.category === 'non-source');
   if (worstNonSource && worstNonSource.overlapEvents > 0) {
     findings.push(
-      `Worst aggregate: ${worstNonSource.path} — ${worstNonSource.overlapEvents} overlap events ` +
-        `across ${worstNonSource.contendedDays} contended days. Make it derived, sharded, or uncommitted.`,
+      `Worst non-source file: ${worstNonSource.path} — ${worstNonSource.overlapEvents} overlap events ` +
+        `across ${worstNonSource.contendedDays} contended days. ` +
+        (isKnownAggregatePath(worstNonSource.path)
+          ? 'Because this is a known aggregate, prefer deriving, sharding, or leaving it uncommitted.'
+          : 'Inspect whether it is generated shared output or hand-authored config before changing structure.'),
     );
   }
 
@@ -235,11 +248,29 @@ export function buildReport(
 }
 
 /** Read first-parent `main` history for the window, as `CommitTouch` records. */
+export function resolveMainlineRef(root: string): string {
+  for (const ref of ['refs/remotes/origin/main', 'origin/main', 'refs/heads/main', 'main']) {
+    try {
+      execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], {
+        cwd: root,
+        stdio: 'ignore',
+      });
+      return ref;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  throw new Error('Could not resolve a mainline ref. Expected origin/main or main.');
+}
+
 export function collectCommits(root: string, days: number): CommitTouch[] {
+  const mainlineRef = resolveMainlineRef(root);
   const raw = execFileSync(
     'git',
     [
       'log',
+      mainlineRef,
       '--first-parent',
       `--since=${days} days ago`,
       '--no-renames',
@@ -254,7 +285,7 @@ export function collectCommits(root: string, days: number): CommitTouch[] {
 export function render(report: ConflictReport): string {
   const lines: string[] = [];
   lines.push(
-    `\nSame-day file overlap — ${report.commitsAnalyzed} commits over ${report.windowDays} days ` +
+    `\nSame-day file co-touch proxy — ${report.commitsAnalyzed} commits over ${report.windowDays} days ` +
       `(${report.filesTouched} files)\n`,
   );
   const row = (label: string, t: CategoryTotals) =>
@@ -280,35 +311,63 @@ export function render(report: ConflictReport): string {
   return lines.join('\n');
 }
 
+function readFlagValue(argv: readonly string[], name: string): string | undefined {
+  const index = argv.indexOf(`--${name}`);
+  if (index < 0) return undefined;
+
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith('--')) {
+    throw new Error(`--${name} requires a value`);
+  }
+
+  return value;
+}
+
+function parseNumberFlag(argv: readonly string[], name: string, fallback?: number): number | undefined {
+  const raw = readFlagValue(argv, name);
+  if (raw === undefined) return fallback;
+
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new Error(`--${name} must be a finite number`);
+  }
+
+  return value;
+}
+
+export function isDirectExecution(argvEntry: string | undefined, moduleUrl: string): boolean {
+  return Boolean(argvEntry) && moduleUrl === pathToFileURL(argvEntry).href;
+}
+
 function main(): void {
   const argv = process.argv.slice(2);
-  const flag = (name: string, fallback: string): string => {
-    const index = argv.indexOf(`--${name}`);
-    return index >= 0 ? (argv[index + 1] ?? fallback) : fallback;
-  };
   const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
-  const days = Number(flag('days', '120'));
-  const top = Number(flag('top', '20'));
+  const days = parseNumberFlag(argv, 'days', 120) ?? 120;
+  const top = parseNumberFlag(argv, 'top', 20) ?? 20;
   const report = buildReport(collectCommits(root, days), days, new Date().toISOString(), top);
 
-  const out = resolve(root, flag('out', 'files/velocity-conflicts.json'));
+  const out = resolve(root, readFlagValue(argv, 'out') ?? 'files/velocity-conflicts.json');
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   process.stdout.write(render(report));
   process.stdout.write(`Report → ${out}\n`);
 
-  const threshold = argv.indexOf('--max-nonsource-rate');
-  if (threshold >= 0) {
-    const max = Number(argv[threshold + 1]);
-    if (Number.isFinite(max) && report.nonSource.overlapRatePct > max) {
-      process.stderr.write(
-        `\n✗ non-source overlap rate ${report.nonSource.overlapRatePct.toFixed(1)}% exceeds ${max}%\n`,
-      );
-      process.exitCode = 1;
-    }
+  const max = parseNumberFlag(argv, 'max-nonsource-rate');
+  if (max !== undefined && report.nonSource.overlapRatePct > max) {
+    process.stderr.write(
+      `\n✗ non-source overlap rate ${report.nonSource.overlapRatePct.toFixed(1)}% exceeds ${max}%\n`,
+    );
+    process.exitCode = 1;
   }
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'))) {
-  main();
+if (isDirectExecution(process.argv[1], import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    process.stderr.write(
+      `velocity:conflict-scan crashed: ${error instanceof Error ? error.message : error}\n`,
+    );
+    process.exitCode = 2;
+  }
 }
