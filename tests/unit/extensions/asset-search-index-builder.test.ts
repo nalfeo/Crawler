@@ -25,7 +25,7 @@ describe('asset-search index builder brief enrichment', () => {
     const doc = buildCorpus().find((entry) => entry.label === 'cactusfolk-boss-var-1');
     expect(doc).toBeDefined();
     expect(doc?.briefId).toBe('cactusfolk-boss');
-    expect(doc?.briefText).toContain('Abuela Saguaro, a towering saguaro cartel matriarch');
+    expect(doc?.briefText).toContain('Abuela Saguaro, a towering upright saguaro matriarch');
     expect(doc?.briefText).toBe(loadBriefDescription('briefs/enemies/cactusfolk-boss.yaml'));
   });
 });
