@@ -30,7 +30,8 @@ import { isGit, normalizeCommand, tokenize } from '../lib/shell.mjs';
 const MERGE_SUBCOMMANDS = new Set(['merge', 'rebase', 'cherry-pick', 'pull']);
 const SIDE_OPTIONS = new Set(['theirs', 'ours']);
 const ACK_ENV = 'CRAWLER_ALLOW_UNRELATED_HISTORIES';
-const ACK_RE = new RegExp(`(^|[\\s;&|(])${ACK_ENV}=1(\\s|$)`);
+const ENV_OPTIONS_WITH_VALUE = new Set(['-u', '--unset', '-C', '--chdir', '-S', '--split-string']);
+const ENV_OPTIONS_NO_VALUE = new Set(['-i', '--ignore-environment', '-0', '--null']);
 
 const REMEDIATION =
   'Resolve per path instead: `git reset --hard <base>` then a path-scoped ' +
@@ -38,23 +39,73 @@ const REMEDIATION =
   'That keeps every discarded line visible in the diff.';
 
 /**
- * Drop leading `VAR=value` env assignments (and a leading `env`) so a command
- * like `FOO=1 git merge -X theirs` is still recognized as git.
+ * Drop leading `VAR=value` env assignments plus a leading `env` wrapper (with
+ * supported `env(1)` options) so a command like `env -i FOO=1 git merge ...`
+ * is still recognized as git. Returns whether the guarded acknowledgement env
+ * var is set inline on the same segment.
  */
 function stripEnvPrefix(tokens) {
   let i = 0;
-  while (i < tokens.length) {
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) {
-      i++;
-      continue;
-    }
-    if (tokens[i] === 'env') {
-      i++;
-      continue;
-    }
-    break;
+  let ackInline = false;
+  while (i < tokens.length && isEnvAssignment(tokens[i])) {
+    ackInline ||= setsAck(tokens[i]);
+    i++;
   }
-  return tokens.slice(i);
+  if (isEnvProgramToken(tokens[i])) {
+    i++;
+    while (i < tokens.length) {
+      const tok = tokens[i];
+      if (tok === '--') {
+        i++;
+        break;
+      }
+      if (ENV_OPTIONS_NO_VALUE.has(tok) || /^--(?:unset|chdir|split-string)=/.test(tok)) {
+        i++;
+        continue;
+      }
+      if (ENV_OPTIONS_WITH_VALUE.has(tok)) {
+        i += 2;
+        continue;
+      }
+      if (isEnvAssignment(tok)) {
+        ackInline ||= setsAck(tok);
+        i++;
+        continue;
+      }
+      break;
+    }
+  }
+  return { tokens: tokens.slice(i), ackInline };
+}
+
+function isEnvAssignment(token) {
+  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
+}
+
+function setsAck(token) {
+  return token === `${ACK_ENV}=1`;
+}
+
+function isEnvProgramToken(token) {
+  if (typeof token !== 'string' || token.length === 0) return false;
+  const prog = token.toLowerCase().replace(/\\/g, '/');
+  const base = prog.split('/').pop() || prog;
+  return base === 'env' || base === 'env.exe';
+}
+
+function nextAckState(tokens, currentAck) {
+  if (tokens[0] === 'export') {
+    let nextAck = currentAck;
+    for (const tok of tokens.slice(1)) {
+      if (tok === `${ACK_ENV}=1`) nextAck = true;
+      else if (tok === ACK_ENV || tok.startsWith(`${ACK_ENV}=`)) nextAck = false;
+    }
+    return nextAck;
+  }
+  if (tokens[0] === 'unset' && tokens.slice(1).includes(ACK_ENV)) {
+    return false;
+  }
+  return currentAck;
 }
 
 /**
@@ -71,13 +122,14 @@ function findSubcommand(tokens) {
 }
 
 function segmentDeniesBluntMerge(seg, ackPresent) {
-  const tokens = stripEnvPrefix(tokenize(seg));
+  const { tokens, ackInline } = stripEnvPrefix(tokenize(seg));
   if (tokens.length === 0) return null;
   if (!isGit(tokens.join(' '))) return null;
 
   const sub = findSubcommand(tokens);
   if (!sub || !MERGE_SUBCOMMANDS.has(sub.name)) return null;
 
+  const effectiveAck = ackPresent || ackInline;
   const args = tokens.slice(sub.index + 1);
   for (let i = 0; i < args.length; i++) {
     const tok = args[i];
@@ -110,7 +162,7 @@ function segmentDeniesBluntMerge(seg, ackPresent) {
     }
 
     // --allow-unrelated-histories without explicit acknowledgement
-    if (tok === '--allow-unrelated-histories' && !ackPresent) {
+    if (tok === '--allow-unrelated-histories' && !effectiveAck) {
       return `Refusing \`git ${sub.name} --allow-unrelated-histories\`: merging unrelated histories ad hoc pulls every file from the other root into this tree (this is how non-art files leaked in from the orphan \`assets/queue\` branch). Segment: \`${seg}\`. If this is the sanctioned scripted path, re-run it with the explicit acknowledgement \`${ACK_ENV}=1\` set on the same command. Otherwise: ${REMEDIATION}`;
     }
   }
@@ -130,8 +182,9 @@ export default {
   },
   check(toolArgs) {
     const cmd = String(toolArgs?.command || '');
-    const ackPresent = ACK_RE.test(cmd);
+    let ackPresent = false;
     for (const seg of normalizeCommand(cmd)) {
+      ackPresent = nextAckState(tokenize(seg), ackPresent);
       const reason = segmentDeniesBluntMerge(seg, ackPresent);
       if (reason) return { decision: 'deny', reason };
     }

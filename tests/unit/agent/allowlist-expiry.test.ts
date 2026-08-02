@@ -239,6 +239,15 @@ describe('findExportedConstNames / isAllowlistExportName', () => {
     ]);
   });
 
+  it('extracts every exported const declarator from one declaration statement', () => {
+    const source = 'export const harmless = 1, SNEAKY_ALLOWLIST = [], ALSO_EXCEPTIONS = [];';
+    expect(findExportedConstNames(source)).toEqual([
+      'harmless',
+      'SNEAKY_ALLOWLIST',
+      'ALSO_EXCEPTIONS',
+    ]);
+  });
+
   it('discovers names published through an export specifier list', () => {
     const source = [
       'const HIDDEN_ALLOWLIST = [];',

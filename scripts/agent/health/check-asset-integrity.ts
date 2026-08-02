@@ -22,10 +22,10 @@
  *
  * ## Cost
  *
- * This reads and hashes the entire PNG corpus, so it is a CI-only check — it is
- * not wired into `verify:fast`. Each PNG is read exactly once. The corpus size
- * and elapsed wall time are printed on every run so a regression in its own
- * cost is visible.
+ * This reads and hashes the entire PNG corpus. It now runs both in CI and from
+ * `verify:fast`, so each PNG is still read exactly once and the corpus size +
+ * elapsed wall time are printed on every run so a regression in its own cost is
+ * visible.
  *
  * ## Usage
  *
@@ -41,6 +41,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import { resolveGeneratedAssetPath } from '../../sprites/generated-asset-path.js';
 import {
   checkAssetIntegrity,
   type Finding,
@@ -136,7 +137,20 @@ function scanCorpus(shardFiles: readonly string[]): CorpusScan {
     }
     const contentHash = typeof rawHash === 'string' ? rawHash : undefined;
 
-    const absAsset = fromRepo(ASSETS_ROOT, assetPath);
+    let absAsset: string;
+    try {
+      absAsset = resolveGeneratedAssetPath(
+        assetPath,
+        fromRepo(ASSETS_ROOT),
+        `check-asset-integrity shard "${shardFile}"`,
+      );
+    } catch (error) {
+      malformed.push({
+        shardFile,
+        reason: `unsafe assetPath "${assetPath}" — ${(error as Error).message}`,
+      });
+      continue;
+    }
     const fileExists = isFile(absAsset);
     // Hash only when we will actually compare — one read per PNG, and none at
     // all for the ~125 legitimately unhashed legacy entries.

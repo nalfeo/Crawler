@@ -72,6 +72,7 @@ afterEach(async () => {
 interface Scope {
   has_merge: boolean;
   can_run: boolean;
+  base_ref: string;
 }
 
 interface Repo {
@@ -110,12 +111,18 @@ function makeRepo(): Repo {
     // The classifier must never fail: verify-fast.sh consumes its stdout and a
     // non-zero exit would take the whole fast gate down with it.
     expect(res.status).toBe(0);
-    const read = (key: keyof Scope): boolean => {
+    const readBool = (key: 'has_merge' | 'can_run'): boolean => {
       const m = res.stdout.match(new RegExp(`^${key}=(true|false)$`, 'm'));
       if (!m) throw new Error(`missing '${key}' in output:\n${res.stdout}`);
       return m[1] === 'true';
     };
-    return { has_merge: read('has_merge'), can_run: read('can_run') };
+    const baseMatch = res.stdout.match(/^base_ref=(.*)$/m);
+    if (!baseMatch) throw new Error(`missing 'base_ref' in output:\n${res.stdout}`);
+    return {
+      has_merge: readBool('has_merge'),
+      can_run: readBool('can_run'),
+      base_ref: baseMatch[1] ?? '',
+    };
   };
 
   git('init', '-q', '-b', 'main');
@@ -134,13 +141,13 @@ describe.runIf(hasBash && hasGit)('merge-scope.sh', () => {
     repo.commit('src/a.ts', 'export const a = 1;\n', 'feat: a');
     repo.commit('src/b.ts', 'export const b = 2;\n', 'feat: b');
 
-    expect(repo.scope()).toEqual({ has_merge: false, can_run: true });
+    expect(repo.scope()).toEqual({ has_merge: false, can_run: true, base_ref: 'main' });
   });
 
   it('reports has_merge=false on main itself (no commits ahead of base)', () => {
     const repo = makeRepo();
 
-    expect(repo.scope()).toEqual({ has_merge: false, can_run: true });
+    expect(repo.scope()).toEqual({ has_merge: false, can_run: true, base_ref: 'main' });
   });
 
   it('reports has_merge=true once the branch merges main back in', () => {
@@ -154,7 +161,7 @@ describe.runIf(hasBash && hasGit)('merge-scope.sh', () => {
     repo.git('checkout', '-q', 'feature');
     repo.git('merge', '-q', '--no-ff', 'main', '-m', 'merge main into feature');
 
-    expect(repo.scope()).toEqual({ has_merge: true, can_run: true });
+    expect(repo.scope()).toEqual({ has_merge: true, can_run: true, base_ref: 'main' });
   });
 
   it('reports has_merge=true for a merge that resolved a real conflict', () => {
@@ -175,7 +182,7 @@ describe.runIf(hasBash && hasGit)('merge-scope.sh', () => {
     repo.git('add', 'src/shared.ts');
     repo.git('commit', '-q', '--no-edit');
 
-    expect(repo.scope()).toEqual({ has_merge: true, can_run: true });
+    expect(repo.scope()).toEqual({ has_merge: true, can_run: true, base_ref: 'main' });
   });
 
   it('reports can_run=false for a shallow clone rather than failing', () => {
@@ -193,6 +200,7 @@ describe.runIf(hasBash && hasGit)('merge-scope.sh', () => {
     expect(res.status).toBe(0);
     expect(res.stdout).toContain('has_merge=false');
     expect(res.stdout).toContain('can_run=false');
+    expect(res.stdout).toContain('base_ref=');
   });
 
   it('reports can_run=false when no mainline base resolves', () => {
@@ -201,7 +209,7 @@ describe.runIf(hasBash && hasGit)('merge-scope.sh', () => {
     // resolves: the guard cannot compute a base, so it must be skipped, not run.
     repo.git('branch', '-m', 'main', 'unrelated-trunk');
 
-    expect(repo.scope()).toEqual({ has_merge: false, can_run: false });
+    expect(repo.scope()).toEqual({ has_merge: false, can_run: false, base_ref: '' });
   });
 
   it('reports can_run=false outside a git work tree', () => {
@@ -217,5 +225,49 @@ describe.runIf(hasBash && hasGit)('merge-scope.sh', () => {
     });
     expect(res.status).toBe(0);
     expect(res.stdout).toContain('can_run=false');
+    expect(res.stdout).toContain('base_ref=');
+  });
+
+  it('prefers origin/main over local main when both resolve', () => {
+    const origin = makeRepo();
+    origin.commit('src/upstream.ts', 'export const upstream = 1;\n', 'feat: upstream');
+
+    const dir = mkdtempSync(path.join(tmpdir(), 'merge-scope-origin-'));
+    tempDirs.push(dir);
+    const clone = spawnSync('git', ['clone', '-q', `file://${origin.dir}`, dir], {
+      encoding: 'utf8',
+    });
+    expect(clone.status).toBe(0);
+
+    mkdirSync(path.join(dir, 'src'), { recursive: true });
+    writeFileSync(path.join(dir, 'src', 'local.ts'), 'export const local = 1;\n');
+    const add = spawnSync('git', ['add', 'src/local.ts'], { cwd: dir, encoding: 'utf8' });
+    expect(add.status).toBe(0);
+    const commit = spawnSync('git', ['commit', '-q', '-m', 'feat: local'], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Test',
+        GIT_AUTHOR_EMAIL: 'test@example.com',
+        GIT_COMMITTER_NAME: 'Test',
+        GIT_COMMITTER_EMAIL: 'test@example.com',
+      } as NodeJS.ProcessEnv,
+    });
+    expect(commit.status).toBe(0);
+
+    const checkout = spawnSync('git', ['checkout', '-q', '-b', 'feature'], {
+      cwd: dir,
+      encoding: 'utf8',
+    });
+    expect(checkout.status).toBe(0);
+
+    const res = spawnSync('bash', [SCRIPT], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env } as NodeJS.ProcessEnv,
+    });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain('base_ref=origin/main');
   });
 });

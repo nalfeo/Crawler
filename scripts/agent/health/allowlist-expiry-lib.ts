@@ -140,9 +140,6 @@ const PLACEHOLDER_REASONS: ReadonlySet<string> = new Set([
 /** Exported const names that look like a governed allowlist. */
 export const ALLOWLIST_EXPORT_NAME_RE = /(ALLOWLIST|SUPPRESSIONS|EXCEPTIONS|EXEMPTIONS)/;
 
-/** Matches `export const FOO_ALLOWLIST` style declarations in TS/JS source. */
-const EXPORTED_CONST_RE = /^\s*export\s+const\s+([A-Za-z_$][\w$]*)/gm;
-
 /**
  * Matches an `export { A, B as C }` specifier list (but not `export type { … }`,
  * which exports no value). A list declared privately and exported separately is
@@ -382,16 +379,19 @@ export function findAllowlistFindings(
  */
 export function findExportedConstNames(source: string): readonly string[] {
   const names: string[] = [];
-  EXPORTED_CONST_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = EXPORTED_CONST_RE.exec(source)) !== null) {
-    names.push(match[1]!);
+  for (const statement of findExportConstStatements(source)) {
+    for (const declarator of splitTopLevel(statement)) {
+      const match = /^\s*([A-Za-z_$][\w$]*)\s*=/.exec(declarator);
+      if (!match) continue;
+      if (!names.includes(match[1]!)) names.push(match[1]!);
+    }
   }
 
   // Declaring a list privately and publishing it via a separate export
   // specifier list is the same public surface as `export const`, so it must
   // not escape discovery.
   EXPORT_SPECIFIER_LIST_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
   while ((match = EXPORT_SPECIFIER_LIST_RE.exec(source)) !== null) {
     for (const rawSpecifier of match[1]!.split(',')) {
       const specifier = rawSpecifier.trim();
@@ -407,7 +407,119 @@ export function findExportedConstNames(source: string): readonly string[] {
     }
   }
 
-  return names;
+return names;
+}
+
+function findExportConstStatements(source: string): readonly string[] {
+const out: string[] = [];
+const re = /\bexport\s+const\b/g;
+let match: RegExpExecArray | null;
+while ((match = re.exec(source)) !== null) {
+  const statement = readTopLevelStatement(source, match.index + match[0].length);
+  if (!statement) continue;
+  out.push(statement);
+}
+return out;
+}
+
+function readTopLevelStatement(source: string, start: number): string {
+let depthParen = 0;
+let depthBracket = 0;
+let depthBrace = 0;
+let quote: '"' | "'" | '`' | null = null;
+let escaped = false;
+for (let i = start; i < source.length; i++) {
+  const ch = source[i]!;
+  const next = source[i + 1] ?? '';
+  if (quote) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === quote) quote = null;
+    continue;
+  }
+  if (ch === '/' && next === '/') {
+    while (i < source.length && source[i] !== '\n') i++;
+    continue;
+  }
+  if (ch === '/' && next === '*') {
+    i += 2;
+    while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++;
+    i++;
+    continue;
+  }
+  if (ch === '"' || ch === "'" || ch === '`') {
+    quote = ch;
+    continue;
+  }
+  if (ch === '(') depthParen++;
+  else if (ch === ')') depthParen = Math.max(0, depthParen - 1);
+  else if (ch === '[') depthBracket++;
+  else if (ch === ']') depthBracket = Math.max(0, depthBracket - 1);
+  else if (ch === '{') depthBrace++;
+  else if (ch === '}') depthBrace = Math.max(0, depthBrace - 1);
+  else if (ch === ';' && depthParen === 0 && depthBracket === 0 && depthBrace === 0) {
+    return source.slice(start, i);
+  }
+}
+return source.slice(start);
+}
+
+function splitTopLevel(source: string): readonly string[] {
+  const out: string[] = [];
+  let depthParen = 0;
+  let depthBracket = 0;
+  let depthBrace = 0;
+  let quote: '"' | "'" | '`' | null = null;
+  let escaped = false;
+  let start = 0;
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]!;
+    const next = source[i + 1] ?? '';
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') i++;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') depthParen++;
+    else if (ch === ')') depthParen = Math.max(0, depthParen - 1);
+    else if (ch === '[') depthBracket++;
+    else if (ch === ']') depthBracket = Math.max(0, depthBracket - 1);
+    else if (ch === '{') depthBrace++;
+    else if (ch === '}') depthBrace = Math.max(0, depthBrace - 1);
+    else if (ch === ',' && depthParen === 0 && depthBracket === 0 && depthBrace === 0) {
+      out.push(source.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(source.slice(start));
+  return out;
 }
 
 /** True when an exported const name looks like a governed allowlist. */

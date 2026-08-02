@@ -112,12 +112,32 @@ test('allows --allow-unrelated-histories when the ack is exported in the same ch
   );
 });
 
+test('allows --allow-unrelated-histories when env(1) sets the ack inline on the guarded segment', () => {
+  allows(
+    'env -i CRAWLER_ALLOW_UNRELATED_HISTORIES=1 git merge --allow-unrelated-histories assets/queue',
+  );
+});
+
 test('ack env var does not license -X theirs', () => {
   denies('CRAWLER_ALLOW_UNRELATED_HISTORIES=1 git merge -X theirs origin/main');
 });
 
 test('ack env var set to something other than 1 does not license unrelated histories', () => {
   const r = run('CRAWLER_ALLOW_UNRELATED_HISTORIES=0 git merge --allow-unrelated-histories other');
+  assert.equal(r.decision, 'deny');
+});
+
+test('ack text in a previous non-export segment does not license unrelated histories', () => {
+  const r = run(
+    'echo CRAWLER_ALLOW_UNRELATED_HISTORIES=1 && git merge --allow-unrelated-histories assets/queue',
+  );
+  assert.equal(r.decision, 'deny');
+});
+
+test('an inline ack on a previous non-export command does not persist to a later segment', () => {
+  const r = run(
+    'CRAWLER_ALLOW_UNRELATED_HISTORIES=1 echo ok && git merge --allow-unrelated-histories assets/queue',
+  );
   assert.equal(r.decision, 'deny');
 });
 
@@ -129,6 +149,13 @@ test('denies through an unrelated env prefix', () => {
 
 test('denies through env(1)', () => {
   denies('env GIT_AUTHOR_NAME=bot git merge -X theirs origin/main');
+});
+
+test('denies through env(1) option wrappers too', () => {
+  denies('env -i git merge -X theirs origin/main');
+  denies('env --ignore-environment git merge -X ours origin/main');
+  denies('env -u HOME git merge --strategy-option=theirs origin/main');
+  denies('env --unset=HOME git merge --strategy-option=ours origin/main');
 });
 
 test('denies with .exe', () => {
