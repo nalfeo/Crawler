@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-02",
+  "session_slug": "landscape-safe-area",
+  "task_title": "Landscape-only mobile safe-area layout",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "human-maintainer",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Six-phase plan presented in session chat and reviewed by the maintainer, who approved it with one scope cut: existing touch movement controls work, so the joystick/action-button promotion phase was dropped. Letterbox-vs-widen was the open question; letterbox (the stated default) was taken."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": true,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Separate-model code-review agent over the full branch diff, focused on inset math edge cases, safe-area subscription teardown leaks, stale-layout races, and vacuous-gate risk. Result: no significant issues found."
+        }
+      ]
+    }
+  }
+}
