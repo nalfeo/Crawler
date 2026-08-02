@@ -154,6 +154,14 @@ const INTERACTION_HINT_BOTTOM_MARGIN = 12;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
 const SET_PIECE_LIGHT_RADIUS_FT = 20;
 const SET_PIECE_LIGHT_INTENSITY = 0.7;
+
+// Floor-transition progress bar dimensions (used in both create() and
+// startFloorTransitionProgress()).
+const FLOOR_TRANS_BAR_W = 400;
+const FLOOR_TRANS_BAR_H = 14;
+const FLOOR_TRANS_BAR_INNER_W = FLOOR_TRANS_BAR_W - 2;
+const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
+
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -647,6 +655,15 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionBodyText?: Phaser.GameObjects.Text;
 
+  /** Progress bar shown during floor-to-floor transitions (hidden otherwise). */
+  private floorTransitionProgressTrack?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressFill?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressShine?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressLabel?: Phaser.GameObjects.Text;
+
   /** Dedicated UI camera so HUD is not affected by world camera zoom. */
   private uiCamera?: Phaser.Cameras.Scene2D.Camera;
 
@@ -1129,6 +1146,10 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
       this.floorCompletionBodyText = undefined;
+      this.floorTransitionProgressTrack = undefined;
+      this.floorTransitionProgressFill = undefined;
+      this.floorTransitionProgressShine = undefined;
+      this.floorTransitionProgressLabel = undefined;
       this.loadoutText = undefined;
       this.keyAbilities = undefined;
       this.conversationNpcEid = null;
@@ -2384,6 +2405,40 @@ export class MainGameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5, 0.5);
+
+    // Floor-transition progress bar — hidden by default, shown only when the
+    // scene is about to restart into the next floor.
+    const floorBarX = GAME.WIDTH / 2 - FLOOR_TRANS_BAR_W / 2;
+    const floorBarY = GAME.HEIGHT / 2 + 75;
+    this.floorTransitionProgressTrack = this.add
+      .rectangle(floorBarX, floorBarY, FLOOR_TRANS_BAR_W, FLOOR_TRANS_BAR_H, 0x0a0e18, 1)
+      .setStrokeStyle(1, 0x02040a, 1)
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressFill = this.add
+      .rectangle(floorBarX + 1, floorBarY + 1, 0, FLOOR_TRANS_BAR_INNER_H, 0x4ea8ff, 1)
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressShine = this.add
+      .rectangle(
+        floorBarX + 1,
+        floorBarY + 1,
+        0,
+        Math.max(1, Math.floor(FLOOR_TRANS_BAR_INNER_H / 3)),
+        0xffffff,
+        0.18,
+      )
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressLabel = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 + 100, 'Loading next floor...', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: '#64748b',
+      })
+      .setOrigin(0.5, 0)
+      .setVisible(false);
+
     this.floorCompletionScreen = this.add
       .container(0, 0, [
         completionBackdrop,
@@ -2391,6 +2446,10 @@ export class MainGameScene extends Phaser.Scene {
         this.floorCompletionTitleText,
         this.floorCompletionSubtitleText,
         this.floorCompletionBodyText,
+        this.floorTransitionProgressTrack,
+        this.floorTransitionProgressFill,
+        this.floorTransitionProgressShine,
+        this.floorTransitionProgressLabel,
       ])
       .setDepth(5500)
       .setScrollFactor(0)
@@ -3685,7 +3744,7 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionMessagePending = false;
       this.floorCompletionMessageShown = true;
       this.floorCompletionScreen?.setVisible(true);
-      this.time.delayedCall(1500, () => {
+      this.startFloorTransitionProgress(() => {
         const nextOptions = this.options.onFloor1Cleared?.(this.world, this.playerEid);
         if (nextOptions) {
           const composedNextOptions =
@@ -3709,6 +3768,46 @@ export class MainGameScene extends Phaser.Scene {
 
   private shouldShowFloorCompletionMessage(): boolean {
     return getFloorRunOutcome(this.world) !== null && !this.floorCompletionMessageShown;
+  }
+
+  /**
+   * Animate the floor-transition progress bar from 0% to 100% over ~1300 ms,
+   * then invoke `onComplete` so the caller can restart the scene.
+   * The bar elements are shown immediately; the tween drives the fill width.
+   */
+  private startFloorTransitionProgress(onComplete: () => void): void {
+    const track = this.floorTransitionProgressTrack;
+    const fill = this.floorTransitionProgressFill;
+    const shine = this.floorTransitionProgressShine;
+    const label = this.floorTransitionProgressLabel;
+
+    if (track) track.setVisible(true);
+    if (fill) fill.setVisible(true);
+    if (shine) shine.setVisible(true);
+    if (label) label.setVisible(true);
+
+    if (!fill || !shine) {
+      // Fallback: no bar elements available — just delay then continue.
+      this.time.delayedCall(1400, onComplete);
+      return;
+    }
+
+    const progress = { value: 0 };
+    this.tweens.add({
+      targets: progress,
+      value: 1,
+      duration: 1300,
+      ease: 'Linear',
+      onUpdate: () => {
+        const w = Math.max(1, Math.round(progress.value * FLOOR_TRANS_BAR_INNER_W));
+        fill.setSize(w, FLOOR_TRANS_BAR_INNER_H);
+        shine.setSize(w, Math.max(1, Math.floor(FLOOR_TRANS_BAR_INNER_H / 3)));
+      },
+      onComplete: () => {
+        // Brief pause at 100% before the scene restarts.
+        this.time.delayedCall(150, onComplete);
+      },
+    });
   }
 
   /**
