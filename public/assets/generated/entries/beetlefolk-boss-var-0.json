@@ -25,7 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "5",
   "type": "enemy",
-  "contentHash": "16bd5992a6fc62a8d3cd2ac0d803b72d46dc673dda4ba6147101f7d90d7dfd93",
+  "contentHash": "5d825899d524d4ec83fd599b148983e65723efbc9c6881959db0e44f63d75e2b",
   "postprocessOverrideProfilePath": "generated/runs/beetlefolk-boss/2026-07-17T01-21-11-572cdd85-salvaged/postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "generated/runs/beetlefolk-boss/2026-07-17T01-21-11-572cdd85-salvaged/postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "generated/runs/beetlefolk-boss/2026-07-17T01-21-11-572cdd85-salvaged/postprocess.pipeline.effective.yaml",
