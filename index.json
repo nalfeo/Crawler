@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fc3bc280f79367449b58f4b3ef368120f98944e0",
+    "commitDate": "2026-08-02T19:18:58Z",
+    "commitSubject": "Cut review-harness ceremony in half and add an independent grader for 3+🍎 (#2693)",
+    "capturedAt": "2026-08-02T20:28:17.133Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30763582868",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/fc3bc280f79367449b58f4b3ef368120f98944e0.json"
+  },
+  {
     "commit": "5c7ad440cb6d6628660acdadfc3a14568663b853",
     "commitDate": "2026-08-02T18:41:07Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2698)",
