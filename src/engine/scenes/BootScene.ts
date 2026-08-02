@@ -250,8 +250,6 @@ export class BootScene extends Phaser.Scene {
     this.load.off('fileprogress');
 
     try {
-      this.loadingStatusText?.setText('Loading custom artwork...');
-      const registry = await fetchGeneratedSpriteRegistry();
       // Reuse the fetch that was started in preload(); fall back to a fresh
       // call if preload() was skipped (e.g. headless test environments).
       const registry = await (this.pendingRegistryFetch ?? fetchGeneratedSpriteRegistry());
