@@ -15,7 +15,8 @@ quests
 ## Apples
 
 2🍎 exact (copy-only edits in one data/def file, one small pure selector mirroring
-an existing one, plus its unit tests — no apples JSON required below 3🍎)
+an existing one, plus its unit tests — no apples JSON required below 3🍎, but a
+review ledger is still required for a code-touching PR)
 
 ## What Was Done
 

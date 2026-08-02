@@ -25,8 +25,7 @@ import {
   SHOPKEEPER_LOCKED_DIALOGUE,
   SHOPKEEPER_RETURN_DIALOGUE,
   SHOPKEEPER_SHOP_DIALOGUE,
-  SPELL_BROKER_POST_CLAIM_DIALOGUE,
-  SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
+  selectSpellBrokerDialogue,
 } from '../../src/shared/npc-types.js';
 import { FLOOR1_LEAVE_FLOOR_QUEST_ID, type ShopkeeperStage } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -317,25 +316,36 @@ describe('resolveDialogueLines', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
+      ...selectSpellBrokerDialogue({ locked: true, spellbookClaimed: false })!,
     ]);
   });
 
   it('returns the spell broker post-claim line once the spellbook is claimed', () => {
     const world = createTestWorld();
     world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    world.featureUnlocks.spells = true;
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...SPELL_BROKER_POST_CLAIM_DIALOGUE,
+      ...selectSpellBrokerDialogue({ locked: false, spellbookClaimed: true })!,
     ]);
+  });
+
+  it('keeps the authored spell broker intro until the spell unlock is actually live', () => {
+    const world = createTestWorld();
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
+      getNpcDef('spell-quest-giver')!.dialogue.map((line) => line.text),
+    );
   });
 
   it('prefers the locked line over the post-claim line for the spell broker', () => {
     const world = createTestWorld();
     world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    world.featureUnlocks.spells = true;
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
+      ...selectSpellBrokerDialogue({ locked: true, spellbookClaimed: true })!,
     ]);
   });
 

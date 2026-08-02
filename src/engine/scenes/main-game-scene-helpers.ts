@@ -238,7 +238,9 @@ export function resolveDialogueLines(
   if (defId === 'spell-quest-giver') {
     const brokerLines = selectSpellBrokerDialogue({
       locked: deps.spellQuestGiver?.isLocked?.(world) === true,
-      spellbookClaimed: world.goalFlags.get('floor1-boss-spellbook-claimed') === true,
+      spellbookClaimed:
+        world.goalFlags.get('floor1-boss-spellbook-claimed') === true &&
+        world.featureUnlocks.spells === true,
     });
     if (brokerLines) {
       return [...brokerLines];

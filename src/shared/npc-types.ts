@@ -172,7 +172,7 @@ export const SHOPKEEPER_LOCKED_DIALOGUE: readonly string[] = [
  * Lines shown by the Spell Broker before the player has finished the Tutorial
  * Goon's opening quest.
  */
-export const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
+const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
   "Not yet. The Goon clears you, the Merchant dresses you, *then* you're my problem. That's the order.",
   "I didn't write the order. I'd have written it differently. I'd have written a lot of things differently.",
 ];
@@ -184,13 +184,13 @@ export const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
  * reward (goal flag `floor1-boss-spellbook-claimed`). Closes his beat: the
  * ability is live, and his real grievance is with the other two, not the player.
  */
-export const SPELL_BROKER_POST_CLAIM_DIALOGUE: readonly string[] = [
+const SPELL_BROKER_POST_CLAIM_DIALOGUE: readonly string[] = [
   "It's live. It'll fire itself when the conditions are right — stop babysitting it and go fight.",
   "You know what the worst part is? I *like* them. Both of them. I've liked them for more seasons than he can count, and he used to be able to count. Go on. Kill something.",
 ];
 
 /** Inputs for {@link selectSpellBrokerDialogue}, derived from world state. */
-export interface SpellBrokerDialogueState {
+interface SpellBrokerDialogueState {
   /** The Spell Broker is still gated behind the Goon's opening quest. */
   readonly locked: boolean;
   /** The player has claimed their spellbook reward. */
