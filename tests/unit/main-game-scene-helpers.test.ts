@@ -25,6 +25,7 @@ import {
   SHOPKEEPER_LOCKED_DIALOGUE,
   SHOPKEEPER_RETURN_DIALOGUE,
   SHOPKEEPER_SHOP_DIALOGUE,
+  SPELL_BROKER_POST_CLAIM_DIALOGUE,
   SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../src/shared/npc-types.js';
 import { FLOOR1_LEAVE_FLOOR_QUEST_ID, type ShopkeeperStage } from '../../src/shared/quest-types.js';
@@ -318,5 +319,31 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
     ]);
+  });
+
+  it('returns the spell broker post-claim line once the spellbook is claimed', () => {
+    const world = createTestWorld();
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      ...SPELL_BROKER_POST_CLAIM_DIALOGUE,
+    ]);
+  });
+
+  it('prefers the locked line over the post-claim line for the spell broker', () => {
+    const world = createTestWorld();
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      ...SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
+    ]);
+  });
+
+  it('falls back to authored spell broker dialogue before the spellbook is claimed', () => {
+    const world = createTestWorld();
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
+      getNpcDef('spell-quest-giver')!.dialogue.map((line) => line.text),
+    );
   });
 });

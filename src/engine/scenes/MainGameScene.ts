@@ -2990,7 +2990,7 @@ export class MainGameScene extends Phaser.Scene {
       {
         title: 'Learn a Spell',
         subtitle: 'You defeated the Slime Rat boss!',
-        body: 'Choose a spellbook to unlock your ability system. Your pick is slotted onto your abilities bar and will auto-trigger by its combat rules.',
+        body: 'Choose a spellbook to unlock your ability system. Your pick is slotted onto your abilities bar (up to ten spells) and will auto-trigger by its cooldown + combat rules. Press [B] to configure the bar.',
         options,
         allowCancel: false,
         initialSelectedId: options[0]?.id,
