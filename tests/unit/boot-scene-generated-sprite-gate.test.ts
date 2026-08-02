@@ -60,6 +60,29 @@ describe('BootScene generated sprite preload gate', () => {
     expect(source).toMatch(/catch \(err\) \{[\s\S]*?this\.startMainGame\(\);[\s\S]*?\}/);
   });
 
+  it('removes preload progress listeners before starting generated-sprite load cycle', () => {
+    expect(source).toMatch(/this\.load\.off\('progress'\);/);
+    expect(source).toMatch(/this\.load\.off\('fileprogress'\);/);
+  });
+
+  it('advances the reserved 80→100% segment on both success and error file events', () => {
+    expect(source).toMatch(
+      /this\.load\.on\(Phaser\.Loader\.Events\.FILE_COMPLETE, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.load\.on\(Phaser\.Loader\.Events\.FILE_LOAD_ERROR, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.load\.off\(Phaser\.Loader\.Events\.FILE_COMPLETE, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.load\.off\(Phaser\.Loader\.Events\.FILE_LOAD_ERROR, onFileResolved\);/,
+    );
+    expect(source).toMatch(
+      /this\.setLoadingProgress\(0\.8 \+ 0\.2 \* \(loaded \/ queued\.length\)\);/,
+    );
+  });
+
   // Render-fix linchpin: terrain-pack textures must be queued in preload() so
   // they are resident before MainGameScene bakes terrain. Without this call a
   // pack-using floor (Floor 2 → industrial-cave) silently falls through the
