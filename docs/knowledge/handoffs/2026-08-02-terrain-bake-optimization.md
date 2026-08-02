@@ -191,9 +191,10 @@ invariant and were rewritten to assert the invariant instead — not weakened:
 - The Floor 2 screenshot jitter (~257 px of sprite animation) means a naive
   full-frame pixel-equality e2e would be flaky on Floor 2. Floor 1 is stable and
   would support one if a future session wants that gate.
-- CI recovery note: on 2026-08-02, GitHub served a stale synthetic PR merge
-  snapshot for this branch (`refs/pull/2694/merge`) whose
-  `src/shared/data/sprite-catalog.json` still contained generated rows, even
-  though the PR head (`refs/pull/2694/head`) served the cleaned catalog. A
-  non-empty follow-up commit was required to force GitHub to recompute the merge
+- CI recovery note: on 2026-08-02, GitHub repeatedly served a stale synthetic
+  PR merge snapshot for this branch (`refs/pull/2694/merge`) whose
+  `src/shared/data/sprite-catalog.json` still contained 321 committed
+  `generated:` rows, even though both the PR head (`refs/pull/2694/head`) and
+  the locally rebased branch tree served the cleaned catalog. Each recurrence
+  needed a non-empty follow-up commit to force GitHub to recompute the merge
   snapshot against the current branch tree.
