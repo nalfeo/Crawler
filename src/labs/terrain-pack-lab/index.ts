@@ -20,7 +20,7 @@ import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { BiomeType, TerrainType, TileFlags, type MapConfig } from '../../shared/map-types.js';
 import { SeededRandom } from '../../shared/random.js';
-import { computeRawMask8, normalizeBlob47Mask } from '../../shared/terrain-pack-mask.js';
+import { _computeRawMask8, normalizeBlob47Mask } from '../../shared/terrain-pack-mask.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import { pickPoolCombo, pickWallAccentSelection } from '../../shared/terrain-pack-variants.js';
 import { TERRAIN_FALLBACK_COLORS, colorToCss } from '../../shared/terrain-colors.js';
@@ -440,7 +440,7 @@ function createTerrainPackLab(canvasHost: HTMLElement, controls: HTMLElement): (
           // Compute 47-mask for this wall tile. Out-of-bounds neighbours count
           // as solid (matches the renderer) so a border wall full-bleeds
           // instead of insetting into nothing at the map edge.
-          const rawMask = computeRawMask8(
+          const rawMask = _computeRawMask8(
             tx,
             ty,
             map.width,

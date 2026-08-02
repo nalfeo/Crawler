@@ -12,10 +12,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  _computeRawMask8,
   BLOB47_CANONICAL_MASKS,
   CORNER_ADJACENCY,
   MASK_BIT,
-  computeRawMask8,
+  computeRawMask8Grid,
   edgeWangMaskFromOccupancy,
   edgeWangStubSpan,
   edgeConnectionsFromMask,
@@ -104,25 +105,25 @@ describe('computeRawMask8 / neighborMask8InTerrain — bit order + OOB handling'
   it('sets bits in the pinned order N=1,E=2,S=4,W=8,NE=16,SE=32,SW=64,NW=128', () => {
     const allMatch = () => true;
     // 3x3 grid, center tile (1,1): every neighbour matches -> full 255.
-    expect(computeRawMask8(1, 1, 3, 3, allMatch)).toBe(255);
+    expect(_computeRawMask8(1, 1, 3, 3, allMatch)).toBe(255);
   });
 
   it('treats out-of-bounds neighbours as non-matching (bit stays 0)', () => {
     const allMatch = () => true;
     // Top-left corner tile (0,0) of a 3x3 grid: N, W, NE, NW, SW are all OOB.
     // Only E, S, SE are in-bounds and match.
-    const mask = computeRawMask8(0, 0, 3, 3, allMatch);
+    const mask = _computeRawMask8(0, 0, 3, 3, allMatch);
     expect(mask).toBe(MASK_BIT.E | MASK_BIT.S | MASK_BIT.SE);
   });
 
   it('a 1x1 grid has every neighbour out of bounds -> raw mask 0', () => {
     const allMatch = () => true;
-    expect(computeRawMask8(0, 0, 1, 1, allMatch)).toBe(0);
+    expect(_computeRawMask8(0, 0, 1, 1, allMatch)).toBe(0);
   });
 
   it('only sets the bit for a neighbour that individually matches', () => {
     // Only the N neighbour of (1,1) in a 3x3 grid matches.
-    const mask = computeRawMask8(1, 1, 3, 3, (nx, ny) => nx === 1 && ny === 0);
+    const mask = _computeRawMask8(1, 1, 3, 3, (nx, ny) => nx === 1 && ny === 0);
     expect(mask).toBe(MASK_BIT.N);
   });
 
@@ -213,5 +214,51 @@ describe('edge-Wang helpers', () => {
       start: 25,
       end: 39,
     });
+  });
+});
+
+describe('computeRawMask8Grid — closure-free hot-loop variant', () => {
+  it('agrees with computeRawMask8 for every 3x3 solidity pattern and both OOB modes', () => {
+    // The terrain bake computes wall masks via computeRawMask8Grid instead of
+    // computeRawMask8 to avoid allocating a closure per tile. Exhaustively
+    // pinning the two against each other is what stops the bit order (or the
+    // OOB handling) from silently drifting apart.
+    for (let pattern = 0; pattern < 512; pattern++) {
+      const solid = new Uint8Array(9);
+      for (let i = 0; i < 9; i++) solid[i] = (pattern >> i) & 1;
+      const matches = (nx: number, ny: number): boolean => solid[ny * 3 + nx] === 1;
+      for (const oob of [false, true]) {
+        for (let ty = 0; ty < 3; ty++) {
+          for (let tx = 0; tx < 3; tx++) {
+            expect(computeRawMask8Grid(solid, tx, ty, 3, 3, oob)).toBe(
+              _computeRawMask8(tx, ty, 3, 3, matches, oob),
+            );
+          }
+        }
+      }
+    }
+  });
+
+  it('agrees with computeRawMask8 on a non-square grid, including every edge tile', () => {
+    const width = 5;
+    const height = 3;
+    const solid = new Uint8Array(width * height);
+    // Deterministic, irregular pattern so edges and corners differ.
+    for (let i = 0; i < solid.length; i++) solid[i] = (i * 7) % 3 === 0 ? 1 : 0;
+    const matches = (nx: number, ny: number): boolean => solid[ny * width + nx] === 1;
+    for (const oob of [false, true]) {
+      for (let ty = 0; ty < height; ty++) {
+        for (let tx = 0; tx < width; tx++) {
+          expect(computeRawMask8Grid(solid, tx, ty, width, height, oob)).toBe(
+            _computeRawMask8(tx, ty, width, height, matches, oob),
+          );
+        }
+      }
+    }
+  });
+
+  it('defaults outOfBoundsMatches to false, like computeRawMask8', () => {
+    const solid = new Uint8Array(9).fill(1);
+    expect(computeRawMask8Grid(solid, 0, 0, 3, 3)).toBe(MASK_BIT.E | MASK_BIT.S | MASK_BIT.SE);
   });
 });
