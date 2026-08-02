@@ -688,6 +688,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Active NPC conversation lock; when set, fixed-step simulation pauses. */
   private conversationNpcEid: number | null = null;
+  /** Stable dialogue snapshot for the active conversation so lines cannot swap mid-talk. */
+  private activeConversationLines: readonly string[] | null = null;
 
   /** One-frame latch set by pointer tap/click to advance or start dialogue. */
   private tappedInteraction = false;
@@ -1189,6 +1191,7 @@ export class MainGameScene extends Phaser.Scene {
       this.loadoutText = undefined;
       this.keyAbilities = undefined;
       this.conversationNpcEid = null;
+      this.activeConversationLines = null;
       this.tappedInteraction = false;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
@@ -1579,6 +1582,12 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.abilitiesModalOpen = false;
     this.updateOverlayText();
+  }
+
+  private closeConversation(): void {
+    this.conversationNpcEid = null;
+    this.activeConversationLines = null;
+    this.dialogueBox?.hide();
   }
 
   private processOpenAbilitiesModal(): void {
@@ -3963,26 +3972,26 @@ export class MainGameScene extends Phaser.Scene {
     if (this.conversationNpcEid !== null) {
       const instance = this.world.npcs.get(this.conversationNpcEid);
       if (!instance || !instance.nearbyPlayer) {
-        this.conversationNpcEid = null;
-        this.dialogueBox?.hide();
+        this.closeConversation();
       } else {
         const def = getNpcDef(instance.defId);
-        const activeDialogue = resolveDialogueLines(
-          instance.defId,
-          this.world,
-          {
-            shopkeeper: this.options.shopkeeper,
-            spellQuestGiver: this.options.spellQuestGiver,
-            shopkeeperJustReturned: this.shopkeeperJustReturned,
-          },
-          this.conversationNpcEid,
-        );
+        const activeDialogue =
+          this.activeConversationLines ??
+          resolveDialogueLines(
+            instance.defId,
+            this.world,
+            {
+              shopkeeper: this.options.shopkeeper,
+              spellQuestGiver: this.options.spellQuestGiver,
+              shopkeeperJustReturned: this.shopkeeperJustReturned,
+            },
+            this.conversationNpcEid,
+          );
         this.interactionHint?.setVisible(false);
         this.dialogueBox?.setCloseVisible(true);
 
         if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc))) {
-          this.conversationNpcEid = null;
-          this.dialogueBox?.hide();
+          this.closeConversation();
           return;
         }
 
@@ -3994,8 +4003,7 @@ export class MainGameScene extends Phaser.Scene {
             if (instance.defId === 'the-broker') {
               this.options.broker?.met(this.world);
             }
-            this.conversationNpcEid = null;
-            this.dialogueBox?.hide();
+            this.closeConversation();
             return;
           }
           instance.dialogueIndex = nextIndex;
@@ -4070,6 +4078,7 @@ export class MainGameScene extends Phaser.Scene {
             if (instance.defId === 'spell-quest-giver' && this.options.spellQuestGiver) {
               this.options.spellQuestGiver.meet(this.world);
             }
+            this.activeConversationLines = [...activeDialogue];
             instance.dialogueIndex = 0;
             const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
             this.dialogueBox?.showLine(def.name, `"${text}"`);
