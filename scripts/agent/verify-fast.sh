@@ -220,11 +220,29 @@ else
   npx vitest run --changed --project sprites --reporter=dot --passWithNoTests
 fi
 
-echo "🔍 Step 3/3: Physics-defs sync + Size + Weight coverage checks..."
+echo "🔍 Step 3/3: Data-contract + integrity + coverage checks..."
 # physics-defs-sync is cheap and checks data drift (a docs-only entity-sizing.md
 # edit is gameplay_safe yet must still be validated against the code), so it always
 # runs.
 npx tsx scripts/agent/health/check-physics-defs-sync.ts
+
+# The three integrity guards below are pure JSON/file reads (no sim, no git, no
+# subprocess) and together cost well under a second, so they always run — the
+# whole point is that a data-contract break is caught at edit time rather than by
+# a red CI job or, worse, by a human noticing broken art in-game.
+#
+#  - registry-integrity: duplicate/blank ids WITHIN a registry file and ACROSS
+#    sibling files sharing one logical id namespace. The cross-file case is the
+#    one no per-file loader can see (achievements.floor1 + floor2 tier collision).
+#  - asset-integrity: the shard ↔ PNG ↔ contentHash triple over the entire
+#    committed corpus, so a stale hash or an orphaned shard is found once rather
+#    than by eye (welcome-room stale shard hashes, resurrected walk shard).
+#  - allowlist-expiry: every governed allowlist entry still has a specific
+#    reason and an unexpired / correctly-shaped deadline (npm audit exceptions
+#    went red because an allowlist quietly expired on a date).
+npx tsx scripts/agent/health/check-registry-integrity.ts
+npx tsx scripts/agent/health/check-asset-integrity.ts
+npx tsx scripts/agent/health/check-allowlist-expiry.ts
 
 # size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
 # imports only src/core, src/shared and src/game/ai, so a change set classified
