@@ -7,7 +7,7 @@ describe('asset-search index builder brief enrichment', () => {
     const doc = buildCorpus().find((entry) => entry.label === 'ability-icon-magic-missile');
     expect(doc).toBeDefined();
     expect(doc?.briefId).toBe('ability-icons-batch-01');
-    expect(doc?.briefText).toContain('glowing arcane projectile');
+    expect(doc?.briefText).toContain('precise arcane bolt');
     expect(doc?.briefText).not.toContain('Ability icon batch 01a');
   });
 
@@ -15,6 +15,6 @@ describe('asset-search index builder brief enrichment', () => {
     const doc = buildCorpus().find((entry) => entry.label === 'cactusfolk-boss-var-1');
     expect(doc).toBeDefined();
     expect(doc?.briefId).toBe('cactusfolk-boss');
-    expect(doc?.briefText).toContain('Abuela Saguaro, a towering upright saguaro matriarch');
+    expect(doc?.briefText).toContain('Abuela Saguaro, a towering saguaro cartel matriarch');
   });
 });

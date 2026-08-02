@@ -32,12 +32,12 @@
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {
-    "x": 7,
-    "y": 7,
-    "width": 114,
-    "height": 59,
-    "canvasWidth": 128,
-    "canvasHeight": 73
+    "x": 8,
+    "y": 8,
+    "width": 128,
+    "height": 79,
+    "canvasWidth": 144,
+    "canvasHeight": 95
   },
   "catalog": {
     "tags": ["item", "generated", "pipeline-approved"]

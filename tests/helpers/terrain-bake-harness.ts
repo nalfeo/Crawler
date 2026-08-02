@@ -66,7 +66,42 @@ export interface BakeCommandCounts {
  * Mirrors only the surface `buildTerrainLayer` touches. `render()` is a no-op:
  * there is no GL context here, and the command counts are the measurement.
  */
-export class CountingRenderTexture {
+interface CountingRenderTextureLike {
+  x: number;
+  y: number;
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+  depth: number;
+  stampCount: number;
+  fillCount: number;
+  clearCount: number;
+  readonly stamps: RecordedStamp[];
+  readonly fills: RecordedRect[];
+  readonly clears: RecordedRect[];
+  setOrigin(x: number, y: number): this;
+  setDepth(depth: number): this;
+  clear(x: number, y: number, w: number, h: number): this;
+  stamp(
+    key: string,
+    frame: number | undefined,
+    x: number,
+    y: number,
+    config?: {
+      scaleX?: number;
+      scaleY?: number;
+      rotation?: number;
+      flipX?: boolean;
+    },
+  ): this;
+  fill(color: number, alpha: number, x: number, y: number, w: number, h: number): this;
+  render(): this;
+  destroy(): void;
+  counts(): BakeCommandCounts;
+}
+
+class CountingRenderTexture implements CountingRenderTextureLike {
   x = 0;
   y = 0;
   originX = 0.5;
@@ -158,7 +193,7 @@ export class CountingRenderTexture {
 /** Scene stub plus the RT it handed to `buildTerrainLayer`. */
 export interface TerrainBakeScene {
   readonly scene: Phaser.Scene;
-  readonly rt: CountingRenderTexture;
+  readonly rt: CountingRenderTextureLike;
   /** How many times `textures.exists` was queried (hoisting proof). */
   textureExistsCalls: number;
 }

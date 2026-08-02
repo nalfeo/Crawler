@@ -64,9 +64,10 @@ The invariant is now satisfied without the clear in the overwhelmingly common
 cases:
 
 - An `inkedCells: Uint8Array` marks each ground-decal stamp's clamped rotated
-  AABB (the AABB was already computed for the placement check) and each linework
-  tile. A cover cell that was never inked is untouched background — clearing it
-  erases nothing.
+  AABB (the AABB was already computed for the placement check) plus the
+  vertical-overflow rows of a non-square generated/Kenney fallback stamp.
+  Linework tiles stay single-cell, so they are never marked. A cover cell that
+  was never inked is untouched background — clearing it erases nothing.
 - A cell that ends in an **opaque full-cell repaint** needs no clear either,
   because the repaint already destroys the ink. That covers a mask-255 wall
   frame, a successful `floorPool`/`corridorPool`/special-pool underdraw, and the
