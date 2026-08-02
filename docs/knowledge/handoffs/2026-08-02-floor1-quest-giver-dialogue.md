@@ -74,9 +74,10 @@ never observed in `npm run dev`. Rule #9 is unsatisfied for this change.
 - **Locked outranks post-claim in the Broker selector.** Both can be true in a
   contrived world state; the locked line is the one that routes the player, so it
   wins. Pinned by a test rather than left to branch order.
-- **The species stayed "rat".** The fetch item is `glistening-rat-tail` across the
-  drop table, `quest-types.ts`, and `floor1-scenario.test.ts`. The new copy says
-  "a tail" without a species, so a later rename to worm needs no dialogue changes.
+- **The species is "rat".** The fetch item is `glistening-rat-tail` across the
+  drop table, `quest-types.ts`, and `floor1-scenario.test.ts`, and it stays a rat —
+  no rename is planned. The new copy says "a tail" without a species, so the
+  dialogue reads correctly regardless.
 - **The Goon's opening no longer previews the three-gate structure.** That was a
   full-structure dump delivered before the player had killed anything; the existing
   `TUTORIAL_GOON_NUDGE_DIALOGUE` already explains it at the moment it becomes
