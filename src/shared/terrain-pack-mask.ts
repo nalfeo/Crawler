@@ -129,6 +129,32 @@ export function isCanonicalBlob47Mask(mask: number): boolean {
 }
 
 /**
+ * The one canonical blob47 mask whose wall frame covers its cell with no
+ * transparency: all four cardinals AND all four diagonals present.
+ *
+ * This follows directly from the quadrant-kit geometry contract
+ * (`scripts/sprites/terrain-packs/quadrant-kit.ts`), which every pack's wall
+ * atlas is composed over:
+ *
+ *   - a quadrant is inset by `WALL_INSET_PX` off an OUTER edge whose cardinal
+ *     is ABSENT, so any missing cardinal punches transparency into the cell;
+ *   - a quadrant whose two cardinals are present but whose DIAGONAL is absent
+ *     is `concave`, which bites a `CORNER_RADIUS_PX` notch out of its outer
+ *     corner;
+ *   - only the `full` state (both cardinals + the diagonal present) is solid.
+ *
+ * All four quadrants are therefore `full` — and the cell fully opaque — exactly
+ * when every one of the eight neighbour bits is set, i.e. mask 255.
+ *
+ * `tests/unit/terrain-pack-frame-opacity.test.ts` proves this against the real
+ * shipped atlas PNGs for every registered pack rather than trusting the
+ * derivation, because `terrain-renderer.ts` uses it to SKIP the floor-pool
+ * underdraw: if a supposedly-opaque frame ever gained a transparent pixel, the
+ * empty RenderTexture (which reads as black) would show through.
+ */
+export const FULLY_OPAQUE_BLOB47_MASK = 255;
+
+/**
  * Compute the raw 8-neighbor mask for tile (tx, ty), given a per-direction
  * match predicate.
  *
@@ -174,6 +200,54 @@ export function computeRawMask8(
   if (at(1, 1)) mask |= MASK_BIT.SE;
   if (at(-1, 1)) mask |= MASK_BIT.SW;
   if (at(-1, -1)) mask |= MASK_BIT.NW;
+  return mask;
+}
+
+/**
+ * Closure-free variant of {@link computeRawMask8} over a precomputed solidity
+ * grid.
+ *
+ * `computeRawMask8` is a good general API but a poor hot-loop one: the caller
+ * allocates a `matches` closure per tile, and the function allocates two more
+ * (`inBounds`, `at`) per call, then dispatches eight indirect calls through
+ * them. The terrain bake asks for a mask on every wall tile — over 23,000 on
+ * Floor 1 — so that is ~70,000 short-lived closures and ~190,000 megamorphic
+ * calls per bake to answer a question that is a single typed-array read.
+ *
+ * `solid[ny * width + nx]` must be non-zero exactly when the neighbour counts
+ * as "solid" for autotiling. `outOfBoundsMatches` has the same meaning as in
+ * `computeRawMask8`.
+ *
+ * `tests/unit/terrain-pack-mask.test.ts` asserts this agrees with
+ * `computeRawMask8` exhaustively, so the bit order cannot drift between the
+ * two implementations.
+ */
+export function computeRawMask8Grid(
+  solid: Uint8Array,
+  tx: number,
+  ty: number,
+  width: number,
+  height: number,
+  outOfBoundsMatches = false,
+): number {
+  const oob = outOfBoundsMatches ? 1 : 0;
+  const n = ty > 0 ? solid[(ty - 1) * width + tx]! : oob;
+  const s = ty < height - 1 ? solid[(ty + 1) * width + tx]! : oob;
+  const w = tx > 0 ? solid[ty * width + tx - 1]! : oob;
+  const e = tx < width - 1 ? solid[ty * width + tx + 1]! : oob;
+  const nw = ty > 0 && tx > 0 ? solid[(ty - 1) * width + tx - 1]! : oob;
+  const ne = ty > 0 && tx < width - 1 ? solid[(ty - 1) * width + tx + 1]! : oob;
+  const sw = ty < height - 1 && tx > 0 ? solid[(ty + 1) * width + tx - 1]! : oob;
+  const se = ty < height - 1 && tx < width - 1 ? solid[(ty + 1) * width + tx + 1]! : oob;
+  let mask = 0;
+  if (n) mask |= MASK_BIT.N;
+  if (e) mask |= MASK_BIT.E;
+  if (s) mask |= MASK_BIT.S;
+  if (w) mask |= MASK_BIT.W;
+  if (ne) mask |= MASK_BIT.NE;
+  if (se) mask |= MASK_BIT.SE;
+  if (sw) mask |= MASK_BIT.SW;
+  if (nw) mask |= MASK_BIT.NW;
   return mask;
 }
 
