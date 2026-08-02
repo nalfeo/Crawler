@@ -29,7 +29,13 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { GRADE_CRITERIA, GRADE_VERDICTS, priorReviewModels } from './ledger.mjs';
+import {
+  GRADE_CRITERIA,
+  GRADE_SEVERITIES,
+  GRADE_VERDICTS,
+  isGitSha,
+  priorReviewModels,
+} from './ledger.mjs';
 
 /** Truncation ceiling for the diff embedded in the prompt (characters). */
 export const DEFAULT_DIFF_CHAR_LIMIT = 200_000;
@@ -208,6 +214,41 @@ function countBySeverity(findings, severity) {
 }
 
 /**
+ * Findings are schema-validated, not merely counted. An unvalidated findings
+ * array is a blocker-detection bypass: `severity: "BLOCKER"`, a missing
+ * severity, a bare string, or a non-array `findings` value would all sail past
+ * `countBySeverity` and let a fatal review report a passing verdict. Malformed
+ * grader output is rejected outright rather than silently downgraded (project
+ * rule #11 — never weaken the gate to get green).
+ * @param {unknown} raw
+ * @returns {object[]}
+ */
+function normalizeFindings(raw) {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new Error('grader response `findings` must be an array');
+  }
+  return raw.map((finding, i) => {
+    if (typeof finding !== 'object' || finding === null || Array.isArray(finding)) {
+      throw new Error(`grader response findings[${i}] must be an object`);
+    }
+    const { severity, file, detail } = finding;
+    if (!GRADE_SEVERITIES.includes(severity)) {
+      throw new Error(
+        `grader response findings[${i}].severity must be exactly one of: ${GRADE_SEVERITIES.join(', ')} (got ${JSON.stringify(severity)})`,
+      );
+    }
+    if (typeof file !== 'string' || file.trim() === '') {
+      throw new Error(`grader response findings[${i}].file must be a non-empty string`);
+    }
+    if (typeof detail !== 'string' || detail.trim() === '') {
+      throw new Error(`grader response findings[${i}].detail must be a non-empty string`);
+    }
+    return { severity, file: file.trim(), detail: detail.trim() };
+  });
+}
+
+/**
  * Parse a grader model's reply into the `independent_grade` ledger stage.
  *
  * The verdict is RECOMPUTED from the scores and findings rather than taken on
@@ -219,12 +260,15 @@ function countBySeverity(findings, severity) {
  * @param {{graderModel:string, headSha:string}} meta
  * @returns {{stage:object, findings:object[], verdictOverridden:boolean}}
  */
-export function parseGradeResponse(text, { graderModel, headSha }) {
+export function parseGradeResponse(text, { graderModel, headSha, implementerModel }) {
   if (typeof graderModel !== 'string' || graderModel.trim() === '') {
     throw new Error('graderModel is required');
   }
-  if (typeof headSha !== 'string' || headSha.trim() === '') {
-    throw new Error('headSha is required');
+  if (typeof implementerModel !== 'string' || implementerModel.trim() === '') {
+    throw new Error('implementerModel is required');
+  }
+  if (!isGitSha(headSha)) {
+    throw new Error('headSha must be a 7-40 character hex git sha');
   }
   const parsed = extractJson(text);
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -247,7 +291,7 @@ export function parseGradeResponse(text, { graderModel, headSha }) {
     throw new Error(`grader response is missing valid 1..5 scores for: ${missing.join(', ')}`);
   }
 
-  const findings = Array.isArray(parsed.findings) ? parsed.findings.filter(Boolean) : [];
+  const findings = normalizeFindings(parsed.findings);
   const claimed = GRADE_VERDICTS.includes(parsed.verdict) ? parsed.verdict : 'fail';
   const lowScore = GRADE_CRITERIA.some((c) => criteria[c] < 3);
   const blockers = countBySeverity(findings, 'blocker');
@@ -256,7 +300,9 @@ export function parseGradeResponse(text, { graderModel, headSha }) {
   const stage = {
     completed: true,
     grader_model: graderModel.trim(),
-    head_sha: headSha.trim(),
+    implementer_model: implementerModel.trim(),
+    head_sha: headSha.trim().toLowerCase(),
+    findings,
     criteria,
     verdict: earned,
     findings_count: findings.length,

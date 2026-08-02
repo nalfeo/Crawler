@@ -14,6 +14,7 @@ import {
 
 const HEAD = 'b'.repeat(40);
 const GRADER = 'independent-grader-model';
+const IMPL = 'implementer-model';
 
 function scores(value = 4, overrides = {}) {
   const out = {};
@@ -147,7 +148,7 @@ test('extractJson rejects empty or JSON-free replies', () => {
 test('parseGradeResponse builds a valid passing stage', () => {
   const { stage, verdictOverridden } = parseGradeResponse(
     reply({ criteria: scores(4), verdict: 'pass', findings: [], notes: 'looks right' }),
-    { graderModel: GRADER, headSha: HEAD },
+    { graderModel: GRADER, headSha: HEAD, implementerModel: IMPL },
   );
   assert.equal(stage.completed, true);
   assert.equal(stage.grader_model, GRADER);
@@ -162,7 +163,7 @@ test('parseGradeResponse builds a valid passing stage', () => {
 test('parseGradeResponse overrides a claimed pass when a criterion scores below 3', () => {
   const { stage, verdictOverridden } = parseGradeResponse(
     reply({ criteria: scores(4, { correctness: 2 }), verdict: 'pass', findings: [] }),
-    { graderModel: GRADER, headSha: HEAD },
+    { graderModel: GRADER, headSha: HEAD, implementerModel: IMPL },
   );
   assert.equal(stage.verdict, 'fail');
   assert.equal(verdictOverridden, true);
@@ -177,7 +178,7 @@ test('parseGradeResponse overrides a claimed pass when a blocker finding is repo
       verdict: 'pass',
       findings: [{ severity: 'blocker', file: 'src/a.ts', detail: 'nulls out state' }],
     }),
-    { graderModel: GRADER, headSha: HEAD },
+    { graderModel: GRADER, headSha: HEAD, implementerModel: IMPL },
   );
   assert.equal(stage.verdict, 'fail');
   assert.match(stage.escalated_to_human.reason, /1 blocker finding/);
@@ -191,7 +192,7 @@ test('parseGradeResponse keeps a pass when only minor findings are reported', ()
       verdict: 'pass',
       findings: [{ severity: 'minor', file: 'src/a.ts', detail: 'naming' }],
     }),
-    { graderModel: GRADER, headSha: HEAD },
+    { graderModel: GRADER, headSha: HEAD, implementerModel: IMPL },
   );
   assert.equal(stage.verdict, 'pass');
   assert.equal(stage.findings_count, 1);
@@ -201,6 +202,7 @@ test('parseGradeResponse treats a missing/unknown verdict as fail', () => {
   const { stage } = parseGradeResponse(reply({ criteria: scores(4), findings: [] }), {
     graderModel: GRADER,
     headSha: HEAD,
+    implementerModel: IMPL,
   });
   assert.equal(stage.verdict, 'fail');
   assert.match(stage.escalated_to_human.reason, /failing verdict/);
@@ -214,6 +216,7 @@ test('parseGradeResponse rejects a reply missing any criterion score', () => {
       parseGradeResponse(reply({ criteria: partial, verdict: 'pass' }), {
         graderModel: GRADER,
         headSha: HEAD,
+        implementerModel: IMPL,
       }),
     new RegExp(`missing valid 1\\.\\.5 scores for: ${GRADE_CRITERIA[0]}`),
   );
@@ -225,15 +228,64 @@ test('parseGradeResponse rejects out-of-range scores', () => {
       parseGradeResponse(reply({ criteria: scores(9), verdict: 'pass' }), {
         graderModel: GRADER,
         headSha: HEAD,
+        implementerModel: IMPL,
       }),
     /missing valid 1\.\.5 scores/,
   );
 });
 
-test('parseGradeResponse requires a grader model and a graded sha', () => {
+test('parseGradeResponse requires a grader model, an implementer model, and a real sha', () => {
   const body = reply({ criteria: scores(4), verdict: 'pass' });
-  assert.throws(() => parseGradeResponse(body, { graderModel: '', headSha: HEAD }), /graderModel/);
-  assert.throws(() => parseGradeResponse(body, { graderModel: GRADER, headSha: '' }), /headSha/);
+  assert.throws(
+    () => parseGradeResponse(body, { graderModel: '', headSha: HEAD, implementerModel: IMPL }),
+    /graderModel/,
+  );
+  assert.throws(
+    () => parseGradeResponse(body, { graderModel: GRADER, headSha: HEAD, implementerModel: '' }),
+    /implementerModel/,
+  );
+  assert.throws(
+    () => parseGradeResponse(body, { graderModel: GRADER, headSha: '', implementerModel: IMPL }),
+    /headSha/,
+  );
+  // A placeholder is not a tree: a grade must name a real object id, or it
+  // could be recorded against nothing and claimed to cover real code.
+  assert.throws(
+    () =>
+      parseGradeResponse(body, {
+        graderModel: GRADER,
+        headSha: 'not-a-sha',
+        implementerModel: IMPL,
+      }),
+    /hex git sha/,
+  );
+});
+
+test('parseGradeResponse rejects malformed findings instead of miscounting blockers', () => {
+  const base = { criteria: scores(4), verdict: 'pass' };
+  const opts = { graderModel: GRADER, headSha: HEAD, implementerModel: IMPL };
+  // Wrong case is NOT a blocker match; without schema validation this would
+  // silently pass a fatal review.
+  assert.throws(
+    () =>
+      parseGradeResponse(
+        reply({ ...base, findings: [{ severity: 'BLOCKER', file: 'a.ts', detail: 'boom' }] }),
+        opts,
+      ),
+    /severity must be exactly one of/,
+  );
+  assert.throws(
+    () => parseGradeResponse(reply({ ...base, findings: ['a bare string'] }), opts),
+    /findings\[0\] must be an object/,
+  );
+  assert.throws(
+    () => parseGradeResponse(reply({ ...base, findings: 'nope' }), opts),
+    /`findings` must be an array/,
+  );
+  assert.throws(
+    () => parseGradeResponse(reply({ ...base, findings: [{ severity: 'major', file: '' }] }), opts),
+    /file must be a non-empty string/,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -245,6 +297,7 @@ test('applyGradeToLedger writes the stage without mutating the input ledger', ()
   const { stage } = parseGradeResponse(reply({ criteria: scores(4), verdict: 'pass' }), {
     graderModel: GRADER,
     headSha: HEAD,
+    implementerModel: IMPL,
   });
   const updated = applyGradeToLedger(led, stage);
   assert.equal(updated.stages.independent_grade.verdict, 'pass');
@@ -285,6 +338,7 @@ test('a graded ledger passes the ledger validator end to end', async () => {
   const { stage } = parseGradeResponse(reply({ criteria: scores(4), verdict: 'pass' }), {
     graderModel: GRADER,
     headSha: HEAD,
+    implementerModel: IMPL,
   });
   const result = validateLedger(applyGradeToLedger(led, stage));
   assert.equal(result.ok, true, result.errors.join('; '));
@@ -294,6 +348,7 @@ test('formatGrade summarizes the verdict, grader, sha, and scores', () => {
   const { stage } = parseGradeResponse(reply({ criteria: scores(4), verdict: 'pass' }), {
     graderModel: GRADER,
     headSha: HEAD,
+    implementerModel: IMPL,
   });
   const line = formatGrade(stage);
   assert.match(line, /independent_grade: pass/);

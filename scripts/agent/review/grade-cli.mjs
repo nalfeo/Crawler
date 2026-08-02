@@ -8,7 +8,8 @@
 //   # 2. Dispatch it yourself with the `task` tool, using a model that appears
 //   #    in NEITHER the plan review nor the code review (the packet prints the
 //   #    excluded list). Save the reply, then record it:
-//   npm run review:grade -- record <ledgerPath> --model <graderModel> --file <replyPath>
+//   npm run review:grade -- record <ledgerPath> --model <graderModel>
+//     --implementer <authoringModel> --file <replyPath>
 //
 // `record` recomputes the verdict from the scores/findings, writes the stage,
 // and re-validates the whole ledger — exiting non-zero if the ledger is not
@@ -100,12 +101,18 @@ function cmdRecord(positional, flags) {
   const path = positional[0];
   if (!path) {
     console.error(
-      "record: usage: record <ledgerPath> --model <graderModel> (--file <replyPath> | --json '<reply>') [--head-sha <sha>]",
+      "record: usage: record <ledgerPath> --model <graderModel> --implementer <authoringModel> (--file <replyPath> | --json '<reply>') [--head-sha <sha>]",
     );
     return 1;
   }
   if (typeof flags.model !== 'string') {
     console.error('record: --model <graderModel> is required (must differ from every reviewer)');
+    return 1;
+  }
+  if (typeof flags.implementer !== 'string') {
+    console.error(
+      'record: --implementer <authoringModel> is required — the grader must be independent of the model that AUTHORED the change, not just of the reviewers',
+    );
     return 1;
   }
   let reply;
@@ -147,7 +154,11 @@ function cmdRecord(positional, flags) {
 
   let parsed;
   try {
-    parsed = parseGradeResponse(reply, { graderModel: flags.model, headSha });
+    parsed = parseGradeResponse(reply, {
+      graderModel: flags.model,
+      implementerModel: flags.implementer,
+      headSha,
+    });
   } catch (err) {
     console.error(`record: ${err.message}`);
     return 1;
@@ -182,7 +193,7 @@ function main() {
       console.error('Usage: review:grade <prompt|record> <ledgerPath> [...]');
       console.error('  prompt  <ledgerPath> [--base <ref>] [--out <file>]');
       console.error(
-        "  record  <ledgerPath> --model <graderModel> (--file <replyPath> | --json '<reply>') [--head-sha <sha>]",
+        "  record  <ledgerPath> --model <graderModel> --implementer <authoringModel> (--file <replyPath> | --json '<reply>') [--head-sha <sha>]",
       );
       return 1;
   }

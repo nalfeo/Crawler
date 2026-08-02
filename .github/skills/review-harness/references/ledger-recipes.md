@@ -113,6 +113,7 @@ will fail on them.
     "independent_grade": {
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
       "head_sha": "9f1c2ab3d4e5f60718293a4b5c6d7e8f90a1b2c3",
       "criteria": {
         "correctness": 4,
@@ -123,6 +124,13 @@ will fail on them.
       },
       "verdict": "pass",
       "findings_count": 1,
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/loot.ts",
+          "detail": "`rollTable` reads better as `rollLootTable`."
+        }
+      ],
       "notes": "One minor naming finding; no blockers, no criterion below 3."
     }
   }
@@ -131,8 +139,10 @@ will fail on them.
 
 ## Per-stage validator rules (quick reference)
 
-- **top-level**: `schema_version` ∈ {`"review-ledger/v1"`, `"review-ledger/v2"`}
-  (new ledgers use v2); `date` = `YYYY-MM-DD`;
+- **top-level**: `schema_version` ∈ {`"review-ledger/v1"`, `"review-ledger/v2"`};
+  v1 is accepted **only** for ledgers dated before `2026-08-03` — a ledger dated
+  on/after the cutover **must** declare v2, so a new ≥3🍎 ledger cannot dodge
+  `independent_grade` by declaring the old version. `date` = `YYYY-MM-DD`;
   `session_slug` kebab-case; `task_title` non-empty; `estimated_apples` int 1..5;
   `stages` object.
 - **plan_review**: `completed===true`; `reviewer_model` non-empty;
@@ -147,11 +157,18 @@ minor, major_fork}` is **required** (instrumentation — the design fork-rate
   `grader_model` non-empty **and absent from every other stage** (the whole point
   is independence — the validator collects the plan reviewer, the dual-plan
   models/judge, every code-review and multi-model round model, and the
-  adjudicator, and rejects a grader among them); `head_sha` non-empty (binds the
-  grade to the graded tree); `criteria` scores **every** one of `correctness`,
-  `scope_discipline`, `test_coverage`, `policy_compliance`, `maintainability` as
-  an int 1..5 with no unknown keys; `verdict ∈ {pass, fail}`; `findings_count`
-  int ≥0. A `fail` **requires** `escalated_to_human: { reason, unresolved_findings ≥ 1 }`,
+  adjudicator, and rejects a grader among them); `implementer_model` non-empty and
+  **different from `grader_model`** (independence from the _author_, not just the
+  reviewers); `head_sha` a 7–40 char hex git sha (binds the grade to the graded
+  tree); `criteria` scores **every** one of `correctness`, `scope_discipline`,
+  `test_coverage`, `policy_compliance`, `maintainability` as an int 1..5 with no
+  unknown keys; `verdict ∈ {pass, fail}`; `findings_count` int ≥0. `findings`, if
+  present, must be objects with `severity ∈ {blocker, major, minor}` (exact
+  match) plus non-empty `file`/`detail`, and its length must equal
+  `findings_count`. A `verdict` of `pass` is **rejected** when any criterion
+  scores below 3 or any `blocker` finding is listed — the validator re-derives
+  the same rule the grader CLI applies, so a hand-authored ledger cannot claim a
+  pass the scores do not support. A `fail` **requires** `escalated_to_human: { reason, unresolved_findings ≥ 1 }`,
   and that record is **rejected** alongside a `pass`. Write it with
   `npm run review:grade -- record`, not by hand.
 - **dual_plan_synthesis** _(LEGACY-ONLY — retired as a required stage by ADR

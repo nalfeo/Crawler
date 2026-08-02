@@ -36,6 +36,19 @@ Path-scoped rules for `src/core/`, `src/engine/`, `src/game/`, `src/game/ai/`,
 `src/labs/`, `src/shared/`, and `tests/` live in
 [`.github/instructions/`](instructions/) and are applied automatically by path.
 
+## Pull Request Reviews
+
+This one lives here rather than in `AGENTS.md`, because native GitHub Copilot
+pull-request review reads this file.
+
+For every pull request or diff review, follow the canonical exhaustive-review
+contract in [`.github/instructions/review.instructions.md`](instructions/review.instructions.md).
+Adopt its Reviewer persona, complete every review category before responding,
+deduplicate by root cause, and return all validated findings in one pass. Before
+commenting, read the complete prior review history; never reopen or repost a
+finding that has a prior `✅ Addressed in <sha>` or `✅ Not applicable:` response
+unless a later thread reply provides concrete evidence that the resolution failed.
+
 ## Editing these docs
 
 When a rule changes, edit **only** its canonical home above. If you find the

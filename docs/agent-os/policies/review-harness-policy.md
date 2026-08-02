@@ -199,15 +199,30 @@ explicitly different model) — the script owns the deterministic half:
 npm run review:grade -- prompt <ledgerPath> [--out files/grade-prompt.md]
 
 # 2. Dispatch that prompt to an independent model, save its reply, then:
-npm run review:grade -- record <ledgerPath> --model <graderModel> --file <replyPath>
+npm run review:grade -- record <ledgerPath> --model <graderModel> \\
+  --implementer <authoringModel> --file <replyPath>
 ```
 
 `record` **recomputes** the verdict from the returned scores and findings rather
 than taking the model's word: a reply that scores any criterion below 3, or
-reports a blocker-severity finding, cannot be recorded as a `pass`. It then
-re-validates the whole ledger and exits non-zero if anything is still incomplete.
+reports a blocker-severity finding, cannot be recorded as a `pass`. Findings are
+schema-validated on the way in (`severity` must match `blocker`/`major`/`minor`
+exactly, with a non-empty `file` and `detail`), because an unvalidated findings
+array is a blocker-detection bypass — `severity: "BLOCKER"` or a bare string
+would be counted as a finding but not as a blocker. It then re-validates the
+whole ledger and exits non-zero if anything is still incomplete.
 
-Because the grade is bound to a `head_sha`, a grade cannot be silently carried
+The **ledger validator re-derives the same rule**, not just the CLI: the guard
+trusts the validator, so a hand-authored ledger claiming `pass` over a score
+below 3 or an unresolved blocker is rejected outright.
+
+Independence is checked against the **author** as well as the reviewers.
+`implementer_model` records the model that wrote the change, and a
+`grader_model` equal to it — or to any plan/code/multi-model reviewer — is
+rejected. Grading your own work is the failure mode this stage exists to prevent.
+
+Because the grade is bound to a `head_sha` (validated as a real 7–40 char hex
+object id, not just a non-empty string), a grade cannot be silently carried
 across a rewrite of the branch — re-grade after you change the diff.
 
 ### Schema v2 and the historical corpus
@@ -217,6 +232,12 @@ merged. So `independent_grade` is required **only on `review-ledger/v2`** ledger
 (the version `init` now writes); the ~350 merged v1 ledgers keep validating under
 the v1 rules. The cutover is forward-only, and both versions stay supported by
 the same validator.
+
+That alone would leave a hole: a new ≥3🍎 ledger could simply _declare_ v1 and
+skip the stage. So v1 is accepted **only for ledgers dated before
+`2026-08-03`** (the day after the stage landed, so ledgers already authored by
+in-flight sessions on the cutover day are not retroactively invalidated). A
+ledger dated on or after the cutover must declare v2.
 
 ## What it does NOT do (honesty caveat)
 

@@ -21,6 +21,7 @@ function validGrade(extra = {}) {
   return {
     completed: true,
     grader_model: 'independent-grader-model',
+    implementer_model: 'implementer-model',
     head_sha: 'a'.repeat(40),
     criteria,
     verdict: 'pass',
@@ -248,14 +249,84 @@ test('independent_grade requires every criterion scored 1..5 and rejects unknown
   assert.match(msg, /unknown criteria: bogus_criterion/);
 });
 
+test('a post-cutover ledger cannot downgrade to v1 to dodge independent_grade', () => {
+  // Without the cutover check, declaring v1 makes independent_grade optional,
+  // because requiredStagesForApples() keys the requirement off the version.
+  const l = tier3();
+  delete l.stages.independent_grade;
+  l.schema_version = 'review-ledger/v1';
+  l.date = '2026-08-03';
+  const r = validateLedger(l);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /must be 'review-ledger\/v2' for ledgers dated/);
+});
+
+test('a pre-cutover v1 ledger stays valid without independent_grade', () => {
+  const l = tier3();
+  delete l.stages.independent_grade;
+  l.schema_version = 'review-ledger/v1';
+  l.date = '2026-07-01';
+  assert.equal(validateLedger(l).ok, true);
+});
+
+test("independent_grade cannot claim 'pass' over a criterion below 3", () => {
+  const grade = validGrade();
+  grade.criteria[GRADE_CRITERIA[0]] = 2;
+  const r = validateLedger({ ...tier3(), stages: { ...tier3().stages, independent_grade: grade } });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /cannot be 'pass' with criteria below 3/);
+});
+
+test("independent_grade cannot claim 'pass' over an unresolved blocker finding", () => {
+  const grade = validGrade({
+    findings: [{ severity: 'blocker', file: 'src/a.ts', detail: 'boom' }],
+    findings_count: 1,
+  });
+  const r = validateLedger({ ...tier3(), stages: { ...tier3().stages, independent_grade: grade } });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /unresolved blocker finding/);
+});
+
+test('independent_grade findings are schema-validated and must match findings_count', () => {
+  const bad = validGrade({
+    findings: [{ severity: 'BLOCKER', file: 'src/a.ts', detail: 'boom' }],
+    findings_count: 0,
+  });
+  const r = validateLedger({ ...tier3(), stages: { ...tier3().stages, independent_grade: bad } });
+  assert.equal(r.ok, false);
+  const joined = r.errors.join('; ');
+  assert.match(joined, /severity must be exactly one of/);
+  assert.match(joined, /must equal findings\.length/);
+});
+
+test('the grader must be independent of the model that AUTHORED the change', () => {
+  const r = validateLedger({
+    ...tier3(),
+    stages: {
+      ...tier3().stages,
+      independent_grade: validGrade({ implementer_model: 'independent-grader-model' }),
+    },
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /it is the model that authored the change/);
+});
+
+test('independent_grade requires an implementer_model to check author independence', () => {
+  const grade = validGrade();
+  delete grade.implementer_model;
+  const r = validateLedger({ ...tier3(), stages: { ...tier3().stages, independent_grade: grade } });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join('; '), /implementer_model must name the model that AUTHORED/);
+});
+
 test('independent_grade requires head_sha so a grade cannot be carried across a rewrite', () => {
   const r = validateLedger(
     tier3({
-      stages: { ...tier3().stages, independent_grade: validGrade({ head_sha: '' }) },
+      stages: { ...tier3().stages, independent_grade: validGrade({ head_sha: 'not-a-sha' }) },
     }),
   );
   assert.equal(r.ok, false);
-  assert.match(r.errors.join('; '), /head_sha must be the non-empty git sha/);
+  assert.match(r.errors.join('; '), /head_sha must be a 7-40 character hex git sha/);
 });
 
 test("independent_grade verdict 'fail' requires an escalated_to_human record", () => {

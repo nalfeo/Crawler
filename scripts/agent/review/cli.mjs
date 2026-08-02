@@ -95,6 +95,7 @@ function scaffoldStage(name, apples = null) {
       return {
         completed: false,
         grader_model: '',
+        implementer_model: '',
         head_sha: '',
         criteria: {},
         verdict: '',

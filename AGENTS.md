@@ -345,13 +345,9 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Pull Request Reviews
 
-For every pull request or diff review, follow the canonical exhaustive-review contract in
+Native GitHub Copilot pull-request review reads `.github/copilot-instructions.md`, so the
+PR-review contract lives there and in
 [`.github/instructions/review.instructions.md`](.github/instructions/review.instructions.md).
-Adopt its Reviewer persona, complete every review category before responding, deduplicate by
-root cause, and return all validated findings in one pass. Before commenting, read the complete
-prior review history; never reopen or repost a finding that has a prior `✅ Addressed in <sha>`
-or `✅ Not applicable:` response unless a later thread reply provides concrete evidence that
-the resolution failed.
 
 ## Tech Stack
 
