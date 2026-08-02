@@ -208,6 +208,11 @@ export class BootScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   private async loadGeneratedSpritesAndStartGame(): Promise<void> {
+    // Remove the preload-phase progress listeners so they don't fight
+    // with the generated-sprites load cycle below (both use load.start()).
+    this.load.off('progress');
+    this.load.off('fileprogress');
+
     try {
       this.loadingStatusText?.setText('Loading custom artwork...');
       const registry = await fetchGeneratedSpriteRegistry();
@@ -237,7 +242,7 @@ export class BootScene extends Phaser.Scene {
       await new Promise<void>((resolve) => {
         let settled = false;
         let loaded = 0;
-        const onFileProgress = (): void => {
+        const onFileResolved = (): void => {
           loaded += 1;
           // Map generated sprite progress to the 80%→100% range.
           this.setLoadingProgress(0.8 + 0.2 * (loaded / queued.length));
@@ -253,13 +258,17 @@ export class BootScene extends Phaser.Scene {
             return;
           }
           settled = true;
-          this.load.off(Phaser.Loader.Events.FILE_COMPLETE, onFileProgress);
+          this.load.off(Phaser.Loader.Events.FILE_COMPLETE, onFileResolved);
+          this.load.off(Phaser.Loader.Events.FILE_LOAD_ERROR, onFileResolved);
           this.load.off(Phaser.Loader.Events.COMPLETE, onComplete);
           clearTimeout(timeoutId);
           resolve();
         };
 
-        this.load.on(Phaser.Loader.Events.FILE_COMPLETE, onFileProgress);
+        // Count both successful and failed files so the bar advances even
+        // when individual generated sprites fail to load.
+        this.load.on(Phaser.Loader.Events.FILE_COMPLETE, onFileResolved);
+        this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, onFileResolved);
         this.load.on(Phaser.Loader.Events.COMPLETE, onComplete);
         const timeoutId = setTimeout(() => {
           logger.warn('Generated sprite load timed out; starting game with built-in sprites', {

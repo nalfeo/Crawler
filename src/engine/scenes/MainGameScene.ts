@@ -1142,6 +1142,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.directorCommentaryText = undefined;
+      this.floorCompletionScreen?.destroy();
       this.floorCompletionScreen = undefined;
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
