@@ -202,7 +202,7 @@ function cmdRecord(positional, flags) {
     console.error(`record: cannot resolve current HEAD: ${err.message}`);
     return 1;
   }
-  let dirty = false;
+  let dirty;
   try {
     dirty = git(['status', '--porcelain']).trim().length > 0;
   } catch (err) {
