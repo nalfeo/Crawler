@@ -64,6 +64,20 @@ describe('isDiscarded', () => {
     expect(isDiscarded(triple({ base: 'B', side: 'S', other: 'O', result: 'O' }))).toBe(true);
   });
 
+  it('does not flag taking the opposing blob when it already contains the incoming change', () => {
+    expect(
+      isDiscarded(
+        triple({
+          base: 'B',
+          side: 'S',
+          other: 'O',
+          result: 'O',
+          sideAlreadyPresentInOther: true,
+        }),
+      ),
+    ).toBe(false);
+  });
+
   it('detects a discarded deletion', () => {
     expect(isDiscarded(triple({ base: 'B', side: null, other: 'B', result: 'B' }))).toBe(true);
   });
@@ -749,6 +763,32 @@ describe('silent-reverts CLI (real git)', () => {
       expect(output).toMatch(/\[ERROR][^\n]*shared\.ts/);
       // Genuinely branch-local content (other.ts) stays a non-blocking warning.
       expect(output).toMatch(/\[WARN][^\n]*other\.ts/);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('does not report a side whose change is already present in the kept parent', () => {
+    const { dir, git, write } = makeRepo();
+    try {
+      write('shared.txt', 'top\nmid1\nmid2\nbottom\n');
+      git('add', '.');
+      git('commit', '-qm', 'base');
+      const base = git('rev-parse', 'HEAD');
+
+      git('checkout', '-q', '-b', 'mainline');
+      write('shared.txt', 'top\nshared\nmid1\nmid2\nbottom\n');
+      git('commit', '-qam', 'main: add shared line');
+
+      git('checkout', '-q', '-b', 'pr', base);
+      write('shared.txt', 'top\nshared\nmid1\nmid2\nbottom\nextra\n');
+      git('commit', '-qam', 'pr: add shared and extra line');
+
+      git('merge', '--no-edit', '-q', 'mainline');
+
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toContain('no surviving silent reverts');
+      expect(status).toBe(0);
     } finally {
       cleanup(dir);
     }

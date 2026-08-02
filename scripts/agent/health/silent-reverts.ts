@@ -73,6 +73,15 @@ function treeOf(rev: string, cwd: string): Map<string, string> {
   return map;
 }
 
+const mergeTreeCache = new Map<string, string | null>();
+function mergeTree(base: string, other: string, side: string, cwd: string): string | null {
+  const key = `${cwd}\u0000${base}\u0000${other}\u0000${side}`;
+  if (mergeTreeCache.has(key)) return mergeTreeCache.get(key) ?? null;
+  const merged = gitOrNull(['merge-tree', '--write-tree', '--merge-base', base, other, side], cwd);
+  mergeTreeCache.set(key, merged);
+  return merged;
+}
+
 function blob(rev: string, path: string, cwd: string): string | null {
   return treeOf(rev, cwd).get(path) ?? null;
 }
@@ -164,22 +173,34 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
           .filter(Boolean);
         if (changed.length === 0) continue;
 
-        const files: FileTriple[] = changed.map((path) => ({
-          path,
-          base: blob(base, path, cwd),
-          side: blob(side, path, cwd),
-          other: blob(other, path, cwd),
-          result: blob(sha, path, cwd),
-          head: blob(headRef, path, cwd),
-          // Content-based mainline grading: does main STILL hold what this
-          // discard threw away? Catches the older-main-tip shape that no
-          // ancestry test can see (see gradeSeverity).
-          mainBlob: blob(baseRef, path, cwd),
-          // Provenance: blob at side's merge-base with mainline. Used by
-          // gradeSeverity to detect when side built on top of mainBlob.
-          sideMainBase:
-            sideMainBaseRev !== undefined ? blob(sideMainBaseRev, path, cwd) : undefined,
-        }));
+        const mergedTreeRev = mergeTree(base, other, side, cwd);
+
+        const files: FileTriple[] = changed.map((path) => {
+          const baseBlob = blob(base, path, cwd);
+          const sideBlob = blob(side, path, cwd);
+          const otherBlob = blob(other, path, cwd);
+          const resultBlob = blob(sha, path, cwd);
+          return {
+            path,
+            base: baseBlob,
+            side: sideBlob,
+            other: otherBlob,
+            result: resultBlob,
+            head: blob(headRef, path, cwd),
+            sideAlreadyPresentInOther:
+              mergedTreeRev !== null &&
+              resultBlob === otherBlob &&
+              blob(mergedTreeRev, path, cwd) === otherBlob,
+            // Content-based mainline grading: does main STILL hold what this
+            // discard threw away? Catches the older-main-tip shape that no
+            // ancestry test can see (see gradeSeverity).
+            mainBlob: blob(baseRef, path, cwd),
+            // Provenance: blob at side's merge-base with mainline. Used by
+            // gradeSeverity to detect when side built on top of mainBlob.
+            sideMainBase:
+              sideMainBaseRev !== undefined ? blob(sideMainBaseRev, path, cwd) : undefined,
+          };
+        });
 
         merges.push({
           sha,

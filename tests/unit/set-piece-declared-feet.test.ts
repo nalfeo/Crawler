@@ -82,7 +82,18 @@ function drawnFeet(
     anchorBase: false,
     floorPlane,
   });
-  const box = native.bounds ?? { width: native.w, height: native.h };
+  const box =
+    native.bounds !== undefined &&
+    native.bounds.canvasWidth === native.w &&
+    native.bounds.canvasHeight === native.h &&
+    native.bounds.width > 0 &&
+    native.bounds.height > 0 &&
+    native.bounds.x >= 0 &&
+    native.bounds.y >= 0 &&
+    native.bounds.x + native.bounds.width <= native.w &&
+    native.bounds.y + native.bounds.height <= native.h
+      ? native.bounds
+      : { width: native.w, height: native.h };
   return { w: box.width * fit.scale, h: box.height * fit.scale };
 }
 
