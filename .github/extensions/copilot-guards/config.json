@@ -8,7 +8,6 @@
     "shell-gh-pr-create": { "disabled": false, "severity": "deny" },
     "shell-rm-rf-repo": { "disabled": false, "severity": "deny" },
     "shell-unsafe-port-kill": { "disabled": false, "severity": "deny" },
-    "authoring-main-sync": { "disabled": false, "severity": "allow" },
     "edit-determinism": { "disabled": false, "severity": "deny" },
     "edit-phaser-in-core": { "disabled": false, "severity": "deny" },
     "edit-repo-md-junk": { "disabled": false, "severity": "deny" },

@@ -8,6 +8,9 @@ The ledger is a small JSON artifact under
 
 ## Lifecycle
 
+> **1–2🍎 changes need NO ledger file at all** (they require no review stages).
+> Only run this lifecycle at ≥3🍎.
+
 ```
 # 1. Scaffold (only the stages your tier needs are created)
 npm run review:ledger -- init --apples 4 --slug improve-local-harness --title "Encode apple-scaled review harness"
@@ -17,6 +20,11 @@ npm run review:ledger -- stage <path> plan_review        --json '{...}'
 npm run review:ledger -- stage <path> code_review        --json '{...}'
 npm run review:ledger -- stage <path> multi_model_review --json '{...}'
 # dual_plan_synthesis is LEGACY-ONLY (retired by ADR 0051) — not scaffolded/required
+
+# 2b. independent_grade is NOT hand-written — the grader CLI fills it in from
+#     the real diff, after your code-review fixes have landed.
+npm run review:grade -- prompt <path>
+npm run review:grade -- record <path> --model <graderModel> --implementer <authoringModel> --file <reply> --head-sha <packetHeadSha>
 
 # 3. Validate (exit 0 = guard will allow your PR). `validate` with no path
 #    picks the newest ledger in the directory.
@@ -34,12 +42,16 @@ npm run review:ledger -- validate <path>
 
 ## Tier → required stages
 
-| apples | stages the validator requires                                    |
-| ------ | ---------------------------------------------------------------- |
-| 1      | (none)                                                           |
-| 2      | (none)                                                           |
-| 3      | `plan_review`, `code_review`                                     |
-| 4–5    | `plan_review` (adversarial), `code_review`, `multi_model_review` |
+| apples | ledger file | stages the validator requires                                                         |
+| ------ | ----------- | ------------------------------------------------------------------------------------- |
+| 1      | not needed  | (none)                                                                                |
+| 2      | not needed  | (none)                                                                                |
+| 3      | required    | `plan_review`, `code_review`, `independent_grade`                                     |
+| 4–5    | required    | `plan_review` (adversarial), `code_review`, `multi_model_review`, `independent_grade` |
+
+`independent_grade` is required only on **`review-ledger/v2`** ledgers (what `init`
+writes since 2026-08-02). The ~350 merged `review-ledger/v1` ledgers keep
+validating under the v1 rules, so the cutover is forward-only.
 
 The plan-review floor moved 2🍎 → 3🍎 on 2026-07-07 (matching the code-review
 floor, which moved on 2026-07-02 / ADR 0036). A 2🍎 change requires **no** stages.
@@ -56,7 +68,7 @@ will fail on them.
 
 ```json
 {
-  "schema_version": "review-ledger/v1",
+  "schema_version": "review-ledger/v2",
   "date": "2026-06-29",
   "session_slug": "improve-local-harness",
   "task_title": "Encode apple-scaled review harness",
@@ -97,6 +109,29 @@ will fail on them.
           "clean": true
         }
       ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.6",
+      "head_sha": "9f1c2ab3d4e5f60718293a4b5c6d7e8f90a1b2c3",
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/loot.ts",
+          "detail": "`rollTable` reads better as `rollLootTable`."
+        }
+      ],
+      "notes": "One minor naming finding; no blockers, no criterion below 3."
     }
   }
 }
@@ -104,7 +139,10 @@ will fail on them.
 
 ## Per-stage validator rules (quick reference)
 
-- **top-level**: `schema_version === "review-ledger/v1"`; `date` = `YYYY-MM-DD`;
+- **top-level**: `schema_version` ∈ {`"review-ledger/v1"`, `"review-ledger/v2"`};
+  v1 is accepted **only** for ledgers dated before `2026-08-03` — a ledger dated
+  on/after the cutover **must** declare v2, so a new ≥3🍎 ledger cannot dodge
+  `independent_grade` by declaring the old version. `date` = `YYYY-MM-DD`;
   `session_slug` kebab-case; `task_title` non-empty; `estimated_apples` int 1..5;
   `stages` object.
 - **plan_review**: `completed===true`; `reviewer_model` non-empty;
@@ -115,6 +153,24 @@ minor, major_fork}` is **required** (instrumentation — the design fork-rate
   int ≥2 are also required. Below their required tier these fields are optional
   but validated-if-present (`adversarial` boolean, `alternatives_considered`
   int ≥0, `plan_divergence` in the enum).
+- **independent_grade** _(REQUIRED at ≥3🍎 on schema v2)_: `completed===true`;
+  `grader_model` non-empty **and absent from every other stage** (the whole point
+  is independence — the validator collects the plan reviewer, the dual-plan
+  models/judge, every code-review and multi-model round model, and the
+  adjudicator, and rejects a grader among them); `implementer_model` non-empty and
+  **different from `grader_model`** (independence from the _author_, not just the
+  reviewers); `head_sha` a 7–40 char hex git sha (binds the grade to the graded
+  tree); `criteria` scores **every** one of `correctness`, `scope_discipline`,
+  `test_coverage`, `policy_compliance`, `maintainability` as an int 1..5 with no
+  unknown keys; `verdict ∈ {pass, fail}`; `findings_count` int ≥0. `findings`, if
+  present, must be objects with `severity ∈ {blocker, major, minor}` (exact
+  match) plus non-empty `file`/`detail`, and its length must equal
+  `findings_count`. A `verdict` of `pass` is **rejected** when any criterion
+  scores below 3 or any `blocker` finding is listed — the validator re-derives
+  the same rule the grader CLI applies, so a hand-authored ledger cannot claim a
+  pass the scores do not support. A `fail` **requires** `escalated_to_human: { reason, unresolved_findings ≥ 1 }`,
+  and that record is **rejected** alongside a `pass`. Write it with
+  `npm run review:grade -- record`, not by hand.
 - **dual_plan_synthesis** _(LEGACY-ONLY — retired as a required stage by ADR
   0051; still validated if present so historical ledgers stay parseable)_:
   `completed===true`; `plan_models` = exactly 2 distinct non-empty ids;
@@ -168,7 +224,7 @@ looping forever. The validator accepts an escalated stage when:
 
 ```json
 {
-  "schema_version": "review-ledger/v1",
+  "schema_version": "review-ledger/v2",
   "date": "2026-07-07",
   "session_slug": "trim-thing",
   "task_title": "Trim thing",

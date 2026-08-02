@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import prReviewLedger, {
   decideLedger,
-  missingLedgerReason,
+  missingLedgerNotice,
   gatherDecision,
 } from '../guards/pr-review-ledger.mjs';
 import { classifyPath, isSkippablePath, isNonCodeOnlyDiff, codeFiles } from '../lib/pr-scope.mjs';
@@ -138,27 +138,34 @@ test('decideLedger: non-docs-dir .md files (e.g. .github/copilot-instructions.md
   assert.match(d.additionalContext, /docs\/art\/deps-only/);
 });
 
-test('decideLedger: code diff, no ledger added -> deny', () => {
+test('decideLedger: code diff, no ledger added -> allow with reminder (1-2🍎 need none)', () => {
   const d = decideLedger(['src/core/x.ts'], []);
-  assert.equal(d.decision, 'deny');
-  assert.match(d.reason, /No review ledger found/);
-  assert.match(d.reason, /src\/core\/x\.ts/);
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, /no review ledger on this code-touching branch/);
+  assert.match(d.additionalContext, /src\/core\/x\.ts/);
 });
 
-test('decideLedger: code diff, ledger added but on main (not added) -> deny', () => {
-  // ledger exists in `files` (modified) but NOT in addedFiles -> must not satisfy
+test('decideLedger: code diff, ledger added but on main (not added) -> allow with reminder', () => {
+  // ledger exists in `files` (modified) but NOT in addedFiles -> not a ledger
+  // authored by this branch, so it neither satisfies nor is validated here.
   const d = decideLedger(['src/core/x.ts', LEDGER], [], {
     validateFile: () => okResult,
   });
-  assert.equal(d.decision, 'deny');
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, /no review ledger on this code-touching branch/);
 });
 
 test('decideLedger: code diff, valid ledger ADDED -> allow with context', () => {
+  let optsSeen = null;
   const d = decideLedger(['src/core/x.ts', LEDGER], [LEDGER], {
-    validateFile: () => okResult,
+    validateFile: (_path, opts) => {
+      optsSeen = opts;
+      return okResult;
+    },
   });
   assert.equal(d.decision, 'allow');
   assert.match(d.additionalContext, /valid review ledger/);
+  assert.equal(optsSeen?.requireCurrentSchema, true);
 });
 
 test('decideLedger: code diff, invalid ledger ADDED -> deny aggregating errors', () => {
@@ -214,14 +221,14 @@ test('gatherDecision: error thrown by branchAddedFilesFn -> allow with context',
   assert.match(d.additionalContext, /git error: boom/);
 });
 
-test('gatherDecision: no error passes through to decideLedger (code, no ledger -> deny)', () => {
+test('gatherDecision: no error passes through to decideLedger (code, no ledger -> allow)', () => {
   const d = gatherDecision({
     cwd: '/repo',
     branchFilesFn: () => ['src/core/x.ts'],
     branchAddedFilesFn: () => [],
   });
-  assert.equal(d.decision, 'deny');
-  assert.match(d.reason, /No review ledger found/);
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, /no review ledger on this code-touching branch/);
 });
 
 test('gatherDecision: valid added ledger passes through to allow', () => {
@@ -236,11 +243,11 @@ test('gatherDecision: valid added ledger passes through to allow', () => {
 });
 
 // ---------------------------------------------------------------------------
-// missingLedgerReason
+// missingLedgerNotice
 // ---------------------------------------------------------------------------
 
-test('missingLedgerReason lists code files and points to policy + CLI', () => {
-  const msg = missingLedgerReason(['src/core/a.ts', 'docs/x.md', 'scripts/b.mjs']);
+test('missingLedgerNotice lists code files and points to policy + CLI', () => {
+  const msg = missingLedgerNotice(['src/core/a.ts', 'docs/x.md', 'scripts/b.mjs']);
   assert.match(msg, /src\/core\/a\.ts/);
   assert.match(msg, /scripts\/b\.mjs/);
   assert.doesNotMatch(msg, /docs\/x\.md/); // docs are not code, not listed
@@ -248,16 +255,22 @@ test('missingLedgerReason lists code files and points to policy + CLI', () => {
   assert.match(msg, /npm run review:ledger -- init/);
 });
 
-test('missingLedgerReason truncates long code lists', () => {
+test('missingLedgerNotice truncates long code lists', () => {
   const many = Array.from({ length: 20 }, (_, i) => `src/core/f${i}.ts`);
-  const msg = missingLedgerReason(many);
+  const msg = missingLedgerNotice(many);
   assert.match(msg, /\+8 more/);
 });
 
-test('missingLedgerReason states the current tier matrix (adversarial fold, ADR 0051)', () => {
-  const msg = missingLedgerReason(['src/core/a.ts']);
+test('missingLedgerNotice says a 1–2🍎 change legitimately has no ledger', () => {
+  const msg = missingLedgerNotice(['src/core/a.ts']);
+  assert.match(msg, /CORRECT for a 1–2🍎 change/);
+  assert.match(msg, /3🍎 or more/);
+});
+
+test('missingLedgerNotice states the current tier matrix (adversarial fold, ADR 0051)', () => {
+  const msg = missingLedgerNotice(['src/core/a.ts']);
   assert.match(msg, /1–2 → \(none/);
-  assert.match(msg, /3 → plan_review \+ code_review/);
+  assert.match(msg, /3 → plan_review \+ code_review \+ independent_grade/);
   assert.match(msg, /4–5 → \+ multi_model_review/);
   assert.match(msg, /ADVERSARIAL/);
   // dual_plan_synthesis is no longer a required 4–5🍎 stage (ADR 0051).

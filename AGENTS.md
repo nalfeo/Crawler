@@ -5,13 +5,14 @@
 1. Run `bash scripts/agent/preflight.sh` at session start
 2. Select your persona from the routing matrix in `docs/agent-os/personas/README.md` (default to **Producer** for multi-layer or ambiguous tasks), then read that persona doc
 3. Before planning work in a system, read the relevant section of `docs/knowledge/handoffs/INDEX.md` and skim the top 3-5 listed handoffs for that system. Fall back to a broader scan of `docs/knowledge/handoffs/` only if the index has no coverage for your target system.
-4. Load durable facts: call the memory MCP `read_graph` (or `search_nodes`) and skim `docs/knowledge/memory/` — see `docs/guides/agent-memory.md`
-5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
-6. Run `npm run verify:pr-prereqs` before creating a PR so review-harness and other PR blockers surface early. Do **not** run full `npm run verify` merely because you are committing or opening a PR; CI owns the full suite unless a human explicitly requests a local run or targeted diagnosis requires it.
-7. Write a handoff file before ending implementation sessions (merge-intent changes); investigation sessions without merge-intent fixes may skip this
-8. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). The trimmed handoff template no longer carries a telemetry block — the committed summary file is the record.
+4. **Declare your apple estimate** before writing any code — read [`docs/agent-os/policies/complexity-policy.md`](docs/agent-os/policies/complexity-policy.md), pick 🍎–🍎🍎🍎🍎🍎, and state it in your first turn. For **≥3🍎 sessions** run `npm run apples:record -- --session <slug> --estimated <n> --actual <n>` at handoff; **1–2🍎 sessions do not need a file.**
+5. Load durable facts: call the memory MCP `read_graph` (or `search_nodes`) and skim `docs/knowledge/memory/` — see `docs/guides/agent-memory.md`
+6. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
+7. Run `npm run verify:pr-prereqs` before creating a PR so review-harness and other PR blockers surface early. Do **not** run full `npm run verify` merely because you are committing or opening a PR; CI owns the full suite unless a human explicitly requests a local run or targeted diagnosis requires it.
+8. Write a handoff file before ending implementation sessions (merge-intent changes); investigation sessions without merge-intent fixes may skip this
+9. If `files/guard-telemetry.jsonl` exists, run `npm run telemetry:capture -- <session-slug>` to write a committed per-session summary under `docs/knowledge/metrics/guard-telemetry/` (the durable, contamination-filtered collection path). The trimmed handoff template no longer carries a telemetry block — the committed summary file is the record.
 
-- **Synchronize during authoring:** Preflight runs `npm run sync:main -- --reason session-start`. The `authoring-main-sync` guard measures bounded intervals between active agent tool calls and attempts another local rebase after 30 active minutes. If work is dirty, checkpoint it and run `npm run sync:main -- --reason periodic`; the reminder is non-blocking and remains due until synchronization succeeds. Run `npm run sync:main -- --reason pre-publish` before final validation and PR publication. If it changes HEAD, rerun affected validation. Synchronization never pushes, and missing/stale evidence alone never blocks publication.
+- **Synchronize before publishing:** Preflight runs `npm run sync:main -- --reason session-start`. Run `npm run sync:main -- --reason pre-publish` before final validation and PR publication; if it changes HEAD, rerun affected validation. Sync it manually at any point with `npm run sync:main -- --reason periodic` (it defers cleanly on a dirty worktree). Synchronization never pushes, and missing/stale sync evidence never blocks publication.
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
 - **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
 - **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.
@@ -19,6 +20,10 @@
 - **Sweep Results Viewer deep links are required:** Whenever you discuss, start, check, check the status of, or report results for any sweep (weapon-sweep **or** AI Sweep Eval), you **MUST** include an app-native Sweep Results Viewer reference in your response. Use the canvas `runId` input: `project:sweep-results-viewer runId=<run-id>`. A raw GitHub Actions URL may appear as a **secondary** fallback only — never as the sole navigation path. This applies to every mention of a sweep run id, workflow dispatch confirmation, status update, and results summary.
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
 - **Tooling-only ceremony is capped at 3🍎:** Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count; the cap does not apply when runtime gameplay behavior or shipped game data changes.
+
+## Project Context
+
+Crawler is a crafting-focused vampire-survivors-like game set in a reality show dungeon. It uses Phaser 4 for rendering and bitecs 0.4 for ECS game logic. This project is entirely agent-driven.
 
 ## Request Intake
 
@@ -76,6 +81,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Full verify + coverage    | `VERIFY_COVERAGE=1 npm run verify`         |
 | Guard + ledger tests      | `npm run test:guards`                      |
 | Review ledger             | `npm run review:ledger`                    |
+| Independent grade (≥3🍎)  | `npm run review:grade`                     |
 | Docs loop (local)         | `npm run docs:check`                       |
 | Security loop             | `npm run security:check`                   |
 | Health loop               | `npm run health:check`                     |
@@ -202,7 +208,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Architecture
 
-- **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering
+- **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering. No Phaser imports in `src/core/`; the bridge pattern keeps the logic portable.
 - **Phaser 4**: Rendering only in `src/engine/` — replaceable layer
 - **Labs**: Sandboxes in `src/labs/` — every system needs a lab before shipping
 - **AI**: `src/game/ai/` hosts deterministic runtime AI — headless simulation runners, behavior-tree kernels, win-rate sweeps, family-aware target selection. LLM/Director content, when implemented, is layered on top and runs only during floor-load transitions (see constitution Principle 6)
@@ -239,7 +245,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 1. **Lab-gated development**: No system ships without a lab. CI enforces this.
 2. **Deterministic CI only**: No LLM-as-judge in CI. All gates are scripts with exit codes.
 3. **Never use Math.random()**: Use `SeededRandom` from `src/shared/random.ts`
-4. **Never use Date.now()**: Pass delta/frameCount as parameters
+4. **Never use Date.now()**: Pass delta/frameCount as parameters. ECS systems are deterministic and usually shaped as `(world: GameWorld) => void` (pipeline systems may accept/return deterministic data).
 5. **Handoff required for implementation sessions**: For sessions producing merge-intent changes, write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session. Include the `## Systems touched` field (comma-separated slugs from `docs/systems/README.md`) so the session shows up in `docs/knowledge/handoffs/INDEX.md`. It will be required by the pre-flight lint once the handoff tooling PR wires that in; treat as advisory until then. **Do NOT run `npm run docs:index` to rebuild `INDEX.md` yourself** — CI rebuilds it automatically on every merge that adds a handoff file, and concurrent sessions rebuilding the same file is a primary source of merge conflicts.
 6. **ADR required**: Any decision affecting 2+ systems needs an ADR
 7. **Always fix test and infra failures**: Never skip, ignore, or document broken tests/lint/build issues as "preexisting" or "unrelated" and move on. Fix every failure you encounter, regardless of whether you caused it. There is no such thing as a pre-existing issue that is out of scope — cruft compounds and wastes future agent time.
@@ -249,7 +255,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 10. **PR title/description synthesis**: When creating or updating a PR title/description — including after any feedback turns — always synthesize the _entire_ session's work. Read the existing PR title/description first (via `gh pr view`), then write a holistic title and description that covers every change on the branch, not just the most recent task. Never replace the primary purpose of the PR with a secondary or follow-up concern. The title must reflect the dominant feature/fix; secondary changes belong as bullet points in the description.
 11. **Never weaken explicit human requirements without asking**: Do NOT cut corners by quietly relaxing, disabling, or disregarding an explicit, user-stated requirement for a session — including the feature's own defining parameter — just to make a gate/test pass. This holds in every mode, **including autopilot**. If the only way you can see to get green is to weaken the requirement, STOP and ask the human first (state the trade-off and options); fix the test/gate around the requirement, not the requirement around the test.
 12. **Never bend gameplay to pass seeds; gate on win-RATE, not cherry-picked seeds**: Do not tune game balance to rescue specific pre-existing seed runs, and do not add shortcuts/cheats that hold map structure fixed just to avoid recomputing success/failure rates. **Target: 90%+ of Floor 1 seeds should easily reach a win condition.** If a broad seed sweep shows materially less, treat it as a likely **AI-runner bug or extreme gameplay regression** and fix the root cause — never hand-pick a handful of comfortable seeds to make the gate green.
-13. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). **≥3🍎** → separate-model **plan review** **and** a **code-review loop until no concerns _or_ a 2-round cap then human escalation**; >3🍎 → the plan review must be **adversarial** (one reviewer enumerates ≥2 alternatives and argues against the chosen design) **and** **multi-model review** with adjudication (same 2-round-cap/escalation rule). Every plan review (≥3🍎) records a `plan_divergence` signal so the real design fork-rate can be measured. 1–2🍎 require no review stages (plan-review floor raised 2🍎→3🍎 on 2026-07-07 to match the code-review floor, ADR 0036; dual-plan synthesis retired as a required 4–5🍎 stage on 2026-07-08, ADR 0051 — replaced by the adversarial plan review). The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #11) — escalate to a human instead. Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
+13. **Apple-scaled review harness before PR**: **1–2🍎 changes need no review stages and no ledger at all.** At **≥3🍎** the change runs the review harness and records a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`): separate-model **plan review** (recording a `plan_divergence` signal), a **code-review loop until no concerns _or_ a 2-round cap then human escalation**, and an **independent grade** of the actual diff by a model that reviewed nothing else (`npm run review:grade`); at **>3🍎** the plan review must additionally be **adversarial** (≥2 alternatives enumerated and argued against) and a **multi-model review** with adjudication runs (same 2-round-cap/escalation rule). The `pr-review-ledger` guard hard-denies `create_pull_request` for a ledger that is **present but incomplete** for its tier; a **missing** ledger only warns, because the tier is only readable from the ledger — so the ≥3🍎 ledger is an artifact-trust gate and under-declaring apples to dodge it is a rule #11 violation. Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #11) — escalate to a human instead. Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
 14. **Every game system must be sim-side wired or explicitly allowlisted**: Any `*System` exported from `src/core/**` or `src/game/**` MUST be referenced by a sim-side/shared runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/core/simulation-core-step.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. `MainGameScene.ts`-only, lab, and test references do NOT count. Enforced by `npm run check:wired-systems` (ADR 0039), run in `verify` and the `check-format-and-labs` CI job. Never allowlist a system just to go green (see rule #11) — allowlisting is only for systems intentionally not-yet-wired, and the reason must say so.
 15. **Broad sweeps (>10 runs) use GitHub infrastructure by default**: Prefer GitHub Actions `workflow_dispatch`/CI runners over local or session compute for broad sweeps so sampling is parallelized and local resources stay available. Keep local sweeps for small smoke checks or explicit human override.
 16. **Split investigation from landing implementation**: Investigation/repro/debug sessions can be scrappy and low-overhead when they are not landing code. Once an investigation identifies a fix to ship, open a separate implementation child session/PR and run the normal full process there.
@@ -263,6 +269,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Merge Policy
 
+- **Always create PRs as ready for review — never as draft.** When using the `create_pull_request` tool, always pass `draft: false` or omit the draft parameter entirely. The CI pipeline and review + fix automation are only triggered on non-draft PRs, so draft PRs stall the whole pipeline.
 - When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass. Do not run open-ended manual polling/wait loops after arming, but do perform a bounded final-state verification (`state=MERGED` and non-null `mergeCommit`) and clear unresolved review threads before idling.
 - **No human review is required to merge.** Branch protection does NOT require an approving review. Never attribute a merge failure to a "human review block" without explicit proof from `gh pr merge` output.
 - When `gh pr merge` fails, diagnose the actual cause before giving up:
@@ -300,7 +307,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   main.** A guard merged to `main` after your session started is not running in
   your session, and `git pull` does not change that: the extension host loaded
   the guard set at session start. This is a safety hole, not just a telemetry
-  gap. Empirically confirmed — a session that predated `authoring-main-sync`
+  gap. Empirically confirmed — a session that predated `authoring-main-sync` (a per-tool guard, since removed)
   recorded 10 guard events over two days (all PR-time) and began firing it
   immediately after one `extensions_reload`. 68 of 71 committed telemetry files
   show the same near-empty PR-time-only signature. Treat sparse
@@ -337,6 +344,19 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   own `maxRetries` does not cover a busy top-level `rmdir`, so cleanup needs a
   real async wait-and-retry loop (see `local-scope.test.ts`'s `rmDirWithRetry`).
   <!-- Source handoff: 2026-07-16-enemy-projectile-telegraph.md -->
+
+## Test Strategy
+
+- Unit tests for all pure functions (damage calc, loot tables, XP curves)
+- Use `createTestWorld()` from `tests/helpers/world-factory.ts` — never construct worlds manually
+- Property-based tests with fast-check for game invariants
+- Integration tests for multi-system pipelines
+
+## Pull Request Reviews
+
+Native GitHub Copilot pull-request review reads `.github/copilot-instructions.md`, so the
+PR-review contract lives there and in
+[`.github/instructions/review.instructions.md`](.github/instructions/review.instructions.md).
 
 ## Tech Stack
 
