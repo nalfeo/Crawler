@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-02",
+  "session_slug": "startup-perf-optimization",
+  "task_title": "Optimize game startup time by 33%",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "Rubber-duck reviewer caught font removal regression: plan included removing Google Fonts CDN link from index.html to eliminate a render-blocking request. Reviewer confirmed Press Start 2P is used in 6 game engine files (HudQuestTracker, EquipmentUI, HudFamilyRelationships, InventoryUI, HudDirectionArrows, HudMinimap) with layout calculations dependent on its metrics. Change reverted. Remaining 3 optimizations confirmed sound: (1) Promise.all parallelization of dynamic imports in main.ts, (2) manifest fetch started in preload() to overlap with sprite loading, (3) all 6 sprite sheets loaded (removing arbitrary critical/deferred split). Performance timing marks added throughout boot pipeline."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "clean": true,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "notes": "Reviewer traced all three optimizations. (1) Promise.all in main.ts: safe because floor-main-scene-options statically imports floor-registry so the ES module system dedups the load; floorId validation still happens before createFloorMainSceneOptions is called. (2) pendingRegistryFetch in BootScene: correctly initialized in preload() so manifest fetch runs in parallel with Phaser sprite sheet loading; ?? fallback handles the early-return path correctly; Promise always resolves so no unhandled rejection window. (3) All 6 sheets: roguelike-characters fix is valid (enemy.brigand/ghost were missing their texture); tiny-battle and tiny-ski produce dead Phaser texture entries but cause no errors or regressions. No significant issues found."
+        }
+      ]
+    }
+  }
+}

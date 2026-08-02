@@ -40,14 +40,19 @@ async function bootstrapGame(): Promise<void> {
       : new URLSearchParams();
   let floorId = (typeof window !== 'undefined' ? searchParams.get('floor') : null) ?? 'floor1';
 
+  // Load both modules in parallel so the floor-main-scene-options chunk does
+  // not wait for the small floor-registry chunk to resolve first.
+  const [{ getFloorManifest }, { createFloorMainSceneOptions }] = await Promise.all([
+    import('./shared/floor-registry.js'),
+    import('./bootstrap/floor-main-scene-options.js'),
+  ]);
+
   // Validate floorId is known by checking if we can get the manifest
-  const { getFloorManifest } = await import('./shared/floor-registry.js');
   if (!getFloorManifest(floorId)) {
     logger.warn('Unknown floor ID, falling back to floor1', { floorId });
     floorId = 'floor1';
   }
 
-  const { createFloorMainSceneOptions } = await import('./bootstrap/floor-main-scene-options.js');
   const sceneOptions = {
     ...createFloorMainSceneOptions(floorId),
     worldSeed: resolveGameLaunchSeed(searchParams),
