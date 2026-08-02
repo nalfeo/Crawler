@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
+import { getSafeAreaInsets } from './safe-area.js';
 import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
@@ -61,6 +62,8 @@ interface RenderEntry<TId extends string = string> {
 const PANEL_WIDTH = 500;
 const PANEL_HEIGHT = 400;
 const PANEL_PADDING = 18;
+/** Minimum gap between the panel and the canvas edge, before safe-area insets. */
+const PANEL_SCREEN_MARGIN = 16;
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
   fontSize: '22px',
@@ -120,7 +123,16 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   // menu stays centred while its text and rows grow on small screens. Text
   // resolution is bumped by the same factor to keep upscaled glyphs crisp.
   const textResolution = getRenderScale(scene);
-  let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
+  /**
+   * Panel margin that also clears the display cutout / home-indicator bands.
+   * `fitUiScale` takes a single symmetric margin, so the largest inset is used
+   * on every side — conservative, and zero-cost on devices with no cutout.
+   */
+  const safeMargin = (): number => {
+    const safe = getSafeAreaInsets(scene);
+    return PANEL_SCREEN_MARGIN + Math.max(safe.top, safe.right, safe.bottom, safe.left);
+  };
+  let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
   let effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
   const viewWidth = (): number => GAME.WIDTH / uiScale;
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
@@ -210,8 +222,20 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   const layoutPanel = (): void => {
     backdrop.setSize(viewWidth(), viewHeight());
     panel.setSize(PANEL_WIDTH, PANEL_HEIGHT);
-    panel.x = Math.round((viewWidth() - PANEL_WIDTH) / 2);
-    panel.y = Math.round((viewHeight() - PANEL_HEIGHT) / 2);
+    // Centre inside the safe rect rather than the raw canvas. The overlay is
+    // laid out in virtual space (design ÷ uiScale), so the design-space insets
+    // are converted to the same space before use.
+    const safe = getSafeAreaInsets(scene);
+    const inset = {
+      top: safe.top / uiScale,
+      right: safe.right / uiScale,
+      bottom: safe.bottom / uiScale,
+      left: safe.left / uiScale,
+    };
+    const safeWidth = viewWidth() - inset.left - inset.right;
+    const safeHeight = viewHeight() - inset.top - inset.bottom;
+    panel.x = Math.round(Math.max(inset.left, inset.left + (safeWidth - PANEL_WIDTH) / 2));
+    panel.y = Math.round(Math.max(inset.top, inset.top + (safeHeight - PANEL_HEIGHT) / 2));
     bevelTop.setPosition(panel.x, panel.y).setSize(PANEL_WIDTH, 2);
     bevelLeft.setPosition(panel.x, panel.y).setSize(2, PANEL_HEIGHT);
     bevelBottom.setPosition(panel.x, panel.y + PANEL_HEIGHT - 2).setSize(PANEL_WIDTH, 2);
@@ -232,7 +256,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     clearTextNodes();
 
     // Refresh responsive scale before laying out (handles resize/rotation).
-    uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
+    uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
     effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
     overlay.setScale(uiScale);
 
