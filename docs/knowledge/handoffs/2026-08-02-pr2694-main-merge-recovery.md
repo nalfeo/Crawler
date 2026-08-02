@@ -12,7 +12,7 @@ Estimated: 2🍎 (Small) — actual: 2🍎. One main-merge conflict plus one det
 
 - Unshallowed the repo, fetched `origin/main`, and merged it into `copilot/optimize-build-terrain-layer`.
 - Resolved the only textual merge conflict in `docs/knowledge/agent-memory.jsonl` by preserving the branch's `Session_Mistakes` entity alongside the upstream memory snapshot.
-- Fixed the merged branch's one deterministic regression in `src/shared/data/set-pieces.json`: `welcome-room/welcome-rug` still declared a 3.62ft height, but the shipped rug sprite is the reprocessed 128×73 asset, so contain-fit actually draws it at 3.35ft. Updated the authored feet box to match the shipped art.
+- During that merge, the branch briefly carried a welcome-room rug feet-box override in `src/shared/data/set-pieces.json`; the current branch now follows the later mainline asset-reconcile sizing instead of that transient local fix.
 
 ## Files touched
 

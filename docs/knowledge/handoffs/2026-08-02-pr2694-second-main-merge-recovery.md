@@ -11,12 +11,11 @@ Estimated: 2🍎 (Small) — actual: 2🍎. One live main-merge conflict pair pl
 ## Summary
 
 - Merged the latest `origin/main` into `copilot/optimize-build-terrain-layer`.
-- Resolved the two live conflicts by keeping the branch's welcome-room rug sizing and manifest entry, which still match the shipped 144×95 art and the terrain-bake recovery branch's earlier feet-box fix.
+- Resolved the two live conflicts by preserving main's later welcome-room asset-reconcile sizing while keeping the branch-only recovery notes.
 - Preserved the upstream non-conflicting review-harness / ceremony-reduction changes from `main`.
 
 ## Files touched
 
-- `public/assets/generated/entries/welcome-room-rug-var-0.json`
 - `src/shared/data/set-pieces.json`
 - `docs/knowledge/handoffs/2026-08-02-pr2694-second-main-merge-recovery.md`
 

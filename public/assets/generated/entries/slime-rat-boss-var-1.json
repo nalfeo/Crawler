@@ -25,7 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "5",
   "type": "enemy",
-  "contentHash": "26ae10343ddb1896b24bd1920dbab160c32a079f8092b0dc9f55239cf8cdc488",
+  "contentHash": "fac31bffd27ac7215f1215fed322e71bf95b8d3321f8665c0bb89d47de0eb8d5",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\slime-rat-boss\\2026-07-07T23-58-08-2a147cd7\\postprocess.pipeline.effective.yaml",
