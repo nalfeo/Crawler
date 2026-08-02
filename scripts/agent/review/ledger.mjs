@@ -15,7 +15,20 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-export const SCHEMA_VERSION = 'review-ledger/v1';
+/**
+ * Current schema version, written by `review:ledger -- init`.
+ *
+ * v2 (2026-08-02) added the REQUIRED >=3🍎 `independent_grade` stage. Bumping
+ * the version is what keeps the ~350 historical >=3🍎 v1 ledgers valid: the new
+ * stage is required only on v2 ledgers (see `requiredStagesForApples`), so the
+ * cutover is forward-only and no merged ledger is retroactively invalidated.
+ */
+export const SCHEMA_VERSION = 'review-ledger/v2';
+
+/** Every schema version this validator accepts. */
+export const LEGACY_SCHEMA_VERSION = 'review-ledger/v1';
+export const SUPPORTED_SCHEMA_VERSIONS = [LEGACY_SCHEMA_VERSION, SCHEMA_VERSION];
+
 export const LEDGER_DIR = 'docs/knowledge/review-ledgers';
 
 // docs/knowledge/review-ledgers/YYYY-MM-DD-<slug>.review-ledger.json
@@ -40,7 +53,41 @@ export const STAGE_NAMES = [
   'dual_plan_synthesis',
   'code_review',
   'multi_model_review',
+  'independent_grade',
 ];
+
+/**
+ * Criteria the independent grader scores, each on a 1..5 integer scale. The set
+ * is fixed so grades are comparable across sessions and can be aggregated.
+ */
+export const GRADE_CRITERIA = [
+  'correctness',
+  'scope_discipline',
+  'test_coverage',
+  'policy_compliance',
+  'maintainability',
+];
+
+/** Allowed `independent_grade.verdict` values. */
+export const GRADE_VERDICTS = ['pass', 'fail'];
+
+/**
+ * Ledgers dated on or after this must declare the current schema version.
+ * `independent_grade` became required at >=3🍎 on 2026-08-02, and the cutover is
+ * the day AFTER so that ledgers already authored by in-flight sessions on the
+ * cutover day are not retroactively invalidated. Every pre-cutover ledger
+ * predates the stage and stays valid as `LEGACY_SCHEMA_VERSION`.
+ */
+export const SCHEMA_V2_CUTOVER_DATE = '2026-08-03';
+
+/** Allowed `independent_grade` finding severities. Exact match only. */
+export const GRADE_SEVERITIES = ['blocker', 'major', 'minor'];
+
+/** A grade's `head_sha` must look like a real git object id, so a grade cannot
+ * be recorded against a placeholder and then claimed to cover real code. */
+export function isGitSha(value) {
+  return typeof value === 'string' && /^[0-9a-f]{7,40}$/i.test(value.trim());
+}
 
 /** Allowed values for `plan_review.plan_divergence` — the fork-rate instrumentation signal (ADR 0051). */
 export const PLAN_DIVERGENCE_VALUES = ['convergent', 'minor', 'major_fork'];
@@ -72,14 +119,50 @@ export { SLUG_RE };
  * @param {number} apples
  * @returns {string[]}
  */
-export function requiredStagesForApples(apples) {
+export function requiredStagesForApples(apples, schemaVersion = SCHEMA_VERSION) {
+  // `independent_grade` is a v2-only requirement so pre-cutover v1 ledgers stay
+  // valid (see SCHEMA_VERSION). An unknown/missing version is treated as v1 —
+  // the schema_version error already fires separately.
+  const graded = schemaVersion === 'review-ledger/v2' ? ['independent_grade'] : [];
   if (apples >= 4) {
-    return ['plan_review', 'code_review', 'multi_model_review'];
+    return ['plan_review', 'code_review', 'multi_model_review', ...graded];
   }
   if (apples >= 3) {
-    return ['plan_review', 'code_review'];
+    return ['plan_review', 'code_review', ...graded];
   }
   return [];
+}
+
+/**
+ * Every model id already involved in authoring or reviewing the change, drawn
+ * from the other recorded stages. The independent grader must not be any of
+ * them — "independent" is the entire point of the stage, and a grader that also
+ * did the plan or code review would be marking its own homework.
+ * @param {unknown} stages
+ * @returns {string[]}
+ */
+export function priorReviewModels(stages) {
+  if (!isPlainObject(stages)) return [];
+  const models = [];
+  const push = (v) => {
+    if (isNonEmptyString(v)) models.push(v.trim());
+  };
+  const pushRounds = (stage) => {
+    if (!isPlainObject(stage) || !Array.isArray(stage.rounds)) return;
+    for (const round of stage.rounds) {
+      if (isPlainObject(round) && Array.isArray(round.models)) round.models.forEach(push);
+    }
+  };
+  if (isPlainObject(stages.plan_review)) push(stages.plan_review.reviewer_model);
+  if (isPlainObject(stages.dual_plan_synthesis)) {
+    const dps = stages.dual_plan_synthesis;
+    if (Array.isArray(dps.plan_models)) dps.plan_models.forEach(push);
+    push(dps.judge_model);
+  }
+  pushRounds(stages.code_review);
+  pushRounds(stages.multi_model_review);
+  if (isPlainObject(stages.multi_model_review)) push(stages.multi_model_review.adjudicator_model);
+  return [...new Set(models)];
 }
 
 /** Normalize a repo-relative path to forward slashes, stripping a leading `./`. */
@@ -456,11 +539,168 @@ function validateMultiModelReview(stage, errors) {
   }
 }
 
+/**
+ * Validate the `independent_grade` stage — the compensating control introduced
+ * alongside dropping the 1-2🍎 ledger requirement (schema v2).
+ *
+ * Unlike the other stages, this one is graded from the ACTUAL DIFF by a model
+ * that took no part in authoring or reviewing the change. Requirements:
+ *   - `grader_model` is non-empty AND distinct from every model recorded in the
+ *     other stages (see `priorReviewModels`).
+ *   - `head_sha` records WHICH tree was graded, so a grade cannot be silently
+ *     carried across a rewrite.
+ *   - every criterion in GRADE_CRITERIA is scored with an integer 1..5.
+ *   - `verdict` is `pass` or `fail`; a `fail` is NOT a dead end but it is also
+ *     NOT a silent pass — it must carry the same terminal `escalated_to_human`
+ *     record the review loops use, so a human is forced to look.
+ * @param {unknown} stage
+ * @param {string[]} errors
+ * @param {number|null} _apples
+ * @param {{stages?:unknown}} [ctx]
+ */
+function validateIndependentGrade(stage, errors, _apples, ctx = {}) {
+  const tag = 'independent_grade';
+  if (!isPlainObject(stage)) {
+    errors.push(`${tag}: must be an object`);
+    return;
+  }
+  if (stage.completed !== true) errors.push(`${tag}.completed must be true`);
+
+  if (!isNonEmptyString(stage.grader_model)) {
+    errors.push(`${tag}.grader_model must be a non-empty string`);
+  } else {
+    const prior = priorReviewModels(ctx.stages);
+    if (prior.includes(stage.grader_model.trim())) {
+      errors.push(
+        `${tag}.grader_model ('${stage.grader_model}') must be INDEPENDENT — it already appears in another review stage (${prior.join(', ')})`,
+      );
+    }
+  }
+
+  if (!isNonEmptyString(stage.implementer_model)) {
+    errors.push(
+      `${tag}.implementer_model must name the model that AUTHORED the change, so grader independence from the author is checkable`,
+    );
+  } else if (
+    isNonEmptyString(stage.grader_model) &&
+    stage.implementer_model.trim() === stage.grader_model.trim()
+  ) {
+    errors.push(
+      `${tag}.grader_model ('${stage.grader_model}') must be INDEPENDENT — it is the model that authored the change`,
+    );
+  }
+
+  if (!isGitSha(stage.head_sha)) {
+    errors.push(`${tag}.head_sha must be a 7-40 character hex git sha identifying the graded tree`);
+  }
+
+  const criteria = stage.criteria;
+  if (!isPlainObject(criteria)) {
+    errors.push(`${tag}.criteria must be an object scoring: ${GRADE_CRITERIA.join(', ')}`);
+  } else {
+    for (const key of GRADE_CRITERIA) {
+      const score = criteria[key];
+      if (!Number.isInteger(score) || score < 1 || score > 5) {
+        errors.push(`${tag}.criteria.${key} must be an integer 1..5`);
+      }
+    }
+    const unknown = Object.keys(criteria).filter((k) => !GRADE_CRITERIA.includes(k));
+    if (unknown.length > 0) {
+      errors.push(`${tag}.criteria has unknown criteria: ${unknown.join(', ')}`);
+    }
+  }
+
+  if (!GRADE_VERDICTS.includes(stage.verdict)) {
+    errors.push(`${tag}.verdict must be one of: ${GRADE_VERDICTS.join(', ')}`);
+  }
+
+  if (!isNonNegInt(stage.findings_count)) {
+    errors.push(`${tag}.findings_count must be an integer >= 0`);
+  } else if (stage.findings_count > 0 && stage.findings === undefined) {
+    errors.push(`${tag}.findings must be present when findings_count is non-zero`);
+  }
+
+  // `parseGradeResponse` recomputes the verdict from the scores and findings,
+  // but the guard trusts THIS validator, not the CLI — a hand-authored ledger
+  // would otherwise be able to claim `pass` over failing scores or an
+  // unaddressed blocker. Re-derive the same rule here so the two agree.
+  let findings = null;
+  if (stage.findings !== undefined) {
+    if (!Array.isArray(stage.findings)) {
+      errors.push(`${tag}.findings must be an array`);
+    } else {
+      findings = stage.findings;
+      stage.findings.forEach((finding, i) => {
+        if (!isPlainObject(finding)) {
+          errors.push(`${tag}.findings[${i}] must be an object`);
+          return;
+        }
+        if (!GRADE_SEVERITIES.includes(finding.severity)) {
+          errors.push(
+            `${tag}.findings[${i}].severity must be exactly one of: ${GRADE_SEVERITIES.join(', ')}`,
+          );
+        }
+        if (!isNonEmptyString(finding.file)) {
+          errors.push(`${tag}.findings[${i}].file must be a non-empty string`);
+        }
+        if (!isNonEmptyString(finding.detail)) {
+          errors.push(`${tag}.findings[${i}].detail must be a non-empty string`);
+        }
+      });
+      if (isNonNegInt(stage.findings_count) && stage.findings.length !== stage.findings_count) {
+        errors.push(
+          `${tag}.findings_count (${stage.findings_count}) must equal findings.length (${stage.findings.length})`,
+        );
+      }
+    }
+  }
+
+  if (stage.verdict === 'pass') {
+    const low = isPlainObject(criteria)
+      ? GRADE_CRITERIA.filter((c) => Number.isInteger(criteria[c]) && criteria[c] < 3)
+      : [];
+    if (low.length > 0) {
+      errors.push(
+        `${tag}.verdict cannot be 'pass' with criteria below 3: ${low.join(', ')} — a low score is a failing grade`,
+      );
+    }
+    const blockers = (findings ?? []).filter(
+      (f) => isPlainObject(f) && f.severity === 'blocker',
+    ).length;
+    if (blockers > 0) {
+      errors.push(
+        `${tag}.verdict cannot be 'pass' with ${blockers} unresolved blocker finding(s) — fix them and re-grade`,
+      );
+    }
+  }
+
+  // A failing grade is a terminal state a human must act on — never a silent
+  // pass, and never a reason to weaken the grade (project rule #11).
+  if (stage.verdict === 'fail') {
+    const esc = stage.escalated_to_human;
+    if (!isPlainObject(esc)) {
+      errors.push(
+        `${tag}: verdict 'fail' requires an escalated_to_human record { reason, unresolved_findings } — fix the findings and re-grade, or escalate to a human`,
+      );
+    } else {
+      if (!isNonEmptyString(esc.reason)) {
+        errors.push(`${tag}.escalated_to_human.reason must be a non-empty string`);
+      }
+      if (!Number.isInteger(esc.unresolved_findings) || esc.unresolved_findings < 1) {
+        errors.push(`${tag}.escalated_to_human.unresolved_findings must be an integer >= 1`);
+      }
+    }
+  } else if (stage.escalated_to_human !== undefined) {
+    errors.push(`${tag}.escalated_to_human is only valid alongside verdict 'fail'`);
+  }
+}
+
 const STAGE_VALIDATORS = {
   plan_review: validatePlanReview,
   dual_plan_synthesis: validateDualPlanSynthesis,
   code_review: validateCodeReview,
   multi_model_review: validateMultiModelReview,
+  independent_grade: validateIndependentGrade,
 };
 
 /**
@@ -468,7 +708,7 @@ const STAGE_VALIDATORS = {
  * @param {unknown} obj
  * @returns {{ok:boolean, estimatedApples:number|null, requiredStages:string[], errors:string[], summary:string}}
  */
-export function validateLedger(obj) {
+export function validateLedger(obj, opts = {}) {
   const errors = [];
   if (!isPlainObject(obj)) {
     return {
@@ -480,13 +720,24 @@ export function validateLedger(obj) {
     };
   }
 
-  if (obj.schema_version !== SCHEMA_VERSION) {
+  if (!SUPPORTED_SCHEMA_VERSIONS.includes(obj.schema_version)) {
     errors.push(
-      `schema_version must be '${SCHEMA_VERSION}' (got ${JSON.stringify(obj.schema_version)})`,
+      `schema_version must be one of: ${SUPPORTED_SCHEMA_VERSIONS.join(', ')} (got ${JSON.stringify(obj.schema_version)}); new ledgers use '${SCHEMA_VERSION}'`,
     );
   }
   if (!isNonEmptyString(obj.date) || !DATE_RE.test(obj.date)) {
     errors.push('date must be a YYYY-MM-DD string');
+  } else if (opts.requireCurrentSchema === true && obj.schema_version !== SCHEMA_VERSION) {
+    errors.push(
+      `schema_version must be '${SCHEMA_VERSION}' for newly added ledgers at PR/guard boundaries (got ${JSON.stringify(obj.schema_version)}); '${LEGACY_SCHEMA_VERSION}' is accepted only for historical corpus validation`,
+    );
+  } else if (obj.date >= SCHEMA_V2_CUTOVER_DATE && obj.schema_version !== SCHEMA_VERSION) {
+    // v1 is accepted ONLY as history. Without this, a new >=3🍎 ledger could
+    // simply declare v1 and skip `independent_grade` entirely, since the v2
+    // gate in requiredStagesForApples() keys off the declared version.
+    errors.push(
+      `schema_version must be '${SCHEMA_VERSION}' for ledgers dated ${SCHEMA_V2_CUTOVER_DATE} or later (got ${JSON.stringify(obj.schema_version)}); '${LEGACY_SCHEMA_VERSION}' is accepted only for pre-cutover ledgers`,
+    );
   }
   if (!isNonEmptyString(obj.session_slug) || !SLUG_RE.test(obj.session_slug)) {
     errors.push('session_slug must be a kebab-case string');
@@ -505,7 +756,7 @@ export function validateLedger(obj) {
     errors.push('estimated_apples must be an integer 1..5');
   } else {
     estimatedApples = obj.estimated_apples;
-    requiredStages = requiredStagesForApples(estimatedApples);
+    requiredStages = requiredStagesForApples(estimatedApples, obj.schema_version);
   }
 
   // Downward-only, diff-justified re-scoring. An apple estimate may be revised
@@ -542,9 +793,11 @@ export function validateLedger(obj) {
       }
       if (present) {
         // Thread the declared tier so tier-conditional validators
-        // (validatePlanReview) can enforce per-tier field rules. Other
-        // validators ignore the 3rd arg.
-        STAGE_VALIDATORS[name](stages[name], errors, estimatedApples);
+        // (validatePlanReview) can enforce per-tier field rules, and the whole
+        // stage map so cross-stage validators (validateIndependentGrade's
+        // model-independence check) can see the other stages. Validators that
+        // need neither ignore the extra args.
+        STAGE_VALIDATORS[name](stages[name], errors, estimatedApples, { stages });
       }
     }
   }
@@ -558,7 +811,7 @@ export function validateLedger(obj) {
 }
 
 /** Parse + validate ledger JSON text. */
-export function validateLedgerText(text) {
+export function validateLedgerText(text, opts = {}) {
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -571,11 +824,11 @@ export function validateLedgerText(text) {
       summary: 'invalid ledger (JSON parse error)',
     };
   }
-  return validateLedger(parsed);
+  return validateLedger(parsed, opts);
 }
 
 /** Read + validate a ledger file. `filePath` may be absolute or relative to `cwd`. */
-export function validateLedgerFile(filePath, cwd = '.') {
+export function validateLedgerFile(filePath, cwd = '.', opts = {}) {
   let text;
   try {
     text = readFileSync(resolve(cwd, filePath), 'utf-8');
@@ -588,7 +841,7 @@ export function validateLedgerFile(filePath, cwd = '.') {
       summary: 'invalid ledger (read error)',
     };
   }
-  return validateLedgerText(text);
+  return validateLedgerText(text, opts);
 }
 
 /** Format a validation result for human/CLI output. */

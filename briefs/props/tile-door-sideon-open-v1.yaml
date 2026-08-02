@@ -1,0 +1,257 @@
+# ORIENTATION NOTE (Asset Forge, 2026-07-29) -- REPLACES THE ROTATE-BY-RENDERER
+# CONTRACT, DOES NOT EXTEND IT
+#
+# Sibling of `tile-door-sideon-v1` (same wall slot, OPEN instead of closed).
+# Same reasoning: `tile-door-open-side-v1` asked for face-on art to be
+# quarter-turned by the renderer, which is exactly the convention the
+# maintainer has now retired ("you can't just rotate an existing one"). This
+# brief is a from-scratch, natively-composed replacement at its own compact
+# target proportions, not a rotation of `tile-door-tall-open-v1`.
+#
+# BOTH STATES MUST MATCH. `tile-door-sideon-v1` and this brief are sampled in
+# the SAME `sprites:run` against a shared-archway spec, and the winning pair is
+# selected by MEASURING the relationship (opaque geometry + arch-stone-only
+# palette), never by the pipeline's independent per-state auto-pick -- the
+# exact defect class the 2026-07-28 door session catalogued for the front-facing
+# pair (each state passed every gate alone and still disagreed as a pair).
+#
+# TARGET GEOMETRY. Opaque box approximately 170 x 205 px in the 256 x 256 cell
+# (aspect ~0.83), matching the closed frame exactly, with the same ~20%
+# transparent headroom band above the archway -- this doorway must NOT overflow
+# north the way the tall front-facing pair intentionally does.
+#
+# THE OPENING MUST BE OPAQUE, NOT TRANSPARENT. The dark gap is the room BEYOND
+# the door -- it is painted opaque near-black. If left transparent, the floor
+# tile underneath shows straight through and the door reads as a hole in the
+# world.
+#
+# REVISION 2 (2026-07-30) -- SAME ROOT-CAUSE FIX AS `tile-door-sideon-v1`.
+# Revision 1's description below used to open with "Front elevation, looking
+# STRAIGHT THROUGH the opening dead-on" -- copy-pasted from the face-on
+# `tile-door-tall-open-v1` brief. All 16 revision-1 candidates were,
+# unsurprisingly, ordinary face-on open doorways with a squarer aspect: every
+# sensor and the LLM judge passed (measured aspect 0.87-0.93) but a visual
+# check against the running game showed the composition was still front-on,
+# not side-on. Caught and rewritten here before any variant was approved;
+# nothing from revision 1 was approved or shipped.
+#
+# REVISION 3 (2026-07-30) -- SAME STRUCTURAL FIX AS `tile-door-sideon-v1`.
+# Revision 2's fully-rewritten, explicit prose still produced ordinary
+# face-on open doorways on a square 128x128 canvas -- prose alone did not
+# overcome the model's default archetype. This revision switches to a
+# genuinely non-square 48x128 canvas so there is no physical room to draw a
+# wide face-on opening.
+#
+# REVISION 4 (2026-07-30) -- REVISION 3 STILL FAILED, DIFFERENT FAILURE MODE
+# THAN THE CLOSED-DOOR SIBLING. On the narrow 48x128 canvas the model stopped
+# drawing a full-width face-on doorway, but it defaulted instead to a
+# ROUNDED-TOP ARCHWAY: stone jamb wrapping around BOTH sides and over the top
+# in a curved lintel, framing a dark opening -- this reads as a compressed
+# front elevation of an arch, not the closed frame's single edge-on strip.
+# Every one of 16 revision-3 candidates showed this shape; sensors and the
+# judge passed several of them anyway because a symmetric arch on a narrow
+# canvas still yields a plausible opaqueRatio/dimensions/brief-adjacent
+# description, and the judge is not reliably distinguishing "arch" from
+# "edge-on strip" the way it reliably did for the closed door. Caught by
+# mandatory visual inspection before approval; nothing from revision 3 was
+# approved or shipped. This revision adds explicit, repeated bans on the
+# rounded-top/two-sided-arch shape and forces an asymmetric, flat-topped
+# silhouette matching the closed frame's jamb-on-one-side-only geometry.
+#
+# MEASURED OUTCOME / CONCLUSION (2026-07-30) -- BLOCKED, SAME CLASS OF ISSUE
+# AS `tile-door-tall-v1`'s aspect ceiling. Revision 4's explicit, multi-
+# paragraph "DO NOT DRAW AN ARCHWAY" + "sharp 90-degree corner, not a rounded
+# corner" prose was tested across 4 separate generation calls (runs
+# 2026-07-30T05-16-59, T05-20-07, T05-36-44, T05-45-41), 6 total since the
+# revision-2 authoring-bug fix. Results were NOT a stable improvement:
+#   - T05-16-59: 1/16 candidates extracted (slicer merge), but that single
+#     candidate WAS the correct asymmetric/flat-top composition -- proof the
+#     shape is reachable, but this run could not be approved (no clean
+#     multi-candidate separation, and the merge corrupted its own sensor
+#     scoring).
+#   - T05-20-07, T05-36-44, T05-45-41 (all AFTER the revision-4 rewrite):
+#     16/16, 16/16, and 16/16 candidates respectively all reverted to the
+#     rounded-top, both-sides-stone archway shape the brief explicitly bans,
+#     confirmed by full-sheet visual inspection each time. The judge
+#     correctly hard-blocked these (score 1-2/5, citing "curved top" /
+#     "symmetric framing" back from the brief's own language) -- the judge
+#     is NOT the bottleneck; the generator reliably reverts to its default
+#     archway archetype for this "empty doorway gap" subject regardless of
+#     how explicitly the prose forbids it.
+# CONCLUSION: this is a generator capability/reliability ceiling for the
+# "side-on OPEN door" composition, structurally analogous to (but distinct
+# in mechanism from) the `tile-door-tall-v1` aspect-ratio ceiling: there,
+# stronger prompting could not move the delivered aspect; here, stronger
+# prompting achieved the correct composition ONCE in 6 attempts but could
+# not reliably reproduce it, and the model's default archway archetype wins
+# in every case where clean 16-way extraction also succeeds. Per task
+# policy (stop and report rather than approve substandard art, or approve a
+# single ungated candidate without explicit maintainer sign-off), NO variant
+# from this brief has been approved. The correct composition is proven
+# reachable (see run T05-16-59's raw/00.png) -- a future session could try:
+# (a) an even narrower canvas to remove any residual room for a "both
+# sides" reading, (b) few-shot image conditioning/reference instead of
+# prose-only description, or (c) accepting the single T05-16-59 candidate
+# via manual override with explicit maintainer sign-off, since its
+# composition is verified correct despite failing sensors on extraction
+# artifacts alone. Not attempted here because that path requires a human
+# decision, not a unilateral agent approval.
+type: prop
+name: tile-door-sideon-open-v1
+description: |
+  THE SAME DOORWAY as `tile-door-sideon-v1` in this game, drawn OPEN. A
+  SIDE-PROFILE (EDGE-ON) VIEW, explicitly NOT a front elevation -- do not draw
+  a doorway you are looking through face-on. Modern high-quality pixel art,
+  silhouette readable at 16px.
+
+  DO NOT DRAW AN ARCHWAY. A rounded-top opening with stone framing both
+  sides AND a curved lintel across the top is WRONG and is the single most
+  common mistake for this brief -- that shape is a compressed FRONT view of
+  an arch, not an edge-on strip. This subject has stone on ONE side only
+  (left), a FLAT square top (no curve, no lintel, no keystone), and NOTHING
+  framing the right side or the top -- the dark gap simply ends at the top
+  and right edges of the strip's own silhouette, it is not enclosed by any
+  stonework. If your silhouette is symmetric left-to-right, or has a curved
+  top, you have drawn an archway and missed this brief entirely.
+
+  THE SCENE: identical camera and wall geometry to the closed frame -- a
+  corridor runs left-to-right past the camera, and the doorway sits in a wall
+  running vertically, top-to-bottom of the frame, crossing the corridor at a
+  right angle. In the closed frame you saw the door's narrow EDGE. Now the
+  door has swung fully open, away from the camera into the room beyond, so
+  even that thin edge is gone from view -- what remains is the empty gap in
+  the wall: the same narrow vertical STRIP shape as the closed frame's jamb,
+  but with a dark opaque gap where the door edge used to be, instead of
+  timber. The whole subject is STILL a tall, thin, mostly vertical strip -- at
+  most a THIRD as wide as it is tall, matching the closed frame's proportions
+  exactly. If the drawing shows a wide doorway you are looking straight
+  through into a room, it has missed this brief -- that is a front-facing
+  doorway, not this one.
+
+  THE JAMB IS SHARED WITH THE CLOSED FRAME AND MUST NOT MOVE: the same thin
+  vertical band of grey blocky stone, flush with the wall face, same width,
+  same height, same position as in `tile-door-sideon-v1`. Only the space where
+  the door's timber edge was is now different.
+
+  THE SILHOUETTE IS ASYMMETRIC, NOT AN ARCH: the stone jamb occupies ONLY the
+  LEFT portion of the strip, a straight-sided vertical band from top to
+  bottom -- it does NOT curve, it does NOT continue across the top, and it
+  does NOT reappear on the right side. The top edge of the whole strip is
+  FLAT and square, cut straight across -- there is no lintel, no keystone, no
+  curved crown, no rounded arch of any kind anywhere in this image. To the
+  right of the jamb is simply the flat dark gap, unbordered by any stone on
+  its own right edge or top.
+
+  THE JAMB'S SHAPE IS A SIMPLE RECTANGLE, LIKE A STONE PILLAR OR POST -- picture
+  a plain rectangular column standing on end: four straight sides, four sharp
+  90-degree corners, no curve anywhere on it. The TOP-LEFT corner in
+  particular is a SHARP RIGHT ANGLE, not a rounded corner, not a curved hook,
+  not a bevel -- the jamb's left edge and top edge meet at a hard square
+  corner exactly like the corner of a book or a brick. The jamb must NOT hook,
+  curl, or extend rightward at the top the way a capital, corbel, or arch
+  springer would -- it stays exactly as wide at the top as it is for its
+  entire height, like a picket or fence post, not a shepherd's-crook or
+  candy-cane shape. If you can trace the jamb's outline and find any curve or
+  diagonal bevel anywhere, especially at the top-left corner, that is wrong --
+  redraw it as straight lines and right angles only.
+
+  WHAT IS VISIBLE, TOP TO BOTTOM, ALL COMPRESSED INTO THAT NARROW STRIP:
+  - the stone jamb's cut edge, identical to the closed frame: a thin vertical
+    band of grey blocky stone, occupying only the strip's left portion, with a
+    perfectly flat, straight, square top -- not curved, not domed, not
+    peaked, not hooked, not curling to the right.
+  - where the door's edge was in the closed frame, now a narrow strip of flat
+    OPAQUE near-black -- the dark room beyond, seen through the thin gap left
+    by the open doorway. NOT transparent: paint it as solid dark colour, not a
+    hole. This dark area is NOT bordered by stone on its right side or top --
+    it simply reaches the edge of the strip's silhouette.
+  - optionally, right at the base of that dark strip, the faintest hint of the
+    door leaf's edge receding away into the room, barely readable, one or two
+    tone stops lighter than the surrounding black -- this is a subtle grace
+    note, not a requirement, and must not read as a second door or a bright
+    shape.
+
+  REAL-WORLD SIZE. Identical to the closed frame: this doorway fits a wall slot
+  about 4 FEET WIDE and renders about 6.5 FEET TALL overall, so a 5.75 ft
+  person clears it with headroom. The visible strip is narrow -- around 1 to
+  1.5 FEET of visible width at most.
+
+  THE CANVAS ITSELF IS NARROW: this cell is only 48 SOURCE PIXELS WIDE by 128
+  SOURCE PIXELS TALL, matching the closed frame's canvas exactly -- a tall
+  thin rectangle, not square. There is NOT enough width in this canvas to
+  draw a full-width doorway you look straight through -- only the narrow
+  strip described above physically fits. Use nearly the full width and
+  height of this narrow canvas for the strip itself.
+  - The subject must reach close to the FULL HEIGHT of the cell and use most
+    of the cell's own width -- only a thin sliver of transparent margin on
+    each side.
+  - EXACTLY ONE door-edge strip per cell. Never draw a second strip, never
+    draw a wide doorway, never draw a scene you are looking through face-on
+    into a room. Never draw stone on more than one side of the strip, and
+    never draw a curved or peaked top -- the top of the stone jamb is flat and
+    square.
+
+  IT IS NOT: a closed door, a front-facing open doorway you can see through
+  into a room, an ARCH or ARCHWAY of any kind (rounded, pointed, or
+  keystoned), a rounded lintel, stone framing both sides of the opening, a
+  portcullis, a gate, a tall grand archway, a window, a mine shaft, or a cave
+  mouth. It is one narrow vertical strip: the jamb's edge and
+  a dark opaque gap where the door used to be, seen side-on down a corridor.
+
+  MOOD -- a grimy reality-TV dungeon. The way through is open and it is not
+  reassuring: the dark beyond is flat and unlit.
+
+  COLOUR -- the dark gap is a very dark desaturated blue-black, near-black but
+  not pure black. The stone jamb is the same cool desaturated grey as the
+  closed frame. Keep a clear dark outline. BANNED: neon, pure white, pure
+  black, saturated red, saturated yellow, orange, teal, cyan, blue, green,
+  magenta, purple, gold leaf, gemstones, glowing runes, magical glow,
+  torchlight glare, visible fire, and any ornate carved fantasy filigree.
+
+  LIGHTING: light comes from the UPPER LEFT, consistently -- the same
+  direction as the closed frame, because it is the same wall.
+
+  RENDERING: hard 1-pixel dark outline on the silhouette, 3-5 tone stops per
+  material, restrained dithering -- no mushy gradients, no airbrush, no
+  floating unsupported elements.
+
+  NO TEXT of any kind: no letters, words, numbers, digits, runes, sigils,
+  labels, captions, watermarks or signatures anywhere.
+
+  BACKGROUND: fully transparent OUTSIDE the strip's own silhouette only. Draw
+  ONLY the narrow jamb-edge-plus-opening strip. Do NOT paint a masonry wall
+  face, a floor slab, a rectangular backing panel, a border, a vignette, or
+  any cast/contact/drop shadow.
+
+  SHEET BACKGROUND: every cell must sit on ONE single flat uniform background
+  colour, identical in all cells, clearly distinct from the artwork so it can
+  be keyed out cleanly. No per-cell background variation, no borders, no
+  dividers.
+size:
+  width: 48
+  height: 128
+anchor:
+  x: 24
+  y: 126
+sensors:
+  # REVISION 3: matches `tile-door-sideon-v1`'s corrected bounds for a
+  # genuinely narrow 48x128 canvas -- see that brief's comment for reasoning.
+  opaqueRatio:
+    min: 0.45
+    max: 0.9
+  anchor:
+    derive: true
+    mode: center-of-mass
+    bandRows: 8
+    centerToleranceX: 6
+tags:
+  - pixel-dungeon
+  - dungeon
+  - door
+  - architecture
+  - tile
+  - side-on
+judge:
+  enabled: true
+  maxVariants: 8
+minVariations: 0

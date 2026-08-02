@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-02",
+  "session_slug": "loading-screen-progress-bar",
+  "task_title": "Add loading screen with progress bar",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "convergent",
+      "notes": "Reviewed BootScene loading screen and MainGameScene floor transition progress bar plan. Blocking bug found: progress listener active during second load cycle overwrites bar progress — fixed by calling load.off('progress') at top of loadGeneratedSpritesAndStartGame(). Non-blocking: FILE_LOAD_ERROR not counted, bar stalls on failed sprites — fixed by adding FILE_LOAD_ERROR listener. Minor: floorCompletionScreen?.destroy() missing before null — added. All three concerns resolved before code review."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Reviewed all five flagged areas. progress/fileprogress listener cleanup correct before second load cycle. FILE_COMPLETE/FILE_LOAD_ERROR dual-listener cleanup correct in finalize(). Tween edge case on scene restart safe (Phaser destroys tweens on shutdown). Container destroy correct and positioned before null assignment. setScrollFactor(0) with absolute game-space coordinates works correctly. No issues found."
+        }
+      ]
+    }
+  }
+}

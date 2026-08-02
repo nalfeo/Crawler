@@ -5,7 +5,7 @@
     {
       "id": "floor1-find-welcome",
       "title": "Orientation",
-      "summary": "Find the Welcome Office and let the Tutorial Goon explain how this twisted little game show works.",
+      "summary": "Find the Welcome Office. The Tutorial Goon runs orientation, and he is the only person on this floor who has ever seen the outside.",
       "giverNpcId": "tutorial-goon",
       "onCompleteGoalFlag": "floor1-welcome-room-found",
       "objectives": [
@@ -20,7 +20,7 @@
     {
       "id": "floor1-tutorial",
       "title": "Trial by XP",
-      "summary": "The Goon turned on your loot. Now grind the swarm and hit level 2.",
+      "summary": "The Goon switched your XP on. Now earn it the way he did — grind the swarm and reach level 2.",
       "giverNpcId": "tutorial-goon",
       "onCompleteGoalFlag": "floor1-leveling-quest-complete",
       "template": {
@@ -33,7 +33,7 @@
     {
       "id": "floor1-boss-unlock",
       "title": "Pest Control for Beginners",
-      "summary": "Thin out rats and slimes to start unlocking the boss room door — but it stays sealed until you've also squared things away with the Sweaty Merchant and the Spell Broker.",
+      "summary": "Thin out rats and slimes to earn the Goon's signature on the boss door. It takes three signatures, and the other two live in the same room he does.",
       "giverNpcId": "tutorial-goon",
       "onCompleteGoalFlag": "floor1-goon-quest-complete",
       "template": {
@@ -55,7 +55,7 @@
     {
       "id": "floor1-meet-npcs",
       "title": "The Director's Shortlist",
-      "summary": "The boss door won't budge until the Sweaty Merchant and the Spell Broker have both signed off on you. Two stops, two errands — then you fight the actual boss.",
+      "summary": "The Merchant has to gear you and the Broker has to arm you before the boss door moves. Two stops, two errands, and one very frosty room.",
       "giverNpcId": "tutorial-goon",
       "objectives": [
         {
@@ -75,7 +75,7 @@
     {
       "id": "floor1-boss-battle",
       "title": "Neighborhood Watch",
-      "summary": "Defeat the Slime Rat, then return to the Spell Broker to claim your spellbook and unlock abilities.",
+      "summary": "Defeat the Slime Rat, then return to the Spell Broker for your spellbook. He'll be delighted for you. He will not sound delighted for you.",
       "giverNpcId": "spell-quest-giver",
       "onCompleteGoalFlag": "floor1-boss-battle-complete",
       "objectives": [
@@ -117,7 +117,7 @@
     {
       "id": "floor1-shopkeeper-errand",
       "title": "The Merchant's Disgusting Little Errand",
-      "summary": "A clammy shopkeeper will only trade with contestants who fetch him a very particular souvenir. Try not to think about what he does with it.",
+      "summary": "The Merchant will not open the shop until you fetch him one very particular souvenir. He says it's not for the shop. He says it's for the room. Don't think about the room.",
       "giverNpcId": "shopkeeper",
       "onCompleteGoalFlag": "floor1-shop-quest-complete",
       "template": {

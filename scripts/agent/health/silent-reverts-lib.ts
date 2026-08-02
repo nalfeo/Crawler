@@ -89,6 +89,13 @@ export interface FileTriple {
   /** Blob at the PR head, used for the survival filter. */
   readonly head: string | null;
   /**
+   * True when a clean three-way merge of `base`, `other`, and `side` would
+   * still produce `other` at this path. In that case `result === other` does
+   * NOT mean the incoming side was discarded — the opposing side already
+   * contained the incoming change and merely had extra edits of its own.
+   */
+  readonly sideAlreadyPresentInOther?: boolean;
+  /**
    * Blob at the CURRENT mainline tip. When the discarded side's blob equals
    * this, the discard drops content main still holds — a genuine mainline loss
    * regardless of which branch delivered it. `undefined` when not supplied
@@ -232,7 +239,8 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
 export function isDiscarded(f: FileTriple): boolean {
   if (f.side === f.base) return false; // incoming did not change it
   if (f.result === f.side) return false; // merge took the incoming version
-  return f.result === f.other || f.result === f.base;
+  if (f.result === f.other) return f.sideAlreadyPresentInOther !== true;
+  return f.result === f.base;
 }
 
 /**

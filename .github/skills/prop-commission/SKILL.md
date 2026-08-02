@@ -23,7 +23,7 @@ of each being individually plausible and collectively incoherent.
 | Who                                                     | Owns                                                                                                     |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | **This skill**                                          | What to request, how to describe it, whether the result fits the room, and the critique when it does not |
-| **Asset Forge** (`.github/agents/asset-forge.agent.md`) | brief → Azure generate → sensors → judge → approve → check-in → art PR                                   |
+| **Asset Forge** (`.github/agents/asset-forge.agent.md`) | brief → Azure generate → sensors → judge → approve → queue → reconciler                                   |
 | **`sprite-judge` skill**                                | Whether a sprite is good _in isolation_                                                                  |
 
 Never rebuild the generation pipeline. Hand off, then evaluate the result **in

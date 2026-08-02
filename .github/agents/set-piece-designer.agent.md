@@ -58,7 +58,7 @@ props before declaring zones is exactly what produces scattered-props-in-a-box.
    room's contract? Produces a kept list and a **ranked gap list**.
 3. **Commission** — `prop-commission` skill. Turn gaps into sprite briefs and hand
    off to **Asset Forge** (`.github/agents/asset-forge.agent.md`), which owns
-   generate → judge → approve → check-in → art PR. Every brief inherits the room art
+   generate → judge → approve → queue → reconciler. Every brief inherits the room art
    contract. Iterate rejects with _context-specific_ critique.
 4. **Dress** — `set-piece-dress` skill. Dress by vignette — focal vignette first,
    then secondary vignettes, then perimeter; protect the breathing room zone. Place,

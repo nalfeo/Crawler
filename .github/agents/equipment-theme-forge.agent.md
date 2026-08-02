@@ -60,7 +60,7 @@ entry points and must not diverge into parallel pipelines:
   Equipment Review canvas and published atomically through
   `.github/workflows/theme-equipment.yml`.
 - **Asset Forge** owns **per-asset** work: placeholder burndown, individual briefs,
-  and the generic art→check-in→batch-PR→wire loop.
+  and the generic art→approve→queue→wire loop.
 
 The judging bar is the same in both (`sprite-judge` sensors + VLM judge). If you
 find yourself hand-rolling a per-asset generate/judge/approve loop here, stop and

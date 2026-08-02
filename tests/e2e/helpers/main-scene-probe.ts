@@ -21,6 +21,7 @@ import type {
   ProbePoint,
   RewardAudioCueLogEntryProbe,
   RewardOpeningProbeState,
+  SafeAreaLayoutProbe,
   TerrainRenderSummary,
   DoorRenderSummary,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
@@ -88,6 +89,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.openBossRewardPicker()),
   getModalPickerLayout: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
+  getSafeAreaLayout: (page: Page): Promise<SafeAreaLayoutProbe> =>
+    page.evaluate(() => window.__mainSceneProbe!.getSafeAreaLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
     page.evaluate((p) => window.__mainSceneProbe!.setSimulationPaused(p), paused),
   advanceSimulationFrames: (page: Page, frames: number): Promise<void> =>

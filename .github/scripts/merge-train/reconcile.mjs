@@ -829,13 +829,25 @@ for (const pr of queued) {
           );
           await removeLabel(pr.number, QUEUE_LABEL);
           dequeuedFork = true;
-        } else if (err.status !== 422) {
-          // 422 covers "already up-to-date" and stale expected_head_sha — log
-          // it so stale-head races are visible and not silently swallowed.
-          throw err;
-        } else {
+        } else if (err.status === 422) {
+          // 422 covers "already up-to-date" and stale expected_head_sha —
+          // expected, benign, logged so stale-head races stay visible.
           process.stderr.write(
             `update-branch pr=#${pr.number} non-fatal: ${err.status} ${err.message}\n`,
+          );
+        } else {
+          // Any novel status (404, 5xx, transient network) is logged LOUDLY
+          // and skipped — never re-thrown. This catch sits inside the
+          // `for (const pr of queued)` loop, so an escaping throw does not
+          // just fail this PR: it abandons every remaining queued PR and
+          // leaves nobody to unstick the train. That is exactly how a
+          // re-thrown non-422 update-branch error deadlocked the queue for
+          // ~90 minutes on 2026-07-29. Novel failures stay visible via this
+          // distinct `unexpected-status` marker (greppable by CI recovery)
+          // rather than via a process crash; the PR re-enters on the next
+          // reconcile pass. Enforced by `crawler/no-rethrow-in-automation-catch`.
+          process.stderr.write(
+            `update-branch pr=#${pr.number} unexpected-status: ${err.status} ${err.message}\n`,
           );
         }
       }

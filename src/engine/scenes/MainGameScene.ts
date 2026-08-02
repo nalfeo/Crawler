@@ -55,7 +55,8 @@ import { createInputCapture } from '../InputCapture.js';
 import { createAbilityLoadoutUI, type AbilityLoadoutEntry } from '../AbilityLoadoutUI.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
-import { getUiScale, onUiScaleChange } from '../ui-scale.js';
+import { getUiScale, onUiScaleChange, type ScreenBounds } from '../ui-scale.js';
+import { getSafeAreaInsets, onSafeAreaChange } from '../safe-area.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
@@ -151,9 +152,19 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+/** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
+const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
 const SET_PIECE_LIGHT_RADIUS_FT = 20;
 const SET_PIECE_LIGHT_INTENSITY = 0.7;
+
+// Floor-transition progress bar dimensions (used in both create() and
+// startFloorTransitionProgress()).
+const FLOOR_TRANS_BAR_W = 400;
+const FLOOR_TRANS_BAR_H = 14;
+const FLOOR_TRANS_BAR_INNER_W = FLOOR_TRANS_BAR_W - 2;
+const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
+
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -164,6 +175,13 @@ const FLOOR_1_COMMENTARY = {
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
 } as const;
 const logger = createLogger('engine:main-game-scene');
+
+/** Mark a named stage in the browser performance timeline (no-op in Node). */
+function markGame(label: string): void {
+  if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+    performance.mark(label);
+  }
+}
 
 function resolveSetPieceLightEmission(
   spriteId: string,
@@ -632,6 +650,7 @@ export class MainGameScene extends Phaser.Scene {
   private interactionHint?: Phaser.GameObjects.Text;
 
   private offInteractionHintScale?: () => void;
+  private offInteractionHintSafeArea?: () => void;
 
   /** Screen-space pixel-themed NPC dialogue box shown while a line is active. */
   private dialogueBox?: DialogueBox;
@@ -646,6 +665,15 @@ export class MainGameScene extends Phaser.Scene {
   private floorCompletionSubtitleText?: Phaser.GameObjects.Text;
 
   private floorCompletionBodyText?: Phaser.GameObjects.Text;
+
+  /** Progress bar shown during floor-to-floor transitions (hidden otherwise). */
+  private floorTransitionProgressTrack?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressFill?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressShine?: Phaser.GameObjects.Rectangle;
+
+  private floorTransitionProgressLabel?: Phaser.GameObjects.Text;
 
   /** Dedicated UI camera so HUD is not affected by world camera zoom. */
   private uiCamera?: Phaser.Cameras.Scene2D.Camera;
@@ -664,6 +692,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Active NPC conversation lock; when set, fixed-step simulation pauses. */
   private conversationNpcEid: number | null = null;
+  /** Stable dialogue snapshot for the active conversation so lines cannot swap mid-talk. */
+  private activeConversationLines: readonly string[] | null = null;
 
   /** One-frame latch set by pointer tap/click to advance or start dialogue. */
   private tappedInteraction = false;
@@ -713,6 +743,7 @@ export class MainGameScene extends Phaser.Scene {
   private achievementToast?: Phaser.GameObjects.Text;
 
   private offMobileButtonScale?: () => void;
+  private offMobileButtonSafeArea?: () => void;
 
   private floorCompletionMessageShown = false;
 
@@ -771,6 +802,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create(): void {
+    markGame('game:create-start');
     const worldSeed = this.options.worldSeed ?? 42;
     this.world = createGameWorld({
       seed: worldSeed,
@@ -981,14 +1013,18 @@ export class MainGameScene extends Phaser.Scene {
     // right stepPx, and so a scene restart resets any prior live tweaks. Routing
     // through setLightingConfig() gives clamping + a stepPx-change rebuild.
     this.setLightingConfig({ ...DEFAULT_LIGHTING_CONFIG, ...this.options.lightingConfig });
+    markGame('game:terrain-bake-start');
     this.drawFloorTerrain();
+    markGame('game:terrain-bake-end');
     this.ensureUiCamera();
     this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
     this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
     this.runFovSystemWithPerf(this.world);
+    markGame('game:lighting-start');
     this.updateLightingOverlay(true);
+    markGame('game:lighting-end');
     this.bridge.sync(this.world);
     this.updateOverlayText();
     if (typeof window !== 'undefined') {
@@ -1050,6 +1086,29 @@ export class MainGameScene extends Phaser.Scene {
       };
     }
 
+    markGame('game:create-end');
+    if (typeof performance !== 'undefined' && typeof performance.measure === 'function') {
+      try {
+        const terrain = performance.measure(
+          'game:terrain-bake',
+          'game:terrain-bake-start',
+          'game:terrain-bake-end',
+        );
+        const lighting = performance.measure(
+          'game:lighting',
+          'game:lighting-start',
+          'game:lighting-end',
+        );
+        const total = performance.measure('game:create', 'game:create-start', 'game:create-end');
+        logger.info('MainGameScene.create() timing', {
+          totalMs: Math.round(total.duration),
+          terrainBakeMs: Math.round(terrain.duration),
+          lightingMs: Math.round(lighting.duration),
+        });
+      } catch {
+        // Marks may be missing in headless / test environments — safe to ignore.
+      }
+    }
     this.events.once('shutdown', () => {
       logger.info('Main game scene shutdown');
       this.inputCapture?.destroy();
@@ -1078,8 +1137,12 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.destroy();
       this.offInteractionHintScale?.();
       this.offInteractionHintScale = undefined;
+      this.offInteractionHintSafeArea?.();
+      this.offInteractionHintSafeArea = undefined;
       this.offMobileButtonScale?.();
       this.offMobileButtonScale = undefined;
+      this.offMobileButtonSafeArea?.();
+      this.offMobileButtonSafeArea = undefined;
       this.inventoryButton?.destroy();
       this.inventoryButton = undefined;
       this.equipButton?.destroy();
@@ -1125,13 +1188,19 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.directorCommentaryText = undefined;
+      this.floorCompletionScreen?.destroy();
       this.floorCompletionScreen = undefined;
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
       this.floorCompletionBodyText = undefined;
+      this.floorTransitionProgressTrack = undefined;
+      this.floorTransitionProgressFill = undefined;
+      this.floorTransitionProgressShine = undefined;
+      this.floorTransitionProgressLabel = undefined;
       this.loadoutText = undefined;
       this.keyAbilities = undefined;
       this.conversationNpcEid = null;
+      this.activeConversationLines = null;
       this.tappedInteraction = false;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
@@ -1158,6 +1227,27 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.sessionRecorder = undefined;
     });
+  }
+
+  /**
+   * Screen-space bounds of the bottom-centre interaction hint / Talk button,
+   * or `null` when it is not showing. Test/automation affordance so e2e probes
+   * can assert this canvas-rendered tap target clears the safe-area bands.
+   */
+  getInteractionHintBounds(): ScreenBounds | null {
+    if (!this.interactionHint?.visible) {
+      return null;
+    }
+    const bounds = this.interactionHint.getBounds();
+    return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Baseline Y for the bottom-anchored interaction hint, lifted clear of the
+   * home-indicator band on notched devices (zero inset elsewhere).
+   */
+  private interactionHintY(): number {
+    return GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
   }
 
   private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -1522,6 +1612,12 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.abilitiesModalOpen = false;
     this.updateOverlayText();
+  }
+
+  private closeConversation(): void {
+    this.conversationNpcEid = null;
+    this.activeConversationLines = null;
+    this.dialogueBox?.hide();
   }
 
   private processOpenAbilitiesModal(): void {
@@ -2228,7 +2324,7 @@ export class MainGameScene extends Phaser.Scene {
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHint = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN, '', {
+      .text(GAME.WIDTH / 2, this.interactionHintY(), '', {
         fontFamily: 'monospace',
         fontSize: '22px',
         fontStyle: 'bold',
@@ -2247,10 +2343,13 @@ export class MainGameScene extends Phaser.Scene {
     });
     const applyInteractionHintScale = (scale: number): void => {
       const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);
-      this.interactionHint?.setScale(hintScale).setY(GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN);
+      this.interactionHint?.setScale(hintScale).setY(this.interactionHintY());
     };
     applyInteractionHintScale(getUiScale(this));
     this.offInteractionHintScale = onUiScaleChange(this, applyInteractionHintScale);
+    this.offInteractionHintSafeArea = onSafeAreaChange(this, () => {
+      applyInteractionHintScale(getUiScale(this));
+    });
 
     // Top-left on-screen buttons for inventory ([I]) and equipment ([G]) so the
     // pack and gear are reachable on touch devices with no keyboard.
@@ -2260,7 +2359,7 @@ export class MainGameScene extends Phaser.Scene {
       onTap: () => void,
     ): Phaser.GameObjects.Text =>
       this.add
-        .text(16, y, label, {
+        .text(MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left, y, label, {
           fontFamily: 'monospace',
           fontSize: '20px',
           fontStyle: 'bold',
@@ -2275,19 +2374,20 @@ export class MainGameScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true })
         .setVisible(false)
         .on('pointerdown', onTap);
-    this.inventoryButton = makeCornerButton(16, '🎒 Bag', () => {
+    const cornerButtonTop = (): number => MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).top;
+    this.inventoryButton = makeCornerButton(cornerButtonTop(), '🎒 Bag', () => {
       this.queuedInventoryToggle = true;
     });
-    this.equipButton = makeCornerButton(72, '⚔ Gear', () => {
+    this.equipButton = makeCornerButton(cornerButtonTop() + 56, '⚔ Gear', () => {
       this.queuedEquip = true;
     });
-    this.achievementsButton = makeCornerButton(128, '🏆 Awards', () => {
+    this.achievementsButton = makeCornerButton(cornerButtonTop() + 112, '🏆 Awards', () => {
       this.queuedAchievementsToggle = true;
     });
-    this.abilitiesButton = makeCornerButton(184, '🔮 Skills', () => {
+    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 168, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(240, '✕ Shop', () => {
+    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
       this.queuedQuartermasterToggle = true;
     });
     const applyMobileButtonScale = (scale: number): void => {
@@ -2297,18 +2397,34 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
+      // Re-anchor to the current safe rect (rotation can change the insets).
+      const top = cornerButtonTop();
+      const left = MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left;
+      for (const button of [
+        this.inventoryButton,
+        this.equipButton,
+        this.achievementsButton,
+        this.abilitiesButton,
+        this.quartermasterButton,
+      ]) {
+        button?.setX(left);
+      }
+      this.inventoryButton?.setY(top);
       // Keep buttons clear of each other when scaled.
       const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
-      this.equipButton?.setY(16 + bagH);
+      this.equipButton?.setY(top + bagH);
       const gearH = (this.equipButton?.height ?? 44) * buttonScale + 8;
-      this.achievementsButton?.setY(16 + bagH + gearH);
+      this.achievementsButton?.setY(top + bagH + gearH);
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
-      this.abilitiesButton?.setY(16 + bagH + gearH + awardsH);
+      this.abilitiesButton?.setY(top + bagH + gearH + awardsH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
-      this.quartermasterButton?.setY(16 + bagH + gearH + awardsH + skillsH);
+      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + skillsH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
+    this.offMobileButtonSafeArea = onSafeAreaChange(this, () => {
+      applyMobileButtonScale(getUiScale(this));
+    });
 
     // Screen-space NPC dialogue box — bottom-center, well above the interaction hint
     this.dialogueBox = createDialogueBox(this, {
@@ -2384,6 +2500,40 @@ export class MainGameScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5, 0.5);
+
+    // Floor-transition progress bar — hidden by default, shown only when the
+    // scene is about to restart into the next floor.
+    const floorBarX = GAME.WIDTH / 2 - FLOOR_TRANS_BAR_W / 2;
+    const floorBarY = GAME.HEIGHT / 2 + 75;
+    this.floorTransitionProgressTrack = this.add
+      .rectangle(floorBarX, floorBarY, FLOOR_TRANS_BAR_W, FLOOR_TRANS_BAR_H, 0x0a0e18, 1)
+      .setStrokeStyle(1, 0x02040a, 1)
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressFill = this.add
+      .rectangle(floorBarX + 1, floorBarY + 1, 0, FLOOR_TRANS_BAR_INNER_H, 0x4ea8ff, 1)
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressShine = this.add
+      .rectangle(
+        floorBarX + 1,
+        floorBarY + 1,
+        0,
+        Math.max(1, Math.floor(FLOOR_TRANS_BAR_INNER_H / 3)),
+        0xffffff,
+        0.18,
+      )
+      .setOrigin(0, 0)
+      .setVisible(false);
+    this.floorTransitionProgressLabel = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 + 100, 'Loading next floor...', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: '#64748b',
+      })
+      .setOrigin(0.5, 0)
+      .setVisible(false);
+
     this.floorCompletionScreen = this.add
       .container(0, 0, [
         completionBackdrop,
@@ -2391,6 +2541,10 @@ export class MainGameScene extends Phaser.Scene {
         this.floorCompletionTitleText,
         this.floorCompletionSubtitleText,
         this.floorCompletionBodyText,
+        this.floorTransitionProgressTrack,
+        this.floorTransitionProgressFill,
+        this.floorTransitionProgressShine,
+        this.floorTransitionProgressLabel,
       ])
       .setDepth(5500)
       .setScrollFactor(0)
@@ -3685,7 +3839,7 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionMessagePending = false;
       this.floorCompletionMessageShown = true;
       this.floorCompletionScreen?.setVisible(true);
-      this.time.delayedCall(1500, () => {
+      this.startFloorTransitionProgress(() => {
         const nextOptions = this.options.onFloor1Cleared?.(this.world, this.playerEid);
         if (nextOptions) {
           const composedNextOptions =
@@ -3709,6 +3863,46 @@ export class MainGameScene extends Phaser.Scene {
 
   private shouldShowFloorCompletionMessage(): boolean {
     return getFloorRunOutcome(this.world) !== null && !this.floorCompletionMessageShown;
+  }
+
+  /**
+   * Animate the floor-transition progress bar from 0% to 100% over ~1300 ms,
+   * then invoke `onComplete` so the caller can restart the scene.
+   * The bar elements are shown immediately; the tween drives the fill width.
+   */
+  private startFloorTransitionProgress(onComplete: () => void): void {
+    const track = this.floorTransitionProgressTrack;
+    const fill = this.floorTransitionProgressFill;
+    const shine = this.floorTransitionProgressShine;
+    const label = this.floorTransitionProgressLabel;
+
+    if (track) track.setVisible(true);
+    if (fill) fill.setVisible(true);
+    if (shine) shine.setVisible(true);
+    if (label) label.setVisible(true);
+
+    if (!fill || !shine) {
+      // Fallback: no bar elements available — just delay then continue.
+      this.time.delayedCall(1400, onComplete);
+      return;
+    }
+
+    const progress = { value: 0 };
+    this.tweens.add({
+      targets: progress,
+      value: 1,
+      duration: 1300,
+      ease: 'Linear',
+      onUpdate: () => {
+        const w = Math.max(1, Math.round(progress.value * FLOOR_TRANS_BAR_INNER_W));
+        fill.setSize(w, FLOOR_TRANS_BAR_INNER_H);
+        shine.setSize(w, Math.max(1, Math.floor(FLOOR_TRANS_BAR_INNER_H / 3)));
+      },
+      onComplete: () => {
+        // Brief pause at 100% before the scene restarts.
+        this.time.delayedCall(150, onComplete);
+      },
+    });
   }
 
   /**
@@ -3828,26 +4022,26 @@ export class MainGameScene extends Phaser.Scene {
     if (this.conversationNpcEid !== null) {
       const instance = this.world.npcs.get(this.conversationNpcEid);
       if (!instance || !instance.nearbyPlayer) {
-        this.conversationNpcEid = null;
-        this.dialogueBox?.hide();
+        this.closeConversation();
       } else {
         const def = getNpcDef(instance.defId);
-        const activeDialogue = resolveDialogueLines(
-          instance.defId,
-          this.world,
-          {
-            shopkeeper: this.options.shopkeeper,
-            spellQuestGiver: this.options.spellQuestGiver,
-            shopkeeperJustReturned: this.shopkeeperJustReturned,
-          },
-          this.conversationNpcEid,
-        );
+        const activeDialogue =
+          this.activeConversationLines ??
+          resolveDialogueLines(
+            instance.defId,
+            this.world,
+            {
+              shopkeeper: this.options.shopkeeper,
+              spellQuestGiver: this.options.spellQuestGiver,
+              shopkeeperJustReturned: this.shopkeeperJustReturned,
+            },
+            this.conversationNpcEid,
+          );
         this.interactionHint?.setVisible(false);
         this.dialogueBox?.setCloseVisible(true);
 
         if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc))) {
-          this.conversationNpcEid = null;
-          this.dialogueBox?.hide();
+          this.closeConversation();
           return;
         }
 
@@ -3859,8 +4053,7 @@ export class MainGameScene extends Phaser.Scene {
             if (instance.defId === 'the-broker') {
               this.options.broker?.met(this.world);
             }
-            this.conversationNpcEid = null;
-            this.dialogueBox?.hide();
+            this.closeConversation();
             return;
           }
           instance.dialogueIndex = nextIndex;
@@ -3935,6 +4128,7 @@ export class MainGameScene extends Phaser.Scene {
             if (instance.defId === 'spell-quest-giver' && this.options.spellQuestGiver) {
               this.options.spellQuestGiver.meet(this.world);
             }
+            this.activeConversationLines = [...activeDialogue];
             instance.dialogueIndex = 0;
             const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
             this.dialogueBox?.showLine(def.name, `"${text}"`);
