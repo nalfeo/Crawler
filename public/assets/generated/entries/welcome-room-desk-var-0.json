@@ -32,11 +32,11 @@
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {
-    "x": 5,
-    "y": 5,
-    "width": 86,
-    "height": 81,
-    "canvasWidth": 96,
-    "canvasHeight": 91
+    "x": 8,
+    "y": 8,
+    "width": 128,
+    "height": 79,
+    "canvasWidth": 144,
+    "canvasHeight": 95
   }
 }
