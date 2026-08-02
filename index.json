@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0bc5e1790a1dad7f915208142dd7ed92bd09850b",
+    "commitDate": "2026-08-02T04:25:37Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2668)",
+    "capturedAt": "2026-08-02T05:20:44.265Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30732375375",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/0bc5e1790a1dad7f915208142dd7ed92bd09850b.json"
+  },
+  {
     "commit": "02e9f1f6c55a0e0eb5853c51dc5f5611d06fd309",
     "commitDate": "2026-08-02T04:08:42Z",
     "commitSubject": "perf(boot): parallelize startup sequence, overlap manifest fetch, fix sprite sheet loading (#2666)",
