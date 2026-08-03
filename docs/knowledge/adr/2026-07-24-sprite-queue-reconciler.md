@@ -241,6 +241,35 @@ queue-commit takes, so a cycle and a concurrent dev-box queue-commit never race.
    data-loss trap (CTX-005): the queue churns during the cycle and a reset would
    drop post-snapshot edits. Harvest-onto-main makes the reset unnecessary.
 
+## Amendment (2026-08-03) — harvest-onto-main alone does NOT converge
+
+Alternative 4 below rejected "reset `assets/queue` to `main` after merge" as a
+data-loss trap and concluded that **"harvest-onto-main makes the reset
+unnecessary."** That conclusion was wrong, and the cost was 104 consecutive
+hourly runs that each opened a promotion PR.
+
+Harvest-onto-main avoided CTX-004's three-dot bug, but the two-dot replacement
+(`git diff --diff-filter=AM <main> <source>`) is still only a **"differs from
+`main`"** test — not a "newer than `main`" test — and **nothing retires a
+source**. With more than one source (the queue plus every orphaned
+`assets/checkin-*` branch), whichever source currently _agrees_ with `main` drops
+out of its own `AM` set, so the other source always wins the overlay and `main`
+flips between them every cycle. Observed live: promote PRs #2704 and #2706, one
+hour apart, carried an **identical 100-file set with exactly inverse patches**,
+and 44 orphan branches (oldest 2026-07-08) were re-harvested every hour forever.
+
+**Amended decision:** a promotion commit now records the **exact source tips it
+harvested** (`Queue-Source:` / `Orphan-Source:` trailers), and the next cycle
+retires precisely those snapshots once that promotion has **merged**. The reset
+of alternative 4 is therefore adopted, but **only under a compare-and-swap
+lease** (`--force-with-lease=refs/heads/<b>:<sha>`) plus a re-derived proof that
+the source adds nothing to the current `main`. That closes CTX-005 exactly: an
+edit that landed during the cycle moves the source tip, the lease misses, and the
+source is left untouched. The queue-reset that was rejected as unconditional
+data loss is safe precisely because it is now conditional on the recorded OID.
+
+See `docs/knowledge/handoffs/2026-08-03-sprite-reconciler-convergence.md`.
+
 ## References
 
 - Feature ADR (PR1 + scope split):
