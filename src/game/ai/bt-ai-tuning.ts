@@ -745,7 +745,13 @@ export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 // crunch period when panic > 0.5 on Floor 1. Floor 2 has no collapse timer so
 // panic is always 0 there — the sweep runs until all reachable loot is taken.
 export const LOOT_SWEEP_PANIC_THRESHOLD = 0.5;
-// Radius (ft) for the post-combat sweep window. Inside the default scanRadius
-// (50ft) so the detour stays local to the area the AI just cleared and cannot
-// pull it toward an unexplored, unscouted part of the floor.
-export const LOOT_SWEEP_RADIUS_FT = 35;
+// Radius (ft) for the mid-run post-combat sweep window. 0 disables mid-run
+// sweeping, leaving only the pre-exit (staircase-unlocked) full-floor sweep.
+// Measured over the gate matrix (seeds 1-24 x sword/bow/baseball-bat, 72 runs):
+//   0ft  -> combined collection 0.7288, 72/72 wins  (baseline 0.6659, 72/72)
+//   35ft -> combined collection 0.7254, 70/72 wins  (two bat losses)
+// The wider mid-run window costs ~20s of extra floor time per run and flipped
+// two wins, so it stays off: rule 12 gates on win-RATE, and no efficiency gain
+// is worth a win regression. Raise only with a fresh 72-run measurement showing
+// the win rate holds.
+export const LOOT_SWEEP_RADIUS_FT = 0;
