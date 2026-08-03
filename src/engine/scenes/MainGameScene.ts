@@ -63,6 +63,7 @@ import {
   areLightingRectsEqual,
   findNearestNearbyNpc,
   formatAbilityTrigger,
+  getFloorCompletionPresentation,
   getFloorRunOutcome,
   getLightingViewRect,
   resolveDialogueLines,
@@ -217,7 +218,7 @@ export interface MainGameSceneOptions {
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
-   * Called when Floor 1 is cleared (player descends the stairs).
+   * Called when a cleared floor should transition in-process to the next floor.
    * When it returns next-floor options, the scene restarts in process with a
    * fresh world after the transitional message.
    */
@@ -3815,24 +3816,21 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private showFloorCompletionScreenIfNeeded(): void {
-    const outcome = getFloorRunOutcome(this.world);
-    if (!outcome || !this.shouldShowFloorCompletionMessage()) {
+    const completionPresentation = getFloorCompletionPresentation(
+      this.world,
+      typeof this.options.onFloor1Cleared === 'function',
+    );
+    if (!completionPresentation || !this.shouldShowFloorCompletionMessage()) {
       return;
     }
 
-    if (outcome === 'failed_timeout') {
+    if (completionPresentation === 'failed_timeout') {
       this.floorCompletionTitleText?.setText('Game Over');
       this.floorCompletionSubtitleText?.setText('Floor 1 failed');
       this.floorCompletionBodyText?.setText(
         'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
       );
-    } else if (this.world.floorExtendedState?.familyState?.staircaseDiscovered) {
-      this.floorCompletionTitleText?.setText('Victory!');
-      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
-      this.floorCompletionBodyText?.setText(
-        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
-      );
-    } else if (this.options.onFloor1Cleared) {
+    } else if (completionPresentation === 'transition_to_next_floor') {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');
       this.floorCompletionSubtitleText?.setText('Heading to Floor 2...');
       this.floorCompletionBodyText?.setText('Prepare yourself for the next challenge!');
@@ -3848,6 +3846,12 @@ export class MainGameScene extends Phaser.Scene {
         }
       });
       return;
+    } else if (completionPresentation === 'terminal_victory') {
+      this.floorCompletionTitleText?.setText('Victory!');
+      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
+      );
     } else {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');
       this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
