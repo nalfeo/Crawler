@@ -114,8 +114,12 @@ export function upsertEntity(records: readonly MemoryRecord[], entity: Entity): 
   let replaced = false;
   for (const r of records) {
     if (r.type === 'entity' && r.name === entity.name) {
-      next.push(entity);
-      replaced = true;
+      if (!replaced) {
+        next.push(entity);
+        replaced = true;
+      }
+      // Drop subsequent duplicates — they should not exist, but guard against
+      // a corrupted JSONL that already contains more than one copy.
     } else {
       next.push(r);
     }

@@ -131,6 +131,25 @@ describe('upsertEntity', () => {
     expect(next[1]).toBe(fresh);
   });
 
+  it('collapses duplicate entities: only the first match is replaced, extras are dropped', () => {
+    const dup: Entity = {
+      type: 'entity',
+      name: 'Session_Mistakes',
+      entityType: 'lessons',
+      observations: ['old'],
+    };
+    const records: MemoryRecord[] = [
+      dup,
+      { ...dup }, // second copy — simulates a corrupted JSONL
+      { type: 'relation', from: 'a', to: 'b', relationType: 'r' },
+    ];
+    const updated: Entity = { ...dup, observations: ['old', 'new'] };
+    const next = upsertEntity(records, updated);
+    expect(next).toHaveLength(2);
+    expect(next[0]).toBe(updated);
+    expect(next[1]).toBe(records[2]);
+  });
+
   it('is idempotent: re-upserting the same entity yields an equivalent layout', () => {
     const base: MemoryRecord[] = [
       { type: 'entity', name: 'Other', entityType: 't', observations: [] },
