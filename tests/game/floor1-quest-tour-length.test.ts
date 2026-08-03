@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+
+const COVERAGE_TIMEOUT_MS = 120_000;
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { buildInitiallyLockedDoorTileSet } from '../../src/game/floorScenario.js';
@@ -199,67 +201,87 @@ const MAX_MEDIAN_TOUR_TILES = 1250;
 const MAX_TOUR_TILES = 1900;
 
 describe('Floor 1 quest tour length', () => {
-  it('keeps the required quest tour bounded across a seed prefix', () => {
-    const tours = SEEDS.map((seed) => ({ seed, tiles: questTourTiles(seed) }));
-    for (const { seed, tiles } of tours) {
-      expect(tiles, `seed ${seed} quest tour is ${tiles} tiles`).toBeLessThanOrEqual(
-        MAX_TOUR_TILES,
-      );
-    }
-    const sorted = tours.map((t) => t.tiles).sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)]!;
-    expect(median).toBeLessThanOrEqual(MAX_MEDIAN_TOUR_TILES);
-  });
+  it(
+    'keeps the required quest tour bounded across a seed prefix',
+    () => {
+      const tours = SEEDS.map((seed) => ({ seed, tiles: questTourTiles(seed) }));
+      for (const { seed, tiles } of tours) {
+        expect(tiles, `seed ${seed} quest tour is ${tiles} tiles`).toBeLessThanOrEqual(
+          MAX_TOUR_TILES,
+        );
+      }
+      const sorted = tours.map((t) => t.tiles).sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)]!;
+      expect(median).toBeLessThanOrEqual(MAX_MEDIAN_TOUR_TILES);
+    },
+    COVERAGE_TIMEOUT_MS,
+  );
 
-  it('places the rat tail in a room that is actually reachable when the errand is issued', () => {
-    // The boss-staircase and slime-rat rooms start locked. An item behind either
-    // one makes the merchant errand unsatisfiable and the AI route planner
-    // throws `unreachable-required-goal`.
-    for (const seed of SEEDS) {
-      const { distance, spawnDistance } = fetchPlacement(seed);
-      expect(spawnDistance, `seed ${seed}: rat tail unreachable from spawn`).toBeGreaterThan(0);
-      expect(distance, `seed ${seed}: rat tail unreachable from the merchant`).toBeGreaterThan(0);
-    }
-  });
+  it(
+    'places the rat tail in a room that is actually reachable when the errand is issued',
+    () => {
+      // The boss-staircase and slime-rat rooms start locked. An item behind either
+      // one makes the merchant errand unsatisfiable and the AI route planner
+      // throws `unreachable-required-goal`.
+      for (const seed of SEEDS) {
+        const { distance, spawnDistance } = fetchPlacement(seed);
+        expect(spawnDistance, `seed ${seed}: rat tail unreachable from spawn`).toBeGreaterThan(0);
+        expect(distance, `seed ${seed}: rat tail unreachable from the merchant`).toBeGreaterThan(0);
+      }
+    },
+    COVERAGE_TIMEOUT_MS,
+  );
 
-  it('places the rat tail about two thirds of the way to the farthest reachable room', () => {
-    // Measured over seeds 1–100: min 0.36, p25 0.65, median 0.67, p75 0.68,
-    // max 0.85 of the longest merchant-anchored walk on the floor. The band is
-    // wider than the observed spread because room granularity limits how close
-    // any single seed can land to the 2/3 target; the median assertion is what
-    // pins the rule itself.
-    const fractions = SEEDS.map((seed) => {
-      const { distance, maxDistance } = fetchPlacement(seed);
-      expect(maxDistance, `seed ${seed}: no reachable rooms from the merchant`).toBeGreaterThan(0);
-      const fraction = distance / maxDistance;
-      expect(
-        fraction,
-        `seed ${seed} rat tail sits at ${fraction.toFixed(2)} of max`,
-      ).toBeGreaterThan(0.3);
-      expect(fraction, `seed ${seed} rat tail sits at ${fraction.toFixed(2)} of max`).toBeLessThan(
-        0.9,
-      );
-      return fraction;
-    }).sort((a, b) => a - b);
-    const median = fractions[Math.floor(fractions.length / 2)]!;
-    expect(median).toBeGreaterThan(0.6);
-    expect(median).toBeLessThan(0.75);
-  });
+  it(
+    'places the rat tail about two thirds of the way to the farthest reachable room',
+    () => {
+      // Measured over seeds 1–100: min 0.36, p25 0.65, median 0.67, p75 0.68,
+      // max 0.85 of the longest merchant-anchored walk on the floor. The band is
+      // wider than the observed spread because room granularity limits how close
+      // any single seed can land to the 2/3 target; the median assertion is what
+      // pins the rule itself.
+      const fractions = SEEDS.map((seed) => {
+        const { distance, maxDistance } = fetchPlacement(seed);
+        expect(maxDistance, `seed ${seed}: no reachable rooms from the merchant`).toBeGreaterThan(
+          0,
+        );
+        const fraction = distance / maxDistance;
+        expect(
+          fraction,
+          `seed ${seed} rat tail sits at ${fraction.toFixed(2)} of max`,
+        ).toBeGreaterThan(0.3);
+        expect(
+          fraction,
+          `seed ${seed} rat tail sits at ${fraction.toFixed(2)} of max`,
+        ).toBeLessThan(0.9);
+        return fraction;
+      }).sort((a, b) => a - b);
+      const median = fractions[Math.floor(fractions.length / 2)]!;
+      expect(median).toBeGreaterThan(0.6);
+      expect(median).toBeLessThan(0.75);
+    },
+    COVERAGE_TIMEOUT_MS,
+  );
 
-  it('does not send the player on a map-diameter round trip for the fetch item', () => {
-    // The shop errand is walked twice, so it is the leg most worth bounding.
-    for (const seed of SEEDS.slice(0, 12)) {
-      const world = createTestWorld({ seed });
-      const playerEid = spawnPlayer(world, 400, 400);
-      getScenarioDefinition('floor1').configureWorld(world, playerEid);
-      const floorMap = world.floorMap!;
-      const objective = world.floorScenario!.objective;
-      const shop = floorMap.worldToTile(objective.shopRoomPos.x, objective.shopRoomPos.y);
-      const item = floorMap.worldToTile(objective.questItemPos.x, objective.questItemPos.y);
-      const roundTrip = 2 * tileDistance(floorMap, shop, item);
-      expect(roundTrip, `seed ${seed} fetch round trip is ${roundTrip} tiles`).toBeLessThanOrEqual(
-        1000,
-      );
-    }
-  });
+  it(
+    'does not send the player on a map-diameter round trip for the fetch item',
+    () => {
+      // The shop errand is walked twice, so it is the leg most worth bounding.
+      for (const seed of SEEDS.slice(0, 12)) {
+        const world = createTestWorld({ seed });
+        const playerEid = spawnPlayer(world, 400, 400);
+        getScenarioDefinition('floor1').configureWorld(world, playerEid);
+        const floorMap = world.floorMap!;
+        const objective = world.floorScenario!.objective;
+        const shop = floorMap.worldToTile(objective.shopRoomPos.x, objective.shopRoomPos.y);
+        const item = floorMap.worldToTile(objective.questItemPos.x, objective.questItemPos.y);
+        const roundTrip = 2 * tileDistance(floorMap, shop, item);
+        expect(
+          roundTrip,
+          `seed ${seed} fetch round trip is ${roundTrip} tiles`,
+        ).toBeLessThanOrEqual(1000);
+      }
+    },
+    COVERAGE_TIMEOUT_MS,
+  );
 });
