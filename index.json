@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8e93aea5f30eff0abdfd68a94014d19289288c00",
+    "commitDate": "2026-08-03T00:10:50Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2708)",
+    "capturedAt": "2026-08-03T01:13:40.954Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30774248322",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/8e93aea5f30eff0abdfd68a94014d19289288c00.json"
+  },
+  {
     "commit": "eeb7787d7337f62146b8cc1d9dad9f4321572c93",
     "commitDate": "2026-08-02T23:45:44Z",
     "commitSubject": "Debugging huge mob size discrepancies (#2707)",
