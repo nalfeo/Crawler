@@ -13906,7 +13906,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 5.93,
+              "widthFt": 6.49,
               "heightFt": 3.5
             },
             {
@@ -15795,7 +15795,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 5.93,
+              "widthFt": 6.49,
               "heightFt": 3.5,
               "anchorBase": true
             },
