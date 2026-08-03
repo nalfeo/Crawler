@@ -41,15 +41,28 @@ export interface ParsedMemory {
  * Collapse the prose lines of a `### Mistakes Made` block into one
  * semicolon-joined observation, stripped of list markers and truncated to
  * {@link MAX_LINE_LEN} (with an ellipsis on a word boundary).
+ *
+ * Continuation lines (lines that don't start with a list marker) are joined
+ * to their parent bullet with a space so that Markdown soft-wrap doesn't
+ * produce spurious semicolons inside a single observation.
  */
 export function summarizeMistakes(lines: readonly string[]): string {
-  const parts = lines.map((l) =>
-    l
-      .trim()
-      .replace(/^[-*+]\s+/, '')
-      .replace(/\s+/g, ' '),
-  );
-  let out = parts.join('; ');
+  // Group continuation lines with their parent bullet item before joining.
+  const items: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim().replace(/\s+/g, ' ');
+    if (/^[-*+]\s+/.test(trimmed)) {
+      // New list item — start a fresh group.
+      items.push(trimmed.replace(/^[-*+]\s+/, ''));
+    } else if (items.length > 0) {
+      // Continuation line — append to the last item with a space.
+      items[items.length - 1] += ' ' + trimmed;
+    } else {
+      // Leading prose before any list marker — treat as its own item.
+      items.push(trimmed);
+    }
+  }
+  let out = items.join('; ');
   if (out.length > MAX_LINE_LEN) {
     out = `${out.slice(0, MAX_LINE_LEN - 1).replace(/\s+\S*$/, '')}…`;
   }

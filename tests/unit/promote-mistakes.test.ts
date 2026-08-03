@@ -62,6 +62,18 @@ describe('summarizeMistakes', () => {
     );
   });
 
+  it('joins wrapped continuation lines with a space, not a semicolon', () => {
+    // Simulates a Markdown bullet whose text soft-wraps over multiple lines.
+    expect(
+      summarizeMistakes([
+        '- First item wraps',
+        '  onto the next line.',
+        '- Second item also',
+        '  continues here.',
+      ]),
+    ).toBe('First item wraps onto the next line.; Second item also continues here.');
+  });
+
   it('truncates overly long summaries on a word boundary with an ellipsis', () => {
     const long = 'word '.repeat(200).trim();
     const out = summarizeMistakes([long]);
