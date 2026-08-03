@@ -2,6 +2,7 @@ import { query } from 'bitecs';
 import type { GameWorld } from './world.js';
 import { RoomRole, type RoomData } from '../shared/map-types.js';
 import { Player } from './components.js';
+import { getWorldFloorBehavior } from './floor-behavior.js';
 
 function roomContainsTile(room: RoomData, tx: number, ty: number): boolean {
   if (room.interiorCells && room.interiorCells.length > 0) {
@@ -21,7 +22,7 @@ export function isPointInSafeSpace(world: GameWorld, x: number, y: number): bool
   const floorMap = world.floorMap;
   if (!floorMap) return false;
   const tile = floorMap.worldToTile(x, y);
-  if (world.floorId === 'floor2') {
+  if (getWorldFloorBehavior(world).spawnRoomIsSafe) {
     const entranceRoom = floorMap.spawnRoom;
     if (entranceRoom && roomContainsTile(entranceRoom, tile.x, tile.y)) {
       return true;
