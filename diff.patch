@@ -1,0 +1,1932 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 8d33c0b3..08812a88 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -357,6 +357,17 @@ jobs:
+         if: env.DOCS_ONLY != 'true'
+         run: npm run check:asset-integrity
+ 
++      # Equipment art coverage ratchet: every wired equipment piece (legacy
++      # catalog equippables + the Floor 2 generated-equipment reward pool) must
++      # resolve to real approved art through the SAME resolver the equipment and
++      # inventory panels call. Gaps already recorded in the shrink-only baseline
++      # pass; a NEW gap fails. Closes the loop where gear shipped wired but
++      # un-arted, stayed green in CI, and was only ever discovered by a human
++      # noticing a placeholder in game — one ad-hoc PR at a time.
++      - name: Equipment art coverage ratchet
++        if: env.DOCS_ONLY != 'true'
++        run: npm run check:equipment-art-coverage
++
+       # Exact-version guard: block any PR that introduces a semver range into
+       # direct deps, devDeps, optionalDeps, or overrides. Ranges allow unrelated
+       # lockfile regeneration to silently advance a package version before
+diff --git a/docs/knowledge/handoffs/2026-08-03-equipment-art-resolver-and-ratchet.md b/docs/knowledge/handoffs/2026-08-03-equipment-art-resolver-and-ratchet.md
+new file mode 100644
+index 00000000..e2d59349
+--- /dev/null
++++ b/docs/knowledge/handoffs/2026-08-03-equipment-art-resolver-and-ratchet.md
+@@ -0,0 +1,146 @@
++# Session Handoff: Themed equipment art resolver + equipment art coverage ratchet
++
++## Date
++
++2026-08-03
++
++## Persona
++
++Producer → Sprite/Systems Engineer
++
++## Systems touched
++
++equipment-art, item-sprites, generated-assets, ci-policy
++
++## Apples
++
++3🍎 estimated, 3🍎 actual
++
++## What Was Done
++
++Closed the structural cause of the recurring one-off "wire up art for X" PRs.
++
++1. **Generalized themed art resolution into the shared layer.** New
++   `src/shared/data/equipment-theme-sets.ts` holds an `EQUIPMENT_THEME_SETS`
++   registry (one row today: `classic-fantasy-basic-leather`) and
++   `themedArtConceptsFor(key)`, which indexes each theme's pieces by stable ID,
++   bare slug, **and** runtime key — the three shapes that actually reach
++   `resolveItemSprite` in production. `itemSpriteConcepts` now appends themed
++   concepts **last**, so themed art beats a placeholder but never outranks the
++   item's own art at the same tier.
++2. **Deleted the engine-layer theme hack.** `resolveBasicLeatherAliasEntry`,
++   `BASIC_LEATHER_STABLE_ID_SET`, `conceptVersion`, and the alias-queuing loop
++   are gone from `src/engine/generatedAssets/preload.ts`. The engine layer no
++   longer knows any theme name.
++3. **Added `check:equipment-art-coverage`** — pure lib
++   (`scripts/agent/health/equipment-art-coverage-lib.ts`) + CLI wrapper, matching
++   the existing `*-lib.ts` shape. It unions the legacy catalog equippables with
++   `FLOOR2_REWARD_POOL_STABLE_IDS`, resolves each through the same shared
++   resolver the game uses, and classifies every piece `real` / `placeholder` /
++   `none`. Baseline committed at `docs/knowledge/metrics/equipment-art-coverage-baseline.json`
++   (59 gaps). Wired into `npm run verify` (Step 5c) and the
++   `check-format-and-labs` CI job.
++4. **Made the baseline shrink-only.** `--update` writes exactly the observed gap
++   set and `baselineWouldWiden` refuses any addition, so the list is a
++   monotonically closing ratchet. There is deliberately no per-entry allowlist. A
++   one-time `--init` flag bootstraps the file and refuses once it exists.
++
++**Impact:** equipment art coverage went from **34/113 real → 54/113 real**
++(35 placeholder, 24 no-art). The resolver change alone closed 20 gaps: the 18
++Classic Fantasy Basic Leather pieces plus the two freebies `leather-boots` and
++`leather-gloves`.
++
++**Real-artifact observation (rule #9).** Observed in the REAL booted
++`MainGameScene` (shipped `createFloorGameConfig` bootstrap incl. `BootScene`),
++not a lab, via the new deterministic guard `tests/e2e/equipment-art-wiring.test.ts`
++and a new `getItemIconRenderInfo` probe seam:
++
++- **before** (themed concepts disabled): `weapon.iron-dagger` → `briefId: null`
++  (nothing resolved, 2-letter text fallback) and `leather-boots` →
++  `isPlaceholder: true`;
++- **after**: `weapon.iron-dagger` → `classic-fantasy-basic-leather-iron-dagger-v1`,
++  `isPlaceholder: false`, `textureLoaded: true`; `leather-boots` /
++  `leather-gloves` likewise real and loaded.
++
++`textureLoaded` is the load-bearing assertion: it proves the **shipped boot
++preload** still queues the texture the resolver picks, which is exactly what the
++deleted alias used to guarantee and exactly what a lab cannot prove.
++
++## Key Decisions Made
++
++- **Themed concepts are appended last, not first.** Tier dominates concept order
++  in `resolveItemSprite` (`BARE_REAL > VERSIONED_REAL > PLACEHOLDER`), so
++  appending last gives the precedence we want — themed art beats a placeholder,
++  loses to the item's own real art — without a new tier.
++- **The theme registry lives in `src/shared/data/`, not the engine.** Adding a
++  future theme is one row; no engine change, no new PR class.
++- **The gate is a ratchet, not a wall.** A hard "all equipment must have art"
++  gate would block all work today. Shrink-only converts the backlog into a
++  closing list.
++- **A placeholder is never counted as coverage.** Counting it would make the gate
++  green while the game still looks wrong (explicitly out of scope per the plan).
++- **Baseline is 59, not the plan's 38.** The plan's 38 counted only the Floor 2
++  art-definition space; the real wired ID space also includes 25 legacy catalog
++  equippables. Stated plainly rather than reconciled away.
++
++## What's Next / Blockers
++
++- **Blocker (by design):** this sandbox has no Azure connectivity
++  (`crawlersprites.blob.core.windows.net` unreachable), so the plan's "batch the
++  remaining art into one wave" step is deferred to a follow-up session that has
++  Azure. That session should emit briefs/asset-requests for all 59 baseline gaps
++  in a single pass and land the art as one wave, shrinking the baseline in one
++  `--update`.
++- Future themes: add a row to `EQUIPMENT_THEME_SETS`; nothing else should be
++  needed. If something else _is_ needed, that is a bug in the generalization.
++
++## Retrospective
++
++### Lessons Learned
++
++- `public/assets/generated/manifest.json` is a **gitignored build artifact**. Any
++  script that must work on a fresh checkout or in CI has to compose it from the
++  per-sprite shards under `public/assets/generated/entries/` via
++  `composeManifestFromShards`. The new check does this.
++- The reason themed art was invisible is worth remembering: the sprite pipeline
++  keys a wave by **theme**, but the resolver derived concepts purely from
++  **gameplay identity**. Any future pipeline-side keying scheme will have the
++  same failure mode unless the resolver learns about it.
++- A lab is genuinely insufficient here, and the reason is crisp: the lab
++  force-loads its own registry, so it cannot observe whether `BootScene`'s
++  preload queued the texture. `textureLoaded` against the real scene is the only
++  assertion that distinguishes the two.
++
++### Mistakes Made
++
++- **Ran bare `npm ci` to chase a phantom typecheck failure.** `npm ci` deletes
++  `node_modules` first, and 19 lockfile entries resolved to
++  `ms-feed-*.pkgs.visualstudio.com`, which does not resolve from this sandbox
++  (`getaddrinfo ENOTFOUND`); `npm ci --offline` also fails (`ENOTCACHED`, the
++  cache holds npmjs.org URLs). Cost ~15 min. **Early signal:** the original
++  typecheck failure referenced modules that plainly existed — that means a stale
++  preflight `node_modules`, not a code error, and `npm install` (not `npm ci`) is
++  the right response. Fixed the lockfile properly (19 `resolved` URLs rewritten
++  to `registry.npmjs.org`, no integrity hash touched) rather than working around
++  it, per rule #7.
++- **Tried to bootstrap the baseline with `--update`,** which the shrink-only
++  guard correctly refused. That was the guard working; the fix was an explicit,
++  self-disabling `--init` flag, not loosening `--update`.
++- **Guessed a stable ID** (`floor2-basic-leather-chest`) for the e2e instead of
++  reading it from the data; the real ids are `weapon.iron-dagger`-shaped. Read
++  the actual id list first.
++
++### Opportunities for Future Improvement
++
++- The 24 `none` (no art at all) entries currently render as a 2-letter text
++  fallback in the equipment panel. Worth a deliberate visual decision — a
++  generic silhouette per slot might read better than text while the backlog
++  burns down.
++- `sprites:placeholder-audit` and `check:equipment-art-coverage` now overlap
++  partially. Once the baseline is small, consider folding the audit's
++  manifest/registry coverage into the same lib so there is one answer to "what is
++  still fake".
++- The two placeholder flavors (procedural 16×16 vs fetched CC-BY 128×128
++  game-icons.net silhouettes) are indistinguishable in the coverage report.
++  Splitting the `placeholder` status would let a future wave prioritize the
++  uglier ones.
+diff --git a/docs/knowledge/metrics/equipment-art-coverage-baseline.json b/docs/knowledge/metrics/equipment-art-coverage-baseline.json
+new file mode 100644
+index 00000000..efce2b42
+--- /dev/null
++++ b/docs/knowledge/metrics/equipment-art-coverage-baseline.json
+@@ -0,0 +1,63 @@
++{
++  "gaps": [
++    "accessory.blood-vial",
++    "accessory.compass-charm",
++    "accessory.gearwork-locket",
++    "accessory.surveyor-map",
++    "band-of-fortune",
++    "beaded-bracelet",
++    "bronze-vambrace",
++    "feet.iron-greaves",
++    "fireball",
++    "frost-bow",
++    "hands.thorn-gauntlets",
++    "head.alchemist-goggles",
++    "head.batfolk-hood",
++    "head.iron-visor",
++    "iron-armguard",
++    "iron-breastplate",
++    "iron-greaves",
++    "iron-helm",
++    "iron-sword",
++    "iron-visor",
++    "landmine",
++    "laser",
++    "leather-bracer",
++    "plasma-pistol",
++    "punch",
++    "signet-of-focus",
++    "steel-pauldrons",
++    "sturdy-belt",
++    "throwing-knife",
++    "torso.runed-cuirass",
++    "travelers-cloak",
++    "weapon.acid-flask",
++    "weapon.alchemist-sprayer",
++    "weapon.ashwood-bow",
++    "weapon.bone-chakram",
++    "weapon.butcher-hook",
++    "weapon.chain-flail",
++    "weapon.cog-pistol",
++    "weapon.crescent-glaive",
++    "weapon.echo-bell",
++    "weapon.ember-wand",
++    "weapon.grave-shovel",
++    "weapon.hand-crossbow",
++    "weapon.harpoon-gun",
++    "weapon.ice-pick",
++    "weapon.meteor-hammer",
++    "weapon.musketeer-rifle",
++    "weapon.oil-lantern",
++    "weapon.powder-keg",
++    "weapon.rivet-gun",
++    "weapon.siege-bow",
++    "weapon.spike-shield",
++    "weapon.stone-maul",
++    "weapon.storm-sling",
++    "weapon.sun-hammer",
++    "weapon.thorn-whip",
++    "weapon.throwing-knives",
++    "weapon.venom-dirk",
++    "weapon.war-fan"
++  ]
++}
+diff --git a/docs/knowledge/review-ledgers/2026-08-03-equipment-art-resolver-and-ratchet.review-ledger.json b/docs/knowledge/review-ledgers/2026-08-03-equipment-art-resolver-and-ratchet.review-ledger.json
+new file mode 100644
+index 00000000..a23614ec
+--- /dev/null
++++ b/docs/knowledge/review-ledgers/2026-08-03-equipment-art-resolver-and-ratchet.review-ledger.json
+@@ -0,0 +1,39 @@
++{
++  "schema_version": "review-ledger/v2",
++  "date": "2026-08-03",
++  "session_slug": "equipment-art-resolver-and-ratchet",
++  "task_title": "Themed equipment art resolver generalization + shrink-only equipment art coverage ratchet",
++  "estimated_apples": 3,
++  "stages": {
++    "plan_review": {
++      "completed": true,
++      "reviewer_model": "gpt-5.6-sol",
++      "concerns_count": 4,
++      "resolved_count": 4,
++      "plan_divergence": "minor",
++      "notes": "Blocking (1): variant identity diverged across panels - EquipmentUI.createGeneratedItemIcon fell back to createItemIcon(artKey), seeding the variant pick with the runtime artKey, while InventoryUI and generated-equipment-icon.ts seed with baseId, so one item could render two different variants in the same run. FIXED: createGeneratedItemIcon now takes baseId and resolves/seeds by it at both call sites. Non-blocking (2): the stated precedence was not actually encoded - tier was compared before concept provenance, so a BARE themed entry would outrank the item's own VERSIONED art. FIXED: added provenance ranks (RANK_OWN_REAL < RANK_THEMED_REAL < RANK_PLACEHOLDER) applied before tier, with tier demoted to a tie-break inside a rank; two regression tests added (own-versioned beats themed-bare; themed-real beats own-placeholder). Non-blocking (3): the ratchet could be laundered by shrinking the enumerated ID space - stale baseline ids counted as success, and generated-only equippables were skipped on an unverified assumption that the Floor 2 pool covered them. FIXED: staleBaselineIds now fail the check until acknowledged with --update, and collectRows throws if any catalog-less equippable is absent from FLOOR2_REWARD_POOL_STABLE_IDS. Non-blocking (4): theme overlap behaviour was undefined - two themes claiming one slug resolve by registry order. NOT a bug (one item renders one sprite and the order is deterministic) but was undocumented; the overlap policy is now stated explicitly on EQUIPMENT_THEME_SETS: array order is priority, promote a wave by moving its row up. Probes answered: the fixed RESOLUTION_SEED in the coverage check is sound because tier/rank selection precedes seeded variant choice, so a player seed can never turn real into placeholder. Alternatives enumerated and argued against: emitting runtime-key aliases at manifest-shard build time (reintroduces alias collisions, duplicates texture identity, complicates seeded variant selection); an immediate hard coverage gate (would block all equipment work while 59 gaps remain - revisit once the baseline reaches zero); storing theme membership in manifest metadata (asset metadata cannot represent MISSING art and cannot map gameplay stable IDs/runtime keys). Plan divergence judged minor: the plan said 38 gaps, the baseline is 59 because the plan counted only the Floor 2 art-definition space and missed 25 legacy catalog equippables - corrected enumeration, not a design change."
++    },
++    "code_review": {
++      "clean": true,
++      "rounds": [
++        {
++          "round": 1,
++          "models": ["claude-opus-4.6"],
++          "concerns_count": 1,
++          "resolved_count": 1,
++          "clean": true,
++          "notes": "One Medium finding on the complete working-tree state: compareCandidates' docstring still claimed a total order 'within a tier' after the caller switched from filtering by best tier to filtering by best provenance rank, so the now load-bearing tier comparison read as removable dead code. FIXED: the docstring now states the rank invariant explicitly and lists tier as the first tiebreak. The reviewer independently re-derived and confirmed the three fixes made in response to the plan review (provenance rank before tier; EquipmentUI seeding by baseId rather than artKey; stale-baseline-id failure plus the generated-only pool cross-check), verified that deleting resolveBasicLeatherAliasEntry leaves no remaining consumer of runtimeKey-as-texture (EquipmentUI and generated-equipment-icon.ts both fall through to resolveItemSprite), and verified the package-lock.json change is resolved-URL-only with zero integrity-hash changes. All other categories clean: data flow and determinism, API/contracts and cross-layer integration, security, runtime wiring and resource ownership, regression coverage, policy compliance."
++        }
++      ]
++    },
++    "independent_grade": {
++      "completed": false,
++      "grader_model": "",
++      "implementer_model": "",
++      "head_sha": "",
++      "criteria": {},
++      "verdict": "",
++      "findings_count": 0
++    }
++  }
++}
+diff --git a/package-lock.json b/package-lock.json
+index 6132c34c..8b1caae5 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -3187,7 +3187,7 @@
+     },
+     "node_modules/@types/cacache": {
+       "version": "20.0.1",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/@types/cacache/-/cacache-20.0.1.tgz",
++      "resolved": "https://registry.npmjs.org/@types/cacache/-/cacache-20.0.1.tgz",
+       "integrity": "sha1-IVuI3NLVzdR19oag6+MI8hnd1J8=",
+       "dev": true,
+       "license": "MIT",
+@@ -3923,7 +3923,7 @@
+     },
+     "node_modules/cacache/node_modules/lru-cache": {
+       "version": "11.5.2",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lru-cache/-/lru-cache-11.5.2.tgz",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
+       "integrity": "sha1-AOFmZckMYg+6FKPDaHMql2ST92A=",
+       "license": "BlueOak-1.0.0",
+       "engines": {
+@@ -4202,7 +4202,7 @@
+     },
+     "node_modules/esbuild": {
+       "version": "0.28.1",
+-      "resolved": "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/esbuild/-/esbuild-0.28.1.tgz",
++      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.1.tgz",
+       "integrity": "sha1-70W0Y0ycnZeilq6kEUpfmED5VXg=",
+       "dev": true,
+       "hasInstallScript": true,
+@@ -4609,7 +4609,7 @@
+     },
+     "node_modules/fast-uri": {
+       "version": "3.1.4",
+-      "resolved": "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/fast-uri/-/fast-uri-3.1.4.tgz",
++      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.4.tgz",
+       "integrity": "sha1-Oz2vnOaPQflW3wtQUTLAz86ex68=",
+       "dev": true,
+       "funding": [
+@@ -4777,7 +4777,7 @@
+     },
+     "node_modules/find-my-way": {
+       "version": "9.7.0",
+-      "resolved": "https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/find-my-way/-/find-my-way-9.7.0.tgz",
++      "resolved": "https://registry.npmjs.org/find-my-way/-/find-my-way-9.7.0.tgz",
+       "integrity": "sha1-4z6gK8r0GZok7qP6qZJphd7k3lg=",
+       "dev": true,
+       "license": "MIT",
+@@ -4846,7 +4846,7 @@
+     },
+     "node_modules/fs-minipass": {
+       "version": "3.0.3",
+-      "resolved": "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/fs-minipass/-/fs-minipass-3.0.3.tgz",
++      "resolved": "https://registry.npmjs.org/fs-minipass/-/fs-minipass-3.0.3.tgz",
+       "integrity": "sha1-eahZgcTcEgBl6W9iCGv2+dwmzFQ=",
+       "license": "ISC",
+       "dependencies": {
+@@ -4962,7 +4962,7 @@
+     },
+     "node_modules/glob": {
+       "version": "13.0.6",
+-      "resolved": "https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/glob/-/glob-13.0.6.tgz",
++      "resolved": "https://registry.npmjs.org/glob/-/glob-13.0.6.tgz",
+       "integrity": "sha1-B4ZmVmpCUUfMrPvS4zLetmor5x0=",
+       "license": "BlueOak-1.0.0",
+       "dependencies": {
+@@ -5856,7 +5856,7 @@
+     },
+     "node_modules/minipass": {
+       "version": "7.1.3",
+-      "resolved": "https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/minipass/-/minipass-7.1.3.tgz",
++      "resolved": "https://registry.npmjs.org/minipass/-/minipass-7.1.3.tgz",
+       "integrity": "sha1-eTibTrG7LQA6m7qH1JLyvTe9xls=",
+       "license": "BlueOak-1.0.0",
+       "engines": {
+@@ -5865,7 +5865,7 @@
+     },
+     "node_modules/minipass-collect": {
+       "version": "2.0.1",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/minipass-collect/-/minipass-collect-2.0.1.tgz",
++      "resolved": "https://registry.npmjs.org/minipass-collect/-/minipass-collect-2.0.1.tgz",
+       "integrity": "sha1-FiG8d+EiWKEsYNNOInbsXCBoCGM=",
+       "license": "ISC",
+       "dependencies": {
+@@ -5877,7 +5877,7 @@
+     },
+     "node_modules/minipass-flush": {
+       "version": "1.0.7",
+-      "resolved": "https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/minipass-flush/-/minipass-flush-1.0.7.tgz",
++      "resolved": "https://registry.npmjs.org/minipass-flush/-/minipass-flush-1.0.7.tgz",
+       "integrity": "sha1-FFw4PVrilLNgMKqA1Ohy0Ivry3M=",
+       "license": "BlueOak-1.0.0",
+       "dependencies": {
+@@ -5889,7 +5889,7 @@
+     },
+     "node_modules/minipass-flush/node_modules/minipass": {
+       "version": "3.3.6",
+-      "resolved": "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/minipass/-/minipass-3.3.6.tgz",
++      "resolved": "https://registry.npmjs.org/minipass/-/minipass-3.3.6.tgz",
+       "integrity": "sha1-e7o4TbOhUg0YycDlJRw0ROld2Uo=",
+       "license": "ISC",
+       "dependencies": {
+@@ -5901,13 +5901,13 @@
+     },
+     "node_modules/minipass-flush/node_modules/yallist": {
+       "version": "4.0.0",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/yallist/-/yallist-4.0.0.tgz",
++      "resolved": "https://registry.npmjs.org/yallist/-/yallist-4.0.0.tgz",
+       "integrity": "sha1-m7knkNnA7/7GO+c1GeEaNQGaOnI=",
+       "license": "ISC"
+     },
+     "node_modules/minipass-pipeline": {
+       "version": "1.2.4",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/minipass-pipeline/-/minipass-pipeline-1.2.4.tgz",
++      "resolved": "https://registry.npmjs.org/minipass-pipeline/-/minipass-pipeline-1.2.4.tgz",
+       "integrity": "sha1-aEcveXEcCEZXwGfFxq2Tzd6oIUw=",
+       "license": "ISC",
+       "dependencies": {
+@@ -5919,7 +5919,7 @@
+     },
+     "node_modules/minipass-pipeline/node_modules/minipass": {
+       "version": "3.3.6",
+-      "resolved": "https://ms-feed-2.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/minipass/-/minipass-3.3.6.tgz",
++      "resolved": "https://registry.npmjs.org/minipass/-/minipass-3.3.6.tgz",
+       "integrity": "sha1-e7o4TbOhUg0YycDlJRw0ROld2Uo=",
+       "license": "ISC",
+       "dependencies": {
+@@ -5931,13 +5931,13 @@
+     },
+     "node_modules/minipass-pipeline/node_modules/yallist": {
+       "version": "4.0.0",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/yallist/-/yallist-4.0.0.tgz",
++      "resolved": "https://registry.npmjs.org/yallist/-/yallist-4.0.0.tgz",
+       "integrity": "sha1-m7knkNnA7/7GO+c1GeEaNQGaOnI=",
+       "license": "ISC"
+     },
+     "node_modules/minisearch": {
+       "version": "7.1.2",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/minisearch/-/minisearch-7.1.2.tgz",
++      "resolved": "https://registry.npmjs.org/minisearch/-/minisearch-7.1.2.tgz",
+       "integrity": "sha1-KW7o0ZBsw3j35Xo6cfB+UgWnXfU=",
+       "dev": true,
+       "license": "MIT"
+@@ -6217,7 +6217,7 @@
+     },
+     "node_modules/p-map": {
+       "version": "7.0.5",
+-      "resolved": "https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/p-map/-/p-map-7.0.5.tgz",
++      "resolved": "https://registry.npmjs.org/p-map/-/p-map-7.0.5.tgz",
+       "integrity": "sha1-5IvQm/3fK19d45Oq0Qm9WpBBUHo=",
+       "license": "MIT",
+       "engines": {
+@@ -6278,7 +6278,7 @@
+     },
+     "node_modules/path-scurry": {
+       "version": "2.0.2",
+-      "resolved": "https://ms-feed-12.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/path-scurry/-/path-scurry-2.0.2.tgz",
++      "resolved": "https://registry.npmjs.org/path-scurry/-/path-scurry-2.0.2.tgz",
+       "integrity": "sha1-a+DQ7gKhDZ4N56mLrmXhgskGH4U=",
+       "license": "BlueOak-1.0.0",
+       "dependencies": {
+@@ -6294,7 +6294,7 @@
+     },
+     "node_modules/path-scurry/node_modules/lru-cache": {
+       "version": "11.5.2",
+-      "resolved": "https://ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/lru-cache/-/lru-cache-11.5.2.tgz",
++      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-11.5.2.tgz",
+       "integrity": "sha1-AOFmZckMYg+6FKPDaHMql2ST92A=",
+       "license": "BlueOak-1.0.0",
+       "engines": {
+diff --git a/package.json b/package.json
+index dd3e86fe..0a285cc5 100644
+--- a/package.json
++++ b/package.json
+@@ -116,6 +116,7 @@
+     "check:aggregate-row-ownership": "tsx scripts/agent/health/check-aggregate-row-ownership.ts",
+     "check:registry-integrity": "tsx scripts/agent/health/check-registry-integrity.ts",
+     "check:asset-integrity": "tsx scripts/agent/health/check-asset-integrity.ts",
++    "check:equipment-art-coverage": "tsx scripts/agent/health/check-equipment-art-coverage.ts",
+     "check:allowlist-expiry": "tsx scripts/agent/health/check-allowlist-expiry.ts",
+     "sprites:sort-assets": "tsx scripts/sprites/sort-assets.ts --apply",
+     "sprites:enrich-tags": "tsx scripts/sprites/enrich-tags-cli.ts",
+diff --git a/scripts/agent/health/check-equipment-art-coverage.ts b/scripts/agent/health/check-equipment-art-coverage.ts
+new file mode 100644
+index 00000000..ec9f1765
+--- /dev/null
++++ b/scripts/agent/health/check-equipment-art-coverage.ts
+@@ -0,0 +1,205 @@
++#!/usr/bin/env node
++/**
++ * check-equipment-art-coverage.ts — CI guard that every wired piece of
++ * equipment resolves to real, approved art.
++ *
++ * Walks the union of the two ID spaces the game actually equips from:
++ *
++ *   - the legacy inventory catalog's equippables (`getEquippableItemIds()`
++ *     ∩ `ITEM_CATALOG`), and
++ *   - the Floor 2 generated-equipment reward pool
++ *     (`FLOOR2_REWARD_POOL_STABLE_IDS`),
++ *
++ * resolves each through the SAME `resolveItemSprite` the equipment and
++ * inventory panels call, and classifies it real / placeholder / none. Fails on
++ * any gap not already recorded in the committed shrink-only baseline.
++ *
++ * Reads the per-sprite **shards** under `public/assets/generated/entries/`
++ * rather than `manifest.json`, because the aggregate is a gitignored build
++ * artifact that need not exist on a fresh checkout or in CI.
++ *
++ * ## Usage
++ *
++ *   npm run check:equipment-art-coverage
++ *   npm run check:equipment-art-coverage -- --json
++ *   npm run check:equipment-art-coverage -- --update   # shrink the baseline
++ *
++ * `--update` refuses to widen the baseline; see `equipment-art-coverage-lib.ts`.
++ * `--init` writes the baseline from scratch and exists only to bootstrap the
++ * file; it refuses to run once the baseline exists, so it cannot be used to
++ * launder new gaps into the allowance.
++ */
++import { existsSync, readFileSync, writeFileSync } from 'node:fs';
++import path from 'node:path';
++import process from 'node:process';
++import { fileURLToPath } from 'node:url';
++
++import {
++  loadGeneratedManifest,
++  parseGeneratedManifest,
++} from '../../../src/shared/generated-assets.js';
++import { getEquippableItemIds } from '../../../src/shared/equipmentDefs.js';
++import { getItemById } from '../../../src/shared/items.js';
++import { isPlaceholderEntry, resolveItemSprite } from '../../../src/shared/item-sprites.js';
++import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../../src/shared/data/floor2-reward-pool.js';
++import { composeManifestFromShards } from '../../sprites/generated-shards.js';
++import {
++  baselineWouldWiden,
++  classifyArtStatus,
++  evaluateCoverage,
++  formatReport,
++  nextBaseline,
++  type EquipmentArtBaseline,
++  type EquipmentArtRow,
++} from './equipment-art-coverage-lib.js';
++
++const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
++const GENERATED_DIR = path.join(REPO_ROOT, 'public', 'assets', 'generated');
++const BASELINE_PATH = path.join(
++  REPO_ROOT,
++  'docs',
++  'knowledge',
++  'metrics',
++  'equipment-art-coverage-baseline.json',
++);
++
++/**
++ * Fixed resolution seed. `resolveItemSprite` picks deterministically among
++ * equally-ranked variants using this seed; the CHOICE of variant is irrelevant
++ * to coverage (every variant of a brief shares its placeholder-ness), but
++ * pinning the seed keeps the check's output byte-stable across runs.
++ */
++const RESOLUTION_SEED = 0;
++
++function readBaseline(): EquipmentArtBaseline {
++  try {
++    const raw: unknown = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
++    if (
++      typeof raw === 'object' &&
++      raw !== null &&
++      Array.isArray((raw as { gaps?: unknown }).gaps) &&
++      (raw as { gaps: unknown[] }).gaps.every((id) => typeof id === 'string')
++    ) {
++      return { gaps: (raw as { gaps: string[] }).gaps };
++    }
++    throw new Error('baseline must be an object with a string[] `gaps` field');
++  } catch (err) {
++    const code = (err as NodeJS.ErrnoException).code;
++    if (code === 'ENOENT') {
++      return { gaps: [] };
++    }
++    throw new Error(
++      `Failed to read ${path.relative(REPO_ROOT, BASELINE_PATH)}: ${
++        err instanceof Error ? err.message : String(err)
++      }`,
++      { cause: err },
++    );
++  }
++}
++
++function writeBaseline(baseline: EquipmentArtBaseline): void {
++  writeFileSync(BASELINE_PATH, `${JSON.stringify(baseline, null, 2)}\n`, 'utf8');
++}
++
++function collectRows(): EquipmentArtRow[] {
++  const registry = loadGeneratedManifest(
++    parseGeneratedManifest(JSON.parse(JSON.stringify(composeManifestFromShards(GENERATED_DIR)))),
++  );
++
++  // A stable ID can appear in both spaces; the Floor 2 pool wins the `source`
++  // label because that is the space that governs whether it can be granted.
++  const ids = new Map<string, EquipmentArtRow['source']>();
++  const generatedOnly: string[] = [];
++  for (const itemId of getEquippableItemIds()) {
++    if (getItemById(itemId) === undefined) {
++      // Generated-only id: it has no catalog ItemDef, so it can only be granted
++      // through the Floor 2 reward pool. Verified below rather than assumed —
++      // an unverified skip would let a piece drop out of the gated ID space
++      // entirely, which is the one way a ratchet can be quietly laundered.
++      generatedOnly.push(itemId);
++      continue;
++    }
++    ids.set(itemId, 'catalog');
++  }
++  const poolIds = new Set<string>(FLOOR2_REWARD_POOL_STABLE_IDS);
++  const ungated = generatedOnly.filter((id) => !poolIds.has(id));
++  if (ungated.length > 0) {
++    throw new Error(
++      `Equippable id(s) have no catalog ItemDef and are not in FLOOR2_REWARD_POOL_STABLE_IDS, ` +
++        `so they would escape this gate entirely: ${ungated.join(', ')}. ` +
++        `Add them to a gated ID space rather than letting them go unchecked.`,
++    );
++  }
++  for (const stableId of FLOOR2_REWARD_POOL_STABLE_IDS) {
++    ids.set(stableId, 'floor2-pool');
++  }
++
++  return [...ids.entries()]
++    .map(([id, source]): EquipmentArtRow => {
++      const entry = resolveItemSprite(registry, id, RESOLUTION_SEED);
++      return {
++        id,
++        source,
++        status: classifyArtStatus(entry, isPlaceholderEntry),
++        assetPath: entry?.assetPath ?? null,
++        briefId: entry?.briefId ?? null,
++      };
++    })
++    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
++}
++
++function main(): void {
++  const argv = process.argv.slice(2);
++  const asJson = argv.includes('--json');
++  const update = argv.includes('--update');
++  const init = argv.includes('--init');
++
++  const baseline = readBaseline();
++  const result = evaluateCoverage(collectRows(), baseline);
++
++  if (init) {
++    if (existsSync(BASELINE_PATH)) {
++      process.stderr.write(
++        `Refusing to --init: ${path.relative(REPO_ROOT, BASELINE_PATH)} already exists. ` +
++          'Use --update (shrink-only) instead.\n',
++      );
++      process.exitCode = 1;
++      return;
++    }
++    writeBaseline(nextBaseline(result));
++    process.stdout.write(
++      `Wrote ${path.relative(REPO_ROOT, BASELINE_PATH)} — ${result.gaps.length} gap(s) recorded.\n`,
++    );
++    return;
++  }
++
++  if (update) {
++    const next = nextBaseline(result);
++    if (baselineWouldWiden(baseline, next)) {
++      process.stderr.write(
++        'Refusing to update: that would ADD ids to the baseline, which is shrink-only.\n' +
++          'Land art for the new gaps instead:\n' +
++          result.newGaps.map((id) => `   - ${id}\n`).join(''),
++      );
++      process.exitCode = 1;
++      return;
++    }
++    writeBaseline(next);
++    process.stdout.write(
++      `Updated ${path.relative(REPO_ROOT, BASELINE_PATH)} — ${next.gaps.length} gap(s) remain.\n`,
++    );
++    return;
++  }
++
++  if (asJson) {
++    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
++  } else {
++    process.stdout.write(`${formatReport(result)}\n`);
++  }
++
++  if (!result.ok) {
++    process.exitCode = 1;
++  }
++}
++
++main();
+diff --git a/scripts/agent/health/equipment-art-coverage-lib.ts b/scripts/agent/health/equipment-art-coverage-lib.ts
+new file mode 100644
+index 00000000..2d4d87bb
+--- /dev/null
++++ b/scripts/agent/health/equipment-art-coverage-lib.ts
+@@ -0,0 +1,224 @@
++/**
++ * equipment-art-coverage-lib.ts — Pure logic for the wired-equipment art
++ * coverage ratchet. No fs, no process, no console: the CLI resolves every
++ * piece's art and hands this module plain records, so each classification and
++ * ratchet decision is unit-testable from in-memory fixtures.
++ *
++ * ## Why this exists
++ *
++ * Equipment could ship wired-but-un-arted and nothing failed. `resolveItemSprite`
++ * happily returns a placeholder (or null), the panels render a placeholder icon
++ * (or a two-letter abbreviation), and CI stays green. The gap was therefore only
++ * ever found by a human noticing in game — which turned every discovery into its
++ * own one-off "add art for X" PR. `sprites:placeholder-audit` does not close
++ * this: it walks the manifest, sprite registry, mob defs, and enemy packs, but
++ * never the equipment ID space itself.
++ *
++ * This check walks that ID space — the legacy inventory catalog's equippables
++ * plus the Floor 2 generated-equipment reward pool — resolves each piece through
++ * the SAME `resolveItemSprite` the game uses, and classifies it.
++ *
++ * ## Classification
++ *
++ * | status        | Meaning                                                        |
++ * | ------------- | -------------------------------------------------------------- |
++ * | `real`        | Resolves to approved, non-placeholder generated art             |
++ * | `placeholder` | Resolves only to a placeholder entry (procedural or fetched icon)|
++ * | `none`        | Resolves to nothing; the UI falls back to a 2-letter text tile  |
++ *
++ * `placeholder` and `none` are both **gaps**. They are reported separately
++ * because they look different in game, but the ratchet treats them identically:
++ * neither is shipped art. A placeholder is deliberately NOT counted as covered —
++ * doing so would make the gate green while the game still looks wrong.
++ *
++ * ## The ratchet
++ *
++ * The committed baseline lists the gaps that exist today. The check fails when a
++ * gap appears that is NOT in the baseline — i.e. new equipment landed without
++ * art, or a change regressed a piece that used to resolve real art. Gaps that
++ * CLOSE are reported as progress and are expected to be removed from the
++ * baseline (`--update`).
++ *
++ * The baseline is **shrink-only** by construction: `--update` writes exactly the
++ * currently-observed gap set, which can only ever be a subset of the baseline on
++ * a passing run (a superset would have failed first). So the file can never be
++ * used to widen the allowance — the only way to add an ID to it is to fix the
++ * failure or to knowingly edit the file by hand, which shows up in review as
++ * what it is. There is no allowlist and no per-entry escape hatch: an un-arted
++ * piece is either pre-existing debt that is already listed, or a regression that
++ * fails.
++ */
++
++/** How a wired piece's art resolves. */
++export type EquipmentArtStatus = 'real' | 'placeholder' | 'none';
++
++/** Which ID space a piece came from. Reporting only — both are gated equally. */
++export type EquipmentArtSource = 'catalog' | 'floor2-pool';
++
++/** One wired equipment piece and how its art resolved. */
++export interface EquipmentArtRow {
++  /** Item id or Floor 2 stable ID, e.g. `iron-sword` / `weapon.war-fan`. */
++  readonly id: string;
++  readonly source: EquipmentArtSource;
++  readonly status: EquipmentArtStatus;
++  /** Resolved asset path, or null when nothing resolved. */
++  readonly assetPath: string | null;
++  /** Resolved brief id, or null when nothing resolved. */
++  readonly briefId: string | null;
++}
++
++/** The committed ratchet baseline. */
++export interface EquipmentArtBaseline {
++  /**
++   * IDs known to lack real art. Sorted, unique. Shrink-only: see the module
++   * docblock.
++   */
++  readonly gaps: readonly string[];
++}
++
++/** Outcome of evaluating rows against a baseline. */
++export interface EquipmentArtCoverageResult {
++  readonly rows: readonly EquipmentArtRow[];
++  /** Every id whose status is not `real`, sorted. */
++  readonly gaps: readonly string[];
++  /** Gaps absent from the baseline — these FAIL the check. */
++  readonly newGaps: readonly string[];
++  /** Baseline ids that now resolve real art — progress, safe to drop. */
++  readonly closedGaps: readonly string[];
++  /**
++   * Baseline ids that no longer exist in the wired ID space at all. These FAIL
++   * the check until explicitly acknowledged with `--update`: an id silently
++   * leaving the enumerated space is indistinguishable from art being added, so
++   * treating it as success would let the ratchet be laundered by shrinking the
++   * gated ID space instead of shipping art.
++   */
++  readonly staleBaselineIds: readonly string[];
++  readonly counts: {
++    readonly total: number;
++    readonly real: number;
++    readonly placeholder: number;
++    readonly none: number;
++  };
++  readonly ok: boolean;
++}
++
++/**
++ * Classify a resolved manifest entry. `null` (nothing resolved) is `none`;
++ * an entry the pipeline marks as a placeholder is `placeholder`; anything else
++ * is real approved art.
++ *
++ * `isPlaceholder` is passed in rather than imported so this module stays free of
++ * any dependency on the shared runtime — the CLI supplies the SAME predicate the
++ * game uses (`isPlaceholderEntry`), which is what keeps the classification
++ * honest instead of re-deriving a second, driftable notion of "placeholder".
++ */
++export function classifyArtStatus<
++  T extends { readonly assetPath: string; readonly briefId: string },
++>(entry: T | null, isPlaceholder: (entry: T) => boolean): EquipmentArtStatus {
++  if (entry === null) return 'none';
++  return isPlaceholder(entry) ? 'placeholder' : 'real';
++}
++
++function sortedUnique(values: Iterable<string>): readonly string[] {
++  return [...new Set(values)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
++}
++
++/** Evaluate coverage rows against the committed baseline. */
++export function evaluateCoverage(
++  rows: readonly EquipmentArtRow[],
++  baseline: EquipmentArtBaseline,
++): EquipmentArtCoverageResult {
++  const baselineSet = new Set(baseline.gaps);
++  const allIds = new Set(rows.map((row) => row.id));
++  const gaps = sortedUnique(rows.filter((row) => row.status !== 'real').map((row) => row.id));
++  const gapSet = new Set(gaps);
++
++  const newGaps = gaps.filter((id) => !baselineSet.has(id));
++  const closedGaps = sortedUnique(baseline.gaps.filter((id) => allIds.has(id) && !gapSet.has(id)));
++  const staleBaselineIds = sortedUnique(baseline.gaps.filter((id) => !allIds.has(id)));
++
++  let real = 0;
++  let placeholder = 0;
++  let none = 0;
++  for (const row of rows) {
++    if (row.status === 'real') real += 1;
++    else if (row.status === 'placeholder') placeholder += 1;
++    else none += 1;
++  }
++
++  return {
++    rows,
++    gaps,
++    newGaps,
++    closedGaps,
++    staleBaselineIds,
++    counts: { total: rows.length, real, placeholder, none },
++    ok: newGaps.length === 0 && staleBaselineIds.length === 0,
++  };
++}
++
++/**
++ * The baseline that should be committed for the current corpus: exactly the
++ * observed gap set. On a passing run this is always a subset of the previous
++ * baseline, which is what makes the file shrink-only.
++ */
++export function nextBaseline(result: EquipmentArtCoverageResult): EquipmentArtBaseline {
++  return { gaps: result.gaps };
++}
++
++/**
++ * True when writing `next` over `previous` would WIDEN the allowance. Used by
++ * the CLI to refuse an `--update` that would add IDs, so the shrink-only
++ * property is enforced mechanically rather than by convention.
++ */
++export function baselineWouldWiden(
++  previous: EquipmentArtBaseline,
++  next: EquipmentArtBaseline,
++): boolean {
++  const previousSet = new Set(previous.gaps);
++  return next.gaps.some((id) => !previousSet.has(id));
++}
++
++/** Human-readable report. Deterministic: rows are emitted in sorted id order. */
++export function formatReport(result: EquipmentArtCoverageResult): string {
++  const lines: string[] = [];
++  const { counts } = result;
++  lines.push(
++    `Equipment art coverage: ${counts.real}/${counts.total} real ` +
++      `(${counts.placeholder} placeholder, ${counts.none} no-art).`,
++  );
++
++  if (result.closedGaps.length > 0) {
++    lines.push('');
++    lines.push(`✅ ${result.closedGaps.length} gap(s) closed since the baseline:`);
++    for (const id of result.closedGaps) lines.push(`   - ${id}`);
++    lines.push('   Run with --update to shrink the baseline.');
++  }
++
++  if (result.staleBaselineIds.length > 0) {
++    lines.push('');
++    lines.push(`❌ ${result.staleBaselineIds.length} baseline id(s) no longer wired:`);
++    for (const id of result.staleBaselineIds) lines.push(`   - ${id}`);
++    lines.push('   An id must not silently leave the gated space. If the piece was');
++    lines.push('   genuinely removed from the game, acknowledge it with --update.');
++  }
++
++  if (result.newGaps.length > 0) {
++    const byId = new Map(result.rows.map((row) => [row.id, row]));
++    lines.push('');
++    lines.push(`❌ ${result.newGaps.length} wired equipment piece(s) have no real art:`);
++    for (const id of result.newGaps) {
++      const row = byId.get(id);
++      lines.push(`   - ${id} (${row?.status ?? 'none'})`);
++    }
++    lines.push('');
++    lines.push('Every wired piece needs approved, non-placeholder art. Either land the art');
++    lines.push('(see the sprite pipeline in scripts/sprites/) or do not wire the piece yet.');
++    lines.push('Do NOT hand-add these ids to the baseline — it is shrink-only by policy.');
++  } else {
++    lines.push('');
++    lines.push('✅ No new equipment art gaps.');
++  }
++
++  return lines.join('\n');
++}
+diff --git a/scripts/agent/verify.sh b/scripts/agent/verify.sh
+index 29117fa3..e932b339 100755
+--- a/scripts/agent/verify.sh
++++ b/scripts/agent/verify.sh
+@@ -49,6 +49,14 @@ echo "🔍 Step 5b/10: Orphaned-system wiring guard..."
+ # inert because only its lab force-called it (ADR 0039).
+ npx tsx scripts/agent/health/orphaned-systems.ts
+ 
++echo "🔍 Step 5c/10: Equipment art coverage ratchet..."
++# Deterministic art guard: every wired equipment piece (legacy catalog
++# equippables + the Floor 2 generated-equipment reward pool) must resolve to
++# real approved art through the same resolveItemSprite the panels call. Gaps
++# already recorded in the shrink-only baseline pass; a NEW gap fails, so
++# equipment can no longer ship wired-but-un-arted and be discovered by eye.
++npx tsx scripts/agent/health/check-equipment-art-coverage.ts
++
+ # v8 coverage instrumentation roughly 5x's the unit-suite wall time (~27s ->
+ # ~140s on a typical dev box). Coverage thresholds are authoritatively enforced
+ # in CI (ci.yml `test-unit` job) on every PR, so this local pre-commit gate runs
+diff --git a/src/engine/EquipmentUI.ts b/src/engine/EquipmentUI.ts
+index 2544059f..3fc4968a 100644
+--- a/src/engine/EquipmentUI.ts
++++ b/src/engine/EquipmentUI.ts
+@@ -543,8 +543,20 @@ export function createEquipmentUI(
+     return fallback;
+   }
+ 
++  /**
++   * Icon for an exact generated-equipment instance. Prefers the instance's
++   * frozen `artKey` texture when Phaser has it, else resolves through the shared
++   * resolver.
++   *
++   * The fallback resolves and seeds by `baseId`, NOT by `artKey`: the variant
++   * seed is `hashStringToSeed(id) ^ worldSeed`, so seeding by `artKey` here
++   * while `InventoryUI` and `generated-equipment-icon.ts` seed by `baseId`
++   * would show the same item as two different variants across panels in one
++   * run. `baseId` is the canonical identity everywhere.
++   */
+   function createGeneratedItemIcon(
+     artKey: string,
++    baseId: string,
+     displayName: string,
+     x: number,
+     y: number,
+@@ -556,7 +568,7 @@ export function createEquipmentUI(
+       image.setScale(fitScaleForBox(image.width, image.height, boxSize));
+       return image;
+     }
+-    return createItemIcon(artKey, { name: displayName }, x, y, boxSize);
++    return createItemIcon(baseId, { name: displayName }, x, y, boxSize);
+   }
+ 
+   function createSlotPlaceholder(
+@@ -1056,6 +1068,7 @@ export function createEquipmentUI(
+       const iconObject = generatedInstance
+         ? createGeneratedItemIcon(
+             generatedInstance.frozen.artKey,
++            generatedInstance.baseId,
+             generatedInstance.frozen.displayName,
+             cx,
+             cy,
+@@ -1407,6 +1420,7 @@ export function createEquipmentUI(
+       const icon = generated
+         ? createGeneratedItemIcon(
+             generated.frozen.artKey,
++            generated.baseId,
+             generated.frozen.displayName,
+             cx,
+             cy,
+diff --git a/src/engine/generatedAssets/preload.ts b/src/engine/generatedAssets/preload.ts
+index 794c3ce9..c2714d75 100644
+--- a/src/engine/generatedAssets/preload.ts
++++ b/src/engine/generatedAssets/preload.ts
+@@ -30,12 +30,8 @@ import {
+   GENERATED_MANIFEST_VERSION,
+   loadGeneratedManifest,
+   parseGeneratedManifest,
+-  type GeneratedSpriteEntry,
+   type GeneratedSpriteRegistry,
+ } from '../../shared/generated-assets.js';
+-import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from '../../shared/data/floor2-basic-leather-bases.js';
+-import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../shared/data/floor2-equipment-art.js';
+-import { isPlaceholderEntry } from '../../shared/item-sprites.js';
+ import { createLogger } from '../../shared/logger.js';
+ 
+ const logger = createLogger('engine:generated-assets');
+@@ -168,39 +164,6 @@ export interface PreloadOptions {
+   readonly assetsBaseUrl?: string;
+ }
+ 
+-const BASIC_LEATHER_STABLE_ID_SET = new Set<string>(FLOOR2_BASIC_LEATHER_STABLE_IDS);
+-
+-function conceptVersion(briefId: string, concept: string): number | null {
+-  if (briefId === concept) return 0;
+-  const prefix = `${concept}-v`;
+-  if (!briefId.startsWith(prefix)) return null;
+-  const digits = briefId.slice(prefix.length);
+-  if (digits.length === 0 || !/^\d+$/.test(digits)) return null;
+-  return Number(digits);
+-}
+-
+-function resolveBasicLeatherAliasEntry(
+-  registry: GeneratedSpriteRegistry,
+-  stableId: string,
+-): GeneratedSpriteEntry | null {
+-  const slug = stableId.slice(stableId.indexOf('.') + 1);
+-  const concept = `classic-fantasy-basic-leather-${slug}`;
+-  return (
+-    registry
+-      .entries()
+-      .filter(
+-        (entry) => conceptVersion(entry.briefId, concept) !== null && !isPlaceholderEntry(entry),
+-      )
+-      .sort((a, b) => {
+-        const versionDiff =
+-          conceptVersion(a.briefId, concept)! - conceptVersion(b.briefId, concept)!;
+-        if (versionDiff !== 0) return versionDiff;
+-        if (a.variantIndex !== b.variantIndex) return a.variantIndex - b.variantIndex;
+-        return a.textureKey.localeCompare(b.textureKey);
+-      })[0] ?? null
+-  );
+-}
+-
+ /**
+  * Queue each generated sprite entry as a Phaser image (or spritesheet, for
+  * entries carrying an `animation` descriptor) load. Returns the list of
+@@ -237,15 +200,6 @@ export function preloadGeneratedSprites(
+     }
+     seen.add(entry.textureKey);
+   }
+-  for (const definition of FLOOR2_EQUIPMENT_ART_DEFINITIONS) {
+-    if (!BASIC_LEATHER_STABLE_ID_SET.has(definition.stableId)) continue;
+-    const entry = resolveBasicLeatherAliasEntry(registry, definition.stableId);
+-    if (entry === null || seen.has(definition.runtimeKey)) continue;
+-    const url = `${base}${stripLeadingSlash(entry.assetPath)}`;
+-    loader.image(definition.runtimeKey, url);
+-    queued.push({ textureKey: definition.runtimeKey, url, kind: 'image' });
+-    seen.add(definition.runtimeKey);
+-  }
+   if (queued.length > 0) {
+     logger.info('Queued generated sprite loads', { count: queued.length });
+   }
+diff --git a/src/labs/main-scene-probe-lab/index.ts b/src/labs/main-scene-probe-lab/index.ts
+index c1a67035..5d52f5aa 100644
+--- a/src/labs/main-scene-probe-lab/index.ts
++++ b/src/labs/main-scene-probe-lab/index.ts
+@@ -64,6 +64,13 @@ import {
+ import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
+ import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
+ import { getItemById, getItemIndex } from '../../shared/items.js';
++import { isPlaceholderEntry, resolveItemSprite } from '../../shared/item-sprites.js';
++import { hashStringToSeed } from '../../shared/random.js';
++import {
++  emptyGeneratedSpriteRegistry,
++  type GeneratedSpriteRegistry,
++} from '../../shared/generated-assets.js';
++import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/index.js';
+ import type { UsageMetric } from '../../shared/skills.js';
+ import { getWeaponDef } from '../../shared/weaponDefs.js';
+ import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
+@@ -330,6 +337,23 @@ export interface RewardAudioCueLogEntryProbe {
+   readonly gain: number;
+ }
+ 
++/**
++ * How one item id's icon resolves against the REAL booted scene's generated
++ * sprite registry. Mirrors exactly what `EquipmentUI`/`InventoryUI` do when
++ * they draw an item icon.
++ */
++export interface ItemIconRenderInfo {
++  readonly itemId: string;
++  /** Resolved brief id, or null when nothing resolved (2-letter text fallback). */
++  readonly briefId: string | null;
++  /** Resolved Phaser texture key, or null when nothing resolved. */
++  readonly textureKey: string | null;
++  /** True when the resolved entry is placeholder art rather than approved art. */
++  readonly isPlaceholder: boolean;
++  /** True when Phaser actually has that texture loaded (i.e. boot preload queued it). */
++  readonly textureLoaded: boolean;
++}
++
+ /**
+  * The generated (or fallback) texture actually bound to a spawned NPC's live
+  * sprite, tied back to its {@link NpcInstance.defId}. Lets an e2e / observation
+@@ -754,6 +778,17 @@ export interface MainSceneProbeApi {
+   ): ScreenBounds | null;
+   /** Exact generated instance keys currently equipped by the player. */
+   getEquippedGeneratedInstanceKeys(): readonly GeneratedEquipmentInstanceKey[];
++  /**
++   * How an item id's icon resolves in the REAL booted scene: the registry the
++   * shipped boot preload populated, resolved by the shipped `resolveItemSprite`,
++   * plus whether Phaser actually has that texture loaded.
++   *
++   * This is the observe seam for equipment art wiring. A lab that force-renders
++   * an icon cannot prove the real boot path loaded the texture, and reading the
++   * diff cannot prove the resolver picked real art over a placeholder — this
++   * reports both against the running game.
++   */
++  getItemIconRenderInfo(itemId: string): ItemIconRenderInfo;
+   /**
+    * Ordered log of every reward-opening audio cue actually dispatched to the
+    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
+@@ -1583,6 +1618,23 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
+       );
+     },
+ 
++    getItemIconRenderInfo: (itemId: string): ItemIconRenderInfo => {
++      const phaserScene = getPhaserScene();
++      const registry =
++        (phaserScene?.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
++          | GeneratedSpriteRegistry
++          | undefined) ?? emptyGeneratedSpriteRegistry();
++      const worldSeed = getScene()?.world?.seed ?? 0;
++      const entry = resolveItemSprite(registry, itemId, (hashStringToSeed(itemId) ^ worldSeed) | 0);
++      return {
++        itemId,
++        briefId: entry?.briefId ?? null,
++        textureKey: entry?.textureKey ?? null,
++        isPlaceholder: entry === null ? false : isPlaceholderEntry(entry),
++        textureLoaded: entry !== null && phaserScene?.textures?.exists(entry.textureKey) === true,
++      };
++    },
++
+     getInventoryVisibleItemIds: (): readonly string[] => {
+       return getScene()?.inventoryUI?.getVisibleItemIds?.() ?? [];
+     },
+diff --git a/src/shared/data/equipment-theme-sets.ts b/src/shared/data/equipment-theme-sets.ts
+new file mode 100644
+index 00000000..192a353c
+--- /dev/null
++++ b/src/shared/data/equipment-theme-sets.ts
+@@ -0,0 +1,154 @@
++/**
++ * Equipment **theme sets** — the shared-layer registry that lets themed art
++ * resolve for the equipment it belongs to.
++ *
++ * ## The problem this exists to solve
++ *
++ * The sprite pipeline keys a themed art wave by the theme, not by the item:
++ * the Classic Fantasy [Basic Leather] wooden bow ships as
++ * `classic-fantasy-basic-leather-wooden-bow-v1`, NOT as `wooden-bow-v1`. But
++ * `resolveItemSprite` derives its candidate concepts from gameplay identity
++ * (item id, `weaponId` alias, Floor 2 slug, Floor 2 `runtimeKey`) and so never
++ * looks at a theme-prefixed key. Every piece in a themed wave therefore reads
++ * as un-arted to the resolver even when its art is approved and committed.
++ *
++ * That gap was previously patched in the ENGINE layer: `preload.ts` carried a
++ * `resolveBasicLeatherAliasEntry` helper that hardcoded the string
++ * `classic-fantasy-basic-leather` and force-aliased that one theme's assets
++ * onto their runtime keys. It worked for exactly one theme, and every
++ * subsequent theme would have needed its own copy of that hack — the recurring
++ * "wire up theme X" change this registry removes the need for.
++ *
++ * ## The contract
++ *
++ * A theme set is `(themeId, stableIds)`. For each member stable ID the themed
++ * art concept is `<themeId>-<slug>`, where `<slug>` is the stable ID's slug
++ * (`weapon.wooden-bow` → `wooden-bow`). Manifest entries then match through
++ * the resolver's ordinary versioned-concept path (`<concept>-vN`), so themed
++ * art is ranked by the SAME tier rules as everything else:
++ * bare-real > versioned-real > placeholder. Themed concepts are appended last
++ * in the concept list, so they lose ties to an item's own art but still beat a
++ * placeholder — which is exactly the desired precedence.
++ *
++ * ## Adding a theme
++ *
++ * Append one row to {@link EQUIPMENT_THEME_SETS} whose `stableIds` come from
++ * that wave's own catalog export. No engine change, no resolver change, and no
++ * literal theme id anywhere outside this file.
++ *
++ * Layer: pure `src/shared` — no Phaser, no IO, no world mutation.
++ */
++import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from './floor2-basic-leather-bases.js';
++import {
++  FLOOR2_EQUIPMENT_ART_DEFINITIONS,
++  type Floor2EquipmentStableId,
++} from './floor2-equipment-art.js';
++
++/** One themed art wave: a theme id plus the equipment stable IDs it covers. */
++export interface EquipmentThemeSet {
++  /**
++   * Art-pipeline theme id — the literal prefix its manifest brief IDs carry
++   * (e.g. `classic-fantasy-basic-leather` for
++   * `classic-fantasy-basic-leather-wooden-bow-v1`).
++   */
++  readonly themeId: string;
++  /** Equipment stable IDs whose art shipped under this theme. */
++  readonly stableIds: readonly Floor2EquipmentStableId[];
++}
++
++/**
++ * Every themed equipment art wave known to the game.
++ *
++ * Each row's `stableIds` is taken from the wave's own catalog export rather
++ * than re-listed here, so a change to that catalog cannot drift from the art
++ * wiring.
++ *
++ * **Overlap policy: array order is priority.** A piece may legitimately appear
++ * in more than one theme (a slug can be re-arted by a later wave), and one item
++ * can only render one sprite, so a winner must be picked. Earlier rows win,
++ * because `themedArtConceptsFor` returns concepts in registry order and the
++ * resolver breaks ties on `conceptOrder`. This is deliberate and deterministic:
++ * to promote a newer wave over an older one for a shared piece, move its row
++ * UP, do not rely on insertion recency.
++ */
++export const EQUIPMENT_THEME_SETS: readonly EquipmentThemeSet[] = Object.freeze([
++  Object.freeze({
++    themeId: 'classic-fantasy-basic-leather',
++    stableIds: FLOOR2_BASIC_LEATHER_STABLE_IDS,
++  }),
++]);
++
++/**
++ * Lazily built index from every lookup key that can name a themed piece to its
++ * themed art concepts.
++ *
++ * Three key shapes are indexed because all three reach the resolver in
++ * production:
++ *
++ *  - the **stable ID** (`weapon.wooden-bow`) — generated-equipment bases and
++ *    the Floor 2 reward pool address gear this way;
++ *  - the **slug** (`wooden-bow`) — the legacy inventory catalog's item ids and
++ *    weapon ids use the bare slug, so a legacy item whose slug matches a themed
++ *    piece resolves that theme's art;
++ *  - the **runtime key** (`equipment/weapon/wooden-bow`) — a generated-equipment
++ *    instance's frozen `artKey`, which the equipment/inventory panels pass
++ *    straight back into `resolveItemSprite` when no texture is preloaded under
++ *    that literal key.
++ *
++ * A key that somehow belongs to two themes accumulates both concepts in
++ * registry order, so the ranking stays deterministic rather than
++ * last-write-wins.
++ */
++let themedConceptIndex: ReadonlyMap<string, readonly string[]> | null = null;
++
++function addConcept(index: Map<string, string[]>, key: string, concept: string): void {
++  const existing = index.get(key);
++  if (existing === undefined) {
++    index.set(key, [concept]);
++    return;
++  }
++  if (!existing.includes(concept)) {
++    existing.push(concept);
++  }
++}
++
++function buildThemedConceptIndex(): ReadonlyMap<string, readonly string[]> {
++  const runtimeKeyByStableId = new Map<string, string>(
++    FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((definition) => [
++      definition.stableId,
++      definition.runtimeKey,
++    ]),
++  );
++  const index = new Map<string, string[]>();
++  for (const themeSet of EQUIPMENT_THEME_SETS) {
++    for (const stableId of themeSet.stableIds) {
++      const slug = stableId.slice(stableId.indexOf('.') + 1);
++      const concept = `${themeSet.themeId}-${slug}`;
++      addConcept(index, stableId, concept);
++      addConcept(index, slug, concept);
++      const runtimeKey = runtimeKeyByStableId.get(stableId);
++      if (runtimeKey !== undefined) {
++        addConcept(index, runtimeKey, concept);
++      }
++    }
++  }
++  return index;
++}
++
++function getThemedConceptIndex(): ReadonlyMap<string, readonly string[]> {
++  if (themedConceptIndex === null) {
++    themedConceptIndex = buildThemedConceptIndex();
++  }
++  return themedConceptIndex;
++}
++
++/** Empty result shared by every miss, so a lookup never allocates. */
++const NO_CONCEPTS: readonly string[] = Object.freeze([]);
++
++/**
++ * Themed art concepts for a lookup key — its stable ID, slug, or runtime key.
++ * Returns an empty array when the key belongs to no themed wave.
++ */
++export function themedArtConceptsFor(key: string): readonly string[] {
++  return getThemedConceptIndex().get(key) ?? NO_CONCEPTS;
++}
+diff --git a/src/shared/item-sprites.ts b/src/shared/item-sprites.ts
+index e63bf06f..f74318ec 100644
+--- a/src/shared/item-sprites.ts
++++ b/src/shared/item-sprites.ts
+@@ -34,15 +34,31 @@ import { HARVESTABLE_DEFS } from './harvestableDefs.js';
+ import { ITEM_CATALOG } from './items.js';
+ import { SeededRandom } from './random.js';
+ import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from './data/floor2-equipment-art.js';
++import { themedArtConceptsFor } from './data/equipment-theme-sets.js';
+ 
+ /** Quality tiers for a candidate entry; lower is preferred. */
+ const TIER_BARE_REAL = 0;
+ const TIER_VERSIONED_REAL = 1;
+ const TIER_PLACEHOLDER = 2;
+ 
++/**
++ * Provenance ranks, applied BEFORE quality tier; lower is preferred.
++ *
++ * Tier alone is not enough once themed art exists: a themed BARE entry would
++ * outrank the item's OWN versioned art, silently replacing item-specific art
++ * with a theme's generic piece. Ranking provenance first encodes the intended
++ * precedence exactly — own real art, then themed real art, then any
++ * placeholder — and keeps tier as the tie-break inside a rank.
++ */
++const RANK_OWN_REAL = 0;
++const RANK_THEMED_REAL = 1;
++const RANK_PLACEHOLDER = 2;
++
+ /** A manifest entry paired with the deterministic keys used to rank item art. */
+ interface ScoredCandidate {
+   readonly entry: GeneratedSpriteEntry;
++  /** Provenance rank (own real / themed real / placeholder). Compared first. */
++  readonly rank: number;
+   readonly tier: number;
+   /** Parsed `-vN` version (0 when the briefId is bare). Lower wins within a tier. */
+   readonly version: number;
+@@ -138,11 +154,32 @@ function getFloor2SlugToRuntimeKey(): ReadonlyMap<string, string> {
+  *     wiring entries whose `briefId` is the full path are matched. These are
+  *     bare-real (TIER_BARE_REAL) and outrank any slug-keyed versioned entry in
+  *     the same pool, so priority remains correct without needing a special order.
++ *  5. Themed art concepts for any of the above keys (e.g.
++ *     `classic-fantasy-basic-leather-wooden-bow`), from the shared theme-set
++ *     registry. Themed art waves key their manifest entries by theme, not by
++ *     item, so without this a fully approved themed asset is invisible to the
++ *     resolver. Appended LAST, and scored at `RANK_THEMED_REAL`, so the item's
++ *     OWN real art always wins (at any tier) while themed real art still beats
++ *     any placeholder — see the provenance ranks in `computeItemSprite`.
+  *
+  * Duplicates are suppressed so slug and stableId both resolving the same key
+  * don't produce two identical concepts.
+  */
+ export function itemSpriteConcepts(itemId: string): readonly string[] {
++  return itemSpriteConceptPlan(itemId).concepts;
++}
++
++/**
++ * `itemSpriteConcepts` plus the index at which themed concepts begin, so the
++ * resolver can tell an item's OWN art from THEMED art without re-deriving the
++ * theme registry. `themedFromIndex === concepts.length` means "no themed art".
++ */
++interface ItemSpriteConceptPlan {
++  readonly concepts: readonly string[];
++  readonly themedFromIndex: number;
++}
++
++function itemSpriteConceptPlan(itemId: string): ItemSpriteConceptPlan {
+   const weaponId = getEquipmentDefForItem(itemId)?.weaponId;
+   const base: readonly string[] =
+     weaponId !== undefined && weaponId !== itemId ? [itemId, weaponId] : [itemId];
+@@ -166,7 +203,28 @@ export function itemSpriteConcepts(itemId: string): readonly string[] {
+       }
+     }
+   }
+-  return extra.length > 0 ? [...base, ...extra] : base;
++
++  // Themed concepts are collected over the base keys AND the derived slug/
++  // runtimeKey keys, because a themed piece is reachable by any of them
++  // (stable ID from the reward pool, slug from the legacy catalog, runtimeKey
++  // from a generated-equipment instance's frozen artKey).
++  const themed: string[] = [];
++  for (const key of extra.length > 0 ? [...base, ...extra] : base) {
++    for (const concept of themedArtConceptsFor(key)) {
++      if (!seen.has(concept)) {
++        themed.push(concept);
++        seen.add(concept);
++      }
++    }
++  }
++
++  if (extra.length === 0 && themed.length === 0) {
++    return { concepts: base, themedFromIndex: base.length };
++  }
++  return {
++    concepts: [...base, ...extra, ...themed],
++    themedFromIndex: base.length + extra.length,
++  };
+ }
+ 
+ /**
+@@ -237,12 +295,19 @@ export function canonicalItemBriefId(briefId: string, identity: ReadonlySet<stri
+ }
+ 
+ /**
+- * Total order within a tier: real anchor first, then lower version, then item
+- * id over weaponId, then the registry's own variant order (variantIndex,
++ * Total order within a **provenance rank** — the caller filters to the best
++ * `rank`, NOT the best `tier`, so candidates here may differ in tier and the
++ * tier comparison below is load-bearing rather than dead.
++ *
++ * Order: better quality tier first, then real anchor, then lower version, then
++ * item id over weaponId, then the registry's own variant order (variantIndex,
+  * textureKey) so the leading equal-group is well-defined and the seeded pick is
+  * independent of manifest iteration order.
+  */
+ function compareCandidates(a: ScoredCandidate, b: ScoredCandidate): number {
++  if (a.tier !== b.tier) {
++    return a.tier - b.tier;
++  }
+   const anchorA = a.entry.anchorIsDefault ? 1 : 0;
+   const anchorB = b.entry.anchorIsDefault ? 1 : 0;
+   if (anchorA !== anchorB) {
+@@ -311,7 +376,7 @@ function computeItemSprite(
+   itemId: string,
+   seed: number,
+ ): GeneratedSpriteEntry | null {
+-  const concepts = itemSpriteConcepts(itemId);
++  const { concepts, themedFromIndex } = itemSpriteConceptPlan(itemId);
+   const scored: ScoredCandidate[] = [];
+   for (const entry of registry.entries()) {
+     for (let conceptOrder = 0; conceptOrder < concepts.length; conceptOrder++) {
+@@ -319,12 +384,18 @@ function computeItemSprite(
+       if (match === null) {
+         continue;
+       }
+-      const tier = isPlaceholderEntry(entry)
++      const placeholder = isPlaceholderEntry(entry);
++      const tier = placeholder
+         ? TIER_PLACEHOLDER
+         : match.bare
+           ? TIER_BARE_REAL
+           : TIER_VERSIONED_REAL;
+-      scored.push({ entry, tier, version: match.version, conceptOrder });
++      const rank = placeholder
++        ? RANK_PLACEHOLDER
++        : conceptOrder >= themedFromIndex
++          ? RANK_THEMED_REAL
++          : RANK_OWN_REAL;
++      scored.push({ entry, rank, tier, version: match.version, conceptOrder });
+       break; // an entry counts once, against its best (earliest) concept
+     }
+   }
+@@ -332,8 +403,8 @@ function computeItemSprite(
+     return null;
+   }
+ 
+-  const bestTier = scored.reduce((min, s) => (s.tier < min ? s.tier : min), TIER_PLACEHOLDER);
+-  const tierCandidates = scored.filter((s) => s.tier === bestTier).sort(compareCandidates);
++  const bestRank = scored.reduce((min, s) => (s.rank < min ? s.rank : min), RANK_PLACEHOLDER);
++  const tierCandidates = scored.filter((s) => s.rank === bestRank).sort(compareCandidates);
+ 
+   // The leading group that is equally good on every deterministic key holds
+   // interchangeable variants — seed-pick among them so the choice varies per
+@@ -341,6 +412,7 @@ function computeItemSprite(
+   const head = tierCandidates[0]!;
+   const equallyGood = tierCandidates.filter(
+     (s) =>
++      s.tier === head.tier &&
+       s.entry.anchorIsDefault === head.entry.anchorIsDefault &&
+       s.version === head.version &&
+       s.conceptOrder === head.conceptOrder,
+diff --git a/tests/e2e/equipment-art-wiring.test.ts b/tests/e2e/equipment-art-wiring.test.ts
+new file mode 100644
+index 00000000..ba7808a5
+--- /dev/null
++++ b/tests/e2e/equipment-art-wiring.test.ts
+@@ -0,0 +1,94 @@
++/**
++ * Equipment art wiring guard (rule #9 "observe before done", deterministic).
++ *
++ * Themed equipment art (`<theme>-<slug>-vN`) used to reach the game only via a
++ * hardcoded `resolveBasicLeatherAliasEntry` alias in the ENGINE layer's
++ * `preload.ts`, which knew the literal theme id `classic-fantasy-basic-leather`.
++ * That alias was deleted once `itemSpriteConcepts` learned to derive themed
++ * concepts from the shared theme-set registry
++ * (`src/shared/data/equipment-theme-sets.ts`).
++ *
++ * A lab CANNOT prove that change: the whole question is whether the SHIPPED
++ * boot preload (`BootScene` → `preloadGeneratedSprites`) still loads the texture
++ * the resolver now picks, and a lab force-loads its own registry. So this suite
++ * boots the REAL `MainGameScene` through the shipped floor bootstrap
++ * (`createFloorGameConfig` + `createFloorMainSceneOptions`, which includes
++ * `BootScene`) and asserts, against the running game:
++ *
++ *   1. a Classic Fantasy Basic Leather reward-pool piece resolves to REAL
++ *      (non-placeholder) art whose texture Phaser actually has loaded — i.e.
++ *      the deleted engine-layer alias is genuinely no longer required;
++ *   2. `leather-boots` / `leather-gloves` — legacy-catalog ids that already had
++ *      Basic Leather art in the manifest but no way to reach it — now resolve to
++ *      real art too (the two "freebies" the generalization picks up);
++ *   3. an item with no themed art still resolves to its own art rather than
++ *      being hijacked by a themed concept (themed concepts are appended LAST, so
++ *      they can never outrank the item's own art at the same tier).
++ *
++ * Determinism: the probe lab boots with a fixed `worldSeed`, and
++ * `getItemIconRenderInfo` resolves through the shipped `resolveItemSprite` with
++ * the same `hashStringToSeed(itemId) ^ worldSeed` the UI uses. No wall-clock or
++ * RNG enters an assertion; every assertion is on a resolved brief id / boolean.
++ */
++import { afterAll, beforeAll, describe, expect, it } from 'vitest';
++import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
++import { closeQuietly } from './helpers/ui-probe.js';
++import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
++
++/**
++ * A Classic Fantasy Basic Leather reward-pool stable id. Its art exists in the
++ * manifest ONLY under the themed key `classic-fantasy-basic-leather-<slug>-v1`,
++ * so before the resolver generalization it was reachable only via the deleted
++ * engine-layer alias.
++ */
++const THEMED_STABLE_ID = 'weapon.iron-dagger';
++
++/** Legacy-catalog ids whose Basic Leather art was previously unreachable. */
++const FREEBIE_ITEM_IDS = ['leather-boots', 'leather-gloves'] as const;
++
++describe('equipment art wiring in the real booted scene', () => {
++  let browser: Browser;
++  let context: BrowserContext;
++  let page: Page;
++
++  beforeAll(async () => {
++    browser = await chromium.launch({ headless: true });
++    context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
++    page = await context.newPage();
++    await loadMainSceneProbeLab(page);
++    await waitForState(page, (state) => state.hudPresent && state.bridgePresent);
++  });
++
++  afterAll(async () => {
++    await closeQuietly(browser);
++  });
++
++  it('resolves themed Basic Leather art without the deleted engine-layer alias', async () => {
++    const info = await mainSceneProbe.getItemIconRenderInfo(page, THEMED_STABLE_ID);
++
++    expect(info.briefId).not.toBeNull();
++    expect(info.briefId).toContain('classic-fantasy-basic-leather');
++    expect(info.isPlaceholder).toBe(false);
++    // The shipped BootScene preload must have queued this exact texture.
++    expect(info.textureLoaded).toBe(true);
++  });
++
++  it('picks up legacy-catalog leather pieces that already had themed art', async () => {
++    for (const itemId of FREEBIE_ITEM_IDS) {
++      const info = await mainSceneProbe.getItemIconRenderInfo(page, itemId);
++
++      expect(info.briefId, itemId).not.toBeNull();
++      expect(info.isPlaceholder, itemId).toBe(false);
++      expect(info.textureLoaded, itemId).toBe(true);
++    }
++  });
++
++  it('does not let themed art hijack an item that has its own art', async () => {
++    const info = await mainSceneProbe.getItemIconRenderInfo(page, 'bone-club');
++
++    expect(info.briefId).not.toBeNull();
++    expect(info.briefId).not.toContain('classic-fantasy-basic-leather');
++    expect(info.isPlaceholder).toBe(false);
++    expect(info.textureLoaded).toBe(true);
++  });
++});
+diff --git a/tests/e2e/helpers/main-scene-probe.ts b/tests/e2e/helpers/main-scene-probe.ts
+index c38df64c..6895b1b0 100644
+--- a/tests/e2e/helpers/main-scene-probe.ts
++++ b/tests/e2e/helpers/main-scene-probe.ts
+@@ -15,6 +15,7 @@ import type {
+   BloodSurfaceProbeSummary,
+   HarvestableRenderSummary,
+   FamilyHudProbeState,
++  ItemIconRenderInfo,
+   MainSceneProbeApi,
+   MainSceneState,
+   NpcRenderInfo,
+@@ -253,6 +254,8 @@ export const mainSceneProbe = {
+     page: Page,
+   ): Promise<readonly GeneratedEquipmentInstanceKey[]> =>
+     page.evaluate(() => window.__mainSceneProbe!.getEquippedGeneratedInstanceKeys()),
++  getItemIconRenderInfo: (page: Page, itemId: string): Promise<ItemIconRenderInfo> =>
++    page.evaluate((id) => window.__mainSceneProbe!.getItemIconRenderInfo(id), itemId),
+   getRewardAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
+     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
+   clearRewardAudioCueLog: (page: Page): Promise<void> =>
+diff --git a/tests/unit/equipment-art-coverage.test.ts b/tests/unit/equipment-art-coverage.test.ts
+new file mode 100644
+index 00000000..124e9371
+--- /dev/null
++++ b/tests/unit/equipment-art-coverage.test.ts
+@@ -0,0 +1,156 @@
++import { describe, expect, it } from 'vitest';
++
++import {
++  baselineWouldWiden,
++  classifyArtStatus,
++  evaluateCoverage,
++  formatReport,
++  nextBaseline,
++  type EquipmentArtRow,
++} from '../../scripts/agent/health/equipment-art-coverage-lib.js';
++
++/** The production predicate's shape, reproduced so the lib stays fixture-driven. */
++const isPlaceholder = (entry: { readonly assetPath: string; readonly briefId: string }): boolean =>
++  entry.assetPath.endsWith('-placeholder.png');
++
++function row(
++  id: string,
++  status: EquipmentArtRow['status'],
++  source: EquipmentArtRow['source'] = 'floor2-pool',
++): EquipmentArtRow {
++  return {
++    id,
++    source,
++    status,
++    assetPath: status === 'none' ? null : `generated/${id}.png`,
++    briefId: status === 'none' ? null : id,
++  };
++}
++
++describe('classifyArtStatus', () => {
++  it('classifies a missing resolution as none', () => {
++    expect(classifyArtStatus(null, isPlaceholder)).toBe('none');
++  });
++
++  it('classifies a placeholder entry as placeholder, never as real', () => {
++    expect(
++      classifyArtStatus(
++        { assetPath: 'generated/iron-sword-placeholder.png', briefId: 'iron-sword' },
++        isPlaceholder,
++      ),
++    ).toBe('placeholder');
++  });
++
++  it('classifies approved art as real', () => {
++    expect(
++      classifyArtStatus(
++        { assetPath: 'generated/bone-saw-var-0.png', briefId: 'bone-saw' },
++        isPlaceholder,
++      ),
++    ).toBe('real');
++  });
++});
++
++describe('evaluateCoverage', () => {
++  it('passes when every gap is already in the baseline', () => {
++    const result = evaluateCoverage([row('a', 'real'), row('b', 'placeholder'), row('c', 'none')], {
++      gaps: ['b', 'c'],
++    });
++    expect(result.ok).toBe(true);
++    expect(result.newGaps).toEqual([]);
++    expect(result.counts).toEqual({ total: 3, real: 1, placeholder: 1, none: 1 });
++  });
++
++  it('FAILS on a new placeholder gap — a placeholder is not coverage', () => {
++    const result = evaluateCoverage([row('a', 'real'), row('b', 'placeholder')], { gaps: [] });
++    expect(result.ok).toBe(false);
++    expect(result.newGaps).toEqual(['b']);
++  });
++
++  it('FAILS on a new no-art gap', () => {
++    const result = evaluateCoverage([row('a', 'none')], { gaps: [] });
++    expect(result.ok).toBe(false);
++    expect(result.newGaps).toEqual(['a']);
++  });
++
++  it('FAILS when a previously-real piece regresses to a placeholder', () => {
++    const result = evaluateCoverage([row('a', 'placeholder')], { gaps: [] });
++    expect(result.ok).toBe(false);
++    expect(result.newGaps).toEqual(['a']);
++  });
++
++  it('reports closed gaps as progress without failing', () => {
++    const result = evaluateCoverage([row('a', 'real'), row('b', 'placeholder')], {
++      gaps: ['a', 'b'],
++    });
++    expect(result.ok).toBe(true);
++    expect(result.closedGaps).toEqual(['a']);
++  });
++
++  it('fails when a baseline id silently leaves the wired ID space', () => {
++    // Otherwise the ratchet could be laundered by shrinking the enumerated ID
++    // space rather than by shipping art: dropping an un-arted piece out of the
++    // reward pool would read exactly like closing the gap.
++    const result = evaluateCoverage([row('a', 'real')], { gaps: ['a', 'deleted-piece'] });
++    expect(result.ok).toBe(false);
++    expect(result.staleBaselineIds).toEqual(['deleted-piece']);
++    expect(result.closedGaps).toEqual(['a']);
++    // It is NOT a new gap — the distinction matters for the operator message.
++    expect(result.newGaps).toEqual([]);
++  });
++
++  it('emits gaps in sorted order regardless of row order', () => {
++    const result = evaluateCoverage([row('z', 'none'), row('a', 'none'), row('m', 'none')], {
++      gaps: ['a', 'm', 'z'],
++    });
++    expect(result.gaps).toEqual(['a', 'm', 'z']);
++  });
++});
++
++describe('the ratchet is shrink-only', () => {
++  it('nextBaseline records exactly the observed gaps', () => {
++    const result = evaluateCoverage([row('a', 'real'), row('b', 'placeholder')], {
++      gaps: ['a', 'b'],
++    });
++    expect(nextBaseline(result)).toEqual({ gaps: ['b'] });
++  });
++
++  it('shrinking the baseline is allowed', () => {
++    expect(baselineWouldWiden({ gaps: ['a', 'b'] }, { gaps: ['b'] })).toBe(false);
++  });
++
++  it('an unchanged baseline is allowed', () => {
++    expect(baselineWouldWiden({ gaps: ['a', 'b'] }, { gaps: ['a', 'b'] })).toBe(false);
++  });
++
++  it('ADDING an id to the baseline is refused', () => {
++    expect(baselineWouldWiden({ gaps: ['a'] }, { gaps: ['a', 'b'] })).toBe(true);
++  });
++
++  it('an update after a passing run can never widen', () => {
++    // On a passing run every gap is already in the baseline, so the computed
++    // next baseline is necessarily a subset. This is the structural property
++    // that makes the file shrink-only rather than merely conventionally so.
++    const baseline = { gaps: ['b', 'c'] };
++    const result = evaluateCoverage(
++      [row('a', 'real'), row('b', 'placeholder'), row('c', 'none')],
++      baseline,
++    );
++    expect(result.ok).toBe(true);
++    expect(baselineWouldWiden(baseline, nextBaseline(result))).toBe(false);
++  });
++});
++
++describe('formatReport', () => {
++  it('names each failing piece and its status', () => {
++    const report = formatReport(evaluateCoverage([row('weapon.war-fan', 'none')], { gaps: [] }));
++    expect(report).toContain('weapon.war-fan (none)');
++    expect(report).toContain('shrink-only');
++  });
++
++  it('states success when there are no new gaps', () => {
++    expect(formatReport(evaluateCoverage([row('a', 'real')], { gaps: [] }))).toContain(
++      'No new equipment art gaps',
++    );
++  });
++});
+diff --git a/tests/unit/item-sprites.test.ts b/tests/unit/item-sprites.test.ts
+index 05ae0024..da3cb692 100644
+--- a/tests/unit/item-sprites.test.ts
++++ b/tests/unit/item-sprites.test.ts
+@@ -8,6 +8,10 @@ import {
+   itemSpriteConcepts,
+   resolveItemSprite,
+ } from '../../src/shared/item-sprites.js';
++import {
++  EQUIPMENT_THEME_SETS,
++  themedArtConceptsFor,
++} from '../../src/shared/data/equipment-theme-sets.js';
+ 
+ interface EntryOpts {
+   readonly sourceRun?: string;
+@@ -295,6 +299,165 @@ describe('resolveItemSprite', () => {
+   });
+ });
+ 
++describe('themed equipment art (theme-set registry)', () => {
++  // The Classic Fantasy [Basic Leather] wave keys its manifest entries by THEME
++  // (`classic-fantasy-basic-leather-wooden-bow-v1`), not by item. Before the
++  // shared theme-set registry existed, that art was invisible to the resolver
++  // and was force-aliased by a hardcoded helper in the ENGINE layer
++  // (`resolveBasicLeatherAliasEntry` in generatedAssets/preload.ts). These tests
++  // pin the shared-layer behaviour that replaced it.
++
++  it('emits the themed concept for a themed piece addressed by stable ID', () => {
++    expect(itemSpriteConcepts('weapon.wooden-bow')).toContain(
++      'classic-fantasy-basic-leather-wooden-bow',
++    );
++  });
++
++  it('emits the themed concept for a themed piece addressed by its runtimeKey', () => {
++    // A generated-equipment instance's frozen artKey IS the runtimeKey, and the
++    // panels pass it straight back into resolveItemSprite when no texture is
++    // preloaded under that literal key.
++    expect(itemSpriteConcepts('equipment/weapon/wooden-bow')).toContain(
++      'classic-fantasy-basic-leather-wooden-bow',
++    );
++  });
++
++  it('emits the themed concept for a legacy catalog item whose slug matches a themed piece', () => {
++    // `leather-boots` is a legacy catalog item; `feet.leather-boots` is the
++    // themed piece. Sharing the slug is what lets the legacy item pick up the
++    // themed art rather than staying on its fetched-icon placeholder.
++    expect(itemSpriteConcepts('leather-boots')).toContain(
++      'classic-fantasy-basic-leather-leather-boots',
++    );
++  });
++
++  it('emits NO themed concept for an item outside every theme set', () => {
++    expect(itemSpriteConcepts('iron-ore')).toEqual(['iron-ore']);
++    expect(
++      itemSpriteConcepts('weapon.moon-scythe').some((concept) =>
++        concept.startsWith('classic-fantasy-basic-leather-'),
++      ),
++    ).toBe(false);
++  });
++
++  it('orders themed concepts LAST so an item-id match always wins the tie', () => {
++    const concepts = itemSpriteConcepts('weapon.wooden-bow');
++    const themedIndex = concepts.indexOf('classic-fantasy-basic-leather-wooden-bow');
++    expect(themedIndex).toBe(concepts.length - 1);
++    expect(concepts[0]).toBe('weapon.wooden-bow');
++  });
++
++  it('never emits duplicate concepts', () => {
++    const concepts = itemSpriteConcepts('weapon.wooden-bow');
++    expect(new Set(concepts).size).toBe(concepts.length);
++  });
++
++  it('resolves themed art in preference to a placeholder', () => {
++    const registry = makeRegistry([
++      placeholder('wooden-bow-placeholder', 'wooden-bow', {
++        assetPath: 'generated/wooden-bow-placeholder.png',
++      }),
++      [
++        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
++        'classic-fantasy-basic-leather-wooden-bow-v1',
++      ],
++    ]);
++    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
++    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow-v1');
++    expect(isPlaceholderEntry(result!)).toBe(false);
++  });
++
++  it("prefers the item's own bare-real art over themed art", () => {
++    const registry = makeRegistry([
++      [
++        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
++        'classic-fantasy-basic-leather-wooden-bow-v1',
++      ],
++      ['wooden-bow-var-0', 'wooden-bow'],
++    ]);
++    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
++    expect(result?.briefId).toBe('wooden-bow');
++  });
++
++  it("prefers the item's own VERSIONED art over BARE themed art", () => {
++    // Provenance must be ranked BEFORE quality tier. If tier came first, a bare
++    // themed entry (TIER_BARE_REAL) would outrank the item's own versioned art
++    // (TIER_VERSIONED_REAL) and a theme's generic piece would silently replace
++    // item-specific art.
++    const registry = makeRegistry([
++      [
++        'classic-fantasy-basic-leather-wooden-bow-var-0',
++        'classic-fantasy-basic-leather-wooden-bow',
++      ],
++      ['wooden-bow-v3-var-0', 'wooden-bow-v3'],
++    ]);
++    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
++    expect(result?.briefId).toBe('wooden-bow-v3');
++  });
++
++  it("prefers themed real art over the item's own placeholder", () => {
++    // The other side of the same rank: a placeholder is never coverage, so
++    // themed real art must win even though the placeholder matches an earlier
++    // concept.
++    const registry = makeRegistry([
++      placeholder('wooden-bow-placeholder', 'wooden-bow', {
++        assetPath: 'generated/wooden-bow-placeholder.png',
++      }),
++      [
++        'classic-fantasy-basic-leather-wooden-bow-var-0',
++        'classic-fantasy-basic-leather-wooden-bow',
++      ],
++    ]);
++    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
++    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow');
++  });
++
++  it('resolves the same themed variant for a given seed across repeated calls and registries', () => {
++    const build = () =>
++      makeRegistry([
++        [
++          'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
++          'classic-fantasy-basic-leather-wooden-bow-v1',
++          { variantIndex: 0 },
++        ],
++        [
++          'classic-fantasy-basic-leather-wooden-bow-v1-var-1',
++          'classic-fantasy-basic-leather-wooden-bow-v1',
++          { variantIndex: 1 },
++        ],
++        [
++          'classic-fantasy-basic-leather-wooden-bow-v1-var-2',
++          'classic-fantasy-basic-leather-wooden-bow-v1',
++          { variantIndex: 2 },
++        ],
++      ]);
++    const first = resolveItemSprite(build(), 'weapon.wooden-bow', SEED);
++    const second = resolveItemSprite(build(), 'weapon.wooden-bow', SEED);
++    expect(first?.textureKey).toBe(second?.textureKey);
++    // A different seed is still allowed to pick a different variant, but must
++    // itself be stable.
++    const other = resolveItemSprite(build(), 'weapon.wooden-bow', SEED + 1);
++    expect(other?.textureKey).toBe(
++      resolveItemSprite(build(), 'weapon.wooden-bow', SEED + 1)?.textureKey,
++    );
++  });
++});
++
++describe('themedArtConceptsFor', () => {
++  it('returns the themed concept for every member of a theme set', () => {
++    for (const themeSet of EQUIPMENT_THEME_SETS) {
++      for (const stableId of themeSet.stableIds) {
++        const slug = stableId.slice(stableId.indexOf('.') + 1);
++        expect(themedArtConceptsFor(stableId)).toContain(`${themeSet.themeId}-${slug}`);
++      }
++    }
++  });
++
++  it('returns an empty list for an unknown key', () => {
++    expect(themedArtConceptsFor('definitely-not-a-themed-piece')).toEqual([]);
++  });
++});
++
+ describe('itemArtIdentitySet', () => {
+   const identity = itemArtIdentitySet();
+ 
