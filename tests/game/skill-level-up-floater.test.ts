@@ -7,11 +7,7 @@ import { skillSystem } from '../../src/game/systems/skillSystem.js';
 import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/index.js';
 import type { SkillState } from '../../src/game/skills/types.js';
-import {
-  FLOATER_EVENT_CAP,
-  pushFloaterEvent,
-  type FloaterEvent,
-} from '../../src/shared/floater-events.js';
+import { pushFloaterEvent, type FloaterEvent } from '../../src/shared/floater-events.js';
 
 function freshSkillState(): SkillState {
   return { level: 0, usage: 0, itemBonus: 0, triggeredMilestones: new Set() };
@@ -83,10 +79,11 @@ describe('skill level-up floater', () => {
 
   it('caps the floater queue so an undrained headless run cannot grow unbounded', () => {
     const events: FloaterEvent[] = [];
-    for (let i = 0; i < FLOATER_EVENT_CAP + 10; i++) {
+    const cap = 128;
+    for (let i = 0; i < cap + 10; i++) {
       pushFloaterEvent(events, { kind: 'skillLevelUp', x: 0, y: 0, label: `+1 ${i}` });
     }
-    expect(events).toHaveLength(FLOATER_EVENT_CAP);
-    expect(events[events.length - 1]!.label).toBe(`+1 ${FLOATER_EVENT_CAP + 9}`);
+    expect(events).toHaveLength(cap);
+    expect(events[events.length - 1]!.label).toBe(`+1 ${cap + 9}`);
   });
 });

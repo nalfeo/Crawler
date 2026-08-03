@@ -14,7 +14,7 @@ skills, vfx
 
 ## Apples
 
-2🍎 exact
+3🍎 exact
 
 ## What Was Done
 
@@ -31,11 +31,12 @@ HUD skill tracker's slow bar. Added a small dopamine beat:
   floater in the class-skill green, one size up from a damage number, at a higher pixel
   offset (-22 vs -8) so a "+1" never stacks on the damage number that earned it.
 
-Real-artifact observation (rule #9): ran the real headless Floor 1 pipeline
-(`runHeadless`, seed 1, sword) with `pushFloaterEvent` instrumented — before: zero
-floater emissions existed at all; after: the run emits `+1 Sword` / `+1 Slashing`
-floaters at the player's position as skills level. Renderer behavior (spawn position,
-label, colour, fade/destroy) is locked by `tests/unit/combat-vfx-skill-floater.test.ts`.
+Real-artifact observation (rule #9): the deterministic real-scene e2e
+`tests/e2e/skill-level-up-floater.deterministic.test.ts` boots the real
+`MainGameScene` through `main-scene-probe-lab`, verifies there are no `+1` floaters
+before skill gain, then queues a multi-level swordsmanship burst and asserts the real
+rendered scene shows five `+1 Swordsmanship` floaters at distinct positions in the
+same frame. Headless emission remains covered separately by the gameplay/unit tests.
 
 ## Key Decisions Made
 
@@ -45,6 +46,9 @@ label, colour, fade/destroy) is locked by `tests/unit/combat-vfx-skill-floater.t
   non-combat numbers (gold, XP) have a home without another queue.
 - Capped the queue (`FLOATER_EVENT_CAP = 128`) because headless/AI runs never drain it —
   cosmetic data, so dropping oldest is harmless and growth stays bounded.
+- Kept same-frame spacing in the renderer, not the emitter: gameplay still emits one
+  floater per granted level, while `CombatVfx` deterministically fans out identical-frame
+  notices for readability.
 
 ## What's Next / Blockers
 

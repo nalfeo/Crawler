@@ -15,6 +15,7 @@ import type {
   BloodSurfaceProbeSummary,
   HarvestableRenderSummary,
   FamilyHudProbeState,
+  FloatingTextProbe,
   ItemIconRenderInfo,
   MainSceneProbeApi,
   MainSceneState,
@@ -260,6 +261,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.clearRewardAudioCueLog()),
+  getVisibleFloatingTexts: (page: Page, prefix = ''): Promise<readonly FloatingTextProbe[]> =>
+    page.evaluate((value) => window.__mainSceneProbe!.getVisibleFloatingTexts(value), prefix),
 };
 
 /**

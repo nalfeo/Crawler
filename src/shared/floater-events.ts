@@ -28,7 +28,7 @@ export interface FloaterEvent {
  * drain the queue, so growth is capped defensively (oldest dropped). The data
  * is cosmetic-only, so dropping events is harmless.
  */
-export const FLOATER_EVENT_CAP = 128;
+const FLOATER_EVENT_CAP = 128;
 
 /** Push a floater event, enforcing {@link FLOATER_EVENT_CAP} (drops oldest when full). */
 export function pushFloaterEvent(events: FloaterEvent[], event: FloaterEvent): void {

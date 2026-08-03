@@ -14,6 +14,9 @@ const VFX_RISE_PX = 24;
 const FONT_SIZE = '12px';
 const SKILL_LEVEL_UP_FONT_SIZE = '13px';
 const SKILL_LEVEL_UP_COLOR = '#86efac';
+const SKILL_FLOATER_BASE_Y_OFFSET_PX = -22;
+const SKILL_FLOATER_STAGGER_Y_PX = 12;
+const SKILL_FLOATER_STAGGER_X_PX = 10;
 const CRIT_FONT_SIZE = '16px';
 const FONT_FAMILY = 'monospace';
 
@@ -65,11 +68,20 @@ export function combatFloaterStyle(event: CombatEvent): FloaterStyle {
  * level-ups read in the class-skill green already used by the HUD skill
  * tracker, so the "+1" is legible as progression rather than damage.
  */
-export function noticeFloaterStyle(event: FloaterEvent): FloaterStyle {
+function noticeFloaterStyle(event: FloaterEvent): FloaterStyle {
   return {
     label: event.label,
     color: SKILL_LEVEL_UP_COLOR,
     fontSize: SKILL_LEVEL_UP_FONT_SIZE,
+  };
+}
+
+function skillFloaterOffsetPx(index: number): { x: number; y: number } {
+  const lane = Math.floor(index / 2) + 1;
+  const direction = index % 2 === 0 ? -1 : 1;
+  return {
+    x: index === 0 ? 0 : direction * lane * SKILL_FLOATER_STAGGER_X_PX,
+    y: SKILL_FLOATER_BASE_Y_OFFSET_PX - index * SKILL_FLOATER_STAGGER_Y_PX,
   };
 }
 
@@ -83,14 +95,14 @@ export function createCombatVfx(scene: Phaser.Scene): {
     event: { x: number; y: number },
     style: FloaterStyle,
     renderElapsedMs: number,
-    yOffsetPx = -8,
+    offsetPx = { x: 0, y: -8 },
   ): void {
     const { label, color, fontSize } = style;
 
     // event.x/y are world feet; scale to pixels for rendering. The offset is
     // a pixel offset applied after scaling.
-    const floaterX = ftToPx(event.x);
-    const floaterY = ftToPx(event.y) + yOffsetPx;
+    const floaterX = ftToPx(event.x) + offsetPx.x;
+    const floaterY = ftToPx(event.y) + offsetPx.y;
     const text = scene.add.text(floaterX, floaterY, label, {
       fontFamily: FONT_FAMILY,
       fontSize,
@@ -120,8 +132,13 @@ export function createCombatVfx(scene: Phaser.Scene): {
 
       // Non-combat floaters (skill level-ups). Spawned higher above the entity
       // so a "+1" never stacks on top of the damage number that earned it.
-      for (const event of world.floaterEvents) {
-        spawnFloater(event, noticeFloaterStyle(event), renderElapsedMs, -22);
+      for (const [index, event] of world.floaterEvents.entries()) {
+        spawnFloater(
+          event,
+          noticeFloaterStyle(event),
+          renderElapsedMs,
+          skillFloaterOffsetPx(index),
+        );
       }
       world.floaterEvents.length = 0;
 

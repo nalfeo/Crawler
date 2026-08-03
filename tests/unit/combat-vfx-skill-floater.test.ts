@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createCombatVfx, noticeFloaterStyle } from '../../src/engine/CombatVfx.js';
+import { createCombatVfx } from '../../src/engine/CombatVfx.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { ftToPx } from '../../src/shared/units.js';
 
@@ -37,14 +37,7 @@ describe('skill level-up floater rendering', () => {
     // Offset higher than a damage number so the two never overlap.
     expect(y).toBe(ftToPx(6) - 22);
     expect(label).toBe('+1 Swordsmanship');
-    expect((style as { color: string }).color).toBe(
-      noticeFloaterStyle({
-        kind: 'skillLevelUp',
-        x: 0,
-        y: 0,
-        label: '',
-      }).color,
-    );
+    expect((style as { color: string }).color).toBe('#86efac');
 
     vfx.destroy();
   });
@@ -66,6 +59,28 @@ describe('skill level-up floater rendering', () => {
     const alphaCallsAfterExpiry = textObject.setAlpha.mock.calls.length;
     vfx.update(world, 6000);
     expect(textObject.setAlpha.mock.calls.length).toBe(alphaCallsAfterExpiry);
+
+    vfx.destroy();
+  });
+
+  it('deterministically staggers same-frame skill floaters so labels do not stack', () => {
+    const { scene, text } = createSceneStub();
+    const vfx = createCombatVfx(scene);
+    const world = createTestWorld();
+
+    world.floaterEvents.push(
+      { kind: 'skillLevelUp', x: 4, y: 6, label: '+1 Swordsmanship' },
+      { kind: 'skillLevelUp', x: 4, y: 6, label: '+1 Swordsmanship' },
+      { kind: 'skillLevelUp', x: 4, y: 6, label: '+1 Swordsmanship' },
+    );
+    vfx.update(world, 0);
+
+    expect(text).toHaveBeenCalledTimes(3);
+    const positions = text.mock.calls.map(([x, y]) => ({ x, y }));
+    expect(new Set(positions.map((p) => `${p.x},${p.y}`)).size).toBe(3);
+    expect(positions[0]).toEqual({ x: ftToPx(4), y: ftToPx(6) - 22 });
+    expect(positions[1]!.y).toBeLessThan(positions[0]!.y);
+    expect(positions[2]!.y).toBeLessThan(positions[1]!.y);
 
     vfx.destroy();
   });
