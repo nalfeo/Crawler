@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d8814fda7569ba135dc302ac803f0bb66274286d",
+    "commitDate": "2026-08-03T06:19:49Z",
+    "commitSubject": "refactor: replace hardcoded floor conditionals with manifest behavior flags (#2717)",
+    "capturedAt": "2026-08-03T07:27:00.716Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30790544542",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/d8814fda7569ba135dc302ac803f0bb66274286d.json"
+  },
+  {
     "commit": "94eda19c58121b98724e1f8ca9925d9138f56785",
     "commitDate": "2026-08-03T04:45:06Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2714)",
