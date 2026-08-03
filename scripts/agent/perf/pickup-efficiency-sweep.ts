@@ -43,7 +43,8 @@ import {
   type WorkerTaskFailure,
   type WorkerTaskSuccess,
 } from './worker-pool.js';
-import { GATE_MAX_FRAMES, GATE_WEAPONS } from './floor1-gate-sample.js';
+import { FLOOR1_TIME_BUDGET_MS, GATE_MAX_FRAMES, GATE_WEAPONS } from './floor1-gate-sample.js';
+import { isOfficialWin } from '../../../src/game/ai/scoring.js';
 
 export interface PickupEfficiency {
   /** XP earned during the run (excludes any seeded start-level baseline). */
@@ -98,6 +99,13 @@ interface PickupSharedConfig {
 interface PickupTaskResult {
   readonly task: PickupTask;
   readonly win: boolean;
+  /**
+   * The blocking Floor-1 gate's definition: victory AND active time inside the
+   * 6-minute budget. Reported alongside the raw win so an efficiency gain bought
+   * by pushing runs over the CI gate's time budget can never look like a pass.
+   */
+  readonly officialWin: boolean;
+  readonly activeTimeSec: number;
   readonly gameTimeSec: number;
   readonly efficiency: PickupEfficiency;
 }
@@ -116,6 +124,8 @@ async function runPickupTask(
   return {
     task,
     win: stats.outcome === 'victory',
+    officialWin: isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS),
+    activeTimeSec: (stats.gameTimeMs - (stats.safeRoomMs ?? 0)) / 1000,
     gameTimeSec: stats.gameTimeMs / 1000,
     efficiency: computePickupEfficiency(stats),
   };
@@ -206,6 +216,7 @@ async function sweep(args: PickupArgs): Promise<void> {
     'seed'.padEnd(6) +
       'weapon'.padEnd(15) +
       'win'.padEnd(5) +
+      'active'.padEnd(8) +
       'xpEff'.padEnd(8) +
       'goldEff'.padEnd(9) +
       'combined'.padEnd(10) +
@@ -217,7 +228,8 @@ async function sweep(args: PickupArgs): Promise<void> {
     console.log(
       String(r.task.seed).padEnd(6) +
         r.task.weapon.padEnd(15) +
-        (r.win ? 'W' : 'L').padEnd(5) +
+        (r.win ? (r.officialWin ? 'W' : 'w') : 'L').padEnd(5) +
+        `${r.activeTimeSec.toFixed(0)}s`.padEnd(8) +
         fmt(e.xpEff).padEnd(8) +
         fmt(e.goldEff).padEnd(9) +
         fmt(e.combinedEff).padEnd(10) +
@@ -227,10 +239,15 @@ async function sweep(args: PickupArgs): Promise<void> {
   }
 
   const wins = results.filter((r) => r.win).length;
+  const officialWins = results.filter((r) => r.officialWin).length;
   const aggregate = {
     runs: results.length,
     wins,
+    officialWins,
     winRate: results.length > 0 ? wins / results.length : 0,
+    officialWinRate: results.length > 0 ? officialWins / results.length : 0,
+    meanActiveTimeSec:
+      results.length > 0 ? results.reduce((a, r) => a + r.activeTimeSec, 0) / results.length : 0,
     xpEff: meanOf(results.map((r) => r.efficiency.xpEff)),
     goldEff: meanOf(results.map((r) => r.efficiency.goldEff)),
     combinedEff: meanOf(results.map((r) => r.efficiency.combinedEff)),
@@ -238,6 +255,8 @@ async function sweep(args: PickupArgs): Promise<void> {
   console.log('');
   console.log(
     `AGGREGATE  runs ${aggregate.runs}  winRate ${(aggregate.winRate * 100).toFixed(1)}%  ` +
+      `officialWinRate ${(aggregate.officialWinRate * 100).toFixed(1)}%  ` +
+      `meanActive ${aggregate.meanActiveTimeSec.toFixed(0)}s  ` +
       `xpEff ${fmt(aggregate.xpEff)}  goldEff ${fmt(aggregate.goldEff)}  ` +
       `combinedEff ${fmt(aggregate.combinedEff)}`,
   );

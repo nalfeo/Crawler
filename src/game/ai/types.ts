@@ -218,6 +218,18 @@ export interface AIInputProvider {
    * Reset AI state (useful for new floors or restarts).
    */
   reset(): void;
+
+  /**
+   * Optional: true while the AI driver should hold off confirming the floor
+   * exit (stair descend) because the AI still wants to finish a bounded
+   * pre-exit loot sweep on the cleared floor.
+   *
+   * Optional so alternate/simple providers need not implement it; callers treat
+   * an absent hook as "never defer". Implementations MUST evaluate live world
+   * state (the staircase unlocks mid-simulation-step, after `poll()` has run)
+   * and MUST be deterministic — simulated time only, never wall-clock.
+   */
+  isDeferringFloorExit?(world: GameWorld): boolean;
 }
 
 /**

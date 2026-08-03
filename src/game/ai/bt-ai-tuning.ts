@@ -731,10 +731,38 @@ export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 // via scene restart). The sweep fires between Interact (Priority 2) and Progress
 // (Priority 3), so it delays the stair approach only while reachable XP remains.
 //
-// Panic threshold: abort the sweep and fall through to Progress (beeline to
-// stairs) when collapse panic exceeds this fraction. Calibrated so the sweep
-// stays active during the comfortable post-clear lull (~3-4 min remaining) but
-// surrenders in the final 1-min crunch period when panic > 0.5 on Floor 1.
-// Floor 2 has no collapse timer so panic is always 0 there — the sweep runs
-// until all reachable XP is collected.
-export const XP_SWEEP_PANIC_THRESHOLD = 0.5;
+// Deferral budget for the AI *driver's* Floor-1 stair descend, in simulated game
+// milliseconds measured from the moment the sweep window first opens (boss dies →
+// staircase unlocks).
+//
+// Why this exists: the Floor-1 staircase spawns in the very boss room the AI is
+// standing in when the boss dies, so `autoFloor1ProgressionSystem` confirmed the
+// descend on the same frame the staircase unlocked. That made the pre-exit sweep
+// window ~1 tick wide — the sweep node above could essentially never run, and the
+// AI abandoned ~33% of the floor's XP and ~12% of its gold on the ground.
+// Deferring the driver's descend while a reachable sweep target remains gives the
+// existing sweep node a real window.
+//
+// The budget is the safety bound on that deferral: it is measured in deterministic
+// simulated time (`world.elapsedMs`), and once exceeded the descend proceeds
+// unconditionally for the rest of the floor. Sized to comfortably cover a
+// cross-room gather on a cleared floor while staying far below both the Floor-1
+// collapse panic ramp (panic > 0.5 aborts the sweep anyway) and the runner's
+// stall watchdogs, so it can never convert a winning run into a timeout.
+export const PRE_EXIT_SWEEP_MAX_MS = 90_000;
+// Hard active-time stop for the pre-exit sweep, in simulated milliseconds of
+// *active* play (`world.elapsedMs` minus the safe-room pause the floor objective
+// deadline already accrued) — the same basis `isOfficialWin` uses.
+//
+// The Floor-1 completion gate (tests/headless/floor1-completion.test.ts) requires
+// victory within FLOOR1_TIME_BUDGET_MS = 6 min of active time. This constant is
+// that budget minus a 60 s margin, so a sweep can never be the reason a run misses
+// the gate: the AI stops sweeping and beelines to the stairs with a full minute of
+// budget still in hand, and the stairs on Floor 1 spawn in the boss room the AI is
+// already standing in.
+//
+// It replaces the generic collapse-panic threshold as the sweep's time gate. Panic
+// 0.5 corresponds to ~240 s, which surrendered ~2 minutes of genuinely available
+// budget on every measured seed; the travel-derived `beeline` bit is still honored
+// so an AI that is genuinely far from the stairs still leaves in time.
+export const PRE_EXIT_SWEEP_ACTIVE_DEADLINE_MS = 300_000;

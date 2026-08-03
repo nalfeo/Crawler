@@ -214,6 +214,17 @@ export function autoFloor1ProgressionSystem(
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
   if (Math.hypot(dx, dy) <= objective.markerRadiusFt) {
+    // Hold the descend while the AI is mid pre-exit loot sweep. The Floor-1
+    // staircase spawns inside the boss room the AI is standing in when the boss
+    // dies, so without this the descend fires on the unlock frame itself and the
+    // sweep window is ~1 tick wide — the AI abandoned ~33% of the floor's XP and
+    // ~12% of its gold. The provider bounds the deferral in simulated time
+    // (`PRE_EXIT_SWEEP_MAX_MS`) and drops it under collapse panic, so this can
+    // never strand a run. Floor 2 is deliberately not wired to this hook yet:
+    // the measured evidence for the deferral is Floor-1 only.
+    if (aiProvider?.isDeferringFloorExit?.(world) === true) {
+      return;
+    }
     confirmFloor1StairDescend(world, playerEid);
   }
 }

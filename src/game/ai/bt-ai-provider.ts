@@ -274,7 +274,8 @@ import {
   TRAVEL_LOOT_CORRIDOR_FT,
   TRAVEL_REL_SPEED_EPSILON_SQ,
   TRAVEL_COLLECT_MIN_STEER_DIST_FT,
-  XP_SWEEP_PANIC_THRESHOLD,
+  PRE_EXIT_SWEEP_MAX_MS,
+  PRE_EXIT_SWEEP_ACTIVE_DEADLINE_MS,
 } from './bt-ai-tuning.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
@@ -512,6 +513,18 @@ interface LootTarget extends WorldTarget {
   kind: LootKind;
 }
 
+/**
+ * Verdict of one pre-exit sweep evaluation. `reason` is `'sweeping'` only when
+ * the sweep window is genuinely open with reachable loot left; `enemyNear` is
+ * reported separately because it suspends sweep *movement* without closing the
+ * window (see `evaluatePreExitSweep`).
+ */
+interface PreExitSweepEvaluation {
+  readonly reason: 'sweeping' | 'window-closed' | 'panic' | 'no-player' | 'no-reachable-loot';
+  readonly enemyNear: boolean;
+  readonly target: LootTarget | null;
+}
+
 interface ProgressTarget extends WorldTarget {
   reason: string;
   npcInteraction: AINpcInteractionIntent | null;
@@ -585,6 +598,40 @@ export interface CollapsePanicProfile {
 
 export function resolveFloor1AiCollapsePanicDeadlineMs(objectiveDeadlineMs: number): number {
   return Math.min(objectiveDeadlineMs, FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS);
+}
+
+/**
+ * Pre-exit-sweep variant of {@link resolveFloor1AiCollapsePanicDeadlineMs}, in
+ * **active time** rather than raw elapsed time.
+ *
+ * The AI's self-imposed collapse budget (`FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS`)
+ * is a 6-minute *active-play* budget: it exists to keep runs inside the Floor-1
+ * gate's `isOfficialWin` window, and that window is measured as
+ * `gameTimeMs - safeRoomMs`. The real collapse timer agrees — `floorObjectiveSystem`
+ * advances `objective.deadlineMs` by one tick for every frame the player spends in
+ * a safe room, so safe-room time is free on both clocks.
+ *
+ * The plain resolver throws that away by clamping to a fixed 360 s of *raw*
+ * elapsed time, so the AI believes it is out of time up to `safeRoomMs` earlier
+ * than either real deadline says. On the measured Floor-1 sample that made the AI
+ * surrender its post-clear loot sweep with well over a minute of genuine budget
+ * left. This resolver re-adds exactly the pause the objective deadline already
+ * accrued, so the sweep's panic gate is measured on the same basis the gate it is
+ * protecting uses.
+ *
+ * Scoped to the sweep gate on purpose: the *global* panic curve is an AI-Sweep
+ * tuned parameter (see `bt-ai-tuning.ts`), and re-basing every panic consumer is
+ * a separate change that needs its own broad A/B sweep.
+ *
+ * @param objectiveDeadlineMs live `objective.deadlineMs` (already safe-room-padded)
+ * @param floorDurationMs the floor's configured base timer duration
+ */
+export function resolveFloor1AiSweepPanicDeadlineMs(
+  objectiveDeadlineMs: number,
+  floorDurationMs: number,
+): number {
+  const safeRoomPauseMs = Math.max(0, objectiveDeadlineMs - floorDurationMs);
+  return Math.min(objectiveDeadlineMs, FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS + safeRoomPauseMs);
 }
 
 export function computeCollapsePanicProfile(
@@ -1043,7 +1090,15 @@ export class BehaviorTreeAI implements AIInputProvider {
    * (avoiding zig-zag from re-sorting distance order each tick). Cleared when
    * the entity is collected, becomes unreachable, or the sweep window closes.
    */
-  private xpSweepTargetEid: number | null = null;
+  private sweepTargetEid: number | null = null;
+  /**
+   * Simulated-time stamp (`world.elapsedMs`) at which the pre-exit sweep window
+   * opened, or null while it is closed. Deterministic: simulated time only.
+   */
+  private sweepWindowOpenedAtMs: number | null = null;
+  /** Frame of the cached {@link BehaviorTreeAI.evaluatePreExitSweep} verdict. */
+  private sweepEvalFrame = -1;
+  private sweepEval: PreExitSweepEvaluation | null = null;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -3846,6 +3901,42 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.lastPlayerToStairsRefreshFrame = world.frameCount;
     this.lastPlayerToStairsTileX = startTile.x;
     this.lastPlayerToStairsTileY = startTile.y;
+  }
+
+  /**
+   * Active play time so far: raw elapsed minus the safe-room pause that the floor
+   * objective deadline has already accrued. Mirrors the `gameTimeMs - safeRoomMs`
+   * basis used by `isOfficialWin` and by the real collapse timer. Returns raw
+   * elapsed when there is no floor objective (e.g. Floor 2).
+   */
+  private getActiveElapsedMs(world: GameWorld): number {
+    const objective = world.floorScenario?.objective;
+    if (!objective) {
+      return world.elapsedMs;
+    }
+    const safeRoomPauseMs = Math.max(0, objective.deadlineMs - floor1Config.timer.durationMs);
+    return Math.max(0, world.elapsedMs - safeRoomPauseMs);
+  }
+
+  /**
+   * Panic profile used by the pre-exit sweep only, on the active-time basis
+   * described in {@link resolveFloor1AiSweepPanicDeadlineMs}.
+   */
+  private getPreExitSweepPanicProfile(world: GameWorld): CollapsePanicProfile {
+    const objective = world.floorScenario?.objective;
+    if (!objective) {
+      return computeCollapsePanicProfile(null);
+    }
+    return computeCollapsePanicProfile({
+      elapsedMs: world.elapsedMs,
+      deadlineMs: resolveFloor1AiSweepPanicDeadlineMs(
+        objective.deadlineMs,
+        floor1Config.timer.durationMs,
+      ),
+      staircaseUnlocked: objective.staircaseUnlocked,
+      staircaseDiscovered: objective.staircaseDiscovered,
+      playerToStairsTravelMs: this.lastPlayerToStairsTravelMs,
+    });
   }
 
   private getCollapsePanicProfile(world: GameWorld): CollapsePanicProfile {
@@ -7154,72 +7245,159 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Finds the nearest reachable XP gem across the **entire** floor — no radius
-   * cap — for the pre-exit sweep phase. Uses a dedicated target latch
-   * (`xpSweepTargetEid`) to avoid re-sorting the full entity list every frame;
-   * the latch is invalidated when the gem is gone, unreachable, or the sweep
+   * Finds the nearest reachable sweepable pickup across the **entire** floor —
+   * no radius cap — for the pre-exit sweep phase. Uses a dedicated target latch
+   * (`sweepTargetEid`) to avoid re-sorting the full entity list every frame;
+   * the latch is invalidated when the pickup is gone, unreachable, or the sweep
    * window closes.
    *
-   * Only XP gems are targeted (not gold/items): gold and loose items are
-   * already handled opportunistically by the normal `buildCollectBehavior` at
-   * its configured `scanRadius`, and sweeping for them post-clear risks
-   * long detours with low XP payoff.
+   * XP gems **and** gold piles are targeted. Both are destroyed by the floor
+   * transition, so anything left behind at descend is permanently lost value;
+   * the sweep window only exists on an already-cleared floor, and the enemy /
+   * panic gates on the caller keep the detour safe. Loose items and harvestables
+   * stay out: they are handled opportunistically by `buildCollectBehavior` and
+   * carry no measured end-of-floor loss.
    */
-  private findNearestXpGemForSweep(
+  private findNearestSweepLoot(
     world: GameWorld,
     playerX: number,
     playerY: number,
   ): LootTarget | null {
     // Re-validate the sticky sweep target before scanning.
-    if (this.xpSweepTargetEid !== null) {
-      const eid = this.xpSweepTargetEid;
-      if (entityExists(world.ecs, eid) && hasComponent(world.ecs, eid, XpGem)) {
+    if (this.sweepTargetEid !== null) {
+      const eid = this.sweepTargetEid;
+      const stickyKind: LootKind | null = hasComponent(world.ecs, eid, XpGem)
+        ? 'xp'
+        : hasComponent(world.ecs, eid, Gold)
+          ? 'gold'
+          : null;
+      if (entityExists(world.ecs, eid) && stickyKind !== null) {
         const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
         if (ignoredUntil === undefined || ignoredUntil <= world.frameCount) {
           if (ignoredUntil !== undefined) this.ignoredLootUntilFrame.delete(eid);
           const x = world.stores.position.x[eid] ?? 0;
           const y = world.stores.position.y[eid] ?? 0;
           const dist = Math.hypot(x - playerX, y - playerY);
-          const loot: LootTarget = { eid, x, y, distance: dist, kind: 'xp' };
+          const loot: LootTarget = { eid, x, y, distance: dist, kind: stickyKind };
           if (this.isLootCollectable(world, playerX, playerY, loot)) {
             return loot;
           }
         }
       }
-      this.xpSweepTargetEid = null;
+      this.sweepTargetEid = null;
     }
 
-    // Full scan for nearest reachable XP gem — no distance cap.
+    // Full scan for nearest reachable XP gem / gold pile — no distance cap.
     const candidates: LootTarget[] = [];
-    for (const eid of query(world.ecs, [XpGem, Position])) {
-      if (eid === undefined) continue;
-      const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
-      if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) continue;
-      if (ignoredUntil !== undefined && ignoredUntil <= world.frameCount) {
-        this.ignoredLootUntilFrame.delete(eid);
+    const sources: readonly { kind: LootKind; entities: ReturnType<typeof query> }[] = [
+      { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
+      { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
+    ];
+    for (const source of sources) {
+      for (const eid of source.entities) {
+        if (eid === undefined) continue;
+        const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
+        if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) continue;
+        if (ignoredUntil !== undefined && ignoredUntil <= world.frameCount) {
+          this.ignoredLootUntilFrame.delete(eid);
+        }
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const dist = Math.hypot(x - playerX, y - playerY);
+        candidates.push({ eid, x, y, distance: dist, kind: source.kind });
       }
-      const x = world.stores.position.x[eid] ?? 0;
-      const y = world.stores.position.y[eid] ?? 0;
-      const dist = Math.hypot(x - playerX, y - playerY);
-      candidates.push({ eid, x, y, distance: dist, kind: 'xp' });
     }
 
-    candidates.sort((a, b) => a.distance - b.distance);
+    // Deterministic order: nearest first, ties broken by entity id so the scan
+    // never depends on ECS query iteration order across the two sources.
+    candidates.sort((a, b) => a.distance - b.distance || a.eid - b.eid);
 
     for (const candidate of candidates) {
       if (this.isLootCollectable(world, playerX, playerY, candidate)) {
-        this.xpSweepTargetEid = candidate.eid;
+        this.sweepTargetEid = candidate.eid;
         return candidate;
       }
     }
 
-    this.xpSweepTargetEid = null;
+    this.sweepTargetEid = null;
     return null;
   }
 
   /**
-   * Pre-exit XP sweep behavior. After the floor staircase is unlocked the AI
-   * collects any remaining XP gems before descending. Fires between Interact
+   * Single, per-frame-cached evaluation of the pre-exit sweep. Shared by the BT
+   * node (which ticks pre-step) and {@link BehaviorTreeAI.isDeferringFloorExit}
+   * (which the AI driver calls post-step), so the two can never disagree and the
+   * full-floor reachability scan runs at most once per frame.
+   *
+   * Deliberately evaluated from live world state rather than cached BT output:
+   * the staircase unlocks *during* the simulation step, after `poll()` has
+   * already run, so a stale pre-step verdict would miss the unlock frame
+   * entirely — which is exactly the frame the driver would descend on.
+   */
+  private evaluatePreExitSweep(world: GameWorld): PreExitSweepEvaluation {
+    if (this.sweepEvalFrame === world.frameCount && this.sweepEval !== null) {
+      return this.sweepEval;
+    }
+    this.sweepEvalFrame = world.frameCount;
+
+    const blocked = (reason: PreExitSweepEvaluation['reason']): PreExitSweepEvaluation => {
+      this.sweepTargetEid = null;
+      const evaluation: PreExitSweepEvaluation = { reason, enemyNear: false, target: null };
+      this.sweepEval = evaluation;
+      return evaluation;
+    };
+
+    if (!this.isFloorClearedAwaitingSweep(world)) {
+      // Window closed (not yet cleared, or already descended): the budget clock
+      // only starts when the window opens.
+      this.sweepWindowOpenedAtMs = null;
+      return blocked('window-closed');
+    }
+    if (this.sweepWindowOpenedAtMs === null) {
+      this.sweepWindowOpenedAtMs = world.elapsedMs;
+    }
+    const profile = this.getPreExitSweepPanicProfile(world);
+    if (profile.beeline || this.getActiveElapsedMs(world) >= PRE_EXIT_SWEEP_ACTIVE_DEADLINE_MS) {
+      return blocked('panic');
+    }
+    const playerEid = query(world.ecs, [Player, Position])[0];
+    if (playerEid === undefined) return blocked('no-player');
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+    const target = this.findNearestSweepLoot(world, playerX, playerY);
+    if (target === null) return blocked('no-reachable-loot');
+    // An enemy inside engage range does NOT close the sweep window — it only
+    // suspends the *movement* half of it, so Track A's lower-priority Engage
+    // handles the threat first and the sweep resumes once the floor is quiet
+    // again. Closing the window here instead would descend the stairs mid-fight
+    // and abandon the loot, which is the behavior this whole slice exists to fix.
+    const enemyNear =
+      this.findNearestEnemy(world, playerX, playerY, this.getEngageRadius(world), true) !== null;
+    const evaluation: PreExitSweepEvaluation = { reason: 'sweeping', enemyNear, target };
+    this.sweepEval = evaluation;
+    return evaluation;
+  }
+
+  /**
+   * True while the AI driver should hold off confirming the stair descend so the
+   * pre-exit sweep can finish. See {@link PRE_EXIT_SWEEP_MAX_MS} for why this
+   * exists and how the deferral is bounded.
+   *
+   * The budget is enforced **here only**, not inside the sweep node itself, so
+   * this hook is purely additive: a floor whose driver does not consult it keeps
+   * its existing sweep semantics exactly.
+   */
+  isDeferringFloorExit(world: GameWorld): boolean {
+    const evaluation = this.evaluatePreExitSweep(world);
+    if (evaluation.reason !== 'sweeping') return false;
+    const openedAt = this.sweepWindowOpenedAtMs;
+    if (openedAt === null) return false;
+    return world.elapsedMs - openedAt <= PRE_EXIT_SWEEP_MAX_MS;
+  }
+
+  /**
+   * Pre-exit sweep behavior. After the floor staircase is unlocked the AI
+   * collects any remaining XP gems and gold piles before descending. Fires between Interact
    * (Priority 2) and Progress (Priority 3), so it delays the stair approach
    * only while reachable XP exists on the ground.
    *
@@ -7231,35 +7409,23 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private buildPreExitXpSweepBehavior(): BTNode {
     return sequence(
-      'PreExitXpSweep',
-      condition('Floor Cleared With XP On Ground', (ctx) => {
-        if (!this.isFloorClearedAwaitingSweep(ctx.world)) {
-          this.xpSweepTargetEid = null;
+      'PreExitSweep',
+      condition('Floor Cleared With Loot On Ground', (ctx) => {
+        const evaluation = this.evaluatePreExitSweep(ctx.world);
+        // Safety: yield to Engage while a threat is in range (unchanged gate).
+        if (evaluation.reason !== 'sweeping' || evaluation.enemyNear || !evaluation.target) {
           return false;
         }
-        const profile = this.getCollapsePanicProfile(ctx.world);
-        if (profile.beeline || profile.panic > XP_SWEEP_PANIC_THRESHOLD) {
-          this.xpSweepTargetEid = null;
-          return false;
-        }
-        // Safety gate: don't sweep when an enemy is within engage range.
-        const engageRadius = this.getEngageRadius(ctx.world);
-        if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, engageRadius, true)) {
-          this.xpSweepTargetEid = null;
-          return false;
-        }
-        const gem = this.findNearestXpGemForSweep(ctx.world, ctx.playerX, ctx.playerY);
-        if (!gem) return false;
-        ctx.blackboard['sweepGem'] = gem;
+        ctx.blackboard['sweepLoot'] = evaluation.target;
         return true;
       }),
-      action('Set XP Sweep State', (ctx) => {
-        const gem = ctx.blackboard['sweepGem'] as LootTarget;
+      action('Set Pre-Exit Sweep State', (ctx) => {
+        const loot = ctx.blackboard['sweepLoot'] as LootTarget;
         this.decision.state = AIState.COLLECT;
-        this.decision.targetEid = gem.eid;
-        this.decision.targetX = gem.x;
-        this.decision.targetY = gem.y;
-        this.decision.reason = `Pre-exit XP sweep: gem at distance ${gem.distance.toFixed(1)}ft`;
+        this.decision.targetEid = loot.eid;
+        this.decision.targetX = loot.x;
+        this.decision.targetY = loot.y;
+        this.decision.reason = `Pre-exit sweep: ${loot.kind} at distance ${loot.distance.toFixed(1)}ft`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -8742,6 +8908,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourNoProgressFrames = 0;
     this.resetNpcApproachThreatTracking();
     this.clearSafeRoomEgressWaypoint();
-    this.xpSweepTargetEid = null;
+    this.sweepTargetEid = null;
+    this.sweepWindowOpenedAtMs = null;
+    this.sweepEvalFrame = -1;
+    this.sweepEval = null;
   }
 }
