@@ -2,13 +2,14 @@ import { hasComponent, query } from 'bitecs';
 import { Player } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import type { StatKey } from '../../shared/stats.js';
-import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
+import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillDefinition } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
 import { grantAbilitySources, queueAbilityTrigger, revokeAbilitySources } from './abilitySystem.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { skillAbilityGrantSourceId, type AbilityGrantSourceId } from '../../shared/abilities.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
+import { pushFloaterEvent } from '../../shared/floater-events.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import {
@@ -64,6 +65,7 @@ export function skillSystem(world: GameWorld): void {
       if (threshold === undefined || state.usage < threshold) break;
 
       state.level = nextLevel;
+      emitSkillLevelUpFloater(world, def, event.holderEid);
       const sourceId =
         event.holderEid === undefined
           ? `${def.id}:level:${nextLevel}`
@@ -91,6 +93,28 @@ export function skillSystem(world: GameWorld): void {
   }
 
   events.length = 0;
+}
+
+/**
+ * Player-only cosmetic "+1 <Skill>" floater on a skill level-up. Mobs level
+ * skills too, so this is gated on the holder actually being the player.
+ */
+function emitSkillLevelUpFloater(
+  world: GameWorld,
+  def: SkillDefinition,
+  holderEid: number | undefined,
+): void {
+  // v1 compatibility: an event without a holder targets the player's skills.
+  const playerEid = holderEid ?? query(world.ecs, [Player])[0];
+  if (playerEid === undefined) return;
+  if (!hasComponent(world.ecs, playerEid, Player)) return;
+
+  pushFloaterEvent(world.floaterEvents, {
+    kind: 'skillLevelUp',
+    x: world.stores.position.x[playerEid] ?? 0,
+    y: world.stores.position.y[playerEid] ?? 0,
+    label: `+1 ${def.name}`,
+  });
 }
 
 function applyMilestone(
