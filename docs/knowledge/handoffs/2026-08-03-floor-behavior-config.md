@@ -14,7 +14,7 @@ safe-rooms, doors, combat-damage, enemy-ai, floor-config, equipment-economy
 
 ## Apples
 
-2🍎 exact
+4🍎 exact
 
 ## What Was Done
 
@@ -94,9 +94,9 @@ No blockers.
 
 - Initially planned to also collapse the `floor-main-scene-options.ts` callback
   ternary in the same pass; that touches the boot path for both floors and would
-  have pushed this from a mechanical 2🍎 refactor into a ≥3🍎 change needing the
-  review harness. Early signal: the diff started spanning bootstrap wiring rather
-  than one repeated pattern — that is the cue to split the session.
+  have pushed this beyond the already multi-system 4🍎 refactor into a larger
+  architecture swing. Early signal: the diff started spanning bootstrap wiring
+  rather than one repeated pattern — that is the cue to split the session.
 - Nearly keyed the behavior resolver on `world.floorId` alone; `createGameWorld`
   defaults it to `''`, so every default test world would have silently lost
   Floor 1 safe-room immunity. Caught by reading `src/core/world.ts` defaults

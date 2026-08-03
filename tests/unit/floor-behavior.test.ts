@@ -59,4 +59,11 @@ describe('floor behavior config', () => {
     expect(getWorldFloorManifest(world)).toBeUndefined();
     expect(getWorldFloorBehavior(world)).toBe(DEFAULT_FLOOR_BEHAVIOR);
   });
+
+  it('does not fall back by floor number when a non-empty floor id is unregistered', () => {
+    const world = createTestWorld({ floor: 1 });
+    world.floorId = 'floor3';
+    expect(getWorldFloorManifest(world)).toBeUndefined();
+    expect(getWorldFloorBehavior(world)).toBe(DEFAULT_FLOOR_BEHAVIOR);
+  });
 });

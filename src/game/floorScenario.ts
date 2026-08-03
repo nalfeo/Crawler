@@ -242,8 +242,15 @@ export function sealRoomPerimeterOpenings(
  * manifest (`enemyPackId`) rather than a hardcoded floor number.
  */
 function getWorldAmbientEnemyPack(world: GameWorld): EnemyPackDef {
-  const packId = getWorldFloorManifest(world)?.enemyPackId;
-  return (packId ? getFloorEnemyPack(packId) : undefined) ?? floor1EnemyPack;
+  const manifest = getWorldFloorManifest(world);
+  if (!manifest) {
+    return floor1EnemyPack;
+  }
+  const pack = getFloorEnemyPack(manifest.enemyPackId);
+  if (!pack) {
+    throw new Error(`Unknown enemy pack "${manifest.enemyPackId}" in floor manifest.`);
+  }
+  return pack;
 }
 
 export function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {

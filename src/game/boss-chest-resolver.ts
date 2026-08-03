@@ -48,7 +48,10 @@ const BOSS_CHEST_REWARD_TIER: EquipmentRewardTier = 'tier4';
 
 export type SpawnBossChestResult =
   | { readonly created: true; readonly chest: BossChestRecord }
-  | { readonly created: false; readonly reason: 'notFloor2' | 'economyDisabled' | 'alreadyExists' };
+  | {
+      readonly created: false;
+      readonly reason: 'bossChestsDisabled' | 'economyDisabled' | 'alreadyExists';
+    };
 
 function resolveBossChestSpawnPosition(
   world: GameWorld,
@@ -82,7 +85,7 @@ export function spawnBossChestForDefeatedBoss(
   y?: number,
 ): SpawnBossChestResult {
   if (!getWorldFloorBehavior(world).bossChests) {
-    return { created: false, reason: 'notFloor2' };
+    return { created: false, reason: 'bossChestsDisabled' };
   }
   const chestId = createBossChestId(familyId);
   if (world.bossChests.has(chestId)) {
