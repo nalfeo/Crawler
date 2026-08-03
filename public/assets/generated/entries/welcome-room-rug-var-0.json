@@ -32,10 +32,10 @@
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {
-    "x": 7,
-    "y": 7,
-    "width": 114,
-    "height": 59,
+    "x": 8,
+    "y": 8,
+    "width": 128,
+    "height": 79,
     "canvasWidth": 144,
     "canvasHeight": 95
   },
