@@ -337,6 +337,13 @@ export interface RewardAudioCueLogEntryProbe {
   readonly gain: number;
 }
 
+export interface FloatingTextProbe {
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly alpha: number;
+}
+
 /**
  * How one item id's icon resolves against the REAL booted scene's generated
  * sprite registry. Mirrors exactly what `EquipmentUI`/`InventoryUI` do when
@@ -800,6 +807,8 @@ export interface MainSceneProbeApi {
   getRewardAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
   /** Reset the reward-opening audio cue log so a scenario starts from empty. */
   clearRewardAudioCueLog(): void;
+  /** Visible floating world-text objects, optionally filtered by a text prefix. */
+  getVisibleFloatingTexts(prefix?: string): readonly FloatingTextProbe[];
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -1690,6 +1699,28 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene?.rewardAudioCueLog) {
         scene.rewardAudioCueLog.length = 0;
       }
+    },
+    getVisibleFloatingTexts: (prefix = ''): readonly FloatingTextProbe[] => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) {
+        return [];
+      }
+      return phaserScene.children.list
+        .filter(
+          (obj): obj is Phaser.GameObjects.Text =>
+            obj instanceof Phaser.GameObjects.Text &&
+            obj.visible &&
+            obj.active &&
+            obj.alpha > 0 &&
+            obj.text.startsWith(prefix),
+        )
+        .map((text) => ({
+          text: text.text,
+          x: text.x,
+          y: text.y,
+          alpha: text.alpha,
+        }))
+        .sort((a, b) => (a.y - b.y ? a.y - b.y : a.x - b.x));
     },
   };
   probeWindow.__mainSceneProbe = api;
