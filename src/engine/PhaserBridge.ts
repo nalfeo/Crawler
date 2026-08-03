@@ -1223,7 +1223,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             // Origin at hold anchor so the sprite pivots from the player's hand
             img.setOrigin(originX, originY);
             img.setScale(weaponScale);
-            visuals.set(eid, { obj: img, type: entityType, baseScale: weaponScale, baseScaleRegistryRevision: registryRevision });
+            visuals.set(eid, {
+              obj: img,
+              type: entityType,
+              baseScale: weaponScale,
+              baseScaleRegistryRevision: registryRevision,
+            });
             visual = visuals.get(eid);
           }
 
@@ -1307,7 +1312,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (resolved.fallback) {
             logFallback(visualType);
           }
-          visual = { obj: img, type: visualType, baseScale, baseScaleRegistryRevision: registryRevision };
+          visual = {
+            obj: img,
+            type: visualType,
+            baseScale,
+            baseScaleRegistryRevision: registryRevision,
+          };
           visuals.set(eid, visual);
         }
 
@@ -1395,7 +1405,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               const spriteBaseScale = resolveBaseScale(sprite, preferred);
               sprite.setScale(spriteBaseScale);
               if (savedFlipX) sprite.setFlipX(true);
-              visual = { obj: sprite, type: visualType, baseScale: spriteBaseScale, baseScaleRegistryRevision: registryRevision };
+              visual = {
+                obj: sprite,
+                type: visualType,
+                baseScale: spriteBaseScale,
+                baseScaleRegistryRevision: registryRevision,
+              };
               visuals.set(eid, visual);
               img = sprite;
             }
