@@ -120,6 +120,13 @@ export interface TravelSteeringParams {
   /** Loot corridor lookahead & half-width, feet. */
   lootLookaheadFt: number;
   lootCorridorFt: number;
+  /**
+   * Trivial-pickup snap radius, feet. A pickup this close is grabbed by steering
+   * straight at it (rather than merely biasing the arc), because the corridor
+   * bias alone curves *near* a gem without ever overlapping it — the "walked
+   * right past free XP" behaviour. 0 disables the snap.
+   */
+  lootSnapFt: number;
   /** |Vrel|² below this ⇒ treat closest-approach as degenerate (near-parallel). */
   relSpeedEpsilonSq: number;
 }
@@ -453,6 +460,29 @@ export function scoreTravelCandidate(
  *     predicted gap (least-bad) and flag `emergency`. Never returns a zero
  *     vector.
  */
+/** Sample spacing (feet) for the trivial-pickup snap's short-range wall probe. */
+const SNAP_PROBE_STEP_FT = 1;
+
+/**
+ * True when every point along the short direct line to a trivial pickup is
+ * passable. The candidate wall probe (`wallProbeDistancesFt`, first sample at
+ * 3 ft) is too coarse for the snap: a gem on the far side of a wall 2 ft away
+ * reads "passable" there, and the runner would grind into the wall instead of
+ * resuming its objective. Sampling every foot up to (and including) the pickup
+ * keeps the snap honest at that scale.
+ */
+function isDirectLaneClear(
+  input: TravelSteeringInput,
+  dirX: number,
+  dirY: number,
+  distanceFt: number,
+): boolean {
+  for (let d = SNAP_PROBE_STEP_FT; d < distanceFt; d += SNAP_PROBE_STEP_FT) {
+    if (!input.probePassable(input.px + dirX * d, input.py + dirY * d)) return false;
+  }
+  return input.probePassable(input.px + dirX * distanceFt, input.py + dirY * distanceFt);
+}
+
 export function pickSafeTravelHeading(
   input: TravelSteeringInput,
   params: TravelSteeringParams,
@@ -481,6 +511,40 @@ export function pickSafeTravelHeading(
   const hasLootBias = params.wLoot > 0 && input.pickups.length > 0 && !input.panic;
   const preferCompositeScore =
     hasLootBias || (params.wFarm > 0 && input.farmEligible && !input.panic);
+
+  // Trivial-pickup snap: a pickup only a step away is free value, but the loot
+  // corridor bias alone merely *curves* toward it — the runner keeps drifting on
+  // its objective heading and passes within a foot of a gem without ever
+  // overlapping it (pickups are collected by body overlap). Whenever such a
+  // pickup is inside the snap radius, steer straight at it: the deviation costs
+  // at most `lootSnapFt` of travel, the pickup is collected within a few frames,
+  // and the objective heading resumes immediately afterwards. The snap is only
+  // taken when the direct lane is passable and still predicted-safe, so it can
+  // never walk the runner into a wall or into contact damage, and it is skipped
+  // entirely under a panic beeline.
+  if (!input.panic && params.lootSnapFt > 0 && input.pickups.length > 0) {
+    let snapDirX = 0;
+    let snapDirY = 0;
+    let snapDistance = Number.POSITIVE_INFINITY;
+    for (const pickup of input.pickups) {
+      const rx = pickup.x - input.px;
+      const ry = pickup.y - input.py;
+      const dist = Math.hypot(rx, ry);
+      if (dist <= EPSILON || dist > params.lootSnapFt || dist >= snapDistance) continue;
+      snapDistance = dist;
+      snapDirX = rx / dist;
+      snapDirY = ry / dist;
+    }
+    if (
+      snapDistance < Number.POSITIVE_INFINITY &&
+      isDirectLaneClear(input, snapDirX, snapDirY, snapDistance)
+    ) {
+      const snap = scoreTravelCandidate(snapDirX, snapDirY, normInput, params);
+      if (snap.passable && snap.minGapFt >= params.safeGapFt) {
+        return toResult(snap, normInput, params, false, 'trivial pickup snap');
+      }
+    }
+  }
 
   // Fast path: no threats ⇒ steer exactly along the objective (keeps the beeline
   // and the throughput it implies), unless tactical loot is explicitly active.

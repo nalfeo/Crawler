@@ -716,6 +716,17 @@ export const TRAVEL_W_LOOT = 0;
 export const TRAVEL_W_FARM = 0;
 export const TRAVEL_LOOT_LOOKAHEAD_FT = 12;
 export const TRAVEL_LOOT_CORRIDOR_FT = 4;
+// Trivial-pickup snap radius (ft). Pickups are collected by body overlap, so the
+// corridor loot bias — which only *curves* the travel arc toward loot — routinely
+// slides past a gem a foot off the heading without ever touching it: the "walked
+// right past free XP while adventuring" behaviour. Inside this radius the runner
+// steers straight at the pickup instead, so gems it is already next to are
+// actually collected mid-run rather than left for the post-boss sweep (which the
+// collapse-panic gate often cancels). Deliberately small: the snap is bounded by
+// this distance, so the worst case is a ~5 ft deviation that resolves within a
+// few frames, and it is skipped entirely when the direct lane is unsafe/blocked
+// or a panic beeline is active.
+export const TRAVEL_LOOT_SNAP_FT = 5;
 // |Vrel|² below this ⇒ closest-approach is degenerate (truly co-moving); fall back
 // to the current separation instead of a spurious projection. Kept far below
 // (playerSpeed · small-angle)² so a slow-but-real closing course is never
