@@ -48,6 +48,12 @@ const ABILITY_CATEGORY_COLORS: Record<AbilityActivationEvent['category'], string
 /** Spells read as arcane regardless of category, matching their cast VFX. */
 const SPELL_COLOR = '#c77dff';
 
+/**
+ * Display-list name prefix for ability floaters, so deterministic e2e probes can
+ * find them in the real booted scene. Followed by the ability id.
+ */
+export const ABILITY_FLOATER_NAME_PREFIX = 'ability-activation-floater:';
+
 interface FloatingText {
   obj: Phaser.GameObjects.Text;
   startMs: number;
@@ -159,6 +165,9 @@ export function createCombatVfx(scene: Phaser.Scene): {
     });
     text.setOrigin(0.5, 1);
     text.setDepth(WORLD_VFX_DEPTH.combatText);
+    // Named so a deterministic e2e can observe the floater on the REAL scene's
+    // display list (same pattern as `quest-direction-arrow:` overlays).
+    text.setName(`${ABILITY_FLOATER_NAME_PREFIX}${event.abilityId}`);
     (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(text);
 
     floaters.push({

@@ -56,6 +56,8 @@ import {
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
+import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
+import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import {
   _ZERO_SAFE_AREA_INSETS as ZERO_SAFE_AREA_INSETS,
   getSafeAreaInsets,
@@ -673,6 +675,18 @@ export interface MainSceneProbeApi {
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
   queueSkillUsage(skillId: string, metric: UsageMetric, amount: number): void;
+  /**
+   * Equip an active ability on the real player so a subsequent real-sim trigger
+   * (e.g. `queueSkillUsage`) can fire it. Arrangement affordance only — the
+   * activation itself still runs through the shipped `abilitySystem`.
+   * Returns false when the scene/player is not ready.
+   */
+  equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Ability-activation floater labels currently on the REAL scene's display
+   * list, paired with the ability id encoded in the object name.
+   */
+  getAbilityFloaters(): ReadonlyArray<{ readonly abilityId: string; readonly label: string }>;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
@@ -1261,6 +1275,31 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const holderEid = playerEidOf(scene);
       if (!world || holderEid < 0) return;
       world.skillUsageEvents.push({ holderEid, skillId, metric, amount });
+    },
+
+    equipPlayerActiveAbility: (abilityId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!world || holderEid < 0) return false;
+      getOrCreateAbilityState(world, holderEid);
+      equipActiveAbility(world, holderEid, abilityId);
+      return true;
+    },
+
+    getAbilityFloaters: () => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) return [];
+      return phaserScene.children.list
+        .filter(
+          (child): child is Phaser.GameObjects.Text =>
+            child instanceof Phaser.GameObjects.Text &&
+            child.name.startsWith(ABILITY_FLOATER_NAME_PREFIX),
+        )
+        .map((floater) => ({
+          abilityId: floater.name.slice(ABILITY_FLOATER_NAME_PREFIX.length),
+          label: floater.text,
+        }));
     },
 
     tapAbilitiesButton: () => {
