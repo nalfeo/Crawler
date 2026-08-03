@@ -49,6 +49,14 @@ echo "🔍 Step 5b/10: Orphaned-system wiring guard..."
 # inert because only its lab force-called it (ADR 0039).
 npx tsx scripts/agent/health/orphaned-systems.ts
 
+echo "🔍 Step 5c/10: Equipment art coverage ratchet..."
+# Deterministic art guard: every wired equipment piece (legacy catalog
+# equippables + the Floor 2 generated-equipment reward pool) must resolve to
+# real approved art through the same resolveItemSprite the panels call. Gaps
+# already recorded in the shrink-only baseline pass; a NEW gap fails, so
+# equipment can no longer ship wired-but-un-arted and be discovered by eye.
+npx tsx scripts/agent/health/check-equipment-art-coverage.ts
+
 # v8 coverage instrumentation roughly 5x's the unit-suite wall time (~27s ->
 # ~140s on a typical dev box). Coverage thresholds are authoritatively enforced
 # in CI (ci.yml `test-unit` job) on every PR, so this local pre-commit gate runs

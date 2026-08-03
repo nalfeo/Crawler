@@ -8,6 +8,10 @@ import {
   itemSpriteConcepts,
   resolveItemSprite,
 } from '../../src/shared/item-sprites.js';
+import {
+  EQUIPMENT_THEME_SETS,
+  themedArtConceptsFor,
+} from '../../src/shared/data/equipment-theme-sets.js';
 
 interface EntryOpts {
   readonly sourceRun?: string;
@@ -292,6 +296,135 @@ describe('resolveItemSprite', () => {
       expect(result?.textureKey).toBe('equipment/weapon/baseball-bat');
       expect(isPlaceholderEntry(result!)).toBe(false);
     });
+  });
+});
+
+describe('themed equipment art (theme-set registry)', () => {
+  // The Classic Fantasy [Basic Leather] wave keys its manifest entries by THEME
+  // (`classic-fantasy-basic-leather-wooden-bow-v1`), not by item. Before the
+  // shared theme-set registry existed, that art was invisible to the resolver
+  // and was force-aliased by a hardcoded helper in the ENGINE layer
+  // (`resolveBasicLeatherAliasEntry` in generatedAssets/preload.ts). These tests
+  // pin the shared-layer behaviour that replaced it.
+
+  it('emits the themed concept for a themed piece addressed by stable ID', () => {
+    expect(itemSpriteConcepts('weapon.wooden-bow')).toContain(
+      'classic-fantasy-basic-leather-wooden-bow',
+    );
+  });
+
+  it('emits the themed concept for a themed piece addressed by its runtimeKey', () => {
+    // A generated-equipment instance's frozen artKey IS the runtimeKey, and the
+    // panels pass it straight back into resolveItemSprite when no texture is
+    // preloaded under that literal key.
+    expect(itemSpriteConcepts('equipment/weapon/wooden-bow')).toContain(
+      'classic-fantasy-basic-leather-wooden-bow',
+    );
+  });
+
+  it('emits the themed concept for a legacy catalog item whose slug matches a themed piece', () => {
+    // `leather-boots` is a legacy catalog item; `feet.leather-boots` is the
+    // themed piece. Sharing the slug is what lets the legacy item pick up the
+    // themed art rather than staying on its fetched-icon placeholder.
+    expect(itemSpriteConcepts('leather-boots')).toContain(
+      'classic-fantasy-basic-leather-leather-boots',
+    );
+  });
+
+  it('emits NO themed concept for an item outside every theme set', () => {
+    expect(itemSpriteConcepts('iron-ore')).toEqual(['iron-ore']);
+    expect(
+      itemSpriteConcepts('weapon.moon-scythe').some((concept) =>
+        concept.startsWith('classic-fantasy-basic-leather-'),
+      ),
+    ).toBe(false);
+  });
+
+  it('orders themed concepts LAST so an item-id match always wins the tie', () => {
+    const concepts = itemSpriteConcepts('weapon.wooden-bow');
+    const themedIndex = concepts.indexOf('classic-fantasy-basic-leather-wooden-bow');
+    expect(themedIndex).toBe(concepts.length - 1);
+    expect(concepts[0]).toBe('weapon.wooden-bow');
+  });
+
+  it('never emits duplicate concepts', () => {
+    const concepts = itemSpriteConcepts('weapon.wooden-bow');
+    expect(new Set(concepts).size).toBe(concepts.length);
+  });
+
+  it('resolves themed art in preference to a placeholder', () => {
+    const registry = makeRegistry([
+      placeholder('wooden-bow-placeholder', 'wooden-bow', {
+        assetPath: 'generated/wooden-bow-placeholder.png',
+      }),
+      [
+        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
+        'classic-fantasy-basic-leather-wooden-bow-v1',
+      ],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow-v1');
+    expect(isPlaceholderEntry(result!)).toBe(false);
+  });
+
+  it("prefers the item's own bare-real art over themed art", () => {
+    // Tier ordering is global: a bare-real item-id match (TIER_BARE_REAL) must
+    // outrank a versioned themed match (TIER_VERSIONED_REAL) regardless of
+    // concept order.
+    const registry = makeRegistry([
+      [
+        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
+        'classic-fantasy-basic-leather-wooden-bow-v1',
+      ],
+      ['wooden-bow-var-0', 'wooden-bow'],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('wooden-bow');
+  });
+
+  it('resolves the same themed variant for a given seed across repeated calls and registries', () => {
+    const build = () =>
+      makeRegistry([
+        [
+          'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
+          'classic-fantasy-basic-leather-wooden-bow-v1',
+          { variantIndex: 0 },
+        ],
+        [
+          'classic-fantasy-basic-leather-wooden-bow-v1-var-1',
+          'classic-fantasy-basic-leather-wooden-bow-v1',
+          { variantIndex: 1 },
+        ],
+        [
+          'classic-fantasy-basic-leather-wooden-bow-v1-var-2',
+          'classic-fantasy-basic-leather-wooden-bow-v1',
+          { variantIndex: 2 },
+        ],
+      ]);
+    const first = resolveItemSprite(build(), 'weapon.wooden-bow', SEED);
+    const second = resolveItemSprite(build(), 'weapon.wooden-bow', SEED);
+    expect(first?.textureKey).toBe(second?.textureKey);
+    // A different seed is still allowed to pick a different variant, but must
+    // itself be stable.
+    const other = resolveItemSprite(build(), 'weapon.wooden-bow', SEED + 1);
+    expect(other?.textureKey).toBe(
+      resolveItemSprite(build(), 'weapon.wooden-bow', SEED + 1)?.textureKey,
+    );
+  });
+});
+
+describe('themedArtConceptsFor', () => {
+  it('returns the themed concept for every member of a theme set', () => {
+    for (const themeSet of EQUIPMENT_THEME_SETS) {
+      for (const stableId of themeSet.stableIds) {
+        const slug = stableId.slice(stableId.indexOf('.') + 1);
+        expect(themedArtConceptsFor(stableId)).toContain(`${themeSet.themeId}-${slug}`);
+      }
+    }
+  });
+
+  it('returns an empty list for an unknown key', () => {
+    expect(themedArtConceptsFor('definitely-not-a-themed-piece')).toEqual([]);
   });
 });
 

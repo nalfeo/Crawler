@@ -116,6 +116,7 @@
     "check:aggregate-row-ownership": "tsx scripts/agent/health/check-aggregate-row-ownership.ts",
     "check:registry-integrity": "tsx scripts/agent/health/check-registry-integrity.ts",
     "check:asset-integrity": "tsx scripts/agent/health/check-asset-integrity.ts",
+    "check:equipment-art-coverage": "tsx scripts/agent/health/check-equipment-art-coverage.ts",
     "check:allowlist-expiry": "tsx scripts/agent/health/check-allowlist-expiry.ts",
     "sprites:sort-assets": "tsx scripts/sprites/sort-assets.ts --apply",
     "sprites:enrich-tags": "tsx scripts/sprites/enrich-tags-cli.ts",

@@ -34,6 +34,7 @@ import { HARVESTABLE_DEFS } from './harvestableDefs.js';
 import { ITEM_CATALOG } from './items.js';
 import { SeededRandom } from './random.js';
 import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from './data/floor2-equipment-art.js';
+import { themedArtConceptsFor } from './data/equipment-theme-sets.js';
 
 /** Quality tiers for a candidate entry; lower is preferred. */
 const TIER_BARE_REAL = 0;
@@ -138,6 +139,13 @@ function getFloor2SlugToRuntimeKey(): ReadonlyMap<string, string> {
  *     wiring entries whose `briefId` is the full path are matched. These are
  *     bare-real (TIER_BARE_REAL) and outrank any slug-keyed versioned entry in
  *     the same pool, so priority remains correct without needing a special order.
+ *  5. Themed art concepts for any of the above keys (e.g.
+ *     `classic-fantasy-basic-leather-wooden-bow`), from the shared theme-set
+ *     registry. Themed art waves key their manifest entries by theme, not by
+ *     item, so without this a fully approved themed asset is invisible to the
+ *     resolver. Appended LAST so a themed match loses every tie to the item's
+ *     own art, while still outranking a placeholder on tier — which is the
+ *     precedence we want.
  *
  * Duplicates are suppressed so slug and stableId both resolving the same key
  * don't produce two identical concepts.
@@ -166,7 +174,25 @@ export function itemSpriteConcepts(itemId: string): readonly string[] {
       }
     }
   }
-  return extra.length > 0 ? [...base, ...extra] : base;
+
+  // Themed concepts are collected over the base keys AND the derived slug/
+  // runtimeKey keys, because a themed piece is reachable by any of them
+  // (stable ID from the reward pool, slug from the legacy catalog, runtimeKey
+  // from a generated-equipment instance's frozen artKey).
+  const themed: string[] = [];
+  for (const key of extra.length > 0 ? [...base, ...extra] : base) {
+    for (const concept of themedArtConceptsFor(key)) {
+      if (!seen.has(concept)) {
+        themed.push(concept);
+        seen.add(concept);
+      }
+    }
+  }
+
+  if (extra.length === 0 && themed.length === 0) {
+    return base;
+  }
+  return [...base, ...extra, ...themed];
 }
 
 /**
