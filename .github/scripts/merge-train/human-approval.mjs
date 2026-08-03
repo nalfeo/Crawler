@@ -8,11 +8,12 @@ export const HUMAN_APPROVAL_PHRASE = 'APPROVED FOR CHECK-IN';
 const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry';
 
 // Per-line pattern: optional list/ordered-list bullet, optional owner/repo
-// prefix, closing verb, then #N.  Anchored at both ends so only lines whose
-// entire content is a single closing-keyword reference are matched; lines that
-// embed the keyword alongside other prose are left untouched.
+// prefix (captured as group 1), closing verb, then #N (captured as group 2).
+// Anchored at both ends so only lines whose entire content is a single
+// closing-keyword reference are matched; lines that embed the keyword alongside
+// other prose are left untouched.
 const CLOSING_KEYWORD_LINE_RE =
-  /^\s*(?:[-*]|\d+\.)?\s*(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[a-z0-9._-]+\/[a-z0-9._-]+)?#(\d+)\s*$/i;
+  /^\s*(?:[-*]|\d+\.)?\s*(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:([a-z0-9._-]+\/[a-z0-9._-]+))?#(\d+)\s*$/i;
 
 function labelNames(labels) {
   const entries = Array.isArray(labels) ? labels : labels?.nodes || [];
@@ -28,14 +29,18 @@ export function requiresHumanApproval(pullRequest, closingIssues = []) {
 /**
  * Returns the subset of `closingIssues` that are propagating
  * `human-approval-required` to the PR via a closing-keyword reference — i.e.
- * the PR itself does not carry the label and is not a nightly-balance branch.
+ * the PR is not a nightly-balance branch.
  * These issues are safe to de-link by stripping the closing-keyword lines from
  * the PR body (see `stripClosingKeywordsForIssues`).
+ *
+ * Note: a direct `human-approval-required` label on the PR is NOT treated as
+ * proof of intentional gating.  The reconciler adds that label whenever a
+ * closing issue triggers the gate, so a previously-reconciled PR always
+ * carries the direct label even when propagation is the sole root cause.
  */
 export function closingIssuesPropagatingHumanApproval(pullRequest, closingIssues = []) {
-  // If the PR already has the label directly or is a nightly-balance branch the
-  // human-approval gate is intentional and must not be auto-bypassed.
-  if (labelNames(pullRequest?.labels).has(HUMAN_APPROVAL_LABEL)) return [];
+  // Nightly-balance branches have an intentional human-approval gate that must
+  // not be auto-bypassed via keyword stripping.
   if (String(pullRequest?.head?.ref || '').startsWith(NIGHTLY_BALANCE_BRANCH_PREFIX)) return [];
   return (closingIssues || []).filter((issue) =>
     labelNames(issue?.labels).has(HUMAN_APPROVAL_LABEL),
@@ -45,23 +50,40 @@ export function closingIssuesPropagatingHumanApproval(pullRequest, closingIssues
 /**
  * Strips lines from a PR body that consist solely of a GitHub closing-keyword
  * reference (close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved)
- * pointing to one of the given `issueNumbers`.  Lines that embed the keyword
+ * pointing to one of the given target issues.  Lines that embed the keyword
  * alongside other prose are preserved.  Non-closing `Refs`/`See` references
  * are always preserved.
  *
  * @param {string|null|undefined} body - PR body text
- * @param {number[]} issueNumbers - issue numbers whose closing refs to remove
+ * @param {Array<number|{repository:string, number:number}>} targets - issues whose
+ *   closing refs to remove.  A plain number matches by issue number alone (legacy /
+ *   single-repo callers).  An object `{repository, number}` restricts matching to
+ *   that exact owner/repo so that `Fixes other/repo#42` is not removed when the
+ *   target is `{repository: 'this/repo', number: 42}`.
+ * @param {string} [currentRepo] - owner/repo of the current repository (e.g.
+ *   `'nalfeo/Crawler'`).  Used to resolve unqualified `#N` references when targets
+ *   are `{repository, number}` objects.  Defaults to `''` (match any repo) for
+ *   backwards-compatibility with plain-number callers.
  * @returns {string} cleaned body
  */
-export function stripClosingKeywordsForIssues(body, issueNumbers) {
-  if (!issueNumbers || issueNumbers.length === 0) return String(body ?? '');
-  const targets = new Set(issueNumbers.map(Number));
+export function stripClosingKeywordsForIssues(body, targets, currentRepo = '') {
+  if (!targets || targets.length === 0) return String(body ?? '');
+  const repo = currentRepo.toLowerCase();
   return String(body ?? '')
     .split(/\r?\n/)
     .filter((line) => {
       const m = line.match(CLOSING_KEYWORD_LINE_RE);
       if (!m) return true;
-      return !targets.has(Number(m[1]));
+      // Group 1: optional owner/repo prefix; group 2: issue number.
+      const lineRepo = m[1] ? m[1].toLowerCase() : repo;
+      const lineNumber = Number(m[2]);
+      return !targets.some((t) => {
+        if (typeof t === 'number') return t === lineNumber;
+        return (
+          Number(t.number) === lineNumber &&
+          String(t.repository || '').toLowerCase() === lineRepo
+        );
+      });
     })
     .join('\n');
 }

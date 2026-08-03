@@ -87,16 +87,17 @@ test('closingIssuesPropagatingHumanApproval returns propagating issues when PR h
   const propagating = closingIssuesPropagatingHumanApproval({}, [gatedIssue]);
   assert.deepEqual(propagating, [gatedIssue]);
 
-  // PR already has the label itself — no auto-strip (intentional gate)
+  // PR carries the label directly (automation-derived from a previous reconciler
+  // run) — should still return propagating issues so the strip can proceed.
   assert.deepEqual(
     closingIssuesPropagatingHumanApproval(
       { labels: [{ name: HUMAN_APPROVAL_LABEL }] },
       [gatedIssue],
     ),
-    [],
+    [gatedIssue],
   );
 
-  // PR is a nightly-balance branch — no auto-strip
+  // PR is a nightly-balance branch — no auto-strip (intentional gate)
   assert.deepEqual(
     closingIssuesPropagatingHumanApproval(
       { head: { ref: 'copilot/balance-telemetry-improvement-sweep' } },
@@ -111,6 +112,15 @@ test('closingIssuesPropagatingHumanApproval returns propagating issues when PR h
 
   // Empty closing issues
   assert.deepEqual(closingIssuesPropagatingHumanApproval({}, []), []);
+
+  // PR has label directly AND no closing issues — label is intentional, nothing to propagate
+  assert.deepEqual(
+    closingIssuesPropagatingHumanApproval(
+      { labels: [{ name: HUMAN_APPROVAL_LABEL }] },
+      [],
+    ),
+    [],
+  );
 });
 
 test('stripClosingKeywordsForIssues removes closing-keyword lines for targeted issue numbers', () => {
@@ -154,7 +164,7 @@ test('stripClosingKeywordsForIssues removes closing-keyword lines for targeted i
     'Fixes #2686 and updates docs',
   );
 
-  // owner/repo#N form is stripped
+  // owner/repo#N form is stripped when using plain-number target (legacy: any repo)
   assert.equal(
     stripClosingKeywordsForIssues('Fixes nalfeo/Crawler#2686', [2686]),
     '',
@@ -167,4 +177,56 @@ test('stripClosingKeywordsForIssues removes closing-keyword lines for targeted i
   // Null/undefined body
   assert.equal(stripClosingKeywordsForIssues(null, [42]), '');
   assert.equal(stripClosingKeywordsForIssues(undefined, [42]), '');
+});
+
+test('stripClosingKeywordsForIssues preserves repository identity for {repository,number} targets', () => {
+  // Qualified ref to a different repo with the same number must NOT be stripped
+  const body = 'Fixes other/repo#42\nFixes nalfeo/Crawler#42';
+  const result = stripClosingKeywordsForIssues(
+    body,
+    [{ repository: 'nalfeo/Crawler', number: 42 }],
+    'nalfeo/Crawler',
+  );
+  assert.equal(result, 'Fixes other/repo#42');
+
+  // Unqualified #N is treated as the current repository and stripped
+  const bodyUnqualified = 'Fixes other/repo#42\nFixes #42';
+  const resultUnqualified = stripClosingKeywordsForIssues(
+    bodyUnqualified,
+    [{ repository: 'nalfeo/Crawler', number: 42 }],
+    'nalfeo/Crawler',
+  );
+  assert.equal(resultUnqualified, 'Fixes other/repo#42');
+
+  // Qualified ref to the target repo IS stripped
+  const bodyQualified = 'Fixes nalfeo/Crawler#42';
+  assert.equal(
+    stripClosingKeywordsForIssues(
+      bodyQualified,
+      [{ repository: 'nalfeo/Crawler', number: 42 }],
+      'nalfeo/Crawler',
+    ),
+    '',
+  );
+
+  // Unqualified #N is NOT stripped when currentRepo does not match the target repo
+  const bodyOtherRepo = 'Fixes #42';
+  assert.equal(
+    stripClosingKeywordsForIssues(
+      bodyOtherRepo,
+      [{ repository: 'other/repo', number: 42 }],
+      'nalfeo/Crawler',
+    ),
+    'Fixes #42',
+  );
+
+  // Repository matching is case-insensitive
+  assert.equal(
+    stripClosingKeywordsForIssues(
+      'Fixes NALFEO/CRAWLER#2686',
+      [{ repository: 'nalfeo/Crawler', number: 2686 }],
+      'nalfeo/Crawler',
+    ),
+    '',
+  );
 });

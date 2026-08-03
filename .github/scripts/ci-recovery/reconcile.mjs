@@ -1212,34 +1212,52 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
 
 // ── Auto-fix: strip closing-keyword lines that propagate human-approval-required ──
 //
-// When human-approval-required propagates to this PR exclusively via a
-// closing-keyword reference in the PR body (e.g. "- Fixes #N" where issue N
-// carries the label), the reconciler removes those lines directly using
-// CRAWLER_CI_PAT.  This short-circuits a systematic stale-automation loop:
-// the dispatched Copilot agent lacks pull_requests:write and consistently
-// receives HTTP 403 for the same PATCH, leaving the review thread permanently
-// unresolved and triggering a loop-incident after 2 attempts (PR #2710
-// postmortem).  CRAWLER_CI_PAT has repo scope and can perform the edit; the
-// fix is deterministic and safe because the PR itself does not carry the label.
+// When human-approval-required propagates to this PR via a closing-keyword
+// reference in the PR body (e.g. "- Fixes #N" where issue N carries the
+// label), the reconciler removes those lines directly using CRAWLER_CI_PAT.
+// This short-circuits a systematic stale-automation loop: the dispatched
+// Copilot agent lacks pull_requests:write and consistently receives HTTP 403
+// for the same PATCH, leaving the review thread permanently unresolved and
+// triggering a loop-incident after 2 attempts (PR #2710 postmortem).
+// CRAWLER_CI_PAT has repo scope and can perform the edit.  The automation-
+// derived human-approval label is removed in the same run so requiresHumanApproval
+// correctly reflects the cleared state and does not re-gate the PR.
 {
   const propagatingIssues = closingIssuesPropagatingHumanApproval(pr, closingIssues);
   if (propagatingIssues.length > 0) {
-    const fixedBody = stripClosingKeywordsForIssues(
-      pr.body,
-      propagatingIssues.map((i) => i.number),
-    );
+    // Build (repository, number) targets to avoid stripping same-numbered
+    // closing refs that belong to a different repository.
+    const targets = propagatingIssues.map((i) => ({
+      repository: i.repository.nameWithOwner,
+      number: i.number,
+    }));
+    const fixedBody = stripClosingKeywordsForIssues(pr.body, targets, repository);
     const issuesList = propagatingIssues.map((i) => i.number).join(',');
     if (fixedBody !== (pr.body ?? '')) {
       if (live) {
         await assertExpectedMetadataUnchanged('strip-closing-keywords');
-        await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
-          method: 'PATCH',
-          body: { body: fixedBody },
-        });
-        pr.body = fixedBody;
-        process.stdout.write(
-          `stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`,
-        );
+        // Re-fetch the live body to avoid overwriting concurrent author edits:
+        // fixedBody was computed from the initial PR fetch and may be stale.
+        const livePr = (
+          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)
+        ).data;
+        const liveFixedBody = stripClosingKeywordsForIssues(livePr.body, targets, repository);
+        const bodyChanged = liveFixedBody !== (livePr.body ?? '');
+        if (bodyChanged) {
+          await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
+            method: 'PATCH',
+            body: { body: liveFixedBody },
+          });
+          pr.body = liveFixedBody;
+          // Remove the automation-derived label so requiresHumanApproval
+          // reflects the cleared state; skips silently if already absent.
+          await removePrLabel(HUMAN_APPROVAL_LABEL, { skipIfMissing: true });
+          process.stdout.write(
+            `stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`,
+          );
+        } else {
+          pr.body = livePr.body;
+        }
         // Re-fetch closing issues to reflect the PR body change so the rest of
         // the pipeline computes human-approval state from up-to-date facts.
         const refreshed = await listClosingIssues(readToken, owner, repo, prNumber);
