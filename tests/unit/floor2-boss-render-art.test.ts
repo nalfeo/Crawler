@@ -147,6 +147,11 @@ describe('Floor 2 family bosses — real bridge render (generated art at LARGE s
       expect(renderedKeys.has(key)).toBe(true);
     }
 
+    // NOTE: this stub reports no native texture size, so the renderer's
+    // feet-based footprint fit is unmeasurable here and the legacy
+    // `generated.scale` multiplier applies — which is what keeps the base scale
+    // exactly 1.0 below. The authored-footprint behavior with real canvas sizes
+    // is covered by `tests/unit/mob-render-footprint.test.ts`.
     // Every boss must render at the LARGE boss base scale of 1.0. Enemies carry
     // a deterministic cosmetic sizeScale jitter in [0.9, 1.1]
     // (initializeEnemyAppearance), so the rendered scaleX = baseScale × sizeScale.
