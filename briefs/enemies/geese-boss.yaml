@@ -1,5 +1,6 @@
 type: enemy
 name: geese-boss
+mobRole: boss
 floor: 2
 sizeVariant: large
 
