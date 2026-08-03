@@ -38,9 +38,9 @@ PR #713 (`floor2-slice5-win-evaluator`) had two blockers:
 
 1. **CI orphan-system (Thread A).** The exported `floor2VictorySystem`
    (`src/game/floor2Scenario.ts`) tripped `check:wired-systems` — any exported
-   `*System` must be referenced by a real runtime WIRING_SITE, and this evaluator
+   `*System` must be referenced by a real runtime WIRING*SITE, and this evaluator
    was only called from `floor2ObjectiveTick` (same module), the lab, and tests.
-   **Resolved by the PR owner (`nalfeo`)** in commit `f29a6030`, which _wired_
+   **Resolved by the PR owner (`nalfeo`)** in commit `f29a6030`, which \_wired*
    `floor2VictorySystem` into three real pipelines — bootstrap `preSystems`
    (`src/bootstrap/floor-main-scene-options.ts`), headless `runSimulationStep`
    (`src/game/ai/simulation-step.ts`), and the headless-runner loop
