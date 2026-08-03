@@ -9,6 +9,7 @@ import {
 } from '../../src/engine/lighting/light-field.js';
 import {
   areLightingRectsEqual,
+  getFloorCompletionPresentation,
   formatAbilityTrigger,
   getFloorRunOutcome,
   getLightingViewRect,
@@ -108,6 +109,51 @@ describe('getFloorRunOutcome', () => {
       },
     };
     expect(getFloorRunOutcome(world)).toBeNull();
+  });
+});
+
+describe('getFloorCompletionPresentation', () => {
+  it('returns null when the run has no terminal outcome yet', () => {
+    const world = freshFloor1World();
+    expect(getFloorCompletionPresentation(world, false)).toBeNull();
+  });
+
+  it('prioritizes timeout over every other completion presentation', () => {
+    const world = freshFloor1World();
+    world.floorScenario!.runSummary = { outcome: 'failed_timeout', viewsEarned: 0, fansEarned: 0 };
+    expect(getFloorCompletionPresentation(world, true)).toBe('failed_timeout');
+  });
+
+  it('prioritizes a configured floor transition over terminal staircase victory', () => {
+    const world = createTestWorld();
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+        staircaseDiscovered: true,
+      },
+    };
+    expect(getFloorCompletionPresentation(world, true)).toBe('transition_to_next_floor');
+  });
+
+  it('falls back to terminal staircase victory when no next-floor callback is configured', () => {
+    const world = createTestWorld();
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+        staircaseDiscovered: true,
+      },
+    };
+    expect(getFloorCompletionPresentation(world, false)).toBe('terminal_victory');
+  });
+
+  it('keeps non-family clear outcomes on the legacy terminal-complete branch without a transition', () => {
+    const world = freshFloor1World();
+    world.floorScenario!.runSummary = { outcome: 'cleared_floor', viewsEarned: 0, fansEarned: 0 };
+    expect(getFloorCompletionPresentation(world, false)).toBe('terminal_complete');
   });
 });
 
