@@ -25,7 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "3",
   "type": null,
-  "contentHash": "2f586e0fb648e14267f455075745c030a59916f924f07f5fc2a2d7b859c98499",
+  "contentHash": "f2f6fdeadecebb249faa9e5e8abd521edd108a1b3838b80987e01481e167d175",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.yaml",
@@ -35,8 +35,8 @@
     "x": 8,
     "y": 8,
     "width": 128,
-    "height": 69,
+    "height": 82,
     "canvasWidth": 144,
-    "canvasHeight": 85
+    "canvasHeight": 98
   }
 }
