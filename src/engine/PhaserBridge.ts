@@ -126,6 +126,14 @@ interface EntityVisual {
   /** Base scale to restore in the default per-frame branch. */
   baseScale: number;
   /**
+   * The `registryRevision` value at which `baseScale` was last computed.
+   * Used by the enemy texture-key-unchanged branch to skip the
+   * `resolveBaseScale` call on frames where the generated registry has not
+   * changed — keeping the recompute to the one (or few) frames that follow
+   * a late registry load instead of running every frame.
+   */
+  baseScaleRegistryRevision: number;
+  /**
    * Which baked welcome-sign variant is currently applied ('right' arrow vs
    * 'left' arrow). Tracked so the renderer only swaps the texture when the
    * sign's facing hemisphere actually changes.
@@ -606,6 +614,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
   let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
+  /**
+   * Monotonically incremented each time `cachedGeneratedRegistry` changes
+   * identity. Entity visuals stamp the revision at which their `baseScale`
+   * was last computed; the enemy texture-key-unchanged branch uses this to
+   * skip `resolveBaseScale` on frames where the registry has not changed.
+   */
+  let registryRevision = 0;
   const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
   /**
    * Animation descriptor per generated texture key, so the player render
@@ -671,6 +686,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           registerGeneratedSpriteAnimations(scene, generatedRegistry);
         }
         cachedGeneratedRegistry = generatedRegistry;
+        registryRevision++;
         // Expose the registry to the game layer so projectile-origin helpers can
         // resolve per-entity weapon anchors without a Phaser scene reference.
         world.generatedSpriteRegistry = generatedRegistry;
@@ -1207,7 +1223,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             // Origin at hold anchor so the sprite pivots from the player's hand
             img.setOrigin(originX, originY);
             img.setScale(weaponScale);
-            visuals.set(eid, { obj: img, type: entityType, baseScale: weaponScale });
+            visuals.set(eid, { obj: img, type: entityType, baseScale: weaponScale, baseScaleRegistryRevision: registryRevision });
             visual = visuals.get(eid);
           }
 
@@ -1291,7 +1307,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (resolved.fallback) {
             logFallback(visualType);
           }
-          visual = { obj: img, type: visualType, baseScale };
+          visual = { obj: img, type: visualType, baseScale, baseScaleRegistryRevision: registryRevision };
           visuals.set(eid, visual);
         }
 
@@ -1307,21 +1323,23 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = resolveBaseScale(img, preferred);
+            visual.baseScaleRegistryRevision = registryRevision;
             img.setScale(visual.baseScale);
             // Invalidate the cached weapon anchor so the next game-layer access
             // recomputes from the updated variant entry.
             world.entityWeaponAnchors.delete(eid);
-          } else {
+          } else if (visual.baseScaleRegistryRevision !== registryRevision) {
             // Recompute base scale when opaque bounds became available after the
             // entity was first rendered (late generated-sprite registry load).
-            // The fallback scale is `generated.scale` (e.g. 1.0); if the scale
-            // derived from opaque bounds now differs, update the stored value so
-            // the entity renders at the correct authored foot height from this
-            // frame onward.
+            // Gated on `registryRevision` so this is a no-op on every frame
+            // after bounds have stabilised — the registry identity only changes
+            // on the one (or few) frames that follow a late load, not every
+            // frame, so `resolveBaseScale` is not called per-entity per-frame.
             const freshScale = resolveBaseScale(img, preferred);
             if (freshScale !== visual.baseScale) {
               visual.baseScale = freshScale;
             }
+            visual.baseScaleRegistryRevision = registryRevision;
           }
         }
         if (entityType === 'npc') {
@@ -1377,7 +1395,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               const spriteBaseScale = resolveBaseScale(sprite, preferred);
               sprite.setScale(spriteBaseScale);
               if (savedFlipX) sprite.setFlipX(true);
-              visual = { obj: sprite, type: visualType, baseScale: spriteBaseScale };
+              visual = { obj: sprite, type: visualType, baseScale: spriteBaseScale, baseScaleRegistryRevision: registryRevision };
               visuals.set(eid, visual);
               img = sprite;
             }
