@@ -1,8 +1,8 @@
 # Handoff: Floor 2 — second den-unlock method (FR13 `win-favor`)
 
 **Date:** 2026-08-03
-**Complexity:** 🍎🍎 (no review ledger required)
-**Spec:** `.specify/specs/floor2-family-territories.md` FR13
+**Complexity:** 🍎🍎🍎 (review ledger required — see `docs/knowledge/review-ledgers/2026-08-03-floor2-den-favor-unlock.review-ledger.json`)
+**Spec:** `.specify/specs/floor2-family-territories.md` FR13 (revised — see below)
 **ADR:** 0040 D4 (reuse existing plumbing) — no new ADR needed
 
 ## Systems touched
@@ -30,31 +30,42 @@ Added the **second** route into a boss den: the peaceful `win-favor` path.
   `floor2-den-<id>-unlocked` the first frame the predicate holds. The existing
   ADR-0010 door-lock config opens the den doors from the same flag.
 
-### Why this route, and why it is regression-safe
+### Why this route is universal (FR13 contract revision)
 
-It is a **parallel** route, not a replacement: the assigned kill objective still
-unlocks the den on its own, so the headless AI (which only fights, and whose
-kills *lower* relation via `killMob: -5`) is behaviourally unchanged. That keeps
-the Floor 2 win-rate/boss-level gates untouched while giving the player a real
-alternative. Relation is already player-movable through the Slice 6 emergent
-events (`favorQuestComplete +15`, `tributeDelivered +10`, `protectionPaid +5`,
-`pickASideChosen +8`) from the default 45.
-
-The unlock is **latched**: a later relation drop (e.g. the player turns on the
-family after entering) can never re-seal a den they already earned entry to.
+The original FR13 spec listed `win-favor>75` as one seeded objective in the
+pool. This revision makes it a **universal parallel bypass** instead, for one
+concrete reason: `win-favor>75` is AI-unreachable (the headless AI fights,
+which lowers relation via `killMob: -5`). Seeding it per-family would assign
+AI-unreachable objectives to those families, stalling their dens in every
+headless/seed run and collapsing the Floor 2 win-rate gate (rule #12). The
+spec now carries two separate unlock paths: a seeded pool of AI-reachable
+archetypes (thin-the-ranks / steal-ledger / sabotage-still / bring-tribute /
+rival's-hit), plus the universal win-favor bypass that is always available to
+the human player but never blocks the AI path.
 
 ## Files
 
 - `src/game/floor2Scenario.ts` — favor goal id, predicate, init seeding, tick latch.
 - `src/labs/family-boss-den-lab/index.ts` — "Win favor of first family (peaceful
   unlock)" action + per-family favor-route row in the panel.
-- `tests/integration/floor2-den-favor-unlock.test.ts` — new.
+- `tests/integration/floor2-den-favor-unlock.test.ts` — new (5 direct-tick + 1 pipeline).
+- `.specify/specs/floor2-family-territories.md` — FR13 revised to document two routes.
+- `scripts/agent/health/test-only-exports-lib.ts` — allowlist entries for `denFavorGoalId` / `hasEarnedDenFavor`.
 
 ## Observe before done
 
-Deterministic headless observation through the **real** pipeline (real
-`initializeFloor2Bosses` → real `floor2ObjectiveTick` → real `doorSystem`), not
-a lab-only check:
+Validated through two observation paths:
+
+**Direct-tick path** (5 tests): `initializeFloor2Bosses` → `floor2ObjectiveTick` →
+`doorSystem` — confirms before/after door state for the favored family.
+
+**Real simulation pipeline** (1 test): `runSimulationStep` with
+`floorObjectiveSystem` in `postSystems` — dispatches
+`world.floorObjectiveTick?.(world)` the same way both shipped simulation-step
+pipelines do (`src/game/ai/simulation-step.ts` / `src/engine/sim/simulation-step.ts`).
+This confirms the favor latch flows through the actual
+`floorObjectiveSystem → world.floorObjectiveTick` dispatch, not just the
+direct-call shortcut.
 
 - **Before:** den locked, `floor2-den-<id>-unlocked = false`, both den doors
   `isLocked = 1` / `logicalOpen = 0`.
@@ -62,14 +73,14 @@ a lab-only check:
   den unlocked, every den door `isLocked = 0` / `logicalOpen = 1`; sibling
   families remain sealed.
 
-Covered cases: opens doors, only the favored family opens, latch survives a
+Covered cases: opens doors (direct-tick + pipeline), only the favored family opens, latch survives a
 relation drop, inactive reputation system keeps it sealed, band boundary
 (relation 75 = neutral → locked; 76 → unlocked).
 
 ## Verify
 
 ```bash
-npx vitest run --project integration tests/integration/floor2-den-favor-unlock.test.ts  # 5 passed
+npx vitest run --project integration tests/integration/floor2-den-favor-unlock.test.ts  # 6 passed (5 direct-tick + 1 pipeline)
 npx vitest run --project integration tests/integration/floor2-den-unlock-pipeline.test.ts  # 5 passed
 npx vitest run --project unit tests/unit/floor2-den-unlock-selection.test.ts tests/unit/floor2-boss-spawn.test.ts tests/unit/floor2-scenario-initialization.test.ts  # 32 passed
 npm run typecheck && bash scripts/agent/verify-fast.sh  # clean

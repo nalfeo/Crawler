@@ -16,6 +16,10 @@ import type { FamilyId } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
+import { floorObjectiveSystem } from '../../src/game/floorScenario.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { createInputState } from '../../src/shared/input.js';
+import { GAME } from '../../src/shared/constants.js';
 import type { GameWorld } from '../../src/core/index.js';
 
 /**
@@ -141,6 +145,41 @@ describe('Floor 2 — favor den-unlock route (FR13 win-favor)', () => {
     adjustFactionRelation(world, target, 1);
     expect(hasEarnedDenFavor(world, target)).toBe(true);
     floor2ObjectiveTick(world);
+    expect(isDenUnlocked(world, target)).toBe(true);
+  });
+});
+
+/**
+ * Pipeline-level smoke test: the favor unlock flows through the real
+ * floorObjectiveSystem → world.floorObjectiveTick dispatch used by both
+ * shipped simulation-step pipelines. Unlike the direct-tick tests above, this
+ * test proves the plumbing is wired: runSimulationStep with floorObjectiveSystem
+ * in postSystems reaches floor2ObjectiveTick the same way the headless AI runner
+ * and the visual game do.
+ */
+describe('Floor 2 — favor den-unlock via real simulation pipeline (FR13)', () => {
+  it('floorObjectiveSystem dispatches the favor latch through runSimulationStep', () => {
+    const { world, familyIds } = setupFloor2(8888);
+    const target = familyIds[0]!;
+
+    // Wire the floor objective tick the same way initializeFloor2Scenario does.
+    world.floorObjectiveTick = floor2ObjectiveTick;
+
+    expect(isDenUnlocked(world, target)).toBe(false);
+    expect(world.goalFlags.get(denFavorGoalId(target))).toBe(false);
+
+    // Raise to Friendly before the sim step.
+    adjustFactionRelation(world, target, 100);
+    expect(hasEarnedDenFavor(world, target)).toBe(true);
+
+    // Drive through the real pipeline: floorObjectiveSystem calls
+    // world.floorObjectiveTick?.(world), which calls floor2ObjectiveTick.
+    // doorSystem is also in the core pipeline so door state is updated.
+    runSimulationStep(world, createInputState(), GAME.DELTA_MS, {
+      postSystems: [floorObjectiveSystem],
+    });
+
+    expect(world.goalFlags.get(denFavorGoalId(target))).toBe(true);
     expect(isDenUnlocked(world, target)).toBe(true);
   });
 });
