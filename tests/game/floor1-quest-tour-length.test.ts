@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-
-const COVERAGE_TIMEOUT_MS = 120_000;
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { buildInitiallyLockedDoorTileSet } from '../../src/game/floorScenario.js';
 import { TileFlags } from '../../src/shared/map-types.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+const COVERAGE_TIMEOUT_MS = 120_000;
 
 /**
  * Deterministic guard on Floor 1 quest travel.
