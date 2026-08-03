@@ -3,6 +3,7 @@ import { Enemy, Health, LineDamage, Owner, Player, Position, Sprite, Team } from
 import { applyDamage } from '../apply-damage.js';
 import { readDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
+import { getWorldFloorBehavior } from '../floor-behavior.js';
 import type { GameWorld } from '../world.js';
 import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
 import type { CollisionResult } from './collisionSystem.js';
@@ -169,7 +170,7 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
     const beamTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? 0) : -1;
     if (
-      world.floor === 1 &&
+      getWorldFloorBehavior(world).safeRoomWeaponImmunity &&
       ownerEid >= 0 &&
       hasComponent(world.ecs, ownerEid, Player) &&
       isEntityInSafeSpace(world, ownerEid)

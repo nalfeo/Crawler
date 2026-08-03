@@ -18,6 +18,7 @@ import { z } from 'zod';
 import floor1ManifestJson from './data/floors/floor1.manifest.json';
 import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
+import { floorBehaviorSchema } from './floor-behavior.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 
@@ -171,6 +172,14 @@ export const floorManifestDefSchema = z
         ambient: z.number().min(0).max(1),
       })
       .strict(),
+    /**
+     * Generic per-floor behavior switches. These replace hardcoded
+     * `world.floor === 1` / `world.floorId === 'floor2'` conditionals inside
+     * otherwise-generic systems: the system stays floor-agnostic and the floor
+     * declares which behavior it wants. Every flag defaults to `false`, so a
+     * new floor opts in explicitly.
+     */
+    behavior: floorBehaviorSchema.default(() => floorBehaviorSchema.parse({})),
     /** Floor-2-specific scenario config (ignored by Floor 1). */
     floor2: z
       .object({

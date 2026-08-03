@@ -13,6 +13,7 @@ import {
 import { applyDamage } from '../apply-damage.js';
 import { readDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
+import { getWorldFloorBehavior } from '../floor-behavior.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
@@ -257,7 +258,7 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
     const swingTeam = hasComponent(world.ecs, eid, Team) ? team.id[eid]! : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? world.stores.owner.eid[eid]! : -1;
     if (
-      world.floor === 1 &&
+      getWorldFloorBehavior(world).safeRoomWeaponImmunity &&
       ownerEid >= 0 &&
       hasComponent(world.ecs, ownerEid, Player) &&
       isEntityInSafeSpace(world, ownerEid)
