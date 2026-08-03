@@ -37,7 +37,7 @@ import {
   GENERATED_MANIFEST_VERSION,
   type GeneratedSpriteRegistry,
 } from '../../src/shared/generated-assets.js';
-import { isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
+import { _isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
 import { hashStringToSeed } from '../../src/shared/random.js';
 import { createInventoryUI } from '../../src/engine/InventoryUI.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -226,7 +226,7 @@ describe('InventoryUI real render path over the shipped manifest (observe-before
     for (const { itemId, concept } of ITEM_ART_EXPECTATIONS) {
       const entry = resolveItemSprite(registry, itemId, uiSeedFor(itemId, world));
       expect(entry, `resolver returned null for "${itemId}"`).not.toBeNull();
-      expect(isPlaceholderEntry(entry!), `"${itemId}" resolved to a placeholder`).toBe(false);
+      expect(_isPlaceholderEntry(entry!), `"${itemId}" resolved to a placeholder`).toBe(false);
       // The panel drew EXACTLY the texture the resolver chose (same seed formula).
       expect(
         record.imageKeys,

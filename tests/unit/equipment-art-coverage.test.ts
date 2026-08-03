@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  addedBaselineIds,
   baselineWouldWiden,
   classifyArtStatus,
   evaluateCoverage,
@@ -125,6 +126,10 @@ describe('the ratchet is shrink-only', () => {
 
   it('ADDING an id to the baseline is refused', () => {
     expect(baselineWouldWiden({ gaps: ['a'] }, { gaps: ['a', 'b'] })).toBe(true);
+  });
+
+  it('reports ids added to the committed baseline in sorted order', () => {
+    expect(addedBaselineIds({ gaps: ['b'] }, { gaps: ['z', 'a', 'b'] })).toEqual(['a', 'z']);
   });
 
   it('an update after a passing run can never widen', () => {

@@ -3,15 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import {
   canonicalItemBriefId,
-  isPlaceholderEntry,
+  _isPlaceholderEntry,
   itemArtIdentitySet,
   itemSpriteConcepts,
   resolveItemSprite,
 } from '../../src/shared/item-sprites.js';
-import {
-  EQUIPMENT_THEME_SETS,
-  themedArtConceptsFor,
-} from '../../src/shared/data/equipment-theme-sets.js';
+import { themedArtConceptsFor } from '../../src/shared/data/equipment-theme-sets.js';
+import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from '../../src/shared/data/floor2-basic-leather-bases.js';
 
 interface EntryOpts {
   readonly sourceRun?: string;
@@ -99,10 +97,10 @@ describe('itemSpriteConcepts', () => {
   });
 });
 
-describe('isPlaceholderEntry', () => {
+describe('_isPlaceholderEntry', () => {
   it('flags entries whose sourceRun is placeholder', () => {
     const registry = makeRegistry([placeholder('iron-ore-placeholder', 'iron-ore')]);
-    expect(isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
+    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
   });
 
   it('flags entries whose assetPath ends with -placeholder.png even if sourceRun differs', () => {
@@ -113,12 +111,12 @@ describe('isPlaceholderEntry', () => {
         { assetPath: 'assets/generated/iron-ore-placeholder.png' },
       ],
     ]);
-    expect(isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
+    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
   });
 
   it('does not flag real approved art', () => {
     const registry = makeRegistry([['iron-ore-var-0', 'iron-ore']]);
-    expect(isPlaceholderEntry(registry.entries()[0]!)).toBe(false);
+    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(false);
   });
 });
 
@@ -138,7 +136,7 @@ describe('resolveItemSprite', () => {
     ]);
     const result = resolveItemSprite(registry, 'iron-ore', SEED);
     expect(result?.textureKey).toBe('iron-ore-v1-var-0');
-    expect(isPlaceholderEntry(result!)).toBe(false);
+    expect(_isPlaceholderEntry(result!)).toBe(false);
   });
 
   it('prefers bare real art over the placeholder (post-migration state)', () => {
@@ -161,7 +159,7 @@ describe('resolveItemSprite', () => {
     const registry = makeRegistry([placeholder('pebble-placeholder', 'pebble')]);
     const result = resolveItemSprite(registry, 'pebble', SEED);
     expect(result?.textureKey).toBe('pebble-placeholder');
-    expect(isPlaceholderEntry(result!)).toBe(true);
+    expect(_isPlaceholderEntry(result!)).toBe(true);
   });
 
   describe('cross-concept (weaponId) resolution — bone-club → baseball-bat', () => {
@@ -172,7 +170,7 @@ describe('resolveItemSprite', () => {
       ]);
       const result = resolveItemSprite(registry, 'bone-club', SEED);
       expect(result?.textureKey).toBe('baseball-bat-v1-var-0');
-      expect(isPlaceholderEntry(result!)).toBe(false);
+      expect(_isPlaceholderEntry(result!)).toBe(false);
     });
 
     it('a real weaponId match beats an item-concept placeholder GLOBALLY (not per-concept)', () => {
@@ -264,7 +262,7 @@ describe('resolveItemSprite', () => {
       ]);
       const result = resolveItemSprite(registry, 'weapon.moon-scythe', SEED);
       expect(result?.textureKey).toBe('equipment/weapon/moon-scythe');
-      expect(isPlaceholderEntry(result!)).toBe(false);
+      expect(_isPlaceholderEntry(result!)).toBe(false);
     });
 
     it('prefers a wiring entry (TIER_BARE_REAL) over an old-style versioned entry via production stableId', () => {
@@ -294,7 +292,7 @@ describe('resolveItemSprite', () => {
       ]);
       const result = resolveItemSprite(registry, 'bone-club', SEED);
       expect(result?.textureKey).toBe('equipment/weapon/baseball-bat');
-      expect(isPlaceholderEntry(result!)).toBe(false);
+      expect(_isPlaceholderEntry(result!)).toBe(false);
     });
   });
 });
@@ -364,7 +362,7 @@ describe('themed equipment art (theme-set registry)', () => {
     ]);
     const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
     expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow-v1');
-    expect(isPlaceholderEntry(result!)).toBe(false);
+    expect(_isPlaceholderEntry(result!)).toBe(false);
   });
 
   it("prefers the item's own bare-real art over themed art", () => {
@@ -445,11 +443,9 @@ describe('themed equipment art (theme-set registry)', () => {
 
 describe('themedArtConceptsFor', () => {
   it('returns the themed concept for every member of a theme set', () => {
-    for (const themeSet of EQUIPMENT_THEME_SETS) {
-      for (const stableId of themeSet.stableIds) {
-        const slug = stableId.slice(stableId.indexOf('.') + 1);
-        expect(themedArtConceptsFor(stableId)).toContain(`${themeSet.themeId}-${slug}`);
-      }
+    for (const stableId of FLOOR2_BASIC_LEATHER_STABLE_IDS) {
+      const slug = stableId.slice(stableId.indexOf('.') + 1);
+      expect(themedArtConceptsFor(stableId)).toContain(`classic-fantasy-basic-leather-${slug}`);
     }
   });
 

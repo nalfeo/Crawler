@@ -68,10 +68,10 @@ deleted alias used to guarantee and exactly what a lab cannot prove.
 
 ## Key Decisions Made
 
-- **Themed concepts are appended last, not first.** Tier dominates concept order
-  in `resolveItemSprite` (`BARE_REAL > VERSIONED_REAL > PLACEHOLDER`), so
-  appending last gives the precedence we want — themed art beats a placeholder,
-  loses to the item's own real art — without a new tier.
+- **Themed concepts are appended last, not first.** `resolveItemSprite` now
+  applies provenance rank before tier (`OWN_REAL < THEMED_REAL < PLACEHOLDER`,
+  then `BARE_REAL < VERSIONED_REAL < PLACEHOLDER` inside a rank). So themed art
+  beats placeholders, while an item's own real art wins at any tier.
 - **The theme registry lives in `src/shared/data/`, not the engine.** Adding a
   future theme is one row; no engine change, no new PR class.
 - **The gate is a ratchet, not a wall.** A hard "all equipment must have art"

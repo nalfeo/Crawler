@@ -30,6 +30,7 @@
  * launder new gaps into the allowance.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -40,10 +41,11 @@ import {
 } from '../../../src/shared/generated-assets.js';
 import { getEquippableItemIds } from '../../../src/shared/equipmentDefs.js';
 import { getItemById } from '../../../src/shared/items.js';
-import { isPlaceholderEntry, resolveItemSprite } from '../../../src/shared/item-sprites.js';
+import { resolveItemSprite } from '../../../src/shared/item-sprites.js';
 import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../../src/shared/data/floor2-reward-pool.js';
 import { composeManifestFromShards } from '../../sprites/generated-shards.js';
 import {
+  addedBaselineIds,
   baselineWouldWiden,
   classifyArtStatus,
   evaluateCoverage,
@@ -70,6 +72,13 @@ const BASELINE_PATH = path.join(
  * pinning the seed keeps the check's output byte-stable across runs.
  */
 const RESOLUTION_SEED = 0;
+
+function isPlaceholderEntry(entry: {
+  readonly sourceRun: string;
+  readonly assetPath: string;
+}): boolean {
+  return entry.sourceRun === 'placeholder' || entry.assetPath.endsWith('-placeholder.png');
+}
 
 function readBaseline(): EquipmentArtBaseline {
   try {
@@ -99,6 +108,53 @@ function readBaseline(): EquipmentArtBaseline {
 
 function writeBaseline(baseline: EquipmentArtBaseline): void {
   writeFileSync(BASELINE_PATH, `${JSON.stringify(baseline, null, 2)}\n`, 'utf8');
+}
+
+function gitTry(args: readonly string[]): string | null {
+  try {
+    return execFileSync('git', args as string[], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function baselineAtRef(ref: string): EquipmentArtBaseline | null {
+  const content = gitTry([
+    'show',
+    `${ref}:docs/knowledge/metrics/equipment-art-coverage-baseline.json`,
+  ]);
+  if (content === null) {
+    return null;
+  }
+  const raw: unknown = JSON.parse(content);
+  if (
+    typeof raw === 'object' &&
+    raw !== null &&
+    Array.isArray((raw as { gaps?: unknown }).gaps) &&
+    (raw as { gaps: unknown[] }).gaps.every((id) => typeof id === 'string')
+  ) {
+    return { gaps: (raw as { gaps: string[] }).gaps };
+  }
+  throw new Error(`Baseline at ${ref} is invalid; expected {"gaps": string[]}.`);
+}
+
+function addedBaselineIdsAgainstMergeBase(currentBaseline: EquipmentArtBaseline): string[] {
+  const mergeBase = gitTry(['merge-base', 'HEAD', 'origin/main']);
+  if (mergeBase === null || mergeBase.length === 0) {
+    if (process.env.CI === 'true') {
+      throw new Error('Failed to compute merge-base for equipment art baseline check.');
+    }
+    return [];
+  }
+  const mergeBaseBaseline = baselineAtRef(mergeBase);
+  if (mergeBaseBaseline === null) {
+    return [];
+  }
+  return [...addedBaselineIds(mergeBaseBaseline, currentBaseline)];
 }
 
 function collectRows(): EquipmentArtRow[] {
@@ -155,6 +211,18 @@ function main(): void {
   const init = argv.includes('--init');
 
   const baseline = readBaseline();
+  if (!update && !init) {
+    const addedBaselineIds = addedBaselineIdsAgainstMergeBase(baseline);
+    if (addedBaselineIds.length > 0) {
+      process.stderr.write(
+        'Refusing to run with a widened baseline: ids were added versus merge-base.\n' +
+          'The baseline is shrink-only; remove these additions and land art instead:\n' +
+          addedBaselineIds.map((id) => `   - ${id}\n`).join(''),
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
   const result = evaluateCoverage(collectRows(), baseline);
 
   if (init) {

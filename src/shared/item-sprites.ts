@@ -71,7 +71,7 @@ interface ScoredCandidate {
  * pipeline's own signals, never on sprite `type` (real `classified-dossier`
  * art is typed `character`, so `type` is not a reliable discriminator).
  */
-export function isPlaceholderEntry(entry: GeneratedSpriteEntry): boolean {
+export function _isPlaceholderEntry(entry: GeneratedSpriteEntry): boolean {
   return entry.sourceRun === 'placeholder' || entry.assetPath.endsWith('-placeholder.png');
 }
 
@@ -384,7 +384,7 @@ function computeItemSprite(
       if (match === null) {
         continue;
       }
-      const placeholder = isPlaceholderEntry(entry);
+      const placeholder = _isPlaceholderEntry(entry);
       const tier = placeholder
         ? TIER_PLACEHOLDER
         : match.bare

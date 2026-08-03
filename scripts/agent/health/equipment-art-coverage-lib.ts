@@ -42,11 +42,10 @@
  * The baseline is **shrink-only** by construction: `--update` writes exactly the
  * currently-observed gap set, which can only ever be a subset of the baseline on
  * a passing run (a superset would have failed first). So the file can never be
- * used to widen the allowance — the only way to add an ID to it is to fix the
- * failure or to knowingly edit the file by hand, which shows up in review as
- * what it is. There is no allowlist and no per-entry escape hatch: an un-arted
- * piece is either pre-existing debt that is already listed, or a regression that
- * fails.
+ * used to widen the allowance — `--update` refuses additions and the normal CI
+ * path fails if the committed baseline adds IDs versus merge-base. There is no
+ * allowlist and no per-entry escape hatch: an un-arted piece is either
+ * pre-existing debt that is already listed, or a regression that fails.
  */
 
 /** How a wired piece's art resolves. */
@@ -177,6 +176,15 @@ export function baselineWouldWiden(
 ): boolean {
   const previousSet = new Set(previous.gaps);
   return next.gaps.some((id) => !previousSet.has(id));
+}
+
+/** Sorted IDs present in `current` but absent in `previous`. */
+export function addedBaselineIds(
+  previous: EquipmentArtBaseline,
+  current: EquipmentArtBaseline,
+): readonly string[] {
+  const previousSet = new Set(previous.gaps);
+  return sortedUnique(current.gaps.filter((id) => !previousSet.has(id)));
 }
 
 /** Human-readable report. Deterministic: rows are emitted in sorted id order. */

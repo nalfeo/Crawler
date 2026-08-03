@@ -64,7 +64,7 @@ import {
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
-import { isPlaceholderEntry, resolveItemSprite } from '../../shared/item-sprites.js';
+import { _isPlaceholderEntry, resolveItemSprite } from '../../shared/item-sprites.js';
 import { hashStringToSeed } from '../../shared/random.js';
 import {
   emptyGeneratedSpriteRegistry,
@@ -1630,7 +1630,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         itemId,
         briefId: entry?.briefId ?? null,
         textureKey: entry?.textureKey ?? null,
-        isPlaceholder: entry === null ? false : isPlaceholderEntry(entry),
+        isPlaceholder: entry === null ? false : _isPlaceholderEntry(entry),
         textureLoaded: entry !== null && phaserScene?.textures?.exists(entry.textureKey) === true,
       };
     },

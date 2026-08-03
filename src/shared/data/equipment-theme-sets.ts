@@ -24,11 +24,11 @@
  * A theme set is `(themeId, stableIds)`. For each member stable ID the themed
  * art concept is `<themeId>-<slug>`, where `<slug>` is the stable ID's slug
  * (`weapon.wooden-bow` → `wooden-bow`). Manifest entries then match through
- * the resolver's ordinary versioned-concept path (`<concept>-vN`), so themed
- * art is ranked by the SAME tier rules as everything else:
- * bare-real > versioned-real > placeholder. Themed concepts are appended last
- * in the concept list, so they lose ties to an item's own art but still beat a
- * placeholder — which is exactly the desired precedence.
+ * the resolver's ordinary versioned-concept path (`<concept>-vN`). Candidate
+ * selection is provenance-rank first (own real < themed real < placeholder),
+ * then quality tier inside that rank (bare-real > versioned-real >
+ * placeholder). So an item's own real art always wins over themed real art at
+ * any tier, while themed real art still beats placeholders.
  *
  * ## Adding a theme
  *
@@ -63,15 +63,15 @@ export interface EquipmentThemeSet {
  * than re-listed here, so a change to that catalog cannot drift from the art
  * wiring.
  *
- * **Overlap policy: array order is priority.** A piece may legitimately appear
- * in more than one theme (a slug can be re-arted by a later wave), and one item
- * can only render one sprite, so a winner must be picked. Earlier rows win,
- * because `themedArtConceptsFor` returns concepts in registry order and the
- * resolver breaks ties on `conceptOrder`. This is deliberate and deterministic:
- * to promote a newer wave over an older one for a shared piece, move its row
- * UP, do not rely on insertion recency.
+ * **Overlap policy: array order is final tie-break priority.** A piece may
+ * legitimately appear in more than one theme (a slug can be re-arted by a
+ * later wave), and one item can only render one sprite, so a winner must be
+ * picked. `themedArtConceptsFor` preserves registry order, which the resolver
+ * uses as the last tie-break after rank/tier/anchor/version checks. This is
+ * deliberate and deterministic: to promote a newer wave over an older one for
+ * otherwise-equal candidates, move its row UP.
  */
-export const EQUIPMENT_THEME_SETS: readonly EquipmentThemeSet[] = Object.freeze([
+const EQUIPMENT_THEME_SETS: readonly EquipmentThemeSet[] = Object.freeze([
   Object.freeze({
     themeId: 'classic-fantasy-basic-leather',
     stableIds: FLOOR2_BASIC_LEATHER_STABLE_IDS,
