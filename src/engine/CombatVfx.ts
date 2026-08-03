@@ -132,7 +132,11 @@ export function createCombatVfx(scene: Phaser.Scene): {
 
       // Non-combat floaters (skill level-ups). Spawned higher above the entity
       // so a "+1" never stacks on top of the damage number that earned it.
-      for (const [index, event] of world.floaterEvents.entries()) {
+      const skillFloaterClusterCounts = new Map<string, number>();
+      for (const event of world.floaterEvents) {
+        const clusterKey = `${event.kind}:${event.x}:${event.y}`;
+        const index = skillFloaterClusterCounts.get(clusterKey) ?? 0;
+        skillFloaterClusterCounts.set(clusterKey, index + 1);
         spawnFloater(
           event,
           noticeFloaterStyle(event),

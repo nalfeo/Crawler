@@ -84,4 +84,22 @@ describe('skill level-up floater rendering', () => {
 
     vfx.destroy();
   });
+
+  it('resets stagger indexing per frame cluster instead of counting already-live floaters', () => {
+    const { scene, text } = createSceneStub();
+    const vfx = createCombatVfx(scene);
+    const world = createTestWorld();
+
+    world.floaterEvents.push({ kind: 'skillLevelUp', x: 4, y: 6, label: '+1 Swordsmanship' });
+    vfx.update(world, 0);
+
+    world.floaterEvents.push({ kind: 'skillLevelUp', x: 10, y: 12, label: '+1 Dagger' });
+    vfx.update(world, 100);
+
+    expect(text).toHaveBeenCalledTimes(2);
+    const [, secondY] = text.mock.calls[1]!;
+    expect(secondY).toBe(ftToPx(12) - 22);
+
+    vfx.destroy();
+  });
 });

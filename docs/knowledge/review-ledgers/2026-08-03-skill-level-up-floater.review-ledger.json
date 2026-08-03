@@ -6,16 +6,25 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Alt A aggregate multi-level gains into one +N floater was rejected to preserve the original per-level feedback requirement. Alt B add stack metadata to the shared floater contract was rejected as extra surface area for a renderer-owned readability concern. Reused the existing main-scene probe floating-text seam instead of adding a new observability surface, made the audit fix explicit by bumping brace-expansion/minimatch overrides and rerunning security:audit, and changed staggering to per-frame position clusters so already-live floaters do not affect new notices."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "One blocker found: the newly added 3-apple v2 review ledger was still scaffold-only and would fail pr-review-ledger/test:guards. Resolved by recording the completed plan-review stage, this code-review stage, and running the independent-grade flow before final validation."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
