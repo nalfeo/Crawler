@@ -274,7 +274,8 @@ import {
   TRAVEL_LOOT_CORRIDOR_FT,
   TRAVEL_REL_SPEED_EPSILON_SQ,
   TRAVEL_COLLECT_MIN_STEER_DIST_FT,
-  XP_SWEEP_PANIC_THRESHOLD,
+  LOOT_SWEEP_PANIC_THRESHOLD,
+  LOOT_SWEEP_RADIUS_FT,
 } from './bt-ai-tuning.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
@@ -1043,7 +1044,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * (avoiding zig-zag from re-sorting distance order each tick). Cleared when
    * the entity is collected, becomes unreachable, or the sweep window closes.
    */
-  private xpSweepTargetEid: number | null = null;
+  private lootSweepTargetEid: number | null = null;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1096,11 +1097,12 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2.5: Pre-exit XP sweep — collect remaining XP gems before
-        // descending the staircase. Only fires when the staircase is unlocked
-        // and no enemies are in engage range, so it can never interfere with
-        // combat or block an urgent beeline to the exit.
-        this.buildPreExitXpSweepBehavior(),
+        // Priority 2.5: Loot sweep — collect the XP/gold already earned before
+        // moving on. Local (LOOT_SWEEP_RADIUS_FT) after a fight, full-floor once
+        // the staircase is unlocked (descending destroys uncollected pickups).
+        // Only fires when no enemies are in engage range, so it can never
+        // interfere with combat or block an urgent beeline to the exit.
+        this.buildLootSweepBehavior(),
         // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
         // Priority 3.5: Leave a safe room when enemies are present.
@@ -7154,112 +7156,131 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Finds the nearest reachable XP gem across the **entire** floor — no radius
-   * cap — for the pre-exit sweep phase. Uses a dedicated target latch
-   * (`xpSweepTargetEid`) to avoid re-sorting the full entity list every frame;
-   * the latch is invalidated when the gem is gone, unreachable, or the sweep
-   * window closes.
+   * Finds the nearest reachable sweep pickup (XP gem or gold) within
+   * `maxDistance` feet. Uses a dedicated target latch (`lootSweepTargetEid`) to
+   * avoid re-sorting the full entity list every frame; the latch is invalidated
+   * when the pickup is gone, out of range, unreachable, or the sweep window
+   * closes.
    *
-   * Only XP gems are targeted (not gold/items): gold and loose items are
-   * already handled opportunistically by the normal `buildCollectBehavior` at
-   * its configured `scanRadius`, and sweeping for them post-clear risks
-   * long detours with low XP payoff.
+   * Only XP and gold are targeted (not items/harvestables): both are pure,
+   * always-useful value with no inventory or interaction cost, so collecting
+   * them can never make a run worse in any way other than travel time.
    */
-  private findNearestXpGemForSweep(
+  private findNearestSweepLoot(
     world: GameWorld,
     playerX: number,
     playerY: number,
+    maxDistance: number,
   ): LootTarget | null {
     // Re-validate the sticky sweep target before scanning.
-    if (this.xpSweepTargetEid !== null) {
-      const eid = this.xpSweepTargetEid;
-      if (entityExists(world.ecs, eid) && hasComponent(world.ecs, eid, XpGem)) {
+    if (this.lootSweepTargetEid !== null) {
+      const eid = this.lootSweepTargetEid;
+      const kind: LootKind | null = !entityExists(world.ecs, eid)
+        ? null
+        : hasComponent(world.ecs, eid, XpGem)
+          ? 'xp'
+          : hasComponent(world.ecs, eid, Gold)
+            ? 'gold'
+            : null;
+      if (kind !== null) {
         const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
         if (ignoredUntil === undefined || ignoredUntil <= world.frameCount) {
           if (ignoredUntil !== undefined) this.ignoredLootUntilFrame.delete(eid);
           const x = world.stores.position.x[eid] ?? 0;
           const y = world.stores.position.y[eid] ?? 0;
           const dist = Math.hypot(x - playerX, y - playerY);
-          const loot: LootTarget = { eid, x, y, distance: dist, kind: 'xp' };
-          if (this.isLootCollectable(world, playerX, playerY, loot)) {
+          const loot: LootTarget = { eid, x, y, distance: dist, kind };
+          if (dist <= maxDistance && this.isLootCollectable(world, playerX, playerY, loot)) {
             return loot;
           }
         }
       }
-      this.xpSweepTargetEid = null;
+      this.lootSweepTargetEid = null;
     }
 
-    // Full scan for nearest reachable XP gem — no distance cap.
     const candidates: LootTarget[] = [];
-    for (const eid of query(world.ecs, [XpGem, Position])) {
-      if (eid === undefined) continue;
-      const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
-      if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) continue;
-      if (ignoredUntil !== undefined && ignoredUntil <= world.frameCount) {
-        this.ignoredLootUntilFrame.delete(eid);
+    const sources: ReadonlyArray<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+      { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
+      { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
+    ];
+    for (const source of sources) {
+      for (const eid of source.entities) {
+        if (eid === undefined) continue;
+        const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
+        if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) continue;
+        if (ignoredUntil !== undefined && ignoredUntil <= world.frameCount) {
+          this.ignoredLootUntilFrame.delete(eid);
+        }
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const dist = Math.hypot(x - playerX, y - playerY);
+        if (dist > maxDistance) continue;
+        candidates.push({ eid, x, y, distance: dist, kind: source.kind });
       }
-      const x = world.stores.position.x[eid] ?? 0;
-      const y = world.stores.position.y[eid] ?? 0;
-      const dist = Math.hypot(x - playerX, y - playerY);
-      candidates.push({ eid, x, y, distance: dist, kind: 'xp' });
     }
 
-    candidates.sort((a, b) => a.distance - b.distance);
+    candidates.sort((a, b) => a.distance - b.distance || a.eid - b.eid);
 
     for (const candidate of candidates) {
       if (this.isLootCollectable(world, playerX, playerY, candidate)) {
-        this.xpSweepTargetEid = candidate.eid;
+        this.lootSweepTargetEid = candidate.eid;
         return candidate;
       }
     }
 
-    this.xpSweepTargetEid = null;
+    this.lootSweepTargetEid = null;
     return null;
   }
 
   /**
-   * Pre-exit XP sweep behavior. After the floor staircase is unlocked the AI
-   * collects any remaining XP gems before descending. Fires between Interact
-   * (Priority 2) and Progress (Priority 3), so it delays the stair approach
-   * only while reachable XP exists on the ground.
+   * Loot sweep behavior. The AI collects the XP/gold it has already earned
+   * instead of walking past it toward the next objective. Fires between Interact
+   * (Priority 2) and Progress (Priority 3), so it delays objective travel only
+   * while reachable loot remains.
+   *
+   * Two windows share this node:
+   * - **Post-combat** — bounded to `LOOT_SWEEP_RADIUS_FT`, so it only picks up
+   *   the drops from the fight that just ended and never becomes a cross-floor
+   *   errand.
+   * - **Pre-exit** — unbounded once the staircase is unlocked but not yet
+   *   descended, because the floor transition destroys every uncollected pickup.
    *
    * Guard conditions (all must hold):
-   * 1. Floor cleared: staircase unlocked but not yet discovered.
-   * 2. Collapse panic below threshold (surrender sweep in final time crunch).
-   * 3. No enemies within engage radius — safety first; combat pre-empts sweep.
-   * 4. At least one reachable XP gem exists on the floor.
+   * 1. Collapse panic below threshold (surrender the sweep in a time crunch).
+   * 2. No enemies within engage radius — safety first; combat pre-empts sweep.
+   * 3. At least one reachable XP gem or gold pile inside the active window.
    */
-  private buildPreExitXpSweepBehavior(): BTNode {
+  private buildLootSweepBehavior(): BTNode {
     return sequence(
-      'PreExitXpSweep',
-      condition('Floor Cleared With XP On Ground', (ctx) => {
-        if (!this.isFloorClearedAwaitingSweep(ctx.world)) {
-          this.xpSweepTargetEid = null;
-          return false;
-        }
+      'LootSweep',
+      condition('Sweepable Loot Nearby', (ctx) => {
         const profile = this.getCollapsePanicProfile(ctx.world);
-        if (profile.beeline || profile.panic > XP_SWEEP_PANIC_THRESHOLD) {
-          this.xpSweepTargetEid = null;
+        if (profile.beeline || profile.panic > LOOT_SWEEP_PANIC_THRESHOLD) {
+          this.lootSweepTargetEid = null;
           return false;
         }
-        // Safety gate: don't sweep when an enemy is within engage range.
+        // Safety gate: don't sweep when an enemy is within engage range —
+        // combat always pre-empts the sweep.
         const engageRadius = this.getEngageRadius(ctx.world);
         if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, engageRadius, true)) {
-          this.xpSweepTargetEid = null;
+          this.lootSweepTargetEid = null;
           return false;
         }
-        const gem = this.findNearestXpGemForSweep(ctx.world, ctx.playerX, ctx.playerY);
-        if (!gem) return false;
-        ctx.blackboard['sweepGem'] = gem;
+        const maxDistance = this.isFloorClearedAwaitingSweep(ctx.world)
+          ? Number.POSITIVE_INFINITY
+          : LOOT_SWEEP_RADIUS_FT;
+        const loot = this.findNearestSweepLoot(ctx.world, ctx.playerX, ctx.playerY, maxDistance);
+        if (!loot) return false;
+        ctx.blackboard['sweepLoot'] = loot;
         return true;
       }),
-      action('Set XP Sweep State', (ctx) => {
-        const gem = ctx.blackboard['sweepGem'] as LootTarget;
+      action('Set Loot Sweep State', (ctx) => {
+        const loot = ctx.blackboard['sweepLoot'] as LootTarget;
         this.decision.state = AIState.COLLECT;
-        this.decision.targetEid = gem.eid;
-        this.decision.targetX = gem.x;
-        this.decision.targetY = gem.y;
-        this.decision.reason = `Pre-exit XP sweep: gem at distance ${gem.distance.toFixed(1)}ft`;
+        this.decision.targetEid = loot.eid;
+        this.decision.targetX = loot.x;
+        this.decision.targetY = loot.y;
+        this.decision.reason = `Loot sweep: ${loot.kind} at distance ${loot.distance.toFixed(1)}ft`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -8742,6 +8763,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourNoProgressFrames = 0;
     this.resetNpcApproachThreatTracking();
     this.clearSafeRoomEgressWaypoint();
-    this.xpSweepTargetEid = null;
+    this.lootSweepTargetEid = null;
   }
 }

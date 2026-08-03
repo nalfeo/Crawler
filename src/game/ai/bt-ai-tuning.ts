@@ -725,16 +725,27 @@ export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-8;
 // harvest overlap approach (Track A close-range slide) is left untouched.
 export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 
-// --- Pre-exit XP sweep -------------------------------------------------------
-// After the floor staircase is unlocked the AI performs a sweep to collect any
-// XP gems left on the ground before descending (which destroys uncollected gems
-// via scene restart). The sweep fires between Interact (Priority 2) and Progress
-// (Priority 3), so it delays the stair approach only while reachable XP remains.
+// --- Loot sweep --------------------------------------------------------------
+// The AI sweeps loot it has already earned (XP gems and gold) rather than
+// walking past it toward the next objective. The sweep fires between Interact
+// (Priority 2) and Progress (Priority 3), so it delays objective travel only
+// while reachable loot remains and no enemy is in engage range.
+//
+// Two windows share one node:
+//   1. **Post-combat** (any time): only loot within LOOT_SWEEP_RADIUS_FT of the
+//      player, i.e. the drops from the fight that just ended. Bounded so the
+//      sweep is a local cleanup, never a cross-floor errand.
+//   2. **Pre-exit** (staircase unlocked, not yet descended): unbounded radius,
+//      because descending destroys every uncollected pickup (scene restart with
+//      a fresh entity world), so anything left behind is lost permanently.
 //
 // Panic threshold: abort the sweep and fall through to Progress (beeline to
 // stairs) when collapse panic exceeds this fraction. Calibrated so the sweep
-// stays active during the comfortable post-clear lull (~3-4 min remaining) but
-// surrenders in the final 1-min crunch period when panic > 0.5 on Floor 1.
-// Floor 2 has no collapse timer so panic is always 0 there — the sweep runs
-// until all reachable XP is collected.
-export const XP_SWEEP_PANIC_THRESHOLD = 0.5;
+// stays active during the comfortable lull but surrenders in the final 1-min
+// crunch period when panic > 0.5 on Floor 1. Floor 2 has no collapse timer so
+// panic is always 0 there — the sweep runs until all reachable loot is taken.
+export const LOOT_SWEEP_PANIC_THRESHOLD = 0.5;
+// Radius (ft) for the post-combat sweep window. Inside the default scanRadius
+// (50ft) so the detour stays local to the area the AI just cleared and cannot
+// pull it toward an unexplored, unscouted part of the floor.
+export const LOOT_SWEEP_RADIUS_FT = 35;

@@ -33,6 +33,7 @@ import {
   AIState,
   type AIInputProvider,
   type AIPathingModeValue,
+  type LootEfficiencyMetrics,
   type RunStats,
   type LevelUpEvent,
   type SkillRunMetrics,
@@ -104,6 +105,21 @@ function computeXpOnGroundAtEnd(world: GameWorld): number {
     total += world.stores.xpGem.value[eid] ?? 0;
   }
   return total;
+}
+
+function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
+  const { xpSpawned, xpCollected, goldSpawned, goldCollected } = world.lootLedger;
+  const ratio = (collected: number, spawned: number): number =>
+    spawned > 0 ? collected / spawned : 1;
+  return {
+    xpSpawned,
+    xpCollected,
+    goldSpawned,
+    goldCollected,
+    xpRatio: ratio(xpCollected, xpSpawned),
+    goldRatio: ratio(goldCollected, goldSpawned),
+    combinedRatio: ratio(xpCollected + goldCollected, xpSpawned + goldSpawned),
+  };
 }
 
 interface EquipmentSpendTelemetry {
@@ -1298,6 +1314,7 @@ export async function runHeadless(
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
+      lootEfficiency: computeLootEfficiency(world),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1389,6 +1406,7 @@ export async function runHeadless(
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),
     xpOnGroundAtEnd,
+    lootEfficiency: computeLootEfficiency(world),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

@@ -32,6 +32,12 @@ import { listStaticInventorySlots } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId, type StatId } from '../../shared/stats.js';
 import { AIState, type AIInputProvider } from './types.js';
 import {
+  computeCollapsePanicProfile,
+  resolveFloor1AiCollapsePanicDeadlineMs,
+} from './bt-ai-provider.js';
+import { LOOT_SWEEP_PANIC_THRESHOLD } from './bt-ai-tuning.js';
+import { Gold, XpGem } from '../../core/components.js';
+import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
   getOfferedBossRewardSpellIds,
@@ -52,6 +58,65 @@ import {
   type WeaponPersona,
 } from './weapon-personas.js';
 export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
+
+/**
+ * Frames the automated stair descend may be held back so the AI can sweep the
+ * loot still lying on the floor. Bounded (60 s at 60 fps) so an unreachable
+ * pickup can never hold a run hostage: once the budget is spent the driver
+ * confirms the descend exactly as before.
+ */
+export const MAX_STAIR_DESCEND_DEFER_FRAMES = 1800;
+
+/**
+ * Per-world deferral budget consumed so far. A `WeakMap` keyed on the world
+ * keeps the counter deterministic and per-run (a fresh world starts at 0) with
+ * no module-level state leaking across runs — same pattern the headless runner
+ * uses for its Quartermaster restock latch.
+ */
+const stairDescendDeferFrames = new WeakMap<GameWorld, number>();
+
+/** True when any XP gem or gold pile is still lying on the floor. */
+function hasUncollectedLoot(world: GameWorld): boolean {
+  return query(world.ecs, [XpGem]).length > 0 || query(world.ecs, [Gold]).length > 0;
+}
+
+/**
+ * Whether the driver should hold off confirming the stair descend for one more
+ * frame so the AI can collect loot first.
+ *
+ * Descending destroys every pickup still on the floor (the scene restarts with a
+ * fresh entity world) and the Floor 1 staircase sits inside the boss room, so
+ * confirming the instant the boss dies throws away the boss drops the AI just
+ * earned. A survival-minded player picks them up first.
+ *
+ * The hold is gated exactly like the AI's own loot sweep (`buildLootSweepBehavior`):
+ * it surrenders under collapse pressure, so the descend is never delayed when
+ * time actually matters. It is additionally capped by
+ * {@link MAX_STAIR_DESCEND_DEFER_FRAMES} so unreachable loot cannot stall a run.
+ */
+function shouldDeferStairDescend(world: GameWorld, panicDeadlineMs: number | null): boolean {
+  if (!hasUncollectedLoot(world)) {
+    return false;
+  }
+  if (panicDeadlineMs !== null) {
+    const profile = computeCollapsePanicProfile({
+      elapsedMs: world.elapsedMs,
+      deadlineMs: panicDeadlineMs,
+      staircaseUnlocked: true,
+      staircaseDiscovered: false,
+      playerToStairsTravelMs: null,
+    });
+    if (profile.beeline || profile.panic > LOOT_SWEEP_PANIC_THRESHOLD) {
+      return false;
+    }
+  }
+  const spent = stairDescendDeferFrames.get(world) ?? 0;
+  if (spent >= MAX_STAIR_DESCEND_DEFER_FRAMES) {
+    return false;
+  }
+  stairDescendDeferFrames.set(world, spent + 1);
+  return true;
+}
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
 export const NPC_INTERACTION_COOLDOWN = 30; // frames
@@ -209,6 +274,12 @@ export function autoFloor1ProgressionSystem(
     return;
   }
 
+  if (
+    shouldDeferStairDescend(world, resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs))
+  ) {
+    return;
+  }
+
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const dx = playerX - objective.staircasePos.x;
@@ -229,6 +300,12 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
     floor2State.staircaseDiscovered ||
     !floor2State.staircasePos
   ) {
+    return;
+  }
+
+  // Floor 2 has no collapse deadline, so the sweep window is time-unbounded —
+  // only the frame budget bounds the hold.
+  if (shouldDeferStairDescend(world, null)) {
     return;
   }
 
