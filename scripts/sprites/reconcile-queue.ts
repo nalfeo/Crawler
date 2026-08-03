@@ -1265,11 +1265,11 @@ export async function runReconcile(
       const staged = await runGit(deps.exec, worktree, ['diff', '--cached', '--quiet']);
       if (staged.code === 0) {
         return {
-        status: 'noop',
-        promoteBranch,
-        tidiedQueue: tidyUp.queueReset,
-        tidiedBranches: tidyUp.deletedBranches,
-      };
+          status: 'noop',
+          promoteBranch,
+          tidiedQueue: tidyUp.queueReset,
+          tidiedBranches: tidyUp.deletedBranches,
+        };
       }
 
       // The authoritative set of paths this promotion will change vs main.
