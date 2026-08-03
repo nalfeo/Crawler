@@ -20,6 +20,7 @@ import {
   type BossChestRecord,
 } from '../core/systems/bossChestRewards.js';
 import { getFloor2EquipmentEconomyAccess } from '../core/floor2-equipment-flags.js';
+import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import { resolveEquipmentRewardBundle } from './floor2-reward-bundle-resolver.js';
 import type { EquipmentRewardTier } from '../shared/generated-equipment-types.js';
 import { FLOOR2_WEAPON_WAVE_A_BASE_IDS } from '../shared/data/floor2-weapon-bases.js';
@@ -80,7 +81,7 @@ export function spawnBossChestForDefeatedBoss(
   x?: number,
   y?: number,
 ): SpawnBossChestResult {
-  if (world.floor !== 2) {
+  if (!getWorldFloorBehavior(world).bossChests) {
     return { created: false, reason: 'notFloor2' };
   }
   const chestId = createBossChestId(familyId);

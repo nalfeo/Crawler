@@ -123,7 +123,8 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
-import { floor1EnemyPack, floor2EnemyPack } from '../shared/enemy-packs.js';
+import { floor1EnemyPack, getFloorEnemyPack, type EnemyPackDef } from '../shared/enemy-packs.js';
+import { getWorldFloorManifest } from '../core/floor-behavior.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
@@ -141,7 +142,6 @@ const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
 const FLOOR_1_VIEWPORT_WIDTH_FT = pxToFt(GAME.WIDTH / FLOOR_1_CAMERA_ZOOM);
 const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT = FLOOR_1_VIEWPORT_WIDTH_FT * 2;
 const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
-const FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT = floor1EnemyPack.spawnRadiusMin;
 const UNBOUNDED_SPAWN_DISTANCE_SQ = Number.POSITIVE_INFINITY;
 /** Tiles with ≤ 2 cardinal passable neighbors are treated as narrow chokepoints. */
 const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
@@ -237,12 +237,21 @@ export function sealRoomPerimeterOpenings(
   sealRoomPerimeter(floorMap, room);
 }
 
+/**
+ * Ambient enemy pack for the world's current floor, resolved from the floor
+ * manifest (`enemyPackId`) rather than a hardcoded floor number.
+ */
+function getWorldAmbientEnemyPack(world: GameWorld): EnemyPackDef {
+  const packId = getWorldFloorManifest(world)?.enemyPackId;
+  return (packId ? getFloorEnemyPack(packId) : undefined) ?? floor1EnemyPack;
+}
+
 export function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
   const trackedAmbient = getAmbientEnemyArchetypes(world);
   if (!trackedAmbient) {
     return;
   }
-  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
+  const pack = getWorldAmbientEnemyPack(world);
   const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
   for (const eid of [...trackedAmbient.keys()]) {
     if (!entityExists(world.ecs, eid)) {
@@ -2903,9 +2912,8 @@ export function resolveAmbientSpawnPoint(
   playerX: number,
   playerY: number,
 ): { x: number; y: number } | null {
-  const pack = world.floor === 2 ? floor2EnemyPack : floor1EnemyPack;
-  const minDistanceFt =
-    world.floor === 2 ? pack.spawnRadiusMin : FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT;
+  const pack = getWorldAmbientEnemyPack(world);
+  const minDistanceFt = pack.spawnRadiusMin;
   const minDistanceSq = minDistanceFt * minDistanceFt;
   const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
   const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusFt, pack);

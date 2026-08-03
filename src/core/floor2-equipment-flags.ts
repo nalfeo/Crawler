@@ -1,4 +1,5 @@
 import type { GameWorld } from './world.js';
+import { getWorldFloorBehavior } from './floor-behavior.js';
 
 export type Floor2EquipmentEconomyAccess =
   | { readonly kind: 'enabled' }
@@ -23,7 +24,7 @@ const FLOOR2_EQUIPMENT_REWARDS_WRONG_FLOOR_MESSAGE =
  * Fail closed on any other floor regardless of flag values.
  */
 export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
-  if (world.floor !== 2) {
+  if (!getWorldFloorBehavior(world).equipmentEconomy) {
     return {
       kind: 'disabled',
       message: FLOOR2_EQUIPMENT_ECONOMY_WRONG_FLOOR_MESSAGE,
@@ -56,7 +57,7 @@ export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2Equipme
  * Floor 1 equipment-free.
  */
 export function getFloor2EquipmentRewardsAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
-  if (world.floor !== 2) {
+  if (!getWorldFloorBehavior(world).equipmentEconomy) {
     return {
       kind: 'disabled',
       message: FLOOR2_EQUIPMENT_REWARDS_WRONG_FLOOR_MESSAGE,

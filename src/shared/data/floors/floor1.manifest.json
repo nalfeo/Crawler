@@ -35,6 +35,14 @@
   "camera": {
     "zoom": 2.0
   },
+  "behavior": {
+    "spawnRoomIsSafe": false,
+    "safeRoomWeaponImmunity": true,
+    "safeRoomDoorsAutoClose": true,
+    "lineOfSightAggro": false,
+    "equipmentEconomy": false,
+    "bossChests": false
+  },
   "lighting": {
     "ambient": 0.2
   },
