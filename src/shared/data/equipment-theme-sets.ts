@@ -62,6 +62,14 @@ export interface EquipmentThemeSet {
  * Each row's `stableIds` is taken from the wave's own catalog export rather
  * than re-listed here, so a change to that catalog cannot drift from the art
  * wiring.
+ *
+ * **Overlap policy: array order is priority.** A piece may legitimately appear
+ * in more than one theme (a slug can be re-arted by a later wave), and one item
+ * can only render one sprite, so a winner must be picked. Earlier rows win,
+ * because `themedArtConceptsFor` returns concepts in registry order and the
+ * resolver breaks ties on `conceptOrder`. This is deliberate and deterministic:
+ * to promote a newer wave over an older one for a shared piece, move its row
+ * UP, do not rely on insertion recency.
  */
 export const EQUIPMENT_THEME_SETS: readonly EquipmentThemeSet[] = Object.freeze([
   Object.freeze({

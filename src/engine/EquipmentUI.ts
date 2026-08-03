@@ -543,8 +543,20 @@ export function createEquipmentUI(
     return fallback;
   }
 
+  /**
+   * Icon for an exact generated-equipment instance. Prefers the instance's
+   * frozen `artKey` texture when Phaser has it, else resolves through the shared
+   * resolver.
+   *
+   * The fallback resolves and seeds by `baseId`, NOT by `artKey`: the variant
+   * seed is `hashStringToSeed(id) ^ worldSeed`, so seeding by `artKey` here
+   * while `InventoryUI` and `generated-equipment-icon.ts` seed by `baseId`
+   * would show the same item as two different variants across panels in one
+   * run. `baseId` is the canonical identity everywhere.
+   */
   function createGeneratedItemIcon(
     artKey: string,
+    baseId: string,
     displayName: string,
     x: number,
     y: number,
@@ -556,7 +568,7 @@ export function createEquipmentUI(
       image.setScale(fitScaleForBox(image.width, image.height, boxSize));
       return image;
     }
-    return createItemIcon(artKey, { name: displayName }, x, y, boxSize);
+    return createItemIcon(baseId, { name: displayName }, x, y, boxSize);
   }
 
   function createSlotPlaceholder(
@@ -1056,6 +1068,7 @@ export function createEquipmentUI(
       const iconObject = generatedInstance
         ? createGeneratedItemIcon(
             generatedInstance.frozen.artKey,
+            generatedInstance.baseId,
             generatedInstance.frozen.displayName,
             cx,
             cy,
@@ -1407,6 +1420,7 @@ export function createEquipmentUI(
       const icon = generated
         ? createGeneratedItemIcon(
             generated.frozen.artKey,
+            generated.baseId,
             generated.frozen.displayName,
             cx,
             cy,

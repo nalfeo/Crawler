@@ -87,11 +87,16 @@ describe('evaluateCoverage', () => {
     expect(result.closedGaps).toEqual(['a']);
   });
 
-  it('reports baseline ids that are no longer wired as stale, not as failures', () => {
+  it('fails when a baseline id silently leaves the wired ID space', () => {
+    // Otherwise the ratchet could be laundered by shrinking the enumerated ID
+    // space rather than by shipping art: dropping an un-arted piece out of the
+    // reward pool would read exactly like closing the gap.
     const result = evaluateCoverage([row('a', 'real')], { gaps: ['a', 'deleted-piece'] });
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
     expect(result.staleBaselineIds).toEqual(['deleted-piece']);
     expect(result.closedGaps).toEqual(['a']);
+    // It is NOT a new gap — the distinction matters for the operator message.
+    expect(result.newGaps).toEqual([]);
   });
 
   it('emits gaps in sorted order regardless of row order', () => {

@@ -41,9 +41,24 @@ const TIER_BARE_REAL = 0;
 const TIER_VERSIONED_REAL = 1;
 const TIER_PLACEHOLDER = 2;
 
+/**
+ * Provenance ranks, applied BEFORE quality tier; lower is preferred.
+ *
+ * Tier alone is not enough once themed art exists: a themed BARE entry would
+ * outrank the item's OWN versioned art, silently replacing item-specific art
+ * with a theme's generic piece. Ranking provenance first encodes the intended
+ * precedence exactly — own real art, then themed real art, then any
+ * placeholder — and keeps tier as the tie-break inside a rank.
+ */
+const RANK_OWN_REAL = 0;
+const RANK_THEMED_REAL = 1;
+const RANK_PLACEHOLDER = 2;
+
 /** A manifest entry paired with the deterministic keys used to rank item art. */
 interface ScoredCandidate {
   readonly entry: GeneratedSpriteEntry;
+  /** Provenance rank (own real / themed real / placeholder). Compared first. */
+  readonly rank: number;
   readonly tier: number;
   /** Parsed `-vN` version (0 when the briefId is bare). Lower wins within a tier. */
   readonly version: number;
@@ -143,14 +158,28 @@ function getFloor2SlugToRuntimeKey(): ReadonlyMap<string, string> {
  *     `classic-fantasy-basic-leather-wooden-bow`), from the shared theme-set
  *     registry. Themed art waves key their manifest entries by theme, not by
  *     item, so without this a fully approved themed asset is invisible to the
- *     resolver. Appended LAST so a themed match loses every tie to the item's
- *     own art, while still outranking a placeholder on tier — which is the
- *     precedence we want.
+ *     resolver. Appended LAST, and scored at `RANK_THEMED_REAL`, so the item's
+ *     OWN real art always wins (at any tier) while themed real art still beats
+ *     any placeholder — see the provenance ranks in `computeItemSprite`.
  *
  * Duplicates are suppressed so slug and stableId both resolving the same key
  * don't produce two identical concepts.
  */
 export function itemSpriteConcepts(itemId: string): readonly string[] {
+  return itemSpriteConceptPlan(itemId).concepts;
+}
+
+/**
+ * `itemSpriteConcepts` plus the index at which themed concepts begin, so the
+ * resolver can tell an item's OWN art from THEMED art without re-deriving the
+ * theme registry. `themedFromIndex === concepts.length` means "no themed art".
+ */
+interface ItemSpriteConceptPlan {
+  readonly concepts: readonly string[];
+  readonly themedFromIndex: number;
+}
+
+function itemSpriteConceptPlan(itemId: string): ItemSpriteConceptPlan {
   const weaponId = getEquipmentDefForItem(itemId)?.weaponId;
   const base: readonly string[] =
     weaponId !== undefined && weaponId !== itemId ? [itemId, weaponId] : [itemId];
@@ -190,9 +219,12 @@ export function itemSpriteConcepts(itemId: string): readonly string[] {
   }
 
   if (extra.length === 0 && themed.length === 0) {
-    return base;
+    return { concepts: base, themedFromIndex: base.length };
   }
-  return [...base, ...extra, ...themed];
+  return {
+    concepts: [...base, ...extra, ...themed],
+    themedFromIndex: base.length + extra.length,
+  };
 }
 
 /**
@@ -263,12 +295,19 @@ export function canonicalItemBriefId(briefId: string, identity: ReadonlySet<stri
 }
 
 /**
- * Total order within a tier: real anchor first, then lower version, then item
- * id over weaponId, then the registry's own variant order (variantIndex,
+ * Total order within a **provenance rank** — the caller filters to the best
+ * `rank`, NOT the best `tier`, so candidates here may differ in tier and the
+ * tier comparison below is load-bearing rather than dead.
+ *
+ * Order: better quality tier first, then real anchor, then lower version, then
+ * item id over weaponId, then the registry's own variant order (variantIndex,
  * textureKey) so the leading equal-group is well-defined and the seeded pick is
  * independent of manifest iteration order.
  */
 function compareCandidates(a: ScoredCandidate, b: ScoredCandidate): number {
+  if (a.tier !== b.tier) {
+    return a.tier - b.tier;
+  }
   const anchorA = a.entry.anchorIsDefault ? 1 : 0;
   const anchorB = b.entry.anchorIsDefault ? 1 : 0;
   if (anchorA !== anchorB) {
@@ -337,7 +376,7 @@ function computeItemSprite(
   itemId: string,
   seed: number,
 ): GeneratedSpriteEntry | null {
-  const concepts = itemSpriteConcepts(itemId);
+  const { concepts, themedFromIndex } = itemSpriteConceptPlan(itemId);
   const scored: ScoredCandidate[] = [];
   for (const entry of registry.entries()) {
     for (let conceptOrder = 0; conceptOrder < concepts.length; conceptOrder++) {
@@ -345,12 +384,18 @@ function computeItemSprite(
       if (match === null) {
         continue;
       }
-      const tier = isPlaceholderEntry(entry)
+      const placeholder = isPlaceholderEntry(entry);
+      const tier = placeholder
         ? TIER_PLACEHOLDER
         : match.bare
           ? TIER_BARE_REAL
           : TIER_VERSIONED_REAL;
-      scored.push({ entry, tier, version: match.version, conceptOrder });
+      const rank = placeholder
+        ? RANK_PLACEHOLDER
+        : conceptOrder >= themedFromIndex
+          ? RANK_THEMED_REAL
+          : RANK_OWN_REAL;
+      scored.push({ entry, rank, tier, version: match.version, conceptOrder });
       break; // an entry counts once, against its best (earliest) concept
     }
   }
@@ -358,8 +403,8 @@ function computeItemSprite(
     return null;
   }
 
-  const bestTier = scored.reduce((min, s) => (s.tier < min ? s.tier : min), TIER_PLACEHOLDER);
-  const tierCandidates = scored.filter((s) => s.tier === bestTier).sort(compareCandidates);
+  const bestRank = scored.reduce((min, s) => (s.rank < min ? s.rank : min), RANK_PLACEHOLDER);
+  const tierCandidates = scored.filter((s) => s.rank === bestRank).sort(compareCandidates);
 
   // The leading group that is equally good on every deterministic key holds
   // interchangeable variants — seed-pick among them so the choice varies per
@@ -367,6 +412,7 @@ function computeItemSprite(
   const head = tierCandidates[0]!;
   const equallyGood = tierCandidates.filter(
     (s) =>
+      s.tier === head.tier &&
       s.entry.anchorIsDefault === head.entry.anchorIsDefault &&
       s.version === head.version &&
       s.conceptOrder === head.conceptOrder,

@@ -109,9 +109,26 @@ function collectRows(): EquipmentArtRow[] {
   // A stable ID can appear in both spaces; the Floor 2 pool wins the `source`
   // label because that is the space that governs whether it can be granted.
   const ids = new Map<string, EquipmentArtRow['source']>();
+  const generatedOnly: string[] = [];
   for (const itemId of getEquippableItemIds()) {
-    if (getItemById(itemId) === undefined) continue; // generated-only: covered by the pool
+    if (getItemById(itemId) === undefined) {
+      // Generated-only id: it has no catalog ItemDef, so it can only be granted
+      // through the Floor 2 reward pool. Verified below rather than assumed —
+      // an unverified skip would let a piece drop out of the gated ID space
+      // entirely, which is the one way a ratchet can be quietly laundered.
+      generatedOnly.push(itemId);
+      continue;
+    }
     ids.set(itemId, 'catalog');
+  }
+  const poolIds = new Set<string>(FLOOR2_REWARD_POOL_STABLE_IDS);
+  const ungated = generatedOnly.filter((id) => !poolIds.has(id));
+  if (ungated.length > 0) {
+    throw new Error(
+      `Equippable id(s) have no catalog ItemDef and are not in FLOOR2_REWARD_POOL_STABLE_IDS, ` +
+        `so they would escape this gate entirely: ${ungated.join(', ')}. ` +
+        `Add them to a gated ID space rather than letting them go unchecked.`,
+    );
   }
   for (const stableId of FLOOR2_REWARD_POOL_STABLE_IDS) {
     ids.set(stableId, 'floor2-pool');

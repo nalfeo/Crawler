@@ -85,7 +85,13 @@ export interface EquipmentArtCoverageResult {
   readonly newGaps: readonly string[];
   /** Baseline ids that now resolve real art — progress, safe to drop. */
   readonly closedGaps: readonly string[];
-  /** Baseline ids that no longer exist in the wired ID space at all. */
+  /**
+   * Baseline ids that no longer exist in the wired ID space at all. These FAIL
+   * the check until explicitly acknowledged with `--update`: an id silently
+   * leaving the enumerated space is indistinguishable from art being added, so
+   * treating it as success would let the ratchet be laundered by shrinking the
+   * gated ID space instead of shipping art.
+   */
   readonly staleBaselineIds: readonly string[];
   readonly counts: {
     readonly total: number;
@@ -147,7 +153,7 @@ export function evaluateCoverage(
     closedGaps,
     staleBaselineIds,
     counts: { total: rows.length, real, placeholder, none },
-    ok: newGaps.length === 0,
+    ok: newGaps.length === 0 && staleBaselineIds.length === 0,
   };
 }
 
@@ -191,9 +197,10 @@ export function formatReport(result: EquipmentArtCoverageResult): string {
 
   if (result.staleBaselineIds.length > 0) {
     lines.push('');
-    lines.push(`ℹ️  ${result.staleBaselineIds.length} baseline id(s) no longer wired:`);
+    lines.push(`❌ ${result.staleBaselineIds.length} baseline id(s) no longer wired:`);
     for (const id of result.staleBaselineIds) lines.push(`   - ${id}`);
-    lines.push('   Run with --update to drop them.');
+    lines.push('   An id must not silently leave the gated space. If the piece was');
+    lines.push('   genuinely removed from the game, acknowledge it with --update.');
   }
 
   if (result.newGaps.length > 0) {

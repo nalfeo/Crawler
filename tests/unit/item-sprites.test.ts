@@ -368,9 +368,6 @@ describe('themed equipment art (theme-set registry)', () => {
   });
 
   it("prefers the item's own bare-real art over themed art", () => {
-    // Tier ordering is global: a bare-real item-id match (TIER_BARE_REAL) must
-    // outrank a versioned themed match (TIER_VERSIONED_REAL) regardless of
-    // concept order.
     const registry = makeRegistry([
       [
         'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
@@ -380,6 +377,39 @@ describe('themed equipment art (theme-set registry)', () => {
     ]);
     const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
     expect(result?.briefId).toBe('wooden-bow');
+  });
+
+  it("prefers the item's own VERSIONED art over BARE themed art", () => {
+    // Provenance must be ranked BEFORE quality tier. If tier came first, a bare
+    // themed entry (TIER_BARE_REAL) would outrank the item's own versioned art
+    // (TIER_VERSIONED_REAL) and a theme's generic piece would silently replace
+    // item-specific art.
+    const registry = makeRegistry([
+      [
+        'classic-fantasy-basic-leather-wooden-bow-var-0',
+        'classic-fantasy-basic-leather-wooden-bow',
+      ],
+      ['wooden-bow-v3-var-0', 'wooden-bow-v3'],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('wooden-bow-v3');
+  });
+
+  it("prefers themed real art over the item's own placeholder", () => {
+    // The other side of the same rank: a placeholder is never coverage, so
+    // themed real art must win even though the placeholder matches an earlier
+    // concept.
+    const registry = makeRegistry([
+      placeholder('wooden-bow-placeholder', 'wooden-bow', {
+        assetPath: 'generated/wooden-bow-placeholder.png',
+      }),
+      [
+        'classic-fantasy-basic-leather-wooden-bow-var-0',
+        'classic-fantasy-basic-leather-wooden-bow',
+      ],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow');
   });
 
   it('resolves the same themed variant for a given seed across repeated calls and registries', () => {
