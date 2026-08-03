@@ -100,8 +100,8 @@ slime relocation as the sole cause.
 ## Regression gate
 
 `tests/game/floor1-quest-tour-length.test.ts` — deterministic, no LLM judge. Measures
-the actual door-aware BFS tour over a 24-seed prefix and asserts median ≤ 1000 tiles
-and max ≤ 1800 tiles, plus a dedicated bound on the doubled fetch round trip (≤ 1000
+the actual door-aware BFS tour over a 24-seed prefix and asserts median ≤ 1250 tiles
+and max ≤ 1900 tiles, plus a dedicated bound on the doubled fetch round trip (≤ 1000
 tiles). A future placement change that re-inflates the route fails here instead of
 silently eating the win-rate margin.
 

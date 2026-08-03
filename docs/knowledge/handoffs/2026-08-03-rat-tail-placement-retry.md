@@ -49,8 +49,9 @@ for walking distance, which compounded the spread.
    (deterministic). The rule **retries down the ranked list**: each candidate is accepted
    only if its resolved tile is passable and spawn-reachable with the locked doors shut;
    a rejection falls through to the next-best room.
-5. The old hop-band pick survives solely as the degenerate-map fallback when no candidate
-   is reachable at all.
+5. Final placement is recomputed after the welcome carve / lock-aware connector / special-room
+   sealing settle the real geometry. If no lock-aware reachable candidate exists at that point,
+   Floor 1 generation now fails explicitly instead of restoring the old unvalidated hop-band path.
 
 ## Result (locked-door-aware BFS from the merchant's actual tile)
 

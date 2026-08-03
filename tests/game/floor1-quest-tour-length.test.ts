@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createGameWorld } from '../../src/core/world.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { buildInitiallyLockedDoorTileSet } from '../../src/game/floorScenario.js';
-import { generatedEquipmentRunKeyFromSeed } from '../../src/shared/generated-equipment-types.js';
 import { TileFlags } from '../../src/shared/map-types.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
+import { createTestWorld } from '../helpers/world-factory.js';
 
 /**
  * Deterministic guard on Floor 1 quest travel.
@@ -75,10 +74,7 @@ function tileDistance(floorMap: FloorMap, a: Pt, b: Pt): number {
  * to the shop → slime-rat room → boss staircase.
  */
 function questTourTiles(seed: number): number {
-  const world = createGameWorld({
-    seed,
-    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(seed),
-  });
+  const world = createTestWorld({ seed });
   const playerEid = spawnPlayer(world, 400, 400);
   getScenarioDefinition('floor1').configureWorld(world, playerEid);
   const floorMap = world.floorMap;
@@ -161,10 +157,7 @@ interface FetchPlacement {
 }
 
 function fetchPlacement(seed: number): FetchPlacement {
-  const world = createGameWorld({
-    seed,
-    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(seed),
-  });
+  const world = createTestWorld({ seed });
   const playerEid = spawnPlayer(world, 400, 400);
   getScenarioDefinition('floor1').configureWorld(world, playerEid);
   const floorMap = world.floorMap!;
@@ -256,10 +249,7 @@ describe('Floor 1 quest tour length', () => {
   it('does not send the player on a map-diameter round trip for the fetch item', () => {
     // The shop errand is walked twice, so it is the leg most worth bounding.
     for (const seed of SEEDS.slice(0, 12)) {
-      const world = createGameWorld({
-        seed,
-        generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(seed),
-      });
+      const world = createTestWorld({ seed });
       const playerEid = spawnPlayer(world, 400, 400);
       getScenarioDefinition('floor1').configureWorld(world, playerEid);
       const floorMap = world.floorMap!;
