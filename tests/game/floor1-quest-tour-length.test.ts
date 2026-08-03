@@ -203,6 +203,7 @@ const MAX_TOUR_TILES = 1900;
 describe('Floor 1 quest tour length', () => {
   it(
     'keeps the required quest tour bounded across a seed prefix',
+    { timeout: COVERAGE_TIMEOUT_MS },
     () => {
       const tours = SEEDS.map((seed) => ({ seed, tiles: questTourTiles(seed) }));
       for (const { seed, tiles } of tours) {
@@ -214,11 +215,11 @@ describe('Floor 1 quest tour length', () => {
       const median = sorted[Math.floor(sorted.length / 2)]!;
       expect(median).toBeLessThanOrEqual(MAX_MEDIAN_TOUR_TILES);
     },
-    COVERAGE_TIMEOUT_MS,
   );
 
   it(
     'places the rat tail in a room that is actually reachable when the errand is issued',
+    { timeout: COVERAGE_TIMEOUT_MS },
     () => {
       // The boss-staircase and slime-rat rooms start locked. An item behind either
       // one makes the merchant errand unsatisfiable and the AI route planner
@@ -229,11 +230,11 @@ describe('Floor 1 quest tour length', () => {
         expect(distance, `seed ${seed}: rat tail unreachable from the merchant`).toBeGreaterThan(0);
       }
     },
-    COVERAGE_TIMEOUT_MS,
   );
 
   it(
     'places the rat tail about two thirds of the way to the farthest reachable room',
+    { timeout: COVERAGE_TIMEOUT_MS },
     () => {
       // Measured over seeds 1–100: min 0.36, p25 0.65, median 0.67, p75 0.68,
       // max 0.85 of the longest merchant-anchored walk on the floor. The band is
@@ -260,7 +261,6 @@ describe('Floor 1 quest tour length', () => {
       expect(median).toBeGreaterThan(0.6);
       expect(median).toBeLessThan(0.75);
     },
-    COVERAGE_TIMEOUT_MS,
   );
 
   it(
