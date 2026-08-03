@@ -24,18 +24,18 @@ git diff --no-renames --name-only --diff-filter=AM <main> <source> -- <art allow
 
 That is a **"differs from `main`"** test, not a **"newer than `main`"** test, and
 **nothing ever retires a source**. When two sources disagree about a path,
-whichever source currently *agrees* with `main` drops out of its own `AM` set, so
+whichever source currently _agrees_ with `main` drops out of its own `AM` set, so
 the other source always wins the overlay — and `main` flips between them every
 hour, forever.
 
 Live evidence gathered before the fix:
 
-| Signal                                                            | Value                                                 |
-| ----------------------------------------------------------------- | ----------------------------------------------------- |
-| Reconciler runs, all reporting `success`                          | 104 — the workflow was running perfectly, doing the wrong thing |
-| Consecutive promote PRs #2704 / #2706 (1 h apart)                 | **identical 100-file set**, all `modified`, with exactly **inverse** patches |
-| Orphaned `assets/checkin-*` branches re-harvested every cycle     | **44**, oldest `assets/checkin-20260708-024741-b7c872` |
-| Current art-surface delta                                         | 155 paths (137 `public/assets/generated/`, 18 `briefs/`) |
+| Signal                                                        | Value                                                                        |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Reconciler runs, all reporting `success`                      | 104 — the workflow was running perfectly, doing the wrong thing              |
+| Consecutive promote PRs #2704 / #2706 (1 h apart)             | **identical 100-file set**, all `modified`, with exactly **inverse** patches |
+| Orphaned `assets/checkin-*` branches re-harvested every cycle | **44**, oldest `assets/checkin-20260708-024741-b7c872`                       |
+| Current art-surface delta                                     | 155 paths (137 `public/assets/generated/`, 18 `briefs/`)                     |
 
 Traced to a single path, `public/assets/generated/entries/gnome-boss-var-7.json`:
 
@@ -92,7 +92,7 @@ Four further guards came out of code review (two rounds), all covered by
 regression tests that were **mutation-checked** (each test fails when its guard
 is removed):
 
-3. **Revert safety.** "The promotion merged" is *not* proof the art is still on
+3. **Revert safety.** "The promotion merged" is _not_ proof the art is still on
    `main` — a later revert puts the bytes back only on the source branches, and
    retiring them then would destroy the last copy. Before either destructive
    step, the source's art-surface delta is **re-derived against the current
@@ -103,7 +103,7 @@ is removed):
    a CI-recovery repair commit above the promotion could name any branch and have
    it deleted, and a >20-commit recovery stack would push the scan into inherited
    `main` history where any commit message could be read as a delete instruction.
-   A subject match alone is *not* provenance — a repair commit can reuse the
+   A subject match alone is _not_ provenance — a repair commit can reuse the
    subject — so ambiguity fails closed.
 5. **One base snapshot.** Every proof is derived against, and every push gated
    on, the single base tip captured at the start of the tidy-up. The base is
@@ -128,15 +128,15 @@ is a headless script with no visual surface.
 **real** `runReconcile` against a real temp git origin:
 
 - **Before:** cycle 1 opens a promotion PR (`status: 'pr-open'`); the orphan
-  branch and queue both survive, so cycle 2 opened *another* PR with the same
+  branch and queue both survive, so cycle 2 opened _another_ PR with the same
   files — forever.
-- **After:** cycle 1 opens the PR *and records the source trailers*; once it
+- **After:** cycle 1 opens the PR _and records the source trailers_; once it
   merges, cycle 2 returns `status: 'noop'` with `tidiedQueue: true` and
   `tidiedBranches: ['assets/checkin-converge-1']`, and **zero** open PRs remain.
 
 Plus: real-git proof that the leased **delete** actually deletes; a CAS-miss test
 proving art that landed after the harvest is never discarded; a **revert** test;
-a **forged-trailer** test (the forgery uses the *exact* promotion subject, so it
+a **forged-trailer** test (the forgery uses the _exact_ promotion subject, so it
 proves the uniqueness rule and not just a string compare); a **base-race** test
 that reverts `main` mid-cycle; fork-PR rejection; head-OID mismatch rejection;
 gh-failure fail-closed. The real-git harness squash-merges (matching repo merge
