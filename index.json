@@ -11,6 +11,17 @@
     "path": "by-sha/e8126980875ab81b7b39ba725086defe90c4316a.json"
   },
   {
+    "commit": "b1ec4b5c7a5ee699396a927b0a9e1a248ab4dc27",
+    "commitDate": "2026-08-03T04:24:52Z",
+    "commitSubject": "fix(ci-recovery): reconciler auto-strips closing keywords that propagate human-approval-required (#2711)",
+    "capturedAt": "2026-08-03T05:30:18.697Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30784804776",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/b1ec4b5c7a5ee699396a927b0a9e1a248ab4dc27.json"
+  },
+  {
     "commit": "8e93aea5f30eff0abdfd68a94014d19289288c00",
     "commitDate": "2026-08-03T00:10:50Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2708)",
