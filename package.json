@@ -44,6 +44,7 @@
     "lab": "vite --mode lab",
     "devtools": "vite --mode devtools",
     "ai:headless": "tsx src/game/ai/headless-runner-cli.ts",
+    "ai:pickup-efficiency": "tsx scripts/agent/perf/pickup-efficiency-sweep.ts",
     "ai:hill-climb": "tsx scripts/agent/perf/hill-climb.ts",
     "ai:weapon-sweep": "tsx scripts/agent/perf/weapon-sweep.ts",
     "ai:winrate-sweep": "tsx scripts/agent/perf/winrate-sweep.ts",

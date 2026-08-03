@@ -524,6 +524,15 @@ export interface RunStats {
    * test fixtures construct RunStats manually.
    */
   xpOnGroundAtEnd?: number;
+  /**
+   * Total gold-pile value left on the ground when the run ended. Mirrors
+   * {@link RunStats.xpOnGroundAtEnd} so gold collection efficiency is measurable
+   * the same way: `totalGold / (totalGold + goldOnGroundAtEnd)`. Like uncollected
+   * XP, these piles are destroyed by the floor transition (scene restart with a
+   * fresh world). Optional because pre-existing test fixtures construct RunStats
+   * manually; `runHeadless` always sets it.
+   */
+  goldOnGroundAtEnd?: number;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
 }

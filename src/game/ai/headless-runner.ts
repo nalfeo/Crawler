@@ -11,6 +11,7 @@ import { hasComponent, query } from 'bitecs';
 import {
   Player,
   Health,
+  Gold,
   XpGem,
   createGameWorld,
   spawnPlayer,
@@ -102,6 +103,21 @@ function computeXpOnGroundAtEnd(world: GameWorld): number {
   for (const eid of query(world.ecs, [XpGem])) {
     if (eid === undefined) continue;
     total += world.stores.xpGem.value[eid] ?? 0;
+  }
+  return total;
+}
+
+/**
+ * Sums the value of every gold pile still lying on the ground. Mirrors
+ * {@link computeXpOnGroundAtEnd} so gold pickup efficiency is measurable with
+ * the same `collected / (collected + onGround)` formula. Deterministic: a pure
+ * read of the ECS store, no randomness and no wall-clock.
+ */
+function computeGoldOnGroundAtEnd(world: GameWorld): number {
+  let total = 0;
+  for (const eid of query(world.ecs, [Gold])) {
+    if (eid === undefined) continue;
+    total += world.stores.gold.value[eid] ?? 0;
   }
   return total;
 }
@@ -1298,6 +1314,7 @@ export async function runHeadless(
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
+      goldOnGroundAtEnd: computeGoldOnGroundAtEnd(world),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1326,6 +1343,8 @@ export async function runHeadless(
   // Combined with `totalXp` and `runStartXp` this lets callers compute
   // floor-local collection efficiency.
   const xpOnGroundAtEnd = computeXpOnGroundAtEnd(world);
+  // Same rollup for uncollected gold piles (see computeGoldOnGroundAtEnd).
+  const goldOnGroundAtEnd = computeGoldOnGroundAtEnd(world);
 
   const stats: RunStats = {
     totalFrames: frameCount,
@@ -1389,6 +1408,7 @@ export async function runHeadless(
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
       : {}),
     xpOnGroundAtEnd,
+    goldOnGroundAtEnd,
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
