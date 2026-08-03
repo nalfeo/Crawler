@@ -3,6 +3,7 @@ import { AreaDamage, Enemy, Health, Owner, Player, Position, Team } from '../com
 import { applyDamage } from '../apply-damage.js';
 import { readDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
+import { getWorldFloorBehavior } from '../floor-behavior.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
@@ -52,7 +53,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
     const areaTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? -1) : -1;
     if (
-      world.floor === 1 &&
+      getWorldFloorBehavior(world).safeRoomWeaponImmunity &&
       ownerEid >= 0 &&
       hasComponent(world.ecs, ownerEid, Player) &&
       isEntityInSafeSpace(world, ownerEid)
