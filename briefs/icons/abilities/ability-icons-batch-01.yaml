@@ -1,54 +1,36 @@
 name: 'ability-icons-batch-01'
 description: >-
-  Icon batch for 16 abilities missing art (batch 01).
+  Ability icon batch 01a: pixel-art symbols for ACTIVE and core SPELL abilities (part 1 of 4).
   Pixel-art symbols on transparent background; frames are composited separately.
 type: icon
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells:
+      - [1, 0]
+      - [1, 1]
+      - [1, 2]
+      - [1, 3]
+      - [2, 0]
+      - [2, 1]
+      - [2, 2]
+      - [2, 3]
+      - [3, 0]
+      - [3, 1]
+      - [3, 2]
+      - [3, 3]
+    nativeCanvas: 1024
 iconBatch:
   - id: ability-icon-battle-focus
     concept: 'Battle Focus'
-    description: 'ACTIVE ability — Land enough hits to convert momentum into damage.'
+    description: 'ACTIVE ability — Land enough hits to convert momentum into damage. Symbol: a rising fist or crossed swords with a momentum arc, bold and readable.'
   - id: ability-icon-veteran-instinct
     concept: 'Veteran Instinct'
-    description: 'PASSIVE ability — Constant battlefield awareness improves your armor and pickup range.'
+    description: 'PASSIVE ability — Constant battlefield awareness improves your armor and pickup range. Symbol: an open eye over a shield, or a radar-sweep arc, vigilant and solid.'
   - id: ability-icon-magic-missile
     concept: 'Magic Missile'
-    description: 'SPELL ability — Launch a precise arcane bolt into the nearest enemy.'
+    description: 'SPELL ability — Launch a precise arcane bolt into the nearest enemy. Symbol: a glowing arcane projectile or pointed bolt with a magical trail.'
   - id: ability-icon-frost-nova
     concept: 'Frost Nova'
-    description: 'SPELL ability — Burst freezing magic around you, damaging and slowing nearby foes.'
-  - id: ability-icon-bless
-    concept: 'Bless'
-    description: 'SPELL ability — Call down a brief blessing that sharpens your strikes and footwork.'
-  - id: ability-icon-stoneskin
-    concept: 'Stoneskin'
-    description: 'SPELL ability — Harden your flesh into living granite for a few desperate moments.'
-  - id: ability-icon-curse
-    concept: 'Curse'
-    description: 'SPELL ability — Blight a cluster of enemies, dragging their movement into a crawl.'
-  - id: ability-icon-vampiric-touch
-    concept: 'Vampiric Touch'
-    description: 'SPELL ability — Rip vitality from the nearest foe and pour it back into yourself.'
-  - id: ability-icon-haste
-    concept: 'Haste'
-    description: 'SPELL ability — Flood your limbs with quicksilver speed after a strong damage spike.'
-  - id: ability-icon-combat-flow
-    concept: 'Combat Flow'
-    description: 'PASSIVE ability — Sustained combat discipline yields permanent damage and attack-speed improvements.'
-  - id: ability-icon-stalwart-resolve
-    concept: 'Stalwart Resolve'
-    description: 'PASSIVE ability — Battle scars calcify into permanent armor and max HP.'
-  - id: ability-icon-ever-vigilant
-    concept: 'Ever Vigilant'
-    description: 'PASSIVE ability — Constant evasion sharpens reflexes into a permanent speed advantage.'
-  - id: ability-icon-blade-mastery
-    concept: 'Blade Mastery'
-    description: 'PASSIVE ability — Slashing technique reaches its peak — bonus damage and accuracy while a slashing weapon is equipped.'
-  - id: ability-icon-vital-targeting
-    concept: 'Vital Targeting'
-    description: 'PASSIVE ability — Expert stabbing technique exploits gaps in armor — bonus damage while a stabbing weapon is equipped.'
-  - id: ability-icon-brute-force
-    concept: 'Brute Force'
-    description: 'PASSIVE ability — Relentless smashing builds momentum — bonus damage and armor while a smashing weapon is equipped.'
-  - id: ability-icon-marksmans-eye
-    concept: "Marksman's Eye"
-    description: 'PASSIVE ability — Long hours at range train your aim — bonus accuracy while a ranged weapon is equipped.'
+    description: 'SPELL ability — Burst freezing magic around you, damaging and slowing nearby foes. Symbol: a snowflake burst or radial ice-spike explosion, cold blue.'
