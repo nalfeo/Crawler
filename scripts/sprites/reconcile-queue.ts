@@ -840,13 +840,17 @@ export async function findLandedPromotion(
     BASE_SCRATCH_REF,
   ]);
   if (log.code !== 0) return null;
-  for (const commitMessage of log.stdout.split('\0')) {
-    if (commitMessage.trimStart().split('\n')[0]?.trim() !== PROMOTION_SUBJECT) continue;
-    const sources = parseSourceTrailers(commitMessage);
-    if (sources.queueSha === null && sources.orphans.length === 0) continue;
-    return { prNumber: landed.number, headSha: landed.headRefOid, sources };
-  }
-  return null;
+  // A subject alone is not provenance: a repair commit could simply reuse it and
+  // shadow the genuine promotion. A promotion PR contains EXACTLY ONE commit
+  // with this subject (the reconciler creates one per branch, and the branch is
+  // deleted on merge), so more than one means something forged it — fail closed.
+  const promotionCommits = log.stdout
+    .split('\0')
+    .filter((m) => m.trimStart().split('\n')[0]?.trim() === PROMOTION_SUBJECT);
+  if (promotionCommits.length !== 1) return null;
+  const sources = parseSourceTrailers(promotionCommits[0] ?? '');
+  if (sources.queueSha === null && sources.orphans.length === 0) return null;
+  return { prNumber: landed.number, headSha: landed.headRefOid, sources };
 }
 
 /**
@@ -926,10 +930,27 @@ export async function tidyUpLandedPromotion(
   const landed = await findLandedPromotion(exec, repoRoot, remote, repo, promoteBranch, baseBranch);
   if (landed === null) return { queueReset: false, deletedBranches: [] };
 
-  // `findLandedPromotion` left the CURRENT base tip in BASE_SCRATCH_REF; every
-  // retirement below is re-derived against it, so a revert is always observed.
-  const mainSha = await remoteBranchSha(exec, repoRoot, remote, baseBranch);
-  if (mainSha === null) return { queueReset: false, deletedBranches: [] };
+  // `findLandedPromotion` left the CURRENT base tip in BASE_SCRATCH_REF. EVERY
+  // retirement below is proven against — and pushed against — that ONE snapshot,
+  // so a proof can never be paired with a different base than the one it used.
+  const baseResolved = await runGit(exec, repoRoot, ['rev-parse', BASE_SCRATCH_REF]);
+  if (baseResolved.code !== 0) return { queueReset: false, deletedBranches: [] };
+  const mainSha = baseResolved.stdout.trim();
+  if (!OBJECT_ID_PATTERN.test(mainSha)) return { queueReset: false, deletedBranches: [] };
+
+  /**
+   * Re-assert the base snapshot immediately before a destructive push. `git push`
+   * can only lease the ref it is writing, so the base cannot be part of the same
+   * atomic update; re-reading it here narrows the window to the push itself.
+   * Any movement aborts the remaining tidy-up rather than acting on a stale proof.
+   *
+   * Residual window: a revert landing inside that window could still let a
+   * deletion through. It is recoverable — the merged promotion commit durably
+   * records every retired branch's exact OID in its `Orphan-Source:` trailers, so
+   * `git push origin <sha>:refs/heads/<branch>` restores it.
+   */
+  const baseUnchanged = async (): Promise<boolean> =>
+    (await remoteBranchSha(exec, repoRoot, remote, baseBranch)) === mainSha;
 
   /** Fetch a source tip locally, CAS-check it, and prove it adds nothing to base. */
   const retirable = async (branch: string, expectedSha: string): Promise<boolean> => {
@@ -950,7 +971,12 @@ export async function tidyUpLandedPromotion(
 
   let queueReset = false;
   const { queueSha } = landed.sources;
-  if (queueSha !== null && mainSha !== queueSha && (await retirable(queueBranch, queueSha))) {
+  if (
+    queueSha !== null &&
+    mainSha !== queueSha &&
+    (await retirable(queueBranch, queueSha)) &&
+    (await baseUnchanged())
+  ) {
     const push = await runGit(exec, repoRoot, [
       'push',
       '--no-verify',
@@ -964,6 +990,8 @@ export async function tidyUpLandedPromotion(
   const deletedBranches: string[] = [];
   for (const orphan of landed.sources.orphans) {
     if (!(await retirable(orphan.branch, orphan.sha))) continue;
+    // Abort the whole sweep (not just this branch) the moment the base moves.
+    if (!(await baseUnchanged())) break;
     const deleted = await runGit(exec, repoRoot, [
       'push',
       '--no-verify',

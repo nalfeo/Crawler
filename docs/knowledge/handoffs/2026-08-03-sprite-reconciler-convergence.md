@@ -88,7 +88,7 @@ Conclusion: **only the source OID is a sound acknowledgement.**
    that landed **after** the harvest moves the tip, the lease misses, and the
    source is left completely alone.
 
-Two further guards came out of code review round 1, both now covered by
+Four further guards came out of code review (two rounds), all covered by
 regression tests that were **mutation-checked** (each test fails when its guard
 is removed):
 
@@ -98,11 +98,18 @@ is removed):
    step, the source's art-surface delta is **re-derived against the current
    `main`**; a source that still adds anything is left alone.
 4. **Trailer provenance.** The trailer scan is bounded to the PR-exclusive
-   ancestry (`git log <head> --not <base>`) and each candidate must carry the
-   exact generated promotion subject. Without this, a CI-recovery repair commit
-   above the promotion could name any branch and have it deleted, and a
-   >20-commit recovery stack would push the scan into inherited `main` history
-   where any commit message could be read as a delete instruction.
+   ancestry (`git log <head> --not <base>`), and the ancestry must contain
+   **exactly one** commit carrying the generated promotion subject. Without this,
+   a CI-recovery repair commit above the promotion could name any branch and have
+   it deleted, and a >20-commit recovery stack would push the scan into inherited
+   `main` history where any commit message could be read as a delete instruction.
+   A subject match alone is *not* provenance — a repair commit can reuse the
+   subject — so ambiguity fails closed.
+5. **One base snapshot.** Every proof is derived against, and every push gated
+   on, the single base tip captured at the start of the tidy-up. The base is
+   re-asserted immediately before each destructive push and any movement aborts
+   the remaining sweep, so a proof can never be paired with a base other than the
+   one it was computed from.
 
 Every gh/git/JSON/fetch/parse failure returns `null` / no-op — the destructive
 path is fail-closed throughout, and the whole tidy-up is non-fatal so it can
@@ -129,7 +136,9 @@ is a headless script with no visual surface.
 
 Plus: real-git proof that the leased **delete** actually deletes; a CAS-miss test
 proving art that landed after the harvest is never discarded; a **revert** test;
-a **forged-trailer** test; fork-PR rejection; head-OID mismatch rejection;
+a **forged-trailer** test (the forgery uses the *exact* promotion subject, so it
+proves the uniqueness rule and not just a string compare); a **base-race** test
+that reverts `main` mid-cycle; fork-PR rejection; head-OID mismatch rejection;
 gh-failure fail-closed. The real-git harness squash-merges (matching repo merge
 policy) rather than fast-forwarding, so the ancestry bound is genuinely
 exercised. 80 tests in the file, all of `tests/unit/sprites/` green.
@@ -174,6 +183,12 @@ They should be triaged on their own merits, separately.
   stack on a promote PR before the trailers fall out of scan range. Failure mode
   is benign (tidy-up skips, next merged promotion re-records), but if CI recovery
   ever pushes more than ~20 commits onto one promotion this should be raised.
+- `git push` can only lease the ref it writes, so the base cannot join the same
+  atomic update. The pre-push re-assertion narrows the window to the push itself;
+  a revert landing inside it could still let one deletion through. That is
+  recoverable by construction — the merged promotion durably records every
+  retired branch's exact OID in its `Orphan-Source:` trailers, so
+  `git push origin <sha>:refs/heads/<branch>` restores it.
 - The trailer-ancestry bound assumes **squash** merges (the documented repo merge
   policy). If art promotions ever switch to a true merge commit, the promotion's
   commits become ancestors of `main`, the scan finds nothing, and tidy-up

@@ -2067,16 +2067,56 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
       '-p',
       first.promoteCommit!,
       '-m',
-      `fix(ci): repair lint\n\nOrphan-Source: assets/checkin-innocent ${innocentSha}`,
+      // Uses the EXACT promotion subject — a subject check alone would be
+      // fooled, so this proves the uniqueness rule is what actually holds.
+      `chore(assets): reconcile queued sprite edits\n\n` +
+        `Orphan-Source: assets/checkin-innocent ${innocentSha}`,
     ).trim();
     gitSync(liveDir, 'push', 'origin', `+${forged}:refs/heads/assets/promote`);
     landPromotion(liveDir, gh, first.prNumber!, forged);
 
     const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
-    // Only the genuine promotion commit's trailers are honored, so the branch
-    // the repair commit named is untouched.
-    expect(tidy.deletedBranches).toEqual([]);
+    // Two commits now claim the promotion subject, so provenance is ambiguous
+    // and tidy-up fails closed: nothing is retired.
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
     expect(remoteSha(liveDir, 'assets/checkin-innocent')).toBe(innocentSha);
+  });
+
+  it('BASE RACE: aborts when main moves between the safety proof and the push', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-race-1', ['orphan-sprite-var-9']);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const queueAfter = remoteSha(liveDir, 'assets/queue');
+    const orphanAfter = remoteSha(liveDir, 'assets/checkin-race-1');
+
+    // Revert `main` AFTER the proof has been computed against the fetched base
+    // snapshot but BEFORE any destructive push, by reverting on the first
+    // `ls-remote` of the base branch that the pre-push re-assertion performs.
+    const real = realGitFakeGhExec(gh);
+    let proofDone = false;
+    const exec: Exec = (command, args, options) => {
+      if (
+        command === 'git' &&
+        args[0] === 'ls-remote' &&
+        args.includes('main') &&
+        proofDone === false
+      ) {
+        proofDone = true;
+        gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+        gitSync(liveDir, 'push', 'origin', '+origin/main~1:refs/heads/main');
+      }
+      return real(command, args, options);
+    };
+
+    const tidy = await tidyUpLandedPromotion(exec, liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueAfter);
+    expect(remoteSha(liveDir, 'assets/checkin-race-1')).toBe(orphanAfter);
   });
 
   it('picks the newest merge by mergedAt, not by PR number', async () => {
