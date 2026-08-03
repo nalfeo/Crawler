@@ -571,24 +571,33 @@ function isCriticalProgressNpcType(npcTypeId: string): boolean {
   return FLOOR1_CRITICAL_PROGRESS_NPC_IDS.has(npcTypeId);
 }
 
-function buildReachableFromSpawnMask(
+/**
+ * Breadth-first tile travel distance from `start`, walking passable tiles plus
+ * doors that are not in `blockedDoorTiles`. Returns tile counts per index, with
+ * `-1` for tiles that cannot be reached at all. Unlike straight-line distance
+ * this is the route the player actually walks, so it is what placement rules
+ * should be scored against.
+ */
+function buildTravelDistanceField(
   floorMap: FloorMap,
+  start: { x: number; y: number },
   blockedDoorTiles: ReadonlySet<string>,
-): Uint8Array {
+): Int32Array {
   const width = floorMap.width;
   const height = floorMap.height;
-  const mask = new Uint8Array(width * height);
-  const spawn = floorMap.playerSpawn;
-  if (!floorMap.tileMap.inBounds(spawn.x, spawn.y)) {
-    return mask;
+  const distances = new Int32Array(width * height).fill(-1);
+  if (!floorMap.tileMap.inBounds(start.x, start.y)) {
+    return distances;
   }
-  const startIndex = spawn.y * width + spawn.x;
-  mask[startIndex] = 1;
-  const stack = [startIndex];
-  while (stack.length > 0) {
-    const index = stack.pop()!;
+  const startIndex = start.y * width + start.x;
+  distances[startIndex] = 0;
+  const queue = [startIndex];
+  let head = 0;
+  while (head < queue.length) {
+    const index = queue[head++]!;
     const tx = index % width;
     const ty = (index - tx) / width;
+    const nextDistance = distances[index]! + 1;
     for (const [nx, ny] of [
       [tx + 1, ty],
       [tx - 1, ty],
@@ -599,7 +608,7 @@ function buildReachableFromSpawnMask(
         continue;
       }
       const neighborIndex = ny * width + nx;
-      if (mask[neighborIndex]) {
+      if (distances[neighborIndex] !== -1) {
         continue;
       }
       const doorTile = floorMap.tileMap.isDoor(nx, ny);
@@ -609,9 +618,21 @@ function buildReachableFromSpawnMask(
       ) {
         continue;
       }
-      mask[neighborIndex] = 1;
-      stack.push(neighborIndex);
+      distances[neighborIndex] = nextDistance;
+      queue.push(neighborIndex);
     }
+  }
+  return distances;
+}
+
+function buildReachableFromSpawnMask(
+  floorMap: FloorMap,
+  blockedDoorTiles: ReadonlySet<string>,
+): Uint8Array {
+  const distances = buildTravelDistanceField(floorMap, floorMap.playerSpawn, blockedDoorTiles);
+  const mask = new Uint8Array(distances.length);
+  for (let index = 0; index < distances.length; index += 1) {
+    mask[index] = distances[index]! >= 0 ? 1 : 0;
   }
   return mask;
 }
@@ -635,6 +656,225 @@ export function buildInitiallyLockedDoorTileSet(
     }
   }
   return blocked;
+}
+
+interface ObjectiveRoomCandidate {
+  readonly room: RoomData;
+  readonly center: { x: number; y: number };
+  readonly distanceSq: number;
+}
+
+function distanceFromFieldAtWorldPos(
+  floorMap: FloorMap,
+  field: Int32Array,
+  pos: { x: number; y: number },
+): number {
+  const tile = floorMap.worldToTile(pos.x, pos.y);
+  if (!floorMap.tileMap.inBounds(tile.x, tile.y)) {
+    return -1;
+  }
+  return field[tile.y * floorMap.width + tile.x]!;
+}
+
+function buildObjectiveRoomCandidates(
+  floorMap: FloorMap,
+  roomIds: readonly number[],
+): ObjectiveRoomCandidate[] {
+  const spawnTile = floorMap.playerSpawn;
+  return roomIds
+    .map((roomId) => floorMap.roomGraph.get(roomId))
+    .filter((room): room is RoomData => room != null)
+    .map((room) => {
+      const center = centerOfRoom(room);
+      const dx = center.x - spawnTile.x;
+      const dy = center.y - spawnTile.y;
+      return { room, center, distanceSq: dx * dx + dy * dy };
+    })
+    .sort((a, b) => a.distanceSq - b.distanceSq);
+}
+
+function selectMerchantAnchoredQuestItemEntry(
+  floorMap: FloorMap,
+  candidates: readonly ObjectiveRoomCandidate[],
+  preferredEntries: readonly ObjectiveRoomCandidate[],
+  merchantPos: { x: number; y: number },
+  lockedRoomCenters: ReadonlyArray<{ x: number; y: number }>,
+  excludedRoomIds: ReadonlySet<number>,
+): ObjectiveRoomCandidate | undefined {
+  const blockedDoorTiles = buildInitiallyLockedDoorTileSet(floorMap, lockedRoomCenters);
+  const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
+  const travelFromMerchant = buildTravelDistanceField(floorMap, merchantTile, blockedDoorTiles);
+  const travelFromSpawn = buildTravelDistanceField(
+    floorMap,
+    floorMap.playerSpawn,
+    blockedDoorTiles,
+  );
+  const maxDistanceFromMerchant = floorMap.rooms.reduce((max, room) => {
+    const pos = resolvePassableRoomCenter(floorMap, room);
+    return Math.max(max, distanceFromFieldAtWorldPos(floorMap, travelFromMerchant, pos));
+  }, 0);
+  const targetDistance = maxDistanceFromMerchant * (2 / 3);
+  const rankEntries = (entries: readonly ObjectiveRoomCandidate[]) =>
+    entries
+      .map((entry) => {
+        const pos = resolvePassableRoomCenter(floorMap, entry.room);
+        return {
+          entry,
+          distanceFromMerchant: distanceFromFieldAtWorldPos(floorMap, travelFromMerchant, pos),
+          distanceFromSpawn: distanceFromFieldAtWorldPos(floorMap, travelFromSpawn, pos),
+        };
+      })
+      .filter((scored) => scored.distanceFromMerchant > 0 && scored.distanceFromSpawn >= 0)
+      .sort((a, b) => {
+        const aDelta = Math.abs(a.distanceFromMerchant - targetDistance);
+        const bDelta = Math.abs(b.distanceFromMerchant - targetDistance);
+        if (aDelta !== bDelta) return aDelta - bDelta;
+        return a.entry.room.id - b.entry.room.id;
+      });
+  const rankedPreferred = rankEntries(preferredEntries);
+  if (rankedPreferred.length > 0) {
+    return rankedPreferred[0]!.entry;
+  }
+  const rankedRelaxed = rankEntries(
+    candidates.filter((entry) => !excludedRoomIds.has(entry.room.id)),
+  );
+  return rankedRelaxed[0]?.entry;
+}
+
+function isMerchantAnchoredQuestItemEntryReachable(
+  floorMap: FloorMap,
+  entry: ObjectiveRoomCandidate,
+  merchantPos: { x: number; y: number },
+  lockedRoomCenters: ReadonlyArray<{ x: number; y: number }>,
+): boolean {
+  const blockedDoorTiles = buildInitiallyLockedDoorTileSet(floorMap, lockedRoomCenters);
+  const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
+  const travelFromMerchant = buildTravelDistanceField(floorMap, merchantTile, blockedDoorTiles);
+  const travelFromSpawn = buildTravelDistanceField(
+    floorMap,
+    floorMap.playerSpawn,
+    blockedDoorTiles,
+  );
+  const pos = resolvePassableRoomCenter(floorMap, entry.room);
+  const tile = floorMap.worldToTile(pos.x, pos.y);
+  return (
+    floorMap.tileMap.isPassable(tile.x, tile.y) &&
+    distanceFromFieldAtWorldPos(floorMap, travelFromMerchant, pos) > 0 &&
+    distanceFromFieldAtWorldPos(floorMap, travelFromSpawn, pos) >= 0
+  );
+}
+
+function merchantAnchoredQuestItemFraction(
+  floorMap: FloorMap,
+  entry: ObjectiveRoomCandidate,
+  merchantPos: { x: number; y: number },
+  lockedRoomCenters: ReadonlyArray<{ x: number; y: number }>,
+): number | null {
+  const blockedDoorTiles = buildInitiallyLockedDoorTileSet(floorMap, lockedRoomCenters);
+  const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
+  const travelFromMerchant = buildTravelDistanceField(floorMap, merchantTile, blockedDoorTiles);
+  const pos = resolvePassableRoomCenter(floorMap, entry.room);
+  const distance = distanceFromFieldAtWorldPos(floorMap, travelFromMerchant, pos);
+  if (distance <= 0) {
+    return null;
+  }
+  const maxDistance = floorMap.rooms.reduce((max, room) => {
+    const roomPos = resolvePassableRoomCenter(floorMap, room);
+    return Math.max(max, distanceFromFieldAtWorldPos(floorMap, travelFromMerchant, roomPos));
+  }, 0);
+  return maxDistance > 0 ? distance / maxDistance : null;
+}
+
+function selectMerchantAnchoredQuestItemAndSlime(
+  floorMap: FloorMap,
+  candidates: readonly ObjectiveRoomCandidate[],
+  itemCandidates: readonly ObjectiveRoomCandidate[],
+  welcomeOfficePos: { x: number; y: number },
+  shopRoomPos: { x: number; y: number },
+  staircasePos: { x: number; y: number },
+  merchantPos: { x: number; y: number },
+  shopRoomId: number | null,
+):
+  | { itemEntry: ObjectiveRoomCandidate; slimeEntry: ObjectiveRoomCandidate | undefined }
+  | undefined {
+  const rankEntries = (entries: readonly ObjectiveRoomCandidate[]) =>
+    entries
+      .map((itemEntry) => {
+        const questItemPos = resolvePassableRoomCenter(floorMap, itemEntry.room);
+        const specialPointsForSlime = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
+        const slimeEntry = candidates
+          .filter((entry) => entry.room.id !== shopRoomId && entry.room.id !== itemEntry.room.id)
+          .sort((a, b) => {
+            const aPos = resolvePassableRoomCenter(floorMap, a.room);
+            const bPos = resolvePassableRoomCenter(floorMap, b.room);
+            const aScore = Math.min(
+              ...specialPointsForSlime.map((p) => {
+                const dx = aPos.x - p.x;
+                const dy = aPos.y - p.y;
+                return dx * dx + dy * dy;
+              }),
+            );
+            const bScore = Math.min(
+              ...specialPointsForSlime.map((p) => {
+                const dx = bPos.x - p.x;
+                const dy = bPos.y - p.y;
+                return dx * dx + dy * dy;
+              }),
+            );
+            return bScore - aScore;
+          })[0];
+        const slimePos = slimeEntry
+          ? resolvePassableRoomCenter(floorMap, slimeEntry.room)
+          : questItemPos;
+        const blockedDoorTiles = buildInitiallyLockedDoorTileSet(floorMap, [
+          staircasePos,
+          slimePos,
+        ]);
+        const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
+        const travelFromMerchant = buildTravelDistanceField(
+          floorMap,
+          merchantTile,
+          blockedDoorTiles,
+        );
+        const travelFromSpawn = buildTravelDistanceField(
+          floorMap,
+          floorMap.playerSpawn,
+          blockedDoorTiles,
+        );
+        const distanceFromMerchant = distanceFromFieldAtWorldPos(
+          floorMap,
+          travelFromMerchant,
+          questItemPos,
+        );
+        const distanceFromSpawn = distanceFromFieldAtWorldPos(
+          floorMap,
+          travelFromSpawn,
+          questItemPos,
+        );
+        if (distanceFromMerchant <= 0 || distanceFromSpawn < 0) {
+          return null;
+        }
+        const maxDistanceFromMerchant = floorMap.rooms.reduce((max, room) => {
+          const pos = resolvePassableRoomCenter(floorMap, room);
+          return Math.max(max, distanceFromFieldAtWorldPos(floorMap, travelFromMerchant, pos));
+        }, 0);
+        return {
+          itemEntry,
+          slimeEntry,
+          delta: Math.abs(distanceFromMerchant - maxDistanceFromMerchant * (2 / 3)),
+        };
+      })
+      .filter((scored): scored is NonNullable<typeof scored> => scored != null)
+      .sort((a, b) => {
+        if (a.delta !== b.delta) return a.delta - b.delta;
+        return a.itemEntry.room.id - b.itemEntry.room.id;
+      });
+  const preferred = rankEntries(itemCandidates);
+  if (preferred.length > 0) {
+    return preferred[0];
+  }
+  const relaxed = rankEntries(candidates.filter((entry) => entry.room.id !== shopRoomId));
+  return relaxed[0];
 }
 
 function isSpawnReachableTile(
@@ -925,6 +1165,9 @@ function chooseObjectiveTiles(world: GameWorld): {
   spellQuestGiverPos: { x: number; y: number };
   shopRoomPos: { x: number; y: number };
   questItemPos: { x: number; y: number };
+  candidateRoomIds: number[];
+  welcomeRoomId: number | null;
+  shopRoomId: number | null;
 } {
   const floorMap = world.floorMap;
   const fallbackWelcome = { x: 15, y: 15 };
@@ -945,6 +1188,9 @@ function chooseObjectiveTiles(world: GameWorld): {
       spellQuestGiverPos: fallbackItem,
       shopRoomPos: fallbackShop,
       questItemPos: fallbackItem,
+      candidateRoomIds: [],
+      welcomeRoomId: null,
+      shopRoomId: null,
     };
   }
 
@@ -1081,34 +1327,119 @@ function chooseObjectiveTiles(world: GameWorld): {
     candidates.find((e) => e !== welcomeEntry && meetsShopDistanceConstraint(e)) ??
     candidates.find((e) => e !== welcomeEntry) ??
     candidates[0];
-  const itemEntry = [...candidates]
-    .reverse()
-    .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
+  // BFS hop distances from the shop and from the boss-stair room. Both the
+  // rat-tail fetch item and the slime-rat room are placed relative to these so
+  // the *required* quest tour stays bounded instead of stretching to the map's
+  // extremes (see the hop bands below).
+  const roomHopFromShop = shopEntry
+    ? roomHopDistances(floorMap.roomGraph, shopEntry.room.id, bossStairRoomId)
+    : new Map<number, number>();
+
+  // Hop counts are the structural constraint ("far enough to be a real detour");
+  // squared tile distance is what actually costs the player time, so it drives
+  // the ordering *within* a hop band.
+  const shopCenter = shopEntry?.center ?? centerOfRoom(floorMap.rooms[0]!);
+  const distSqBetween = (a: { x: number; y: number }, b: { x: number; y: number }): number => {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return dx * dx + dy * dy;
+  };
+  const distSqToShop = (entry: (typeof candidates)[0]): number =>
+    distSqBetween(entry.center, shopCenter);
+
+  /**
+   * Pick the entry whose hop distance from `hops` lies inside [min, max] and is
+   * closest to `target`, breaking ties with `tieBreak` (lower wins). Falls back
+   * to the whole eligible set — scored the same way but without the band — so
+   * degenerate maps (tiny room counts, disconnected graphs) still resolve.
+   */
+  const pickInHopBand = (
+    eligible: readonly ObjectiveRoomCandidate[],
+    hops: Map<number, number>,
+    min: number,
+    max: number,
+    target: number,
+    tieBreak: (entry: (typeof candidates)[0]) => number,
+  ): (typeof candidates)[0] | undefined => {
+    if (eligible.length === 0) return undefined;
+    const banded = eligible.filter((e) => {
+      const h = hops.get(e.room.id);
+      return h !== undefined && h >= min && h <= max;
+    });
+    const pool = banded.length > 0 ? banded : eligible;
+    return pool.reduce((best, entry) => {
+      const bestDelta = Math.abs((hops.get(best.room.id) ?? Number.MAX_SAFE_INTEGER) - target);
+      const entryDelta = Math.abs((hops.get(entry.room.id) ?? Number.MAX_SAFE_INTEGER) - target);
+      if (entryDelta !== bestDelta) return entryDelta < bestDelta ? entry : best;
+      const bestTie = tieBreak(best);
+      const entryTie = tieBreak(entry);
+      if (entryTie !== bestTie) return entryTie < bestTie ? entry : best;
+      return entry.room.id < best.room.id ? entry : best;
+    });
+  };
+
   const welcomeOfficePos = welcomeEntry
     ? resolvePassableRoomCenter(floorMap, welcomeEntry.room)
     : fallbackWelcome;
   const shopRoomPos = shopEntry
     ? resolvePassableRoomCenter(floorMap, shopEntry.room)
     : fallbackShop;
+  const merchantPos = isCriticalProgressNpcType('shopkeeper') ? welcomeOfficePos : shopRoomPos;
+
+  // Rat-tail fetch item: the merchant's errand is a *round trip* (merchant →
+  // item → merchant), so every tile between them is walked twice.
+  //
+  // Two earlier rules both misjudged that trip. Placing the item in the room
+  // farthest from spawn doubled the single longest leg on the map. Bounding it
+  // to a hop band around the *shop room* then anchored on the wrong place
+  // entirely: the shopkeeper is a critical-progress NPC, so it actually spawns
+  // in the welcome hub (see FLOOR1_CRITICAL_PROGRESS_NPC_IDS), not in the shop
+  // room the hop band measured from. Errand length was consequently erratic —
+  // 0.07–0.96 of the reachable maximum across seeds.
+  //
+  // Anchor on the room the merchant really stands in and target a fixed
+  // *fraction* of the longest walk available from it: a real expedition, never
+  // a map-diameter round trip, and consistent seed to seed.
+  // Legacy hop band, retained only as the provisional pre-geometry fallback.
+  const ITEM_MIN_HOPS_FROM_SHOP = 2;
+  const ITEM_MAX_HOPS_FROM_SHOP = 4;
+  const ITEM_TARGET_HOPS_FROM_SHOP = 3;
+  const itemEntry =
+    selectMerchantAnchoredQuestItemEntry(
+      floorMap,
+      candidates,
+      candidates.filter((entry) => entry !== welcomeEntry && entry !== shopEntry),
+      merchantPos,
+      [staircasePos],
+      new Set([welcomeEntry?.room.id, shopEntry?.room.id].filter((id): id is number => id != null)),
+    ) ??
+    pickInHopBand(
+      candidates.filter((entry) => entry !== welcomeEntry && entry !== shopEntry),
+      roomHopFromShop,
+      ITEM_MIN_HOPS_FROM_SHOP,
+      ITEM_MAX_HOPS_FROM_SHOP,
+      ITEM_TARGET_HOPS_FROM_SHOP,
+      (entry) => distSqToShop(entry),
+    );
   const questItemPos = itemEntry
     ? resolvePassableRoomCenter(floorMap, itemEntry.room)
     : fallbackItem;
   const safeRoomPos = welcomeOfficePos;
-  const specialPoints = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
+  const specialPointsForSlime = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
   const slimeRatEntry = candidates
     .filter((entry) => entry !== shopEntry && entry !== itemEntry)
     .sort((a, b) => {
       const aPos = resolvePassableRoomCenter(floorMap, a.room);
       const bPos = resolvePassableRoomCenter(floorMap, b.room);
       const aScore = Math.min(
-        ...specialPoints.map((p) => {
+        ...specialPointsForSlime.map((p) => {
           const dx = aPos.x - p.x;
           const dy = aPos.y - p.y;
           return dx * dx + dy * dy;
         }),
       );
       const bScore = Math.min(
-        ...specialPoints.map((p) => {
+        ...specialPointsForSlime.map((p) => {
           const dx = bPos.x - p.x;
           const dy = bPos.y - p.y;
           return dx * dx + dy * dy;
@@ -1141,6 +1472,9 @@ function chooseObjectiveTiles(world: GameWorld): {
     spellQuestGiverPos,
     shopRoomPos,
     questItemPos,
+    candidateRoomIds: candidates.map((entry) => entry.room.id),
+    welcomeRoomId: welcomeEntry?.room.id ?? null,
+    shopRoomId: shopEntry?.room.id ?? null,
   };
 }
 
@@ -1682,8 +2016,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
   const objectiveTiles = chooseObjectiveTiles(world);
-  const { staircasePos, slimeRatRoomPos, spellQuestGiverPos, shopRoomPos, questItemPos } =
-    objectiveTiles;
+  const { staircasePos, shopRoomPos, candidateRoomIds, welcomeRoomId, shopRoomId } = objectiveTiles;
+  let slimeRatRoomPos = objectiveTiles.slimeRatRoomPos;
+  let spellQuestGiverPos = objectiveTiles.spellQuestGiverPos;
+  let questItemPos = objectiveTiles.questItemPos;
   // `welcomeOfficePos` and `safeRoomPos` are mutable: carving the welcome-room
   // prefab (below) resizes the hub room, so we recentre BOTH onto the carved
   // room's interior centre. They are the same hub room by construction
@@ -1711,6 +2047,44 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // the carve. Re-applying here is idempotent and keeps the revert-on-disconnect
   // guard in one place.
   welcomeCarve.reapplySolidProps?.();
+  if (world.floorMap != null) {
+    const candidateEntries = buildObjectiveRoomCandidates(world.floorMap, candidateRoomIds);
+    const merchantPos = isCriticalProgressNpcType('shopkeeper') ? welcomeOfficePos : shopRoomPos;
+    const alignedPair = selectMerchantAnchoredQuestItemAndSlime(
+      world.floorMap,
+      candidateEntries,
+      candidateEntries.filter(
+        (entry) => entry.room.id !== welcomeRoomId && entry.room.id !== shopRoomId,
+      ),
+      welcomeOfficePos,
+      shopRoomPos,
+      staircasePos,
+      merchantPos,
+      shopRoomId,
+    );
+    if (alignedPair != null) {
+      questItemPos = resolvePassableRoomCenter(world.floorMap, alignedPair.itemEntry.room);
+      slimeRatRoomPos = alignedPair.slimeEntry
+        ? resolvePassableRoomCenter(world.floorMap, alignedPair.slimeEntry.room)
+        : questItemPos;
+    }
+    const usedRoomIds = new Set(
+      [
+        welcomeRoomId,
+        shopRoomId,
+        roomAtPosition(world, questItemPos)?.id,
+        roomAtPosition(world, slimeRatRoomPos)?.id,
+      ].filter((id): id is number => id != null),
+    );
+    const spellEntry = candidateEntries.find((entry) => !usedRoomIds.has(entry.room.id));
+    const spellFallbackPos =
+      shopRoomPos.x !== questItemPos.x || shopRoomPos.y !== questItemPos.y
+        ? shopRoomPos
+        : welcomeOfficePos;
+    spellQuestGiverPos = spellEntry
+      ? resolvePassableRoomCenter(world.floorMap, spellEntry.room)
+      : spellFallbackPos;
+  }
 
   // Door-gate every special room. Corridors carved between room centres regularly
   // clip a room's bounding-box perimeter at non-door tiles, letting enemies tunnel
@@ -1954,6 +2328,71 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       }
     }
   }
+  if (world.floorMap != null) {
+    const candidateEntries = buildObjectiveRoomCandidates(world.floorMap, candidateRoomIds);
+    const merchantPos = isCriticalProgressNpcType('shopkeeper') ? welcomeOfficePos : shopRoomPos;
+    const provisionalItemRoomId = roomAtPosition(world, questItemPos)?.id ?? null;
+    const provisionalItemEntry =
+      provisionalItemRoomId == null
+        ? undefined
+        : candidateEntries.find((entry) => entry.room.id === provisionalItemRoomId);
+    const excludedRoomIds = new Set(
+      [welcomeRoomId, shopRoomId, roomAtPosition(world, slimeRatRoomPos)?.id].filter(
+        (id): id is number => id != null,
+      ),
+    );
+    const lockedRoomCenters = [staircasePos, slimeRatRoomPos];
+    const keepProvisionalItem =
+      provisionalItemEntry !== undefined &&
+      !excludedRoomIds.has(provisionalItemEntry.room.id) &&
+      isMerchantAnchoredQuestItemEntryReachable(
+        world.floorMap,
+        provisionalItemEntry,
+        merchantPos,
+        lockedRoomCenters,
+      ) &&
+      (() => {
+        const fraction = merchantAnchoredQuestItemFraction(
+          world.floorMap!,
+          provisionalItemEntry,
+          merchantPos,
+          lockedRoomCenters,
+        );
+        return fraction !== null && fraction > 0.3 && fraction < 0.9;
+      })();
+    const finalItemEntry = keepProvisionalItem
+      ? provisionalItemEntry
+      : selectMerchantAnchoredQuestItemEntry(
+          world.floorMap,
+          candidateEntries,
+          candidateEntries.filter((entry) => !excludedRoomIds.has(entry.room.id)),
+          merchantPos,
+          lockedRoomCenters,
+          new Set([welcomeRoomId, shopRoomId].filter((id): id is number => id != null)),
+        );
+    if (finalItemEntry == null) {
+      throw new Error('Floor 1 could not place the rat tail in a lock-aware reachable room.');
+    }
+    questItemPos = resolvePassableRoomCenter(world.floorMap, finalItemEntry.room);
+    const finalItemRoomId =
+      roomAtPosition(world, questItemPos)?.id ?? finalItemEntry?.room.id ?? null;
+    const usedRoomIds = new Set(
+      [
+        welcomeRoomId,
+        shopRoomId,
+        finalItemRoomId,
+        roomAtPosition(world, slimeRatRoomPos)?.id,
+      ].filter((id): id is number => id != null),
+    );
+    const spellEntry = candidateEntries.find((entry) => !usedRoomIds.has(entry.room.id));
+    const spellFallbackPos =
+      shopRoomPos.x !== questItemPos.x || shopRoomPos.y !== questItemPos.y
+        ? shopRoomPos
+        : welcomeOfficePos;
+    spellQuestGiverPos = spellEntry
+      ? resolvePassableRoomCenter(world.floorMap, spellEntry.room)
+      : spellFallbackPos;
+  }
   // Dedicated deterministic stream for NPC tile scatter so shared-room hubs (the
   // welcome bar) spread out per seed without consuming — or being perturbed by —
   // the shared gameplay RNG that drives enemies, loot, and props.
@@ -1964,6 +2403,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       ...patch,
     };
   };
+  updateObjective({ questItemPos, spellQuestGiverPos });
   // Stamp the authored welcome-room set piece into the welcome-office hub room:
   // it fixes the three quest NPCs at spaced positions and dresses the room with
   // themed props. When present it drives NPC placement (replacing the scatter
