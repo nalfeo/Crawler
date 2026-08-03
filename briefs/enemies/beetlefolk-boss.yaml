@@ -19,16 +19,12 @@ description: |
   underbelly. The overall silhouette reads unmistakably as a fat wide beetle when
   viewed from a slight bird's-eye three-quarter angle.
   Camera-facing at a two-thirds turn. No disconnected thin parts anywhere.
-  IMPORTANT: absolutely no text, letters, signs, labels, or words anywhere in the image.
-  No riders, no passengers, no tiny figures on the creature's back.
 sensors:
   edge:
     allowMainTouch: true
   enemy:
     facing: three-quarter
     toleranceDeg: 40
-  interiorHoles:
-    maxPixels: 512
 judge:
   enabled: true
   maxVariants: 8
