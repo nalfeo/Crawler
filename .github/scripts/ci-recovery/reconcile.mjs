@@ -43,8 +43,10 @@ import {
 } from '../merge-train/state.mjs';
 import {
   HUMAN_APPROVAL_LABEL,
+  closingIssuesPropagatingHumanApproval,
   humanApprovalRejection,
   requiresHumanApproval,
+  stripClosingKeywordsForIssues,
 } from '../merge-train/human-approval.mjs';
 import { closeLoopIncident, fileLoopIncident } from './loop-incident-lib.mjs';
 import { createUnexpectedErrorHandler } from './unexpected-error.mjs';
@@ -1207,6 +1209,68 @@ if (
 }
 
 const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
+
+// ── Auto-fix: strip closing-keyword lines that propagate human-approval-required ──
+//
+// When human-approval-required propagates to this PR via a closing-keyword
+// reference in the PR body (e.g. "- Fixes #N" where issue N carries the
+// label), the reconciler removes those lines directly using CRAWLER_CI_PAT.
+// This short-circuits a systematic stale-automation loop: the dispatched
+// Copilot agent lacks pull_requests:write and consistently receives HTTP 403
+// for the same PATCH, leaving the review thread permanently unresolved and
+// triggering a loop-incident after 2 attempts (PR #2710 postmortem).
+// CRAWLER_CI_PAT has repo scope and can perform the edit.  The automation-
+// derived human-approval label is removed in the same run so requiresHumanApproval
+// correctly reflects the cleared state and does not re-gate the PR.
+{
+  const propagatingIssues = closingIssuesPropagatingHumanApproval(pr, closingIssues);
+  if (propagatingIssues.length > 0) {
+    // Build (repository, number) targets to avoid stripping same-numbered
+    // closing refs that belong to a different repository.
+    const targets = propagatingIssues.map((i) => ({
+      repository: i.repository.nameWithOwner,
+      number: i.number,
+    }));
+    const fixedBody = stripClosingKeywordsForIssues(pr.body, targets, repository);
+    const issuesList = propagatingIssues.map((i) => i.number).join(',');
+    if (fixedBody !== (pr.body ?? '')) {
+      if (live) {
+        await assertExpectedMetadataUnchanged('strip-closing-keywords');
+        // Re-fetch the live body to avoid overwriting concurrent author edits:
+        // fixedBody was computed from the initial PR fetch and may be stale.
+        const livePr = (
+          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)
+        ).data;
+        const liveFixedBody = stripClosingKeywordsForIssues(livePr.body, targets, repository);
+        const bodyChanged = liveFixedBody !== (livePr.body ?? '');
+        if (bodyChanged) {
+          await request(pat, `/repos/${owner}/${repo}/pulls/${prNumber}`, {
+            method: 'PATCH',
+            body: { body: liveFixedBody },
+          });
+          pr.body = liveFixedBody;
+          // Remove the automation-derived label so requiresHumanApproval
+          // reflects the cleared state; skips silently if already absent.
+          await removePrLabel(HUMAN_APPROVAL_LABEL, { skipIfMissing: true });
+          process.stdout.write(
+            `stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`,
+          );
+        } else {
+          pr.body = livePr.body;
+        }
+        // Re-fetch closing issues to reflect the PR body change so the rest of
+        // the pipeline computes human-approval state from up-to-date facts.
+        const refreshed = await listClosingIssues(readToken, owner, repo, prNumber);
+        closingIssues.splice(0, closingIssues.length, ...refreshed);
+      } else {
+        process.stdout.write(
+          `dry-run would-strip-closing-keywords pr=#${prNumber} issues=${issuesList}\n`,
+        );
+      }
+    }
+  }
+}
+
 const humanApprovalRequired = requiresHumanApproval(pr, closingIssues);
 approvalRejection = humanApprovalRejection({
   pullRequest: pr,
