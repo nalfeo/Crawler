@@ -35,12 +35,12 @@
  * construction — a path-escape or bug), it REFUSES to push/arm and escalates
  * rather than landing a non-art change to `main` via the PAT.
  *
- * `assets/queue` is DELIBERATELY never reset here. It churns during the ~1h
- * cycle; resetting it to `main` post-merge would silently drop edits that landed
- * after the harvest snapshot — the exact loss vector this feature eliminates.
- * The no-op condition (queue's art already present in main) makes an explicit
- * reset unnecessary: once editing stops, the delta goes to zero and the
- * reconciler no-ops. (Deferred tidy-up is PR3.)
+ * `assets/queue` is NEVER reset as part of building the promotion itself. It
+ * churns during the ~1h cycle; resetting it to `main` before merge proof would
+ * silently drop edits that landed after the harvest snapshot — the exact loss
+ * vector this feature eliminates. After a promotion is PROVABLY merged, a
+ * separate lease-guarded tidy-up may retire the harvested queue/orphan tips, but
+ * only when each source still matches the exact OID the promotion recorded.
  *
  * This module is PURE (IO-free): every effect is driven through injected `deps`
  * (an exec runner + temp-dir/lock hooks + an injected `now`), so it is unit
@@ -871,6 +871,7 @@ async function sourceAddsNothingToBase(
   repoRoot: string,
   baseRef: string,
   sourceRef: string,
+  options?: { readonly dropLegacyAggregateManifestPaths?: boolean },
 ): Promise<boolean> {
   const delta = await runGit(exec, repoRoot, [
     'diff',
@@ -883,7 +884,13 @@ async function sourceAddsNothingToBase(
     ...ART_SURFACE_ALLOWLIST,
   ]);
   if (delta.code !== 0) return false;
-  return parseNameOnly(delta.stdout).filter((p) => !isLegacyAggregateManifestPath(p)).length === 0;
+  const paths = parseNameOnly(delta.stdout);
+  return (
+    (options?.dropLegacyAggregateManifestPaths === true
+      ? paths.filter((p) => !isLegacyAggregateManifestPath(p))
+      : paths
+    ).length === 0
+  );
 }
 
 /** What a tidy-up pass retired. */
@@ -952,8 +959,18 @@ export async function tidyUpLandedPromotion(
   const baseUnchanged = async (): Promise<boolean> =>
     (await remoteBranchSha(exec, repoRoot, remote, baseBranch)) === mainSha;
 
-  /** Fetch a source tip locally, CAS-check it, and prove it adds nothing to base. */
-  const retirable = async (branch: string, expectedSha: string): Promise<boolean> => {
+  /**
+   * Fetch a source tip locally, CAS-check it, and prove it adds nothing to base.
+   * Pre-shard orphan branches may differ only by the legacy aggregate manifest,
+   * which `runReconcile` already refuses to promote; queue snapshots are checked
+   * against the FULL promoted art surface because queue harvest still includes
+   * tolerated top-level generated JSON such as `manifest.json`.
+   */
+  const retirable = async (
+    branch: string,
+    expectedSha: string,
+    options?: { readonly dropLegacyAggregateManifestPaths?: boolean },
+  ): Promise<boolean> => {
     const currentTip = await remoteBranchSha(exec, repoRoot, remote, branch);
     // Already gone, or advanced past the harvested snapshot → never retire.
     if (currentTip === null || currentTip !== expectedSha) return false;
@@ -966,7 +983,7 @@ export async function tidyUpLandedPromotion(
     if (fetched.code !== 0) return false;
     const resolved = await runGit(exec, repoRoot, ['rev-parse', SOURCE_SCRATCH_REF]);
     if (resolved.code !== 0 || resolved.stdout.trim() !== expectedSha) return false;
-    return sourceAddsNothingToBase(exec, repoRoot, BASE_SCRATCH_REF, SOURCE_SCRATCH_REF);
+    return sourceAddsNothingToBase(exec, repoRoot, BASE_SCRATCH_REF, SOURCE_SCRATCH_REF, options);
   };
 
   let queueReset = false;
@@ -989,7 +1006,8 @@ export async function tidyUpLandedPromotion(
 
   const deletedBranches: string[] = [];
   for (const orphan of landed.sources.orphans) {
-    if (!(await retirable(orphan.branch, orphan.sha))) continue;
+    if (!(await retirable(orphan.branch, orphan.sha, { dropLegacyAggregateManifestPaths: true })))
+      continue;
     // Abort the whole sweep (not just this branch) the moment the base moves.
     if (!(await baseUnchanged())) break;
     const deleted = await runGit(exec, repoRoot, [
@@ -1145,8 +1163,9 @@ async function findOpenPromotePr(
 /**
  * Run one reconcile cycle. See the module doc for the full architecture.
  * Never mutates any local working branch/index/HEAD (all work happens in a
- * throwaway detached worktree); the only remote mutation is a force-update of
- * the sole-writer promotion branch + PR open/edit/arm.
+ * throwaway detached worktree); remote mutations are limited to lease-guarded
+ * source retirement (`assets/queue` reset + orphan branch deletions) plus a
+ * force-update of the sole-writer promotion branch and PR open/edit/arm.
  */
 export async function runReconcile(
   repoRoot: string,
@@ -1306,8 +1325,8 @@ export async function runReconcile(
 
     if (queueVsMainArt.length === 0 && orphanedPathsByBranch.length === 0) {
       // Queue's art surface already matches main and no orphaned branches
-      // contribute new art. Deliberately DO NOT reset assets/queue (data-loss
-      // trap): it keeps accumulating and the next non-empty delta re-harvests.
+      // contribute new art. This noop path does NOT reset assets/queue; any
+      // safe retirement already happened in the leased tidy-up step above.
       return {
         status: 'noop',
         promoteBranch,

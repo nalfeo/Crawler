@@ -825,6 +825,31 @@ function seedQueueWithArt(
   }
 }
 
+function seedQueueWithLegacyManifest(
+  liveDir: string,
+  keys: readonly string[],
+  queueBranch = 'assets/queue',
+): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-legacy-queue-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const genDir = path.join(wt, 'public', 'assets', 'generated');
+    mkdirSync(genDir, { recursive: true });
+    for (const key of keys) {
+      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+    }
+    writeJson(path.join(genDir, 'manifest.json'), { version: 1, assets: keys });
+    gitSync(wt, 'add', '--', 'public/assets/generated');
+    gitSync(wt, 'commit', '--no-verify', '-m', `queue legacy manifest: ${keys.join(', ')}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${queueBranch}`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 function seedQueueWithBrief(
   liveDir: string,
   briefPath: string,
@@ -2039,6 +2064,25 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     expect(remoteSha(liveDir, 'assets/checkin-revert-1')).toBe(orphanAfter);
   });
 
+  it('REVERT SAFETY: queue retirement keeps legacy manifest paths in the proof', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithLegacyManifest(liveDir, []);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.changedPaths).toEqual(['public/assets/generated/manifest.json']);
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const queueAfter = remoteSha(liveDir, 'assets/queue');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    gitSync(liveDir, 'push', 'origin', '+origin/main~1:refs/heads/main');
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueAfter);
+  });
+
   it('FORGERY: a repair commit on the promotion cannot inject a branch deletion', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
@@ -2124,11 +2168,17 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
     const gh = new FakeGh();
+    gh.next = 2;
     const first = await runReconcile(liveDir, realDeps(gh));
     landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
     // A LOWER-numbered promotion that merged LATER must win the ordering.
-    const older = gh.seedMerged('assets/promote', 'main', SHA_A, '2026-08-04T00:00:00Z');
-    gh.prs.find((p) => p.number === older)!.number = 0.5 as unknown as number;
+    const older = gh.seedMerged(
+      'assets/promote',
+      'main',
+      first.promoteCommit!,
+      '2026-08-02T00:00:00Z',
+    );
+    gitSync(liveDir, 'push', 'origin', `${first.promoteCommit!}:refs/pull/${older}/head`);
 
     const landed = await findLandedPromotion(
       realGitFakeGhExec(gh),
@@ -2138,8 +2188,33 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
       'assets/promote',
       'main',
     );
-    // PR "0.5" is not a valid integer number, so it is discarded and the real
-    // promotion is used — proving invalid entries fail closed rather than win.
+    expect(landed?.prNumber).toBe(first.prNumber);
+  });
+
+  it('rejects non-integer merged PR numbers', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const invalid = gh.seedMerged(
+      'assets/promote',
+      'main',
+      first.promoteCommit!,
+      '2026-08-04T00:00:00Z',
+    );
+    gh.prs.find((p) => p.number === invalid)!.number = 0.5 as unknown as number;
+
+    const landed = await findLandedPromotion(
+      realGitFakeGhExec(gh),
+      liveDir,
+      'origin',
+      undefined,
+      'assets/promote',
+      'main',
+    );
+
     expect(landed?.prNumber).toBe(first.prNumber);
   });
 });
