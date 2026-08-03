@@ -34,10 +34,14 @@ import {
   assertArtSurfaceModes,
   assertArtSurfaceOnly,
   computeClosingIssueNumbers,
+  findLandedPromotion,
+  formatSourceTrailers,
   isArtSurfacePath,
+  parseSourceTrailers,
   ReconcileError,
   runReconcile,
   scanOrphanedCheckinBranches,
+  tidyUpLandedPromotion,
   type ReconcileDeps,
 } from '../../../scripts/sprites/reconcile-queue.js';
 
@@ -507,6 +511,20 @@ function controlDeps(exec: Exec, overrides: Partial<ReconcileDeps> = {}): Reconc
   };
 }
 
+/**
+ * The tidy-up step probes `gh pr list --state merged` at the very start of every
+ * cycle to find the last LANDED promotion, so "no gh calls" assertions must
+ * tolerate exactly that probe (and nothing else).
+ */
+function isTidyUpProbe(call: { command: string; args: string[] }): boolean {
+  return (
+    call.command === 'gh' &&
+    call.args[0] === 'pr' &&
+    call.args[1] === 'list' &&
+    call.args.includes('merged')
+  );
+}
+
 describe('runReconcile (control-flow)', () => {
   it('cold-start: no-op without fetching when the queue branch is absent', async () => {
     const { exec, calls } = makeFakeExec({ queueExists: false });
@@ -514,7 +532,7 @@ describe('runReconcile (control-flow)', () => {
     expect(result.status).toBe('noop');
     // Only the initial ls-remote probe ran; no fetch, no worktree, no gh.
     expect(calls.some((c) => c.command === 'git' && c.args[0] === 'fetch')).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
   });
 
   it('no-op when the art-surface delta is empty', async () => {
@@ -523,7 +541,7 @@ describe('runReconcile (control-flow)', () => {
     expect(result.status).toBe('noop');
     // Never staged a worktree or opened a PR.
     expect(calls.some((c) => c.command === 'git' && c.args[0] === 'worktree')).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
   });
 
   it('GUARD: rejects a non-art staged path BEFORE any commit/push/PR/arm', async () => {
@@ -549,7 +567,7 @@ describe('runReconcile (control-flow)', () => {
           c.args.some((a) => a.includes('refs/heads/assets/promote')),
       ),
     ).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
     // The throwaway worktree was still cleaned up.
     expect(
       calls.some((c) => c.command === 'git' && c.args[0] === 'worktree' && c.args[1] === 'remove'),
@@ -577,7 +595,7 @@ describe('runReconcile (control-flow)', () => {
           c.args.some((a) => a.includes('refs/heads/assets/promote')),
       ),
     ).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
   });
 
   it('runs the entire cycle inside the injected cross-process lock', async () => {
@@ -658,7 +676,9 @@ describe('scanOrphanedCheckinBranches', () => {
       'abc123\trefs/heads/assets/checkin-foo\n' + 'def456\trefs/heads/assets/checkin-bar\n';
     const { exec } = makeScanExec(lsRemote, '[]');
     const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
-    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-bar']);
+    // Deterministically sorted: overlay order decides the winner when two
+    // sources disagree, so it must not depend on `ls-remote` output order.
+    expect(result).toEqual(['assets/checkin-bar', 'assets/checkin-foo']);
   });
 
   it('excludes branches that are the head of an open PR', async () => {
@@ -669,7 +689,7 @@ describe('scanOrphanedCheckinBranches', () => {
     const prList = JSON.stringify([{ headRefName: 'assets/checkin-bar' }]);
     const { exec } = makeScanExec(lsRemote, prList);
     const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
-    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-baz']);
+    expect(result).toEqual(['assets/checkin-baz', 'assets/checkin-foo']);
   });
 
   it('returns empty when all branches have open PRs', async () => {
@@ -805,6 +825,31 @@ function seedQueueWithArt(
   }
 }
 
+function seedQueueWithLegacyManifest(
+  liveDir: string,
+  keys: readonly string[],
+  queueBranch = 'assets/queue',
+): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-legacy-queue-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const genDir = path.join(wt, 'public', 'assets', 'generated');
+    mkdirSync(genDir, { recursive: true });
+    for (const key of keys) {
+      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+    }
+    writeJson(path.join(genDir, 'manifest.json'), { version: 1, assets: keys });
+    gitSync(wt, 'add', '--', 'public/assets/generated');
+    gitSync(wt, 'commit', '--no-verify', '-m', `queue legacy manifest: ${keys.join(', ')}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${queueBranch}`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 function seedQueueWithBrief(
   liveDir: string,
   briefPath: string,
@@ -930,6 +975,10 @@ interface FakePr {
   matchHeadCommit?: string;
   /** Label names currently on the PR. */
   labels: string[];
+  /** Head commit OID (set when the PR is recorded as merged). */
+  headRefOid?: string;
+  /** ISO merge timestamp (set when the PR is recorded as merged). */
+  mergedAt?: string;
 }
 
 /** In-memory `gh` PR store. `failCreateWhenExists` simulates the create-race. */
@@ -967,6 +1016,35 @@ class FakeGh {
       autoMerge: false,
       isCrossRepository,
       labels: [...labels],
+    });
+    return number;
+  }
+
+  /**
+   * Record an already-MERGED PR (what `gh pr list --state merged` returns). The
+   * caller supplies the head OID so the tidy-up path can verify it against the
+   * `refs/pull/<n>/head` ref it fetches.
+   */
+  seedMerged(
+    head: string,
+    base: string,
+    headRefOid: string,
+    mergedAt: string,
+    isCrossRepository = false,
+  ): number {
+    const number = this.next++;
+    this.prs.push({
+      number,
+      head,
+      base,
+      state: 'merged',
+      title: '',
+      body: '',
+      autoMerge: false,
+      isCrossRepository,
+      labels: [],
+      headRefOid,
+      mergedAt,
     });
     return number;
   }
@@ -1013,14 +1091,19 @@ class FakeGh {
       // `gh pr list --head <branch>` matches by branch NAME across repos, so the
       // fake must surface cross-repo PRs too — the core is responsible for
       // discarding them via isCrossRepository.
+      // `--state` defaults to open; the tidy-up path queries `merged`.
+      const wantState = flags.state === 'merged' ? 'merged' : 'open';
       const matches = this.prs.filter(
-        (p) => p.state === 'open' && p.head === flags.head && p.base === flags.base,
+        (p) => p.state === wantState && p.head === flags.head && p.base === flags.base,
       );
       return ok(
         JSON.stringify(
           matches.map((p) => ({
             number: p.number,
             headRefName: p.head,
+            baseRefName: p.base,
+            headRefOid: p.headRefOid,
+            mergedAt: p.mergedAt,
             isCrossRepository: p.isCrossRepository,
             labels: p.labels.map((name) => ({ name })),
           })),
@@ -1623,5 +1706,515 @@ describe('runReconcile (real git)', () => {
     const second = await runReconcile(liveDir, realDeps(gh));
     expect(second.status).toBe('pr-open');
     expect(gh.prs).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source-snapshot trailers + landed-promotion tidy-up.
+//
+// These cover the convergence fix: a promotion records the EXACT source tips it
+// harvested, and once that promotion MERGES the next cycle retires precisely
+// those snapshots under a compare-and-swap lease. Without the tidy-up the
+// reconciler oscillates — `--diff-filter=AM` only asks "does this source differ
+// from main", so whichever source currently disagrees with main always re-wins
+// the overlay and a promotion PR is opened every hour forever.
+// ---------------------------------------------------------------------------
+
+const SHA_A = 'a'.repeat(40);
+const SHA_B = 'b'.repeat(40);
+const SHA_C = 'c'.repeat(40);
+
+describe('source trailers', () => {
+  it('round-trips a queue snapshot and orphan snapshots', () => {
+    const sources = {
+      queueSha: SHA_A,
+      orphans: [
+        { branch: 'assets/checkin-zzz', sha: SHA_B },
+        { branch: 'assets/checkin-aaa', sha: SHA_C },
+      ],
+    };
+    const text = formatSourceTrailers(sources);
+    // Deterministically ordered by branch name so re-harvesting identical
+    // sources produces a byte-identical commit message.
+    expect(text).toBe(
+      `Queue-Source: ${SHA_A}\n` +
+        `Orphan-Source: assets/checkin-aaa ${SHA_C}\n` +
+        `Orphan-Source: assets/checkin-zzz ${SHA_B}`,
+    );
+    expect(parseSourceTrailers(text)).toEqual({
+      queueSha: SHA_A,
+      orphans: [
+        { branch: 'assets/checkin-aaa', sha: SHA_C },
+        { branch: 'assets/checkin-zzz', sha: SHA_B },
+      ],
+    });
+  });
+
+  it('emits nothing when there is no queue snapshot and no orphan', () => {
+    expect(formatSourceTrailers({ queueSha: null, orphans: [] })).toBe('');
+  });
+
+  it('parses trailers out of a full commit message body', () => {
+    const message = [
+      'chore(assets): reconcile queued sprite edits',
+      '',
+      'Art-surface harvest of assets/queue onto main (3 path(s)).',
+      '',
+      `Queue-Source: ${SHA_A}`,
+    ].join('\n');
+    expect(parseSourceTrailers(message).queueSha).toBe(SHA_A);
+  });
+
+  it('FAIL CLOSED: drops malformed trailers rather than guessing', () => {
+    const message = [
+      'Queue-Source: not-a-sha',
+      `Queue-Source: ${SHA_A.slice(0, 39)}`,
+      `Orphan-Source: assets/checkin-ok`, // missing sha
+      `Orphan-Source: assets/checkin-ok ${SHA_B} extra`, // too many fields
+      `Orphan-Source: main ${SHA_B}`, // not an assets/checkin-* branch
+      `Orphan-Source: ../../etc/passwd ${SHA_B}`, // traversal attempt
+      `Orphan-Source: assets/checkin-ok deadbeef`, // short sha
+    ].join('\n');
+    expect(parseSourceTrailers(message)).toEqual({ queueSha: null, orphans: [] });
+  });
+
+  it('FAIL CLOSED: format skips entries it would refuse to parse back', () => {
+    const text = formatSourceTrailers({
+      queueSha: 'nope',
+      orphans: [
+        { branch: 'main', sha: SHA_A },
+        { branch: 'assets/checkin-ok', sha: 'short' },
+        { branch: 'assets/checkin-ok', sha: SHA_B },
+      ],
+    });
+    expect(text).toBe(`Orphan-Source: assets/checkin-ok ${SHA_B}`);
+  });
+
+  it('keeps only the first snapshot for a duplicated orphan branch', () => {
+    const parsed = parseSourceTrailers(
+      `Orphan-Source: assets/checkin-dup ${SHA_A}\nOrphan-Source: assets/checkin-dup ${SHA_B}`,
+    );
+    expect(parsed.orphans).toEqual([{ branch: 'assets/checkin-dup', sha: SHA_A }]);
+  });
+});
+
+describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
+  const cleanups: string[] = [];
+  afterEach(() => {
+    for (const dir of cleanups.splice(0)) {
+      for (let i = 0; i < 5; i++) {
+        try {
+          rmSync(dir, { recursive: true, force: true });
+          break;
+        } catch {
+          // Windows can briefly hold a just-removed worktree dir; retry.
+        }
+      }
+    }
+  });
+
+  const TIDY_OPTIONS = {
+    remote: 'origin',
+    repo: undefined,
+    promoteBranch: 'assets/promote',
+    baseBranch: 'main',
+    queueBranch: 'assets/queue',
+  };
+
+  /**
+   * Land an open promotion the way GitHub does: squash its art onto `main`,
+   * publish the permanent `refs/pull/<n>/head` ref, delete the promote branch,
+   * and flip the fake PR to `merged`.
+   */
+  function landPromotion(liveDir: string, gh: FakeGh, prNumber: number, headSha: string): void {
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote', 'main');
+    gitSync(liveDir, 'push', 'origin', `${headSha}:refs/pull/${prNumber}/head`);
+    // SQUASH merge, matching the repo merge policy: `main` gains a NEW commit
+    // carrying the promotion's tree, so the promotion's own commits never become
+    // ancestors of `main` (which is what bounds the trailer scan).
+    const mainSha = gitSync(liveDir, 'rev-parse', 'origin/main').trim();
+    const tree = gitSync(liveDir, 'rev-parse', `${headSha}^{tree}`).trim();
+    const squashed = gitSync(
+      liveDir,
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'user.name=Reconcile Test',
+      'commit-tree',
+      tree,
+      '-p',
+      mainSha,
+      '-m',
+      `squash promote #${prNumber}`,
+    ).trim();
+    gitSync(liveDir, 'push', 'origin', `${squashed}:refs/heads/main`);
+    gitSync(liveDir, 'push', 'origin', '--delete', 'assets/promote');
+    const pr = gh.prs.find((p) => p.number === prNumber)!;
+    pr.state = 'merged';
+    pr.headRefOid = headSha;
+    pr.mergedAt = '2026-08-03T00:00:00Z';
+  }
+
+  /**
+   * Land a NEW approval on top of an existing source branch (an approve/check-in
+   * that races the promotion). Commits onto the branch's current tip so the
+   * source advances past the harvested snapshot.
+   */
+  function advanceBranchWithArt(liveDir: string, branch: string, key: string): void {
+    gitSync(
+      liveDir,
+      'fetch',
+      '--no-tags',
+      'origin',
+      `+refs/heads/${branch}:refs/rq-test/${branch}`,
+    );
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-advance-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', `refs/rq-test/${branch}`);
+      const genDir = path.join(wt, 'public', 'assets', 'generated');
+      mkdirSync(genDir, { recursive: true });
+      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+      gitSync(wt, 'add', '--', 'public/assets/generated');
+      gitSync(wt, 'commit', '--no-verify', '-m', `approve ${key}`);
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${branch}`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+  }
+
+  function remoteSha(liveDir: string, branch: string): string | null {
+    const out = execFileSync('git', ['ls-remote', '--heads', 'origin', branch], {
+      cwd: liveDir,
+      encoding: 'utf8',
+    });
+    const sha = out.split(/\s+/)[0] ?? '';
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+  }
+
+  it('records the harvested source tips on the promotion commit', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-trailer-1', ['orphan-sprite-var-9']);
+    const queueSha = remoteSha(liveDir, 'assets/queue')!;
+    const orphanSha = remoteSha(liveDir, 'assets/checkin-trailer-1')!;
+
+    const gh = new FakeGh();
+    const result = await runReconcile(liveDir, realDeps(gh));
+    expect(result.status).toBe('pr-open');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    const body = execFileSync('git', ['log', '-1', '--format=%B', result.promoteCommit!], {
+      cwd: liveDir,
+      encoding: 'utf8',
+    });
+    expect(parseSourceTrailers(body)).toEqual({
+      queueSha,
+      orphans: [{ branch: 'assets/checkin-trailer-1', sha: orphanSha }],
+    });
+  });
+
+  it('retires the queue and the orphan branch once the promotion has MERGED', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-tidy-1', ['orphan-sprite-var-9']);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy.queueReset).toBe(true);
+    expect(tidy.deletedBranches).toEqual(['assets/checkin-tidy-1']);
+    // The queue now points at main, and the orphan branch is gone.
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(remoteSha(liveDir, 'main'));
+    expect(remoteSha(liveDir, 'assets/checkin-tidy-1')).toBeNull();
+  });
+
+  it('CONVERGES: the very next cycle after a merged promotion is a no-op', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-converge-1', ['orphan-sprite-var-9']);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+
+    // This is the regression the whole change exists for: before the tidy-up
+    // the orphan branch was re-harvested every hour, so this second cycle
+    // opened ANOTHER promotion PR with the same files, forever.
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('noop');
+    expect(second.tidiedQueue).toBe(true);
+    expect(second.tidiedBranches).toEqual(['assets/checkin-converge-1']);
+    expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
+  });
+
+  it('CAS MISS: never discards art that landed on a source after the harvest', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-cas-1', ['orphan-sprite-var-9']);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+
+    // A newly-approved asset lands on BOTH sources after the harvest.
+    advanceBranchWithArt(liveDir, 'assets/queue', 'late-arrival-var-0');
+    advanceBranchWithArt(liveDir, 'assets/checkin-cas-1', 'late-orphan-var-0');
+    const queueAfter = remoteSha(liveDir, 'assets/queue');
+    const orphanAfter = remoteSha(liveDir, 'assets/checkin-cas-1');
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy.queueReset).toBe(false);
+    expect(tidy.deletedBranches).toEqual([]);
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueAfter);
+    expect(remoteSha(liveDir, 'assets/checkin-cas-1')).toBe(orphanAfter);
+  });
+
+  it('does nothing while the promotion is still open (not merged)', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    await runReconcile(liveDir, realDeps(gh));
+    const queueBefore = remoteSha(liveDir, 'assets/queue');
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueBefore);
+  });
+
+  it('SECURITY: ignores a merged fork PR that reuses the promote branch name', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    gh.prs.find((p) => p.number === first.prNumber)!.isCrossRepository = true;
+
+    const exec = realGitFakeGhExec(gh);
+    expect(
+      await findLandedPromotion(exec, liveDir, 'origin', undefined, 'assets/promote', 'main'),
+    ).toBeNull();
+    const tidy = await tidyUpLandedPromotion(exec, liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+  });
+
+  it('FAIL CLOSED: refuses to act when the reported head OID does not resolve', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    // GitHub reports a head the pull ref does not actually contain.
+    gh.prs.find((p) => p.number === first.prNumber)!.headRefOid = SHA_A;
+
+    const exec = realGitFakeGhExec(gh);
+    expect(
+      await findLandedPromotion(exec, liveDir, 'origin', undefined, 'assets/promote', 'main'),
+    ).toBeNull();
+  });
+
+  it('FAIL CLOSED: a gh failure leaves every source in place', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    const queueBefore = remoteSha(liveDir, 'assets/queue');
+    const exec: Exec = (command, args, options) =>
+      command === 'gh'
+        ? Promise.resolve({ stdout: '', stderr: 'gh boom', code: 1 })
+        : realGitFakeGhExec(gh)(command, args, options);
+
+    const tidy = await tidyUpLandedPromotion(exec, liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueBefore);
+  });
+
+  it('REVERT SAFETY: never retires a source whose art was reverted off main', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-revert-1', ['orphan-sprite-var-9']);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const queueAfter = remoteSha(liveDir, 'assets/queue');
+    const orphanAfter = remoteSha(liveDir, 'assets/checkin-revert-1');
+
+    // A human reverts the art promotion on main. "The PR merged" is now NO LONGER
+    // proof that the art is on main — the source branches hold the only copies,
+    // so retiring them would destroy the art.
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    gitSync(liveDir, 'push', 'origin', '+origin/main~1:refs/heads/main');
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueAfter);
+    expect(remoteSha(liveDir, 'assets/checkin-revert-1')).toBe(orphanAfter);
+  });
+
+  it('REVERT SAFETY: queue retirement keeps legacy manifest paths in the proof', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithLegacyManifest(liveDir, []);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.changedPaths).toEqual(['public/assets/generated/manifest.json']);
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const queueAfter = remoteSha(liveDir, 'assets/queue');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    gitSync(liveDir, 'push', 'origin', '+origin/main~1:refs/heads/main');
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueAfter);
+  });
+
+  it('FORGERY: a repair commit on the promotion cannot inject a branch deletion', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+
+    // A branch the promotion NEVER harvested. It is pinned at `main`, so it adds
+    // nothing to the art surface — meaning the revert guard would happily let it
+    // go and ONLY the trailer-provenance check can save it.
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    gitSync(liveDir, 'push', 'origin', 'origin/main:refs/heads/assets/checkin-innocent');
+    const innocentSha = remoteSha(liveDir, 'assets/checkin-innocent')!;
+
+    // Simulate CI recovery pushing a repair commit onto the promotion whose
+    // message claims a source snapshot the promotion never took.
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    const forged = gitSync(
+      liveDir,
+      '-c',
+      'user.email=ci@example.com',
+      '-c',
+      'user.name=CI Recovery',
+      'commit-tree',
+      `${first.promoteCommit!}^{tree}`,
+      '-p',
+      first.promoteCommit!,
+      '-m',
+      // Uses the EXACT promotion subject — a subject check alone would be
+      // fooled, so this proves the uniqueness rule is what actually holds.
+      `chore(assets): reconcile queued sprite edits\n\n` +
+        `Orphan-Source: assets/checkin-innocent ${innocentSha}`,
+    ).trim();
+    gitSync(liveDir, 'push', 'origin', `+${forged}:refs/heads/assets/promote`);
+    landPromotion(liveDir, gh, first.prNumber!, forged);
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    // Two commits now claim the promotion subject, so provenance is ambiguous
+    // and tidy-up fails closed: nothing is retired.
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/checkin-innocent')).toBe(innocentSha);
+  });
+
+  it('BASE RACE: aborts when main moves between the safety proof and the push', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-race-1', ['orphan-sprite-var-9']);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const queueAfter = remoteSha(liveDir, 'assets/queue');
+    const orphanAfter = remoteSha(liveDir, 'assets/checkin-race-1');
+
+    // Revert `main` AFTER the proof has been computed against the fetched base
+    // snapshot but BEFORE any destructive push, by reverting on the first
+    // `ls-remote` of the base branch that the pre-push re-assertion performs.
+    const real = realGitFakeGhExec(gh);
+    let proofDone = false;
+    const exec: Exec = (command, args, options) => {
+      if (
+        command === 'git' &&
+        args[0] === 'ls-remote' &&
+        args.includes('main') &&
+        proofDone === false
+      ) {
+        proofDone = true;
+        gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+        gitSync(liveDir, 'push', 'origin', '+origin/main~1:refs/heads/main');
+      }
+      return real(command, args, options);
+    };
+
+    const tidy = await tidyUpLandedPromotion(exec, liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueAfter);
+    expect(remoteSha(liveDir, 'assets/checkin-race-1')).toBe(orphanAfter);
+  });
+
+  it('picks the newest merge by mergedAt, not by PR number', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    gh.next = 2;
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    // A LOWER-numbered promotion that merged LATER must win the ordering.
+    const older = gh.seedMerged(
+      'assets/promote',
+      'main',
+      first.promoteCommit!,
+      '2026-08-02T00:00:00Z',
+    );
+    gitSync(liveDir, 'push', 'origin', `${first.promoteCommit!}:refs/pull/${older}/head`);
+
+    const landed = await findLandedPromotion(
+      realGitFakeGhExec(gh),
+      liveDir,
+      'origin',
+      undefined,
+      'assets/promote',
+      'main',
+    );
+    expect(landed?.prNumber).toBe(first.prNumber);
+  });
+
+  it('rejects non-integer merged PR numbers', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const invalid = gh.seedMerged(
+      'assets/promote',
+      'main',
+      first.promoteCommit!,
+      '2026-08-04T00:00:00Z',
+    );
+    gh.prs.find((p) => p.number === invalid)!.number = 0.5 as unknown as number;
+
+    const landed = await findLandedPromotion(
+      realGitFakeGhExec(gh),
+      liveDir,
+      'origin',
+      undefined,
+      'assets/promote',
+      'main',
+    );
+
+    expect(landed?.prNumber).toBe(first.prNumber);
   });
 });
