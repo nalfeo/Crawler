@@ -10,7 +10,7 @@ Systems Engineer
 
 ## Systems touched
 
-safe-rooms, doors, combat-damage, enemy-ai, floor-config, equipment-economy
+mapgen, weapons, ai-behavior-tree, inventory
 
 ## Apples
 

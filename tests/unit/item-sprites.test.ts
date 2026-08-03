@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import {
   canonicalItemBriefId,
-  isPlaceholderEntry,
+  _isPlaceholderEntry,
   itemArtIdentitySet,
   itemSpriteConcepts,
   resolveItemSprite,
 } from '../../src/shared/item-sprites.js';
+import { themedArtConceptsFor } from '../../src/shared/data/equipment-theme-sets.js';
+import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from '../../src/shared/data/floor2-basic-leather-bases.js';
 
 interface EntryOpts {
   readonly sourceRun?: string;
@@ -95,10 +97,10 @@ describe('itemSpriteConcepts', () => {
   });
 });
 
-describe('isPlaceholderEntry', () => {
+describe('_isPlaceholderEntry', () => {
   it('flags entries whose sourceRun is placeholder', () => {
     const registry = makeRegistry([placeholder('iron-ore-placeholder', 'iron-ore')]);
-    expect(isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
+    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
   });
 
   it('flags entries whose assetPath ends with -placeholder.png even if sourceRun differs', () => {
@@ -109,12 +111,12 @@ describe('isPlaceholderEntry', () => {
         { assetPath: 'assets/generated/iron-ore-placeholder.png' },
       ],
     ]);
-    expect(isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
+    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
   });
 
   it('does not flag real approved art', () => {
     const registry = makeRegistry([['iron-ore-var-0', 'iron-ore']]);
-    expect(isPlaceholderEntry(registry.entries()[0]!)).toBe(false);
+    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(false);
   });
 });
 
@@ -134,7 +136,7 @@ describe('resolveItemSprite', () => {
     ]);
     const result = resolveItemSprite(registry, 'iron-ore', SEED);
     expect(result?.textureKey).toBe('iron-ore-v1-var-0');
-    expect(isPlaceholderEntry(result!)).toBe(false);
+    expect(_isPlaceholderEntry(result!)).toBe(false);
   });
 
   it('prefers bare real art over the placeholder (post-migration state)', () => {
@@ -157,7 +159,7 @@ describe('resolveItemSprite', () => {
     const registry = makeRegistry([placeholder('pebble-placeholder', 'pebble')]);
     const result = resolveItemSprite(registry, 'pebble', SEED);
     expect(result?.textureKey).toBe('pebble-placeholder');
-    expect(isPlaceholderEntry(result!)).toBe(true);
+    expect(_isPlaceholderEntry(result!)).toBe(true);
   });
 
   describe('cross-concept (weaponId) resolution — bone-club → baseball-bat', () => {
@@ -168,7 +170,7 @@ describe('resolveItemSprite', () => {
       ]);
       const result = resolveItemSprite(registry, 'bone-club', SEED);
       expect(result?.textureKey).toBe('baseball-bat-v1-var-0');
-      expect(isPlaceholderEntry(result!)).toBe(false);
+      expect(_isPlaceholderEntry(result!)).toBe(false);
     });
 
     it('a real weaponId match beats an item-concept placeholder GLOBALLY (not per-concept)', () => {
@@ -260,7 +262,7 @@ describe('resolveItemSprite', () => {
       ]);
       const result = resolveItemSprite(registry, 'weapon.moon-scythe', SEED);
       expect(result?.textureKey).toBe('equipment/weapon/moon-scythe');
-      expect(isPlaceholderEntry(result!)).toBe(false);
+      expect(_isPlaceholderEntry(result!)).toBe(false);
     });
 
     it('prefers a wiring entry (TIER_BARE_REAL) over an old-style versioned entry via production stableId', () => {
@@ -290,8 +292,165 @@ describe('resolveItemSprite', () => {
       ]);
       const result = resolveItemSprite(registry, 'bone-club', SEED);
       expect(result?.textureKey).toBe('equipment/weapon/baseball-bat');
-      expect(isPlaceholderEntry(result!)).toBe(false);
+      expect(_isPlaceholderEntry(result!)).toBe(false);
     });
+  });
+});
+
+describe('themed equipment art (theme-set registry)', () => {
+  // The Classic Fantasy [Basic Leather] wave keys its manifest entries by THEME
+  // (`classic-fantasy-basic-leather-wooden-bow-v1`), not by item. Before the
+  // shared theme-set registry existed, that art was invisible to the resolver
+  // and was force-aliased by a hardcoded helper in the ENGINE layer
+  // (`resolveBasicLeatherAliasEntry` in generatedAssets/preload.ts). These tests
+  // pin the shared-layer behaviour that replaced it.
+
+  it('emits the themed concept for a themed piece addressed by stable ID', () => {
+    expect(itemSpriteConcepts('weapon.wooden-bow')).toContain(
+      'classic-fantasy-basic-leather-wooden-bow',
+    );
+  });
+
+  it('emits the themed concept for a themed piece addressed by its runtimeKey', () => {
+    // A generated-equipment instance's frozen artKey IS the runtimeKey, and the
+    // panels pass it straight back into resolveItemSprite when no texture is
+    // preloaded under that literal key.
+    expect(itemSpriteConcepts('equipment/weapon/wooden-bow')).toContain(
+      'classic-fantasy-basic-leather-wooden-bow',
+    );
+  });
+
+  it('emits the themed concept for a legacy catalog item whose slug matches a themed piece', () => {
+    // `leather-boots` is a legacy catalog item; `feet.leather-boots` is the
+    // themed piece. Sharing the slug is what lets the legacy item pick up the
+    // themed art rather than staying on its fetched-icon placeholder.
+    expect(itemSpriteConcepts('leather-boots')).toContain(
+      'classic-fantasy-basic-leather-leather-boots',
+    );
+  });
+
+  it('emits NO themed concept for an item outside every theme set', () => {
+    expect(itemSpriteConcepts('iron-ore')).toEqual(['iron-ore']);
+    expect(
+      itemSpriteConcepts('weapon.moon-scythe').some((concept) =>
+        concept.startsWith('classic-fantasy-basic-leather-'),
+      ),
+    ).toBe(false);
+  });
+
+  it('orders themed concepts LAST so an item-id match always wins the tie', () => {
+    const concepts = itemSpriteConcepts('weapon.wooden-bow');
+    const themedIndex = concepts.indexOf('classic-fantasy-basic-leather-wooden-bow');
+    expect(themedIndex).toBe(concepts.length - 1);
+    expect(concepts[0]).toBe('weapon.wooden-bow');
+  });
+
+  it('never emits duplicate concepts', () => {
+    const concepts = itemSpriteConcepts('weapon.wooden-bow');
+    expect(new Set(concepts).size).toBe(concepts.length);
+  });
+
+  it('resolves themed art in preference to a placeholder', () => {
+    const registry = makeRegistry([
+      placeholder('wooden-bow-placeholder', 'wooden-bow', {
+        assetPath: 'generated/wooden-bow-placeholder.png',
+      }),
+      [
+        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
+        'classic-fantasy-basic-leather-wooden-bow-v1',
+      ],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow-v1');
+    expect(_isPlaceholderEntry(result!)).toBe(false);
+  });
+
+  it("prefers the item's own bare-real art over themed art", () => {
+    const registry = makeRegistry([
+      [
+        'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
+        'classic-fantasy-basic-leather-wooden-bow-v1',
+      ],
+      ['wooden-bow-var-0', 'wooden-bow'],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('wooden-bow');
+  });
+
+  it("prefers the item's own VERSIONED art over BARE themed art", () => {
+    // Provenance must be ranked BEFORE quality tier. If tier came first, a bare
+    // themed entry (TIER_BARE_REAL) would outrank the item's own versioned art
+    // (TIER_VERSIONED_REAL) and a theme's generic piece would silently replace
+    // item-specific art.
+    const registry = makeRegistry([
+      [
+        'classic-fantasy-basic-leather-wooden-bow-var-0',
+        'classic-fantasy-basic-leather-wooden-bow',
+      ],
+      ['wooden-bow-v3-var-0', 'wooden-bow-v3'],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('wooden-bow-v3');
+  });
+
+  it("prefers themed real art over the item's own placeholder", () => {
+    // The other side of the same rank: a placeholder is never coverage, so
+    // themed real art must win even though the placeholder matches an earlier
+    // concept.
+    const registry = makeRegistry([
+      placeholder('wooden-bow-placeholder', 'wooden-bow', {
+        assetPath: 'generated/wooden-bow-placeholder.png',
+      }),
+      [
+        'classic-fantasy-basic-leather-wooden-bow-var-0',
+        'classic-fantasy-basic-leather-wooden-bow',
+      ],
+    ]);
+    const result = resolveItemSprite(registry, 'weapon.wooden-bow', SEED);
+    expect(result?.briefId).toBe('classic-fantasy-basic-leather-wooden-bow');
+  });
+
+  it('resolves the same themed variant for a given seed across repeated calls and registries', () => {
+    const build = () =>
+      makeRegistry([
+        [
+          'classic-fantasy-basic-leather-wooden-bow-v1-var-0',
+          'classic-fantasy-basic-leather-wooden-bow-v1',
+          { variantIndex: 0 },
+        ],
+        [
+          'classic-fantasy-basic-leather-wooden-bow-v1-var-1',
+          'classic-fantasy-basic-leather-wooden-bow-v1',
+          { variantIndex: 1 },
+        ],
+        [
+          'classic-fantasy-basic-leather-wooden-bow-v1-var-2',
+          'classic-fantasy-basic-leather-wooden-bow-v1',
+          { variantIndex: 2 },
+        ],
+      ]);
+    const first = resolveItemSprite(build(), 'weapon.wooden-bow', SEED);
+    const second = resolveItemSprite(build(), 'weapon.wooden-bow', SEED);
+    expect(first?.textureKey).toBe(second?.textureKey);
+    // A different seed is still allowed to pick a different variant, but must
+    // itself be stable.
+    const other = resolveItemSprite(build(), 'weapon.wooden-bow', SEED + 1);
+    expect(other?.textureKey).toBe(
+      resolveItemSprite(build(), 'weapon.wooden-bow', SEED + 1)?.textureKey,
+    );
+  });
+});
+
+describe('themedArtConceptsFor', () => {
+  it('returns the themed concept for every member of a theme set', () => {
+    for (const stableId of FLOOR2_BASIC_LEATHER_STABLE_IDS) {
+      const slug = stableId.slice(stableId.indexOf('.') + 1);
+      expect(themedArtConceptsFor(stableId)).toContain(`classic-fantasy-basic-leather-${slug}`);
+    }
+  });
+
+  it('returns an empty list for an unknown key', () => {
+    expect(themedArtConceptsFor('definitely-not-a-themed-piece')).toEqual([]);
   });
 });
 

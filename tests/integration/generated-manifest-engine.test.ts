@@ -29,7 +29,7 @@ import {
   HARVESTABLE_DEFS,
   FLOOR2_HARVESTABLE_START_INDEX,
 } from '../../src/shared/harvestableDefs.js';
-import { isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
+import { _isPlaceholderEntry, resolveItemSprite } from '../../src/shared/item-sprites.js';
 import { FLOOR2_BASIC_LEATHER_STABLE_IDS } from '../../src/shared/data/floor2-basic-leather-bases.js';
 import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../src/shared/data/floor2-equipment-art.js';
 import {
@@ -252,7 +252,7 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(typeof registry.size).toBe('number');
   });
 
-  it('preloads real approved Basic Leather art under every generated-equipment runtime key', () => {
+  it('resolves real approved Basic Leather art for generated-equipment runtime keys without preload aliases', () => {
     if (!sharedRealRegistry) return;
 
     const queued: Array<{ textureKey: string; url: string }> = [];
@@ -270,13 +270,18 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
       const alias = queued.find((entry) => entry.textureKey === definition.runtimeKey);
       expect(
         alias,
-        `missing real-art preload alias for ${definition.stableId} (${definition.runtimeKey})`,
-      ).toBeDefined();
-      expect(alias!.url).not.toContain('placeholder');
+        `unexpected runtime-key preload alias for ${definition.runtimeKey}`,
+      ).toBeUndefined();
+      const resolved = resolveItemSprite(sharedRealRegistry, definition.runtimeKey, 0);
+      expect(resolved, `failed to resolve themed art for ${definition.runtimeKey}`).not.toBeNull();
+      expect(
+        _isPlaceholderEntry(resolved!),
+        `placeholder resolved for ${definition.runtimeKey}`,
+      ).toBe(false);
       const pngPath = path.resolve(
         path.dirname(REPO_MANIFEST),
         '..',
-        alias!.url.slice('/assets/'.length),
+        `generated/${resolved!.textureKey}.png`,
       );
       expect(existsSync(pngPath), `missing Basic Leather PNG on disk: ${pngPath}`).toBe(true);
     }
@@ -327,7 +332,7 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
         const entry = resolveItemSprite(registry, itemId, seed);
         expect(entry, `no generated art resolved for "${itemId}" (seed ${seed})`).not.toBeNull();
         expect(
-          isPlaceholderEntry(entry!),
+          _isPlaceholderEntry(entry!),
           `"${itemId}" resolved to a placeholder (${entry!.textureKey}) at seed ${seed}`,
         ).toBe(false);
         expect(entry!.assetPath).not.toContain('placeholder');

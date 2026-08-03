@@ -15,6 +15,7 @@ import type {
   BloodSurfaceProbeSummary,
   HarvestableRenderSummary,
   FamilyHudProbeState,
+  ItemIconRenderInfo,
   MainSceneProbeApi,
   MainSceneState,
   NpcRenderInfo,
@@ -253,6 +254,8 @@ export const mainSceneProbe = {
     page: Page,
   ): Promise<readonly GeneratedEquipmentInstanceKey[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getEquippedGeneratedInstanceKeys()),
+  getItemIconRenderInfo: (page: Page, itemId: string): Promise<ItemIconRenderInfo> =>
+    page.evaluate((id) => window.__mainSceneProbe!.getItemIconRenderInfo(id), itemId),
   getRewardAudioCueLog: (page: Page): Promise<readonly RewardAudioCueLogEntryProbe[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>

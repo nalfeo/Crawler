@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-03",
+  "session_slug": "equipment-art-resolver-and-ratchet",
+  "task_title": "Themed equipment art resolver generalization + shrink-only equipment art coverage ratchet",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Blocking (1): variant identity diverged across panels - EquipmentUI.createGeneratedItemIcon fell back to createItemIcon(artKey), seeding the variant pick with the runtime artKey, while InventoryUI and generated-equipment-icon.ts seed with baseId, so one item could render two different variants in the same run. FIXED: createGeneratedItemIcon now takes baseId and resolves/seeds by it at both call sites. Non-blocking (2): the stated precedence was not actually encoded - tier was compared before concept provenance, so a BARE themed entry would outrank the item's own VERSIONED art. FIXED: added provenance ranks (RANK_OWN_REAL < RANK_THEMED_REAL < RANK_PLACEHOLDER) applied before tier, with tier demoted to a tie-break inside a rank; two regression tests added (own-versioned beats themed-bare; themed-real beats own-placeholder). Non-blocking (3): the ratchet could be laundered by shrinking the enumerated ID space - stale baseline ids counted as success, and generated-only equippables were skipped on an unverified assumption that the Floor 2 pool covered them. FIXED: staleBaselineIds now fail the check until acknowledged with --update, and collectRows throws if any catalog-less equippable is absent from FLOOR2_REWARD_POOL_STABLE_IDS. Non-blocking (4): theme overlap behaviour was undefined - two themes claiming one slug resolve by registry order. NOT a bug (one item renders one sprite and the order is deterministic) but was undocumented; the overlap policy is now stated explicitly on EQUIPMENT_THEME_SETS: array order is priority, promote a wave by moving its row up. Probes answered: the fixed RESOLUTION_SEED in the coverage check is sound because tier/rank selection precedes seeded variant choice, so a player seed can never turn real into placeholder. Alternatives enumerated and argued against: emitting runtime-key aliases at manifest-shard build time (reintroduces alias collisions, duplicates texture identity, complicates seeded variant selection); an immediate hard coverage gate (would block all equipment work while 59 gaps remain - revisit once the baseline reaches zero); storing theme membership in manifest metadata (asset metadata cannot represent MISSING art and cannot map gameplay stable IDs/runtime keys). Plan divergence judged minor: the plan said 38 gaps, the baseline is 59 because the plan counted only the Floor 2 art-definition space and missed 25 legacy catalog equippables - corrected enumeration, not a design change."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "One Medium finding on the complete working-tree state: compareCandidates' docstring still claimed a total order 'within a tier' after the caller switched from filtering by best tier to filtering by best provenance rank, so the now load-bearing tier comparison read as removable dead code. FIXED: the docstring now states the rank invariant explicitly and lists tier as the first tiebreak. The reviewer independently re-derived and confirmed the three fixes made in response to the plan review (provenance rank before tier; EquipmentUI seeding by baseId rather than artKey; stale-baseline-id failure plus the generated-only pool cross-check), verified that deleting resolveBasicLeatherAliasEntry leaves no remaining consumer of runtimeKey-as-texture (EquipmentUI and generated-equipment-icon.ts both fall through to resolveItemSprite), and verified the package-lock.json change is resolved-URL-only with zero integrity-hash changes. All other categories clean: data flow and determinism, API/contracts and cross-layer integration, security, runtime wiring and resource ownership, regression coverage, policy compliance."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "1c4ed9833e34274c48b8d2f210e3c7161d49c332",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change is exceptionally well-implemented. The separation of the shared layer registry from the engine, the correct update to the ranking algorithm (provenance before tier) handling ties effectively, and the rigorous suite of deterministic e2e and unit tests all demonstrate high quality. The shrink-only baseline is implemented logically and safely. All criteria strongly earn 5s."
+    }
+  }
+}
