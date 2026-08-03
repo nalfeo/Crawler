@@ -1311,6 +1311,17 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             // Invalidate the cached weapon anchor so the next game-layer access
             // recomputes from the updated variant entry.
             world.entityWeaponAnchors.delete(eid);
+          } else {
+            // Recompute base scale when opaque bounds became available after the
+            // entity was first rendered (late generated-sprite registry load).
+            // The fallback scale is `generated.scale` (e.g. 1.0); if the scale
+            // derived from opaque bounds now differs, update the stored value so
+            // the entity renders at the correct authored foot height from this
+            // frame onward.
+            const freshScale = resolveBaseScale(img, preferred);
+            if (freshScale !== visual.baseScale) {
+              visual.baseScale = freshScale;
+            }
           }
         }
         if (entityType === 'npc') {
