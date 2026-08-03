@@ -17,7 +17,7 @@
   "sensorScore": "6/7",
   "judgeScore": "4",
   "type": null,
-  "contentHash": "a809daa032aa7642cff005b185be55aa5532bf8a603d51e248cb04b4c60484a3",
+  "contentHash": "dff65037c7604189cf1b89e43b6dbf0c2f205784841663d49cfa9be4f5bd07ac",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-velvet-rope\\2026-07-08T03-38-52-1c707f76\\postprocess.pipeline.effective.yaml",
@@ -28,7 +28,7 @@
     "y": 5,
     "width": 86,
     "height": 57,
-    "canvasWidth": 96,
-    "canvasHeight": 67
+    "canvasWidth": 128,
+    "canvasHeight": 73
   }
 }

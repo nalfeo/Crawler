@@ -2,125 +2,41 @@
   "briefId": "ratfolk-boss",
   "spriteName": "ratfolk-boss-var-0",
   "assetPath": "generated/ratfolk-boss-var-0.png",
-  "approvedAt": "2026-07-31T20:30:33.691Z",
-  "sourceRun": "generated/runs/ratfolk-boss/2026-07-31T20-16-40-9d92d34d",
+  "approvedAt": "2026-07-08T02:26:19.371Z",
+  "sourceRun": "generated/runs/ratfolk-boss/2026-07-08T02-11-30-a6991641",
   "variantIndex": 0,
   "anchor": {
-    "x": 243,
-    "y": 278,
-    "source": "derived"
+    "x": 33,
+    "y": 60,
+    "source": "manual"
   },
   "anchors": {
     "hold": {
-      "x": 243,
-      "y": 278,
-      "source": "derived"
+      "x": 33,
+      "y": 60,
+      "source": "manual"
     },
     "centerOfGravity": {
-      "x": 243,
-      "y": 278,
-      "source": "derived"
+      "x": 31,
+      "y": 34,
+      "source": "manual"
     }
   },
   "sensorScore": "7/7",
   "judgeScore": "5",
-  "sensorBreakdown": [
-    {
-      "ok": true,
-      "sensor": "dimensions-exact"
-    },
-    {
-      "ok": true,
-      "sensor": "alpha-binary"
-    },
-    {
-      "ok": true,
-      "sensor": "palette-membership"
-    },
-    {
-      "ok": true,
-      "sensor": "opaque-bbox-fits"
-    },
-    {
-      "ok": true,
-      "sensor": "opaque-ratio"
-    },
-    {
-      "ok": true,
-      "sensor": "interior-transparency-holes"
-    },
-    {
-      "ok": true,
-      "sensor": "anchor-center-of-mass",
-      "anchor": {
-        "x": 243,
-        "y": 278
-      }
-    }
-  ],
-  "judgeScorecard": {
-    "variantIndex": 0,
-    "modelDeployment": "gpt-4o",
-    "judgedAt": "2026-07-31T20:17:42.005Z",
-    "designLanguage": {
-      "score": 5,
-      "rationale": "The candidate embodies the darkly humorous and grotesque tone of Crawler. The combination of a ratfolk crime boss with plague-doctor elements is a strong, authored contradiction that fits the theme and floor design language."
-    },
-    "referenceStyleMatch": {
-      "score": 5,
-      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is consistent with the approved references."
-    },
-    "styleMatch": {
-      "score": 5,
-      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The rendering is consistent with the approved references."
-    },
-    "briefMatch": {
-      "score": 5,
-      "rationale": "The sprite clearly depicts a ratfolk boss with a plague-doctor beak-mask, layered rags, trophy chains, and a staff. All key elements from the brief are present and well-integrated."
-    },
-    "readability": {
-      "score": 5,
-      "rationale": "The silhouette is clear and distinct, with the hunched posture, wide shoulders, and prominent beak-mask reading well at game scale. No visual integrity issues are present."
-    },
-    "bossPresence": {
-      "score": 5,
-      "rationale": "The sprite has a large, imposing presence with a wide silhouette and dominant features like the beak-mask and staff. It clearly reads as a boss character."
-    },
-    "figureFraming": {
-      "score": 5,
-      "rationale": "The full body of the character is visible, including the head, torso, and feet. The framing is complete and appropriate for a boss character."
-    },
-    "themeAdherence": {
-      "score": 5,
-      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language, including the plague-doctor mask, dark rags, trophy-teeth chains, and vials. The palette effectively conveys a diseased and dangerous aesthetic."
-    },
-    "passed": true,
-    "minScore": 5,
-    "rejectedBy": [],
-    "hardBlockEvaluated": true,
-    "hardBlocked": false,
-    "hardBlockInstruction": null,
-    "hardBlockRationale": null,
-    "confidence": 0.95,
-    "usage": {
-      "promptTokens": 4321,
-      "completionTokens": 457,
-      "totalTokens": 4778
-    }
-  },
   "type": "enemy",
-  "contentHash": "158b63f0dff6f481f24e041456e57dba007f160bdaa07200ea26062f39ef2d35",
+  "contentHash": "dc18da6a547b0e4a535cda9eb9f140c49805bd806c47f0d2290fc3866f97a019",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
   "opaqueBounds": {
-    "x": 27,
-    "y": 27,
-    "width": 458,
-    "height": 462,
-    "canvasWidth": 512,
-    "canvasHeight": 516
-  },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\ratfolk-boss\\2026-07-31T20-16-40-9d92d34d\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\ratfolk-boss\\2026-07-31T20-16-40-9d92d34d\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\ratfolk-boss\\2026-07-31T20-16-40-9d92d34d\\postprocess.pipeline.effective.yaml",
-  "effectiveAnchorSource": "derived",
-  "facingDirection": "right"
+    "x": 3,
+    "y": 3,
+    "width": 57,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
 }
