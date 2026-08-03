@@ -1065,9 +1065,74 @@ function chooseObjectiveTiles(world: GameWorld): {
     candidates.find((e) => e !== welcomeEntry && meetsShopDistanceConstraint(e)) ??
     candidates.find((e) => e !== welcomeEntry) ??
     candidates[0];
-  const itemEntry = [...candidates]
-    .reverse()
-    .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
+  // BFS hop distances from the shop and from the boss-stair room. Both the
+  // rat-tail fetch item and the slime-rat room are placed relative to these so
+  // the *required* quest tour stays bounded instead of stretching to the map's
+  // extremes (see the hop bands below).
+  const roomHopFromShop = shopEntry
+    ? roomHopDistances(floorMap.roomGraph, shopEntry.room.id, bossStairRoomId)
+    : new Map<number, number>();
+  const roomHopToStair = roomHopDistances(floorMap.roomGraph, bossStairRoomId);
+
+  // Hop counts are the structural constraint ("far enough to be a real detour");
+  // squared tile distance is what actually costs the player time, so it drives
+  // the ordering *within* a hop band.
+  const shopCenter = shopEntry?.center ?? centerOfRoom(floorMap.rooms[0]!);
+  const distSqBetween = (a: { x: number; y: number }, b: { x: number; y: number }): number => {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return dx * dx + dy * dy;
+  };
+  const distSqToShop = (entry: (typeof candidates)[0]): number =>
+    distSqBetween(entry.center, shopCenter);
+
+  /**
+   * Pick the entry whose hop distance from `hops` lies inside [min, max] and is
+   * closest to `target`, breaking ties with `tieBreak` (lower wins). Falls back
+   * to the whole eligible set — scored the same way but without the band — so
+   * degenerate maps (tiny room counts, disconnected graphs) still resolve.
+   */
+  const pickInHopBand = (
+    eligible: typeof candidates,
+    hops: Map<number, number>,
+    min: number,
+    max: number,
+    target: number,
+    tieBreak: (entry: (typeof candidates)[0]) => number,
+  ): (typeof candidates)[0] | undefined => {
+    if (eligible.length === 0) return undefined;
+    const banded = eligible.filter((e) => {
+      const h = hops.get(e.room.id);
+      return h !== undefined && h >= min && h <= max;
+    });
+    const pool = banded.length > 0 ? banded : eligible;
+    return pool.reduce((best, entry) => {
+      const bestDelta = Math.abs((hops.get(best.room.id) ?? Number.MAX_SAFE_INTEGER) - target);
+      const entryDelta = Math.abs((hops.get(entry.room.id) ?? Number.MAX_SAFE_INTEGER) - target);
+      if (entryDelta !== bestDelta) return entryDelta < bestDelta ? entry : best;
+      const bestTie = tieBreak(best);
+      const entryTie = tieBreak(entry);
+      if (entryTie !== bestTie) return entryTie < bestTie ? entry : best;
+      return entry.room.id < best.room.id ? entry : best;
+    });
+  };
+
+  // Rat-tail fetch item: the merchant's errand is a *round trip* (shop → item →
+  // shop), so every tile between them is walked twice. Placing it in the room
+  // farthest from spawn — the previous rule — doubled the single longest leg on
+  // the map. Bound it to a short hop band around the shop instead: still a real
+  // detour the player has to find, but no longer a map-diameter round trip.
+  const ITEM_MIN_HOPS_FROM_SHOP = 2;
+  const ITEM_MAX_HOPS_FROM_SHOP = 4;
+  const ITEM_TARGET_HOPS_FROM_SHOP = 3;
+  const itemEntry = pickInHopBand(
+    candidates.filter((entry) => entry !== welcomeEntry && entry !== shopEntry),
+    roomHopFromShop,
+    ITEM_MIN_HOPS_FROM_SHOP,
+    ITEM_MAX_HOPS_FROM_SHOP,
+    ITEM_TARGET_HOPS_FROM_SHOP,
+    (entry) => distSqToShop(entry),
+  );
   const welcomeOfficePos = welcomeEntry
     ? resolvePassableRoomCenter(floorMap, welcomeEntry.room)
     : fallbackWelcome;
@@ -1078,28 +1143,42 @@ function chooseObjectiveTiles(world: GameWorld): {
     ? resolvePassableRoomCenter(floorMap, itemEntry.room)
     : fallbackItem;
   const safeRoomPos = welcomeOfficePos;
-  const specialPoints = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
-  const slimeRatEntry = candidates
-    .filter((entry) => entry !== shopEntry && entry !== itemEntry)
-    .sort((a, b) => {
-      const aPos = resolvePassableRoomCenter(floorMap, a.room);
-      const bPos = resolvePassableRoomCenter(floorMap, b.room);
-      const aScore = Math.min(
-        ...specialPoints.map((p) => {
-          const dx = aPos.x - p.x;
-          const dy = aPos.y - p.y;
-          return dx * dx + dy * dy;
-        }),
-      );
-      const bScore = Math.min(
-        ...specialPoints.map((p) => {
-          const dx = bPos.x - p.x;
-          const dy = bPos.y - p.y;
-          return dx * dx + dy * dy;
-        }),
-      );
-      return bScore - aScore;
-    })[0];
+  // Slime-rat room: previously the single most *isolated* room on the map (the
+  // sort maximized its minimum distance to every other special point), which
+  // reliably parked it in the corner opposite the boss staircase and made
+  // slime→stair the longest leg of the tour. It is now placed *on the way* to
+  // the boss instead: minimize hops(shop → slime) + hops(slime → stair), while
+  // keeping it at least a couple of hops off the shop so it is still a detour
+  // the player has to seek out rather than a neighbour of the merchant.
+  const SLIME_MIN_HOPS_FROM_SHOP = 2;
+  const slimeCandidates = candidates.filter(
+    (entry) => entry !== shopEntry && entry !== itemEntry && entry !== welcomeEntry,
+  );
+  const slimeDetour = (entry: (typeof candidates)[0]): number => {
+    if (
+      roomHopFromShop.get(entry.room.id) === undefined ||
+      roomHopToStair.get(entry.room.id) === undefined
+    ) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    // Room-graph detour the slime-rat room adds to the shop → boss-stair walk.
+    return roomHopFromShop.get(entry.room.id)! + roomHopToStair.get(entry.room.id)!;
+  };
+  const slimeFarEnough = slimeCandidates.filter(
+    (entry) => (roomHopFromShop.get(entry.room.id) ?? 0) >= SLIME_MIN_HOPS_FROM_SHOP,
+  );
+  const slimePool = slimeFarEnough.length > 0 ? slimeFarEnough : slimeCandidates;
+  const slimeRatEntry =
+    slimePool.length > 0
+      ? slimePool.reduce((best, entry) => {
+          const bestScore = slimeDetour(best);
+          const entryScore = slimeDetour(entry);
+          if (entryScore !== bestScore) return entryScore < bestScore ? entry : best;
+          if (entry.distanceSq !== best.distanceSq)
+            return entry.distanceSq > best.distanceSq ? entry : best;
+          return entry.room.id < best.room.id ? entry : best;
+        })
+      : undefined;
   const slimeRatRoomPos = slimeRatEntry
     ? resolvePassableRoomCenter(floorMap, slimeRatEntry.room)
     : questItemPos;
