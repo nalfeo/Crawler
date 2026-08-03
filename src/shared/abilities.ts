@@ -8,6 +8,17 @@ import type { EquipmentInstanceId } from './equipment-types.js';
 export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
 export const ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION = 'ability-grant-ownership/v1' as const;
 export const FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT = 3;
+/**
+ * The Floor 1 Spell Broker's stock: a 9-spell pool from which each run is
+ * offered a deterministic {@link FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT}-spell
+ * trio.
+ *
+ * `curse` is deliberately excluded — its cluster-slow duplicates the control
+ * half of `frost-nova` without the damage, making it the weakest pick in an
+ * offer that is the player's only Floor 1 spell. It remains a fully supported
+ * ability everywhere else (registry, VFX, equipment grants); it is simply not
+ * part of the Broker's stock.
+ */
 export const FLOOR1_BOSS_REWARD_SPELL_IDS = [
   'fireball',
   'heal',
@@ -16,7 +27,6 @@ export const FLOOR1_BOSS_REWARD_SPELL_IDS = [
   'frost-nova',
   'bless',
   'stoneskin',
-  'curse',
   'vampiric-touch',
   'haste',
 ] as const;

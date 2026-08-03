@@ -22,12 +22,17 @@ describe('ability registry', () => {
     expect(kinds.has('spell')).toBe(true);
   });
 
-  it('exposes a 10-spell floor1 reward pool and every reward id resolves to a spell definition', () => {
-    expect(FLOOR1_BOSS_REWARD_SPELL_IDS).toHaveLength(10);
+  it('exposes a 9-spell floor1 reward pool and every reward id resolves to a spell definition', () => {
+    expect(FLOOR1_BOSS_REWARD_SPELL_IDS).toHaveLength(9);
     expect(FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT).toBe(3);
     for (const spellId of FLOOR1_BOSS_REWARD_SPELL_IDS) {
       expect(getAbilityDefinition(spellId)?.kind).toBe('spell');
     }
+  });
+
+  it('excludes curse from the floor1 reward pool while keeping it a valid ability', () => {
+    expect(FLOOR1_BOSS_REWARD_SPELL_IDS).not.toContain('curse');
+    expect(getAbilityDefinition('curse')?.kind).toBe('spell');
   });
 
   it('keeps icon-batch ability metadata aligned with shared ability presentation', () => {

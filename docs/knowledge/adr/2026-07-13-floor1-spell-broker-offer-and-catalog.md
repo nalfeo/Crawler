@@ -58,3 +58,22 @@ New spell mechanics are implemented by extending the existing `CatalogEffect` + 
 1. **Create a separate shared reward-spell metadata table for the modal.** Rejected because it duplicates registry-owned names/descriptions and invites drift.
 2. **Let the engine import the ability registry directly.** Rejected because it violates the project’s layer boundary (`src/engine/**` must not import `src/game/**`).
 3. **Sample the offer on modal open with `world.rng`.** Rejected because UI-open timing could drift determinism and reshuffle on reopen unless extra state was added anyway.
+
+## Amendment (2026-08-03): the Broker's stock is 9 spells, not 10
+
+`FLOOR1_BOSS_REWARD_SPELL_IDS` drops `curse`, so the offer is now a
+deterministic **3-of-9**. Everything else in this ADR is unchanged: the offer is
+still sampled from the dedicated `${seed}:floor1-spell-reward-offer` stream,
+still cached in `world.floorScenario.offeredRewardSpellIds`, and still
+authoritative for both the modal and `selectSpellFromBossBattle()` validation.
+
+`curse` was chosen because its cluster-slow duplicates the control half of
+`frost-nova` without the damage, which made it the weakest pick in an offer that
+is the player's only Floor 1 spell. It is removed from the Broker's *stock*
+only — the ability itself remains fully defined and reachable through the
+registry, VFX pipeline, and equipment grants.
+
+World RNG is untouched (the offer draw has always used its own stream), so
+headless/seed fingerprints do not move. Per-seed *offered trios* do change,
+which is expected: no gate asserts specific offered ids, only that the trio is
+distinct, drawn from the pool, and stable for a given seed.

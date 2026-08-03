@@ -415,7 +415,7 @@ describe('autoFloor1ProgressionSystem', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1();
-    world.floorScenario.offeredRewardSpellIds = ['curse', 'heal', 'haste'];
+    world.floorScenario.offeredRewardSpellIds = ['bless', 'heal', 'haste'];
     world.goalFlags.set('floor1-boss-battle-complete', true);
     world.featureUnlocks.spells = false;
 
