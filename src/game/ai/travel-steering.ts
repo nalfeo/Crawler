@@ -520,9 +520,18 @@ export function pickSafeTravelHeading(
   // at most `lootSnapFt` of travel, the pickup is collected within a few frames,
   // and the objective heading resumes immediately afterwards. The snap is only
   // taken when the direct lane is passable and still predicted-safe, so it can
-  // never walk the runner into a wall or into contact damage, and it is skipped
-  // entirely under a panic beeline.
-  if (!input.panic && params.lootSnapFt > 0 && input.pickups.length > 0) {
+  // never walk the runner into a wall, and it is skipped entirely under a panic
+  // beeline. It is also restricted to genuinely clear travel (no perceived
+  // threat inside the steering threat radius): with a mob in play the runner's
+  // spacing/kite arc must own the heading — measured over the 72-run gate matrix,
+  // allowing the snap while threatened cost the bow persona 3 wins (deaths +
+  // deadline timeouts) for the same collection gain.
+  if (
+    !input.panic &&
+    params.lootSnapFt > 0 &&
+    input.pickups.length > 0 &&
+    input.threats.length === 0
+  ) {
     let snapDirX = 0;
     let snapDirY = 0;
     let snapDistance = Number.POSITIVE_INFINITY;
