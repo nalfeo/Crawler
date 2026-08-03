@@ -10,44 +10,48 @@
       "reviewer_model": "gpt-5.6-sol",
       "concerns_count": 6,
       "resolved_count": 6,
-      "plan_divergence": "major",
+      "plan_divergence": "major_fork",
       "notes": "Adversarial: 3 designs enumerated and argued against; 2 rejected with live measurements. Root cause proven on public/assets/generated/entries/gnome-boss-var-7.json (main==promote==checkin-20260731 blob 3b8bf0b1c8 vs queue==checkin-20260801 blob 8e46438bf5).",
       "verdict": "request-changes",
-      "summary": "Separate-model plan review BLOCKED the first two designs and both were then empirically disproved against the live repo. Design v1 (watermark = assets/promote tree) is impossible: GitHub auto-deletes assets/promote on merge, so the ref does not exist. Design v2 (watermark = refs/pull/<N>/head of the newest merged promote PR, compare blobs) was measured on the live repo: of 155 candidate paths, 155 differed from refs/pull/2706/head and 148 differed even from the true promote commit 29708bc, because a merged promote head is a COMPOSITE of queue + 44 orphan overlays + CI-recovery repair commits and therefore preserves no single source bytes; blob equality additionally cannot distinguish already-promoted from deliberately re-asserted (ABA). Reviewer independently reproduced 0 equal / 154 different / 1 missing. Conclusion adopted (matching the reviewer recommendation): only the source OID is a sound acknowledgement, so the promotion must RECORD the tips it harvested and retire exactly those under a compare-and-swap lease. Reviewer also corrected three operational assumptions: (a) commit-timestamp comparison must not be used (clock skew, user-controlled, rebases rewrite, squash timestamps do not establish precedence); (b) the merged-PR lookup must order by mergedAt (PRs merge out of numeric order) and must reject isCrossRepository to stop fork branch-name spoofing; (c) PRs #2498/#2599/#2649 have assets/batch-*/copilot/* heads, so scanOrphanedCheckinBranches never enumerates them and closing them would NOT make their art harvestable — closing them to bypass unresolved validation would risk a rule #11 violation, so that part of the ask was dropped from the plan."
+      "summary": "Separate-model plan review BLOCKED the first two designs and both were then empirically disproved against the live repo. Design v1 (watermark = assets/promote tree) is impossible: GitHub auto-deletes assets/promote on merge, so the ref does not exist. Design v2 (watermark = refs/pull/<N>/head of the newest merged promote PR, compare blobs) was measured on the live repo: of 155 candidate paths, 155 differed from refs/pull/2706/head and 148 differed even from the true promote commit 29708bc, because a merged promote head is a COMPOSITE of queue + 44 orphan overlays + CI-recovery repair commits and therefore preserves no single source bytes; blob equality additionally cannot distinguish already-promoted from deliberately re-asserted (ABA). Reviewer independently reproduced 0 equal / 154 different / 1 missing. Conclusion adopted (matching the reviewer recommendation): only the source OID is a sound acknowledgement, so the promotion must RECORD the tips it harvested and retire exactly those under a compare-and-swap lease. Reviewer also corrected three operational assumptions: (a) commit-timestamp comparison must not be used (clock skew, user-controlled, rebases rewrite, squash timestamps do not establish precedence); (b) the merged-PR lookup must order by mergedAt (PRs merge out of numeric order) and must reject isCrossRepository to stop fork branch-name spoofing; (c) PRs #2498/#2599/#2649 have assets/batch-*/copilot/* heads, so scanOrphanedCheckinBranches never enumerates them and closing them would NOT make their art harvestable \u2014 closing them to bypass unresolved validation would risk a rule #11 violation, so that part of the ask was dropped from the plan."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": [
-            "gpt-5.6-sol"
-          ],
+          "models": ["gpt-5.6-sol"],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": false
         },
         {
           "round": 2,
-          "models": [
-            "gpt-5.6-sol"
-          ],
+          "models": ["gpt-5.6-sol"],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": true
         }
       ],
-      "summary": "Separate-model (gpt-5.6-sol) adversarial review over the branch diff, focused on the destructive ref updates. Round 1, two HIGH findings, both accepted: (1) a merged promotion that is later REVERTED would have had its sources retired anyway, destroying the last copy of the art — fixed by re-deriving each source art-surface AM delta against the CURRENT base at tidy-up time (sourceAddsNothingToBase), so a reverted path reappears as a difference and the source is left alone; deliberately NOT a promotion-path-set comparison, which would have blocked queue convergence forever since the queue legitimately still differs from main on paths an orphan overwrote. (2) any commit in the scanned ancestry could forge destructive trailers, and a >20-commit CI-recovery stack pushed the scan into inherited main history — fixed by bounding the scan to the PR-exclusive ancestry (git log <head> --not <base>, sound because the repo squash-merges) plus an exact promotion-subject requirement. Round 2, two further findings, both accepted: (3) HIGH — the safety proof used BASE_SCRATCH_REF while the queue reset used a separately observed main tip and orphan deletion had no base check, so a revert between proof and push could still slip through; fixed by deriving the single base snapshot from BASE_SCRATCH_REF and re-asserting it immediately before EVERY destructive push, aborting the sweep on any movement (residual sub-push window documented and recoverable, since the merged promotion durably records each retired branch OID). (4) MEDIUM — an exact subject is not provenance because a repair commit can reuse it; fixed by requiring EXACTLY ONE promotion-subject commit in the PR-exclusive ancestry and failing closed on ambiguity, and the forgery regression test now uses the exact subject. Reviewer confirmed the re-derived-delta invariant does converge (losing sources are retained and re-promoted until represented by main; the queue retires last), that failing closed on a non-squash merge is acceptable, and that the original source-tip TOCTOU is closed by the per-source --force-with-lease. All four guards were MUTATION-CHECKED: removing any one makes its regression test fail. Final state: 81 tests in the file, 2165 in tests/unit/sprites/, typecheck/lint/format clean.",
+      "summary": "Separate-model (gpt-5.6-sol) adversarial review over the branch diff, focused on the destructive ref updates. Round 1, two HIGH findings, both accepted: (1) a merged promotion that is later REVERTED would have had its sources retired anyway, destroying the last copy of the art \u2014 fixed by re-deriving each source art-surface AM delta against the CURRENT base at tidy-up time (sourceAddsNothingToBase), so a reverted path reappears as a difference and the source is left alone; deliberately NOT a promotion-path-set comparison, which would have blocked queue convergence forever since the queue legitimately still differs from main on paths an orphan overwrote. (2) any commit in the scanned ancestry could forge destructive trailers, and a >20-commit CI-recovery stack pushed the scan into inherited main history \u2014 fixed by bounding the scan to the PR-exclusive ancestry (git log <head> --not <base>, sound because the repo squash-merges) plus an exact promotion-subject requirement. Round 2, two further findings, both accepted: (3) HIGH \u2014 the safety proof used BASE_SCRATCH_REF while the queue reset used a separately observed main tip and orphan deletion had no base check, so a revert between proof and push could still slip through; fixed by deriving the single base snapshot from BASE_SCRATCH_REF and re-asserting it immediately before EVERY destructive push, aborting the sweep on any movement (residual sub-push window documented and recoverable, since the merged promotion durably records each retired branch OID). (4) MEDIUM \u2014 an exact subject is not provenance because a repair commit can reuse it; fixed by requiring EXACTLY ONE promotion-subject commit in the PR-exclusive ancestry and failing closed on ambiguity, and the forgery regression test now uses the exact subject. Reviewer confirmed the re-derived-delta invariant does converge (losing sources are retained and re-promoted until represented by main; the queue retires last), that failing closed on a non-squash merge is acceptable, and that the original source-tip TOCTOU is closed by the per-source --force-with-lease. All four guards were MUTATION-CHECKED: removing any one makes its regression test fail. Final state: 81 tests in the file, 2165 in tests/unit/sprites/, typecheck/lint/format clean.",
       "notes": "Real-git harness was corrected to squash-merge via commit-tree instead of fast-forwarding, so the ancestry bound is genuinely exercised rather than vacuously satisfied."
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.8",
+      "head_sha": "b5abab0273281823e6471533e3f8e2c5d7fd4413",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff provides an exceptionally robust fix for the reconciler convergence bug. Destructive git operations are heavily guarded using compare-and-swap (--force-with-lease), real-time base verification, and a 'sourceAddsNothingToBase' invariant to prevent data loss in the event of manual reverts or late-arriving art. Failure paths are consistently fail-closed, avoiding any block to the primary promotion workflow if tidy-up fails. Test coverage is rigorous and utilizes real git operations to validate precise edge cases, including CAS misses, forged trailers, cross-repository PR spoofing, and base races. The 3-apple complexity accurately reflects the project's tooling cap policy, and the code is highly maintainable with excellent explanatory comments for its security and concurrency boundaries."
     }
   }
 }
