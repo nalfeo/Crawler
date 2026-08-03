@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-03",
+  "session_slug": "floor2-den-favor-unlock",
+  "task_title": "Floor 2 — favor-based boss-den unlock route (FR13 win-favor)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-luna",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Reviewer examined two concerns: (1) seeding win-favor as a per-family objective vs. a universal bypass. Resolved: win-favor is AI-unreachable (headless AI fights, killMob -5 lowers relation); seeding it per-family stalls AI dens (rule #12 / win-rate gates). Universal bypass is correct. (2) Whether a latched favor flag is needed separately from the unlock flag. Resolved: kept distinct for HUD/telemetry to tell 'opened by favor' from 'opened by kill objective'. Both concerns closed; plan_divergence is minor (the seeded-vs-universal axis was the only real fork and was resolved by the AI-unreachable constraint)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Three findings: (1) CI dead-code check failing — denFavorGoalId and hasEarnedDenFavor exported from floor2Scenario.ts but only consumed by tests and labs (src/labs/ excluded from isProductionSrcPath). Fixed: added both to TEST_SCAFFOLD_ALLOWLIST_ENTRIES with reason and 2026-11-03 expiry. (2) Test calls floor2ObjectiveTick directly, bypassing the real floorObjectiveSystem dispatch path. Fixed: added pipeline-level test using runSimulationStep with postSystems: [floorObjectiveSystem]. (3) FR13 spec lists win-favor as a seeded objective, conflicting with the universal-bypass implementation. Fixed: revised FR13 to document two separate routes with rationale."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.6-sol",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "28f00d40ec5eb9e042a3676e20a19c4fe9f4460d",
+      "verdict": "pass",
+      "findings_count": 0,
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 4,
+        "maintainability": 5
+      },
+      "notes": "Diff reviewed: floor2Scenario.ts adds denFavorGoalId, hasEarnedDenFavor, seeding, and tick latch. Lab adds win-favor action + per-family row. Integration test covers 5 direct-tick cases + 1 runSimulationStep pipeline case. Allowlist entries are time-bounded with correct reason strings. FR13 spec revised to distinguish the two routes. No invariant breaks, no Math.random(), no Date.now(), no layer-boundary violations. AI-only path unaffected; latch cannot re-seal. Scope_discipline docked 1: spec revision shifts win-favor from seeded to universal without a formal ADR. Policy_compliance docked 1: original 2-apple declaration was under-declared (corrected to 3-apple in this recovery)."
+    }
+  }
+}
