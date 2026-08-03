@@ -555,24 +555,33 @@ function isCriticalProgressNpcType(npcTypeId: string): boolean {
   return FLOOR1_CRITICAL_PROGRESS_NPC_IDS.has(npcTypeId);
 }
 
-function buildReachableFromSpawnMask(
+/**
+ * Breadth-first tile travel distance from `start`, walking passable tiles plus
+ * doors that are not in `blockedDoorTiles`. Returns tile counts per index, with
+ * `-1` for tiles that cannot be reached at all. Unlike straight-line distance
+ * this is the route the player actually walks, so it is what placement rules
+ * should be scored against.
+ */
+function buildTravelDistanceField(
   floorMap: FloorMap,
+  start: { x: number; y: number },
   blockedDoorTiles: ReadonlySet<string>,
-): Uint8Array {
+): Int32Array {
   const width = floorMap.width;
   const height = floorMap.height;
-  const mask = new Uint8Array(width * height);
-  const spawn = floorMap.playerSpawn;
-  if (!floorMap.tileMap.inBounds(spawn.x, spawn.y)) {
-    return mask;
+  const distances = new Int32Array(width * height).fill(-1);
+  if (!floorMap.tileMap.inBounds(start.x, start.y)) {
+    return distances;
   }
-  const startIndex = spawn.y * width + spawn.x;
-  mask[startIndex] = 1;
-  const stack = [startIndex];
-  while (stack.length > 0) {
-    const index = stack.pop()!;
+  const startIndex = start.y * width + start.x;
+  distances[startIndex] = 0;
+  const queue = [startIndex];
+  let head = 0;
+  while (head < queue.length) {
+    const index = queue[head++]!;
     const tx = index % width;
     const ty = (index - tx) / width;
+    const nextDistance = distances[index]! + 1;
     for (const [nx, ny] of [
       [tx + 1, ty],
       [tx - 1, ty],
@@ -583,7 +592,7 @@ function buildReachableFromSpawnMask(
         continue;
       }
       const neighborIndex = ny * width + nx;
-      if (mask[neighborIndex]) {
+      if (distances[neighborIndex] !== -1) {
         continue;
       }
       const doorTile = floorMap.tileMap.isDoor(nx, ny);
@@ -593,9 +602,21 @@ function buildReachableFromSpawnMask(
       ) {
         continue;
       }
-      mask[neighborIndex] = 1;
-      stack.push(neighborIndex);
+      distances[neighborIndex] = nextDistance;
+      queue.push(neighborIndex);
     }
+  }
+  return distances;
+}
+
+function buildReachableFromSpawnMask(
+  floorMap: FloorMap,
+  blockedDoorTiles: ReadonlySet<string>,
+): Uint8Array {
+  const distances = buildTravelDistanceField(floorMap, floorMap.playerSpawn, blockedDoorTiles);
+  const mask = new Uint8Array(distances.length);
+  for (let index = 0; index < distances.length; index += 1) {
+    mask[index] = distances[index]! >= 0 ? 1 : 0;
   }
   return mask;
 }
@@ -1137,17 +1158,64 @@ function chooseObjectiveTiles(world: GameWorld): {
         );
       return score(bPos) - score(aPos);
     })[0];
-  // Rat-tail fetch item: the merchant's errand is a *round trip* (shop → item →
-  // shop), so every tile between them is walked twice. Placing it in the room
-  // farthest from spawn — the previous rule — doubled the single longest leg on
-  // the map. Bound it to a short hop band around the shop instead: still a real
-  // detour the player has to find, but no longer a map-diameter round trip.
+  const welcomeOfficePos = welcomeEntry
+    ? resolvePassableRoomCenter(floorMap, welcomeEntry.room)
+    : fallbackWelcome;
+  const shopRoomPos = shopEntry
+    ? resolvePassableRoomCenter(floorMap, shopEntry.room)
+    : fallbackShop;
+
+  // Rat-tail fetch item: the merchant's errand is a *round trip* (merchant →
+  // item → merchant), so every tile between them is walked twice.
+  //
+  // Two earlier rules both misjudged that trip. Placing the item in the room
+  // farthest from spawn doubled the single longest leg on the map. Bounding it
+  // to a hop band around the *shop room* then anchored on the wrong place
+  // entirely: the shopkeeper is a critical-progress NPC, so it actually spawns
+  // in the welcome hub (see FLOOR1_CRITICAL_PROGRESS_NPC_IDS), not in the shop
+  // room the hop band measured from. Errand length was consequently erratic —
+  // 0.07–0.96 of the reachable maximum across seeds.
+  //
+  // Anchor on the room the merchant really stands in and target a fixed
+  // *fraction* of the longest walk available from it: a real expedition, never
+  // a map-diameter round trip, and consistent seed to seed.
+  const ITEM_TARGET_DISTANCE_FRACTION = 2 / 3;
+  // Legacy hop band, retained only for the degenerate-map fallback below.
   const ITEM_MIN_HOPS_FROM_SHOP = 2;
   const ITEM_MAX_HOPS_FROM_SHOP = 4;
   const ITEM_TARGET_HOPS_FROM_SHOP = 3;
-  // The slime-rat room's doors are locked until its quest starts, so the fetch
-  // item must never sit in it or behind it — the shop errand would be unreachable
-  // and the AI route planner (rightly) refuses to plan the floor.
+  const merchantPos = isCriticalProgressNpcType('shopkeeper') ? welcomeOfficePos : shopRoomPos;
+
+  // The boss-staircase and slime-rat rooms start with locked doors, so the fetch
+  // item must never sit inside or behind either of them — the errand would be
+  // unreachable when it is issued and the AI route planner (rightly) refuses to
+  // plan the floor. Score candidates with a tile BFS that treats those doors as
+  // walls: a finite distance *is* the reachability proof, and it measures the
+  // route actually walked rather than a straight line.
+  const slimeRatCenter = slimeRatEntry
+    ? resolvePassableRoomCenter(floorMap, slimeRatEntry.room)
+    : null;
+  const initiallyLockedDoorTiles = buildInitiallyLockedDoorTileSet(
+    floorMap,
+    slimeRatCenter ? [staircasePos, slimeRatCenter] : [staircasePos],
+  );
+  const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
+  const travelFromMerchant = buildTravelDistanceField(
+    floorMap,
+    merchantTile,
+    initiallyLockedDoorTiles,
+  );
+  const travelFromSpawn = buildTravelDistanceField(
+    floorMap,
+    floorMap.playerSpawn,
+    initiallyLockedDoorTiles,
+  );
+  const distanceAt = (field: Int32Array, pos: { x: number; y: number }): number => {
+    const tile = floorMap.worldToTile(pos.x, pos.y);
+    if (!floorMap.tileMap.inBounds(tile.x, tile.y)) return -1;
+    return field[tile.y * floorMap.width + tile.x]!;
+  };
+
   const reachableWithoutSlime = slimeRatEntry
     ? roomHopDistances(floorMap.roomGraph, floorMap.spawnRoom?.id, slimeRatEntry.room.id)
     : new Map<number, number>();
@@ -1158,22 +1226,56 @@ function chooseObjectiveTiles(world: GameWorld): {
       entry !== slimeRatEntry &&
       (reachableWithoutSlime.size === 0 || reachableWithoutSlime.has(entry.room.id)),
   );
-  const itemEntry = pickInHopBand(
+  const itemPool =
     itemCandidates.length > 0
       ? itemCandidates
-      : candidates.filter((entry) => entry !== welcomeEntry && entry !== shopEntry),
-    roomHopFromShop,
-    ITEM_MIN_HOPS_FROM_SHOP,
-    ITEM_MAX_HOPS_FROM_SHOP,
-    ITEM_TARGET_HOPS_FROM_SHOP,
-    (entry) => distSqToShop(entry),
+      : candidates.filter((entry) => entry !== welcomeEntry && entry !== shopEntry);
+
+  // Rank every candidate by how close its walk from the merchant is to the
+  // target fraction of the longest such walk. The whole ranked list is kept so a
+  // candidate that fails validation can be retried with the next-best room.
+  const rankedItemCandidates = itemPool
+    .map((entry) => {
+      const pos = resolvePassableRoomCenter(floorMap, entry.room);
+      return {
+        entry,
+        pos,
+        distanceFromMerchant: distanceAt(travelFromMerchant, pos),
+        distanceFromSpawn: distanceAt(travelFromSpawn, pos),
+      };
+    })
+    .filter((scored) => scored.distanceFromMerchant > 0);
+  const maxDistanceFromMerchant = rankedItemCandidates.reduce(
+    (max, scored) => Math.max(max, scored.distanceFromMerchant),
+    0,
   );
-  const welcomeOfficePos = welcomeEntry
-    ? resolvePassableRoomCenter(floorMap, welcomeEntry.room)
-    : fallbackWelcome;
-  const shopRoomPos = shopEntry
-    ? resolvePassableRoomCenter(floorMap, shopEntry.room)
-    : fallbackShop;
+  const targetDistance = maxDistanceFromMerchant * ITEM_TARGET_DISTANCE_FRACTION;
+  rankedItemCandidates.sort((a, b) => {
+    const aDelta = Math.abs(a.distanceFromMerchant - targetDistance);
+    const bDelta = Math.abs(b.distanceFromMerchant - targetDistance);
+    if (aDelta !== bDelta) return aDelta - bDelta;
+    return a.entry.room.id - b.entry.room.id;
+  });
+  // Retry down the ranked list: the first choice is the room closest to the
+  // distance target, and it is accepted only when the tile the item resolves to
+  // is genuinely passable and reachable from the player spawn while the locked
+  // rooms are still shut. Each rejection falls through to the next-best room.
+  const acceptedItem = rankedItemCandidates.find((scored) => {
+    const tile = floorMap.worldToTile(scored.pos.x, scored.pos.y);
+    return floorMap.tileMap.isPassable(tile.x, tile.y) && scored.distanceFromSpawn >= 0;
+  });
+  // Degenerate maps (no reachable candidate at all) keep the legacy hop-band
+  // pick rather than dropping the objective somewhere arbitrary.
+  const itemEntry =
+    acceptedItem?.entry ??
+    pickInHopBand(
+      itemPool,
+      roomHopFromShop,
+      ITEM_MIN_HOPS_FROM_SHOP,
+      ITEM_MAX_HOPS_FROM_SHOP,
+      ITEM_TARGET_HOPS_FROM_SHOP,
+      (entry) => distSqToShop(entry),
+    );
   const questItemPos = itemEntry
     ? resolvePassableRoomCenter(floorMap, itemEntry.room)
     : fallbackItem;
