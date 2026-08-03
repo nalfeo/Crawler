@@ -626,6 +626,14 @@ const ORPHAN_SOURCE_TRAILER = 'Orphan-Source:';
 /** How many commits back from a merged promotion head to scan for trailers. */
 const LANDED_TRAILER_SCAN_DEPTH = 20;
 
+/** Exact subject line a promotion commit must carry to be trusted for trailers. */
+const PROMOTION_SUBJECT = 'chore(assets): reconcile queued sprite edits';
+
+/** Scratch refs the tidy-up clobbers each cycle (namespaced, never user-visible). */
+const LANDED_SCRATCH_REF = 'refs/sprite-reconcile/landed-promotion';
+const BASE_SCRATCH_REF = 'refs/sprite-reconcile/landed-base';
+const SOURCE_SCRATCH_REF = 'refs/sprite-reconcile/retire-candidate';
+
 /** Full 40-hex object id. Anything else is rejected (fail closed). */
 const OBJECT_ID_PATTERN = /^[0-9a-f]{40}$/;
 
@@ -805,34 +813,73 @@ export async function findLandedPromotion(
   const landed = candidates[0];
   if (landed === undefined) return null;
 
-  const scratchRef = 'refs/sprite-reconcile/landed-promotion';
   const fetched = await runGit(exec, repoRoot, [
     'fetch',
     '--no-tags',
     remote,
-    `+refs/pull/${landed.number}/head:${scratchRef}`,
+    `+refs/pull/${landed.number}/head:${LANDED_SCRATCH_REF}`,
+    `+refs/heads/${baseBranch}:${BASE_SCRATCH_REF}`,
   ]);
   if (fetched.code !== 0) return null;
-  const resolved = await runGit(exec, repoRoot, ['rev-parse', scratchRef]);
+  const resolved = await runGit(exec, repoRoot, ['rev-parse', LANDED_SCRATCH_REF]);
   // The fetched commit MUST be exactly the head GitHub reported; a mismatch
   // means the ref moved or the API answer is stale — refuse to act on it.
   if (resolved.code !== 0 || resolved.stdout.trim() !== landed.headRefOid) return null;
+  // Scan ONLY the PR-exclusive ancestry (`--not <base>`): the repo squash-merges,
+  // so the promotion's own commits never become ancestors of `main`. Without
+  // this bound a deep CI-recovery stack would push the scan into inherited
+  // `main` history, where any commit message could be read as an instruction to
+  // delete a branch. Every candidate must additionally carry the exact generated
+  // promotion subject, so a repair commit cannot forge a source snapshot.
   const log = await runGit(exec, repoRoot, [
     'log',
     `-${LANDED_TRAILER_SCAN_DEPTH}`,
     '--format=%B%x00',
-    scratchRef,
+    LANDED_SCRATCH_REF,
+    '--not',
+    BASE_SCRATCH_REF,
   ]);
   if (log.code !== 0) return null;
-  // Scan newest-first and take the first commit that carries a queue trailer:
-  // CI recovery can push repair commits on top of the promotion, and those
-  // commits carry no trailers of their own.
   for (const commitMessage of log.stdout.split('\0')) {
+    if (commitMessage.trimStart().split('\n')[0]?.trim() !== PROMOTION_SUBJECT) continue;
     const sources = parseSourceTrailers(commitMessage);
     if (sources.queueSha === null && sources.orphans.length === 0) continue;
     return { prNumber: landed.number, headSha: landed.headRefOid, sources };
   }
   return null;
+}
+
+/**
+ * True when `sourceRef` provably adds NOTHING to the current `baseRef` across
+ * the art surface — the precondition for retiring it.
+ *
+ * This is the revert guard. "The promotion merged" alone does NOT prove the art
+ * is still on `main`: a later revert (or a force-reset of `main`) puts the bytes
+ * back only on the source branches, and retiring them then would destroy the
+ * last copy. Re-deriving the source's delta against `main` AT TIDY-UP TIME makes
+ * that impossible — a reverted path is once again an `AM` difference, so the
+ * source is left in place.
+ *
+ * Fail closed: any git failure answers `false` (do not retire).
+ */
+async function sourceAddsNothingToBase(
+  exec: Exec,
+  repoRoot: string,
+  baseRef: string,
+  sourceRef: string,
+): Promise<boolean> {
+  const delta = await runGit(exec, repoRoot, [
+    'diff',
+    '--no-renames',
+    '--name-only',
+    '--diff-filter=AM',
+    baseRef,
+    sourceRef,
+    '--',
+    ...ART_SURFACE_ALLOWLIST,
+  ]);
+  if (delta.code !== 0) return false;
+  return parseNameOnly(delta.stdout).filter((p) => !isLegacyAggregateManifestPath(p)).length === 0;
 }
 
 /** What a tidy-up pass retired. */
@@ -879,32 +926,44 @@ export async function tidyUpLandedPromotion(
   const landed = await findLandedPromotion(exec, repoRoot, remote, repo, promoteBranch, baseBranch);
   if (landed === null) return { queueReset: false, deletedBranches: [] };
 
+  // `findLandedPromotion` left the CURRENT base tip in BASE_SCRATCH_REF; every
+  // retirement below is re-derived against it, so a revert is always observed.
+  const mainSha = await remoteBranchSha(exec, repoRoot, remote, baseBranch);
+  if (mainSha === null) return { queueReset: false, deletedBranches: [] };
+
+  /** Fetch a source tip locally, CAS-check it, and prove it adds nothing to base. */
+  const retirable = async (branch: string, expectedSha: string): Promise<boolean> => {
+    const currentTip = await remoteBranchSha(exec, repoRoot, remote, branch);
+    // Already gone, or advanced past the harvested snapshot → never retire.
+    if (currentTip === null || currentTip !== expectedSha) return false;
+    const fetched = await runGit(exec, repoRoot, [
+      'fetch',
+      '--no-tags',
+      remote,
+      `+refs/heads/${branch}:${SOURCE_SCRATCH_REF}`,
+    ]);
+    if (fetched.code !== 0) return false;
+    const resolved = await runGit(exec, repoRoot, ['rev-parse', SOURCE_SCRATCH_REF]);
+    if (resolved.code !== 0 || resolved.stdout.trim() !== expectedSha) return false;
+    return sourceAddsNothingToBase(exec, repoRoot, BASE_SCRATCH_REF, SOURCE_SCRATCH_REF);
+  };
+
   let queueReset = false;
   const { queueSha } = landed.sources;
-  if (queueSha !== null) {
-    const currentQueue = await remoteBranchSha(exec, repoRoot, remote, queueBranch);
-    // CAS: only retire the snapshot we know landed. Any advance since the
-    // harvest means unpromoted edits are on the branch — leave it alone.
-    if (currentQueue === queueSha) {
-      const mainSha = await remoteBranchSha(exec, repoRoot, remote, baseBranch);
-      if (mainSha !== null && mainSha !== queueSha) {
-        const push = await runGit(exec, repoRoot, [
-          'push',
-          '--no-verify',
-          `--force-with-lease=refs/heads/${queueBranch}:${queueSha}`,
-          remote,
-          `${mainSha}:refs/heads/${queueBranch}`,
-        ]);
-        queueReset = push.code === 0;
-      }
-    }
+  if (queueSha !== null && mainSha !== queueSha && (await retirable(queueBranch, queueSha))) {
+    const push = await runGit(exec, repoRoot, [
+      'push',
+      '--no-verify',
+      `--force-with-lease=refs/heads/${queueBranch}:${queueSha}`,
+      remote,
+      `${mainSha}:refs/heads/${queueBranch}`,
+    ]);
+    queueReset = push.code === 0;
   }
 
   const deletedBranches: string[] = [];
   for (const orphan of landed.sources.orphans) {
-    const currentTip = await remoteBranchSha(exec, repoRoot, remote, orphan.branch);
-    // Already gone, or advanced past the harvested snapshot → never delete.
-    if (currentTip === null || currentTip !== orphan.sha) continue;
+    if (!(await retirable(orphan.branch, orphan.sha))) continue;
     const deleted = await runGit(exec, repoRoot, [
       'push',
       '--no-verify',
@@ -1321,7 +1380,7 @@ export async function runReconcile(
       };
       const trailers = formatSourceTrailers(harvestedSources);
       const message =
-        `chore(assets): reconcile queued sprite edits\n\n` +
+        `${PROMOTION_SUBJECT}\n\n` +
         `Art-surface harvest of ${queueBranch} onto ${baseBranch} ` +
         `(${changedPaths.length} path(s)).` +
         (trailers === '' ? '' : `\n\n${trailers}`);

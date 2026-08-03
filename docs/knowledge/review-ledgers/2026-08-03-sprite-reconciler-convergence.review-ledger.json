@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-03",
+  "session_slug": "sprite-reconciler-convergence",
+  "task_title": "Sprite reconciler: retire harvested sources after a promotion merges",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "major",
+      "notes": "Adversarial: 3 designs enumerated and argued against; 2 rejected with live measurements. Root cause proven on public/assets/generated/entries/gnome-boss-var-7.json (main==promote==checkin-20260731 blob 3b8bf0b1c8 vs queue==checkin-20260801 blob 8e46438bf5).",
+      "verdict": "request-changes",
+      "summary": "Separate-model plan review BLOCKED the first two designs and both were then empirically disproved against the live repo. Design v1 (watermark = assets/promote tree) is impossible: GitHub auto-deletes assets/promote on merge, so the ref does not exist. Design v2 (watermark = refs/pull/<N>/head of the newest merged promote PR, compare blobs) was measured on the live repo: of 155 candidate paths, 155 differed from refs/pull/2706/head and 148 differed even from the true promote commit 29708bc, because a merged promote head is a COMPOSITE of queue + 44 orphan overlays + CI-recovery repair commits and therefore preserves no single source bytes; blob equality additionally cannot distinguish already-promoted from deliberately re-asserted (ABA). Reviewer independently reproduced 0 equal / 154 different / 1 missing. Conclusion adopted (matching the reviewer recommendation): only the source OID is a sound acknowledgement, so the promotion must RECORD the tips it harvested and retire exactly those under a compare-and-swap lease. Reviewer also corrected three operational assumptions: (a) commit-timestamp comparison must not be used (clock skew, user-controlled, rebases rewrite, squash timestamps do not establish precedence); (b) the merged-PR lookup must order by mergedAt (PRs merge out of numeric order) and must reject isCrossRepository to stop fork branch-name spoofing; (c) PRs #2498/#2599/#2649 have assets/batch-*/copilot/* heads, so scanOrphanedCheckinBranches never enumerates them and closing them would NOT make their art harvestable — closing them to bypass unresolved validation would risk a rule #11 violation, so that part of the ask was dropped from the plan."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

@@ -1802,9 +1802,27 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
    * and flip the fake PR to `merged`.
    */
   function landPromotion(liveDir: string, gh: FakeGh, prNumber: number, headSha: string): void {
-    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote', 'main');
     gitSync(liveDir, 'push', 'origin', `${headSha}:refs/pull/${prNumber}/head`);
-    gitSync(liveDir, 'push', 'origin', `${headSha}:refs/heads/main`);
+    // SQUASH merge, matching the repo merge policy: `main` gains a NEW commit
+    // carrying the promotion's tree, so the promotion's own commits never become
+    // ancestors of `main` (which is what bounds the trailer scan).
+    const mainSha = gitSync(liveDir, 'rev-parse', 'origin/main').trim();
+    const tree = gitSync(liveDir, 'rev-parse', `${headSha}^{tree}`).trim();
+    const squashed = gitSync(
+      liveDir,
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'user.name=Reconcile Test',
+      'commit-tree',
+      tree,
+      '-p',
+      mainSha,
+      '-m',
+      `squash promote #${prNumber}`,
+    ).trim();
+    gitSync(liveDir, 'push', 'origin', `${squashed}:refs/heads/main`);
     gitSync(liveDir, 'push', 'origin', '--delete', 'assets/promote');
     const pr = gh.prs.find((p) => p.number === prNumber)!;
     pr.state = 'merged';
@@ -1995,6 +2013,70 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const tidy = await tidyUpLandedPromotion(exec, liveDir, TIDY_OPTIONS);
     expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
     expect(remoteSha(liveDir, 'assets/queue')).toBe(queueBefore);
+  });
+
+  it('REVERT SAFETY: never retires a source whose art was reverted off main', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-revert-1', ['orphan-sprite-var-9']);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    landPromotion(liveDir, gh, first.prNumber!, first.promoteCommit!);
+    const queueAfter = remoteSha(liveDir, 'assets/queue');
+    const orphanAfter = remoteSha(liveDir, 'assets/checkin-revert-1');
+
+    // A human reverts the art promotion on main. "The PR merged" is now NO LONGER
+    // proof that the art is on main — the source branches hold the only copies,
+    // so retiring them would destroy the art.
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    gitSync(liveDir, 'push', 'origin', '+origin/main~1:refs/heads/main');
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy).toEqual({ queueReset: false, deletedBranches: [] });
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueAfter);
+    expect(remoteSha(liveDir, 'assets/checkin-revert-1')).toBe(orphanAfter);
+  });
+
+  it('FORGERY: a repair commit on the promotion cannot inject a branch deletion', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+
+    // A branch the promotion NEVER harvested. It is pinned at `main`, so it adds
+    // nothing to the art surface — meaning the revert guard would happily let it
+    // go and ONLY the trailer-provenance check can save it.
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    gitSync(liveDir, 'push', 'origin', 'origin/main:refs/heads/assets/checkin-innocent');
+    const innocentSha = remoteSha(liveDir, 'assets/checkin-innocent')!;
+
+    // Simulate CI recovery pushing a repair commit onto the promotion whose
+    // message claims a source snapshot the promotion never took.
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    const forged = gitSync(
+      liveDir,
+      '-c',
+      'user.email=ci@example.com',
+      '-c',
+      'user.name=CI Recovery',
+      'commit-tree',
+      `${first.promoteCommit!}^{tree}`,
+      '-p',
+      first.promoteCommit!,
+      '-m',
+      `fix(ci): repair lint\n\nOrphan-Source: assets/checkin-innocent ${innocentSha}`,
+    ).trim();
+    gitSync(liveDir, 'push', 'origin', `+${forged}:refs/heads/assets/promote`);
+    landPromotion(liveDir, gh, first.prNumber!, forged);
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    // Only the genuine promotion commit's trailers are honored, so the branch
+    // the repair commit named is untouched.
+    expect(tidy.deletedBranches).toEqual([]);
+    expect(remoteSha(liveDir, 'assets/checkin-innocent')).toBe(innocentSha);
   });
 
   it('picks the newest merge by mergedAt, not by PR number', async () => {
