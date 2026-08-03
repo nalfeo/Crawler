@@ -1,5 +1,16 @@
 [
   {
+    "commit": "eeb7787d7337f62146b8cc1d9dad9f4321572c93",
+    "commitDate": "2026-08-02T23:45:44Z",
+    "commitSubject": "Debugging huge mob size discrepancies (#2707)",
+    "capturedAt": "2026-08-03T00:54:31.163Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30773390537",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/eeb7787d7337f62146b8cc1d9dad9f4321572c93.json"
+  },
+  {
     "commit": "a37ff0004f807a264f4d54cf2d20b740bf88d799",
     "commitDate": "2026-08-02T21:29:46Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (157 art paths) (#2704)",
