@@ -8,7 +8,6 @@ import {
   achievementSystem,
   emergentEventSystem,
   getScenarioDefinition,
-  meetTutorialGoon,
   questSystem,
   spawnerArenaSystem,
   spawnerSystem,
@@ -16,27 +15,8 @@ import {
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
 } from '../game/index.js';
-import {
-  confirmFloor1StairDescend,
-  equipPurchasedGear,
-  getBossRewardSpellOptions,
-  getNpcQuestIndicatorState,
-  getShopkeeperPostQuestStock,
-  getShopkeeperStage,
-  hasCompletedWelcomeGoonQuest,
-  meetShopkeeper,
-  meetSpellQuestGiver,
-  purchaseShopkeeperEquipment,
-  purchaseShopkeeperPostQuestItem,
-  returnShopkeeperPrize,
-  selectSpellFromBossBattle,
-  SHOPKEEPER_EQUIPMENT_COST,
-} from '../game/floorScenario.js';
-import {
-  floor2VictorySystem,
-  confirmFloor2StairDescend,
-  meetBroker,
-} from '../game/floor2Scenario.js';
+import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
+import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
   statSystem,
   statusEffectSystem,
@@ -44,7 +24,6 @@ import {
   mobAbilitySystem,
   type GameWorld,
 } from '../core/index.js';
-import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
@@ -64,7 +43,7 @@ export function createFloorMainSceneOptions(
   if (!manifest) {
     throw new Error(`Unknown floor manifest: ${floorId}`);
   }
-  const floor1Callbacks = floorId === 'floor1';
+  const nextFloorId = scenario.nextFloorId;
   return {
     floorId,
     terrainPackId: manifest.terrainPackId,
@@ -74,17 +53,17 @@ export function createFloorMainSceneOptions(
       scenario.configureWorld(world, playerEid, initializationOptions),
     selectLoadoutOption: scenario.selectLoadoutOption,
     director: scenario.director,
-    onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : confirmFloor2StairDescend,
-    onFloor1Cleared: floor1Callbacks
+    onStairDescend: scenario.onStairDescend,
+    onFloor1Cleared: nextFloorId
       ? (world: GameWorld, playerEid: number) => {
           const playerCarryover = capturePlayerCarryover(world, playerEid);
           if (typeof window !== 'undefined') {
             const url = new URL(window.location.href);
-            url.searchParams.set('floor', 'floor2');
+            url.searchParams.set('floor', nextFloorId);
             window.history.replaceState(window.history.state, '', url);
           }
           return {
-            ...createFloorMainSceneOptions('floor2', { playerCarryover }),
+            ...createFloorMainSceneOptions(nextFloorId, { playerCarryover }),
             worldSeed: world.seed,
             generatedEquipmentRunKey: playerCarryover.generatedEquipmentRegistry?.runKey,
           };
@@ -101,37 +80,10 @@ export function createFloorMainSceneOptions(
     ) => {
       spendPoints(world, allocations);
     },
-    shopkeeper: floor1Callbacks
-      ? {
-          getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
-          getStage: getShopkeeperStage,
-          meet: meetShopkeeper,
-          returnPrize: returnShopkeeperPrize,
-          purchase: purchaseShopkeeperEquipment,
-          getPostQuestStock: getShopkeeperPostQuestStock,
-          purchasePostQuestItem: purchaseShopkeeperPostQuestItem,
-          equip: equipPurchasedGear,
-          equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
-          equipmentName: MERCHANTS_CHARM_DEF.name,
-          isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
-        }
-      : undefined,
-    tutorialGoon: floor1Callbacks
-      ? {
-          meet: meetTutorialGoon,
-          getIndicatorState: (world: GameWorld) =>
-            getNpcQuestIndicatorState(world, 'tutorial-goon'),
-        }
-      : undefined,
-    spellQuestGiver: floor1Callbacks
-      ? {
-          getIndicatorState: (world: GameWorld) =>
-            getNpcQuestIndicatorState(world, 'spell-quest-giver'),
-          meet: meetSpellQuestGiver,
-          isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
-        }
-      : undefined,
-    broker: !floor1Callbacks ? { met: meetBroker } : undefined,
+    shopkeeper: scenario.npcs?.shopkeeper,
+    tutorialGoon: scenario.npcs?.tutorialGoon,
+    spellQuestGiver: scenario.npcs?.spellQuestGiver,
+    broker: scenario.npcs?.broker,
     preSystems: [
       statSystem,
       // Drain queued faction-relation deltas early so any preSystem or

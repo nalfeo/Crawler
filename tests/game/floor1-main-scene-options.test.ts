@@ -107,4 +107,21 @@ describe('createFloor1MainSceneOptions', () => {
     const options = createFloorMainSceneOptions('floor2');
     expect(options.onFloor1Cleared).toBeUndefined();
   });
+
+  it('routes NPC and stair callbacks from the scenario definition, not a floor branch', () => {
+    const floor1 = createFloorMainSceneOptions('floor1');
+    const floor2 = createFloorMainSceneOptions('floor2');
+
+    // Floor 1 owns the quest-giver trio and no broker; Floor 2 is the inverse.
+    expect(floor1.broker).toBeUndefined();
+    expect(typeof floor2.broker?.met).toBe('function');
+    expect(floor2.shopkeeper).toBeUndefined();
+    expect(floor2.tutorialGoon).toBeUndefined();
+    expect(floor2.spellQuestGiver).toBeUndefined();
+
+    // Both floors declare their own stair-descend confirmation.
+    expect(typeof floor1.onStairDescend).toBe('function');
+    expect(typeof floor2.onStairDescend).toBe('function');
+    expect(floor1.onStairDescend).not.toBe(floor2.onStairDescend);
+  });
 });
