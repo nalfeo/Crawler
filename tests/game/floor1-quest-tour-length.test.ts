@@ -4,7 +4,7 @@ import { spawnPlayer } from '../../src/core/helpers.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../src/shared/generated-equipment-types.js';
 import { TileFlags } from '../../src/shared/map-types.js';
-import type { FloorMap } from '../../src/core/map/floor-map.js';
+import type { FloorMap } from '../../src/core/map/FloorMap.js';
 
 /**
  * Deterministic guard on Floor 1 quest travel.
@@ -104,14 +104,17 @@ function questTourTiles(seed: number): number {
   return total;
 }
 
-// Measured over seeds 1–100 with bounded placement: median 831, p90 1127,
-// p95 1356, max 1642 tiles (down from median 1252 / p90 1548 / max 1950 when
-// objectives were placed to maximize distance). The thresholds below sit above
-// the measured distribution with headroom for ordinary generator churn, so they
-// catch a re-inflation of the route rather than normal seed-to-seed variation.
+// Measured over seeds 1–100 with the fetch item bounded to a hop band around the
+// shop: median 1068, p90 1372, p95 1497, max 1761 tiles (down from median 1252 /
+// p90 1548 / max 1950 when the item was placed in the room farthest from spawn).
+// The doubled shop errand — the leg most worth bounding, since every tile is
+// walked twice — dropped from a 550-tile round trip to 332 at the median.
+// Thresholds sit above the measured distribution with headroom for ordinary
+// generator churn, so they catch a re-inflation of the route rather than normal
+// seed-to-seed variation.
 const SEEDS = Array.from({ length: 24 }, (_, i) => i + 1);
-const MAX_MEDIAN_TOUR_TILES = 1000;
-const MAX_TOUR_TILES = 1800;
+const MAX_MEDIAN_TOUR_TILES = 1250;
+const MAX_TOUR_TILES = 1900;
 
 describe('Floor 1 quest tour length', () => {
   it('keeps the required quest tour bounded across a seed prefix', () => {

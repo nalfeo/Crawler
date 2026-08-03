@@ -1072,7 +1072,6 @@ function chooseObjectiveTiles(world: GameWorld): {
   const roomHopFromShop = shopEntry
     ? roomHopDistances(floorMap.roomGraph, shopEntry.room.id, bossStairRoomId)
     : new Map<number, number>();
-  const roomHopToStair = roomHopDistances(floorMap.roomGraph, bossStairRoomId);
 
   // Hop counts are the structural constraint ("far enough to be a real detour");
   // squared tile distance is what actually costs the player time, so it drives
@@ -1117,6 +1116,27 @@ function chooseObjectiveTiles(world: GameWorld): {
     });
   };
 
+  // Slime-rat room: the most isolated room that is not already an objective.
+  const specialPointsForSlime = [
+    welcomeEntry ? resolvePassableRoomCenter(floorMap, welcomeEntry.room) : fallbackWelcome,
+    staircasePos,
+    shopEntry ? resolvePassableRoomCenter(floorMap, shopEntry.room) : fallbackShop,
+  ];
+  const slimeRatEntry = candidates
+    .filter((entry) => entry !== shopEntry && entry !== welcomeEntry)
+    .sort((a, b) => {
+      const aPos = resolvePassableRoomCenter(floorMap, a.room);
+      const bPos = resolvePassableRoomCenter(floorMap, b.room);
+      const score = (pos: { x: number; y: number }): number =>
+        Math.min(
+          ...specialPointsForSlime.map((p) => {
+            const dx = pos.x - p.x;
+            const dy = pos.y - p.y;
+            return dx * dx + dy * dy;
+          }),
+        );
+      return score(bPos) - score(aPos);
+    })[0];
   // Rat-tail fetch item: the merchant's errand is a *round trip* (shop → item →
   // shop), so every tile between them is walked twice. Placing it in the room
   // farthest from spawn — the previous rule — doubled the single longest leg on
@@ -1125,8 +1145,23 @@ function chooseObjectiveTiles(world: GameWorld): {
   const ITEM_MIN_HOPS_FROM_SHOP = 2;
   const ITEM_MAX_HOPS_FROM_SHOP = 4;
   const ITEM_TARGET_HOPS_FROM_SHOP = 3;
+  // The slime-rat room's doors are locked until its quest starts, so the fetch
+  // item must never sit in it or behind it — the shop errand would be unreachable
+  // and the AI route planner (rightly) refuses to plan the floor.
+  const reachableWithoutSlime = slimeRatEntry
+    ? roomHopDistances(floorMap.roomGraph, floorMap.spawnRoom?.id, slimeRatEntry.room.id)
+    : new Map<number, number>();
+  const itemCandidates = candidates.filter(
+    (entry) =>
+      entry !== welcomeEntry &&
+      entry !== shopEntry &&
+      entry !== slimeRatEntry &&
+      (reachableWithoutSlime.size === 0 || reachableWithoutSlime.has(entry.room.id)),
+  );
   const itemEntry = pickInHopBand(
-    candidates.filter((entry) => entry !== welcomeEntry && entry !== shopEntry),
+    itemCandidates.length > 0
+      ? itemCandidates
+      : candidates.filter((entry) => entry !== welcomeEntry && entry !== shopEntry),
     roomHopFromShop,
     ITEM_MIN_HOPS_FROM_SHOP,
     ITEM_MAX_HOPS_FROM_SHOP,
@@ -1143,42 +1178,6 @@ function chooseObjectiveTiles(world: GameWorld): {
     ? resolvePassableRoomCenter(floorMap, itemEntry.room)
     : fallbackItem;
   const safeRoomPos = welcomeOfficePos;
-  // Slime-rat room: previously the single most *isolated* room on the map (the
-  // sort maximized its minimum distance to every other special point), which
-  // reliably parked it in the corner opposite the boss staircase and made
-  // slime→stair the longest leg of the tour. It is now placed *on the way* to
-  // the boss instead: minimize hops(shop → slime) + hops(slime → stair), while
-  // keeping it at least a couple of hops off the shop so it is still a detour
-  // the player has to seek out rather than a neighbour of the merchant.
-  const SLIME_MIN_HOPS_FROM_SHOP = 2;
-  const slimeCandidates = candidates.filter(
-    (entry) => entry !== shopEntry && entry !== itemEntry && entry !== welcomeEntry,
-  );
-  const slimeDetour = (entry: (typeof candidates)[0]): number => {
-    if (
-      roomHopFromShop.get(entry.room.id) === undefined ||
-      roomHopToStair.get(entry.room.id) === undefined
-    ) {
-      return Number.MAX_SAFE_INTEGER;
-    }
-    // Room-graph detour the slime-rat room adds to the shop → boss-stair walk.
-    return roomHopFromShop.get(entry.room.id)! + roomHopToStair.get(entry.room.id)!;
-  };
-  const slimeFarEnough = slimeCandidates.filter(
-    (entry) => (roomHopFromShop.get(entry.room.id) ?? 0) >= SLIME_MIN_HOPS_FROM_SHOP,
-  );
-  const slimePool = slimeFarEnough.length > 0 ? slimeFarEnough : slimeCandidates;
-  const slimeRatEntry =
-    slimePool.length > 0
-      ? slimePool.reduce((best, entry) => {
-          const bestScore = slimeDetour(best);
-          const entryScore = slimeDetour(entry);
-          if (entryScore !== bestScore) return entryScore < bestScore ? entry : best;
-          if (entry.distanceSq !== best.distanceSq)
-            return entry.distanceSq > best.distanceSq ? entry : best;
-          return entry.room.id < best.room.id ? entry : best;
-        })
-      : undefined;
   const slimeRatRoomPos = slimeRatEntry
     ? resolvePassableRoomCenter(floorMap, slimeRatEntry.room)
     : questItemPos;
