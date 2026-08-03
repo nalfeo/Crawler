@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9b52ffa0e4efa5308c7347fb5b9f519a00975e0d",
+    "commitDate": "2026-08-03T15:38:08Z",
+    "commitSubject": "Generalize themed equipment art resolution and add a shrink-only equipment art coverage ratchet (#2738)",
+    "capturedAt": "2026-08-03T16:47:37.457Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30829443578",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/9b52ffa0e4efa5308c7347fb5b9f519a00975e0d.json"
+  },
+  {
     "commit": "f63da85e8562fae75df0af44ad3bae7a1e8a2e81",
     "commitDate": "2026-08-03T14:18:49Z",
     "commitSubject": "fix(engine): recompute enemy baseScale when generated-sprite bounds arrive late (#2728)",
