@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6fcd2d845ba2af8ceace0f9d4a596344ddc4f8b8",
+    "commitDate": "2026-08-03T22:04:00Z",
+    "commitSubject": "fix(map): anchor Floor 1 rat-tail placement on the merchant's real room at 2/3 of max reachable distance (#2744)",
+    "capturedAt": "2026-08-03T23:11:09.231Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30858106272",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/6fcd2d845ba2af8ceace0f9d4a596344ddc4f8b8.json"
+  },
+  {
     "commit": "0fccd50588b50a30f42a26348760a9c91327649f",
     "commitDate": "2026-08-03T21:07:46Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2746)",
