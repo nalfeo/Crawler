@@ -64,6 +64,13 @@ import {
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
+import { _isPlaceholderEntry, resolveItemSprite } from '../../shared/item-sprites.js';
+import { hashStringToSeed } from '../../shared/random.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  type GeneratedSpriteRegistry,
+} from '../../shared/generated-assets.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/index.js';
 import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
@@ -328,6 +335,23 @@ export interface RewardAudioCueLogEntryProbe {
   readonly frequencyHz: number;
   readonly durationMs: number;
   readonly gain: number;
+}
+
+/**
+ * How one item id's icon resolves against the REAL booted scene's generated
+ * sprite registry. Mirrors exactly what `EquipmentUI`/`InventoryUI` do when
+ * they draw an item icon.
+ */
+export interface ItemIconRenderInfo {
+  readonly itemId: string;
+  /** Resolved brief id, or null when nothing resolved (2-letter text fallback). */
+  readonly briefId: string | null;
+  /** Resolved Phaser texture key, or null when nothing resolved. */
+  readonly textureKey: string | null;
+  /** True when the resolved entry is placeholder art rather than approved art. */
+  readonly isPlaceholder: boolean;
+  /** True when Phaser actually has that texture loaded (i.e. boot preload queued it). */
+  readonly textureLoaded: boolean;
 }
 
 /**
@@ -754,6 +778,17 @@ export interface MainSceneProbeApi {
   ): ScreenBounds | null;
   /** Exact generated instance keys currently equipped by the player. */
   getEquippedGeneratedInstanceKeys(): readonly GeneratedEquipmentInstanceKey[];
+  /**
+   * How an item id's icon resolves in the REAL booted scene: the registry the
+   * shipped boot preload populated, resolved by the shipped `resolveItemSprite`,
+   * plus whether Phaser actually has that texture loaded.
+   *
+   * This is the observe seam for equipment art wiring. A lab that force-renders
+   * an icon cannot prove the real boot path loaded the texture, and reading the
+   * diff cannot prove the resolver picked real art over a placeholder — this
+   * reports both against the running game.
+   */
+  getItemIconRenderInfo(itemId: string): ItemIconRenderInfo;
   /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
@@ -1581,6 +1616,23 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return Object.values(getEquipmentState(world, playerEid)?.equipped ?? {}).filter(
         (instanceId): instanceId is GeneratedEquipmentInstanceKey => typeof instanceId === 'string',
       );
+    },
+
+    getItemIconRenderInfo: (itemId: string): ItemIconRenderInfo => {
+      const phaserScene = getPhaserScene();
+      const registry =
+        (phaserScene?.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
+          | GeneratedSpriteRegistry
+          | undefined) ?? emptyGeneratedSpriteRegistry();
+      const worldSeed = getScene()?.world?.seed ?? 0;
+      const entry = resolveItemSprite(registry, itemId, (hashStringToSeed(itemId) ^ worldSeed) | 0);
+      return {
+        itemId,
+        briefId: entry?.briefId ?? null,
+        textureKey: entry?.textureKey ?? null,
+        isPlaceholder: entry === null ? false : _isPlaceholderEntry(entry),
+        textureLoaded: entry !== null && phaserScene?.textures?.exists(entry.textureKey) === true,
+      };
     },
 
     getInventoryVisibleItemIds: (): readonly string[] => {

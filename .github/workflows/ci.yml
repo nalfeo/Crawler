@@ -357,6 +357,17 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:asset-integrity
 
+      # Equipment art coverage ratchet: every wired equipment piece (legacy
+      # catalog equippables + the Floor 2 generated-equipment reward pool) must
+      # resolve to real approved art through the SAME resolver the equipment and
+      # inventory panels call. Gaps already recorded in the shrink-only baseline
+      # pass; a NEW gap fails. Closes the loop where gear shipped wired but
+      # un-arted, stayed green in CI, and was only ever discovered by a human
+      # noticing a placeholder in game — one ad-hoc PR at a time.
+      - name: Equipment art coverage ratchet
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:equipment-art-coverage
+
       # Exact-version guard: block any PR that introduces a semver range into
       # direct deps, devDeps, optionalDeps, or overrides. Ranges allow unrelated
       # lockfile regeneration to silently advance a package version before
