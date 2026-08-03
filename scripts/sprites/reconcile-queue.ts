@@ -97,6 +97,10 @@ export interface ReconcileResult {
    * Empty when no issues are fully covered or the issue list query fails.
    */
   readonly closingIssueNumbers?: readonly number[];
+  /** True when `assets/queue` was retired onto `main` by this cycle's tidy-up. */
+  readonly tidiedQueue?: boolean;
+  /** Orphan branches deleted by this cycle's tidy-up (already-landed snapshots). */
+  readonly tidiedBranches?: readonly string[];
   /** True when issue-closure discovery completed successfully. */
   readonly closingIssueDiscoveryComplete?: boolean;
 }
@@ -591,6 +595,330 @@ export async function computeClosingIssueNumbers(
 }
 
 /**
+ * Trailer keys recording the EXACT source snapshots a promotion harvested.
+ *
+ * Why the promotion must record its own inputs: the reconciler used to derive
+ * "what has already been promoted?" by comparing trees, and that is provably
+ * unsound. Each source's contribution is computed as
+ * `git diff --diff-filter=AM <base> <source>` — "differs from `main`", NOT
+ * "newer than `main`". With two sources that disagree about a path (the durable
+ * `assets/queue` and an orphaned `assets/checkin-*` branch), whichever source
+ * currently AGREES with `main` drops out of its own AM set, so the other source
+ * always wins the overlay — and `main` flips between the two, every hour,
+ * forever. Observed live on
+ * `public/assets/generated/entries/gnome-boss-var-7.json`, where `assets/queue`
+ * and `assets/checkin-20260801-181522-7be968` held one blob while `main` and
+ * `assets/checkin-20260731-204023-b1e0cb` held another; PRs #2704 and #2706
+ * (one hour apart) carried an identical 100-file set with exactly inverse
+ * patches.
+ *
+ * Blob equality cannot distinguish "already promoted" from "deliberately
+ * re-asserted", and the merged PR head is a COMPOSITE (queue + orphan overlays,
+ * plus any CI-recovery repair commits), so it does not preserve any single
+ * source's bytes. The only sound acknowledgement is the source OID itself, so
+ * every promotion records the SHAs it harvested and the next cycle retires
+ * exactly those snapshots — under a compare-and-swap lease — once the promotion
+ * has MERGED.
+ */
+const QUEUE_SOURCE_TRAILER = 'Queue-Source:';
+const ORPHAN_SOURCE_TRAILER = 'Orphan-Source:';
+
+/** How many commits back from a merged promotion head to scan for trailers. */
+const LANDED_TRAILER_SCAN_DEPTH = 20;
+
+/** Full 40-hex object id. Anything else is rejected (fail closed). */
+const OBJECT_ID_PATTERN = /^[0-9a-f]{40}$/;
+
+/**
+ * Orphan branch names the reconciler will record and later DELETE. Deliberately
+ * as narrow as `scanOrphanedCheckinBranches`' own filter: a trailer is an
+ * instruction to destroy a remote ref, so anything that is not obviously an
+ * `assets/checkin-*` branch is ignored rather than trusted.
+ */
+const ORPHAN_BRANCH_PATTERN = /^assets\/checkin-[A-Za-z0-9._-]+$/;
+
+/** One orphan source snapshot: the branch and the exact tip that was harvested. */
+export interface OrphanSource {
+  readonly branch: string;
+  readonly sha: string;
+}
+
+/** The exact source snapshots a promotion commit harvested. */
+export interface PromotionSources {
+  /** Harvested `assets/queue` tip, or null when the queue contributed nothing. */
+  readonly queueSha: string | null;
+  /** Harvested orphan branch tips (deterministically ordered by branch name). */
+  readonly orphans: readonly OrphanSource[];
+}
+
+/** Deterministic branch-name ordering (byte-wise; no locale dependence). */
+function byBranchName(a: OrphanSource, b: OrphanSource): number {
+  if (a.branch < b.branch) return -1;
+  if (a.branch > b.branch) return 1;
+  return 0;
+}
+
+/**
+ * Render {@link PromotionSources} as commit-message trailers. Pure + ordered, so
+ * the same harvest always produces byte-identical trailers.
+ */
+export function formatSourceTrailers(sources: PromotionSources): string {
+  const lines: string[] = [];
+  if (sources.queueSha !== null && OBJECT_ID_PATTERN.test(sources.queueSha)) {
+    lines.push(`${QUEUE_SOURCE_TRAILER} ${sources.queueSha}`);
+  }
+  for (const orphan of [...sources.orphans].sort(byBranchName)) {
+    if (!ORPHAN_BRANCH_PATTERN.test(orphan.branch)) continue;
+    if (!OBJECT_ID_PATTERN.test(orphan.sha)) continue;
+    lines.push(`${ORPHAN_SOURCE_TRAILER} ${orphan.branch} ${orphan.sha}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Parse source trailers back out of a commit message. FAIL CLOSED: a malformed
+ * trailer is dropped, never guessed at, because every parsed value is used to
+ * authorize a destructive ref update.
+ */
+export function parseSourceTrailers(message: string): PromotionSources {
+  let queueSha: string | null = null;
+  const orphans: OrphanSource[] = [];
+  for (const rawLine of message.split('\n')) {
+    const line = rawLine.trim();
+    if (line.startsWith(QUEUE_SOURCE_TRAILER)) {
+      const value = line.slice(QUEUE_SOURCE_TRAILER.length).trim();
+      if (OBJECT_ID_PATTERN.test(value)) queueSha = value;
+      continue;
+    }
+    if (!line.startsWith(ORPHAN_SOURCE_TRAILER)) continue;
+    const fields = line.slice(ORPHAN_SOURCE_TRAILER.length).trim().split(/\s+/);
+    if (fields.length !== 2) continue;
+    const [branch, sha] = fields;
+    if (branch === undefined || sha === undefined) continue;
+    if (!ORPHAN_BRANCH_PATTERN.test(branch) || !OBJECT_ID_PATTERN.test(sha)) continue;
+    if (orphans.some((existing) => existing.branch === branch)) continue;
+    orphans.push({ branch, sha });
+  }
+  return { queueSha, orphans: orphans.sort(byBranchName) };
+}
+
+/** Resolve a remote branch tip, or null when absent/unreadable (fail closed). */
+async function remoteBranchSha(
+  exec: Exec,
+  repoRoot: string,
+  remote: string,
+  branch: string,
+): Promise<string | null> {
+  const result = await runGit(exec, repoRoot, ['ls-remote', '--heads', remote, branch]);
+  if (result.code !== 0) return null;
+  const first = result.stdout.split('\n')[0]?.trim() ?? '';
+  const sha = first.split(/\s+/)[0] ?? '';
+  return OBJECT_ID_PATTERN.test(sha) ? sha : null;
+}
+
+/** A merged promotion together with the source snapshots it recorded. */
+export interface LandedPromotion {
+  readonly prNumber: number;
+  readonly headSha: string;
+  readonly sources: PromotionSources;
+}
+
+/**
+ * Locate the most recently MERGED `<promoteBranch> -> <baseBranch>` PR and read
+ * the source snapshots its promotion commit recorded.
+ *
+ * The promote branch is auto-deleted by GitHub when the PR merges, so the head
+ * commit is reached through the permanent `refs/pull/<n>/head` ref rather than
+ * through the branch. Every failure path returns `null` (fail closed) because
+ * the result authorizes destructive ref updates.
+ *
+ * SECURITY: `gh pr list --head <branch>` filters by branch NAME only, so a fork
+ * PR reusing the name would otherwise be accepted — `isCrossRepository` is
+ * required to be `false`, mirroring the guard in `findOpenPromotePr`.
+ */
+export async function findLandedPromotion(
+  exec: Exec,
+  repoRoot: string,
+  remote: string,
+  repo: string | undefined,
+  promoteBranch: string,
+  baseBranch: string,
+): Promise<LandedPromotion | null> {
+  const listed = await exec(
+    'gh',
+    [
+      'pr',
+      'list',
+      ...repoArgs(repo),
+      '--head',
+      promoteBranch,
+      '--base',
+      baseBranch,
+      '--state',
+      'merged',
+      '--json',
+      'number,headRefOid,headRefName,baseRefName,mergedAt,isCrossRepository',
+      '--limit',
+      '20',
+    ],
+    { cwd: repoRoot },
+  );
+  if (listed.code !== 0) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(listed.stdout.trim() || '[]');
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+
+  interface RawPr {
+    number?: unknown;
+    headRefOid?: unknown;
+    headRefName?: unknown;
+    baseRefName?: unknown;
+    mergedAt?: unknown;
+    isCrossRepository?: unknown;
+  }
+  const candidates = (parsed as RawPr[]).filter(
+    (pr): pr is { number: number; headRefOid: string; mergedAt: string } =>
+      pr !== null &&
+      typeof pr === 'object' &&
+      pr.isCrossRepository === false &&
+      pr.headRefName === promoteBranch &&
+      pr.baseRefName === baseBranch &&
+      typeof pr.number === 'number' &&
+      Number.isInteger(pr.number) &&
+      pr.number > 0 &&
+      typeof pr.headRefOid === 'string' &&
+      OBJECT_ID_PATTERN.test(pr.headRefOid) &&
+      typeof pr.mergedAt === 'string' &&
+      pr.mergedAt !== '',
+  );
+  if (candidates.length === 0) return null;
+  // Newest merge wins. PRs can merge out of numeric order, so `mergedAt` is
+  // authoritative and the number is only a deterministic tiebreak.
+  candidates.sort((a, b) => {
+    if (a.mergedAt !== b.mergedAt) return a.mergedAt < b.mergedAt ? 1 : -1;
+    return b.number - a.number;
+  });
+  const landed = candidates[0];
+  if (landed === undefined) return null;
+
+  const scratchRef = 'refs/sprite-reconcile/landed-promotion';
+  const fetched = await runGit(exec, repoRoot, [
+    'fetch',
+    '--no-tags',
+    remote,
+    `+refs/pull/${landed.number}/head:${scratchRef}`,
+  ]);
+  if (fetched.code !== 0) return null;
+  const resolved = await runGit(exec, repoRoot, ['rev-parse', scratchRef]);
+  // The fetched commit MUST be exactly the head GitHub reported; a mismatch
+  // means the ref moved or the API answer is stale — refuse to act on it.
+  if (resolved.code !== 0 || resolved.stdout.trim() !== landed.headRefOid) return null;
+  const log = await runGit(exec, repoRoot, [
+    'log',
+    `-${LANDED_TRAILER_SCAN_DEPTH}`,
+    '--format=%B%x00',
+    scratchRef,
+  ]);
+  if (log.code !== 0) return null;
+  // Scan newest-first and take the first commit that carries a queue trailer:
+  // CI recovery can push repair commits on top of the promotion, and those
+  // commits carry no trailers of their own.
+  for (const commitMessage of log.stdout.split('\0')) {
+    const sources = parseSourceTrailers(commitMessage);
+    if (sources.queueSha === null && sources.orphans.length === 0) continue;
+    return { prNumber: landed.number, headSha: landed.headRefOid, sources };
+  }
+  return null;
+}
+
+/** What a tidy-up pass retired. */
+export interface TidyUpResult {
+  /** True when `assets/queue` was fast-forwarded onto `main` this cycle. */
+  readonly queueReset: boolean;
+  /** Orphan branches deleted this cycle (deterministically ordered). */
+  readonly deletedBranches: readonly string[];
+}
+
+/**
+ * Retire the source snapshots that a MERGED promotion already landed.
+ *
+ * This is the step that makes the reconciler CONVERGE. Without it no source is
+ * ever retired: `assets/queue` keeps re-offering art that `main` has since
+ * superseded, and every orphaned `assets/checkin-*` branch is re-harvested every
+ * hour forever (44 of them, the oldest from 2026-07-08), so the `noop` guard is
+ * unreachable and a promotion PR is opened on every single cycle.
+ *
+ * Safety model — every destructive step is a compare-and-swap against the EXACT
+ * OID the merged promotion recorded harvesting:
+ *   - the queue is reset ONLY when its tip is still byte-identical to the
+ *     harvested snapshot, so an approve/edit that landed after the harvest can
+ *     never be discarded (its push moves the tip, the lease misses, we skip);
+ *   - an orphan branch is deleted ONLY when its tip still equals the harvested
+ *     snapshot, so a branch that gained new art after the harvest survives;
+ *   - the promotion must be MERGED (`--state merged`), so the harvested art is
+ *     provably already on `main` before anything is retired.
+ * Every failure is non-fatal and simply leaves the source in place for the next
+ * cycle.
+ */
+export async function tidyUpLandedPromotion(
+  exec: Exec,
+  repoRoot: string,
+  options: {
+    readonly remote: string;
+    readonly repo: string | undefined;
+    readonly promoteBranch: string;
+    readonly baseBranch: string;
+    readonly queueBranch: string;
+  },
+): Promise<TidyUpResult> {
+  const { remote, repo, promoteBranch, baseBranch, queueBranch } = options;
+  const landed = await findLandedPromotion(exec, repoRoot, remote, repo, promoteBranch, baseBranch);
+  if (landed === null) return { queueReset: false, deletedBranches: [] };
+
+  let queueReset = false;
+  const { queueSha } = landed.sources;
+  if (queueSha !== null) {
+    const currentQueue = await remoteBranchSha(exec, repoRoot, remote, queueBranch);
+    // CAS: only retire the snapshot we know landed. Any advance since the
+    // harvest means unpromoted edits are on the branch — leave it alone.
+    if (currentQueue === queueSha) {
+      const mainSha = await remoteBranchSha(exec, repoRoot, remote, baseBranch);
+      if (mainSha !== null && mainSha !== queueSha) {
+        const push = await runGit(exec, repoRoot, [
+          'push',
+          '--no-verify',
+          `--force-with-lease=refs/heads/${queueBranch}:${queueSha}`,
+          remote,
+          `${mainSha}:refs/heads/${queueBranch}`,
+        ]);
+        queueReset = push.code === 0;
+      }
+    }
+  }
+
+  const deletedBranches: string[] = [];
+  for (const orphan of landed.sources.orphans) {
+    const currentTip = await remoteBranchSha(exec, repoRoot, remote, orphan.branch);
+    // Already gone, or advanced past the harvested snapshot → never delete.
+    if (currentTip === null || currentTip !== orphan.sha) continue;
+    const deleted = await runGit(exec, repoRoot, [
+      'push',
+      '--no-verify',
+      `--force-with-lease=refs/heads/${orphan.branch}:${orphan.sha}`,
+      remote,
+      `:refs/heads/${orphan.branch}`,
+    ]);
+    if (deleted.code === 0) deletedBranches.push(orphan.branch);
+  }
+
+  return { queueReset, deletedBranches: deletedBranches.sort() };
+}
+
+/**
  * Discover `assets/checkin-*` branches on the remote that have no currently-open
  * PR pointing to them. These represent approved art that was checked in locally
  * but never consolidated into a batch or promote PR.
@@ -643,7 +971,10 @@ export async function scanOrphanedCheckinBranches(
   }
 
   // 3. Return branches not referenced by any open PR.
-  return allBranches.filter((b) => !openBranches.has(b));
+  // 3. Return branches not referenced by any open PR, in a deterministic order.
+  //    Overlay order decides the winner when two sources disagree about a path,
+  //    so it must never depend on the remote's `ls-remote` output ordering.
+  return allBranches.filter((b) => !openBranches.has(b)).sort();
 }
 
 /** Result of locating the open promote PR: its number and current labels. */
@@ -743,6 +1074,24 @@ export async function runReconcile(
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
 
   return withLock(async () => {
+    // 0. TIDY-UP: retire the source snapshots a previously-MERGED promotion
+    //    already landed. This runs FIRST, before any ref is read, so the rest of
+    //    the cycle sees the post-tidy state. It is what makes the reconciler
+    //    converge instead of oscillating — see the trailer documentation above.
+    //    Non-fatal by design: a tidy-up failure must never block a promotion.
+    let tidyUp: TidyUpResult = { queueReset: false, deletedBranches: [] };
+    try {
+      tidyUp = await tidyUpLandedPromotion(deps.exec, repoRoot, {
+        remote,
+        repo,
+        promoteBranch,
+        baseBranch,
+        queueBranch,
+      });
+    } catch {
+      /* non-fatal: leave every source in place and reconcile as usual */
+    }
+
     // 1. Check whether the queue branch exists. `ls-remote` cleanly distinguishes
     //    "absent" (empty stdout) from a real network/auth error (non-zero exit).
     const lsr = await runGit(deps.exec, repoRoot, ['ls-remote', '--heads', remote, queueBranch]);
@@ -767,7 +1116,12 @@ export async function runReconcile(
     ).catch(() => [] as string[]);
 
     if (!queueExists && orphanedBranches.length === 0) {
-      return { status: 'noop', promoteBranch };
+      return {
+        status: 'noop',
+        promoteBranch,
+        tidiedQueue: tidyUp.queueReset,
+        tidiedBranches: tidyUp.deletedBranches,
+      };
     }
 
     // 2. Fetch the branches we compare/branch from. The promote branch may not
@@ -843,7 +1197,7 @@ export async function runReconcile(
     //     under public/assets/generated/) are filtered out: those files are
     //     gitignored build artifacts in the sharded layout and must never be
     //     raw-checked-out onto main.
-    const orphanedPathsByBranch: Array<{ ref: string; paths: string[] }> = [];
+    const orphanedPathsByBranch: Array<{ branch: string; ref: string; paths: string[] }> = [];
     for (const branch of orphanedBranches) {
       const ref = `${remote}/${branch}`;
       const orphanDelta = await runGit(deps.exec, repoRoot, [
@@ -860,14 +1214,19 @@ export async function runReconcile(
       const paths = parseNameOnly(orphanDelta.stdout).filter(
         (p) => !isLegacyAggregateManifestPath(p),
       );
-      if (paths.length > 0) orphanedPathsByBranch.push({ ref, paths });
+      if (paths.length > 0) orphanedPathsByBranch.push({ branch, ref, paths });
     }
 
     if (queueVsMainArt.length === 0 && orphanedPathsByBranch.length === 0) {
       // Queue's art surface already matches main and no orphaned branches
       // contribute new art. Deliberately DO NOT reset assets/queue (data-loss
       // trap): it keeps accumulating and the next non-empty delta re-harvests.
-      return { status: 'noop', promoteBranch };
+      return {
+        status: 'noop',
+        promoteBranch,
+        tidiedQueue: tidyUp.queueReset,
+        tidiedBranches: tidyUp.deletedBranches,
+      };
     }
 
     // 4. Harvest queue's art surface onto CURRENT main in a throwaway worktree.
@@ -905,7 +1264,12 @@ export async function runReconcile(
       // normalization — e.g. line-ending or ordering — so re-check post-add).
       const staged = await runGit(deps.exec, worktree, ['diff', '--cached', '--quiet']);
       if (staged.code === 0) {
-        return { status: 'noop', promoteBranch };
+        return {
+        status: 'noop',
+        promoteBranch,
+        tidiedQueue: tidyUp.queueReset,
+        tidiedBranches: tidyUp.deletedBranches,
+      };
       }
 
       // The authoritative set of paths this promotion will change vs main.
@@ -939,11 +1303,28 @@ export async function runReconcile(
       ]);
       assertArtSurfaceModes(stagedRaw, baseBranch);
 
-      // Deterministic commit message (injected clock).
+      // Deterministic commit message (injected clock). The `Queue-Source` /
+      // `Orphan-Source` trailers record the EXACT tips this promotion harvested
+      // so the next cycle can retire precisely those snapshots once this
+      // promotion merges (see the trailer documentation above).
+      const harvestedSources: PromotionSources = {
+        queueSha:
+          queueVsMainArt.length > 0 && queueRef !== null
+            ? (await mustGit(deps.exec, repoRoot, ['rev-parse', queueRef])).trim()
+            : null,
+        orphans: await Promise.all(
+          orphanedPathsByBranch.map(async ({ branch, ref }) => ({
+            branch,
+            sha: (await mustGit(deps.exec, repoRoot, ['rev-parse', ref])).trim(),
+          })),
+        ),
+      };
+      const trailers = formatSourceTrailers(harvestedSources);
       const message =
         `chore(assets): reconcile queued sprite edits\n\n` +
         `Art-surface harvest of ${queueBranch} onto ${baseBranch} ` +
-        `(${changedPaths.length} path(s)).`;
+        `(${changedPaths.length} path(s)).` +
+        (trailers === '' ? '' : `\n\n${trailers}`);
       await mustGit(deps.exec, worktree, ['commit', '--no-verify', '-m', message]);
       promoteCommit = (await mustGit(deps.exec, worktree, ['rev-parse', 'HEAD'])).trim();
 
@@ -1133,6 +1514,8 @@ export async function runReconcile(
       closingIssueNumbers,
       closingIssueDiscoveryComplete: closingIssueDiscovery.complete,
       orphanedBranchCount: orphanedPathsByBranch.length,
+      tidiedQueue: tidyUp.queueReset,
+      tidiedBranches: tidyUp.deletedBranches,
     };
   });
 }

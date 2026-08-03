@@ -507,6 +507,20 @@ function controlDeps(exec: Exec, overrides: Partial<ReconcileDeps> = {}): Reconc
   };
 }
 
+/**
+ * The tidy-up step probes `gh pr list --state merged` at the very start of every
+ * cycle to find the last LANDED promotion, so "no gh calls" assertions must
+ * tolerate exactly that probe (and nothing else).
+ */
+function isTidyUpProbe(call: { command: string; args: string[] }): boolean {
+  return (
+    call.command === 'gh' &&
+    call.args[0] === 'pr' &&
+    call.args[1] === 'list' &&
+    call.args.includes('merged')
+  );
+}
+
 describe('runReconcile (control-flow)', () => {
   it('cold-start: no-op without fetching when the queue branch is absent', async () => {
     const { exec, calls } = makeFakeExec({ queueExists: false });
@@ -514,7 +528,7 @@ describe('runReconcile (control-flow)', () => {
     expect(result.status).toBe('noop');
     // Only the initial ls-remote probe ran; no fetch, no worktree, no gh.
     expect(calls.some((c) => c.command === 'git' && c.args[0] === 'fetch')).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
   });
 
   it('no-op when the art-surface delta is empty', async () => {
@@ -523,7 +537,7 @@ describe('runReconcile (control-flow)', () => {
     expect(result.status).toBe('noop');
     // Never staged a worktree or opened a PR.
     expect(calls.some((c) => c.command === 'git' && c.args[0] === 'worktree')).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
   });
 
   it('GUARD: rejects a non-art staged path BEFORE any commit/push/PR/arm', async () => {
@@ -549,7 +563,7 @@ describe('runReconcile (control-flow)', () => {
           c.args.some((a) => a.includes('refs/heads/assets/promote')),
       ),
     ).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
     // The throwaway worktree was still cleaned up.
     expect(
       calls.some((c) => c.command === 'git' && c.args[0] === 'worktree' && c.args[1] === 'remove'),
@@ -577,7 +591,7 @@ describe('runReconcile (control-flow)', () => {
           c.args.some((a) => a.includes('refs/heads/assets/promote')),
       ),
     ).toBe(false);
-    expect(calls.some((c) => c.command === 'gh')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
   });
 
   it('runs the entire cycle inside the injected cross-process lock', async () => {
@@ -658,7 +672,9 @@ describe('scanOrphanedCheckinBranches', () => {
       'abc123\trefs/heads/assets/checkin-foo\n' + 'def456\trefs/heads/assets/checkin-bar\n';
     const { exec } = makeScanExec(lsRemote, '[]');
     const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
-    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-bar']);
+    // Deterministically sorted: overlay order decides the winner when two
+    // sources disagree, so it must not depend on `ls-remote` output order.
+    expect(result).toEqual(['assets/checkin-bar', 'assets/checkin-foo']);
   });
 
   it('excludes branches that are the head of an open PR', async () => {
@@ -669,7 +685,7 @@ describe('scanOrphanedCheckinBranches', () => {
     const prList = JSON.stringify([{ headRefName: 'assets/checkin-bar' }]);
     const { exec } = makeScanExec(lsRemote, prList);
     const result = await scanOrphanedCheckinBranches(exec, REPO_ROOT, REMOTE, undefined);
-    expect(result).toEqual(['assets/checkin-foo', 'assets/checkin-baz']);
+    expect(result).toEqual(['assets/checkin-baz', 'assets/checkin-foo']);
   });
 
   it('returns empty when all branches have open PRs', async () => {
