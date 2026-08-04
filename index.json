@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4c1625151294cf04d7d908b7cef8cd1958c327a7",
+    "commitDate": "2026-08-04T15:07:30Z",
+    "commitSubject": "fix(assets): resolve PR #2743 CI blockers — strip stale catalog rows, fix shard hash, orphan shard, prop dimensions, brief dedup (#2758)",
+    "capturedAt": "2026-08-04T16:15:09.542Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/30923690089",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/4c1625151294cf04d7d908b7cef8cd1958c327a7.json"
+  },
+  {
     "commit": "5e9687b93711c68a1ba9d9df6917b1e0353b4a49",
     "commitDate": "2026-08-03T23:48:33Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2750)",
