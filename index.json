@@ -1,5 +1,16 @@
 [
   {
+    "commit": "48c7dc652829a7d522d41a6134b11aef2de3e7ed",
+    "commitDate": "2026-08-06T03:27:36Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (152 art paths) (#2743)",
+    "capturedAt": "2026-08-06T04:34:28.731Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31069112216",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/48c7dc652829a7d522d41a6134b11aef2de3e7ed.json"
+  },
+  {
     "commit": "4c1625151294cf04d7d908b7cef8cd1958c327a7",
     "commitDate": "2026-08-04T15:07:30Z",
     "commitSubject": "fix(assets): resolve PR #2743 CI blockers — strip stale catalog rows, fix shard hash, orphan shard, prop dimensions, brief dedup (#2758)",
