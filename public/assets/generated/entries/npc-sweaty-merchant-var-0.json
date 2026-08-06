@@ -25,7 +25,7 @@
   "sensorScore": "7/8",
   "judgeScore": "5",
   "type": "character",
-  "contentHash": "7c3e9b337ef5595efe3ffd881d149e2bc716b8c4360b5da7a4cb52a6b404391f",
+  "contentHash": "66cf20bc2992be8839475381f6695cecb417ec57d6e89a73988737c8d4d42c08",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-sweaty-merchant\\2026-07-08T07-22-13-938e6e34\\postprocess.pipeline.effective.yaml",

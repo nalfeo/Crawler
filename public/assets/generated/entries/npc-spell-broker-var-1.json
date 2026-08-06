@@ -25,7 +25,7 @@
   "sensorScore": "6/8",
   "judgeScore": "4",
   "type": "character",
-  "contentHash": "fee861838cf5560dba0ca47f6256ea9cdc6fe79d3a66c12bd0ac34159f1b31ab",
+  "contentHash": "a1407dccce469b348c83c644f42ec7df7b0cfde21ad64022425b02713a1b5662",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\npc-spell-broker\\2026-07-08T07-16-56-63af926a\\postprocess.pipeline.effective.yaml",
