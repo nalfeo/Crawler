@@ -2,41 +2,121 @@
   "briefId": "goblin-boss",
   "spriteName": "goblin-boss-var-0",
   "assetPath": "generated/goblin-boss-var-0.png",
-  "approvedAt": "2026-07-08T01:54:28.983Z",
-  "sourceRun": "generated/runs/goblin-boss/2026-07-08T01-44-14-cc6e849a",
+  "approvedAt": "2026-07-31T19:35:36.994Z",
+  "sourceRun": "generated/runs/goblin-boss/2026-07-31T19-23-22-0767a64e",
   "variantIndex": 0,
   "anchor": {
-    "x": 30,
-    "y": 33,
-    "source": "manual"
+    "x": 271,
+    "y": 277,
+    "source": "derived"
   },
   "anchors": {
     "hold": {
-      "x": 30,
-      "y": 33,
-      "source": "manual"
+      "x": 271,
+      "y": 277,
+      "source": "derived"
     },
     "centerOfGravity": {
-      "x": 30,
-      "y": 33,
-      "source": "manual"
+      "x": 271,
+      "y": 277,
+      "source": "derived"
     }
   },
   "sensorScore": "7/7",
   "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 271,
+        "y": 277
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T19:24:27.027Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The sprite captures the darkly humorous and offbeat tone of Crawler. The combination of a squat, menacing goblin crime boss with improvised cartel finery and a bone-topped cane is both readable and strange in a way that feels authored."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, shading, and palette depth. The sprite uses crisp 1-pixel outlines and appropriate shading stops, with no anti-aliasing or transparency issues."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, shading, and palette depth. The sprite uses crisp 1-pixel outlines and appropriate shading stops, with no anti-aliasing or transparency issues."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts the described subject: a squat, wide-bodied goblin crime boss with a patched waistcoat, chains, a wide-brimmed hat, and a bone-topped cane. The stance and silhouette align with the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no floating or disconnected elements. The wide hat and broad shoulders create a strong trapezoidal boss-mass silhouette as described."
+    },
+    "bossPresence": {
+      "score": 5,
+      "rationale": "The sprite reads as a boss due to its substantial width, low center of gravity, and dominant silhouette. The heavy detailing and props reinforce its authority and threat level."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language: patched leather, tarnished brass chains, a bone-topped cane, and a wide-brimmed hat. The palette and materials align with the dark, grim authority of Floor 2."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4207,
+      "completionTokens": 450,
+      "totalTokens": 4657
+    }
+  },
   "type": "enemy",
-  "contentHash": "9cd289c7fc9da91e680da300e4a55e38a24e36b5d8bfe83c08bfcd331be02367",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\goblin-boss\\2026-07-08T01-44-14-cc6e849a\\postprocess.pipeline.effective.yaml",
-  "effectiveAnchorSource": "manual",
-  "facingDirection": "right",
+  "contentHash": "b59a3dcd2cc2e2d382fcbd5e4a79094bfc554c62916b16fef52d6f4c9610715c",
   "opaqueBounds": {
-    "x": 4,
-    "y": 5,
-    "width": 56,
-    "height": 54,
-    "canvasWidth": 64,
-    "canvasHeight": 64
-  }
+    "x": 29,
+    "y": 29,
+    "width": 482,
+    "height": 454,
+    "canvasWidth": 540,
+    "canvasHeight": 512
+  },
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\goblin-boss\\2026-07-31T19-23-22-0767a64e\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\goblin-boss\\2026-07-31T19-23-22-0767a64e\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\goblin-boss\\2026-07-31T19-23-22-0767a64e\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
 }

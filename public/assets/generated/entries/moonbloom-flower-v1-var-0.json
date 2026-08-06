@@ -25,7 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "3",
   "type": "item",
-  "contentHash": "1e50573b282ee414f15f226f79bc6f9f6f3bc444145b55a4b8fab55fde849a48",
+  "contentHash": "b32542221790394eb3a471419f7c17d1709654505eabf2c310505905536f69fb",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.yaml",
