@@ -1,6 +1,6 @@
 type: enemy
-mobRole: boss
 name: faerie-boss
+mobRole: boss
 floor: 2
 sizeVariant: tall
 description: |
