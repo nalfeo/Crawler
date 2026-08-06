@@ -1413,6 +1413,8 @@ describe('runReconcile (real git)', () => {
 
     const second = await runReconcile(liveDir, realDeps(gh));
     expect(second.status).toBe('noop');
+    // The withheld path is REPORTED, not silently dropped.
+    expect(second.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
     // ...and it stays converged: no PR is ever reopened for the same stale bytes.
     const third = await runReconcile(liveDir, realDeps(gh));
@@ -1457,6 +1459,7 @@ describe('runReconcile (real git)', () => {
 
     const second = await runReconcile(liveDir, realDeps(gh));
     expect(second.status).toBe('noop');
+    expect(second.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
   });
 

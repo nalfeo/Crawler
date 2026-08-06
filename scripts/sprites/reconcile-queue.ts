@@ -103,6 +103,13 @@ export interface ReconcileResult {
   readonly tidiedBranches?: readonly string[];
   /** True when issue-closure discovery completed successfully. */
   readonly closingIssueDiscoveryComplete?: boolean;
+  /**
+   * Art paths a source offered that the convergence guard withheld (stale
+   * re-assertions, or edits that would clobber a main-side change the source
+   * never saw). Surfaced so a genuinely-blocked approval is visible in the
+   * workflow log rather than silently dropped.
+   */
+  readonly withheldPaths?: readonly string[];
 }
 
 export interface ReconcileDeps {
@@ -1430,6 +1437,19 @@ export async function runReconcile(
     //    intended A) into a single R entry — which --diff-filter=AM drops,
     //    silently omitting real queue art from the promotion. Disabling rename
     //    detection keeps A and D independent and the delta deterministic.
+    // Paths a source offered that the convergence guard withheld. Reported on
+    // the result (and therefore in the workflow log) so a genuinely-blocked
+    // approval is visible instead of silently dropped.
+    const withheld = new Set<string>();
+    const keepPromotable = async (
+      ref: string,
+      candidates: readonly string[],
+    ): Promise<string[]> => {
+      const promotable = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
+      for (const p of candidates) if (!promotable.includes(p)) withheld.add(p);
+      return promotable;
+    };
+
     let queueVsMainArt: readonly string[] = [];
     if (queueRef !== null) {
       const delta = await mustGit(deps.exec, repoRoot, [
@@ -1445,13 +1465,7 @@ export async function runReconcile(
       // Convergence guard: promote only bytes `main` has never carried and that
       // do not clobber a main-side change the queue never saw (see
       // `filterPromotablePaths`) — that ping-pong reopened this PR every hour.
-      queueVsMainArt = await filterPromotablePaths(
-        deps.exec,
-        repoRoot,
-        baseRef,
-        queueRef,
-        parseNameOnly(delta),
-      );
+      queueVsMainArt = await keepPromotable(queueRef, parseNameOnly(delta));
     }
 
     // 3b. Compute art deltas for each orphaned branch (two-dot AM only, art
@@ -1482,7 +1496,7 @@ export async function runReconcile(
       // unmerged for weeks holds art `main` has long since superseded (and a
       // stale `sprite-catalog.json`), and re-overlaying it is what kept every
       // source permanently "dirty".
-      const paths = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
+      const paths = await keepPromotable(ref, candidates);
       if (paths.length > 0) orphanedPathsByBranch.push({ branch, ref, paths });
     }
 
@@ -1495,6 +1509,7 @@ export async function runReconcile(
         promoteBranch,
         tidiedQueue: tidyUp.queueReset,
         tidiedBranches: tidyUp.deletedBranches,
+        withheldPaths: [...withheld].sort(),
       };
     }
 
@@ -1785,6 +1800,7 @@ export async function runReconcile(
       orphanedBranchCount: orphanedPathsByBranch.length,
       tidiedQueue: tidyUp.queueReset,
       tidiedBranches: tidyUp.deletedBranches,
+      withheldPaths: [...withheld].sort(),
     };
   });
 }
