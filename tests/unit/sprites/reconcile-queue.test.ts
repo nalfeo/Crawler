@@ -411,6 +411,8 @@ interface FakeExecConfig {
   nothingStaged?: boolean;
   commitFails?: boolean;
   issueListFails?: boolean;
+  /** Raw `git log --raw` output standing in for main's history at the paths. */
+  baseHistoryRaw?: string;
 }
 
 /**
@@ -465,6 +467,22 @@ function makeFakeExec(config: FakeExecConfig): {
       }
       if (args[0] === 'rev-parse') {
         return respond({ stdout: 'psha\n' });
+      }
+      // Convergence guard (`filterPromotablePaths`): the blob each ref holds at
+      // the candidate paths plus every blob its history held there. The faked
+      // main has neither the paths nor (by default) any history for them, so the
+      // delta is genuinely-new art and the happy path proceeds.
+      if (joined.includes('ls-tree') && args.includes('-r')) {
+        const isBase = joined.includes('origin/main');
+        return respond({
+          stdout: isBase
+            ? ''
+            : artDelta.map((p, i) => `100644 blob ${'a'.repeat(39)}${i}\t${p}`).join('\n'),
+        });
+      }
+      if (joined.includes('log') && args.includes('--raw')) {
+        const isBase = joined.includes('origin/main');
+        return respond({ stdout: isBase ? (config.baseHistoryRaw ?? '') : '' });
       }
       if (args[0] === 'ls-tree') {
         return respond({ stdout: '' });
@@ -540,6 +558,22 @@ describe('runReconcile (control-flow)', () => {
     const result = await runReconcile('/repo', controlDeps(exec));
     expect(result.status).toBe('noop');
     // Never staged a worktree or opened a PR.
+    expect(calls.some((c) => c.command === 'git' && c.args[0] === 'worktree')).toBe(false);
+    expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
+  });
+
+  it('no-ops when every candidate path is a stale re-assertion of superseded bytes', async () => {
+    // The hourly ping-pong: the delta is non-empty, but main's history already
+    // carried these exact bytes at this path and moved on. Re-promoting them
+    // reverts main and guarantees another PR next hour — so we must no-op.
+    const sha = `${'a'.repeat(39)}0`;
+    const { exec, calls } = makeFakeExec({
+      queueExists: true,
+      artDelta: ['public/assets/generated/a.png'],
+      baseHistoryRaw: `:100644 100644 ${sha} ${'b'.repeat(40)} M\tpublic/assets/generated/a.png\n`,
+    });
+    const result = await runReconcile('/repo', controlDeps(exec));
+    expect(result.status).toBe('noop');
     expect(calls.some((c) => c.command === 'git' && c.args[0] === 'worktree')).toBe(false);
     expect(calls.filter((c) => c.command === 'gh').every(isTidyUpProbe)).toBe(true);
   });
@@ -747,6 +781,16 @@ const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 ]);
 
+/** Distinct PNG bytes that SUPERSEDE {@link PNG_BYTES} at the same asset path. */
+const SUPERSEDING_PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+]);
+
+/** Distinct PNG bytes standing in for a brand-new approval main has never held. */
+const FRESH_EDIT_PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+]);
+
 function gitSync(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
@@ -877,7 +921,11 @@ function seedQueueWithBrief(
  * Push an art commit DIRECTLY onto origin/main (simulates the legacy asset-PR
  * flow that lands art without going through the queue branch).
  */
-function addArtDirectlyToMain(liveDir: string, keys: readonly string[]): void {
+function addArtDirectlyToMain(
+  liveDir: string,
+  keys: readonly string[],
+  bytes: Buffer = PNG_BYTES,
+): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-main-'));
   try {
@@ -886,7 +934,7 @@ function addArtDirectlyToMain(liveDir: string, keys: readonly string[]): void {
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
-      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+      writeFileSync(path.join(genDir, `${key}.png`), bytes);
       writeJson(path.join(entriesDir, `${key}.json`), {
         assetPath: `generated/${key}.png`,
         spriteName: key,
@@ -897,6 +945,23 @@ function addArtDirectlyToMain(liveDir: string, keys: readonly string[]): void {
     gitSync(wt, 'commit', '--no-verify', '-m', `direct-to-main art: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
     gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/main`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
+/** Push a NEW edit of an existing queued asset (distinct bytes) onto the queue. */
+function editQueuedArt(liveDir: string, key: string, bytes: Buffer): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-edit-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/assets/queue');
+    writeFileSync(path.join(wt, 'public', 'assets', 'generated', `${key}.png`), bytes);
+    gitSync(wt, 'add', '--', 'public/assets/generated');
+    gitSync(wt, 'commit', '--no-verify', '-m', `queue edit: ${key}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
   } finally {
     gitSync(liveDir, 'worktree', 'remove', '--force', wt);
     rmSync(wt, { recursive: true, force: true });
@@ -1327,6 +1392,72 @@ describe('runReconcile (real git)', () => {
     expect(second.status).toBe('noop');
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
     expect(gh.prs).toHaveLength(1);
+  });
+
+  it('(d2) CONVERGES: never re-asserts bytes main already carried and superseded', async () => {
+    // The production ping-pong (hourly promotion PR with no new approvals): the
+    // queue holds bytes main ALREADY landed and has since moved on from, so the
+    // two-dot AM delta is non-empty forever and the reconciler re-reverted main
+    // every cycle. It must now recognize the queue copy as superseded ⇒ no-op.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+
+    // Someone supersedes that asset on main (a later promotion / asset PR).
+    addArtDirectlyToMain(liveDir, ['skull-mace-var-2'], SUPERSEDING_PNG_BYTES);
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('noop');
+    expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
+    // ...and it stays converged: no PR is ever reopened for the same stale bytes.
+    const third = await runReconcile(liveDir, realDeps(gh));
+    expect(third.status).toBe('noop');
+    expect(gh.prs).toHaveLength(1);
+  });
+
+  it('(d3) still promotes a RE-EDIT of an asset the reconciler already landed', async () => {
+    // The convergence guard must not block the normal loop: after a promotion
+    // lands the queue's bytes on main, the next approval of that same asset is
+    // brand-new content on a path whose current main bytes came from the queue
+    // itself, so it must still promote.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+    editQueuedArt(liveDir, 'skull-mace-var-2', FRESH_EDIT_PNG_BYTES);
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('pr-open');
+    expect(second.changedPaths).toContain('public/assets/generated/skull-mace-var-2.png');
+  });
+
+  it('(d4) MAIN WINS: does not clobber a main-side change the source never saw', async () => {
+    // A stale source (e.g. a July `assets/checkin-*` branch holding an outdated
+    // sprite-catalog.json) must never overwrite bytes main obtained from another
+    // flow — that is a silent regression AND the other half of the ping-pong.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+    // Main moves on independently; the queue then edits the same path without
+    // ever having seen main's new bytes.
+    addArtDirectlyToMain(liveDir, ['skull-mace-var-2'], SUPERSEDING_PNG_BYTES);
+    editQueuedArt(liveDir, 'skull-mace-var-2', FRESH_EDIT_PNG_BYTES);
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('noop');
+    expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
   });
 
   it('(e) reuses an already-open promote PR without creating a duplicate', async () => {

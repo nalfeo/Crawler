@@ -344,6 +344,148 @@ function isLegacyAggregateManifestPath(p: string): boolean {
   return /^public\/assets\/generated\/[^/]+\.json$/.test(p);
 }
 
+/**
+ * Read the blob object id a ref holds at each of `paths` (one git process).
+ * `ls-tree -r` prints "<mode> <type> <sha>\t<path>"; paths absent from the ref
+ * are simply omitted. Returns `null` on any git failure so callers fail closed.
+ */
+async function blobsAtPaths(
+  exec: Exec,
+  repoRoot: string,
+  ref: string,
+  paths: readonly string[],
+): Promise<Map<string, string> | null> {
+  const lsTree = await runGit(exec, repoRoot, [
+    '-c',
+    'core.quotePath=false',
+    'ls-tree',
+    '-r',
+    ref,
+    '--',
+    ...paths,
+  ]);
+  if (lsTree.code !== 0) return null;
+  const blobs = new Map<string, string>();
+  for (const line of parseNameOnly(lsTree.stdout)) {
+    const [meta, filePath] = line.split('\t');
+    const sha = meta?.split(/\s+/)[2] ?? '';
+    if (filePath === undefined || !OBJECT_ID_PATTERN.test(sha)) continue;
+    blobs.set(filePath, sha);
+  }
+  return blobs;
+}
+
+/**
+ * Every blob a ref's HISTORY has ever held at each of `paths` (one git process).
+ * `--raw` lines look like ":100644 100644 <src> <dst> M\t<path>"; both sides are
+ * recorded so bytes that were landed and later changed still count as seen.
+ * Returns `null` on any git failure so callers fail closed.
+ */
+async function historicBlobsAtPaths(
+  exec: Exec,
+  repoRoot: string,
+  ref: string,
+  paths: readonly string[],
+): Promise<Map<string, Set<string>> | null> {
+  const history = await runGit(exec, repoRoot, [
+    '-c',
+    'core.quotePath=false',
+    'log',
+    '--format=',
+    '--raw',
+    '--no-renames',
+    '--no-abbrev',
+    ref,
+    '--',
+    ...paths,
+  ]);
+  if (history.code !== 0) return null;
+  const seenByPath = new Map<string, Set<string>>();
+  for (const line of parseNameOnly(history.stdout)) {
+    if (!line.startsWith(':')) continue;
+    const [meta, filePath] = line.split('\t');
+    if (filePath === undefined) continue;
+    const fields = meta?.slice(1).split(/\s+/) ?? [];
+    const seen = seenByPath.get(filePath) ?? new Set<string>();
+    for (const sha of [fields[2], fields[3]]) {
+      if (sha !== undefined && OBJECT_ID_PATTERN.test(sha)) seen.add(sha);
+    }
+    seenByPath.set(filePath, seen);
+  }
+  return seenByPath;
+}
+
+/**
+ * Keep only the candidate paths a source may actually promote onto `base` — the
+ * convergence guard that stops the hourly promotion ping-pong.
+ *
+ * Why this exists: the two-dot `AM` delta answers "do the source's bytes differ
+ * from base's *right now*", which is TRUE both for genuinely-new art and for a
+ * STALE copy that `main` already landed and has since superseded. Several
+ * sources hold different bytes for the same path (the long-lived `assets/queue`
+ * plus dozens of never-retired `assets/checkin-*` branches), so whichever source
+ * is not currently reflected on `main` re-asserts its bytes every cycle and
+ * flips the path back — an art-only PR opened EVERY HOUR even when no asset had
+ * been approved for days, and no source was ever retirable because each one
+ * always "adds" something. Observed in production as e.g.
+ * `public/assets/generated/cave-floor-var-8.png` alternating between two blobs
+ * on consecutive reconcile commits (PRs #2696…#2770).
+ *
+ * A path is promotable only when BOTH hold:
+ *   1. STALENESS — `base`'s history has never carried the source's exact bytes
+ *      at that path. Re-landing bytes `main` already had and moved on from is,
+ *      by definition, a revert; it also guarantees another delta next cycle.
+ *   2. NO CONFLICT — `base`'s CURRENT bytes at that path are ones this source's
+ *      own history contains (or `base` does not have the path at all). That is
+ *      three-way merge reasoning without needing a fresh merge base: a source
+ *      may advance a path it demonstrably knows the current state of, but may
+ *      never clobber a change it has never seen (e.g. a July check-in branch
+ *      overwriting today's `sprite-catalog.json`). `main` wins conflicts, which
+ *      is also the only direction that cannot regress the shipped game.
+ *
+ * Genuinely-new art (a path `main` has never held) satisfies both trivially, so
+ * real approvals still land, and repeat edits of an asset the reconciler itself
+ * promoted keep landing (main's current bytes came from the source's history).
+ *
+ * Fail closed: any git failure drops every path for that source. Promoting when
+ * we cannot read the history is exactly the unbounded-regression case this guard
+ * prevents, and dropping is non-destructive — the source keeps its bytes and a
+ * later cycle promotes them once git answers again.
+ */
+export async function filterPromotablePaths(
+  exec: Exec,
+  repoRoot: string,
+  baseRef: string,
+  sourceRef: string,
+  paths: readonly string[],
+): Promise<string[]> {
+  if (paths.length === 0) return [];
+  const sourceBlobs = await blobsAtPaths(exec, repoRoot, sourceRef, paths);
+  const baseBlobs = await blobsAtPaths(exec, repoRoot, baseRef, paths);
+  const baseHistory = await historicBlobsAtPaths(exec, repoRoot, baseRef, paths);
+  const sourceHistory = await historicBlobsAtPaths(exec, repoRoot, sourceRef, paths);
+  if (
+    sourceBlobs === null ||
+    baseBlobs === null ||
+    baseHistory === null ||
+    sourceHistory === null
+  ) {
+    return [];
+  }
+
+  return paths.filter((p) => {
+    const sourceSha = sourceBlobs.get(p);
+    // A path the source does not actually have cannot be promoted from it.
+    if (sourceSha === undefined) return false;
+    // 1. Stale re-assertion of bytes base already carried.
+    if (baseHistory.get(p)?.has(sourceSha) === true) return false;
+    // 2. Conflict: base holds bytes this source has never seen.
+    const baseSha = baseBlobs.get(p);
+    if (baseSha === undefined) return true;
+    return sourceHistory.get(p)?.has(baseSha) === true;
+  });
+}
+
 /** Destination tree-entry modes the reconciler will allow onto `main`. */
 const ALLOWED_DST_MODES = new Set([
   '100644', // regular non-executable file (PNG / manifest.json / catalog.json)
@@ -864,6 +1006,13 @@ export async function findLandedPromotion(
  * that impossible — a reverted path is once again an `AM` difference, so the
  * source is left in place.
  *
+ * NOTE: this deliberately does NOT apply {@link filterPromotablePaths}. That
+ * filter answers "should we PROMOTE these bytes again", and a reverted-off-main
+ * path is exactly a superseded one — treating it as "adds nothing" would delete
+ * the branch holding the only remaining copy. Convergence does not need
+ * retirement: a superseded source contributes no promotable path, so it produces
+ * a `noop` cycle whether or not it is ever retired.
+ *
  * Fail closed: any git failure answers `false` (do not retire).
  */
 async function sourceAddsNothingToBase(
@@ -1293,7 +1442,16 @@ export async function runReconcile(
         '--',
         ...ART_SURFACE_ALLOWLIST,
       ]);
-      queueVsMainArt = parseNameOnly(delta);
+      // Convergence guard: promote only bytes `main` has never carried and that
+      // do not clobber a main-side change the queue never saw (see
+      // `filterPromotablePaths`) — that ping-pong reopened this PR every hour.
+      queueVsMainArt = await filterPromotablePaths(
+        deps.exec,
+        repoRoot,
+        baseRef,
+        queueRef,
+        parseNameOnly(delta),
+      );
     }
 
     // 3b. Compute art deltas for each orphaned branch (two-dot AM only, art
@@ -1317,9 +1475,14 @@ export async function runReconcile(
         ...ART_SURFACE_ALLOWLIST,
       ]);
       if (orphanDelta.code !== 0) continue;
-      const paths = parseNameOnly(orphanDelta.stdout).filter(
+      const candidates = parseNameOnly(orphanDelta.stdout).filter(
         (p) => !isLegacyAggregateManifestPath(p),
       );
+      // Same convergence guard as the queue delta: an orphan branch that has sat
+      // unmerged for weeks holds art `main` has long since superseded (and a
+      // stale `sprite-catalog.json`), and re-overlaying it is what kept every
+      // source permanently "dirty".
+      const paths = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
       if (paths.length > 0) orphanedPathsByBranch.push({ branch, ref, paths });
     }
 
