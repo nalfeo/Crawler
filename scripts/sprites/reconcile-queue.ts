@@ -1446,7 +1446,8 @@ export async function runReconcile(
       candidates: readonly string[],
     ): Promise<string[]> => {
       const promotable = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
-      for (const p of candidates) if (!promotable.includes(p)) withheld.add(p);
+      const kept = new Set(promotable);
+      for (const p of candidates) if (!kept.has(p)) withheld.add(p);
       return promotable;
     };
 
