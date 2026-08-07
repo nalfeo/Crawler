@@ -13817,7 +13817,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 5.46,
+              "widthFt": 6.49,
               "heightFt": 3.5
             },
             {
@@ -13858,7 +13858,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 4.25,
+              "widthFt": 6.48,
               "heightFt": 4
             },
             {
@@ -13889,7 +13889,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-              "widthFt": 7.05,
+              "widthFt": 7.22,
               "heightFt": 6.8,
               "anchorBase": true
             },
@@ -14115,8 +14115,8 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-rug-var-0"
               },
-              "widthFt": 2.85,
-              "heightFt": 1.76
+              "widthFt": 1.88,
+              "heightFt": 0.97
             }
           ],
           "width": 1.75,
@@ -14135,7 +14135,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-              "widthFt": 6.57,
+              "widthFt": 5.13,
               "heightFt": 3.4,
               "rotationDeg": 90,
               "flipX": true,
@@ -15700,7 +15700,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-shop-table-var-0"
               },
-              "widthFt": 5.46,
+              "widthFt": 6.49,
               "heightFt": 3.5,
               "anchorBase": true
             },
@@ -15739,7 +15739,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-velvet-rope-var-2"
               },
-              "widthFt": 6.57,
+              "widthFt": 5.13,
               "heightFt": 3.4
             }
           ]
@@ -15849,7 +15849,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-bookcase-var-0"
               },
-              "widthFt": 7.05,
+              "widthFt": 7.22,
               "heightFt": 6.8,
               "anchorBase": true
             }
@@ -15870,7 +15870,7 @@
                 "source": "catalog",
                 "spriteId": "welcome-room-desk-var-0"
               },
-              "widthFt": 4.25,
+              "widthFt": 6.48,
               "heightFt": 4,
               "anchorBase": true
             },

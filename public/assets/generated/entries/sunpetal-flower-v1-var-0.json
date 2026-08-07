@@ -25,7 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "5",
   "type": "item",
-  "contentHash": "218f1ce6f60682fcc2221a8029a54fa590564ebc2764d7cf6ed3b9ef39947a40",
+  "contentHash": "e1fcbe8e5f28722ed65cd47da58a00de7faf8612e25ad3aa9d2ff08fd8642706",
   "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.overrides.json",
   "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.pipeline.effective.json",
   "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.pipeline.effective.yaml",

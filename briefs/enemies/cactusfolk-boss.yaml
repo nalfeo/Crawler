@@ -1,5 +1,6 @@
 type: enemy
 name: cactusfolk-boss
+mobRole: boss
 floor: 2
 sizeVariant: large
 

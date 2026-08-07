@@ -11,6 +11,7 @@ import type { InventoryBag } from '../shared/inventory.js';
 import type { StatusEffect } from '../shared/status-effect-types.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
+import type { FloaterEvent } from '../shared/floater-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityActivationEvent } from '../shared/ability-activation-events.js';
 import type { MobAbilityRuntime } from './mob-abilities/types.js';
@@ -283,6 +284,12 @@ export interface GameWorld {
    * engine-layer EffectsVfx renderer. Cosmetic-only; never read by game logic.
    */
   vfxEvents: VfxEvent[];
+  /**
+   * Cosmetic non-combat floating-text requests (skill level-ups today) emitted
+   * this frame — drained by the engine-layer `CombatVfx` renderer. Data-only;
+   * never read by game logic. Capped defensively by `pushFloaterEvent`.
+   */
+  floaterEvents: FloaterEvent[];
   /**
    * HUD announcement banner events pushed by systems (arena start/end today,
    * extensible). Drained by the engine-layer `HudAnnouncementBanner`. Data-only
@@ -679,6 +686,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     lethalDamageSourceByTarget: new Map(),
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
+    floaterEvents: [],
     announcements: [],
     abilityActivations: [],
     mobAbilities: createMobAbilityRuntime(),
