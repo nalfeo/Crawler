@@ -480,7 +480,7 @@ export async function filterPromotablePaths(
     return [];
   }
 
-  return paths.filter((p) => {
+  const perPathOk = (p: string): boolean => {
     const sourceSha = sourceBlobs.get(p);
     // A path the source does not actually have cannot be promoted from it.
     if (sourceSha === undefined) return false;
@@ -490,7 +490,34 @@ export async function filterPromotablePaths(
     const baseSha = baseBlobs.get(p);
     if (baseSha === undefined) return true;
     return sourceHistory.get(p)?.has(baseSha) === true;
-  });
+  };
+
+  // Atomic PNG+shard grouping: a PNG at `public/assets/generated/<key>.png` and
+  // its shard at `public/assets/generated/entries/<key>.json` must be accepted or
+  // withheld together. Without this, a stale PNG (whose bytes main already
+  // carried) would be withheld while a freshly-stamped shard (a new blob, never
+  // seen by main) passes — landing a shard whose `contentHash` describes the
+  // withheld PNG while main still holds the superseding bytes.
+  const pngFromShard = (p: string): string | undefined => {
+    const m = /^(public\/assets\/generated\/entries\/)([^/]+)\.json$/.exec(p);
+    return m ? `public/assets/generated/${m[2]}.png` : undefined;
+  };
+  const shardFromPng = (p: string): string | undefined => {
+    const m = /^public\/assets\/generated\/([^/]+)\.png$/.exec(p);
+    return m ? `public/assets/generated/entries/${m[1]}.json` : undefined;
+  };
+
+  // Build a set of individually-passing paths, then suppress any whose paired
+  // counterpart failed.
+  const passingSet = new Set(paths.filter(perPathOk));
+  const withheldByPair = new Set<string>();
+  for (const p of passingSet) {
+    const counterpart = p.endsWith('.json') ? pngFromShard(p) : shardFromPng(p);
+    if (counterpart !== undefined && !passingSet.has(counterpart) && paths.includes(counterpart)) {
+      withheldByPair.add(p);
+    }
+  }
+  return [...passingSet].filter((p) => !withheldByPair.has(p));
 }
 
 /** Destination tree-entry modes the reconciler will allow onto `main`. */

@@ -968,6 +968,39 @@ function editQueuedArt(liveDir: string, key: string, bytes: Buffer): void {
   }
 }
 
+/**
+ * Re-seed the queue with the ORIGINAL PNG bytes plus a freshly-stamped shard
+ * blob (different JSON content, so a new git object). Used to simulate an
+ * A→B→A re-approval where the user approves the same pixels again after main
+ * has moved to a different version.
+ */
+function reapproveQueueWithOriginalBytesAndFreshShard(liveDir: string, key: string): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-reapprove-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/assets/queue');
+    const genDir = path.join(wt, 'public', 'assets', 'generated');
+    const entriesDir = path.join(genDir, 'entries');
+    mkdirSync(entriesDir, { recursive: true });
+    // PNG goes back to original bytes (A→B→A).
+    writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+    // Shard is re-stamped with a NEW blob (new contentHash), so it is not stale
+    // by itself — the atomicity fix must withhold it alongside its paired PNG.
+    writeJson(path.join(entriesDir, `${key}.json`), {
+      assetPath: `generated/${key}.png`,
+      spriteName: key,
+      contentHash: 'reapproved-' + TEST_CONTENT_HASH,
+    });
+    gitSync(wt, 'add', '--', 'public/assets/generated');
+    gitSync(wt, 'commit', '--no-verify', '-m', `re-approve original bytes: ${key}`);
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 /** Simulate a squash-merge of the promote branch into main + mark the PR merged. */
 function simulateSquashMerge(liveDir: string, gh: FakeGh, prNumber: number): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote', 'main');
@@ -1460,6 +1493,39 @@ describe('runReconcile (real git)', () => {
     const second = await runReconcile(liveDir, realDeps(gh));
     expect(second.status).toBe('noop');
     expect(second.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
+    expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
+  });
+
+  it('(d5) ATOMIC: withholds PNG AND shard together on A→B→A re-approval', async () => {
+    // The A→B→A split-brain bug: main previously carried PNG blob A; later
+    // moved to blob B; source is re-approved back to blob A with a freshly-
+    // stamped shard. Without atomicity the stale PNG is withheld but the new
+    // shard blob passes — `check:asset-integrity` would then fail because the
+    // promoted shard's `contentHash` describes A while main still holds B.
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
+    const gh = new FakeGh();
+
+    // Phase 1: original bytes (A) land on main.
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+
+    // Phase 2: main moves on to blob B via an independent flow.
+    addArtDirectlyToMain(liveDir, ['skull-mace-var-2'], SUPERSEDING_PNG_BYTES);
+
+    // Phase 3: queue is re-approved back to blob A with a FRESH shard blob.
+    reapproveQueueWithOriginalBytesAndFreshShard(liveDir, 'skull-mace-var-2');
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    // Both the PNG (stale) and its paired shard (fresh but atomically linked)
+    // must be withheld — no partial promotion that breaks asset integrity.
+    expect(second.status).toBe('noop');
+    expect(second.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
+    expect(second.withheldPaths).toContain(
+      'public/assets/generated/entries/skull-mace-var-2.json',
+    );
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
   });
 
