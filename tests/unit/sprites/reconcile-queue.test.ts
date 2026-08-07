@@ -1523,9 +1523,7 @@ describe('runReconcile (real git)', () => {
     // must be withheld — no partial promotion that breaks asset integrity.
     expect(second.status).toBe('noop');
     expect(second.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
-    expect(second.withheldPaths).toContain(
-      'public/assets/generated/entries/skull-mace-var-2.json',
-    );
+    expect(second.withheldPaths).toContain('public/assets/generated/entries/skull-mace-var-2.json');
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
   });
 
