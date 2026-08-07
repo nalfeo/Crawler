@@ -563,6 +563,14 @@ export const RUN_PLANNER_STAIRS_INTERACT_MS = 1_000;
 // Pickup opportunities are filtered by reachability first, then ranked by
 // path-relative detour cost. Enemy packs are scored for debug only in this slice.
 export const TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT = 24;
+// Max detour (ft) a pickup may add to the current objective leg. Measured over
+// the 72-run Floor-1 gate matrix (seeds 1-24 x sword/bow/baseball-bat) on top of
+// the 12ft mid-run loot sweep:
+//    8ft -> 72/72 wins, combined collection 0.7919, mean floor 258.4s
+//   12ft -> 70/72 wins, combined collection 0.7854, mean floor 260.0s
+// Widening it does NOT collect more: it trades on-path gems for longer errands
+// (mean level rises but two runs are lost to a deadline timeout and a death), so
+// 8ft stays. Rule 12 gates on win-RATE first.
 export const TACTICAL_OPPORTUNITY_MAX_DETOUR_FT = 8;
 export const TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT = 0.75;
 export const TACTICAL_OPPORTUNITY_MIN_DETOUR_MS = 250;
