@@ -21,7 +21,7 @@
  * Exits 0 always — findings are informational.
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
@@ -224,8 +224,9 @@ function renderIndex(
   systemsOrder: ReadonlyArray<string>,
   entriesBySystem: Map<string, HandoffEntry[]>,
   unclassified: ReadonlyArray<HandoffEntry>,
+  timestamp?: string,
 ): string {
-  const now = new Date().toISOString();
+  const now = timestamp ?? new Date().toISOString();
   const parts: string[] = [];
   parts.push('# Handoff system-impact index');
   parts.push('');
@@ -372,8 +373,33 @@ async function main(): Promise<void> {
   }
   unclassified.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
-  const rendered = renderIndex(systemsOrder, bySystem, unclassified);
+  // Suppress timestamp-only diffs: if the existing INDEX.md has the same body
+  // (everything except the "Last built:" line), reuse its timestamp so the file
+  // is byte-identical and the workflow does not create a no-op PR.
   const indexAbs = fromRepo(INDEX_FILE);
+  let existingTimestamp: string | undefined;
+  if (existsSync(indexAbs)) {
+    const existing = readFileSync(indexAbs, 'utf8');
+    const tsMatch = existing.match(/^Last built: (.+)\./m);
+    if (tsMatch) {
+      existingTimestamp = tsMatch[1];
+    }
+  }
+  // Render once with existing timestamp (or fresh) to compare bodies.
+  const rendered = renderIndex(systemsOrder, bySystem, unclassified, existingTimestamp);
+  // If body matches with existing timestamp, rendered === existing — no write needed.
+  // If body differs, render with a fresh timestamp.
+  let finalRendered: string;
+  if (existingTimestamp !== undefined && existsSync(indexAbs)) {
+    const existing = readFileSync(indexAbs, 'utf8');
+    if (rendered === existing) {
+      finalRendered = rendered; // no-op: identical to existing
+    } else {
+      finalRendered = renderIndex(systemsOrder, bySystem, unclassified);
+    }
+  } else {
+    finalRendered = rendered;
+  }
 
   const populated = [...bySystem.values()].filter((v) => v.length > 0).length;
   report.info(
@@ -381,10 +407,10 @@ async function main(): Promise<void> {
   );
 
   if (apply) {
-    writeFileSync(indexAbs, rendered);
+    writeFileSync(indexAbs, finalRendered);
     report.info(`Wrote ${INDEX_FILE}.`);
   } else {
-    process.stdout.write(rendered);
+    process.stdout.write(finalRendered);
     process.stdout.write('\n');
     report.info(`Dry-run: pass --apply to write ${INDEX_FILE}.`);
   }
