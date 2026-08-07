@@ -24,6 +24,7 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { Report, fromRepo } from '../shared/report.js';
 
 const HANDOFFS_DIR = 'docs/knowledge/handoffs';
@@ -193,16 +194,29 @@ function classifyBySlug(slug: string): string[] {
   return [...hits];
 }
 
-function extractSummary(text: string, fallback: string): string {
+export function extractSummary(text: string, fallback: string): string {
   const lines = text.split(/\r?\n/);
   const idx = lines.findIndex((l) => /^##\s+What Was Done\s*$/i.test(l));
   if (idx >= 0) {
+    const paragraphLines: string[] = [];
     for (let i = idx + 1; i < lines.length; i++) {
       const raw = lines[i]!.trim();
-      if (!raw) continue;
+      if (!raw) {
+        if (paragraphLines.length > 0) break;
+        continue;
+      }
       if (raw.startsWith('<!--')) continue;
       if (raw.startsWith('##')) break;
-      return truncate(raw.replace(/^[-*]\s+/, ''));
+      if (paragraphLines.length === 0) {
+        paragraphLines.push(raw.replace(/^[-*]\s+/, ''));
+      } else if (/^[-*#]/.test(raw) || raw.startsWith('|')) {
+        break;
+      } else {
+        paragraphLines.push(raw);
+      }
+    }
+    if (paragraphLines.length > 0) {
+      return truncate(paragraphLines.join(' '));
     }
   }
   const h1 = lines.find((l) => /^#\s+/.test(l));
@@ -418,7 +432,12 @@ async function main(): Promise<void> {
   report.finish();
 }
 
-main().catch((err) => {
-  process.stderr.write(`build-system-index crashed: ${err instanceof Error ? err.stack : err}\n`);
-  process.exit(2);
-});
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+) {
+  main().catch((err) => {
+    process.stderr.write(`build-system-index crashed: ${err instanceof Error ? err.stack : err}\n`);
+    process.exit(2);
+  });
+}
