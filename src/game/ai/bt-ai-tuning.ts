@@ -759,10 +759,12 @@ export const LOOT_SWEEP_PANIC_THRESHOLD = 0.5;
 // Radius (ft) for the mid-run post-combat sweep window. 0 disables mid-run
 // sweeping, leaving only the pre-exit (staircase-unlocked) full-floor sweep.
 // Measured over the gate matrix (seeds 1-24 x sword/bow/baseball-bat, 72 runs):
-//   0ft  -> combined collection 0.7288, 72/72 wins  (baseline 0.6659, 72/72)
+//    0ft -> combined collection 0.7795, 71/72 wins
+//   12ft -> combined collection 0.7919, 72/72 wins  <- shipped
 //   35ft -> combined collection 0.7254, 70/72 wins  (two bat losses)
-// The wider mid-run window costs ~20s of extra floor time per run and flipped
-// two wins, so it stays off: rule 12 gates on win-RATE, and no efficiency gain
-// is worth a win regression. Raise only with a fresh 72-run measurement showing
-// the win rate holds.
-export const LOOT_SWEEP_RADIUS_FT = 0;
+// A *narrow* mid-run window is strictly better than both: it collects the drops
+// of the fight that just ended without turning the sweep into a cross-room
+// errand, and it costs no measurable floor time (mean 257.3s -> 258.4s). The
+// wide 35ft window is what flipped wins, not mid-run sweeping itself. Rule 12
+// gates on win-RATE first; change this only with a fresh 72-run measurement.
+export const LOOT_SWEEP_RADIUS_FT = 12;
