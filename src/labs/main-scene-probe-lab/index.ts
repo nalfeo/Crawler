@@ -693,7 +693,14 @@ export interface MainSceneProbeApi {
    * Ability-activation floater labels currently on the REAL scene's display
    * list, paired with the ability id encoded in the object name.
    */
-  getAbilityFloaters(): ReadonlyArray<{ readonly abilityId: string; readonly label: string }>;
+  getAbilityFloaters(): ReadonlyArray<{
+    readonly abilityId: string;
+    readonly label: string;
+    readonly x: number;
+    readonly y: number;
+    readonly visible: boolean;
+    readonly alpha: number;
+  }>;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
@@ -1308,6 +1315,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         .map((floater) => ({
           abilityId: floater.name.slice(ABILITY_FLOATER_NAME_PREFIX.length),
           label: floater.text,
+          x: floater.x,
+          y: floater.y,
+          visible: floater.visible,
+          alpha: floater.alpha,
         }));
     },
 

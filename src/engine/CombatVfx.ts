@@ -53,6 +53,7 @@ const ABILITY_CATEGORY_COLORS: Record<AbilityActivationEvent['category'], string
 
 /** Spells read as arcane regardless of category, matching their cast VFX. */
 const SPELL_COLOR = '#c77dff';
+export const ABILITY_FLOATER_NAME_PREFIX = 'ability-activation-floater:';
 
 interface FloatingText {
   obj: Phaser.GameObjects.Text;
@@ -192,6 +193,7 @@ export function createCombatVfx(scene: Phaser.Scene): {
     });
     text.setOrigin(0.5, 1);
     text.setDepth(WORLD_VFX_DEPTH.combatText);
+    text.setName(`${ABILITY_FLOATER_NAME_PREFIX}${event.abilityId}`);
     (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(text);
 
     floaters.push({

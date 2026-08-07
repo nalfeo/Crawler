@@ -20,16 +20,7 @@ export const AUDIT_EXCEPTIONS = [
   },
 ];
 
-export const TEMP_DEPENDENCY_EXCEPTIONS = [
-  {
-    packageName: 'postcss',
-    field: 'overrides',
-    version: '8.5.22',
-    expiresOn: '2026-08-06',
-    reason:
-      'Emergency rollback: Microsoft npm proxy does not mirror postcss@8.5.25 yet; keep 8.5.22 only as a short-lived unblock.',
-  },
-];
+export const TEMP_DEPENDENCY_EXCEPTIONS = [];
 
 const AUDIT_SCRIPT_PATH = 'scripts/agent/security/npm-audit.mjs';
 
@@ -71,9 +62,7 @@ export function findReasonRestatementViolations(previousExceptions, currentExcep
 
 export function extractNamedExceptionsFromSource(source, arrayName) {
   const escaped = arrayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = source.match(
-    new RegExp(`export const ${escaped} = (\\[\\]|\\[[\\s\\S]*?\\n\\]);`),
-  );
+  const match = source.match(new RegExp(`export const ${escaped} = (\\[\\]|\\[[\\s\\S]*?\\n\\]);`));
   if (!match) {
     throw new Error(
       `Could not find ${arrayName} declaration in scripts/agent/security/npm-audit.mjs`,

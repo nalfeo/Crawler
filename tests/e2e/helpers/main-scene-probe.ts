@@ -137,8 +137,16 @@ export const mainSceneProbe = {
     page.evaluate((id) => window.__mainSceneProbe!.equipPlayerActiveAbility(id), abilityId),
   getAbilityFloaters: (
     page: Page,
-  ): Promise<ReadonlyArray<{ readonly abilityId: string; readonly label: string }>> =>
-    page.evaluate(() => window.__mainSceneProbe!.getAbilityFloaters()),
+  ): Promise<
+    ReadonlyArray<{
+      readonly abilityId: string;
+      readonly label: string;
+      readonly x: number;
+      readonly y: number;
+      readonly visible: boolean;
+      readonly alpha: number;
+    }>
+  > => page.evaluate(() => window.__mainSceneProbe!.getAbilityFloaters()),
   setWorldState: (page: Page, state: MainSceneState['worldState']): Promise<void> =>
     page.evaluate(
       (value) =>

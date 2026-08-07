@@ -15,6 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { ftToPx } from '../../src/shared/units.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
 
@@ -33,7 +34,9 @@ describe('ability-activation floating announcement (real scene)', () => {
   }, 180_000);
 
   afterAll(async () => {
-    await closeQuietly(page, context, browser);
+    await closeQuietly(page);
+    await closeQuietly(context);
+    await closeQuietly(browser);
   });
 
   it('shows no ability floater before any ability fires', async () => {
@@ -54,6 +57,18 @@ describe('ability-activation floating announcement (real scene)', () => {
 
     const floaters = await mainSceneProbe.getAbilityFloaters(page);
     expect(floaters.map((f) => f.abilityId)).toContain('battle-focus');
-    expect(floaters.find((f) => f.abilityId === 'battle-focus')?.label).toBe('BATTLE FOCUS');
+    const battleFocusFloater = floaters.find((f) => f.abilityId === 'battle-focus');
+    expect(battleFocusFloater?.label).toBe('BATTLE FOCUS');
+    expect(battleFocusFloater?.visible).toBe(true);
+    expect(battleFocusFloater?.alpha ?? 0).toBeGreaterThan(0);
+
+    const state = await mainSceneProbe.getState(page);
+    expect(state.playerFeet).not.toBeNull();
+    const playerFeet = state.playerFeet;
+    if (!playerFeet || !battleFocusFloater) {
+      throw new Error('Expected player feet and battle-focus floater to exist');
+    }
+    expect(battleFocusFloater.x).toBeCloseTo(ftToPx(playerFeet.x), 3);
+    expect(battleFocusFloater.y).toBeLessThan(ftToPx(playerFeet.y));
   }, 60_000);
 });
