@@ -172,8 +172,7 @@
     "cacache": "20.0.4",
     "loglevel": "1.9.2",
     "phaser": "4.1.0",
-    "rot-js": "2.2.1",
-    "fast-uri": "3.1.5"
+    "rot-js": "2.2.1"
   },
   "devDependencies": {
     "@azure/storage-blob": "12.32.0",

@@ -105,7 +105,7 @@ export function combatFloaterStyle(event: CombatEvent): FloaterStyle {
  * presentation. Labels render verbatim (upper-cased for punch) so the player
  * reads the ability's real name.
  */
-export function abilityFloaterStyle(event: AbilityActivationEvent): FloaterStyle {
+export function _abilityFloaterStyle(event: AbilityActivationEvent): FloaterStyle {
   return {
     label: event.label.toUpperCase(),
     color: event.kind === 'spell' ? SPELL_COLOR : ABILITY_CATEGORY_COLORS[event.category],
@@ -179,7 +179,7 @@ export function createCombatVfx(scene: Phaser.Scene): {
     stackIndex: number,
     renderElapsedMs: number,
   ): void {
-    const { label, color, fontSize } = abilityFloaterStyle(event);
+    const { label, color, fontSize } = _abilityFloaterStyle(event);
 
     const floaterX = ftToPx(event.x);
     const floaterY =
