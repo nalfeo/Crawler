@@ -13,6 +13,7 @@ import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { FloaterEvent } from '../shared/floater-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
+import type { AbilityActivationEvent } from '../shared/ability-activation-events.js';
 import type { MobAbilityRuntime } from './mob-abilities/types.js';
 import { createMobAbilityRuntime } from './mob-abilities/types.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
@@ -295,6 +296,13 @@ export interface GameWorld {
    * so `src/core` stays portable. Capped defensively by `pushAnnouncement`.
    */
   announcements: AnnouncementEvent[];
+  /**
+   * Player active/spell ability activations emitted this frame — drained by the
+   * engine-layer floating-text renderer, which shows the ability name above the
+   * player. Cosmetic-only; never read by game logic. Capped defensively by
+   * `pushAbilityActivationEvent`.
+   */
+  abilityActivations: AbilityActivationEvent[];
   /** Persistent blood pools authored by simulation-side death/contact logic. */
   bloodPools: BloodPoolSurface[];
   /** Persistent bloody footprints/smears authored by the core step. */
@@ -680,6 +688,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     vfxEvents: [],
     floaterEvents: [],
     announcements: [],
+    abilityActivations: [],
     mobAbilities: createMobAbilityRuntime(),
     bloodPools: [],
     bloodyFootprints: [],
