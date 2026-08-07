@@ -1,10 +1,15 @@
 /**
  * Combat VFX renderer — consumes CombatEvent[] from the world and spawns
  * floating damage numbers / "BLOCKED" indicators in Phaser.
+ *
+ * Also drains `world.abilityActivations` and spawns the ability-name floater
+ * above the player, so an active skill firing announces itself the same way a
+ * damage number does.
  */
 import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { FloaterEvent } from '../shared/floater-events.js';
+import type { AbilityActivationEvent } from '../shared/ability-activation-events.js';
 import { ftToPx } from '../shared/units.js';
 import type { GameWorld } from '../core/world.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
@@ -18,12 +23,44 @@ const SKILL_FLOATER_BASE_Y_OFFSET_PX = -22;
 const SKILL_FLOATER_STAGGER_Y_PX = 12;
 const SKILL_FLOATER_STAGGER_X_PX = 10;
 const CRIT_FONT_SIZE = '16px';
+const ABILITY_FONT_SIZE = '14px';
 const FONT_FAMILY = 'monospace';
+
+/**
+ * Ability floaters linger longer and rise further than damage numbers: the
+ * label is a word rather than a two-digit number, so it needs more dwell time
+ * to be readable mid-fight.
+ */
+const ABILITY_VFX_DURATION_MS = 1100;
+const ABILITY_VFX_RISE_PX = 34;
+/**
+ * Ability floaters spawn above the damage numbers so the two never collide on
+ * the same frame (damage floaters spawn at -8 px from the entity origin).
+ */
+const ABILITY_VFX_BASE_OFFSET_PX = 22;
+/**
+ * Vertical spacing applied when several abilities fire on the same frame, so
+ * simultaneous activations stack instead of overprinting each other.
+ */
+const ABILITY_VFX_STACK_OFFSET_PX = 14;
+
+/** Category → colour for ability-activation floaters. */
+const ABILITY_CATEGORY_COLORS: Record<AbilityActivationEvent['category'], string> = {
+  combat: '#ffb347',
+  defense: '#7fd4ff',
+  utility: '#b98cff',
+};
+
+/** Spells read as arcane regardless of category, matching their cast VFX. */
+const SPELL_COLOR = '#c77dff';
+export const ABILITY_FLOATER_NAME_PREFIX = 'ability-activation-floater:';
 
 interface FloatingText {
   obj: Phaser.GameObjects.Text;
   startMs: number;
   startY: number;
+  durationMs: number;
+  risePx: number;
 }
 
 /** Resolved presentation for a floating combat indicator. */
@@ -61,6 +98,19 @@ export function combatFloaterStyle(event: CombatEvent): FloaterStyle {
     return { label: `-${amount}!`, color: '#ff8800', fontSize: CRIT_FONT_SIZE };
   }
   return { label: `-${amount}`, color: '#ffdd44', fontSize: FONT_SIZE };
+}
+
+/**
+ * Pure mapping from an ability-activation event to its floating-text
+ * presentation. Labels render verbatim (upper-cased for punch) so the player
+ * reads the ability's real name.
+ */
+export function _abilityFloaterStyle(event: AbilityActivationEvent): FloaterStyle {
+  return {
+    label: event.label.toUpperCase(),
+    color: event.kind === 'spell' ? SPELL_COLOR : ABILITY_CATEGORY_COLORS[event.category],
+    fontSize: ABILITY_FONT_SIZE,
+  };
 }
 
 /**
@@ -115,7 +165,44 @@ export function createCombatVfx(scene: Phaser.Scene): {
     text.setDepth(WORLD_VFX_DEPTH.combatText);
     (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(text);
 
-    floaters.push({ obj: text, startMs: renderElapsedMs, startY: floaterY });
+    floaters.push({
+      obj: text,
+      startMs: renderElapsedMs,
+      startY: floaterY,
+      durationMs: VFX_DURATION_MS,
+      risePx: VFX_RISE_PX,
+    });
+  }
+
+  function spawnAbilityFloater(
+    event: AbilityActivationEvent,
+    stackIndex: number,
+    renderElapsedMs: number,
+  ): void {
+    const { label, color, fontSize } = _abilityFloaterStyle(event);
+
+    const floaterX = ftToPx(event.x);
+    const floaterY =
+      ftToPx(event.y) - ABILITY_VFX_BASE_OFFSET_PX - stackIndex * ABILITY_VFX_STACK_OFFSET_PX;
+    const text = scene.add.text(floaterX, floaterY, label, {
+      fontFamily: FONT_FAMILY,
+      fontSize,
+      color,
+      stroke: '#000000',
+      strokeThickness: 3,
+    });
+    text.setOrigin(0.5, 1);
+    text.setDepth(WORLD_VFX_DEPTH.combatText);
+    text.setName(`${ABILITY_FLOATER_NAME_PREFIX}${event.abilityId}`);
+    (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(text);
+
+    floaters.push({
+      obj: text,
+      startMs: renderElapsedMs,
+      startY: floaterY,
+      durationMs: ABILITY_VFX_DURATION_MS,
+      risePx: ABILITY_VFX_RISE_PX,
+    });
   }
 
   return {
@@ -146,11 +233,17 @@ export function createCombatVfx(scene: Phaser.Scene): {
       }
       world.floaterEvents.length = 0;
 
+      // Ability-activation floaters (player-only; emitted by abilitySystem).
+      world.abilityActivations.forEach((event, i) => {
+        spawnAbilityFloater(event, i, renderElapsedMs);
+      });
+      world.abilityActivations.length = 0;
+
       // Animate and clean up existing floaters
       for (let i = floaters.length - 1; i >= 0; i--) {
         const f = floaters[i]!;
         const age = renderElapsedMs - f.startMs;
-        const progress = Math.min(1, age / VFX_DURATION_MS);
+        const progress = Math.min(1, age / f.durationMs);
 
         if (progress >= 1) {
           f.obj.destroy();
@@ -159,7 +252,7 @@ export function createCombatVfx(scene: Phaser.Scene): {
         }
 
         // Rise and fade
-        f.obj.setY(f.startY - VFX_RISE_PX * progress);
+        f.obj.setY(f.startY - f.risePx * progress);
         f.obj.setAlpha(1 - progress * progress);
       }
     },
