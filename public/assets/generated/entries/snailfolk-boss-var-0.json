@@ -2,41 +2,125 @@
   "briefId": "snailfolk-boss",
   "spriteName": "snailfolk-boss-var-0",
   "assetPath": "generated/snailfolk-boss-var-0.png",
-  "approvedAt": "2026-07-08T02:58:03.742Z",
-  "sourceRun": "generated/runs/snailfolk-boss/2026-07-08T02-52-51-2c9a72c5",
+  "approvedAt": "2026-07-31T20:31:52.056Z",
+  "sourceRun": "generated/runs/snailfolk-boss/2026-07-31T20-25-09-bfadfc66",
   "variantIndex": 0,
   "anchor": {
-    "x": 33,
-    "y": 33,
+    "x": 245,
+    "y": 285,
     "source": "derived"
   },
   "anchors": {
     "hold": {
-      "x": 33,
-      "y": 33,
+      "x": 245,
+      "y": 285,
       "source": "derived"
     },
     "centerOfGravity": {
-      "x": 33,
-      "y": 33,
+      "x": 245,
+      "y": 285,
       "source": "derived"
     }
   },
   "sensorScore": "7/7",
   "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 245,
+        "y": 285
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-31T20:26:12.799Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The candidate effectively combines the concept of a crime boss with a snailfolk design. The armored shell, the heavy robe, and the iron accessories all contribute to a darkly humorous and menacing aesthetic that fits the Crawler design language and the specific theme of the Slowlane Syndicate."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of dark tones and the crisp pixel art style are consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of dark tones and the crisp pixel art style are consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts the Gastropod Godfather as described in the brief, with a massive, ridged shell, a wide body, eyestalks, and crime-boss attire. The details like the iron scrap-plates, robe, and signet rings are all present."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct, with the large shell and wide body creating a strong, recognizable shape. The sprite stands out well against the dark floor tile in the readability composite."
+    },
+    "bossPresence": {
+      "score": 5,
+      "rationale": "The sprite has a large, imposing presence with its massive shell and wide body. The design conveys the authority and dominance expected of a boss character."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The sprite is a complete full-body figure with all elements, including the head, torso, and base, fully visible and well-framed."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the dark, ridged shell with territorial marks, the iron scrap-plates, the heavy robe, the iron signet rings, and the dark, menacing palette. The design perfectly embodies the Slowlane Syndicate's aesthetic."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4336,
+      "completionTokens": 511,
+      "totalTokens": 4847
+    }
+  },
   "type": "enemy",
-  "contentHash": "85139a9082efc3b68bacdda67e26d2a41ff5ef9fc19f6dc612e6a2e32cd1f5a1",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\snailfolk-boss\\2026-07-08T02-52-51-2c9a72c5\\postprocess.pipeline.effective.yaml",
-  "effectiveAnchorSource": "derived",
-  "facingDirection": "right",
+  "contentHash": "3aeadf8f92edf6fcebe33f3117e5161b2ec0a906b119116b382c56dd11e52126",
   "opaqueBounds": {
-    "x": 0,
-    "y": 0,
-    "width": 256,
-    "height": 256,
-    "canvasWidth": 256,
-    "canvasHeight": 256
-  }
+    "x": 28,
+    "y": 28,
+    "width": 456,
+    "height": 471,
+    "canvasWidth": 512,
+    "canvasHeight": 527
+  },
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\snailfolk-boss\\2026-07-31T20-25-09-bfadfc66\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\snailfolk-boss\\2026-07-31T20-25-09-bfadfc66\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\snailfolk-boss\\2026-07-31T20-25-09-bfadfc66\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
 }
