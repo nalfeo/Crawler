@@ -1,5 +1,16 @@
 [
   {
+    "commit": "04642d487042f479dd636a1519fc462eeba467fc",
+    "commitDate": "2026-08-07T01:52:08Z",
+    "commitSubject": "Implementing visual skill announcement feature (#2774)",
+    "capturedAt": "2026-08-07T02:56:58.478Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31140126056",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/04642d487042f479dd636a1519fc462eeba467fc.json"
+  },
+  {
     "commit": "01e2d9429640c383c83f0d8c265c5b0f5c227f26",
     "commitDate": "2026-08-06T14:39:46Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (151 art paths) (#2770)",
