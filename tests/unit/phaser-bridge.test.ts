@@ -1605,7 +1605,8 @@ describe('createPhaserBridge', () => {
     expect(weaponImage.destroyed).toBe(true);
   });
 
-  it('renders mob health bars for non-boss enemies only', () => {    const { scene, images, graphics } = createSceneStub({
+  it('renders mob health bars for non-boss enemies only', () => {
+    const { scene, images, graphics } = createSceneStub({
       kenneyLoaded: false,
       withGraphics: true,
     });

@@ -91,6 +91,7 @@ import { BOSS_BAR_COLORS } from './boss-health-bar-state.js';
 import {
   CARRIED_WEAPON_HAND_DROP_FT,
   CARRIED_WEAPON_HAND_OFFSET_FT,
+  CARRIED_WEAPON_OBJECT_NAME_PREFIX,
   carriedWeaponLengthFt,
   computeCarriedWeaponPlacement,
   kenneyCarriedWeaponSpriteId,
@@ -933,6 +934,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             frame !== undefined
               ? scene.add.image(placement.x, placement.y, textureKey, frame)
               : scene.add.image(placement.x, placement.y, textureKey);
+          // Named so a real-scene probe can identify the carried weapon on the
+          // display list (mirrors the blood-pool / quest-arrow naming pattern).
+          if (typeof img.setName === 'function') {
+            img.setName(`${CARRIED_WEAPON_OBJECT_NAME_PREFIX}${eid}`);
+          }
           carriedWeaponVisuals.set(eid, img);
         } else {
           // Reconcile only on a real change (late generated-art load, or a

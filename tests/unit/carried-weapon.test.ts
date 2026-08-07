@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CARRIED_WEAPON_REACH_FRACTION,
   CARRIED_WEAPON_TILT_RAD,
   DEFAULT_CARRIED_WEAPON_LENGTH_FT,
   MIN_CARRIED_WEAPON_SPRITE_SCALE,
@@ -25,8 +26,11 @@ describe('kenneyCarriedWeaponSpriteId', () => {
 });
 
 describe('carriedWeaponLengthFt', () => {
-  it('draws a melee weapon at its swing reach', () => {
-    expect(carriedWeaponLengthFt({ weaponType: WeaponType.MELEE, aoeRadius: 4 })).toBe(4);
+  it('draws a melee weapon at a fraction of its swing reach', () => {
+    expect(carriedWeaponLengthFt({ weaponType: WeaponType.MELEE, aoeRadius: 5 })).toBeCloseTo(
+      5 * CARRIED_WEAPON_REACH_FRACTION,
+      5,
+    );
   });
 
   it('falls back to the neutral hand-prop length for non-melee or reachless weapons', () => {

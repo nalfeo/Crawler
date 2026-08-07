@@ -33,18 +33,23 @@ export function kenneyCarriedWeaponSpriteId(
 }
 
 /**
- * Visual length (in feet) of the carried weapon. Melee weapons are drawn at
- * their swing reach so the carried sprite matches the swing sprite; every other
- * weapon type uses a neutral hand-prop length.
+ * Visual length (in feet) of the carried weapon. A melee weapon is drawn at a
+ * fraction of its swing reach: the swing sprite is scaled so its tip lands at
+ * the full reach (which includes the arm's extension), so reusing that length
+ * at rest would draw a weapon nearly as tall as the player. Every other weapon
+ * type uses a neutral hand-prop length.
  */
 export const DEFAULT_CARRIED_WEAPON_LENGTH_FT = 2.5;
+
+/** Fraction of a melee weapon's swing reach drawn while it is merely carried. */
+export const CARRIED_WEAPON_REACH_FRACTION = 0.6;
 
 export function carriedWeaponLengthFt(weapon: {
   readonly weaponType: WeaponTypeValue;
   readonly aoeRadius: number;
 }): number {
   if (weapon.weaponType === WeaponType.MELEE && weapon.aoeRadius > 0) {
-    return weapon.aoeRadius;
+    return weapon.aoeRadius * CARRIED_WEAPON_REACH_FRACTION;
   }
   return DEFAULT_CARRIED_WEAPON_LENGTH_FT;
 }
@@ -112,3 +117,10 @@ export function computeCarriedWeaponPlacement(input: {
     originY: input.frameHeight > 0 ? input.holdY / input.frameHeight : 1,
   };
 }
+
+/**
+ * Display-list `name` prefix for the carried weapon sprite (followed by the
+ * owning eid). Lets a real-scene probe identify it without guessing from
+ * texture keys — mirrors the blood-pool / quest-arrow naming convention.
+ */
+export const CARRIED_WEAPON_OBJECT_NAME_PREFIX = 'carried-weapon:';
