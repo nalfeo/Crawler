@@ -14,7 +14,7 @@ sprite-pipeline, ci-policy
 
 ## Apples
 
-2🍎 exact
+3🍎 exact
 
 ## What Was Done
 
