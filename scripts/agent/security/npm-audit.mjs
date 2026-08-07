@@ -62,9 +62,7 @@ export function findReasonRestatementViolations(previousExceptions, currentExcep
 
 export function extractNamedExceptionsFromSource(source, arrayName) {
   const escaped = arrayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = source.match(
-    new RegExp(`export const ${escaped} = (\\[\\]|\\[[\\s\\S]*?\\n\\]);`),
-  );
+  const match = source.match(new RegExp(`export const ${escaped} = (\\[\\]|\\[[\\s\\S]*?\\n\\]);`));
   if (!match) {
     throw new Error(
       `Could not find ${arrayName} declaration in scripts/agent/security/npm-audit.mjs`,
