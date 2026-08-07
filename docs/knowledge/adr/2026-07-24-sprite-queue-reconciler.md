@@ -270,6 +270,28 @@ data loss is safe precisely because it is now conditional on the recorded OID.
 
 See `docs/knowledge/handoffs/2026-08-03-sprite-reconciler-convergence.md`.
 
+## Amendment 2026-08-06 — convergence must gate the DELTA, not retirement
+
+The 2026-08-03 amendment above did not stop the loop: promotion PRs kept opening
+hourly (#2696…#2770) with no approvals since 2026-08-01. Source retirement can
+only retire a source that **adds nothing** to `main`, and a stale source differs
+from `main` by definition — so the CAS retirement was unreachable and every
+source stayed permanently dirty.
+
+**Amended decision:** the two-dot `AM` delta is filtered by
+`filterPromotablePaths` before anything is harvested. A path is promotable only
+when (1) `main`'s history has never carried the source's exact blob at that path
+(otherwise re-landing it is a self-revert that guarantees another delta next
+cycle) and (2) `main`'s current blob at that path is one the source's own history
+contains, or `main` does not have the path (otherwise the source would clobber a
+change it never saw — a July check-in branch overwriting today's
+`sprite-catalog.json`). `main` wins conflicts; withheld paths are reported on the
+result so a blocked approval is visible rather than silent. The filter is
+deliberately NOT applied to tidy-up retirement: art reverted off `main` is
+"superseded" too, and retiring on that basis would delete its last copy.
+
+See `docs/knowledge/handoffs/2026-08-06-sprite-reconciler-ping-pong.md`.
+
 ## References
 
 - Feature ADR (PR1 + scope split):
