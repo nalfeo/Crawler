@@ -29,13 +29,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.6-luna",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "270f0a3f400c57ea77d91031713f15f4017477a8",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The atomicity fix in filterPromotablePaths correctly pairs PNG and shard by key using regex extraction, then suppresses any passing path whose counterpart failed. The paths.includes(counterpart) guard ensures no spurious withholding when only one half of a pair is a candidate. The d5 regression test faithfully reproduces the A->B->A split-brain scenario. The fail-closed behavior from null git results is preserved. Deletion paths are not a concern because candidates come from --diff-filter=AM which excludes deletions. Scope is surgical. Policy compliance is clean."
     }
   }
 }
