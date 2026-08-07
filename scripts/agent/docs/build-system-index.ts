@@ -22,7 +22,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import path, { basename } from 'node:path';
+import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { Report, fromRepo } from '../shared/report.js';
@@ -432,7 +432,10 @@ async function main(): Promise<void> {
   report.finish();
 }
 
-if (process.argv[1] && basename(process.argv[1]) === basename(fileURLToPath(import.meta.url))) {
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+) {
   main().catch((err) => {
     process.stderr.write(`build-system-index crashed: ${err instanceof Error ? err.stack : err}\n`);
     process.exit(2);
