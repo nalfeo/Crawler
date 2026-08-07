@@ -1,5 +1,16 @@
 [
   {
+    "commit": "072d37187ee339ceb3c07ffded6f9f3fd3fb582b",
+    "commitDate": "2026-08-07T04:09:09Z",
+    "commitSubject": "fix(sprites): stop the hourly sprite-queue reconciler ping-pong (#2771)",
+    "capturedAt": "2026-08-07T05:15:45.300Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31147210001",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/072d37187ee339ceb3c07ffded6f9f3fd3fb582b.json"
+  },
+  {
     "commit": "65203e5bc6707b1419fd461144ead3055c5e6fcc",
     "commitDate": "2026-08-07T03:48:34Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2778)",
