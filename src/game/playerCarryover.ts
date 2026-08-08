@@ -1,4 +1,5 @@
-import type { GameWorld } from '../core/world.js';
+import type { GameWorld, LootLedger } from '../core/world.js';
+import { createLootLedger } from '../core/world.js';
 import {
   addGeneratedEquipmentToBag,
   clearEquipmentState,
@@ -184,6 +185,13 @@ export interface PlayerCarryoverSnapshot {
      */
     readonly pendingPresentations?: readonly (readonly [string, ResolvedRewardPresentation])[];
   };
+  /**
+   * Cumulative loot ledger from all floors completed so far. Carried forward so
+   * `RunStats.lootEfficiency` is a run-wide ratio, not just the current floor's.
+   * Optional: absent on snapshots created before this field existed (defaults to
+   * a zeroed ledger so the ratio stays well-defined).
+   */
+  readonly lootLedger?: Readonly<LootLedger>;
 }
 
 type LegacyPlayerCarryoverSnapshot = Omit<
@@ -1794,6 +1802,7 @@ export function capturePlayerCarryover(
       ),
       pendingPresentations: [...world.achievements.pendingPresentations.entries()],
     },
+    lootLedger: { ...world.lootLedger },
   };
 
   validateGeneratedCarryover(world, snapshot);
@@ -1807,6 +1816,9 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
   world.playerGender = snapshot.playerGender;
   world.playerLevel = { ...snapshot.playerLevel };
   world.playerGold = snapshot.playerGold;
+  // Restore the cumulative loot ledger so lootEfficiency is a run-wide ratio.
+  // Absent on snapshots created before this field existed → default to zeros.
+  world.lootLedger = snapshot.lootLedger ? { ...snapshot.lootLedger } : createLootLedger();
   world.featureUnlocks = {
     inventory: world.featureUnlocks.inventory || snapshot.featureUnlocks.inventory,
     equipment: world.featureUnlocks.equipment || snapshot.featureUnlocks.equipment,

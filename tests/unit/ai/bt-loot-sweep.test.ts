@@ -1,17 +1,13 @@
 /**
  * BT loot sweep tests (Priority 2.5).
  *
- * The sweep has TWO windows sharing one BT node:
- *   1. **post-combat / mid-run** — bounded to `LOOT_SWEEP_RADIUS_FT`, active at
- *      any time (it exists so the drops of the fight that just ended are picked
- *      up instead of walked past);
- *   2. **pre-exit** — unbounded radius, active only while the floor staircase is
- *      unlocked and not yet discovered, because descending destroys every
- *      uncollected pickup.
+ * The sweep fires as a **pre-exit** window only: unbounded radius, active while
+ * the floor staircase is unlocked and not yet discovered, because descending
+ * destroys every uncollected pickup.
  *
  * Verifies:
- *   - both windows target the nearest reachable XP gem (and gold);
- *   - loot beyond `LOOT_SWEEP_RADIUS_FT` is swept only in the pre-exit window,
+ *   - the window targets the nearest reachable XP gem (and gold);
+ *   - loot beyond `LOOT_SWEEP_RADIUS_FT` is swept in the pre-exit window,
  *     for both the Floor 1 and the distinct Floor 2 staircase guards;
  *   - the sweep does NOT fire with nothing on the ground;
  *   - the sweep does NOT fire when an enemy is within engage range, including
@@ -22,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { LOOT_SWEEP_RADIUS_FT } from '../../../src/game/ai/bt-ai-tuning.js';
 import { spawnEnemy, spawnPlayer } from '../../../src/core/spawners/combatants.js';
-import { spawnGold, spawnXpGem } from '../../../src/core/spawners/pickups.js';
+import { spawnXpGem } from '../../../src/core/spawners/pickups.js';
 import {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
@@ -68,58 +64,6 @@ function makeFloor1World() {
 }
 
 describe('BT — loot sweep (Priority 2.5)', () => {
-  describe('mid-run (post-combat) window', () => {
-    it('targets a nearby XP gem even while the staircase is still locked', () => {
-      const { world, x, y } = makeFloor1World();
-      const obj = world.floorScenario!.objective;
-      obj.staircaseUnlocked = false;
-      obj.staircaseDiscovered = false;
-
-      const gemEid = spawnXpGem(world, x + 5, y, 10);
-
-      const decision = pollDecision(world);
-      expect(decision.state).toBe(AIState.COLLECT);
-      expect(decision.targetEid).toBe(gemEid);
-      expect(decision.reason.toLowerCase()).toContain('sweep');
-    });
-
-    it('targets nearby gold, not only XP', () => {
-      const { world, x, y } = makeFloor1World();
-      const obj = world.floorScenario!.objective;
-      obj.staircaseUnlocked = false;
-
-      const goldEid = spawnGold(world, x + 4, y, 25);
-
-      const decision = pollDecision(world);
-      expect(decision.state).toBe(AIState.COLLECT);
-      expect(decision.targetEid).toBe(goldEid);
-      expect(decision.reason.toLowerCase()).toContain('gold');
-    });
-
-    it('does NOT reach past the local radius while the staircase is locked', () => {
-      const { world, x, y } = makeFloor1World();
-      const obj = world.floorScenario!.objective;
-      obj.staircaseUnlocked = false;
-
-      spawnXpGem(world, x + BEYOND_LOCAL_WINDOW_FT, y, 10);
-
-      const decision = pollDecision(world);
-      expect(decision.reason.toLowerCase()).not.toContain('sweep');
-    });
-
-    it('does NOT reach past the local radius once the staircase is discovered', () => {
-      const { world, x, y } = makeFloor1World();
-      const obj = world.floorScenario!.objective;
-      obj.staircaseUnlocked = true;
-      obj.staircaseDiscovered = true; // already descending
-
-      spawnXpGem(world, x + BEYOND_LOCAL_WINDOW_FT, y, 10);
-
-      const decision = pollDecision(world);
-      expect(decision.reason.toLowerCase()).not.toContain('sweep');
-    });
-  });
-
   describe('pre-exit (unbounded) window', () => {
     it('targets the nearest XP gem when the floor is cleared and XP is on the ground', () => {
       const { world, x, y } = makeFloor1World();

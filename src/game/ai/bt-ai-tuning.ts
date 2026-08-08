@@ -734,7 +734,7 @@ export const TRAVEL_LOOT_CORRIDOR_FT = 4;
 // this distance, so the worst case is a ~5 ft deviation that resolves within a
 // few frames, and it is skipped entirely when the direct lane is unsafe/blocked
 // or a panic beeline is active.
-export const TRAVEL_LOOT_SNAP_FT = 5;
+export const TRAVEL_LOOT_SNAP_FT = 3;
 // |Vrel|² below this ⇒ closest-approach is degenerate (truly co-moving); fall back
 // to the current separation instead of a spurious projection. Kept far below
 // (playerSpeed · small-angle)² so a slow-but-real closing course is never

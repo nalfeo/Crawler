@@ -705,26 +705,7 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
   });
 
-  describe('on-path loot detour (tactical travel)', () => {
-    it('lets the mid-run sweep, not the travel bend, own loot inside the sweep window', () => {
-      const s = pollQuestNavHeading(42);
-      // Gem 10 ft dead ahead: inside the 12 ft mid-run loot-sweep window, so the
-      // sweep (Priority 2.5) claims it outright instead of merely bending travel.
-      const gem = spawnXpGem(s.world, s.px + s.ux * 10, s.py + s.uy * 10, 5);
-
-      s.ai.poll(s.input, s.world);
-
-      const decision = s.ai.getDecision();
-      expect(decision.state).toBe(AIState.COLLECT);
-      expect(decision.targetEid).toBe(gem);
-      expect(decision.reason.toLowerCase()).toContain('sweep');
-      // The legacy Track-B pull stays at zero so the gem is not double-counted.
-      const dbg = s.ai.getOpportunisticDebug();
-      expect(dbg.pullX).toBe(0);
-      expect(dbg.pullY).toBe(0);
-    });
-
-    it('detours toward an on-path dropped item, which the sweep never targets', () => {
+  describe('on-path loot detour (tactical travel)', () => {    it('detours toward an on-path dropped item, which the sweep never targets', () => {
       const s = pollQuestNavHeading(42);
       // The loot sweep only claims XP and gold, so a dropped item on the forward
       // path is the regime the tactical travel bend still owns.

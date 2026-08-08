@@ -1099,12 +1099,11 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2.5: Loot sweep — collect the XP/gold already earned before
-        // moving on. Local (LOOT_SWEEP_RADIUS_FT) after a fight, full-floor once
-        // the staircase is unlocked (descending destroys uncollected pickups).
-        // Only fires when no enemies are in engage range, so it can never
-        // interfere with combat or block an urgent beeline to the exit.
-        this.buildLootSweepBehavior(),
+        // Priority 2.5: Pre-exit loot sweep — collect XP/gold before descending,
+        // because the floor transition destroys every uncollected pickup. Only fires
+        // when the staircase is unlocked but not yet discovered, so it cannot
+        // interfere with any in-progress objective.
+        this.buildLootSweepBehavior('pre-exit'),
         // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
         // Priority 3.5: Leave a safe room when enemies are present.
@@ -7252,9 +7251,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * 2. No enemies within engage radius — safety first; combat pre-empts sweep.
    * 3. At least one reachable XP gem or gold pile inside the active window.
    */
-  private buildLootSweepBehavior(): BTNode {
+  private buildLootSweepBehavior(window: 'pre-exit' | 'mid-run'): BTNode {
     return sequence(
-      'LootSweep',
+      `LootSweep[${window}]`,
       condition('Sweepable Loot Nearby', (ctx) => {
         const profile = this.getCollapsePanicProfile(ctx.world);
         if (profile.beeline || profile.panic > LOOT_SWEEP_PANIC_THRESHOLD) {
@@ -7268,9 +7267,12 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.lootSweepTargetEid = null;
           return false;
         }
-        const maxDistance = this.isFloorClearedAwaitingSweep(ctx.world)
-          ? Number.POSITIVE_INFINITY
-          : LOOT_SWEEP_RADIUS_FT;
+        const inPreExitWindow = this.isFloorClearedAwaitingSweep(ctx.world);
+        // Window guard: pre-exit fires only when the floor is cleared and the
+        // staircase has not yet been descended; mid-run fires at all other times.
+        if (window === 'pre-exit' && !inPreExitWindow) return false;
+        if (window === 'mid-run' && inPreExitWindow) return false;
+        const maxDistance = inPreExitWindow ? Number.POSITIVE_INFINITY : LOOT_SWEEP_RADIUS_FT;
         const loot = this.findNearestSweepLoot(ctx.world, ctx.playerX, ctx.playerY, maxDistance);
         if (!loot) return false;
         ctx.blackboard['sweepLoot'] = loot;

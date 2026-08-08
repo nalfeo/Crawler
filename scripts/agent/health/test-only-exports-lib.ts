@@ -582,6 +582,13 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Pure predicate for the FR13 win-favor route (Friendly band >75, reputation-system active); used internally by floor2ObjectiveTick; exported so integration tests can drive the predicate in isolation (band-boundary, reputation-inactive guard, relation-drop latch).',
     expiresOn: '2026-11-03',
   },
+  {
+    file: 'src/game/ai/auto-progression.ts',
+    name: 'MAX_STAIR_DESCEND_DEFER_FRAMES',
+    reason:
+      'Loot-aware stair-descend deferral cap (1800 frames = 30 s); used internally by shouldDeferStairDescend; exported so integration tests can drive the cap-expiry branch without hard-coding the frame count.',
+    expiresOn: '2026-11-08',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {
