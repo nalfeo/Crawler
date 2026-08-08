@@ -143,6 +143,10 @@ describe('headless runner AI telemetry', () => {
 
     expect(stats.outcome).toBe('timeout');
     expect(stats.xpOnGroundAtEnd).toBe(17);
+    // The loot ledger rides the same completion path as xpOnGroundAtEnd.
+    expect(stats.lootEfficiency?.xpSpawned).toBeGreaterThanOrEqual(17);
+    expect(stats.lootEfficiency?.xpCollected).toBe(0);
+    expect(stats.lootEfficiency?.xpRatio).toBe(0);
   });
 
   it('reports xpOnGroundAtEnd on the error path', async () => {
@@ -169,6 +173,10 @@ describe('headless runner AI telemetry', () => {
     expect(stats.outcome).toBe('error');
     expect(stats.error).toContain('telemetry crash test');
     expect(stats.xpOnGroundAtEnd).toBe(17);
+    // The error path must surface the same ledger the normal path does.
+    expect(stats.lootEfficiency?.xpSpawned).toBeGreaterThanOrEqual(17);
+    expect(stats.lootEfficiency?.xpCollected).toBe(0);
+    expect(stats.lootEfficiency?.xpRatio).toBe(0);
   });
 
   it('counts real Floor 2 enemy deaths without treating director pruning as kills', async () => {
