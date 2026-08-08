@@ -188,7 +188,7 @@
     "esbuild": "0.28.1",
     "eslint": "10.4.1",
     "fast-check": "4.8.0",
-    "fastify": "5.8.5",
+    "fastify": "5.11.2",
     "globals": "17.6.0",
     "knip": "6.15.0",
     "lil-gui": "0.21.0",
@@ -206,9 +206,10 @@
   },
   "overrides": {
     "qs": "6.15.2",
-    "brace-expansion": "5.0.7",
+    "brace-expansion": "5.0.9",
+    "minimatch": "10.2.6",
     "postcss": "8.5.26",
     "find-my-way": "9.7.0",
-    "fast-uri": "3.1.4"
+    "fast-uri": "3.1.5"
   }
 }

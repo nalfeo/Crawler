@@ -15,6 +15,7 @@ import type {
   BloodSurfaceProbeSummary,
   HarvestableRenderSummary,
   FamilyHudProbeState,
+  FloatingTextProbe,
   ItemIconRenderInfo,
   MainSceneProbeApi,
   MainSceneState,
@@ -132,6 +133,20 @@ export const mainSceneProbe = {
         window.__mainSceneProbe!.queueSkillUsage(id, usageMetric, usageAmount),
       { id: skillId, usageMetric: metric, usageAmount: amount },
     ),
+  equipPlayerActiveAbility: (page: Page, abilityId: string): Promise<boolean> =>
+    page.evaluate((id) => window.__mainSceneProbe!.equipPlayerActiveAbility(id), abilityId),
+  getAbilityFloaters: (
+    page: Page,
+  ): Promise<
+    ReadonlyArray<{
+      readonly abilityId: string;
+      readonly label: string;
+      readonly x: number;
+      readonly y: number;
+      readonly visible: boolean;
+      readonly alpha: number;
+    }>
+  > => page.evaluate(() => window.__mainSceneProbe!.getAbilityFloaters()),
   setWorldState: (page: Page, state: MainSceneState['worldState']): Promise<void> =>
     page.evaluate(
       (value) =>
@@ -260,6 +275,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getRewardAudioCueLog()),
   clearRewardAudioCueLog: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.clearRewardAudioCueLog()),
+  getVisibleFloatingTexts: (page: Page, prefix = ''): Promise<readonly FloatingTextProbe[]> =>
+    page.evaluate((value) => window.__mainSceneProbe!.getVisibleFloatingTexts(value), prefix),
 };
 
 /**

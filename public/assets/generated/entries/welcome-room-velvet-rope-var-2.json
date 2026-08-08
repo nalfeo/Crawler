@@ -24,11 +24,11 @@
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {
-    "x": 7,
-    "y": 7,
-    "width": 114,
-    "height": 59,
-    "canvasWidth": 128,
-    "canvasHeight": 73
+    "x": 5,
+    "y": 5,
+    "width": 86,
+    "height": 57,
+    "canvasWidth": 96,
+    "canvasHeight": 67
   }
 }
