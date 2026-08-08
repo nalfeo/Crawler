@@ -583,4 +583,18 @@ describe('pickSafeTravelHeading — trivial pickup snap', () => {
 
     expect(r.reason).not.toBe('trivial pickup snap');
   });
+
+  it('breaks equidistant pickups by entity id, not scan order', () => {
+    const a = { eid: 9, x: 0, y: 2, weight: 1 };
+    const b = { eid: 4, x: 0, y: -2, weight: 1 };
+
+    const forward = pickSafeTravelHeading(baseInput({ pickups: [a, b] }), snapParams);
+    const reversed = pickSafeTravelHeading(baseInput({ pickups: [b, a] }), snapParams);
+
+    expect(forward.reason).toBe('trivial pickup snap');
+    expect(reversed.reason).toBe('trivial pickup snap');
+    expect(forward.moveY).toBeCloseTo(reversed.moveY);
+    // Lowest eid (4, at y = -2) wins the tie.
+    expect(forward.moveY).toBeCloseTo(-1);
+  });
 });

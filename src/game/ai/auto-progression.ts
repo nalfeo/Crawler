@@ -61,19 +61,25 @@ export { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPoli
 
 /**
  * Frames the automated stair descend may be held back so the AI can sweep the
- * loot still lying on the floor. Bounded (60 s at 60 fps) so an unreachable
- * pickup can never hold a run hostage: once the budget is spent the driver
- * confirms the descend exactly as before.
+ * loot still lying on the floor. Bounded (1800 frames = 30 s at 60 fps) so an
+ * unreachable pickup can never hold a run hostage: once the budget is spent the
+ * driver confirms the descend exactly as before.
  */
 export const MAX_STAIR_DESCEND_DEFER_FRAMES = 1800;
 
 /**
- * Per-world deferral budget consumed so far. A `WeakMap` keyed on the world
- * keeps the counter deterministic and per-run (a fresh world starts at 0) with
- * no module-level state leaking across runs — same pattern the headless runner
- * uses for its Quartermaster restock latch.
+ * Per-world, per-floor deferral budget consumed so far. A `WeakMap` keyed on the
+ * world keeps the counter deterministic and per-run (a fresh world starts at 0)
+ * with no module-level state leaking across runs — same pattern the headless
+ * runner uses for its Quartermaster restock latch. The inner key is the floor,
+ * because the headless runner reuses one `GameWorld` across the whole run: a
+ * shared counter would let unreachable Floor 1 loot silently spend Floor 2's
+ * budget, disabling the hold exactly where it was designed to help.
  */
-const stairDescendDeferFrames = new WeakMap<GameWorld, number>();
+const stairDescendDeferFrames = new WeakMap<GameWorld, Map<StairDescendFloor, number>>();
+
+/** Floors that own an independent stair-descend deferral budget. */
+type StairDescendFloor = 'floor1' | 'floor2';
 
 /** True when any XP gem or gold pile is still lying on the floor. */
 function hasUncollectedLoot(world: GameWorld): boolean {
@@ -93,8 +99,18 @@ function hasUncollectedLoot(world: GameWorld): boolean {
  * it surrenders under collapse pressure, so the descend is never delayed when
  * time actually matters. It is additionally capped by
  * {@link MAX_STAIR_DESCEND_DEFER_FRAMES} so unreachable loot cannot stall a run.
+ *
+ * Callers MUST check stair proximity first and only call this when the descend
+ * would otherwise be confirmed this frame. The budget is a "frames spent standing
+ * on the staircase waiting for loot" budget, not a wall clock: charging it during
+ * the (arbitrarily long) walk to the stairs would drain it before it ever
+ * protects anything.
  */
-function shouldDeferStairDescend(world: GameWorld, panicDeadlineMs: number | null): boolean {
+function shouldDeferStairDescend(
+  world: GameWorld,
+  floor: StairDescendFloor,
+  panicDeadlineMs: number | null,
+): boolean {
   if (!hasUncollectedLoot(world)) {
     return false;
   }
@@ -110,11 +126,16 @@ function shouldDeferStairDescend(world: GameWorld, panicDeadlineMs: number | nul
       return false;
     }
   }
-  const spent = stairDescendDeferFrames.get(world) ?? 0;
+  let budgets = stairDescendDeferFrames.get(world);
+  if (!budgets) {
+    budgets = new Map();
+    stairDescendDeferFrames.set(world, budgets);
+  }
+  const spent = budgets.get(floor) ?? 0;
   if (spent >= MAX_STAIR_DESCEND_DEFER_FRAMES) {
     return false;
   }
-  stairDescendDeferFrames.set(world, spent + 1);
+  budgets.set(floor, spent + 1);
   return true;
 }
 
@@ -274,19 +295,23 @@ export function autoFloor1ProgressionSystem(
     return;
   }
 
-  if (
-    shouldDeferStairDescend(world, resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs))
-  ) {
-    return;
-  }
-
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
-  if (Math.hypot(dx, dy) <= objective.markerRadiusFt) {
-    confirmFloor1StairDescend(world, playerEid);
+  if (Math.hypot(dx, dy) > objective.markerRadiusFt) {
+    return;
   }
+  if (
+    shouldDeferStairDescend(
+      world,
+      'floor1',
+      resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
+    )
+  ) {
+    return;
+  }
+  confirmFloor1StairDescend(world, playerEid);
 }
 
 export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number): void {
@@ -305,17 +330,17 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
 
   // Floor 2 has no collapse deadline, so the sweep window is time-unbounded —
   // only the frame budget bounds the hold.
-  if (shouldDeferStairDescend(world, null)) {
-    return;
-  }
-
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const dx = playerX - floor2State.staircasePos.x;
   const dy = playerY - floor2State.staircasePos.y;
-  if (Math.hypot(dx, dy) <= FLOOR2_STAIR_MARKER_RADIUS_FT) {
-    confirmFloor2StairDescend(world, playerEid);
+  if (Math.hypot(dx, dy) > FLOOR2_STAIR_MARKER_RADIUS_FT) {
+    return;
   }
+  if (shouldDeferStairDescend(world, 'floor2', null)) {
+    return;
+  }
+  confirmFloor2StairDescend(world, playerEid);
 }
 
 /**

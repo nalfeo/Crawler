@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-08",
+  "session_slug": "loot-collection-efficiency",
+  "task_title": "AI loot-collection efficiency: loot ledger + mid-run loot sweep + trivial pickup snap",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-sol",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "convergent",
+      "notes": "Adversarial red-team of the loot-ledger + windowed sweep + snap + descend-deferral design. 3 alternatives enumerated and argued (strengthen tactical opportunity planner; encounter-scoped drop recovery; explicit exit-cleanup transaction). Blockers fixed: (1) descend deferral drained its 1800-frame budget during the walk to the stairs - proximity check now runs first; (2) combinedRatio mixes XP+gold units and is cross-floor cumulative - documented as a same-matrix comparison metric only. Also fixed: deterministic eid tie-break for equidistant snap targets; added regression tests for the loot ledger, deferral budget/panic/exhaustion. Accepted-with-rationale: Euclidean sweep radius (12ft narrow window measured to beat path-cost-gated alternatives at 72-run scale), unbounded pre-exit greedy tour (pre-existing behaviour, panic-gated), auto-progression importing panic helpers from bt-ai-provider (same layer, extraction deferred), Floor 2 symmetry (bounded by the same frame budget, no collapse timer to lose)."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

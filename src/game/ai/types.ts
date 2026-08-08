@@ -443,6 +443,13 @@ export interface SkillRunMetrics {
 /**
  * XP/gold collection efficiency for a run: how much loot value the player
  * picked up versus how much value dropped into the world.
+ *
+ * Caveat: the counters are cumulative for the whole run (they are never reset on
+ * a floor transition) and `combinedRatio` sums XP points and gold units, which
+ * are different units. It is therefore a **comparison metric across runs of the
+ * same seed matrix**, not an economic quantity: compare `combinedRatio` only
+ * between arms measured on the same seed/persona matrix, and read `xpRatio` and
+ * `goldRatio` when the XP/gold mix itself may have moved.
  */
 export interface LootEfficiencyMetrics {
   /** Total XP gem value spawned into the world during the run. */

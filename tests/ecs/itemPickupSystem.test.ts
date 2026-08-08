@@ -145,4 +145,47 @@ describe('itemPickupSystem', () => {
       expect(world.vfxEvents).toHaveLength(0);
     });
   });
+  describe('loot ledger', () => {
+    it('counts spawned XP/gold value even when nothing is collected', () => {
+      spawnXpGem(world, 500, 500, 7);
+      spawnGold(world, 500, 500, 30);
+
+      const collisions = collisionSystem(world);
+      itemPickupSystem(world, collisions);
+
+      expect(world.lootLedger).toEqual({
+        xpSpawned: 7,
+        xpCollected: 0,
+        goldSpawned: 30,
+        goldCollected: 0,
+      });
+    });
+
+    it('counts collected XP/gold value on pickup', () => {
+      spawnXpGem(world, 100, 100, 7);
+      spawnGold(world, 100, 100, 30);
+      // Out of reach: spawned but never collected.
+      spawnXpGem(world, 500, 500, 5);
+
+      const collisions = collisionSystem(world);
+      itemPickupSystem(world, collisions);
+
+      expect(world.lootLedger).toEqual({
+        xpSpawned: 12,
+        xpCollected: 7,
+        goldSpawned: 30,
+        goldCollected: 30,
+      });
+    });
+
+    it('never decrements — counters are cumulative across pickups', () => {
+      spawnGold(world, 100, 100, 10);
+      itemPickupSystem(world, collisionSystem(world));
+      spawnGold(world, 100, 100, 15);
+      itemPickupSystem(world, collisionSystem(world));
+
+      expect(world.lootLedger.goldSpawned).toBe(25);
+      expect(world.lootLedger.goldCollected).toBe(25);
+    });
+  });
 });

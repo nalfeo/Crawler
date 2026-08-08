@@ -535,12 +535,18 @@ export function pickSafeTravelHeading(
     let snapDirX = 0;
     let snapDirY = 0;
     let snapDistance = Number.POSITIVE_INFINITY;
+    let snapEid = Number.POSITIVE_INFINITY;
     for (const pickup of input.pickups) {
       const rx = pickup.x - input.px;
       const ry = pickup.y - input.py;
       const dist = Math.hypot(rx, ry);
-      if (dist <= EPSILON || dist > params.lootSnapFt || dist >= snapDistance) continue;
+      if (dist <= EPSILON || dist > params.lootSnapFt) continue;
+      // Tie-break equidistant pickups by entity id so the choice never depends
+      // on the caller's scan order (determinism, project rule #4-adjacent).
+      const eid = pickup.eid ?? Number.POSITIVE_INFINITY;
+      if (dist > snapDistance || (dist === snapDistance && eid >= snapEid)) continue;
       snapDistance = dist;
+      snapEid = eid;
       snapDirX = rx / dist;
       snapDirY = ry / dist;
     }
