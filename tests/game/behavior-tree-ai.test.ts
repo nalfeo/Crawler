@@ -705,7 +705,8 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
   });
 
-  describe('on-path loot detour (tactical travel)', () => {    it('detours toward an on-path dropped item, which the sweep never targets', () => {
+  describe('on-path loot detour (tactical travel)', () => {
+    it('detours toward an on-path dropped item, which the sweep never targets', () => {
       const s = pollQuestNavHeading(42);
       // The loot sweep only claims XP and gold, so a dropped item on the forward
       // path is the regime the tactical travel bend still owns.
