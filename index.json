@@ -1,5 +1,16 @@
 [
   {
+    "commit": "62fc3297748a9a3f955a6121b21664a2e133aaae",
+    "commitDate": "2026-08-08T20:54:21Z",
+    "commitSubject": "AI loot-collection efficiency: mid-run loot sweep, loot ledger, and trivial pickup snap (A/B arm A3) (#2793)",
+    "capturedAt": "2026-08-08T22:02:57.287Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31278526620",
+    "winRate": 0.9716666666666667,
+    "totalWins": 583,
+    "totalRuns": 600,
+    "path": "by-sha/62fc3297748a9a3f955a6121b21664a2e133aaae.json"
+  },
+  {
     "commit": "efc383281396be411895e93dec715b8d9076cf4b",
     "commitDate": "2026-08-07T05:18:48Z",
     "commitSubject": "chore(assets): reconcile queued sprite edits (151 art paths) (#2780)",
