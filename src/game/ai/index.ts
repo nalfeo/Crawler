@@ -10,6 +10,7 @@ export type {
   AIDecision,
   AIConfig,
   RunStats,
+  LootEfficiencyMetrics,
   AIPathingModeValue,
   AIDecisionModeValue,
 } from './types.js';

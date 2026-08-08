@@ -563,6 +563,14 @@ export const RUN_PLANNER_STAIRS_INTERACT_MS = 1_000;
 // Pickup opportunities are filtered by reachability first, then ranked by
 // path-relative detour cost. Enemy packs are scored for debug only in this slice.
 export const TACTICAL_OPPORTUNITY_SCAN_RADIUS_FT = 24;
+// Max detour (ft) a pickup may add to the current objective leg. Measured over
+// the 72-run Floor-1 gate matrix (seeds 1-24 x sword/bow/baseball-bat) on top of
+// the 12ft mid-run loot sweep:
+//    8ft -> 72/72 wins, combined collection 0.7919, mean floor 258.4s
+//   12ft -> 70/72 wins, combined collection 0.7854, mean floor 260.0s
+// Widening it does NOT collect more: it trades on-path gems for longer errands
+// (mean level rises but two runs are lost to a deadline timeout and a death), so
+// 8ft stays. Rule 12 gates on win-RATE first.
 export const TACTICAL_OPPORTUNITY_MAX_DETOUR_FT = 8;
 export const TACTICAL_OPPORTUNITY_TRIVIAL_DETOUR_FT = 0.75;
 export const TACTICAL_OPPORTUNITY_MIN_DETOUR_MS = 250;
@@ -716,6 +724,17 @@ export const TRAVEL_W_LOOT = 0;
 export const TRAVEL_W_FARM = 0;
 export const TRAVEL_LOOT_LOOKAHEAD_FT = 12;
 export const TRAVEL_LOOT_CORRIDOR_FT = 4;
+// Trivial-pickup snap radius (ft). Pickups are collected by body overlap, so the
+// corridor loot bias — which only *curves* the travel arc toward loot — routinely
+// slides past a gem a foot off the heading without ever touching it: the "walked
+// right past free XP while adventuring" behaviour. Inside this radius the runner
+// steers straight at the pickup instead, so gems it is already next to are
+// actually collected mid-run rather than left for the post-boss sweep (which the
+// collapse-panic gate often cancels). Deliberately small: the snap is bounded by
+// this distance, so the worst case is a ~5 ft deviation that resolves within a
+// few frames, and it is skipped entirely when the direct lane is unsafe/blocked
+// or a panic beeline is active.
+export const TRAVEL_LOOT_SNAP_FT = 3;
 // |Vrel|² below this ⇒ closest-approach is degenerate (truly co-moving); fall back
 // to the current separation instead of a spurious projection. Kept far below
 // (playerSpeed · small-angle)² so a slow-but-real closing course is never
@@ -725,16 +744,35 @@ export const TRAVEL_REL_SPEED_EPSILON_SQ = 1e-8;
 // harvest overlap approach (Track A close-range slide) is left untouched.
 export const TRAVEL_COLLECT_MIN_STEER_DIST_FT = CLOSE_APPROACH_DIRECT_FT;
 
-// --- Pre-exit XP sweep -------------------------------------------------------
-// After the floor staircase is unlocked the AI performs a sweep to collect any
-// XP gems left on the ground before descending (which destroys uncollected gems
-// via scene restart). The sweep fires between Interact (Priority 2) and Progress
-// (Priority 3), so it delays the stair approach only while reachable XP remains.
+// --- Loot sweep --------------------------------------------------------------
+// The AI sweeps loot it has already earned (XP gems and gold) rather than
+// walking past it toward the next objective. The sweep fires between Interact
+// (Priority 2) and Progress (Priority 3), so it delays objective travel only
+// while reachable loot remains and no enemy is in engage range.
+//
+// Two windows share one node:
+//   1. **Post-combat** (any time): only loot within LOOT_SWEEP_RADIUS_FT of the
+//      player, i.e. the drops from the fight that just ended. Bounded so the
+//      sweep is a local cleanup, never a cross-floor errand.
+//   2. **Pre-exit** (staircase unlocked, not yet descended): unbounded radius,
+//      because descending destroys every uncollected pickup (scene restart with
+//      a fresh entity world), so anything left behind is lost permanently.
 //
 // Panic threshold: abort the sweep and fall through to Progress (beeline to
 // stairs) when collapse panic exceeds this fraction. Calibrated so the sweep
-// stays active during the comfortable post-clear lull (~3-4 min remaining) but
-// surrenders in the final 1-min crunch period when panic > 0.5 on Floor 1.
-// Floor 2 has no collapse timer so panic is always 0 there — the sweep runs
-// until all reachable XP is collected.
-export const XP_SWEEP_PANIC_THRESHOLD = 0.5;
+// stays active during the comfortable lull but surrenders in the final 1-min
+// crunch period when panic > 0.5 on Floor 1. Floor 2 has no collapse timer so
+// panic is always 0 there — the sweep runs until all reachable loot is taken.
+export const LOOT_SWEEP_PANIC_THRESHOLD = 0.5;
+// Radius (ft) for the mid-run post-combat sweep window. 0 disables mid-run
+// sweeping, leaving only the pre-exit (staircase-unlocked) full-floor sweep.
+// Measured over the gate matrix (seeds 1-24 x sword/bow/baseball-bat, 72 runs):
+//    0ft -> combined collection 0.7795, 71/72 wins
+//   12ft -> combined collection 0.7919, 72/72 wins  <- shipped
+//   35ft -> combined collection 0.7254, 70/72 wins  (two bat losses)
+// A *narrow* mid-run window is strictly better than both: it collects the drops
+// of the fight that just ended without turning the sweep into a cross-room
+// errand, and it costs no measurable floor time (mean 257.3s -> 258.4s). The
+// wide 35ft window is what flipped wins, not mid-run sweeping itself. Rule 12
+// gates on win-RATE first; change this only with a fresh 72-run measurement.
+export const LOOT_SWEEP_RADIUS_FT = 12;

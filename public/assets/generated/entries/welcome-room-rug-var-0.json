@@ -40,10 +40,6 @@
     "canvasHeight": 73
   },
   "catalog": {
-    "tags": [
-      "item",
-      "generated",
-      "pipeline-approved"
-    ]
+    "tags": ["item", "generated", "pipeline-approved"]
   }
 }

@@ -9,6 +9,7 @@ import {
   spawnPlayer,
   spawnXpGem,
 } from '../../src/core/helpers.js';
+import { spawnDroppedItem } from '../../src/core/spawners/pickups.js';
 import { spawnEnemyProjectile, spawnAoeProjectile } from '../../src/core/spawners/projectiles.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME, TeamId } from '../../src/shared/constants.js';
@@ -705,17 +706,17 @@ describe('BehaviorTreeAI', () => {
   });
 
   describe('on-path loot detour (tactical travel)', () => {
-    it('detours toward loot within 5 ft of its forward path during quest navigation', () => {
+    it('detours toward an on-path dropped item, which the sweep never targets', () => {
       const s = pollQuestNavHeading(42);
-      // Gem 10 ft dead ahead along the travel heading: inside the 15 ft grab radius
-      // and squarely within the 5 ft forward corridor.
-      spawnXpGem(s.world, s.px + s.ux * 10, s.py + s.uy * 10, 5);
+      // The loot sweep only claims XP and gold, so a dropped item on the forward
+      // path is the regime the tactical travel bend still owns.
+      spawnDroppedItem(s.world, s.px + s.ux * 10, s.py + s.uy * 10, 1);
 
       s.ai.poll(s.input, s.world);
 
       // Track A stays on the quest objective (Progress outranks Collect), so the
-      // gem is ignored by Track A. Tactical travel now owns the loot bend, keeping
-      // the legacy Track-B pull at zero so the same gem is not double-counted.
+      // item is ignored by Track A. Tactical travel owns the loot bend, keeping
+      // the legacy Track-B pull at zero so the same pickup is not double-counted.
       expect(s.ai.getDecision().state).toBe(AIState.EXPLORE);
       const steer = s.ai.getTravelSteeringDebug();
       expect(steer).not.toBeNull();

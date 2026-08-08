@@ -129,6 +129,28 @@ export interface FloorExtendedState {
   ambientEnemyArchetypes?: Map<number, string>;
 }
 
+/**
+ * Cumulative loot accounting for a world session: how much XP/gold value was
+ * spawned into the world versus how much the player actually collected.
+ * Purely additive counters — never decremented, never reset mid-floor — so
+ * `collected / spawned` is a deterministic collection-efficiency ratio.
+ */
+export interface LootLedger {
+  /** Total XP gem value spawned into the world. */
+  xpSpawned: number;
+  /** Total XP gem value picked up by the player. */
+  xpCollected: number;
+  /** Total gold value spawned into the world. */
+  goldSpawned: number;
+  /** Total gold value picked up by the player. */
+  goldCollected: number;
+}
+
+/** Create a zeroed loot ledger. */
+export function createLootLedger(): LootLedger {
+  return { xpSpawned: 0, xpCollected: 0, goldSpawned: 0, goldCollected: 0 };
+}
+
 export interface GameWorld {
   /** The bitecs ECS world instance */
   ecs: ReturnType<typeof createBitecsWorld>;
@@ -348,6 +370,14 @@ export interface GameWorld {
   spawnerArenaEverArmed: Set<number>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
   playerGold: number;
+  /**
+   * Deterministic cumulative ledger of loot value that entered the world versus
+   * loot value the player actually picked up. Spawn counters are incremented by
+   * `spawnXpGem` / `spawnGold`; collected counters by `itemPickupSystem`. Unlike
+   * end-of-run ground scans, these survive floor transitions destroying pickups,
+   * so `collected / spawned` is a stable collection-efficiency metric.
+   */
+  lootLedger: LootLedger;
   /**
    * Running maximum gold balance seen this floor session. Updated by `achievementSystem`
    * each tick so the "Hoarder's Ledger" run-global achievement can fire even after the
@@ -698,6 +728,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     barriers: createBarrierRegistry(),
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
+    lootLedger: createLootLedger(),
     peakGold: 0,
     floorMap: null,
     floorId: '',

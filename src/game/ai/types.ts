@@ -441,6 +441,34 @@ export interface SkillRunMetrics {
 }
 
 /**
+ * XP/gold collection efficiency for a run: how much loot value the player
+ * picked up versus how much value dropped into the world.
+ *
+ * Caveat: the counters are cumulative for the whole run (they are never reset on
+ * a floor transition) and `combinedRatio` sums XP points and gold units, which
+ * are different units. It is therefore a **comparison metric across runs of the
+ * same seed matrix**, not an economic quantity: compare `combinedRatio` only
+ * between arms measured on the same seed/persona matrix, and read `xpRatio` and
+ * `goldRatio` when the XP/gold mix itself may have moved.
+ */
+export interface LootEfficiencyMetrics {
+  /** Total XP gem value spawned into the world during the run. */
+  xpSpawned: number;
+  /** Total XP gem value the player collected. */
+  xpCollected: number;
+  /** Total gold value spawned into the world during the run. */
+  goldSpawned: number;
+  /** Total gold value the player collected. */
+  goldCollected: number;
+  /** `xpCollected / xpSpawned`, or 1 when nothing spawned. */
+  xpRatio: number;
+  /** `goldCollected / goldSpawned`, or 1 when nothing spawned. */
+  goldRatio: number;
+  /** Combined `(xp + gold) collected / spawned`, or 1 when nothing spawned. */
+  combinedRatio: number;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -524,6 +552,13 @@ export interface RunStats {
    * test fixtures construct RunStats manually.
    */
   xpOnGroundAtEnd?: number;
+  /**
+   * Deterministic loot-collection accounting for the run: total XP/gold value
+   * spawned into the world versus the value the player actually picked up.
+   * Optional because pre-existing test fixtures construct RunStats manually;
+   * `runHeadless` always sets it.
+   */
+  lootEfficiency?: LootEfficiencyMetrics;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
 }
