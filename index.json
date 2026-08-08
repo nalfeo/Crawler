@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a0a980f77936ec7b2dbe1c5b2b43b9929b4700d5",
+    "commitDate": "2026-08-08T21:10:28Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2794)",
+    "capturedAt": "2026-08-08T22:05:48.243Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31278701932",
+    "winRate": 0.9716666666666667,
+    "totalWins": 583,
+    "totalRuns": 600,
+    "path": "by-sha/a0a980f77936ec7b2dbe1c5b2b43b9929b4700d5.json"
+  },
+  {
     "commit": "62fc3297748a9a3f955a6121b21664a2e133aaae",
     "commitDate": "2026-08-08T20:54:21Z",
     "commitSubject": "AI loot-collection efficiency: mid-run loot sweep, loot ledger, and trivial pickup snap (A/B arm A3) (#2793)",
