@@ -547,7 +547,7 @@ describe('pickSafeTravelHeading — trivial pickup snap', () => {
     expect(r.reason).not.toBe('trivial pickup snap');
   });
 
-  it('does not snap when the direct lane would breach the safe gap', () => {
+  it('does not snap while any threat is perceived (spacing owns the heading)', () => {
     const r = pickSafeTravelHeading(
       baseInput({
         pickups: [{ eid: 5, x: 0, y: 3, weight: 1 }],
