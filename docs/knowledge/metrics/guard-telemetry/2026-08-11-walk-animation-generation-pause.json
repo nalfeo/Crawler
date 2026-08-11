@@ -1,0 +1,49 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "walk-animation-generation-pause",
+  "date": "2026-08-11",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 274,
+  "guards": {
+    "authoring-main-sync": {
+      "allow": 270
+    },
+    "pr-preflight": {
+      "deny": 1,
+      "allow": 1
+    },
+    "pr-review-ledger": {
+      "deny": 1,
+      "allow": 1
+    }
+  },
+  "tools": {
+    "apply_patch": 3,
+    "ask_user": 1,
+    "create": 3,
+    "create_pull_request": 4,
+    "edit": 30,
+    "extensions_manage": 2,
+    "extensions_reload": 1,
+    "filesystem-read_media_file": 4,
+    "filesystem-write_file": 1,
+    "get_session": 1,
+    "glob": 5,
+    "grep": 6,
+    "invoke_canvas_action": 3,
+    "list_canvas_capabilities": 1,
+    "memory-read_graph": 1,
+    "open_canvas": 6,
+    "powershell": 104,
+    "read_powershell": 10,
+    "rename_branch": 1,
+    "rename_session": 1,
+    "rg": 1,
+    "skill": 1,
+    "view": 84
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

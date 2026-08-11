@@ -340,8 +340,7 @@ tags:
 function runBrief(briefPath: string): { processedPath: string; runDir: string } {
   console.log(`\n  Running: ${path.basename(briefPath)} ...`);
 
-  let stdout = '';
-  let exitCode = 0;
+  let stdout: string;
   try {
     stdout = execSync(`npx tsx scripts/sprites/cli.ts --brief ${JSON.stringify(briefPath)}`, {
       cwd: REPO_ROOT,
@@ -355,7 +354,7 @@ function runBrief(briefPath: string): { processedPath: string; runDir: string } 
     // with the best candidate. Extract stdout from the error so we can find the run dir.
     const execErr = err as { stdout?: string; stderr?: string; status?: number };
     stdout = execErr.stdout ?? '';
-    exitCode = execErr.status ?? 1;
+    const exitCode = execErr.status ?? 1;
     if (stdout === '') {
       // Truly fatal (no output at all) — rethrow
       throw err;
