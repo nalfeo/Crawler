@@ -14,15 +14,15 @@ The `CI PR Disposition` workflow failed repeatedly before processing any open PR
 
 ## Root Cause
 
-The first GitHub Script step accidentally declared `ensureDispositionLabels`, `ensureLabel`, `addLabelStrict`, and `removeLabelBestEffort` inside `upsertLifecycleComment`. The provisioning call and lifecycle callbacks execute at script scope, so those helpers were out of scope.
+Three GitHub Script steps accidentally declared `ensureDispositionLabels`, `ensureLabel`, `addLabelStrict`, and `removeLabelBestEffort` inside `upsertLifecycleComment`. The quarantine step also nested its trusted-lifecycle parsing helpers. The provisioning calls, lifecycle callbacks, and quarantine loop execute at script scope, so those helpers were out of scope.
 
 ## Fix
 
-Closed `upsertLifecycleComment` immediately after its comment upsert logic and moved the helper declarations to script scope. Added a source-level regression assertion that preserves this ordering.
+Closed each `upsertLifecycleComment` immediately after its comment upsert logic and moved the helper declarations to script scope. Added a source-level regression assertion that checks helper scope in every disposition GitHub Script block.
 
 ## Validation
 
-The repaired GitHub Script block passes `node --check` when extracted into an async wrapper, and static helper-order assertions pass. Local Vitest and `verify-fast` could not run because this worktree has no installed dependencies and the configured package proxy returns 404 for `postcss@8.5.26`; a direct public-registry install is blocked by the environment's TLS handshake failure.
+The repaired GitHub Script blocks pass `node --check` when extracted into async wrappers. The targeted Vitest regression and repository verification pass locally.
 
 ## Next Steps
 
