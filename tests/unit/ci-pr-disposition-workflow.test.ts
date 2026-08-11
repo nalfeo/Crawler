@@ -20,6 +20,23 @@ describe('ci-pr-disposition workflow', () => {
     expect(raw).toContain('await ensureDispositionLabels();');
   });
 
+  it('keeps label helpers at script scope so the provisioning call can resolve them', () => {
+    const raw = loadWorkflowSource();
+    const upsertStart = raw.indexOf('async function upsertLifecycleComment');
+    const labelHelperStart = raw.indexOf('async function ensureLabel');
+    const closingIssuesStart = raw.indexOf('async function getClosingIssues');
+
+    expect(upsertStart).toBeGreaterThanOrEqual(0);
+    expect(labelHelperStart).toBeGreaterThan(upsertStart);
+    expect(closingIssuesStart).toBeGreaterThan(labelHelperStart);
+    expect(raw.slice(upsertStart, labelHelperStart)).toContain(
+      'await github.rest.issues.createComment',
+    );
+    expect(raw.slice(upsertStart, labelHelperStart)).not.toContain(
+      'async function ensureLabel',
+    );
+  });
+
   it('uses issue-scoped merged closers without a global recency cap', () => {
     const raw = loadWorkflowSource();
     expect(raw).toContain('closedByPullRequestsReferences(first: 100, after: $after)');
