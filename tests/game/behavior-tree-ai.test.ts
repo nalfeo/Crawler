@@ -2465,6 +2465,7 @@ describe('BehaviorTreeAI', () => {
       { weaponId: 'throwing-knife', expectedOrbit: 10 },
       { weaponId: 'pistol', expectedOrbit: 12 },
       { weaponId: 'bow', expectedOrbit: 13.2 },
+      { weaponId: 'crossbow', expectedOrbit: 14 },
     ] as const;
 
     for (const { weaponId, expectedOrbit } of cases) {
