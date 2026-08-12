@@ -44,6 +44,11 @@ import {
   getSettlementReturnIntent,
   updateSettlementReturnIntent,
 } from '../../src/game/ai/settlement-return-router.js';
+import {
+  configureSpellBrokerPurchase,
+  ensureSpellBrokerDecision,
+  updateSpellBrokerIntent,
+} from '../../src/game/ai/spell-broker-intent.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { makeDiagonalCornerMap } from '../helpers/map-fixtures.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -3602,6 +3607,112 @@ describe('BehaviorTreeAI', () => {
       ai.poll(createInputState(), world);
 
       expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    });
+  });
+
+  describe('spell broker optional goal resolver paths (regression)', () => {
+    /** Find the first seed in 1-100 where the seeded 25% decision says shouldBuy. */
+    function findBuySeed(): number {
+      for (let seed = 1; seed <= 100; seed++) {
+        const w = createTestWorld({ seed });
+        configureSpellBrokerPurchase(w, true);
+        if (ensureSpellBrokerDecision(w).shouldBuy) return seed;
+      }
+      throw new Error('No buy seed found in range 1-100');
+    }
+
+    /**
+     * A world where the whole Floor 1 mandatory chain is done EXCEPT the
+     * staircase boss (started=false, defeated=false), so the planner still
+     * has a required goal to emit and `resolveFloor1MiddleChainObjective` will
+     * run the full switch.
+     */
+    function setupPostBossBattleWorld(seed: number): {
+      world: GameWorld;
+      player: number;
+      brokerX: number;
+      brokerY: number;
+    } {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 4, 4);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      meetTutorialGoon(world);
+      world.playerLevel.level = 2;
+      world.floorScenario!.objective.questCompleted = true;
+      // Complete the pre-chain goal flags
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.goalFlags.set('floor1-goon-quest-complete', true);
+      // Shop chain complete
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      // Accept the boss battle quest so bossBattleAccepted===true in the snapshot
+      meetSpellQuestGiver(world);
+      // Slime Rat defeated → spells unlocked and boss battle complete
+      const slimeRat = world.floorScenario!.objective.bossBattles.get('slime-rat')!;
+      slimeRat.started = true;
+      slimeRat.defeated = true;
+      world.featureUnlocks.spells = true;
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      // Staircase NOT started so there is still a required goal in the graph
+      // (staircase boss + take-stairs keep the resolver active)
+      world.floorMap = makeOpenRoom(40, 20);
+      world.stores.position.x[player] = 4;
+      world.stores.position.y[player] = 4;
+      // Put the broker far to the right so a returning-state planner routes there
+      const brokerX = 36;
+      const brokerY = 4;
+      // Put the staircase boss at the same far-right position so neither is
+      // trivially closer; the key invariant is just no-throw in both paths.
+      world.floorScenario!.objective = {
+        ...world.floorScenario!.objective,
+        spellQuestGiverPos: { x: brokerX, y: brokerY },
+        staircasePos: { x: brokerX, y: brokerY },
+        deadlineMs: 600_000,
+      };
+      return { world, player, brokerX, brokerY };
+    }
+
+    it('buy-broker-spell: resolver routes AI toward the spell quest giver without throwing', () => {
+      const buySeed = findBuySeed();
+      const { world, player, brokerX, brokerY } = setupPostBossBattleWorld(buySeed);
+
+      // Activate spell broker intent in returning state (gold >= cost).
+      configureSpellBrokerPurchase(world, true);
+      ensureSpellBrokerDecision(world);
+      world.playerGold = 100; // > FLOOR1_SPELL_BROKER_COST (35g)
+      updateSpellBrokerIntent(world, null, 3_000); // transitions idle → returning
+
+      const ai = new BehaviorTreeAI({ seed: buySeed });
+      // Must not throw — that was the pre-fix defect (unhandled switch case).
+      expect(() => ai.poll(createInputState(), world)).not.toThrow();
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.EXPLORE);
+      // The resolver's buy-broker-spell case emits 'Spell Broker' in the reason.
+      expect(decision.reason).toContain('Spell Broker');
+      // Target must be non-null and close to the broker position.
+      expect(decision.targetX).not.toBeNull();
+      expect(decision.targetX!).toBeCloseTo(brokerX, -1);
+
+      void player; // used in setup
+      void brokerY; // declared above
+    });
+
+    it('farm-spell-broker-gold: resolver does not throw even with no gold or enemies nearby', () => {
+      const buySeed = findBuySeed();
+      const { world, player } = setupPostBossBattleWorld(buySeed);
+
+      // Activate spell broker intent in farming state (gold < cost).
+      configureSpellBrokerPurchase(world, true);
+      ensureSpellBrokerDecision(world);
+      world.playerGold = 0; // below FLOOR1_SPELL_BROKER_COST (35g)
+      updateSpellBrokerIntent(world, null, 3_000); // transitions idle → farming
+
+      const ai = new BehaviorTreeAI({ seed: buySeed });
+      // Must not throw — that was the pre-fix defect (unhandled switch case).
+      expect(() => ai.poll(createInputState(), world)).not.toThrow();
+
+      void player; // used in setup
     });
   });
 });

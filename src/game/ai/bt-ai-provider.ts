@@ -6454,6 +6454,33 @@ export class BehaviorTreeAI implements AIInputProvider {
           ),
         );
       }
+      case 'farm-spell-broker-gold': {
+        const spellIntent = getSpellBrokerIntent(world);
+        const goldOwed = Math.max(0, spellIntent.cost - world.playerGold);
+        const target = this.findMerchantGoldFarmTarget(
+          world,
+          playerX,
+          playerY,
+          goldOwed,
+          'spell broker',
+        );
+        return target ? maybeDetourToQuestGiver(target) : null;
+      }
+      case 'buy-broker-spell': {
+        const reason = 'Returning to the Spell Broker to purchase the offered spell';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.spellQuestGiverPos.x,
+            objective.spellQuestGiverPos.y,
+            playerX,
+            playerY,
+            reason,
+            floorScenario.spellQuestGiverNpcEid ?? -1,
+          ),
+        );
+      }
       case 'accept-spell-quest': {
         const reason = 'Seeking the Spell Broker to start the Slime Rat quest';
         if (progressSuppressed)
