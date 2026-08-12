@@ -17,7 +17,9 @@ import {
   ensureAzureEnvLocal,
   EnvBootstrapError,
   hasAzureOpenAiCreds,
+  hasFoundryImageCreds,
   imageProviderIsAzureOpenAi,
+  imageProviderIsFoundry,
   isCloudEnv,
   missingAzureRequirements,
   needsAzureEnvBootstrap,
@@ -31,6 +33,12 @@ const STORAGE = {
 const OPENAI = {
   AZURE_OPENAI_ENDPOINT: 'https://example.openai.azure.com/',
   AZURE_OPENAI_API_KEY: 'sk-test',
+} as const;
+
+const FOUNDRY = {
+  FOUNDRY_ENDPOINT: 'https://swedencentral.api.cognitive.microsoft.com',
+  FOUNDRY_API_KEY: 'foundry-key',
+  FOUNDRY_IMAGE_MODEL: 'bench-gpt-image-2',
 } as const;
 
 /** A complete set of creds for the default Azure backends (worker can start). */
@@ -80,10 +88,42 @@ describe('imageProviderIsAzureOpenAi', () => {
     expect(imageProviderIsAzureOpenAi({})).toBe(true);
   });
 
-  it('is false only for the local-a1111 provider (case/space-insensitive)', () => {
+  it('is false for non-Azure-OpenAI image providers (case/space-insensitive)', () => {
     expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: 'local-a1111' })).toBe(false);
     expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: '  LOCAL-A1111 ' })).toBe(false);
+    expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: 'foundry' })).toBe(false);
+    expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: '  FOUNDRY ' })).toBe(false);
     expect(imageProviderIsAzureOpenAi({ SPRITES_PROVIDER: 'azure-openai' })).toBe(true);
+  });
+});
+
+describe('imageProviderIsFoundry', () => {
+  it('is true only for the foundry image provider', () => {
+    expect(imageProviderIsFoundry({ SPRITES_PROVIDER: 'foundry' })).toBe(true);
+    expect(imageProviderIsFoundry({ SPRITES_PROVIDER: '  FOUNDRY ' })).toBe(true);
+    expect(imageProviderIsFoundry({})).toBe(false);
+    expect(imageProviderIsFoundry({ SPRITES_PROVIDER: 'azure-openai' })).toBe(false);
+  });
+});
+
+describe('hasFoundryImageCreds', () => {
+  it('is true with endpoint + key + image deployment alias', () => {
+    expect(hasFoundryImageCreds({ ...FOUNDRY })).toBe(true);
+  });
+
+  it('is false when any required Foundry image credential is missing', () => {
+    expect(hasFoundryImageCreds({ FOUNDRY_API_KEY: 'key', FOUNDRY_IMAGE_MODEL: 'model' })).toBe(
+      false,
+    );
+    expect(
+      hasFoundryImageCreds({
+        FOUNDRY_ENDPOINT: FOUNDRY.FOUNDRY_ENDPOINT,
+        FOUNDRY_IMAGE_MODEL: 'model',
+      }),
+    ).toBe(false);
+    expect(
+      hasFoundryImageCreds({ FOUNDRY_ENDPOINT: FOUNDRY.FOUNDRY_ENDPOINT, FOUNDRY_API_KEY: 'key' }),
+    ).toBe(false);
   });
 });
 
@@ -156,6 +196,18 @@ describe('needsAzureEnvBootstrap', () => {
     // Storage is still required (the queue/store are Azure Storage).
     expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'local-a1111' })).toBe(true);
   });
+
+  it('foundry image provider + storage + Foundry creds skips the Azure OpenAI requirement', () => {
+    expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'foundry', ...STORAGE, ...FOUNDRY })).toBe(
+      false,
+    );
+    // Storage is still required (the queue/store are Azure Storage).
+    expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'foundry', ...FOUNDRY })).toBe(true);
+  });
+
+  it('foundry image provider + storage still needs Foundry image creds', () => {
+    expect(needsAzureEnvBootstrap({ SPRITES_PROVIDER: 'foundry', ...STORAGE })).toBe(true);
+  });
 });
 
 describe('missingAzureRequirements', () => {
@@ -179,6 +231,18 @@ describe('missingAzureRequirements', () => {
     const missing = missingAzureRequirements({ ...STORAGE });
     expect(missing).toHaveLength(1);
     expect(missing[0]).toContain('Azure OpenAI');
+  });
+
+  it('lists no OpenAI requirement for foundry when Foundry image creds are present', () => {
+    expect(
+      missingAzureRequirements({ SPRITES_PROVIDER: 'foundry', ...STORAGE, ...FOUNDRY }),
+    ).toEqual([]);
+  });
+
+  it('lists Foundry image credentials when foundry is selected without them', () => {
+    const missing = missingAzureRequirements({ SPRITES_PROVIDER: 'foundry', ...STORAGE });
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toContain('Foundry image credentials');
   });
 });
 
