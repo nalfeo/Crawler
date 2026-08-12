@@ -346,6 +346,33 @@ export interface SpawnerArenaMetrics {
   bankedXpTotal: number;
 }
 
+/** Lifecycle evidence for one named production Floor 1 boss encounter. */
+export interface Floor1BossEncounterMetrics {
+  /** Boss entity captured when the encounter first started. */
+  bossEid: number | null;
+  /** Whether the production encounter started. */
+  encounterStarted: boolean;
+  /** Simulation frame when the encounter first started. */
+  encounterStartedFrame: number | null;
+  /** Simulated time when the encounter first started. */
+  encounterStartedMs: number | null;
+  /** Player level when the encounter first started. */
+  playerLevelAtStart: number | null;
+  /** Player health fraction when the encounter first started. */
+  playerHealthFractionAtStart: number | null;
+  /** Whether the production encounter was defeated. */
+  encounterDefeated: boolean;
+  /** Simulation frame when the encounter was first defeated. */
+  encounterDefeatedFrame: number | null;
+  /** Simulated time when the encounter was first defeated. */
+  encounterDefeatedMs: number | null;
+}
+
+/** Named Floor 1 boss lifecycle evidence captured by the headless runner. */
+export interface Floor1BossProgressionMetrics {
+  encounters: Record<string, Floor1BossEncounterMetrics>;
+}
+
 /** Per-family evidence for production Floor 2 progression. */
 export interface Floor2FamilyProgressMetrics {
   /** Player-attributed non-boss kills recorded by the production objective tick. */
@@ -522,6 +549,8 @@ export interface RunStats {
   totalGold: number;
   /** Durable player-attributed Floor 2 trash kills by family id. */
   familyTrashKills?: Record<string, number>;
+  /** Named production Floor 1 boss encounter lifecycle evidence. */
+  floor1BossProgression?: Floor1BossProgressionMetrics;
   /** Full production Floor 2 den, encounter, and exit progression evidence. */
   floor2Progression?: Floor2ProgressionMetrics;
   /** ID of the starting weapon selected for this run */
