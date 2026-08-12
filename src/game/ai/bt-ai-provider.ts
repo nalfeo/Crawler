@@ -124,7 +124,8 @@ import {
   RANGED_STANDOFF_ABS_FT,
   RANGED_DEFENSIVE_HP_FRACTION,
   RANGED_DEFENSIVE_REACH_FRACTION,
-  RANGED_DEFENSIVE_ABS_FT,
+  RANGED_DEFENSIVE_MIN_FT,
+  RANGED_DEFENSIVE_MAX_FT,
   RANGED_DEFENSIVE_RELEASE_MULTIPLIER,
   RANGED_RECOVER_EXTRA_FRACTION,
   RANGED_APPROACH_BUFFER_FT,
@@ -8174,20 +8175,26 @@ export class BehaviorTreeAI implements AIInputProvider {
       CONTACT_SAFE_ORBIT_FT,
       Math.min(reachFt * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_FT),
     );
+    const defensiveOrbit = Math.max(
+      healthyOrbit,
+      Math.min(
+        RANGED_DEFENSIVE_MAX_FT,
+        Math.max(RANGED_DEFENSIVE_MIN_FT, reachFt * RANGED_DEFENSIVE_REACH_FRACTION),
+      ),
+    );
     const wounded = this.getPlayerHealthFraction(world) < RANGED_DEFENSIVE_HP_FRACTION;
+    const defensivePressureRadius = Math.max(
+      this.config.rangedSafeDistance,
+      defensiveOrbit + RANGED_APPROACH_BUFFER_FT,
+    );
     const pressureRadius = this.rangedDefensiveSpacing
-      ? this.config.rangedSafeDistance * RANGED_DEFENSIVE_RELEASE_MULTIPLIER
-      : this.config.rangedSafeDistance;
+      ? defensivePressureRadius * RANGED_DEFENSIVE_RELEASE_MULTIPLIER
+      : defensivePressureRadius;
     const pressureThreat = wounded
       ? this.findNearestEnemy(world, playerX, playerY, pressureRadius)
       : null;
     this.rangedDefensiveSpacing = wounded && pressureThreat !== null;
-    const desiredOrbit = this.rangedDefensiveSpacing
-      ? Math.max(
-          healthyOrbit,
-          Math.min(reachFt * RANGED_DEFENSIVE_REACH_FRACTION, RANGED_DEFENSIVE_ABS_FT),
-        )
-      : healthyOrbit;
+    const desiredOrbit = this.rangedDefensiveSpacing ? defensiveOrbit : healthyOrbit;
     const contactThreatRadius = desiredOrbit + RANGED_APPROACH_BUFFER_FT;
     let activeTarget = target;
 

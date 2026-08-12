@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-12",
+  "session_slug": "fix-ranged-wounded-spacing",
+  "task_title": "Fix weapon-reach-aware wounded ranged spacing",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted bounded reach-aware wounded orbit at 30% reach clamped 10-14ft instead of uncapped half reach; retained healthy 6ft orbit. Pressure entry uses max(rangedSafeDistance, defensiveOrbit+approachBuffer), release uses the explicit RANGED_DEFENSIVE_RELEASE_MULTIPLIER=2, limiting bow release to about 32.4ft. Added explicit RETREAT-time/transition oracle and a multi-enemy multi-poll no-snapback regression."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

@@ -81,13 +81,14 @@ export const RANGED_STANDOFF_ABS_FT = 6;
 // baseline stays unchanged; this only arrests the deterministic contact-damage
 // spiral after the player is wounded.
 export const RANGED_DEFENSIVE_HP_FRACTION = 0.7;
-// A wounded projectile user expands only to a short, combat-effective ring.
-// Longer standoffs avoid contact but make un-led projectiles miss moving targets,
-// converting deaths into tutorial stalls. Ten feet keeps pistol/knife shots
-// reliable while creating substantially more reaction room than the healthy 6ft
-// ring.
-export const RANGED_DEFENSIVE_REACH_FRACTION = 0.5;
-export const RANGED_DEFENSIVE_ABS_FT = 10;
+// A wounded projectile user expands to a short, weapon-reach-aware ring. The
+// 10-14ft clamp preserves the proven close-range hit reliability while allowing
+// longer-reach weapons to use more of their available safety margin: throwing
+// knife holds 10ft, pistol 12ft, and bow 13.2ft. Healthy spacing remains the
+// damage-optimized 6ft ring above.
+export const RANGED_DEFENSIVE_REACH_FRACTION = 0.3;
+export const RANGED_DEFENSIVE_MIN_FT = 10;
+export const RANGED_DEFENSIVE_MAX_FT = 14;
 // Once defensive spacing starts, keep it until the nearby-pressure bubble is
 // fully clear. Without this wider release radius the AI alternates every few
 // frames between closing to 6ft and retreating, losing both safety and DPS.
