@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9eb2290273f526cfffb5da47fadde946b2bc6c78",
+    "commitDate": "2026-08-12T03:55:52Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2830)",
+    "capturedAt": "2026-08-12T04:51:49.075Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31561657791",
+    "winRate": 0.9716666666666667,
+    "totalWins": 583,
+    "totalRuns": 600,
+    "path": "by-sha/9eb2290273f526cfffb5da47fadde946b2bc6c78.json"
+  },
+  {
     "commit": "690a10235153719f330ef6dea9ceb7889d7881ca",
     "commitDate": "2026-08-12T03:28:03Z",
     "commitSubject": "test(ai): guard Floor 1 boss arena lock-in lifecycle (#2827)",
