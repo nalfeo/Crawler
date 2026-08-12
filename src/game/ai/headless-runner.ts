@@ -419,6 +419,41 @@ function collectFamilyTrashKills(world: GameWorld): Record<string, number> {
   return Object.fromEntries(world.floorExtendedState?.familyState?.trashKillsByFamily ?? []);
 }
 
+interface Floor1BossTelemetry {
+  readonly startedFrame: ReadonlyMap<string, number>;
+  readonly startedMs: ReadonlyMap<string, number>;
+  readonly startedBossEid: ReadonlyMap<string, number>;
+  readonly startedLevel: ReadonlyMap<string, number>;
+  readonly startedHealthFraction: ReadonlyMap<string, number>;
+  readonly defeatedFrame: ReadonlyMap<string, number>;
+  readonly defeatedMs: ReadonlyMap<string, number>;
+}
+
+function collectFloor1BossProgression(
+  world: GameWorld,
+  telemetry: Floor1BossTelemetry,
+): NonNullable<RunStats['floor1BossProgression']> | undefined {
+  const bossBattles = world.floorScenario?.objective.bossBattles;
+  if (world.floorId !== 'floor1' || !bossBattles) {
+    return undefined;
+  }
+  const encounters: NonNullable<RunStats['floor1BossProgression']>['encounters'] = {};
+  for (const [bossId, encounter] of bossBattles) {
+    encounters[bossId] = {
+      bossEid: telemetry.startedBossEid.get(bossId) ?? null,
+      encounterStarted: encounter.started,
+      encounterStartedFrame: telemetry.startedFrame.get(bossId) ?? null,
+      encounterStartedMs: telemetry.startedMs.get(bossId) ?? null,
+      playerLevelAtStart: telemetry.startedLevel.get(bossId) ?? null,
+      playerHealthFractionAtStart: telemetry.startedHealthFraction.get(bossId) ?? null,
+      encounterDefeated: encounter.defeated,
+      encounterDefeatedFrame: telemetry.defeatedFrame.get(bossId) ?? null,
+      encounterDefeatedMs: telemetry.defeatedMs.get(bossId) ?? null,
+    };
+  }
+  return { encounters };
+}
+
 function collectFloor2Progression(
   world: GameWorld,
   trashKillsAtDenUnlock: ReadonlyMap<string, number>,
@@ -590,6 +625,13 @@ export async function runHeadless(
   const floor2EncounterStartedMs = new Map<string, number>();
   const floor2EncounterStartedLevel = new Map<string, number>();
   const floor2EncounterDefeatedMs = new Map<string, number>();
+  const floor1BossStartedFrame = new Map<string, number>();
+  const floor1BossStartedMs = new Map<string, number>();
+  const floor1BossStartedEid = new Map<string, number>();
+  const floor1BossStartedLevel = new Map<string, number>();
+  const floor1BossStartedHealthFraction = new Map<string, number>();
+  const floor1BossDefeatedFrame = new Map<string, number>();
+  const floor1BossDefeatedMs = new Map<string, number>();
   const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
 
   // NPC interaction tracking
@@ -1091,6 +1133,29 @@ export async function runHeadless(
           recordEvent?.(buildEvent('quest', enemyEids, `questlog completed: ${questId}`));
         }
       }
+      const floor1BossBattles = world.floorScenario?.objective.bossBattles;
+      if (world.floorId === 'floor1' && floor1BossBattles) {
+        for (const [bossId, encounter] of floor1BossBattles) {
+          if (encounter.started && !floor1BossStartedFrame.has(bossId)) {
+            floor1BossStartedFrame.set(bossId, frameCount);
+            floor1BossStartedMs.set(bossId, world.elapsedMs);
+            floor1BossStartedLevel.set(bossId, world.playerLevel?.level ?? 0);
+            const currentHealth = world.stores.health.current[playerEid] ?? 0;
+            const maxHealth = world.stores.health.max[playerEid] ?? 0;
+            floor1BossStartedHealthFraction.set(
+              bossId,
+              maxHealth > 0 ? currentHealth / maxHealth : 0,
+            );
+            if (encounter.bossEid !== null) {
+              floor1BossStartedEid.set(bossId, encounter.bossEid);
+            }
+          }
+          if (encounter.defeated && !floor1BossDefeatedFrame.has(bossId)) {
+            floor1BossDefeatedFrame.set(bossId, frameCount);
+            floor1BossDefeatedMs.set(bossId, world.elapsedMs);
+          }
+        }
+      }
       const floor2State = world.floorExtendedState?.familyState;
       if (world.floorId === 'floor2' && floor2State) {
         for (const familyId of floor2State.presentFamilies) {
@@ -1293,6 +1358,15 @@ export async function runHeadless(
       runStartXp,
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
+      floor1BossProgression: collectFloor1BossProgression(world, {
+        startedFrame: floor1BossStartedFrame,
+        startedMs: floor1BossStartedMs,
+        startedBossEid: floor1BossStartedEid,
+        startedLevel: floor1BossStartedLevel,
+        startedHealthFraction: floor1BossStartedHealthFraction,
+        defeatedFrame: floor1BossDefeatedFrame,
+        defeatedMs: floor1BossDefeatedMs,
+      }),
       floor2Progression: collectFloor2Progression(
         world,
         floor2TrashKillsAtDenUnlock,
@@ -1385,6 +1459,15 @@ export async function runHeadless(
     runStartXp,
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
+    floor1BossProgression: collectFloor1BossProgression(world, {
+      startedFrame: floor1BossStartedFrame,
+      startedMs: floor1BossStartedMs,
+      startedBossEid: floor1BossStartedEid,
+      startedLevel: floor1BossStartedLevel,
+      startedHealthFraction: floor1BossStartedHealthFraction,
+      defeatedFrame: floor1BossDefeatedFrame,
+      defeatedMs: floor1BossDefeatedMs,
+    }),
     floor2Progression: collectFloor2Progression(
       world,
       floor2TrashKillsAtDenUnlock,

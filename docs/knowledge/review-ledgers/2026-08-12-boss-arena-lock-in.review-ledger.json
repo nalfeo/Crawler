@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-12",
+  "session_slug": "boss-arena-lock-in",
+  "task_title": "Prevent boss arena lock-in regressions",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Rejected debug-reason/EID inference because add-clearing shares the prefix and sampling cannot define lifecycle. Rejected synthetic-only coverage because it would not prove the three natural seeds. Rejected helper-only observability because the gate needs durable start readiness and duration evidence. Adopted telemetry-only named Floor 1 encounter lifecycle metrics plus exact real-headless gates; no combat behavior change."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
