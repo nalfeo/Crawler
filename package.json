@@ -208,7 +208,7 @@
     "qs": "6.15.2",
     "brace-expansion": "5.0.9",
     "minimatch": "10.2.6",
-    "postcss": "8.5.22",
+    "postcss": "8.5.26",
     "find-my-way": "9.7.0",
     "fast-uri": "3.1.5"
   }
