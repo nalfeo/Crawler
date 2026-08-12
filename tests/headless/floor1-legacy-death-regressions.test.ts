@@ -4,6 +4,7 @@ import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { isOfficialWin } from '../../src/game/ai/scoring.js';
 import { AIDecisionMode, AIPathingMode } from '../../src/game/ai/types.js';
 import type { SimEvent } from '../../src/game/ai/event-log.js';
+import type { RunStats } from '../../src/game/ai/types.js';
 import { GAME } from '../../src/shared/constants.js';
 
 const MAX_FRAMES = 23_760;
@@ -26,7 +27,29 @@ const BOSS_LOCKIN_CASES = [
   { weapon: 'sword', seed: 44 },
   { weapon: 'baseball-bat', seed: 67 },
 ] as const;
+/**
+ * Exact failures from release weapon sweep 29564772319 at e0087947.
+ *
+ * Five cases exposed the retired legacy pathing policy. The two seed-86 cases
+ * shared an excessive merchant-fetch route on the same generated map. Both
+ * causal runtime fixes predate this regression guard; this matrix prevents
+ * either failure class from silently returning.
+ */
+const RELEASE_MELEE_CASES = [
+  { weapon: 'baseball-bat', seed: 17 },
+  { weapon: 'baseball-bat', seed: 86 },
+  { weapon: 'sword', seed: 23 },
+  { weapon: 'sword', seed: 26 },
+  { weapon: 'sword', seed: 64 },
+  { weapon: 'sword', seed: 86 },
+  { weapon: 'sword', seed: 98 },
+] as const;
 const FLOOR1_BOSS_IDS = ['slime-rat', 'staircase'] as const;
+
+function stripWallTime(stats: RunStats): Omit<RunStats, 'wallTimeMs'> {
+  const { wallTimeMs: _wallTimeMs, ...deterministic } = stats;
+  return deterministic;
+}
 
 describe('Floor 1 legacy weapon-sweep death regressions', () => {
   for (const { weapon, seed } of CASES) {
@@ -49,6 +72,41 @@ describe('Floor 1 legacy weapon-sweep death regressions', () => {
       expect(stats.outcome).toBe('victory');
       expect(isOfficialWin(stats, MAX_GAME_TIME_MS)).toBe(true);
     });
+  }
+});
+
+describe('Floor 1 release melee failure regressions', () => {
+  for (const { weapon, seed } of RELEASE_MELEE_CASES) {
+    it(
+      `${weapon} seed ${seed} deterministically wins within the release sweep budget`,
+      async () => {
+        const run = (): Promise<RunStats> =>
+          runHeadless(
+            new BehaviorTreeAI({
+              seed,
+              pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+              decisionMode: AIDecisionMode.LEGACY,
+            }),
+            {
+              seed,
+              maxFrames: BOSS_LOCKIN_MAX_FRAMES,
+              maxWallTimeMs: Number.POSITIVE_INFINITY,
+              forceWeaponId: weapon,
+              // The authoritative release sweep disabled weapon personas.
+              weaponPersonas: false,
+            },
+          );
+
+        const first = await run();
+        const replay = await run();
+
+        expect(first.startingWeapon).toBe(weapon);
+        expect(first.outcome).toBe('victory');
+        expect(isOfficialWin(first, BOSS_LOCKIN_MAX_GAME_TIME_MS)).toBe(true);
+        expect(stripWallTime(replay)).toEqual(stripWallTime(first));
+      },
+      10 * 60 * 1000,
+    );
   }
 });
 
