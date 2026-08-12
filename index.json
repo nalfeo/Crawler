@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6c0ed90544212f30a41c078eabc80e9c6264e1f0",
+    "commitDate": "2026-08-12T01:23:52Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2824)",
+    "capturedAt": "2026-08-12T02:20:59.266Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31553502295",
+    "winRate": 0.9716666666666667,
+    "totalWins": 583,
+    "totalRuns": 600,
+    "path": "by-sha/6c0ed90544212f30a41c078eabc80e9c6264e1f0.json"
+  },
+  {
     "commit": "666e897f5c1a9dd239155cdf4d82233d086063fc",
     "commitDate": "2026-08-12T01:13:08Z",
     "commitSubject": "test(ai): guard sword-14 hunt fixation regression (#2822)",
