@@ -35,6 +35,7 @@ import {
 } from '../../game/ai/settlement-maintenance-planner.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
+import { configureSpellBrokerPurchase } from '../../game/ai/spell-broker-intent.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -489,6 +490,7 @@ interface AiRunnerLabState {
     autoPauseOnDamage: boolean;
     weaponPersonas?: boolean;
     merchantWeaponPurchase?: boolean;
+    spellBrokerPurchase?: boolean;
   };
 }
 
@@ -659,6 +661,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     autoPauseOnDamage: boolean;
     weaponPersonas: boolean;
     merchantWeaponPurchase: boolean;
+    spellBrokerPurchase: boolean;
   } = {
     pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
     decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
@@ -667,6 +670,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
     weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
     merchantWeaponPurchase: persisted?.aiConfig?.merchantWeaponPurchase ?? false,
+    spellBrokerPurchase: persisted?.aiConfig?.spellBrokerPurchase ?? true,
   };
 
   let ai = new BehaviorTreeAI({
@@ -717,6 +721,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
         weaponPersonas: aiConfig.weaponPersonas,
         merchantWeaponPurchase: aiConfig.merchantWeaponPurchase,
+        spellBrokerPurchase: aiConfig.spellBrokerPurchase,
       },
     });
   };
@@ -826,6 +831,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
     configureMerchantWeaponPurchase(world, aiConfig.merchantWeaponPurchase);
+    configureSpellBrokerPurchase(world, aiConfig.spellBrokerPurchase);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
     runEagerMaintenanceTick(world, playerEid);
@@ -1239,6 +1245,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   aiFolder
     .add(aiConfig, 'merchantWeaponPurchase')
     .name('Merchant weapon purchase')
+    .onChange(() => {
+      persistLabState();
+    });
+  aiFolder
+    .add(aiConfig, 'spellBrokerPurchase')
+    .name('Spell Broker purchase (25%)')
     .onChange(() => {
       persistLabState();
     });

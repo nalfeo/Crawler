@@ -58,6 +58,7 @@ import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
+import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -250,6 +251,8 @@ export interface HeadlessRunnerConfig {
   weaponPersonas?: boolean;
   /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
   merchantWeaponPurchase?: boolean;
+  /** Enable the optional seeded Floor 1 Spell Broker purchase decision. Default true. */
+  spellBrokerPurchase?: boolean;
   /**
    * Enable the optional latched settlement-return route goal: periodically
    * evaluates whether returning to the Floor 2 settlement to run the
@@ -296,6 +299,7 @@ const DEFAULT_CONFIG: Required<
   recordWeaponTelemetry: false,
   weaponPersonas: true,
   merchantWeaponPurchase: false,
+  spellBrokerPurchase: true,
   settlementReturnRouting: false,
   enforcePlayabilityInvariants: true,
 };
@@ -520,6 +524,7 @@ export async function runHeadless(
   }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
   configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
+  configureSpellBrokerPurchase(world, mergedConfig.spellBrokerPurchase);
   configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();

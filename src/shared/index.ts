@@ -8,6 +8,7 @@ export {
   WeaponType,
   TeamId,
   XP,
+  FLOOR1_SPELL_BROKER_COST,
 } from './constants.js';
 export type { WeaponTypeValue, TeamIdValue } from './constants.js';
 export { createInputState, normalizeInputDirection } from './input.js';
@@ -139,6 +140,13 @@ export type {
   SkillUsageEvent,
   UsageMetric,
 } from './skills.js';
+export {
+  SPELL_SKILL_ID_BY_SPELL_ID,
+  SPELL_SKILL_IDS,
+  getSpellSkillId,
+  FLOOR1_SPELL_BROKER_OFFER_COUNT,
+  generateFloor1SpellBrokerOffers,
+} from './spell-skills.js';
 export * from './items.js';
 export * from './inventory.js';
 export {

@@ -60,6 +60,10 @@ export {
   SHOPKEEPER_EQUIPMENT_COST,
   selectSpellFromBossBattle,
   ensureBossBattleSpellReward,
+  getSpellBrokerOffers,
+  canPurchaseSpellBrokerSpell,
+  purchaseSpellBrokerSpell,
+  SPELL_BROKER_SPELL_COST,
 } from './floorScenario.js';
 export type { ShopkeeperStage } from '../shared/quest-types.js';
 export {
@@ -79,6 +83,7 @@ export type { QuestObjectiveView } from '../core/systems/questSystem.js';
 export { levelSystem } from './systems/levelSystem.js';
 export { spendPoints, addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 export { skillSystem } from './systems/skillSystem.js';
+export { getSpellSkillEfficacyMultiplier } from './systems/progressionEffects.js';
 export {
   abilitySystem,
   createAbilityState,

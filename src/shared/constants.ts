@@ -132,6 +132,9 @@ export const FLOOR = {
  */
 export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
 
+/** Floor 1 Spell Broker price, in gold. */
+export const FLOOR1_SPELL_BROKER_COST: number = tuning.spellBroker.cost;
+
 export const SAFE_ROOM = {
   MIN_DURATION_S: tuning.safeRoom.minDurationS,
   OPTIMAL_DURATION_S: tuning.safeRoom.optimalDurationS,

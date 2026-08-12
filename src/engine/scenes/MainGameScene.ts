@@ -119,7 +119,7 @@ import { createLogger } from '../../shared/logger.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
-import type { Floor2ShopInstance } from '../../shared/floor-types.js';
+import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
@@ -265,6 +265,9 @@ export interface MainGameSceneOptions {
     meet: (world: GameWorld) => void;
     /** True while the Spell Broker is gated behind the welcome-goon quest. */
     isLocked?: (world: GameWorld) => boolean;
+    getSpellBrokerOffers?: (world: GameWorld) => readonly Floor1SpellBrokerOffer[];
+    canPurchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
+    purchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
   };
   /** Floor 2 Broker callbacks — fired when the player reads all intro dialogue lines. */
   broker?: {
@@ -4114,6 +4117,12 @@ export class MainGameScene extends Phaser.Scene {
               return;
             }
           }
+          if (instance.defId === 'spell-quest-giver' && this.options.spellQuestGiver) {
+            const openedModal = this.handleSpellBrokerTalk();
+            if (openedModal) {
+              return;
+            }
+          }
           const activeDialogue = resolveDialogueLines(
             instance.defId,
             this.world,
@@ -4196,6 +4205,7 @@ export class MainGameScene extends Phaser.Scene {
     if (!shop) {
       return false;
     }
+
     // Latch the "introduce yourself" objective.
     shop.meet(this.world);
 
@@ -4303,5 +4313,54 @@ export class MainGameScene extends Phaser.Scene {
       return true;
     }
     return false;
+  }
+
+  /** Open the authoritative Floor 1 Spell Broker stock after the quest gate. */
+  private handleSpellBrokerTalk(): boolean {
+    const broker = this.options.spellQuestGiver;
+    if (
+      !broker ||
+      !this.modalPicker ||
+      !broker.getSpellBrokerOffers ||
+      !broker.purchaseSpell ||
+      !broker.canPurchaseSpell
+    ) {
+      return false;
+    }
+    broker.meet(this.world);
+    if (this.world.featureUnlocks.spells !== true) return false;
+    const offers = broker.getSpellBrokerOffers(this.world);
+    const options = offers.map((offer) => ({
+      id: offer.spellId,
+      label: `${getAbilityPresentation(offer.spellId)?.name ?? offer.spellId} (${offer.cost}g)`,
+      description: offer.purchased
+        ? 'Already purchased this run.'
+        : 'A permanent spell for this run. One purchase per offer.',
+      disabled:
+        offer.purchased || !broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
+    }));
+    if (options.length === 0 || options.every((option) => option.disabled)) {
+      return false;
+    }
+    if (this.modalPicker.isOpen()) return true;
+    this.modalPicker.open(
+      {
+        title: 'The Spell Broker',
+        subtitle: `Gold: ${this.world.playerGold}`,
+        body: 'Choose one expensive spell from the Broker’s rotating stock.',
+        options,
+        allowCancel: true,
+        initialSelectedId: options.find((option) => !option.disabled)?.id,
+      },
+      {
+        onConfirm: ({ option }) => {
+          if (broker.purchaseSpell!(this.world, this.playerEid, option.id)) {
+            this.flashHint('Spell purchased and memorized!');
+            this.updateOverlayText();
+          }
+        },
+      },
+    );
+    return true;
   }
 }

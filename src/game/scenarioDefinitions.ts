@@ -15,6 +15,9 @@ import {
   meetTutorialGoon,
   purchaseShopkeeperEquipment,
   purchaseShopkeeperPostQuestItem,
+  getSpellBrokerOffers,
+  canPurchaseSpellBrokerSpell,
+  purchaseSpellBrokerSpell,
   returnShopkeeperPrize,
   selectFloor1StarterWeapon,
   SHOPKEEPER_EQUIPMENT_COST,
@@ -25,6 +28,7 @@ import {
   meetBroker,
 } from './floor2Scenario.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
+import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
@@ -65,6 +69,9 @@ export interface ScenarioNpcCallbacks {
     readonly getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
     readonly meet: (world: GameWorld) => void;
     readonly isLocked?: (world: GameWorld) => boolean;
+    readonly getSpellBrokerOffers?: (world: GameWorld) => readonly Floor1SpellBrokerOffer[];
+    readonly canPurchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
+    readonly purchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
   };
   readonly broker?: {
     readonly met: (world: GameWorld) => void;
@@ -130,6 +137,9 @@ const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
     getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'spell-quest-giver'),
     meet: meetSpellQuestGiver,
     isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
+    getSpellBrokerOffers,
+    canPurchaseSpell: canPurchaseSpellBrokerSpell,
+    purchaseSpell: purchaseSpellBrokerSpell,
   },
 };
 

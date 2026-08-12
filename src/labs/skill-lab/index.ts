@@ -7,6 +7,7 @@ import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import { statSystem } from '../../core/systems/index.js';
 import { getAllAbilityDefinitions } from '../../game/abilities/registry.js';
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
+import { SPELL_SKILL_IDS } from '../../shared/spell-skills.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
 import {
   abilitySystem,
@@ -35,6 +36,9 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
   const allSkills = getAllSkillDefinitions();
   const allAbilities = getAllAbilityDefinitions();
+  const spellSkillIds = allSkills
+    .filter((skill) => SPELL_SKILL_IDS.includes(skill.id))
+    .map((skill) => skill.id);
   const activeOrSpell = allAbilities.filter((a) => a.kind !== 'passive');
   const passives = allAbilities.filter((a) => a.kind === 'passive');
   let world: GameWorld;
@@ -166,6 +170,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
   const params = {
     selectedSkill: allSkills[0]!.id,
+    selectedSpellSkill: spellSkillIds[0] ?? allSkills[0]!.id,
     metric: allSkills[0]!.usageMetric,
     usageAmount: 10,
     itemBonus: 0,
@@ -189,6 +194,35 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     });
 
   gui.add(params, 'usageAmount', 1, 500, 1).name('Usage Amount');
+
+  gui
+    .add(params, 'selectedSpellSkill', spellSkillIds)
+    .name('Spell Skill')
+    .onChange((id: string) => {
+      params.selectedSkill = id;
+      params.metric = 'spell_used';
+      render();
+    });
+
+  gui
+    .add(
+      {
+        fireSpellUse: () => {
+          world.skillUsageEvents.push({
+            holderEid: player,
+            skillId: params.selectedSpellSkill,
+            metric: 'spell_used',
+            amount: 1,
+          });
+          world.frameCount += 1;
+          skillSystem(world);
+          statSystem(world);
+          render();
+        },
+      },
+      'fireSpellUse',
+    )
+    .name('Use Selected Spell');
 
   gui
     .add(

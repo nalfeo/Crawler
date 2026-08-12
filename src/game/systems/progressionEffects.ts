@@ -4,10 +4,18 @@ import type { GameWorld } from '../../core/world.js';
 import { applyDamage, type DamageOptions } from '../../core/apply-damage.js';
 import { applyStatusEffect } from '../../core/status-effects.js';
 import { addStatModifier } from './statsSystem.js';
-import { resolveScalableOutput, resolveScalableOutputRounded } from '../../shared/stats.js';
+import { resolveScalableOutput } from '../../shared/stats.js';
 import { addComponent, hasComponent, query } from 'bitecs';
-import { Enemy, EffectiveStats, Health, Knockback, Position } from '../../core/components.js';
+import {
+  Enemy,
+  EffectiveStats,
+  Health,
+  Knockback,
+  Player,
+  Position,
+} from '../../core/components.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
+import { getSpellSkillId } from '../../shared/spell-skills.js';
 
 interface ApplyCatalogEffectOptions {
   sourceType: StatModifier['sourceType'];
@@ -18,6 +26,49 @@ interface ApplyCatalogEffectOptions {
 }
 
 const DEFAULT_TILE_SIZE_FT = 4;
+
+const SPELL_SKILL_PER_LEVEL_BONUS = 0.02;
+const SPELL_SKILL_BREAKPOINT_BONUSES = [
+  { level: 5, bonus: 0.1 },
+  { level: 10, bonus: 0.15 },
+  { level: 15, bonus: 0.2 },
+  { level: 20, bonus: 0.3 },
+] as const;
+
+/** Reusable efficacy layer shared by every spell effect, including utility. */
+export function getSpellSkillEfficacyMultiplier(
+  world: GameWorld,
+  holderEid: number,
+  spellId: string,
+): number {
+  const skillId = getSpellSkillId(spellId);
+  if (!skillId) return 1;
+  const state =
+    world.skillStatesByEntity.get(holderEid)?.get(skillId) ??
+    (hasComponent(world.ecs, holderEid, Player) ? world.playerSkills.get(skillId) : undefined);
+  const level = Math.max(0, Math.min(20, state?.level ?? 0));
+  let multiplier = 1 + level * SPELL_SKILL_PER_LEVEL_BONUS;
+  for (const breakpoint of SPELL_SKILL_BREAKPOINT_BONUSES) {
+    if (level >= breakpoint.level) multiplier += breakpoint.bonus;
+  }
+  return multiplier;
+}
+
+function resolveSpellOutput(
+  world: GameWorld,
+  holderEid: number,
+  spellId: string,
+  output: { base: number; scalesWithIntelligence: boolean },
+  intelligence: number,
+  mode: 'magnitude' | 'slowMultiplier' = 'magnitude',
+): number {
+  const resolved = resolveScalableOutput(output, intelligence);
+  const multiplier = getSpellSkillEfficacyMultiplier(world, holderEid, spellId);
+  if (mode === 'slowMultiplier') {
+    return Math.max(0.1, resolved - (multiplier - 1) * 0.25);
+  }
+  return resolved * multiplier;
+}
 
 /**
  * Magic-affinity damage options for a resolved spell hit. `scaleWithPrimary`
@@ -79,16 +130,22 @@ function castFireball(
   world: GameWorld,
   casterEid: number,
   damageOutput: CatalogEffect & { type: 'spell_fireball' },
+  spellId: string,
 ): void {
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
   const effectiveIntelligence = getEffectiveIntelligence(world, casterEid);
   const radiusFt = tilesToFeet(
     world,
-    resolveScalableOutput(damageOutput.radiusTiles, effectiveIntelligence),
+    resolveSpellOutput(world, casterEid, spellId, damageOutput.radiusTiles, effectiveIntelligence),
   );
   const radiusSq = radiusFt * radiusFt;
-  const damage = resolveScalableOutputRounded(damageOutput.damage, effectiveIntelligence);
+  const damage = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(world, casterEid, spellId, damageOutput.damage, effectiveIntelligence),
+    ),
+  );
 
   const enemies = [...query(world.ecs, [Enemy, Position, Health])].filter(
     (eid) => (world.stores.health.current[eid] ?? 0) > 0,
@@ -175,9 +232,15 @@ function castHeal(
   world: GameWorld,
   casterEid: number,
   healOutput: CatalogEffect & { type: 'spell_heal' },
+  spellId: string,
 ): void {
   const effectiveIntelligence = getEffectiveIntelligence(world, casterEid);
-  const baseHeal = resolveScalableOutputRounded(healOutput.heal, effectiveIntelligence);
+  const baseHeal = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(world, casterEid, spellId, healOutput.heal, effectiveIntelligence),
+    ),
+  );
   const current = world.stores.health.current[casterEid] ?? 0;
   const max = world.stores.health.max[casterEid] ?? 100;
   const healable = Math.min(baseHeal, max - current);
@@ -198,16 +261,23 @@ function castPulseShield(
   world: GameWorld,
   casterEid: number,
   pulseOutput: CatalogEffect & { type: 'spell_pulse_shield' },
+  spellId: string,
 ): void {
   const effectiveIntelligence = getEffectiveIntelligence(world, casterEid);
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
   const radiusFt = tilesToFeet(
     world,
-    resolveScalableOutput(pulseOutput.radiusTiles, effectiveIntelligence),
+    resolveSpellOutput(world, casterEid, spellId, pulseOutput.radiusTiles, effectiveIntelligence),
   );
   const radiusSq = radiusFt * radiusFt;
-  const knockbackForce = resolveScalableOutput(pulseOutput.knockbackForce, effectiveIntelligence);
+  const knockbackForce = resolveSpellOutput(
+    world,
+    casterEid,
+    spellId,
+    pulseOutput.knockbackForce,
+    effectiveIntelligence,
+  );
 
   // Cast VFX: an expanding shockwave centred on the caster. Pushed on every
   // cast (even when no enemies are in range) so the player sees the spell
@@ -246,17 +316,23 @@ function castMagicMissile(
   world: GameWorld,
   casterEid: number,
   missileOutput: CatalogEffect & { type: 'spell_magic_missile' },
+  spellId: string,
 ): void {
   const effectiveIntelligence = getEffectiveIntelligence(world, casterEid);
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
   const rangeFt = tilesToFeet(
     world,
-    resolveScalableOutput(missileOutput.rangeTiles, effectiveIntelligence),
+    resolveSpellOutput(world, casterEid, spellId, missileOutput.rangeTiles, effectiveIntelligence),
   );
   const target = findNearestLivingEnemy(world, casterEid, rangeFt);
   if (!target) return;
-  const damage = resolveScalableOutputRounded(missileOutput.damage, effectiveIntelligence);
+  const damage = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(world, casterEid, spellId, missileOutput.damage, effectiveIntelligence),
+    ),
+  );
   pushVfxEvent(world.vfxEvents, {
     kind: 'arcaneBoltImpact',
     x: target.x,
@@ -280,10 +356,19 @@ function applyTimedBuff(
   modifiers: TimedBuffModifier[],
   holderEid: number,
   vfxColor?: number,
+  spellId = '',
 ): void {
-  const durationFrames = resolveScalableOutputRounded(
-    buffOutput.durationFrames,
-    effectiveIntelligence,
+  const durationFrames = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(
+        world,
+        holderEid,
+        spellId,
+        buffOutput.durationFrames,
+        effectiveIntelligence,
+      ),
+    ),
   );
   const nextExpiresFrame = world.frameCount + durationFrames;
   for (const modifier of modifiers) {
@@ -292,7 +377,7 @@ function applyTimedBuff(
       sourceId,
       stat: modifier.stat,
       op: modifier.op,
-      value: resolveScalableOutput(modifier.value, effectiveIntelligence),
+      value: resolveSpellOutput(world, holderEid, spellId, modifier.value, effectiveIntelligence),
       expiresFrame: nextExpiresFrame,
     });
   }
@@ -310,18 +395,34 @@ function applyEnemySlowBurst(
   sourceId: string,
   effectiveIntelligence: number,
   slowOutput: CatalogEffect & { type: 'spell_enemy_slow_burst' },
+  spellId: string,
 ): void {
   const centerX = world.stores.position.x[holderEid] ?? 0;
   const centerY = world.stores.position.y[holderEid] ?? 0;
   const radiusFt = tilesToFeet(
     world,
-    resolveScalableOutput(slowOutput.radiusTiles, effectiveIntelligence),
+    resolveSpellOutput(world, holderEid, spellId, slowOutput.radiusTiles, effectiveIntelligence),
   );
   const radiusSq = radiusFt * radiusFt;
-  const slowMultiplier = resolveScalableOutput(slowOutput.slowMultiplier, effectiveIntelligence);
-  const slowDurationMs = resolveScalableOutputRounded(
-    slowOutput.slowDurationMs,
+  const slowMultiplier = resolveSpellOutput(
+    world,
+    holderEid,
+    spellId,
+    slowOutput.slowMultiplier,
     effectiveIntelligence,
+    'slowMultiplier',
+  );
+  const slowDurationMs = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(
+        world,
+        holderEid,
+        spellId,
+        slowOutput.slowDurationMs,
+        effectiveIntelligence,
+      ),
+    ),
   );
   pushVfxEvent(world.vfxEvents, {
     kind: 'curseBurst',
@@ -355,19 +456,40 @@ function castFrostNova(
   effectiveIntelligence: number,
   novaOutput: CatalogEffect & { type: 'spell_frost_nova' },
   sourceId: string,
+  spellId: string,
 ): void {
   const centerX = world.stores.position.x[casterEid] ?? 0;
   const centerY = world.stores.position.y[casterEid] ?? 0;
   const radiusFt = tilesToFeet(
     world,
-    resolveScalableOutput(novaOutput.radiusTiles, effectiveIntelligence),
+    resolveSpellOutput(world, casterEid, spellId, novaOutput.radiusTiles, effectiveIntelligence),
   );
   const radiusSq = radiusFt * radiusFt;
-  const damage = resolveScalableOutputRounded(novaOutput.damage, effectiveIntelligence);
-  const slowMultiplier = resolveScalableOutput(novaOutput.slowMultiplier, effectiveIntelligence);
-  const slowDurationMs = resolveScalableOutputRounded(
-    novaOutput.slowDurationMs,
+  const damage = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(world, casterEid, spellId, novaOutput.damage, effectiveIntelligence),
+    ),
+  );
+  const slowMultiplier = resolveSpellOutput(
+    world,
+    casterEid,
+    spellId,
+    novaOutput.slowMultiplier,
     effectiveIntelligence,
+    'slowMultiplier',
+  );
+  const slowDurationMs = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(
+        world,
+        casterEid,
+        spellId,
+        novaOutput.slowDurationMs,
+        effectiveIntelligence,
+      ),
+    ),
   );
   pushVfxEvent(world.vfxEvents, {
     kind: 'frostNovaBurst',
@@ -404,17 +526,23 @@ function castLifeDrain(
   world: GameWorld,
   casterEid: number,
   drainOutput: CatalogEffect & { type: 'spell_life_drain' },
+  spellId: string,
 ): void {
   const effectiveIntelligence = getEffectiveIntelligence(world, casterEid);
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
   const rangeFt = tilesToFeet(
     world,
-    resolveScalableOutput(drainOutput.rangeTiles, effectiveIntelligence),
+    resolveSpellOutput(world, casterEid, spellId, drainOutput.rangeTiles, effectiveIntelligence),
   );
   const target = findNearestLivingEnemy(world, casterEid, rangeFt);
   if (!target) return;
-  const damage = resolveScalableOutputRounded(drainOutput.damage, effectiveIntelligence);
+  const damage = Math.max(
+    1,
+    Math.round(
+      resolveSpellOutput(world, casterEid, spellId, drainOutput.damage, effectiveIntelligence),
+    ),
+  );
   const dealt = applyDamage(world, target.eid, damage, target.x, target.y, {
     ...SPELL_DAMAGE_OPTIONS,
     sourceX: casterX,
@@ -428,7 +556,9 @@ function castLifeDrain(
   // together without one deriving from the other's post-crit/overkill result.
   const healAmount = Math.max(
     1,
-    resolveScalableOutputRounded(drainOutput.heal, effectiveIntelligence),
+    Math.round(
+      resolveSpellOutput(world, casterEid, spellId, drainOutput.heal, effectiveIntelligence),
+    ),
   );
   const max = world.stores.health.max[casterEid] ?? 100;
   const current = world.stores.health.current[casterEid] ?? 0;
@@ -443,6 +573,7 @@ function castLifeDrain(
 
 export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffectOptions): void {
   const { sourceType, sourceId, effect, expiresFrame, holderEid } = options;
+  const spellId = sourceId.split(':', 1)[0] ?? '';
 
   switch (effect.type) {
     case 'stat_add':
@@ -493,25 +624,25 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
 
     case 'spell_fireball':
       if (holderEid !== undefined) {
-        castFireball(world, holderEid, effect);
+        castFireball(world, holderEid, effect, spellId);
       }
       break;
 
     case 'spell_heal':
       if (holderEid !== undefined) {
-        castHeal(world, holderEid, effect);
+        castHeal(world, holderEid, effect, spellId);
       }
       break;
 
     case 'spell_pulse_shield':
       if (holderEid !== undefined) {
-        castPulseShield(world, holderEid, effect);
+        castPulseShield(world, holderEid, effect, spellId);
       }
       break;
 
     case 'spell_magic_missile':
       if (holderEid !== undefined) {
-        castMagicMissile(world, holderEid, effect);
+        castMagicMissile(world, holderEid, effect, spellId);
       }
       break;
 
@@ -523,6 +654,7 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
           getEffectiveIntelligence(world, holderEid),
           effect,
           sourceId,
+          spellId,
         );
       }
       break;
@@ -538,6 +670,7 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
           effect.modifiers,
           holderEid,
           effect.vfxColor,
+          spellId,
         );
       }
       break;
@@ -550,13 +683,14 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
           sourceId,
           getEffectiveIntelligence(world, holderEid),
           effect,
+          spellId,
         );
       }
       break;
 
     case 'spell_life_drain':
       if (holderEid !== undefined) {
-        castLifeDrain(world, holderEid, effect);
+        castLifeDrain(world, holderEid, effect, spellId);
       }
       break;
   }
