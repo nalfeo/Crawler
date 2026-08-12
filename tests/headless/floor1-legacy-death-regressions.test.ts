@@ -69,6 +69,10 @@ describe('Floor 1 boss-entry readiness and arena lock-in regressions', () => {
             maxFrames: BOSS_LOCKIN_MAX_FRAMES,
             maxWallTimeMs: MAX_WALL_TIME_MS,
             forceWeaponId: weapon,
+            // Record every decision frame: the lock-in assertion below needs the
+            // exact frame a boss becomes the target, which the default 15-frame
+            // sample interval can skip.
+            eventSampleInterval: 1,
             recordEvent: (event) => events.push(event),
           },
         );

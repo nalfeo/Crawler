@@ -634,6 +634,35 @@ export async function runHeadless(
   const floor1BossDefeatedMs = new Map<string, number>();
   const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
 
+  // Latches the Floor 1 boss encounter transitions for the frame that just ran.
+  // Called immediately after runSimulationStep/frameCount++ so a lethal frame —
+  // which breaks out of the loop before any later telemetry block — still records
+  // the frame, time, level, health, and boss eid of a start/defeat that happened
+  // on that same frame.
+  const captureFloor1BossTransitions = (): void => {
+    const bossBattles = world.floorScenario?.objective.bossBattles;
+    if (world.floorId !== 'floor1' || !bossBattles) {
+      return;
+    }
+    for (const [bossId, encounter] of bossBattles) {
+      if (encounter.started && !floor1BossStartedFrame.has(bossId)) {
+        floor1BossStartedFrame.set(bossId, frameCount);
+        floor1BossStartedMs.set(bossId, world.elapsedMs);
+        floor1BossStartedLevel.set(bossId, world.playerLevel?.level ?? 0);
+        const currentHealth = world.stores.health.current[playerEid] ?? 0;
+        const maxHealth = world.stores.health.max[playerEid] ?? 0;
+        floor1BossStartedHealthFraction.set(bossId, maxHealth > 0 ? currentHealth / maxHealth : 0);
+        if (encounter.bossEid !== null) {
+          floor1BossStartedEid.set(bossId, encounter.bossEid);
+        }
+      }
+      if (encounter.defeated && !floor1BossDefeatedFrame.has(bossId)) {
+        floor1BossDefeatedFrame.set(bossId, frameCount);
+        floor1BossDefeatedMs.set(bossId, world.elapsedMs);
+      }
+    }
+  };
+
   // NPC interaction tracking
   let lastNpcInteractionFrame = -1000;
   const NPC_INTERACTION_COOLDOWN = 30; // frames
@@ -890,6 +919,10 @@ export async function runHeadless(
       // helpers below) keeps frameCount/safeRoomFrames consistent with
       // world.elapsedMs even if a later helper throws and we emit crash stats.
       frameCount++;
+      // Latch Floor 1 boss lifecycle transitions before any early exit (death
+      // guards) or auto-action helper can run, so a start/defeat on a lethal
+      // frame is still recorded with its frame/time/eid evidence.
+      captureFloor1BossTransitions();
       if (world.playerInSafeRoom === true) {
         safeRoomFrames++;
       }
@@ -1131,29 +1164,6 @@ export async function runHeadless(
         if (questState.status === 'complete' && !questLogCompletedMs.has(questId)) {
           questLogCompletedMs.set(questId, world.elapsedMs);
           recordEvent?.(buildEvent('quest', enemyEids, `questlog completed: ${questId}`));
-        }
-      }
-      const floor1BossBattles = world.floorScenario?.objective.bossBattles;
-      if (world.floorId === 'floor1' && floor1BossBattles) {
-        for (const [bossId, encounter] of floor1BossBattles) {
-          if (encounter.started && !floor1BossStartedFrame.has(bossId)) {
-            floor1BossStartedFrame.set(bossId, frameCount);
-            floor1BossStartedMs.set(bossId, world.elapsedMs);
-            floor1BossStartedLevel.set(bossId, world.playerLevel?.level ?? 0);
-            const currentHealth = world.stores.health.current[playerEid] ?? 0;
-            const maxHealth = world.stores.health.max[playerEid] ?? 0;
-            floor1BossStartedHealthFraction.set(
-              bossId,
-              maxHealth > 0 ? currentHealth / maxHealth : 0,
-            );
-            if (encounter.bossEid !== null) {
-              floor1BossStartedEid.set(bossId, encounter.bossEid);
-            }
-          }
-          if (encounter.defeated && !floor1BossDefeatedFrame.has(bossId)) {
-            floor1BossDefeatedFrame.set(bossId, frameCount);
-            floor1BossDefeatedMs.set(bossId, world.elapsedMs);
-          }
         }
       }
       const floor2State = world.floorExtendedState?.familyState;
