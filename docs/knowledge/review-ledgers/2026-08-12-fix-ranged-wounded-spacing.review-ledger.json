@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "1642a0738c16cd80863d4a41f7e9dc78c62413c0",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change flawlessly implements weapon-reach-aware wounded ranged spacing. It calculates defensiveOrbit with the correct bounds (30% reach, clamped 10-14ft, and never below healthyOrbit), scales the pressure radius seamlessly to include the approach buffer, and uses the correct hysteresis multiplier to prevent AI snapback. It adds focused tests for the new behaviors (reach scaling and multi-threat latching) while preserving existing test validity. The diff is surgically scoped, policy-compliant, and well-written."
     }
   }
 }
