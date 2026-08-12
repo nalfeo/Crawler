@@ -6,8 +6,9 @@
  * codebase, and to give tests a clean construct-from-options path that
  * bypasses env entirely.
  *
- * Supports two backends for image generation:
+ * Supports three backends for image generation:
  * - `azure-openai` (default, direct Azure OpenAI resource; ADR 0072)
+ * - `foundry` (Azure AI Foundry OpenAI-compatible image deployments)
  * - `local-a1111` (local Stable Diffusion WebUI A1111/Forge fork)
  *
  * Switch on `SPRITES_PROVIDER` / `SPRITES_TEXT_PROVIDER` /
@@ -56,11 +57,11 @@ const DEFAULT_AZURE_API_VERSION = '2025-04-01-preview';
 export const DEFAULT_AZURE_DEPLOYMENT = 'gpt-image-1';
 
 /**
- * Supported content-generation backends (ADR 0072). `azure-openai` hits a
- * direct Azure OpenAI resource; `local-a1111` hits a local Stable Diffusion
- * WebUI. `azure-openai` is the default; `local-a1111` is opt-in via env.
+ * Supported content-generation backends. `azure-openai` hits a direct Azure
+ * OpenAI resource, `foundry` hits an Azure AI Foundry OpenAI-compatible image
+ * deployment, and `local-a1111` hits a local Stable Diffusion WebUI.
  */
-const SUPPORTED_BACKENDS = ['azure-openai', 'local-a1111'] as const;
+const SUPPORTED_BACKENDS = ['azure-openai', 'foundry', 'local-a1111'] as const;
 type Backend = (typeof SUPPORTED_BACKENDS)[number];
 
 function resolveBackend(value: string | undefined, varName: string): Backend {
@@ -129,6 +130,9 @@ export function createImageProvider(options: CreateProviderOptions = {}): ImageP
   if (which === 'local-a1111') {
     return createLocalA1111ImageProvider(env, options.fetch);
   }
+  if (which === 'foundry') {
+    return createFoundryImageProvider(env, options.fetch);
+  }
   return createAzureProvider(env, options.fetch);
 }
 
@@ -190,6 +194,24 @@ function createAzureProvider(
   const apiKey = required(env, 'AZURE_OPENAI_API_KEY');
   const deployment = env.AZURE_OPENAI_IMAGE_DEPLOYMENT ?? DEFAULT_AZURE_DEPLOYMENT;
   const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
+  return new AzureOpenAIImageProvider({
+    endpoint,
+    deployment,
+    apiKey,
+    apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+function createFoundryImageProvider(
+  env: Readonly<Record<string, string | undefined>>,
+  fetchImpl?: typeof fetch,
+): ImageProvider {
+  const endpoint = required(env, 'FOUNDRY_ENDPOINT');
+  const apiKey = required(env, 'FOUNDRY_API_KEY');
+  const deployment = required(env, 'FOUNDRY_IMAGE_MODEL');
+  const apiVersion = env.FOUNDRY_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
   return new AzureOpenAIImageProvider({
     endpoint,
     deployment,
@@ -289,6 +311,11 @@ export function resolveAzureChatConfig(options: CreateProviderOptions = {}): Azu
     env.SPRITES_SYNTH_PROVIDER ?? env.SPRITES_TEXT_PROVIDER,
     'SPRITES_SYNTH_PROVIDER',
   );
+  if (which === 'foundry') {
+    throw new Error(
+      'Foundry synthesis is not restored yet; use SPRITES_SYNTH_PROVIDER=azure-openai.',
+    );
+  }
   if (which === 'local-a1111') {
     throw new Error(
       `local-a1111 does not support synthesis. Set SPRITES_SYNTH_PROVIDER to azure-openai.`,
@@ -322,6 +349,11 @@ export function createBriefSelectorProvider(
     env.SPRITES_SYNTH_PROVIDER ?? env.SPRITES_TEXT_PROVIDER,
     'SPRITES_SYNTH_PROVIDER',
   );
+  if (which === 'foundry') {
+    throw new Error(
+      'Foundry brief selection is not restored yet; use SPRITES_SYNTH_PROVIDER=azure-openai.',
+    );
+  }
   if (which === 'local-a1111') return null;
   const endpoint = env.AZURE_OPENAI_ENDPOINT;
   const apiKey = env.AZURE_OPENAI_API_KEY;
