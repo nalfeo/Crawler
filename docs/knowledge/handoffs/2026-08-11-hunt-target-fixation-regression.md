@@ -17,6 +17,8 @@ ai-behavior-tree, ai-pathfinding
 Estimated 4 apples, rescored to 2 apples after investigation. Current main already
 contained the narrow runtime fix and its behavior-tree regression, so the final
 merge-intent change is one real-headless outcome and determinism guard.
+Final actual: 2 apples. Calibration verdict: accurate after rescore; no apple
+record file is required for a 1-2 apple session.
 
 ## Summary
 

@@ -8,57 +8,62 @@ import { GAME } from '../../src/shared/constants.js';
 const MAX_FRAMES = 23_760;
 const MAX_GAME_TIME_MS = MAX_FRAMES * GAME.DELTA_MS;
 const MAX_WALL_TIME_MS = 170_000;
+const TEST_TIMEOUT_MS = MAX_WALL_TIME_MS * 2 + 20_000;
 
 describe('Floor 1 tutorial hunt fixation regression', () => {
-  it('sword seed 14 escapes the unreachable-target stall and wins within budget', async () => {
-    const seed = 14;
-    const weapon = 'sword';
-    const run = () =>
-      runHeadless(
-        new BehaviorTreeAI({
-          seed,
-          pathingMode: AIPathingMode.RISK_REWARD_FUSED,
-          decisionMode: AIDecisionMode.LEGACY,
-        }),
-        {
-          seed,
-          maxFrames: MAX_FRAMES,
-          maxWallTimeMs: MAX_WALL_TIME_MS,
-          forceWeaponId: weapon,
-        },
-      );
-    const stats = await run();
-    const replay = await run();
+  it(
+    'sword seed 14 escapes the unreachable-target stall and wins within budget',
+    async () => {
+      const seed = 14;
+      const weapon = 'sword';
+      const run = () =>
+        runHeadless(
+          new BehaviorTreeAI({
+            seed,
+            pathingMode: AIPathingMode.RISK_REWARD_FUSED,
+            decisionMode: AIDecisionMode.LEGACY,
+          }),
+          {
+            seed,
+            maxFrames: MAX_FRAMES,
+            maxWallTimeMs: MAX_WALL_TIME_MS,
+            forceWeaponId: weapon,
+          },
+        );
+      const stats = await run();
+      const replay = await run();
 
-    expect(stats.startingWeapon).toBe(weapon);
-    expect(stats.quests.questLogCompletions['floor1-tutorial']).toBeDefined();
-    expect(stats.combat.totalKills).toBeGreaterThan(0);
-    expect(stats.outcome).toBe('victory');
-    expect(isOfficialWin(stats, MAX_GAME_TIME_MS)).toBe(true);
-    expect({
-      outcome: replay.outcome,
-      totalFrames: replay.totalFrames,
-      gameTimeMs: replay.gameTimeMs,
-      finalScore: replay.finalScore,
-      finalLevel: replay.finalLevel,
-      totalXp: replay.totalXp,
-      totalGold: replay.totalGold,
-      combat: replay.combat,
-      health: replay.health,
-      quests: replay.quests,
-      aiTelemetry: replay.aiTelemetry,
-    }).toEqual({
-      outcome: stats.outcome,
-      totalFrames: stats.totalFrames,
-      gameTimeMs: stats.gameTimeMs,
-      finalScore: stats.finalScore,
-      finalLevel: stats.finalLevel,
-      totalXp: stats.totalXp,
-      totalGold: stats.totalGold,
-      combat: stats.combat,
-      health: stats.health,
-      quests: stats.quests,
-      aiTelemetry: stats.aiTelemetry,
-    });
-  });
+      expect(stats.startingWeapon).toBe(weapon);
+      expect(stats.quests.questLogCompletions['floor1-tutorial']).toBeDefined();
+      expect(stats.combat.totalKills).toBeGreaterThan(0);
+      expect(stats.outcome).toBe('victory');
+      expect(isOfficialWin(stats, MAX_GAME_TIME_MS)).toBe(true);
+      expect({
+        outcome: replay.outcome,
+        totalFrames: replay.totalFrames,
+        gameTimeMs: replay.gameTimeMs,
+        finalScore: replay.finalScore,
+        finalLevel: replay.finalLevel,
+        totalXp: replay.totalXp,
+        totalGold: replay.totalGold,
+        combat: replay.combat,
+        health: replay.health,
+        quests: replay.quests,
+        aiTelemetry: replay.aiTelemetry,
+      }).toEqual({
+        outcome: stats.outcome,
+        totalFrames: stats.totalFrames,
+        gameTimeMs: stats.gameTimeMs,
+        finalScore: stats.finalScore,
+        finalLevel: stats.finalLevel,
+        totalXp: stats.totalXp,
+        totalGold: stats.totalGold,
+        combat: stats.combat,
+        health: stats.health,
+        quests: stats.quests,
+        aiTelemetry: stats.aiTelemetry,
+      });
+    },
+    TEST_TIMEOUT_MS,
+  );
 });
