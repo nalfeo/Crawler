@@ -1,5 +1,16 @@
 [
   {
+    "commit": "1dfc57635919f48f464de481d55970ad1808f133",
+    "commitDate": "2026-08-11T23:38:42Z",
+    "commitSubject": "fix(ci): restore PR disposition helper scope (#2817)",
+    "capturedAt": "2026-08-12T00:43:54.386Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31547888573",
+    "winRate": 0.9716666666666667,
+    "totalWins": 583,
+    "totalRuns": 600,
+    "path": "by-sha/1dfc57635919f48f464de481d55970ad1808f133.json"
+  },
+  {
     "commit": "acacf6374d3a3183f05148ac08c60a484b07c2cd",
     "commitDate": "2026-08-10T11:23:09Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2804)",
