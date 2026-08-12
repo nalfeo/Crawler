@@ -371,6 +371,55 @@ export function buildFloor1GoalGraph(snapshot: Floor1RunPlannerSnapshot): Floor1
     );
   }
 
+  // --- Optional post-spellbook spell broker purchase bundle. -------------
+  // When the 25% seeded spell intent is active and spells are unlocked (after
+  // the boss battle + spellbook claim), add a farm+buy detour back to the
+  // Spell Quest Giver (the broker). The generic route planner decides whether
+  // it fits the remaining time budget.
+  const spellBrokerIntent = snapshot.spellBrokerIntent;
+  if (
+    snapshot.spellsUnlocked &&
+    (spellBrokerIntent?.status === 'farming' || spellBrokerIntent?.status === 'returning')
+  ) {
+    let spellBrokerTail: GoalId[] = [];
+    const spellGoldOwed = Math.max(0, spellBrokerIntent.cost - snapshot.playerGold);
+    if (spellBrokerIntent.status === 'farming' && spellGoldOwed > 0) {
+      add(
+        {
+          id: 'farm-spell-broker-gold',
+          location: IN_PLACE_LOCATION,
+          workCost: 0,
+          prerequisiteIds: [],
+          required: false,
+          optionalBundleId: 'spell-broker-purchase',
+        },
+        {
+          label: 'Farm spell broker gold',
+          kind: 'detour',
+          phase: 'detour',
+          detail: `${spellGoldOwed} gold remaining to buy a spell from the broker`,
+        },
+      );
+      spellBrokerTail = ['farm-spell-broker-gold'];
+    }
+    add(
+      {
+        id: 'buy-broker-spell',
+        location: 'spellQuestGiver',
+        workCost: 0,
+        prerequisiteIds: spellBrokerTail,
+        required: false,
+        optionalBundleId: 'spell-broker-purchase',
+      },
+      {
+        label: 'Buy spell from broker',
+        kind: 'detour',
+        phase: 'detour',
+        detail: 'Return to the Spell Broker and purchase the offered spell',
+      },
+    );
+  }
+
   // --- Spell-broker chain (sequential within itself; independent of shop). -
   let spellTail: GoalId[] = preChainAnchor;
 
@@ -559,6 +608,10 @@ export function applyFloor1WorkCosts(
     0,
     (snapshot.merchantWeaponIntent?.cost ?? 0) - snapshot.playerGold,
   );
+  const spellBrokerGoldOwed = Math.max(
+    0,
+    (snapshot.spellBrokerIntent?.cost ?? 0) - snapshot.playerGold,
+  );
 
   const workCostById: Record<string, number> = {
     'meet-tutorial-goon': params.interactionMs,
@@ -572,6 +625,8 @@ export function applyFloor1WorkCosts(
     'equip-shop-charm': params.interactionMs,
     'farm-merchant-weapon-gold': merchantWeaponGoldOwed * params.goldFarmMs,
     'buy-merchant-weapon': params.interactionMs,
+    'farm-spell-broker-gold': spellBrokerGoldOwed * params.goldFarmMs,
+    'buy-broker-spell': params.interactionMs,
     'accept-spell-quest': params.interactionMs,
     'kill-slime-rat': params.minorBossKillMs,
     'finish-slime-rat': params.minorBossKillMs,

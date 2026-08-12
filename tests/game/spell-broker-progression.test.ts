@@ -21,8 +21,11 @@ import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js
 import {
   configureSpellBrokerPurchase,
   ensureSpellBrokerDecision,
+  markSpellBrokerPurchased,
+  updateSpellBrokerIntent,
   SPELL_BROKER_AI_PURCHASE_CHANCE,
 } from '../../src/game/ai/spell-broker-intent.js';
+import type { Floor1RunPlan } from '../../src/game/ai/run-planner.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
 import {
   FLOOR1_SPELL_BROKER_COST,
@@ -60,6 +63,19 @@ describe('Floor 1 Spell Broker', () => {
     expect(
       getSpellBrokerOffers(world).find((entry) => entry.spellId === offer.spellId)?.purchased,
     ).toBe(true);
+  });
+
+  it('rejects purchaseSpellBrokerSpell when floorScenario is absent (offer.purchased mutation would be lost)', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeBaseStats(world, player);
+    // Do NOT call initializeFloor1Scenario — world.floorScenario remains null.
+    world.featureUnlocks.spells = true;
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    const [offer] = generateFloor1SpellBrokerOffers(42);
+    world.playerGold = offer!.cost;
+
+    expect(purchaseSpellBrokerSpell(world, player, offer!.spellId)).toBe(false);
   });
 
   it('keeps the normal budget at one purchase rather than two', () => {
@@ -100,6 +116,71 @@ describe('spell skills', () => {
       expect(SPELL_BROKER_AI_PURCHASE_CHANCE).toBe(0.25);
       expect(bought).toBeGreaterThanOrEqual(200);
       expect(bought).toBeLessThanOrEqual(300);
+    });
+
+    it('stays idle until spells are unlocked then transitions to farming/returning', () => {
+      const world = createTestWorld({ seed: 1 });
+      configureSpellBrokerPurchase(world, true);
+      const decision = ensureSpellBrokerDecision(world);
+      if (!decision.shouldBuy) return; // seed 1 must be a buy seed; skip if not
+
+      world.playerGold = 0; // below cost → farming once active
+      world.featureUnlocks.spells = false;
+
+      // Pre-boss: stays idle.
+      const preUnlock = updateSpellBrokerIntent(world, null, 3_000);
+      expect(preUnlock.purchaseStatus).toBe('idle');
+
+      // Post-boss: transitions to farming (gold < cost).
+      world.featureUnlocks.spells = true;
+      const farming = updateSpellBrokerIntent(world, null, 3_000);
+      expect(farming.purchaseStatus).toBe('farming');
+
+      // Gold reaches the cost: transitions to returning.
+      world.playerGold = decision.cost;
+      const returning = updateSpellBrokerIntent(world, null, 3_000);
+      expect(returning.purchaseStatus).toBe('returning');
+    });
+
+    it('transitions to abandoned when planner drops the spell-broker-purchase bundle', () => {
+      const world = createTestWorld({ seed: 1 });
+      configureSpellBrokerPurchase(world, true);
+      const decision = ensureSpellBrokerDecision(world);
+      if (!decision.shouldBuy) return;
+
+      world.featureUnlocks.spells = true;
+      world.playerGold = 0;
+      // Activate first.
+      updateSpellBrokerIntent(world, null, 3_000);
+
+      // Planner drops the bundle.
+      const droppedPlan: Pick<
+        Floor1RunPlan,
+        'slackMs' | 'droppedOptionalBundleIds' | 'includedOptionalBundleIds'
+      > = {
+        slackMs: 0,
+        droppedOptionalBundleIds: ['spell-broker-purchase'],
+        includedOptionalBundleIds: [],
+      };
+      const dropped = updateSpellBrokerIntent(world, droppedPlan as Floor1RunPlan, 3_000);
+      expect(dropped.purchaseStatus).toBe('abandoned');
+    });
+
+    it('markSpellBrokerPurchased sets purchaseStatus to purchased and is idempotent', () => {
+      const world = createTestWorld({ seed: 1 });
+      configureSpellBrokerPurchase(world, true);
+      ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+      updateSpellBrokerIntent(world, null, 3_000);
+
+      markSpellBrokerPurchased(world);
+      const afterMark = updateSpellBrokerIntent(world, null, 3_000);
+      expect(afterMark.purchaseStatus).toBe('purchased');
+
+      // Idempotent.
+      markSpellBrokerPurchased(world);
+      const afterSecond = updateSpellBrokerIntent(world, null, 3_000);
+      expect(afterSecond.purchaseStatus).toBe('purchased');
     });
   });
 

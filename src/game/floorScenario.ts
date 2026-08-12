@@ -4342,13 +4342,15 @@ export function purchaseSpellBrokerSpell(
   playerEid: number,
   spellId: string,
 ): boolean {
+  // Require the durable floor scenario so `offer.purchased = true` persists
+  // for the lifetime of this run.  A missing scenario means the floor was
+  // never initialized — reject cleanly rather than mutating a discarded array.
+  if (!world.floorScenario?.spellBrokerOffers) return false;
   if (!canPurchaseSpellBrokerSpell(world, playerEid, spellId)) return false;
-  const offer = getSpellBrokerOffers(world).find((entry) => entry.spellId === spellId);
+  const offer = world.floorScenario.spellBrokerOffers.find((entry) => entry.spellId === spellId);
   if (!offer) return false;
-  const state = getOrCreateAbilityState(world, playerEid);
   memorizeSpell(world, playerEid, spellId);
   world.playerGold -= offer.cost;
   offer.purchased = true;
-  state.learnedSpellIds = [...new Set(state.learnedSpellIds)];
   return true;
 }

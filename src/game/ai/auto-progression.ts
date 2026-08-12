@@ -53,7 +53,7 @@ import {
   purchaseSpellBrokerSpell,
   spendPoints,
 } from '../index.js';
-import { ensureSpellBrokerDecision } from './spell-broker-intent.js';
+import { ensureSpellBrokerDecision, markSpellBrokerPurchased } from './spell-broker-intent.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
@@ -307,6 +307,7 @@ export function autoFloor1ProgressionSystem(
         canPurchaseSpellBrokerSpell(world, playerEid, id),
       );
       if (spellId !== undefined && purchaseSpellBrokerSpell(world, playerEid, spellId)) {
+        markSpellBrokerPurchased(world);
         return;
       }
     }

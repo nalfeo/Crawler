@@ -343,4 +343,82 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
     expect(preserveFloorClear.droppedOptionalBundleIds).toEqual(['merchant-weapon-purchase']);
     expect(preserveFloorClear.steps.map((step) => step.goalId)).toEqual(['take-stairs']);
   });
+
+  it('plans the spell broker purchase as one optional bundle when spellsUnlocked and spellBrokerIntent active', () => {
+    const snap = snapshot({
+      shopStage: 'complete',
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      bossBattleComplete: true,
+      staircaseStarted: true,
+      staircaseDefeated: true,
+      playerGold: 0,
+      spellBrokerIntent: { status: 'farming', cost: 35 },
+    });
+    const rawGraph = buildFloor1GoalGraph(snap);
+    const graph = applyFloor1WorkCosts(rawGraph, snap, PARAMS);
+    const oracle = makeStraightLineTravelOracle(graph.locations, PARAMS.moveSpeedFtPerMs);
+
+    // Ample budget: planner includes the spell broker bundle.
+    const withTime = planObjectiveRoute({
+      goals: graph.goals,
+      startLocation: PLAYER_START_LOCATION,
+      initialSatisfiedEffects: graph.initialSatisfiedEffects,
+      budgetMs: 1_000_000,
+      travelOracle: oracle,
+    });
+    expect(withTime.includedOptionalBundleIds).toContain('spell-broker-purchase');
+    const goalIds = withTime.steps.map((step) => step.goalId);
+    expect(goalIds).toContain('farm-spell-broker-gold');
+    expect(goalIds).toContain('buy-broker-spell');
+    // buy-broker-spell must come after farm-spell-broker-gold
+    expect(goalIds.indexOf('buy-broker-spell')).toBeGreaterThan(
+      goalIds.indexOf('farm-spell-broker-gold'),
+    );
+
+    // Tight budget: planner drops the optional bundle to preserve floor-clear.
+    const preserveFloorClear = planObjectiveRoute({
+      goals: graph.goals,
+      startLocation: PLAYER_START_LOCATION,
+      initialSatisfiedEffects: graph.initialSatisfiedEffects,
+      budgetMs: 1,
+      travelOracle: oracle,
+    });
+    expect(preserveFloorClear.includedOptionalBundleIds).toEqual([]);
+    expect(preserveFloorClear.droppedOptionalBundleIds).toContain('spell-broker-purchase');
+    expect(preserveFloorClear.steps.map((step) => step.goalId)).toEqual(['take-stairs']);
+  });
+
+  it('omits the spell broker bundle when spellsUnlocked is false (pre-boss-battle)', () => {
+    const snap = snapshot({
+      spellsUnlocked: false,
+      spellBrokerIntent: { status: 'farming', cost: 35 },
+    });
+    const graph = buildFloor1GoalGraph(snap);
+    const ids = graph.goals.map((g) => g.id);
+    expect(ids).not.toContain('farm-spell-broker-gold');
+    expect(ids).not.toContain('buy-broker-spell');
+  });
+
+  it('omits the farm-spell-broker-gold goal when already returning (gold sufficient)', () => {
+    const snap = snapshot({
+      shopStage: 'complete',
+      bossBattleAccepted: true,
+      slimeRatStarted: true,
+      slimeRatDefeated: true,
+      spellsUnlocked: true,
+      bossBattleComplete: true,
+      staircaseStarted: true,
+      staircaseDefeated: true,
+      playerGold: 100,
+      spellBrokerIntent: { status: 'returning', cost: 35 },
+    });
+    const rawGraph = buildFloor1GoalGraph(snap);
+    const graph = applyFloor1WorkCosts(rawGraph, snap, PARAMS);
+    const ids = graph.goals.map((g) => g.id);
+    expect(ids).not.toContain('farm-spell-broker-gold');
+    expect(ids).toContain('buy-broker-spell');
+  });
 });
