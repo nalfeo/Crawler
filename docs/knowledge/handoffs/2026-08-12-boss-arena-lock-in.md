@@ -10,7 +10,7 @@ Game AI Engineer
 
 ## Systems touched
 
-ai-headless-runner, boss-rooms
+ai-combat-balance, boss-rooms
 
 ## Apples
 
