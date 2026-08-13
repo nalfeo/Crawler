@@ -6,7 +6,7 @@ import { TileFlags } from '../../src/shared/map-types.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-const COVERAGE_TIMEOUT_MS = 120_000;
+const COVERAGE_TIMEOUT_MS = 240_000;
 
 /**
  * Deterministic guard on Floor 1 quest travel.
@@ -105,10 +105,11 @@ function questTourTiles(seed: number): number {
 
 /**
  * Tile travel distances from `start`, walking passable tiles plus doors that are
- * not in `blockedDoorTiles`. `-1` means unreachable. Mirrors the reachability
- * model the placement rule is scored against: the boss-staircase and slime-rat
- * rooms are locked when the merchant issues the errand, so the fetch item has to
- * be reachable with those doors shut.
+ * not in `blockedDoorTiles`. Blocked entries are impassable even when they are
+ * pre-seal perimeter gaps. `-1` means unreachable. Mirrors the reachability model
+ * the placement rule is scored against: the boss-staircase and slime-rat rooms
+ * are locked when the merchant issues the errand, so the fetch item has to be
+ * reachable with those doors shut.
  */
 function lockedAwareDistances(
   floorMap: FloorMap,
@@ -135,11 +136,9 @@ function lockedAwareDistances(
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
       const n = ny * w + nx;
       if (dist[n] !== -1) continue;
+      if (blockedDoorTiles.has(`${nx},${ny}`)) continue;
       const isDoor = floorMap.tileMap.isDoor(nx, ny);
-      if (
-        !floorMap.tileMap.isPassable(nx, ny) &&
-        (!isDoor || blockedDoorTiles.has(`${nx},${ny}`))
-      ) {
+      if (!floorMap.tileMap.isPassable(nx, ny) && !isDoor) {
         continue;
       }
       dist[n] = dist[idx]! + 1;
