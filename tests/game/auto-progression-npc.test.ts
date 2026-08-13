@@ -8,7 +8,11 @@ import {
   autoFloor2ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
-import { getOfferedBossRewardSpellIds } from '../../src/game/floorScenario.js';
+import {
+  getOfferedBossRewardSpellIds,
+  meetShopkeeper,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from '../../src/game/floorScenario.js';
 import {
   AINpcInteractionAction,
   AIState,
@@ -18,6 +22,7 @@ import {
 import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
 import equipmentDefsTestSeams from '../../src/shared/equipmentDefs.test-seams.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
@@ -25,7 +30,12 @@ import { addItem, hasItem } from '../../src/shared/inventory.js';
 import { _customTag as customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
 import type { NpcInstance } from '../../src/shared/npc-types.js';
 import { NPC_INTERACT_RANGE_FT } from '../../src/shared/npc-types.js';
-import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../src/shared/quest-types.js';
+import {
+  FLOOR1_SHOP_QUEST_ID,
+  SHOPKEEPER_EQUIPMENT_ITEM_ID,
+  SHOPKEEPER_FETCH_ITEM_ID,
+  SHOPKEEPER_FETCH_OBJECTIVE_ID,
+} from '../../src/shared/quest-types.js';
 import type { FloorExtendedState, GameWorld } from '../../src/core/world.js';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -679,6 +689,46 @@ describe('autoFloor1ProgressionSystem', () => {
       SHOPKEEPER_EQUIPMENT_ITEM_ID,
     );
   });
+
+  it.each(['sword', 'bow', 'baseball-bat', 'pistol', 'throwing-knife', 'fireball'])(
+    'does not return the merchant prize before the quest can latch it for %s',
+    (weaponId) => {
+      const world = createTestWorld();
+      const player = spawnPlayer(world, 0, 0);
+      world.floorScenario = makeFloor1({ staircaseUnlocked: false });
+      setActiveWeaponDef(world, getWeaponDef(weaponId)!);
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      addNpc(world, 100, { defId: 'shopkeeper', nearbyPlayer: true });
+      const bag = world.inventories.get(player)!;
+      addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST * 2;
+
+      autoFloor1ProgressionSystem(world, player);
+
+      expect(hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)).toBe(true);
+      expect(world.goalFlags.get('floor1-shop-prize-returned')).not.toBe(true);
+
+      meetShopkeeper(world);
+      autoFloor1ProgressionSystem(world, player);
+      expect(hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)).toBe(false);
+      expect(world.goalFlags.get('floor1-shop-prize-returned')).toBe(true);
+      expect(world.questLog.get(FLOOR1_SHOP_QUEST_ID)?.done[SHOPKEEPER_FETCH_OBJECTIVE_ID]).toBe(
+        true,
+      );
+
+      autoFloor1ProgressionSystem(world, player);
+      questSystem(world);
+
+      const equipment = getEquipmentState(world, player)!;
+      expect(equipment.instances.get(equipment.equipped.neck!)?.def.id).toBe(
+        SHOPKEEPER_EQUIPMENT_ITEM_ID,
+      );
+      expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
+      expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST);
+      expect(world.questLog.get(FLOOR1_SHOP_QUEST_ID)?.status).toBe('complete');
+      expect(world.goalFlags.get('floor1-shop-quest-complete')).toBe(true);
+    },
+  );
 
   it('can swap out weaker equipped gear for a better persona-scored replacement', () => {
     const world = createTestWorld();

@@ -100,6 +100,7 @@ import {
   FLOOR1_TUTORIAL_QUEST_ID,
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
+  SHOPKEEPER_FETCH_OBJECTIVE_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type ShopkeeperStage,
   type NpcQuestIndicatorState,
@@ -4160,9 +4161,16 @@ export function returnShopkeeperPrize(world: GameWorld, playerEid: number): bool
   if (!bag || !hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)) {
     return false;
   }
+  const quest = world.questLog.get(FLOOR1_SHOP_QUEST_ID);
+  if (quest?.status !== 'active') {
+    return false;
+  }
   if (world.goalFlags.get('floor1-shop-prize-returned') === true) {
     return false;
   }
+  // Observe the held tail at the consumption boundary so same-frame meet +
+  // return flows cannot remove it before the collect objective latches.
+  quest.done[SHOPKEEPER_FETCH_OBJECTIVE_ID] = true;
   removeItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
   setGoalFlag(world, 'floor1-shop-prize-returned', true);
   return true;
