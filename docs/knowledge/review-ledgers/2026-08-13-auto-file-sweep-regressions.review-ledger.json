@@ -37,7 +37,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "80843e1fb16ec00cd55c84c460af322e4f8f23e0",
+      "head_sha": "e684a858b8dbdd7267a243409ba1917f10108841",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -48,7 +48,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The implementation is robust and precise. It safely calculates regression thresholds using integer math to avoid floating-point issues and carefully walks the first-parent lineage to prevent out-of-order publication errors. The issue-filing script elegantly handles deduplication by using hidden HTML markers, reliably updates/reopens existing issues, and handles workflow assignments. Test coverage is extremely thorough, explicitly exercising boundary tolerances, data structure edge cases, and CI workflow boundaries. The scope is well-disciplined with no unrelated changes."
+      "notes": "The implementation correctly calculates regression thresholds and uses first-parent lineage to ensure accurate baseline comparisons. Deduplication and issue mutations are handled safely using HTML markers and robust GitHub API integration. Tests are comprehensive across bounds, edge cases, and CI workflow wiring, and the scope is perfectly focused."
     }
   }
 }
