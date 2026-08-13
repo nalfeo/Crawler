@@ -95,5 +95,9 @@
   "shopPricing": {
     "_note": "Floor 2 shop pricing (Issue #2367). Runtime price = basePrice * archetype.priceMultiplier * floor2TierMultiplier. Quartermaster generated stock uses the same tier multiplier so all Floor 2 shop surfaces stay in the same economy curve.",
     "floor2TierMultiplier": 2.5
+  },
+  "spellBroker": {
+    "_note": "Floor 1 Spell Broker price. Tuned above the 15g charm so a normal run can usually afford one spell, but not two.",
+    "cost": 35
   }
 }
