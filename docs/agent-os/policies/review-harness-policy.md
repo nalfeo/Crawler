@@ -61,7 +61,7 @@ The required stages scale with the apple estimate you declare per
   written; every concern is resolved. The plan-review floor was raised **2🍎 → 3🍎
   on 2026-07-07** to match the code-review floor, which already moved to 3🍎 on
   **2026-07-02** (ADR 0036 / handoff
-  `docs/knowledge/handoffs/2026-07-02-streamline-verify-ci-gates.md`). A 2🍎 change
+  `docs/knowledge/handoffs/archive/2026-07-02-streamline-verify-ci-gates.md`). A 2🍎 change
   now records its tier in a ledger but requires **no** review stages.
 - **adversarial plan review** (4–5🍎) — at the top tier the plan review must
   **red-team** the design: the reviewer enumerates **≥2 alternative approaches** and
