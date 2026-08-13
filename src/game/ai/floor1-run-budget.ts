@@ -1,7 +1,10 @@
 import { GAME } from '../../shared/constants.js';
+import { floor1Config } from '../../shared/floor-config.js';
 
 /** Official Floor 1 active-time budget shared by AI planning and evaluation. */
 export const FLOOR1_ACTIVE_TIME_BUDGET_MS = 6 * 60 * 1000;
+
+const FLOOR1_MANIFEST_DEADLINE_MS = floor1Config.timer.durationMs;
 
 /** Raw simulation cap that leaves room for safe-room-credited official wins. */
 export const FLOOR1_DEFAULT_MAX_FRAMES = Math.ceil(
@@ -33,7 +36,7 @@ export function resolveFloor1PlanningDeadlineMs(
   }
   return Math.min(
     objectiveDeadlineMs,
-    FLOOR1_ACTIVE_TIME_BUDGET_MS,
+    FLOOR1_ACTIVE_TIME_BUDGET_MS + Math.max(0, objectiveDeadlineMs - FLOOR1_MANIFEST_DEADLINE_MS),
     runnerDeadlineMs ?? Number.POSITIVE_INFINITY,
   );
 }

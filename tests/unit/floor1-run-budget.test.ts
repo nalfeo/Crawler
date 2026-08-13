@@ -20,6 +20,7 @@ describe('Floor 1 run budget', () => {
 
   it('never plans past the active budget, manifest deadline, or runner cap', () => {
     expect(resolveFloor1PlanningDeadlineMs(600_000)).toBe(FLOOR1_ACTIVE_TIME_BUDGET_MS);
+    expect(resolveFloor1PlanningDeadlineMs(630_000)).toBe(FLOOR1_ACTIVE_TIME_BUDGET_MS + 30_000);
     expect(resolveFloor1PlanningDeadlineMs(300_000)).toBe(300_000);
     expect(resolveFloor1PlanningDeadlineMs(600_000, 120_000)).toBe(120_000);
   });
