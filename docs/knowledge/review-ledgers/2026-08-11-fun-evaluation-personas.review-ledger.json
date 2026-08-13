@@ -37,13 +37,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-opus-4.7",
+      "head_sha": "a5025a996057ba724e355027ca735882afc16b86",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff implements the requested deterministic playtest personas and fun evaluator cleanly. It robustly parses the persona flags, applies config overrides, calculates the persona-specific scores, and includes well-tested logic for tracking baseline comparisons. The testing is thorough and covers both the CLI argument parsing and the core score computation, and all repository policies are respected."
     }
   }
 }

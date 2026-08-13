@@ -12,11 +12,14 @@ export const PLAYER_PERSONAS: readonly PlayerPersona[] = [
 ];
 
 /**
- * `experienced_player` is the production baseline cohort, so it is derived
- * from {@link DEFAULT_CONFIG} by construction rather than re-typed here — a
- * copied literal can drift the moment production tuning is re-promoted.
+ * Production tuning defaults, minus the run-scoped `seed`/`debug`. Doubles as
+ * the `experienced_player` preset (that cohort IS the production baseline, so
+ * it is derived by construction rather than re-typed — a copied literal drifts
+ * the moment production tuning is re-promoted) and as the fill-in baseline for
+ * knobs a persona preset omits, which is exactly what `BehaviorTreeAI` falls
+ * back to at runtime.
  */
-const EXPERIENCED_PLAYER_CONFIG: PersonaConfig = (() => {
+const PRODUCTION_TUNING_DEFAULTS: PersonaConfig = (() => {
   const { seed: _seed, debug: _debug, ...tuning } = DEFAULT_CONFIG;
   return tuning;
 })();
@@ -33,7 +36,7 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
     collectPullWeight: 0.55,
     farmPullWeight: 0.05,
   },
-  experienced_player: EXPERIENCED_PLAYER_CONFIG,
+  experienced_player: PRODUCTION_TUNING_DEFAULTS,
   min_max_cheeser: {
     aggression: 1.8,
     retreatThreshold: 0.12,
@@ -81,7 +84,9 @@ export function personaConfigDivergence(
   persona: PlayerPersona,
   overrides: PersonaOverrides,
 ): string[] {
-  const baseline: PersonaConfig = { ...EXPERIENCED_PLAYER_CONFIG, ...PERSONA_CONFIGS[persona] };
+  // Knobs the preset omits fall back to production defaults at runtime, so the
+  // divergence baseline must fill them in the same way.
+  const baseline: PersonaConfig = { ...PRODUCTION_TUNING_DEFAULTS, ...PERSONA_CONFIGS[persona] };
   const keys = ['aggression', 'pathingMode', 'decisionMode'] as const;
   return keys
     .filter((key) => overrides[key] !== undefined && overrides[key] !== baseline[key])
