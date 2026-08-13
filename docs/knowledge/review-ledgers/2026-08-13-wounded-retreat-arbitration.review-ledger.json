@@ -57,13 +57,37 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "7e0a217c2f2e2017ba6298c50377a780bb51fa46",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/ai/bt-ai-provider.ts",
+          "detail": "The recovery watchdog clock only samples target HP when LocalThreatRecovery ticks, while frameCount continues under higher-priority Retreat. Re-latching the same eid does not reset the timer, so a long retreat can make the next recovery tick conservatively blacklist the threat. This yields to progression and cannot deadlock; refreshing the timer or health sample on same-eid re-latch would align semantics more precisely."
+        },
+        {
+          "severity": "minor",
+          "file": "src/game/ai/bt-ai-provider.ts",
+          "detail": "The non-obvious recovery ownership, HP-progress watchdog, and endRetreat blacklist exemption are documented in the handoff rather than beside the implementation. A short rationale comment would reduce future archaeology."
+        },
+        {
+          "severity": "minor",
+          "file": "tests/game/behavior-tree-ai.test.ts",
+          "detail": "The abandonment test writes private watchdog fields to isolate the timeout branch rather than advancing frames, and does not directly cover every map/range cleanup branch. Additional black-box timing and cleanup tests would harden the suite."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 3,
+      "notes": "Independent verification at HEAD 7e0a217c found the exact fix fail-to-pass, the targeted and broader suites green, deterministic frame-based behavior, correct layer boundaries, bounded recovery, and complete process artifacts. Residual findings are minor and non-blocking."
     }
   }
 }
