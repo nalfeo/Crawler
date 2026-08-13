@@ -2881,6 +2881,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       return;
     }
 
+    // Local retreat-threat recovery owns this ENGAGE target and has its own
+    // HP-loss watchdog budget (NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES).
+    // Keep the generic ENGAGE watchdog from pre-empting that budget.
+    if (this.localThreatRecoveryEid === eid) {
+      this.engageNoProgressFrames = 0;
+      this.engageBaselinesByEid.delete(eid);
+      return;
+    }
+
     // Inside a safe room the weapon is hard-disabled, so the player can neither
     // close the final ft nor drop the enemy's HP. That is not "unreachable" —
     // the LeaveSafeRoom behavior is actively walking the player out. Resetting

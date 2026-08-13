@@ -1903,7 +1903,55 @@ describe('BehaviorTreeAI', () => {
     });
   });
 
-  it('abandons post-retreat recovery after the engage watchdog budget', () => {
+  it('does not let the engage watchdog preempt post-retreat local threat recovery', () => {
+    const { world, player, enemies } = setupNpcApproachThreat('throwing-knife');
+    world.stores.health.current[player] = 8;
+    world.stores.health.max[player] = 100;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+    const internals = ai as unknown as {
+      localThreatRecoveryEid: number | null;
+      engageNoProgressFrames: number;
+      engageBaselinesByEid: Map<number, { bestDistance: number; bestHp: number }>;
+      ignoredEnemyUntilFrame: Map<number, number>;
+    };
+    const retreatThreatEid = internals.localThreatRecoveryEid;
+    expect(retreatThreatEid).not.toBeNull();
+    for (const [index, enemy] of enemies.entries()) {
+      world.stores.position.x[enemy] = 46 + index * 2;
+      world.stores.position.y[enemy] = 14;
+    }
+
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+    expect(decision).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: retreatThreatEid,
+    });
+
+    internals.engageNoProgressFrames = ENGAGE_GIVEUP_FRAMES;
+    const ex = world.stores.position.x[retreatThreatEid!] ?? 0;
+    const ey = world.stores.position.y[retreatThreatEid!] ?? 0;
+    const hp = world.stores.health.current[retreatThreatEid!] ?? 0;
+    internals.engageBaselinesByEid.set(retreatThreatEid!, {
+      bestDistance: Math.hypot(
+        ex - (world.stores.position.x[player] ?? 0),
+        ey - (world.stores.position.y[player] ?? 0),
+      ),
+      bestHp: hp,
+    });
+
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: retreatThreatEid,
+    });
+    expect(internals.ignoredEnemyUntilFrame.has(retreatThreatEid!)).toBe(false);
+  });
+
+  it('abandons post-retreat recovery after the local no-damage budget', () => {
     const { world, player, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('throwing-knife');
     world.stores.health.current[player] = 8;
     world.stores.health.max[player] = 100;
