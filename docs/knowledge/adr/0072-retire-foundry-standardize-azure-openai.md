@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-07-24) — supersedes ADR 0033.
+Superseded by [ADR 0083 — Restore Foundry Image Provider for OpenAI-Compatible Deployments](0083-restore-foundry-image-provider.md) (2026-08-12).
 
 ## Date
 
@@ -22,7 +22,7 @@ model router, cheaper minis) via Azure AI Foundry's unified inference endpoint.
 
 1. **No deployments exist.** The Azure AI Foundry resource `aif-crawler-nalfeo`
    (swedencentral, `AIServices` kind) has **zero deployments** — `az cognitiveservices
-   account deployment list` returns `[]`. No quota was obtainable for that resource.
+account deployment list` returns `[]`. No quota was obtainable for that resource.
 
 2. **CI used a misnomer.** Because `aif-crawler-nalfeo` had no deployments, the
    `FOUNDRY_*` CI secrets were repointed at the plain Azure OpenAI account
@@ -37,7 +37,7 @@ model router, cheaper minis) via Azure AI Foundry's unified inference endpoint.
    reasoning model `gpt-5-mini`, which **rejects `max_tokens` and `temperature`**.
    Result: every CI generation returned 400 and was dropped as "permanent."
    - Error: `Azure chat (brief-selector) returned 400: Unsupported parameter: 'max_tokens'
-     is not supported with this model. Use 'max_completion_tokens' instead.`
+is not supported with this model. Use 'max_completion_tokens' instead.`
    - All 8 fresh generations per run were dropped.
 
 4. **The azure-openai backend works end-to-end.** The `azure-openai` backend — which

@@ -127,35 +127,55 @@ describe('createSynthProvider — chat deployment fallback', () => {
   });
 });
 
-describe('unknown backend rejection (ADR 0072 — foundry retired)', () => {
-  it('SPRITES_PROVIDER=foundry throws with an unknown-backend error', () => {
-    expect(() => createImageProvider({ env: { SPRITES_PROVIDER: 'foundry' } })).toThrow(
-      /Unknown SPRITES_PROVIDER/,
-    );
+describe('Foundry image backend', () => {
+  it('builds from FOUNDRY_* when SPRITES_PROVIDER=foundry', () => {
+    const provider = createImageProvider({
+      env: {
+        SPRITES_PROVIDER: 'foundry',
+        FOUNDRY_ENDPOINT: 'https://swedencentral.api.cognitive.microsoft.com',
+        FOUNDRY_API_KEY: 'foundry-key',
+        FOUNDRY_IMAGE_MODEL: 'bench-gpt-image-2',
+      },
+    });
+    expect(provider).not.toBeNull();
   });
 
-  it('SPRITES_TEXT_PROVIDER=foundry throws with an unknown-provider error', () => {
+  it('requires the Foundry image deployment alias', () => {
+    expect(() =>
+      createImageProvider({
+        env: {
+          SPRITES_PROVIDER: 'foundry',
+          FOUNDRY_ENDPOINT: 'https://swedencentral.api.cognitive.microsoft.com',
+          FOUNDRY_API_KEY: 'foundry-key',
+        },
+      }),
+    ).toThrow(/FOUNDRY_IMAGE_MODEL/);
+  });
+});
+
+describe('unknown backend rejection', () => {
+  it('rejects foundry for text providers until their API contract is restored', () => {
     expect(() => createTextProvider({ env: { SPRITES_TEXT_PROVIDER: 'foundry' } })).toThrow(
       /Unknown SPRITES_TEXT_PROVIDER/,
     );
   });
 
-  it('SPRITES_VISION_PROVIDER=foundry throws with an unknown-provider error', () => {
+  it('rejects foundry for vision providers until their API contract is restored', () => {
     expect(() => createVisionProvider({ env: { SPRITES_VISION_PROVIDER: 'foundry' } })).toThrow(
       /Unknown SPRITES_VISION_PROVIDER/,
     );
   });
 
-  it('SPRITES_SYNTH_PROVIDER=foundry throws via resolveBackend', () => {
+  it('rejects foundry for synthesis providers until their API contract is restored', () => {
     expect(() => createSynthProvider({ env: { SPRITES_SYNTH_PROVIDER: 'foundry' } })).toThrow(
-      /Unknown SPRITES_SYNTH_PROVIDER/,
+      /Foundry synthesis is not restored/,
     );
   });
 
-  it('SPRITES_SYNTH_PROVIDER=foundry throws for createBriefSelectorProvider', () => {
+  it('rejects foundry for brief selector providers until their API contract is restored', () => {
     expect(() =>
       createBriefSelectorProvider({ env: { SPRITES_SYNTH_PROVIDER: 'foundry' } }),
-    ).toThrow(/Unknown SPRITES_SYNTH_PROVIDER/);
+    ).toThrow(/Foundry brief selection is not restored/);
   });
 
   it('rejects other unknown backend values too', () => {
