@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-12",
+  "session_slug": "shared-seed-52-unlock-route",
+  "task_title": "Fix shared seed 52 unlock-route failures",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adopted the reviewer-discovered authoritative post-carve placement pass and full pre-unlock reachability invariant. Alt A patch only the provisional joint selector was rejected because the later pass overwrites item/broker placement. Alt B special-case planner errors was rejected because it masks invalid maps. Alt C post-hoc connector carving was rejected because it mutates authored room geometry and can weaken gates. Chosen: make final placement lock-aware for shop, item, and broker while preserving deterministic scoring; add 1-100 class coverage plus exact headless evidence."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.6-terra",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "claude-sonnet-5"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

@@ -149,16 +149,22 @@ function lockedAwareDistances(
   return dist;
 }
 
-interface FetchPlacement {
+interface PreUnlockPlacement {
   /** Walk from the merchant to the fetch item, with locked doors shut. */
   readonly distance: number;
   /** Longest such walk available to any room on the floor. */
   readonly maxDistance: number;
   /** Walk from the player spawn to the fetch item, with locked doors shut. */
   readonly spawnDistance: number;
+  /** Walk from spawn to the merchant with both boss rooms locked. */
+  readonly merchantSpawnDistance: number;
+  /** Walk from spawn to the Spell Broker with both boss rooms locked. */
+  readonly spellBrokerSpawnDistance: number;
+  /** Walk from the merchant to the Slime Rat arena after its doors unlock. */
+  readonly slimeRatDistanceAfterUnlock: number;
 }
 
-function fetchPlacement(seed: number): FetchPlacement {
+function preUnlockPlacement(seed: number): PreUnlockPlacement {
   const world = createTestWorld({ seed });
   const playerEid = spawnPlayer(world, 400, 400);
   getScenarioDefinition('floor1').configureWorld(world, playerEid);
@@ -175,6 +181,11 @@ function fetchPlacement(seed: number): FetchPlacement {
   const fromSpawn = lockedAwareDistances(floorMap, floorMap.playerSpawn, locked);
   const item = toTile(objective.questItemPos);
   const itemIndex = item.y * floorMap.width + item.x;
+  const merchant = toTile(objective.shopRoomPos);
+  const spellBroker = toTile(objective.spellQuestGiverPos);
+  const slimeRat = toTile(objective.slimeRatRoomPos);
+  const staircaseLocked = buildInitiallyLockedDoorTileSet(floorMap, [objective.staircasePos]);
+  const afterSlimeUnlock = lockedAwareDistances(floorMap, merchant, staircaseLocked);
   let maxDistance = 0;
   for (const room of floorMap.rooms) {
     const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
@@ -185,6 +196,9 @@ function fetchPlacement(seed: number): FetchPlacement {
     distance: fromMerchant[itemIndex]!,
     maxDistance,
     spawnDistance: fromSpawn[itemIndex]!,
+    merchantSpawnDistance: fromSpawn[merchant.y * floorMap.width + merchant.x]!,
+    spellBrokerSpawnDistance: fromSpawn[spellBroker.y * floorMap.width + spellBroker.x]!,
+    slimeRatDistanceAfterUnlock: afterSlimeUnlock[slimeRat.y * floorMap.width + slimeRat.x]!,
   };
 }
 
@@ -196,7 +210,8 @@ function fetchPlacement(seed: number): FetchPlacement {
 // Thresholds sit above the measured distribution with headroom for ordinary
 // generator churn, so they catch a re-inflation of the route rather than normal
 // seed-to-seed variation.
-const SEEDS = Array.from({ length: 24 }, (_, i) => i + 1);
+const TOUR_SEEDS = Array.from({ length: 24 }, (_, i) => i + 1);
+const PROGRESSION_STATE_SEEDS = Array.from({ length: 100 }, (_, i) => i + 1);
 const MAX_MEDIAN_TOUR_TILES = 1250;
 const MAX_TOUR_TILES = 1900;
 
@@ -205,7 +220,7 @@ describe('Floor 1 quest tour length', () => {
     'keeps the required quest tour bounded across a seed prefix',
     { timeout: COVERAGE_TIMEOUT_MS },
     () => {
-      const tours = SEEDS.map((seed) => ({ seed, tiles: questTourTiles(seed) }));
+      const tours = TOUR_SEEDS.map((seed) => ({ seed, tiles: questTourTiles(seed) }));
       for (const { seed, tiles } of tours) {
         expect(tiles, `seed ${seed} quest tour is ${tiles} tiles`).toBeLessThanOrEqual(
           MAX_TOUR_TILES,
@@ -224,10 +239,28 @@ describe('Floor 1 quest tour length', () => {
       // The boss-staircase and slime-rat rooms start locked. An item behind either
       // one makes the merchant errand unsatisfiable and the AI route planner
       // throws `unreachable-required-goal`.
-      for (const seed of SEEDS) {
-        const { distance, spawnDistance } = fetchPlacement(seed);
+      for (const seed of PROGRESSION_STATE_SEEDS) {
+        const {
+          distance,
+          spawnDistance,
+          merchantSpawnDistance,
+          spellBrokerSpawnDistance,
+          slimeRatDistanceAfterUnlock,
+        } = preUnlockPlacement(seed);
         expect(spawnDistance, `seed ${seed}: rat tail unreachable from spawn`).toBeGreaterThan(0);
         expect(distance, `seed ${seed}: rat tail unreachable from the merchant`).toBeGreaterThan(0);
+        expect(
+          merchantSpawnDistance,
+          `seed ${seed}: merchant unreachable from spawn`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          spellBrokerSpawnDistance,
+          `seed ${seed}: Spell Broker unreachable from spawn`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          slimeRatDistanceAfterUnlock,
+          `seed ${seed}: Slime Rat arena unreachable after its quest unlock`,
+        ).toBeGreaterThan(0);
       }
     },
   );
@@ -241,8 +274,8 @@ describe('Floor 1 quest tour length', () => {
       // wider than the observed spread because room granularity limits how close
       // any single seed can land to the 2/3 target; the median assertion is what
       // pins the rule itself.
-      const fractions = SEEDS.map((seed) => {
-        const { distance, maxDistance } = fetchPlacement(seed);
+      const fractions = TOUR_SEEDS.map((seed) => {
+        const { distance, maxDistance } = preUnlockPlacement(seed);
         expect(maxDistance, `seed ${seed}: no reachable rooms from the merchant`).toBeGreaterThan(
           0,
         );
@@ -267,7 +300,7 @@ describe('Floor 1 quest tour length', () => {
     'does not send the player on a map-diameter round trip for the fetch item',
     () => {
       // The shop errand is walked twice, so it is the leg most worth bounding.
-      for (const seed of SEEDS.slice(0, 12)) {
+      for (const seed of TOUR_SEEDS.slice(0, 12)) {
         const world = createTestWorld({ seed });
         const playerEid = spawnPlayer(world, 400, 400);
         getScenarioDefinition('floor1').configureWorld(world, playerEid);

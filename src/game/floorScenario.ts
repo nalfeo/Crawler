@@ -797,6 +797,13 @@ function selectMerchantAnchoredQuestItemAndSlime(
 ):
   | { itemEntry: ObjectiveRoomCandidate; slimeEntry: ObjectiveRoomCandidate | undefined }
   | undefined {
+  const staircaseDoorTiles = buildInitiallyLockedDoorTileSet(floorMap, [staircasePos]);
+  const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
+  const travelToSlimeFromMerchant = buildTravelDistanceField(
+    floorMap,
+    merchantTile,
+    staircaseDoorTiles,
+  );
   const rankEntries = (entries: readonly ObjectiveRoomCandidate[]) =>
     entries
       .map((itemEntry) => {
@@ -804,6 +811,10 @@ function selectMerchantAnchoredQuestItemAndSlime(
         const specialPointsForSlime = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
         const slimeEntry = candidates
           .filter((entry) => entry.room.id !== shopRoomId && entry.room.id !== itemEntry.room.id)
+          .filter((entry) => {
+            const slimePos = resolvePassableRoomCenter(floorMap, entry.room);
+            return distanceFromFieldAtWorldPos(floorMap, travelToSlimeFromMerchant, slimePos) >= 0;
+          })
           .sort((a, b) => {
             const aPos = resolvePassableRoomCenter(floorMap, a.room);
             const bPos = resolvePassableRoomCenter(floorMap, b.room);
@@ -830,7 +841,6 @@ function selectMerchantAnchoredQuestItemAndSlime(
           staircasePos,
           slimePos,
         ]);
-        const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
         const travelFromMerchant = buildTravelDistanceField(
           floorMap,
           merchantTile,
