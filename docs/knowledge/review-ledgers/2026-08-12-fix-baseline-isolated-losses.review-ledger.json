@@ -42,13 +42,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "9e68ed97fbbf308bde81a21918ae3dab81b88b01",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff adds an opt-in blockedStartRecovery contract to the strict Floor 1 travel oracle: when the configured player-start location's center maps to an impassable tile, it evaluates only cardinal neighbor tiles whose rectangles physically intersect the player body (AABB closest-point vs radius-squared, with EPSILON on the boundary), runs the unchanged strict A* from each, and takes the minimum finite cost. Recovery is correctly scoped to from === recovery.locationId and gated on !passable(startTile), so all other legs, blocked goals, diagonal-only openings, locked doors, unconfigured starts, and zero/negative radius remain strict Infinity failures. Five focused unit tests plus the exact fireball-25 real-headless regression cover the change. Determinism is preserved, the memoization key incorporates the effects set that drives passability, the bt-ai-provider wiring passes canonical Size.radius, and no layer boundary or runtime system wiring contract is violated."
     }
   }
 }
