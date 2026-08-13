@@ -62,14 +62,14 @@ export function updateMerchantWeaponIntent(
   goldFarmMs: number,
 ): MerchantWeaponIntent {
   let intent = getMerchantWeaponIntent(world);
-  const spellBrokerIntent = ensureSpellBrokerDecision(world);
-  if (intent.enabled && isSpellBrokerPurchaseActive(spellBrokerIntent)) {
-    return intent;
-  }
   if (!intent.enabled || intent.status === 'declined' || intent.status === 'purchased') {
     return intent;
   }
   if (intent.status === 'abandoned') {
+    return intent;
+  }
+  const spellBrokerIntent = ensureSpellBrokerDecision(world);
+  if (isSpellBrokerPurchaseActive(spellBrokerIntent)) {
     return intent;
   }
   if (world.goalFlags.get('floor1-shop-quest-complete') !== true) {
