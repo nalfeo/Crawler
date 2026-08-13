@@ -54,7 +54,7 @@ export function renderHtml(instanceId) {
     }
     .controls {
       display: grid;
-      grid-template-columns: minmax(120px, .35fr) minmax(220px, 1fr) auto;
+      grid-template-columns: minmax(120px, .35fr) minmax(180px, .7fr) minmax(220px, 1fr) auto;
       gap: 8px;
       margin-bottom: 12px;
       padding: 10px;
@@ -253,7 +253,9 @@ export function renderHtml(instanceId) {
     <select id="source-select" aria-label="Sweep result source">
       <option value="cloud">Cloud runs</option>
       <option value="local">Local session</option>
+      <option value="repository">Repository branch</option>
     </select>
+    <select id="branch-select" aria-label="Repository baseline branch" hidden></select>
     <select id="run-select" aria-label="Cloud sweep run">
       <option>Loading cloud runs…</option>
     </select>
@@ -300,18 +302,60 @@ export function renderHtml(instanceId) {
     return created + ' · Floors ' + floors + ' · ' + run.name;
   }
 
+  function repositoryArtifactLabel(artifact) {
+    const created = artifact.generatedAt
+      ? new Date(artifact.generatedAt).toLocaleString()
+      : 'unknown time';
+    const rate = Number.isFinite(Number(artifact.winRate))
+      ? (Number(artifact.winRate) * 100).toFixed(1) + '%'
+      : 'unknown win rate';
+    return created + ' · ' + rate + ' · ' + (artifact.name || artifact.path);
+  }
+
+  function renderBranchSelector(state) {
+    const select = document.getElementById('branch-select');
+    const repository = state.source === 'repository';
+    select.hidden = !repository;
+    if (!repository) return;
+    const branches = state.repositoryBranches || [];
+    if (!branches.length) {
+      select.innerHTML = '<option value="">No benchmark branches found</option>';
+      select.disabled = true;
+      return;
+    }
+    select.innerHTML = branches.map((branch) =>
+      '<option value="' + esc(branch.name) + '"'
+        + (branch.name === state.selectedRepositoryBranch?.name ? ' selected' : '')
+        + '>' + esc(branch.name) + (branch.local ? ' · local' : ' · origin') + '</option>'
+    ).join('');
+    select.disabled = state.refreshing;
+  }
+
   function renderRunSelector(state) {
     const select = document.getElementById('run-select');
     const cloud = state.source === 'cloud';
-    const runs = cloud ? (state.runs || []) : (state.localRuns || []);
-    select.setAttribute('aria-label', cloud ? 'Cloud sweep run' : 'Local sweep result');
+    const repository = state.source === 'repository';
+    const runs = cloud
+      ? (state.runs || [])
+      : repository
+        ? (state.repositoryArtifacts || [])
+        : (state.localRuns || []);
+    select.setAttribute(
+      'aria-label',
+      cloud ? 'Cloud sweep run' : repository ? 'Repository result artifact' : 'Local sweep result',
+    );
     if (!runs.length) {
-      if (!cloud && state.path) {
+      if (!cloud && !repository && state.path) {
         select.innerHTML = '<option value="' + esc(state.path) + '" selected>Explicit path · ' + esc(state.path) + '</option>';
         select.disabled = state.refreshing;
         return;
       }
-      select.innerHTML = '<option value="">No ' + (cloud ? 'cloud sweep runs' : 'local session results') + ' found</option>';
+      const sourceLabel = cloud
+        ? 'cloud sweep runs'
+        : repository
+          ? 'repository result artifacts'
+          : 'local session results';
+      select.innerHTML = '<option value="">No ' + sourceLabel + ' found</option>';
       select.disabled = true;
       return;
     }
@@ -319,6 +363,12 @@ export function renderHtml(instanceId) {
       select.setAttribute('aria-label', 'Cloud sweep run');
       select.innerHTML = runs.map((run) =>
         '<option value="' + run.id + '"' + (run.id === state.selectedRun?.id ? ' selected' : '') + '>' + esc(runLabel(run)) + '</option>'
+      ).join('');
+    } else if (repository) {
+      select.innerHTML = runs.map((artifact) =>
+        '<option value="' + esc(artifact.path) + '"'
+          + (artifact.path === state.selectedRepositoryPath ? ' selected' : '')
+          + '>' + esc(repositoryArtifactLabel(artifact)) + '</option>'
       ).join('');
     } else {
       select.setAttribute('aria-label', 'Local sweep result');
@@ -339,10 +389,15 @@ export function renderHtml(instanceId) {
       element.textContent = message || '';
     }
     const localErrors = document.getElementById('local-errors');
-    const invalidResults = state.source === 'local' ? (state.localErrors || []) : [];
+    const invalidResults = state.source === 'local'
+      ? (state.localErrors || [])
+      : state.source === 'repository'
+        ? (state.repositoryErrors || [])
+        : [];
     localErrors.hidden = invalidResults.length === 0;
     localErrors.textContent = invalidResults.length
-      ? 'Invalid local result files:\\n' + invalidResults.map((entry) => entry.name + ': ' + entry.message).join('\\n')
+      ? (state.source === 'repository' ? 'Invalid repository result files:\\n' : 'Invalid local result files:\\n')
+        + invalidResults.map((entry) => entry.name + ': ' + entry.message).join('\\n')
       : '';
   }
 
@@ -350,7 +405,12 @@ export function renderHtml(instanceId) {
     const status = document.getElementById('status');
     const run = state.selectedRun;
     const pieces = [];
-    pieces.push('<span class="pill">' + esc(state.source === 'cloud' ? 'GitHub Actions' : 'Local session') + '</span>');
+    const sourceLabel = state.source === 'cloud'
+      ? 'GitHub Actions'
+      : state.source === 'repository'
+        ? 'Repository branch'
+        : 'Local session';
+    pieces.push('<span class="pill">' + esc(sourceLabel) + '</span>');
     if (run) {
       const workflowType = state.workflowType || run.workflowType;
       if (workflowType === 'ai-sweep') {
@@ -373,6 +433,16 @@ export function renderHtml(instanceId) {
     if (state.source === 'local') {
       const localCount = state.localRuns?.length || 0;
       pieces.push('<span class="pill">' + localCount + ' discovered local run' + (localCount === 1 ? '' : 's') + '</span>');
+    }
+    if (state.source === 'repository') {
+      if (state.selectedRepositoryBranch) {
+        pieces.push('<span class="pill">' + esc(state.selectedRepositoryBranch.name) + '</span>');
+      }
+      pieces.push(
+        '<span class="pill">' + (state.repositoryArtifacts?.length || 0)
+          + ' committed result artifact'
+          + ((state.repositoryArtifacts?.length || 0) === 1 ? '' : 's') + '</span>',
+      );
     }
     if (state.data) {
       const floors = Array.isArray(state.data.floors) ? state.data.floors.join(', ') : 'Unknown';
@@ -537,10 +607,42 @@ export function renderHtml(instanceId) {
     content.innerHTML = html;
   }
 
+  function renderBaselineResults(state) {
+    const content = document.getElementById('content');
+    if (!state.data) {
+      content.innerHTML = '<div class="empty-state">'
+        + (state.refreshing ? 'Loading baseline snapshot…' : 'No baseline snapshot loaded.')
+        + '</div>';
+      return;
+    }
+    const data = state.data;
+    let html = '<section><h2>Baseline summary</h2><div class="table-wrap"><table><thead><tr>'
+      + '<th>Floor</th><th>Wins</th><th>Runs</th><th>Win rate</th><th>Captured</th>'
+      + '</tr></thead><tbody><tr><td>' + esc(data.floorId || 'unknown') + '</td><td>'
+      + esc(data.totalWins) + '</td><td>' + esc(data.totalRuns) + '</td><td><span class="winrate '
+      + winRateClass(data.winRate) + '">' + fmtPct(data.winRate) + '</span></td><td>'
+      + esc(data.meta?.capturedAt ? new Date(data.meta.capturedAt).toLocaleString() : 'unknown')
+      + '</td></tr></tbody></table></div></section>';
+    html += '<section><h2>Per-weapon win rate</h2><div class="table-wrap"><table><thead><tr>'
+      + '<th>Weapon</th><th>Wins</th><th>Runs</th><th>Win rate</th><th>Slow victories</th>'
+      + '</tr></thead><tbody>';
+    for (const weapon of data.perWeapon || []) {
+      const rate = weapon.runs ? weapon.wins / weapon.runs : 0;
+      html += '<tr><td class="weapon-name">' + esc(weapon.weapon) + '</td><td>'
+        + esc(weapon.wins) + '</td><td>' + esc(weapon.runs) + '</td><td><span class="winrate '
+        + winRateClass(rate) + '">' + fmtPct(rate) + '</span></td><td>'
+        + esc(weapon.slowVictories ?? 0) + '</td></tr>';
+    }
+    html += '</tbody></table></div></section>';
+    content.innerHTML = html;
+  }
+
   function renderResults(state) {
     const workflowType = state.workflowType || state.selectedRun?.workflowType;
     if (workflowType === 'ai-sweep') {
       renderAiSweepResults(state);
+    } else if (workflowType === 'baseline') {
+      renderBaselineResults(state);
     } else {
       renderWeaponSweepResults(state);
     }
@@ -550,15 +652,22 @@ export function renderHtml(instanceId) {
     currentState = state;
     document.getElementById('source-select').value = state.source;
     document.getElementById('source-select').disabled = state.refreshing;
+    renderBranchSelector(state);
     const meta = document.getElementById('meta');
     meta.textContent = state.source === 'cloud'
       ? (state.repository || 'Unknown repository') + ' · attached branch ' + (state.branch || 'detached')
-      : (state.path || state.localDirectory || 'No local path');
+      : state.source === 'repository'
+        ? (state.repository || 'Unknown repository') + ' · '
+          + (state.selectedRepositoryBranch?.name || 'No benchmark branch')
+          + (state.selectedRepositoryPath ? ' · ' + state.selectedRepositoryPath : '')
+        : (state.path || state.localDirectory || 'No local path');
     document.getElementById('reload').disabled = state.refreshing;
     const workflowType = state.workflowType || state.selectedRun?.workflowType;
     const titleEl = document.getElementById('page-title');
     if (titleEl) {
-      titleEl.textContent = workflowType === 'ai-sweep' ? '🤖 AI Sweep Eval Results' : '🗡️ Weapon Sweep Results';
+      titleEl.textContent = workflowType === 'ai-sweep'
+        ? '🤖 AI Sweep Eval Results'
+        : '🗡️ Weapon Sweep Results';
     }
     renderRunSelector(state);
     renderMessages(state);
@@ -600,11 +709,31 @@ export function renderHtml(instanceId) {
     }
   });
 
+  document.getElementById('branch-select').addEventListener('change', async (event) => {
+    event.target.disabled = true;
+    try {
+      render(await request('/api/select-repository-branch', {
+        method: 'POST',
+        body: JSON.stringify({ branch: event.target.value }),
+      }));
+    } catch (error) {
+      const element = document.getElementById('connection-error');
+      element.hidden = false;
+      element.textContent = 'Branch selection failed: ' + error.message;
+      if (currentState) render(currentState);
+    }
+  });
+
   document.getElementById('run-select').addEventListener('change', async (event) => {
     event.target.disabled = true;
     try {
       if (currentState?.source === 'local') {
         render(await request('/api/select-local', {
+          method: 'POST',
+          body: JSON.stringify({ path: event.target.value }),
+        }));
+      } else if (currentState?.source === 'repository') {
+        render(await request('/api/select-repository-artifact', {
           method: 'POST',
           body: JSON.stringify({ path: event.target.value }),
         }));

@@ -25,7 +25,18 @@ import {
   stabilizeTerminalSnapshot,
 } from './lib/state-helpers.mjs';
 import { transitionToLocalSource } from './lib/local-source-transition.mjs';
-import { safeLocalRun, safeRun, stateSnapshot } from './lib/state-snapshot.mjs';
+import {
+  listBenchmarkBranches,
+  listRepositoryResultArtifacts,
+  readRepositoryResultArtifact,
+} from './lib/repository-results.mjs';
+import {
+  safeLocalRun,
+  safeRepositoryArtifact,
+  safeRepositoryBranch,
+  safeRun,
+  stateSnapshot,
+} from './lib/state-snapshot.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -343,6 +354,7 @@ async function switchToLocal(instanceId, path) {
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
   cancelRefresh(state);
   transitionToLocalSource(state);
+  state.repositoryArtifactKind = null;
   const catalogMatch = state.localRuns.find((run) => run.path === path);
   return loadLocalSelection(
     instanceId,
@@ -358,6 +370,7 @@ async function switchToLocalCatalog(instanceId, requestedPath) {
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
   cancelRefresh(state);
   transitionToLocalSource(state);
+  state.repositoryArtifactKind = null;
   state.refreshing = true;
   state.error = null;
   state.warning = null;
@@ -440,6 +453,7 @@ async function switchToCloudRun(instanceId, runId) {
   }
   cancelRefresh(state);
   state.source = 'cloud';
+  state.repositoryArtifactKind = null;
   state.selectedRun = selectedRun;
   state.selectionReason = 'explicit-run';
   state.expectedWeapons = [];
@@ -459,11 +473,136 @@ async function switchToCloud(instanceId) {
   const selectedRunId = state.selectedRun?.id;
   cancelRefresh(state);
   state.source = 'cloud';
+  state.repositoryArtifactKind = null;
   state.data = null;
   state.error = null;
   state.warning = null;
   await initializeCloud(instanceId, selectedRunId);
   return state;
+}
+
+function applyRepositoryCatalog(state, catalog) {
+  state.selectedRepositoryBranch = catalog.branch;
+  state.repositoryArtifacts = catalog.artifacts;
+  state.repositoryErrors = catalog.errors;
+}
+
+async function loadRepositorySelection(instanceId, state, artifactPath) {
+  const generation = state.generation;
+  const branch = state.selectedRepositoryBranch;
+  state.selectedRepositoryPath = artifactPath;
+  state.refreshing = true;
+  state.error = null;
+  state.warning = null;
+  notifyClients(instanceId);
+  try {
+    const loaded = await runCancellableOperation(state, (signal) =>
+      readRepositoryResultArtifact(state.workingDirectory, branch, artifactPath, signal),
+    );
+    if (
+      state.closed ||
+      state.generation !== generation ||
+      state.source !== 'repository' ||
+      state.selectedRepositoryBranch?.ref !== branch.ref ||
+      state.selectedRepositoryPath !== artifactPath
+    ) {
+      return state;
+    }
+    state.data = loaded.data;
+    state.repositoryArtifactKind = loaded.kind;
+    state.loadedAt = Date.now();
+    state.lastRefreshedAt = new Date().toISOString();
+  } catch (error) {
+    if (state.generation !== generation || error?.name === 'AbortError') return state;
+    state.data = null;
+    state.repositoryArtifactKind = null;
+    state.loadedAt = null;
+    state.error = `Repository artifact load failed: ${errorMessage(error)}`;
+  } finally {
+    if (state.generation === generation && state.source === 'repository') {
+      state.refreshing = false;
+      notifyClients(instanceId);
+    }
+  }
+  return state;
+}
+
+async function switchToRepository(instanceId, requestedBranchName, requestedPath) {
+  const state = states.get(instanceId);
+  if (!state) throw new CanvasError('no_state', 'Canvas not open');
+  cancelRefresh(state);
+  state.source = 'repository';
+  state.selectedRun = null;
+  state.expectedWeapons = [];
+  state.availableWeapons = [];
+  state.expiredArtifactCount = 0;
+  state.jobPhases = null;
+  state.repositoryArtifactKind = null;
+  state.data = null;
+  state.loadedAt = null;
+  state.refreshing = true;
+  state.error = null;
+  state.warning = null;
+  const generation = state.generation;
+  notifyClients(instanceId);
+
+  try {
+    const { context, branches } = await runCancellableOperation(state, async (signal) => ({
+      context: state.context ?? (await resolveProjectContext(state.workingDirectory, signal)),
+      branches: await listBenchmarkBranches(state.workingDirectory, signal),
+    }));
+    if (state.closed || state.generation !== generation || state.source !== 'repository') {
+      return state;
+    }
+    state.context = context;
+    state.repositoryBranches = branches;
+    const selectedBranch =
+      branches.find((branch) => branch.name === requestedBranchName) ??
+      branches.find((branch) => branch.name === state.selectedRepositoryBranch?.name) ??
+      branches[0];
+    if (!selectedBranch) {
+      throw new Error('The repository baselines branch was not found locally or under origin.');
+    }
+    if (requestedBranchName && selectedBranch.name !== requestedBranchName) {
+      throw new Error(`Baseline branch "${requestedBranchName}" was not found.`);
+    }
+
+    const catalog = await runCancellableOperation(state, (signal) =>
+      listRepositoryResultArtifacts(state.workingDirectory, selectedBranch, signal),
+    );
+    if (state.closed || state.generation !== generation || state.source !== 'repository') {
+      return state;
+    }
+    applyRepositoryCatalog(state, catalog);
+    const selectedPath =
+      requestedPath ??
+      (state.selectedRepositoryPath &&
+      catalog.artifacts.some((artifact) => artifact.path === state.selectedRepositoryPath)
+        ? state.selectedRepositoryPath
+        : catalog.artifacts[0]?.path);
+    if (requestedPath && !catalog.artifacts.some((artifact) => artifact.path === requestedPath)) {
+      throw new Error(
+        `Repository result "${requestedPath}" is not available on ${selectedBranch.name}.`,
+      );
+    }
+    if (!selectedPath) {
+      state.selectedRepositoryPath = null;
+      state.selectionReason = 'no-repository-artifacts';
+      state.lastRefreshedAt = new Date().toISOString();
+      state.refreshing = false;
+      notifyClients(instanceId);
+      return state;
+    }
+    state.selectionReason = 'repository-branch-artifact';
+    return loadRepositorySelection(instanceId, state, selectedPath);
+  } catch (error) {
+    if (state.generation !== generation || error?.name === 'AbortError') return state;
+    state.refreshing = false;
+    state.error = `Repository branch load failed: ${errorMessage(error)}`;
+    state.lastRefreshedAt = new Date().toISOString();
+    notifyClients(instanceId);
+    return state;
+  }
 }
 
 async function reloadState(instanceId) {
@@ -477,6 +616,13 @@ async function reloadState(instanceId) {
       return switchToLocalCatalog(instanceId);
     }
     return switchToLocal(instanceId, state.path);
+  }
+  if (state.source === 'repository') {
+    return switchToRepository(
+      instanceId,
+      state.selectedRepositoryBranch?.name,
+      state.selectedRepositoryPath,
+    );
   }
   await refreshCloudState(instanceId, { refreshRuns: true });
   return state;
@@ -579,9 +725,31 @@ async function handleRequest(instanceId, token, request, response) {
         ? await switchToLocalCatalog(instanceId)
         : body.source === 'cloud'
           ? await switchToCloud(instanceId)
-          : null;
+          : body.source === 'repository'
+            ? await switchToRepository(instanceId)
+            : null;
     if (!state) {
       jsonResponse(response, 400, { error: `Unsupported source: ${body.source}` });
+      return;
+    }
+    if (url.pathname === '/api/select-repository-branch' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      const state = await switchToRepository(instanceId, body.branch);
+      jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
+      return;
+    }
+    if (url.pathname === '/api/select-repository-artifact' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      const state = states.get(instanceId);
+      if (!state) throw new CanvasError('no_state', 'Canvas not open');
+      if (
+        state.source !== 'repository' ||
+        !state.repositoryArtifacts.some((artifact) => artifact.path === body.path)
+      ) {
+        throw new CanvasError('repository_artifact_not_found', `Unknown artifact: ${body.path}`);
+      }
+      await loadRepositorySelection(instanceId, state, body.path);
+      jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
       return;
     }
     jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
@@ -618,7 +786,29 @@ async function startServer(instanceId, token, sessionLogger) {
 }
 
 function summaryPayload(state) {
-  const workflowType = state.selectedRun?.workflowType ?? null;
+  const workflowType = state.repositoryArtifactKind ?? state.selectedRun?.workflowType ?? null;
+  if (workflowType === 'baseline') {
+    if (!state.data) {
+      throw new CanvasError('no_data', state.error ?? 'No baseline data loaded');
+    }
+    return {
+      source: state.source,
+      repository: state.context?.repository ?? null,
+      branch: safeRepositoryBranch(state.selectedRepositoryBranch),
+      artifact: safeRepositoryArtifact(
+        state.repositoryArtifacts.find(
+          (artifact) => artifact.path === state.selectedRepositoryPath,
+        ),
+      ),
+      workflowType,
+      floorId: state.data.floorId ?? null,
+      capturedAt: state.data.meta?.capturedAt ?? null,
+      totalWins: state.data.totalWins,
+      totalRuns: state.data.totalRuns,
+      winRate: state.data.winRate,
+      perWeapon: state.data.perWeapon,
+    };
+  }
   if (workflowType === 'ai-sweep') {
     // For an AI sweep run, return leaderboard data if available, otherwise live phase status.
     if (!state.data && !state.jobPhases) {
@@ -643,7 +833,12 @@ function summaryPayload(state) {
   }
   return {
     source: state.source,
-    path: state.source === 'local' ? state.path : null,
+    path:
+      state.source === 'local'
+        ? state.path
+        : state.source === 'repository'
+          ? state.selectedRepositoryPath
+          : null,
     repository: state.context?.repository ?? null,
     run: safeRun(state.selectedRun),
     workflowType: workflowType ?? 'weapon-sweep',
@@ -670,8 +865,7 @@ const session = await joinSession({
     createCanvas({
       id: 'sweep-results-viewer',
       displayName: 'Sweep Results Viewer',
-      description:
-        'Browse GitHub Actions weapon-sweep and AI Sweep Eval runs with live progress, or load a local sweep JSON file.',
+      description: 'Browse GitHub Actions sweeps, local results, and committed baseline snapshots.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -686,25 +880,73 @@ const session = await joinSession({
             description:
               'Optional explicit local weapon-sweep JSON path. Cloud results remain the default.',
           },
+          branch: {
+            type: 'string',
+            description:
+              'Optional repository baseline branch to load instead of the default cloud source.',
+          },
+          artifactPath: {
+            type: 'string',
+            description: 'Optional committed JSON result path on the selected benchmark branch.',
+          },
         },
       },
       actions: [
         {
           name: 'select_source',
           description:
-            'Switch between the default cloud catalog and attached-session local results.',
+            'Switch between cloud, attached-session local, and repository baseline results.',
           inputSchema: {
             type: 'object',
-            properties: { source: { type: 'string', enum: ['cloud', 'local'] } },
+            properties: {
+              source: { type: 'string', enum: ['cloud', 'local', 'repository'] },
+            },
             required: ['source'],
           },
           handler: async (ctx) => {
             const state =
               ctx.input.source === 'local'
                 ? await switchToLocalCatalog(ctx.instanceId)
-                : await switchToCloud(ctx.instanceId);
+                : ctx.input.source === 'repository'
+                  ? await switchToRepository(ctx.instanceId)
+                  : await switchToCloud(ctx.instanceId);
             if (state.error) throw new CanvasError('source_switch_failed', state.error);
             return stateSnapshot(state, POLL_INTERVAL_MS);
+          },
+        },
+        {
+          name: 'list_repository_results',
+          description: 'List committed baseline snapshots from the repository baselines branch.',
+          handler: async (ctx) => {
+            const state = await switchToRepository(ctx.instanceId);
+            if (state.error) throw new CanvasError('repository_list_failed', state.error);
+            return {
+              branches: state.repositoryBranches.map(safeRepositoryBranch),
+              branch: safeRepositoryBranch(state.selectedRepositoryBranch),
+              artifacts: state.repositoryArtifacts.map(safeRepositoryArtifact),
+              errors: state.repositoryErrors,
+            };
+          },
+        },
+        {
+          name: 'select_repository_result',
+          description: 'Load a committed baseline snapshot from the repository baselines branch.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              branch: { type: 'string' },
+              path: { type: 'string' },
+            },
+            required: ['branch', 'path'],
+          },
+          handler: async (ctx) => {
+            const state = await switchToRepository(
+              ctx.instanceId,
+              ctx.input.branch,
+              ctx.input.path,
+            );
+            if (state.error) throw new CanvasError('repository_load_failed', state.error);
+            return summaryPayload(state);
           },
         },
         {
@@ -839,6 +1081,12 @@ const session = await joinSession({
             localDirectory: null,
             localRuns: [],
             localErrors: [],
+            repositoryBranches: [],
+            selectedRepositoryBranch: null,
+            repositoryArtifacts: [],
+            repositoryErrors: [],
+            selectedRepositoryPath: null,
+            repositoryArtifactKind: null,
             workingDirectory: ctx.session?.workingDirectory ?? null,
             sessionId: ctx.sessionId,
             context: null,
@@ -868,12 +1116,15 @@ const session = await joinSession({
 
         if (ctx.input?.path) {
           await switchToLocal(ctx.instanceId, ctx.input.path);
+        } else if (ctx.input?.branch || ctx.input?.artifactPath) {
+          await switchToRepository(ctx.instanceId, ctx.input?.branch, ctx.input?.artifactPath);
         } else {
           cancelRefresh(state);
           state.source = 'cloud';
           await initializeCloud(ctx.instanceId, ctx.input?.runId);
         }
-        const workflowType = state.selectedRun?.workflowType ?? null;
+        const workflowType =
+          state.repositoryArtifactKind ?? state.selectedRun?.workflowType ?? null;
         return {
           title: workflowType === 'ai-sweep' ? '🤖 AI Sweep Eval' : '🗡️ Sweep Results',
           status: state.selectedRun
