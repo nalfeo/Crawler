@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4046f454aba8190ce05890209a99c0b8ae51f662",
+    "commitDate": "2026-08-13T00:42:01Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2842)",
+    "capturedAt": "2026-08-13T01:38:23.897Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31655346943",
+    "winRate": 0.9716666666666667,
+    "totalWins": 583,
+    "totalRuns": 600,
+    "path": "by-sha/4046f454aba8190ce05890209a99c0b8ae51f662.json"
+  },
+  {
     "commit": "d82040939f79e49eeef76f22b97556b8fba11718",
     "commitDate": "2026-08-13T00:26:23Z",
     "commitSubject": "feat(sprites): restore Foundry image provider (#2840)",
