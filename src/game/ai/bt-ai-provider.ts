@@ -6293,6 +6293,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       const oracle = makeFloor1DoorAwareTravelOracle(world, graph.locations, {
         moveSpeedFtPerMs: params.moveSpeedFtPerMs,
         pathOptions: this.groundPathOptions(),
+        blockedStartRecovery: {
+          locationId: PLAYER_START_LOCATION,
+          bodyRadiusFt: world.stores.size.radius[playerEid] ?? 0,
+        },
       });
 
       const route = planObjectiveRoute({
