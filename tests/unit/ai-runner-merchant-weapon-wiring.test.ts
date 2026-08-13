@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('AI runner optional purchases wiring', () => {
-  it('exposes a single optionalPurchases flag defaulting to false', () => {
+  it('exposes a single optionalPurchases flag defaulting to true', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
 
-    // Single field default off
+    // Single field default on
     expect(source).toMatch(
-      /optionalPurchases:\s*persisted\?\.aiConfig\?\.optionalPurchases\s*\?\?\s*false/,
+      /optionalPurchases:\s*persisted\?\.aiConfig\?\.optionalPurchases\s*\?\?\s*true/,
     );
   });
 

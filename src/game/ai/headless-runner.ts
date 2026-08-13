@@ -251,11 +251,11 @@ export interface HeadlessRunnerConfig {
   weaponPersonas?: boolean;
   /**
    * Enable both optional AI purchases (merchant weapon + Floor 1 Spell Broker)
-   * as a single shared feature flag. Default false.
+   * as a single shared feature flag. Default true.
    *
    * When true the merchant-weapon purchase decision and the Spell Broker
-   * purchase decision are both armed.  When false (the default) neither fires,
-   * keeping the AI on the deterministic required-only path.
+   * purchase decision are both armed. When false neither fires, keeping the AI
+   * on the deterministic required-only path.
    *
    * Prefer this flag over the individual `merchantWeaponPurchase` /
    * `spellBrokerPurchase` fields, which are retained only for compatibility
@@ -318,7 +318,7 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: true,
-  optionalPurchases: false,
+  optionalPurchases: true,
   merchantWeaponPurchase: false,
   spellBrokerPurchase: false,
   settlementReturnRouting: false,
@@ -546,11 +546,14 @@ export async function runHeadless(
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
   // `optionalPurchases` is the canonical single flag.  When supplied it
   // overrides the individual deprecated fields; when absent the individual
-  // fields are used for backward compat with existing callers/tests.
+  // fields are used for backward compat with existing callers/tests. A caller
+  // that supplies no purchase flag inherits the canonical default.
   const purchasesEnabled =
     config.optionalPurchases !== undefined
       ? config.optionalPurchases
-      : mergedConfig.merchantWeaponPurchase || mergedConfig.spellBrokerPurchase;
+      : config.merchantWeaponPurchase !== undefined || config.spellBrokerPurchase !== undefined
+        ? (config.merchantWeaponPurchase ?? false) || (config.spellBrokerPurchase ?? false)
+        : DEFAULT_CONFIG.optionalPurchases;
   configureMerchantWeaponPurchase(world, purchasesEnabled);
   configureSpellBrokerPurchase(world, purchasesEnabled);
   configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);

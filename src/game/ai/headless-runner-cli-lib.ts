@@ -30,7 +30,7 @@ export interface CLIArgs {
   weaponPersonas: boolean;
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
-  /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default false. */
+  /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default true. */
   optionalPurchases: boolean;
   settlementReturnRouting: boolean;
 }
@@ -41,6 +41,7 @@ const DECISION_MODE_VALUES = Object.values(AIDecisionMode) as AIDecisionModeValu
 export function defaultCLIArgs(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): CLIArgs {
+  const optionalPurchasesEnv = env.AI_OPTIONAL_PURCHASES ?? env.AI_MERCHANT_WEAPON_PURCHASE;
   return {
     seed: 12345,
     maxFrames: 100_000,
@@ -64,12 +65,11 @@ export function defaultCLIArgs(
     // explicitly passes --pathing-mode/--decision-mode.
     pathingMode: DEFAULT_CONFIG.pathingMode,
     decisionMode: DEFAULT_CONFIG.decisionMode,
+    // Legacy env var still honoured so existing scripts keep working.
     optionalPurchases:
-      env.AI_OPTIONAL_PURCHASES === '1' ||
-      env.AI_OPTIONAL_PURCHASES?.toLowerCase() === 'true' ||
-      // Legacy env var still honoured so existing scripts keep working.
-      env.AI_MERCHANT_WEAPON_PURCHASE === '1' ||
-      env.AI_MERCHANT_WEAPON_PURCHASE?.toLowerCase() === 'true',
+      optionalPurchasesEnv === undefined ||
+      optionalPurchasesEnv === '1' ||
+      optionalPurchasesEnv.toLowerCase() === 'true',
     settlementReturnRouting:
       env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
       env.AI_SETTLEMENT_RETURN_ROUTING?.toLowerCase() === 'true',
@@ -161,6 +161,8 @@ export function parseArgs(
       args.weaponPersonas = false;
     } else if (arg === '--optional-purchases') {
       args.optionalPurchases = true;
+    } else if (arg === '--no-optional-purchases') {
+      args.optionalPurchases = false;
     } else if (arg === '--merchant-weapon-purchase') {
       // Legacy alias: kept for backward compatibility with existing scripts.
       args.optionalPurchases = true;
@@ -220,7 +222,8 @@ Options:
   --weapon-personas       Enable weapon-specific stat/gear personas (default)
   --no-weapon-personas    Disable weapon personas for the legacy A/B control
   --optional-purchases    Enable both optional AI purchases: post-quest merchant weapon
-                           purchase and Floor 1 Spell Broker purchase (default: off)
+                           purchase and Floor 1 Spell Broker purchase (default: on)
+  --no-optional-purchases Disable both optional AI purchases for the A/B control
                            Legacy alias: --merchant-weapon-purchase (same effect)
                            Env: AI_OPTIONAL_PURCHASES=1 (or AI_MERCHANT_WEAPON_PURCHASE=1)
   --settlement-return-routing

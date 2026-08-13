@@ -69,9 +69,10 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(() => cli('--pathing-mode', 'bogus')).toThrow(/Invalid --pathing-mode/);
   });
 
-  it('keeps optionalPurchases off by default and enables via --optional-purchases flag or env', () => {
-    expect(cli().optionalPurchases).toBe(false);
+  it('defaults optionalPurchases on and supports explicit CLI and environment controls', () => {
+    expect(cli().optionalPurchases).toBe(true);
     expect(cli('--optional-purchases').optionalPurchases).toBe(true);
+    expect(cli('--no-optional-purchases').optionalPurchases).toBe(false);
     // New canonical env var
     expect(
       parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: '1' })
@@ -81,6 +82,10 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
       parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: 'true' })
         .optionalPurchases,
     ).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: 'false' })
+        .optionalPurchases,
+    ).toBe(false);
     // Legacy --merchant-weapon-purchase flag is still honoured (backward compat)
     expect(cli('--merchant-weapon-purchase').optionalPurchases).toBe(true);
     // Legacy env var is still honoured
@@ -88,6 +93,7 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
       parseArgs(['node', 'headless-runner-cli.js'], { AI_MERCHANT_WEAPON_PURCHASE: 'true' })
         .optionalPurchases,
     ).toBe(true);
+    expect(helpText()).toContain('purchase and Floor 1 Spell Broker purchase (default: on)');
   });
 
   it('keeps settlement return routing off by default and enables it by flag or environment', () => {
