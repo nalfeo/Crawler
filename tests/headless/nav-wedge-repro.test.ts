@@ -32,6 +32,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { FLOOR1_DEFAULT_MAX_FRAMES } from '../../src/game/ai/floor1-run-budget.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { summarizeEvents, type EventSummary, type SimEvent } from '../../src/game/ai/event-log.js';
 
@@ -63,6 +64,7 @@ async function runWedgeProbe(seed: number, weapon: string): Promise<WedgeProbe> 
     seed,
     forceWeaponId: weapon,
     maxFrames: WEDGE_SLICE_FRAMES,
+    planningMaxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
     recordEvent: (event: SimEvent) => events.push(event),
   });
   const summary = summarizeEvents(events);

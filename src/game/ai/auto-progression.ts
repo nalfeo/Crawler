@@ -341,7 +341,8 @@ export function autoFloor1ProgressionSystem(
     shouldDeferStairDescend(
       world,
       'floor1',
-      resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
+      aiProvider?.resolveFloor1PlanningDeadlineMs?.(objective.deadlineMs) ??
+        resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
     )
   ) {
     return;
