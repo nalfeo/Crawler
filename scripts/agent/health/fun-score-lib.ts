@@ -12,6 +12,34 @@ export interface FunSession {
   readonly id: string;
   readonly run: RunStats;
   readonly survey?: PlaytestSurvey;
+  readonly persona?: string;
+}
+
+export type FunCriterionStatus = 'healthy' | 'needs_attention' | 'unmeasured';
+export type FunTrendStatus = 'improving' | 'degrading' | 'inconclusive' | 'unmeasured';
+
+export interface FunCriterion {
+  readonly observed: number | null;
+  readonly target: number | null;
+  readonly status: FunCriterionStatus;
+  readonly reason: string;
+}
+
+export interface FunCriteria {
+  readonly unsafe_combat_uptime: FunCriterion;
+  readonly survivability_variance: FunCriterion;
+  readonly run_variety: FunCriterion;
+  readonly dopamine_cadence: FunCriterion;
+  readonly snowball_frequency: FunCriterion;
+  readonly meta_progression: FunCriterion;
+  readonly item_viability: FunCriterion;
+}
+
+export interface FunPersonaScore {
+  readonly runs: number;
+  readonly overall_fun_score: number;
+  readonly dimensions: FunDimensionScores;
+  readonly confidence: number;
 }
 
 export interface FunDimensionScores {
@@ -51,6 +79,21 @@ export interface FunScoreReport {
   readonly confidence: number;
   readonly gate: FunGate;
   readonly hotspots: ReadonlyArray<FunHotspot>;
+  readonly criteria: FunCriteria;
+  readonly persona_scores: Readonly<Record<string, FunPersonaScore>>;
+}
+
+export interface FunMetricComparison {
+  readonly baseline: number | null;
+  readonly candidate: number | null;
+  readonly delta: number | null;
+  readonly status: FunTrendStatus;
+}
+
+export interface FunScoreComparison {
+  readonly overall_fun_score: FunMetricComparison;
+  readonly dimensions: Readonly<Record<keyof FunDimensionScores, FunMetricComparison>>;
+  readonly criteria: Readonly<Record<keyof FunCriteria, FunMetricComparison>>;
 }
 
 export interface FunScoreConfig {
@@ -60,6 +103,7 @@ export interface FunScoreConfig {
 
 export interface FunScoreCLIArgs {
   readonly inputPath: string;
+  readonly baselinePath: string | null;
   readonly outputPath: string | null;
   readonly minOverall: number;
   readonly minDimension: number;
@@ -108,6 +152,7 @@ function hasNumberField(obj: UnknownRecord, key: string): boolean {
 
 export function parseFunScoreArgs(argv: ReadonlyArray<string>): FunScoreCLIArgs {
   let inputPath = '';
+  let baselinePath: string | null = null;
   let outputPath: string | null = null;
   let minOverall = 70;
   let minDimension = 55;
@@ -122,6 +167,11 @@ export function parseFunScoreArgs(argv: ReadonlyArray<string>): FunScoreCLIArgs 
     }
     if (arg === '--out' && typeof next === 'string') {
       outputPath = next;
+      i += 1;
+      continue;
+    }
+    if (arg === '--baseline' && typeof next === 'string') {
+      baselinePath = next;
       i += 1;
       continue;
     }
@@ -146,7 +196,7 @@ export function parseFunScoreArgs(argv: ReadonlyArray<string>): FunScoreCLIArgs 
     throw new Error('--min-overall and --min-dimension must be numbers.');
   }
 
-  return { inputPath, outputPath, minOverall, minDimension };
+  return { inputPath, baselinePath, outputPath, minOverall, minDimension };
 }
 
 export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined {
@@ -230,7 +280,13 @@ export function normalizeFunSessions(payload: unknown): FunSession[] {
     if (!isRunStats(runCandidate)) {
       throw new Error(`Entry ${index + 1} is missing a valid RunStats payload.`);
     }
-    return { id, run: runCandidate, survey: parsePlaytestSurvey(obj.survey) };
+    const persona =
+      typeof obj.persona === 'string'
+        ? obj.persona
+        : typeof runCandidate.playerPersona === 'string'
+          ? runCandidate.playerPersona
+          : undefined;
+    return { id, run: runCandidate, survey: parsePlaytestSurvey(obj.survey), persona };
   };
 
   if (Array.isArray(payload)) {
@@ -502,6 +558,7 @@ function scoreConfidence(
 export function scoreFunSessions(
   sessions: ReadonlyArray<FunSession>,
   config: Partial<FunScoreConfig> = {},
+  includePersonaBreakdown = true,
 ): FunScoreReport {
   const merged: FunScoreConfig = { ...DEFAULT_CONFIG, ...config };
   if (sessions.length === 0) {
@@ -537,6 +594,51 @@ export function scoreFunSessions(
           reason: 'No runs provided. Score requires gameplay sessions.',
         },
       ],
+      criteria: {
+        unsafe_combat_uptime: {
+          observed: null,
+          target: 0.75,
+          status: 'unmeasured',
+          reason: 'No runs provided.',
+        },
+        survivability_variance: {
+          observed: null,
+          target: 0.28,
+          status: 'unmeasured',
+          reason: 'No runs provided.',
+        },
+        run_variety: {
+          observed: null,
+          target: 60,
+          status: 'unmeasured',
+          reason: 'No runs provided.',
+        },
+        dopamine_cadence: {
+          observed: null,
+          target: 90,
+          status: 'unmeasured',
+          reason: 'Run event timestamps are not present in RunStats.',
+        },
+        snowball_frequency: {
+          observed: null,
+          target: 0.1,
+          status: 'unmeasured',
+          reason: 'Snowball/exploit telemetry is not present in RunStats.',
+        },
+        meta_progression: {
+          observed: null,
+          target: 0,
+          status: 'unmeasured',
+          reason: 'Permanent progression is not implemented in RunStats.',
+        },
+        item_viability: {
+          observed: null,
+          target: 0,
+          status: 'unmeasured',
+          reason: 'Item exposure/contribution telemetry is not present in RunStats.',
+        },
+      },
+      persona_scores: {},
     };
   }
 
@@ -595,6 +697,73 @@ export function scoreFunSessions(
     run_distinctness: runDistinctnessAcrossRuns(sessions),
   };
 
+  const unsafeCombatMs = sessions.reduce(
+    (sum, session) => sum + session.run.combat.combatTimeMs,
+    0,
+  );
+  const unsafeGameMs = sessions.reduce(
+    (sum, session) => sum + Math.max(0, session.run.gameTimeMs - session.run.safeRoomMs),
+    0,
+  );
+  const unsafeCombatUptime = ratio(unsafeCombatMs, unsafeGameMs);
+  const survivabilityValues = sessions.map((session) => normalizedOutcome(session.run));
+  const survivabilityVariance = stdDev(survivabilityValues);
+  const criterion = (
+    observed: number | null,
+    target: number | null,
+    healthy: boolean,
+    reason: string,
+  ): FunCriterion => ({
+    observed,
+    target,
+    status: observed === null ? 'unmeasured' : healthy ? 'healthy' : 'needs_attention',
+    reason,
+  });
+  const criteria: FunCriteria = {
+    unsafe_combat_uptime: criterion(
+      round2(unsafeCombatUptime),
+      0.75,
+      unsafeCombatUptime >= 0.75,
+      'Combat uptime is measured outside safe-room time.',
+    ),
+    survivability_variance: criterion(
+      round2(survivabilityVariance),
+      0.28,
+      survivabilityVariance >= 0.14,
+      'Variance is measured across normalized run outcomes; inspect tails before tuning.',
+    ),
+    run_variety: criterion(
+      dimensions.run_distinctness,
+      60,
+      dimensions.run_distinctness >= 60,
+      'Run variety reuses the existing distinctness score.',
+    ),
+    dopamine_cadence: criterion(
+      null,
+      90,
+      false,
+      'Needs timestamped dopamine-event telemetry; end-of-run RunStats cannot measure cadence.',
+    ),
+    snowball_frequency: criterion(
+      null,
+      0.1,
+      false,
+      'Needs a deterministic snowball/exploit signal and tail classification.',
+    ),
+    meta_progression: criterion(
+      null,
+      0,
+      false,
+      'Needs permanent-power-before/after telemetry once meta progression exists.',
+    ),
+    item_viability: criterion(
+      null,
+      0,
+      false,
+      'Needs item offer, selection, and contribution telemetry with exposure counts.',
+    ),
+  };
+
   const objectiveScore = weightedObjectiveScore(dimensions);
   const gatingObjectiveScore = weightedGatedObjectiveScore(dimensions);
   const subjectiveScore = surveyScores.length > 0 ? round2(mean(surveyScores)) : null;
@@ -646,6 +815,26 @@ export function scoreFunSessions(
     });
   }
 
+  const personaScores: Record<string, FunPersonaScore> = {};
+  if (includePersonaBreakdown) {
+    const byPersona = new Map<string, FunSession[]>();
+    for (const session of sessions) {
+      if (!session.persona) continue;
+      const group = byPersona.get(session.persona) ?? [];
+      group.push(session);
+      byPersona.set(session.persona, group);
+    }
+    for (const [persona, personaSessions] of byPersona) {
+      const personaReport = scoreFunSessions(personaSessions, config, false);
+      personaScores[persona] = {
+        runs: personaReport.runs,
+        overall_fun_score: personaReport.overall_fun_score,
+        dimensions: personaReport.dimensions,
+        confidence: personaReport.confidence,
+      };
+    }
+  }
+
   return {
     runs: sessions.length,
     outcomes: outcomeCounts,
@@ -658,5 +847,60 @@ export function scoreFunSessions(
     confidence: scoreConfidence(sessions.length, surveyCoverage, objectivePerRun),
     gate,
     hotspots,
+    criteria,
+    persona_scores: personaScores,
+  };
+}
+
+function compareMetric(
+  baseline: number | null,
+  candidate: number | null,
+  higherIsBetter: boolean,
+  minimumMeaningfulDelta = 2,
+): FunMetricComparison {
+  if (baseline === null || candidate === null) {
+    return { baseline, candidate, delta: null, status: 'unmeasured' };
+  }
+  const delta = round2(candidate - baseline);
+  if (Math.abs(delta) < minimumMeaningfulDelta) {
+    return { baseline, candidate, delta, status: 'inconclusive' };
+  }
+  const improved = higherIsBetter ? delta > 0 : delta < 0;
+  return { baseline, candidate, delta, status: improved ? 'improving' : 'degrading' };
+}
+
+export function compareFunReports(
+  baseline: FunScoreReport,
+  candidate: FunScoreReport,
+): FunScoreComparison {
+  const dimensionKeys = Object.keys(baseline.dimensions) as Array<keyof FunDimensionScores>;
+  const criterionKeys = Object.keys(baseline.criteria) as Array<keyof FunCriteria>;
+  const dimensions = {} as Record<keyof FunDimensionScores, FunMetricComparison>;
+  for (const key of dimensionKeys) {
+    dimensions[key] = compareMetric(baseline.dimensions[key], candidate.dimensions[key], true);
+  }
+
+  const criteria = {} as Record<keyof FunCriteria, FunMetricComparison>;
+  const higherIsBetter: Readonly<Record<keyof FunCriteria, boolean>> = {
+    unsafe_combat_uptime: true,
+    survivability_variance: true,
+    run_variety: true,
+    dopamine_cadence: false,
+    snowball_frequency: false,
+    meta_progression: true,
+    item_viability: true,
+  };
+  for (const key of criterionKeys) {
+    criteria[key] = compareMetric(
+      baseline.criteria[key].observed,
+      candidate.criteria[key].observed,
+      higherIsBetter[key],
+    );
+  }
+
+  return {
+    overall_fun_score: compareMetric(baseline.overall_fun_score, candidate.overall_fun_score, true),
+    dimensions,
+    criteria,
   };
 }

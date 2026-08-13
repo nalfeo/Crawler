@@ -11,6 +11,7 @@
 import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
+import { getPersonaConfig } from './personas.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
 import { helpText, parseArgs } from './headless-runner-cli-lib.js';
 
@@ -42,14 +43,17 @@ async function main(): Promise<void> {
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
   console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
+  console.log(`Persona: ${args.persona}`);
+  console.log(`Merchant weapon purchase: ${args.merchantWeaponPurchase ? 'enabled' : 'disabled'}`);
   console.log(
     `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
   );
   console.log('');
 
   const ai = new BehaviorTreeAI({
+    ...getPersonaConfig(args.persona),
     seed: args.seed,
-    aggression: args.aggression,
+    ...(args.aggression !== 1 ? { aggression: args.aggression } : {}),
     debug: args.debug,
     pathingMode: args.pathingMode,
     decisionMode: args.decisionMode,
@@ -73,6 +77,8 @@ async function main(): Promise<void> {
     recordWeaponTelemetry: args.weaponTelemetry,
     weaponPersonas: args.weaponPersonas,
     optionalPurchases: args.optionalPurchases,
+    playerPersona: args.persona,
+    merchantWeaponPurchase: args.merchantWeaponPurchase,
     settlementReturnRouting: args.settlementReturnRouting,
     ...(recording
       ? {

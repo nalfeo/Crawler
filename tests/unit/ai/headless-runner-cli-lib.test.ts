@@ -12,6 +12,8 @@ import {
   helpText,
   parseArgs,
 } from '../../../src/game/ai/headless-runner-cli-lib.js';
+import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
+import { getPersonaConfig } from '../../../src/game/ai/personas.js';
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
 // parseArgs skips argv[0] (node) and argv[1] (script), matching process.argv.
@@ -59,6 +61,31 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(cli().weaponPersonas).toBe(true);
     expect(cli('--weapon-personas').weaponPersonas).toBe(true);
     expect(cli('--no-weapon-personas').weaponPersonas).toBe(false);
+  });
+
+  it('defaults to the experienced evaluator persona and parses named personas', () => {
+    expect(cli().persona).toBe('experienced_player');
+    expect(cli('--persona', 'new_player').persona).toBe('new_player');
+    expect(cli('--persona', 'min_max_cheeser').persona).toBe('min_max_cheeser');
+  });
+
+  it('keeps the experienced evaluator persona aligned with the production default AI config', () => {
+    const experienced = getPersonaConfig('experienced_player');
+    expect(experienced).toMatchObject({
+      aggression: DEFAULT_CONFIG.aggression,
+      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
+      retreatDangerRadius: DEFAULT_CONFIG.retreatDangerRadius,
+      scanRadius: DEFAULT_CONFIG.scanRadius,
+      rangedSafeDistance: DEFAULT_CONFIG.rangedSafeDistance,
+      opportunisticGrabRadius: DEFAULT_CONFIG.opportunisticGrabRadius,
+      dodgeWeight: DEFAULT_CONFIG.dodgeWeight,
+      collectPullWeight: DEFAULT_CONFIG.collectPullWeight,
+      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
+    });
+  });
+
+  it('rejects unknown evaluator personas', () => {
+    expect(() => cli('--persona', 'speedrunner')).toThrow(/Invalid --persona/);
   });
 
   it('throws on an invalid --decision-mode', () => {

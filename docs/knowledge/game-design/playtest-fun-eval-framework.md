@@ -1,9 +1,9 @@
 # Playtest "Fun" Evaluation Framework
 
-This defines a repeatable way to rate gameplay sessions for fun using a blend of:
+This defines a repeatable, telemetry-only way to rate gameplay sessions for fun:
 
-1. deterministic telemetry from `RunStats`
-2. optional post-session survey scores
+- deterministic telemetry from `RunStats`
+- optional event and item telemetry as those producers are added
 
 Implemented by:
 
@@ -25,13 +25,25 @@ Accepted input JSON:
 - `{ "runs": RunStats[] }`
 - `{ "sessions": [{ "id": "...", "run": RunStats, "survey"?: Survey }] }`
 
-Survey fields are optional 1-5 scores:
+Legacy survey fields may be supplied for exploratory analysis, but they are not
+required by the evaluator:
 
 - `enjoyment`
 - `immersion`
 - `mastery`
 - `control`
 - `tension` (reverse-scored)
+
+Runs may also carry a deterministic evaluator persona:
+
+- `new_player`
+- `experienced_player`
+- `min_max_cheeser`
+- `explorer`
+
+The headless CLI exposes these through `--persona`. Personas are behavioral
+cohorts, not hidden difficulty modifiers; reports must retain per-persona
+results so an expert-heavy average cannot hide a new-player failure.
 
 ## Score model
 
@@ -74,6 +86,24 @@ tracked without hard-failing Floor 1 heavy samples.
 Current gate does **not** fail solely on `run_distinctness`; it is tracked as a
 forward-looking quality signal and hotspot driver.
 
+## Non-gating fun criteria
+
+The evaluator also reports criteria independently of the overall score:
+
+| Criterion                 | Current target                                  | Status when telemetry is absent                  |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------ |
+| Unsafe-zone combat uptime | >=75%                                           | `unmeasured`                                     |
+| Survivability variance    | Meaningful outcome spread; inspect tails        | Measured from run outcomes                       |
+| Run variety               | `run_distinctness` >=60                         | Measured                                         |
+| Dopamine cadence          | No gap >90s during active play                  | `unmeasured` until timestamped events exist      |
+| Snowball/cheese frequency | Epic outlier runs <=10%                         | `unmeasured` until a deterministic signal exists |
+| Permanent-power slope     | Slow positive run-over-run slope                | `unmeasured` until meta progression exists       |
+| Item viability            | No exposed item is inert or permanently avoided | `unmeasured` until item telemetry exists         |
+
+These criteria are diagnostic and trendable, not PR gates. Averages must be
+accompanied by distributions, persona breakdowns, sample size, and reproducible
+seed/run identifiers.
+
 ## Confidence model
 
 Confidence (0-1) combines:
@@ -96,8 +126,12 @@ Use matched seed sets across baseline/candidate to reduce variance.
 
 ```bash
 tsx scripts/agent/health/fun-score.ts --input files/playtests/floor1-runs.json
-tsx scripts/agent/health/fun-score.ts --input files/playtests/floor1-runs.json --min-overall 72 --min-dimension 58 --out files/playtests/fun-score.json
+tsx scripts/agent/health/fun-score.ts --input files/playtests/floor1-runs.json --baseline files/playtests/baseline.json --out files/playtests/fun-score.json
 ```
+
+When `--baseline` is supplied, the output includes non-gating
+`improving`/`degrading`/`inconclusive`/`unmeasured` comparisons for the overall
+score, dimensions, and measurable criteria.
 
 ## Interpretation guidance
 

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { RunStats } from '../../src/game/ai/types.js';
 import type { FunSession } from '../../scripts/agent/health/fun-score-lib.js';
-import { GATED_DIMENSIONS, scoreFunSessions } from '../../scripts/agent/health/fun-score-lib.js';
+import {
+  compareFunReports,
+  GATED_DIMENSIONS,
+  scoreFunSessions,
+} from '../../scripts/agent/health/fun-score-lib.js';
 
 function makeRun(overrides: Partial<RunStats> = {}): RunStats {
   const run: RunStats = {
@@ -203,6 +207,32 @@ describe('scoreFunSessions', () => {
 
     expect(varied.dimensions.run_distinctness).toBeGreaterThan(samey.dimensions.run_distinctness);
     expect(varied.sameness_grade).toBeLessThan(samey.sameness_grade);
+  });
+
+  it('reports measurable criteria and groups runs by evaluator persona', () => {
+    const report = scoreFunSessions([
+      { id: 'new', persona: 'new_player', run: makeRun() },
+      { id: 'expert', persona: 'experienced_player', run: makeRun({ startingWeapon: 'bow' }) },
+    ]);
+
+    expect(report.criteria.unsafe_combat_uptime.observed).toBeGreaterThan(0);
+    expect(report.criteria.dopamine_cadence.status).toBe('unmeasured');
+    expect(report.criteria.snowball_frequency.status).toBe('unmeasured');
+    expect(report.persona_scores.new_player?.runs).toBe(1);
+    expect(report.persona_scores.experienced_player?.runs).toBe(1);
+  });
+
+  it('classifies meaningful baseline deltas without gating on them', () => {
+    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
+    const candidate = {
+      ...baseline,
+      overall_fun_score: baseline.overall_fun_score + 5,
+    };
+
+    const comparison = compareFunReports(baseline, candidate);
+
+    expect(comparison.overall_fun_score.status).toBe('improving');
+    expect(comparison.criteria.dopamine_cadence.status).toBe('unmeasured');
   });
 
   it('scales subjective blending with survey coverage', () => {

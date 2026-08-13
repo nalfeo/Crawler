@@ -53,6 +53,19 @@ function makeRun(overrides: Partial<RunStats> = {}): RunStats {
 }
 
 describe('parseFunScoreArgs', () => {
+  it('parses an optional baseline path for trend comparisons', () => {
+    const parsed = parseFunScoreArgs([
+      'node',
+      'fun-score',
+      '--input',
+      'runs.json',
+      '--baseline',
+      'baseline.json',
+    ]);
+
+    expect(parsed.baselinePath).toBe('baseline.json');
+  });
+
   it('parses required and optional flags', () => {
     const parsed = parseFunScoreArgs([
       'node',
@@ -69,6 +82,7 @@ describe('parseFunScoreArgs', () => {
 
     expect(parsed).toEqual({
       inputPath: 'runs.json',
+      baselinePath: null,
       outputPath: 'out.json',
       minOverall: 72,
       minDimension: 58,

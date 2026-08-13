@@ -6,9 +6,10 @@
  * would kick off a full headless simulation on import).
  */
 import { AIDecisionMode, AIPathingMode } from './types.js';
-import type { AIDecisionModeValue, AIPathingModeValue } from './types.js';
+import type { AIDecisionModeValue, AIPathingModeValue, PlayerPersona } from './types.js';
 import { ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { DEFAULT_CONFIG } from './bt-ai-tuning.js';
+import { PLAYER_PERSONAS } from './personas.js';
 
 export interface CLIArgs {
   seed: number;
@@ -33,6 +34,7 @@ export interface CLIArgs {
   /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default false. */
   optionalPurchases: boolean;
   settlementReturnRouting: boolean;
+  persona: PlayerPersona;
 }
 
 const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
@@ -73,6 +75,7 @@ export function defaultCLIArgs(
     settlementReturnRouting:
       env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
       env.AI_SETTLEMENT_RETURN_ROUTING?.toLowerCase() === 'true',
+    persona: 'experienced_player',
   };
 }
 
@@ -166,6 +169,13 @@ export function parseArgs(
       args.optionalPurchases = true;
     } else if (arg === '--settlement-return-routing') {
       args.settlementReturnRouting = true;
+    } else if (arg === '--persona' && next) {
+      if (!(PLAYER_PERSONAS as readonly string[]).includes(next)) {
+        throw new Error(
+          `Invalid --persona "${next}" (must be one of: ${PLAYER_PERSONAS.join(', ')})`,
+        );
+      }
+      args.persona = next as PlayerPersona;
     } else if (arg === '--pathing-mode' && next) {
       if (!(PATHING_MODE_VALUES as string[]).includes(next)) {
         throw new Error(
@@ -230,6 +240,8 @@ Options:
                            maintenance planner — equip/shop/claim/abilities)
   --pathing-mode <mode>   AI pathing A/B axis: riskRewardFused (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: legacy (default: legacy)
+  --persona <name>         Evaluator persona (default: experienced_player)
+                           new_player, experienced_player, min_max_cheeser, explorer
   --help, -h              Show this help message
 
 Examples:
