@@ -33,13 +33,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "9c200dd5ec785f08af57c3962fc0046ec2636228",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change cleanly resolves the collision pair parity test blocker by introducing planningMaxFrames to allow explicit decoupling of the planning budget from the simulation observation limit. The default coupling remains strictly intact because it falls back to maxFrames when planningMaxFrames is omitted. Excellent test coverage, cache invalidation on budget changes, and surgical centralization of budget constants."
     }
   }
 }
