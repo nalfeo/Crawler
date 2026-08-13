@@ -183,7 +183,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: weapon-sweep-shard-${{ matrix.weapon }}-${{ matrix.shard }}-${{ inputs.optional_purchases }}
+          name: weapon-sweep-shard-${{ matrix.weapon }}-${{ matrix.shard }}
           path: weapon-sweep-${{ matrix.weapon }}-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 30
@@ -227,7 +227,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: weapon-sweep-shard-${{ matrix.weapon.weapon }}-*-${{ inputs.optional_purchases }}
+          pattern: weapon-sweep-shard-${{ matrix.weapon.weapon }}-*
           path: shards
           merge-multiple: true
 
@@ -244,14 +244,11 @@ jobs:
             --inputs shards \
             --weapon "${{ matrix.weapon.weapon }}" \
             --seed-count "$SEED_COUNT" \
-            --out "weapon-sweep-${{ matrix.weapon.weapon }}-${{ inputs.optional_purchases }}.json"
+            --out "weapon-sweep-${{ matrix.weapon.weapon }}.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          # Stable arm-labelled name:
-          #   weapon-sweep-default-false  (control arm)
-          #   weapon-sweep-default-true   (treatment arm)
-          name: weapon-sweep-${{ matrix.weapon.weapon }}-${{ inputs.optional_purchases }}
-          path: weapon-sweep-${{ matrix.weapon.weapon }}-${{ inputs.optional_purchases }}.json
+          name: weapon-sweep-${{ matrix.weapon.weapon }}
+          path: weapon-sweep-${{ matrix.weapon.weapon }}.json
           if-no-files-found: error
           retention-days: 30
