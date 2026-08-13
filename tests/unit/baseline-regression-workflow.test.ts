@@ -16,14 +16,24 @@ interface WorkflowStep {
 }
 
 interface WorkflowDoc {
-  jobs: Record<string, { steps?: WorkflowStep[] }>;
+  jobs: Record<
+    string,
+    {
+      concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
+      steps?: WorkflowStep[];
+    }
+  >;
 }
 
-function baselineSteps(): WorkflowStep[] {
+function baselineSweepJob(): WorkflowDoc['jobs'][string] | undefined {
   const workflow = parse(
     readFileSync(path.join(REPO_ROOT, '.github/workflows/deploy.yml'), 'utf8'),
   ) as WorkflowDoc;
-  return workflow.jobs['baseline-sweep']?.steps ?? [];
+  return workflow.jobs['baseline-sweep'];
+}
+
+function baselineSteps(): WorkflowStep[] {
+  return baselineSweepJob()?.steps ?? [];
 }
 
 describe('release baseline regression workflow', () => {
@@ -51,5 +61,13 @@ describe('release baseline regression workflow', () => {
     expect(file?.env?.GITHUB_TOKEN).toContain('secrets.GITHUB_TOKEN');
     expect(file?.env?.CRAWLER_CI_PAT).toContain('secrets.CRAWLER_CI_PAT');
     expect(file?.run).toContain('baseline-regression-issue.mjs');
+  });
+
+  it('serializes concurrent sweeps for the same release without cancelling either run', () => {
+    const concurrency = baselineSweepJob()?.concurrency;
+    expect(concurrency?.group).toBe(
+      'baseline-sweep-${{ github.event.workflow_run.head_sha || github.sha }}',
+    );
+    expect(concurrency?.['cancel-in-progress']).toBe(false);
   });
 });

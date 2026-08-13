@@ -350,6 +350,9 @@ jobs:
     name: Baseline win-rate sweep (100 seeds)
     runs-on: ubuntu-latest
     needs: [release-gate, deploy]
+    concurrency:
+      group: baseline-sweep-${{ github.event.workflow_run.head_sha || github.sha }}
+      cancel-in-progress: false
     # Only baseline what we actually released to Pages. `needs: deploy` alone
     # is NOT sufficient here: GitHub Actions does not cascade-skip a job with
     # its own explicit `if:` just because a job it `needs` was skipped -- that
