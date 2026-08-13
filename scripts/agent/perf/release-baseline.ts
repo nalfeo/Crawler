@@ -27,14 +27,143 @@ export type ReleaseBaselineWithRuns<T extends UnknownRecord> = T & {
   runs: RunStats[];
 };
 
+const VALID_OUTCOMES: ReadonlySet<string> = new Set([
+  'victory',
+  'death',
+  'timeout',
+  'stalled',
+  'error',
+]);
+
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function requireRecord(value: unknown, where: string): UnknownRecord {
+  if (!isRecord(value)) {
+    throw new Error(`${where} must be an object.`);
+  }
+  return value;
+}
+
+function requireFiniteNumbers(
+  record: UnknownRecord,
+  where: string,
+  fields: readonly string[],
+): void {
+  for (const field of fields) {
+    const value = record[field];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`${where}.${field} must be a finite number.`);
+    }
+  }
+}
+
+function requireNullableFiniteNumbers(
+  record: UnknownRecord,
+  where: string,
+  fields: readonly string[],
+): void {
+  for (const field of fields) {
+    const value = record[field];
+    if (value === null) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`${where}.${field} must be a finite number or null.`);
+    }
+  }
+}
+
+function requireNumberRecords(
+  record: UnknownRecord,
+  where: string,
+  fields: readonly string[],
+): void {
+  for (const field of fields) {
+    const value = requireRecord(record[field], `${where}.${field}`);
+    for (const [key, entry] of Object.entries(value)) {
+      if (typeof entry !== 'number' || !Number.isFinite(entry)) {
+        throw new Error(`${where}.${field}.${key} must be a finite number.`);
+      }
+    }
+  }
+}
+
 /**
- * Validate the persisted release-baseline contract through the real fun-score
- * normalizer. Count equality prevents a partial producer or publisher from
- * silently storing fewer runs than the aggregate claims.
+ * Dedicated runtime schema for a persisted `RunStats`. The fun-score normalizer
+ * is a lenient compatibility parser for historical inputs (it tolerates missing
+ * `safeRoomMs` and never inspects `totalFrames`, `wallTimeMs`, `finalFloor`,
+ * `finalScore`, or `totalGold`), so it cannot prove that this module actually
+ * persisted a complete run. Every required field of `RunStats`, including the
+ * required nested fields, is checked here — after JSON serialization a `NaN`
+ * becomes `null` and an `undefined` disappears, and both must fail.
+ */
+function assertRunStats(value: unknown, where: string): asserts value is RunStats {
+  const run = requireRecord(value, where);
+
+  requireFiniteNumbers(run, where, [
+    'totalFrames',
+    'wallTimeMs',
+    'gameTimeMs',
+    'safeRoomMs',
+    'finalFloor',
+    'finalScore',
+    'finalLevel',
+    'totalXp',
+    'totalGold',
+  ]);
+  if (typeof run.outcome !== 'string' || !VALID_OUTCOMES.has(run.outcome)) {
+    throw new Error(`${where}.outcome must be a valid run outcome.`);
+  }
+  if (typeof run.startingWeapon !== 'string') {
+    throw new Error(`${where}.startingWeapon must be a string.`);
+  }
+  if (!Array.isArray(run.levelUps)) {
+    throw new Error(`${where}.levelUps must be an array.`);
+  }
+  run.levelUps.forEach((entry, index) => {
+    const levelUp = requireRecord(entry, `${where}.levelUps[${index}]`);
+    requireFiniteNumbers(levelUp, `${where}.levelUps[${index}]`, ['level', 'gameTimeMs', 'frame']);
+  });
+
+  const combat = requireRecord(run.combat, `${where}.combat`);
+  requireFiniteNumbers(combat, `${where}.combat`, [
+    'totalKills',
+    'combatTimeMs',
+    'engagementCount',
+    'damageDealt',
+    'damageTaken',
+  ]);
+  requireNumberRecords(combat, `${where}.combat`, ['killsByType', 'damageTakenBySource']);
+
+  const health = requireRecord(run.health, `${where}.health`);
+  requireFiniteNumbers(health, `${where}.health`, [
+    'minHealthPercent',
+    'closeCallCount',
+    'lowHealthCount',
+    'finalHealthPercent',
+  ]);
+
+  const quests = requireRecord(run.quests, `${where}.quests`);
+  requireFiniteNumbers(quests, `${where}.quests`, ['questsAccepted', 'questsCompleted']);
+  requireNullableFiniteNumbers(quests, `${where}.quests`, [
+    'mainQuestAcceptedMs',
+    'mainQuestCompletedMs',
+    'firstQuestCompletedMs',
+  ]);
+  if (
+    !Array.isArray(quests.questsFailed) ||
+    quests.questsFailed.some((questId) => typeof questId !== 'string')
+  ) {
+    throw new Error(`${where}.quests.questsFailed must be an array of quest ids.`);
+  }
+  requireNumberRecords(quests, `${where}.quests`, ['questLogAccepts', 'questLogCompletions']);
+}
+
+/**
+ * Validate the persisted release-baseline contract: every stored entry is a
+ * complete `RunStats`, and the stored payload still ingests through the real
+ * fun-score normalizer. Count equality prevents a partial producer or publisher
+ * from silently storing fewer runs than the aggregate claims.
  */
 export function assertReleaseBaselineRuns(
   payload: unknown,
@@ -48,6 +177,10 @@ export function assertReleaseBaselineRuns(
   if (!Array.isArray(payload.runs)) {
     throw new Error('Release baseline must include runs: RunStats[].');
   }
+
+  payload.runs.forEach((run, index) => {
+    assertRunStats(run, `Release baseline runs[${index}]`);
+  });
 
   const sessions = normalizeFunSessions(payload);
   if (sessions.length !== payload.totalRuns) {

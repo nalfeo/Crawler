@@ -90,6 +90,48 @@ describe('release baseline persistence', () => {
     ).toThrow(/already contains meta/);
   });
 
+  it('rejects runs missing required RunStats fields, before and after serialization', async () => {
+    const run = await capturedRun();
+
+    for (const field of [
+      'totalFrames',
+      'wallTimeMs',
+      'finalFloor',
+      'finalScore',
+      'totalGold',
+      'safeRoomMs',
+    ] as const) {
+      const incomplete = { ...run };
+      delete (incomplete as Record<string, unknown>)[field];
+      expect(() => attachReleaseBaselineRuns({ totalRuns: 1 }, [incomplete as RunStats])).toThrow(
+        new RegExp(`runs\\[0\\]\\.${field} must be a finite number`),
+      );
+    }
+
+    // NaN survives the in-memory check of a lenient parser and serializes to
+    // null, so both the pre- and post-serialization checks must reject it.
+    const nanRun = { ...run, wallTimeMs: Number.NaN };
+    expect(() => attachReleaseBaselineRuns({ totalRuns: 1 }, [nanRun])).toThrow(
+      /runs\[0\]\.wallTimeMs must be a finite number/,
+    );
+    expect(() =>
+      serializeReleaseBaseline({ totalRuns: 1, runs: [{ ...run, wallTimeMs: null }] }),
+    ).toThrow(/runs\[0\]\.wallTimeMs must be a finite number/);
+
+    const brokenQuests = {
+      ...run,
+      quests: { ...run.quests, firstQuestCompletedMs: Number.NaN },
+    };
+    expect(() => attachReleaseBaselineRuns({ totalRuns: 1 }, [brokenQuests])).toThrow(
+      /runs\[0\]\.quests\.firstQuestCompletedMs must be a finite number or null/,
+    );
+
+    const brokenCombat = { ...run, combat: { ...run.combat, killsByType: null } };
+    expect(() =>
+      attachReleaseBaselineRuns({ totalRuns: 1 }, [brokenCombat as unknown as RunStats]),
+    ).toThrow(/runs\[0\]\.combat\.killsByType must be an object/);
+  });
+
   it('publishes and uploads the same validated baseline file', () => {
     const workflow = parse(
       readFileSync(path.join(REPO_ROOT, '.github/workflows/deploy.yml'), 'utf8'),
