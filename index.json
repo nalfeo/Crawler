@@ -1,5 +1,16 @@
 [
   {
+    "commit": "cbafb339bab139c7d7d43ee3187c324b93d1134c",
+    "commitDate": "2026-08-13T22:10:27Z",
+    "commitSubject": "fix(ai): recover retreat threats before remote progression (#2882)",
+    "capturedAt": "2026-08-13T23:08:29.196Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31749768231",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/cbafb339bab139c7d7d43ee3187c324b93d1134c.json"
+  },
+  {
     "commit": "5ea6cb36f0253d362abc7ba47a5ea6d0a1594d4a",
     "commitDate": "2026-08-13T20:56:16Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2879)",
