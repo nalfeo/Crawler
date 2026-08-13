@@ -516,7 +516,10 @@ export function collectPrNumbers({
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (Number.isInteger(number) && number > 0) {
         pullsByNumber.set(number, pullRequest);
-        if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+        if (
+          (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
+          (pullRequest.base?.ref === undefined || pullRequest.base.ref === 'main')
+        ) {
           numbers.add(number);
         }
       }
@@ -579,6 +582,7 @@ export function collectPrNumbers({
     .filter((pullRequest) => {
       const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
       if (!Number.isInteger(number) || number <= 0 || directNumbers.has(number)) return false;
+      if (pullRequest.base?.ref !== undefined && pullRequest.base.ref !== 'main') return false;
       if (!isFlagOffDispatchEligibleByBlockState(pullRequest)) return false;
       if (hasUnhydratedOwnerLabel(pullRequest)) return false;
       return !hasHealthyOwnerForSweep(pullRequest, now);
@@ -666,7 +670,10 @@ export function classifyStaleBase({ pullRequest, basePulls, baseBranch, comparis
 
   const branchSha = String(baseBranch.object?.sha || '').toLowerCase();
   const mergedBasePull = matchingBasePulls.find(
-    (basePull) => Boolean(basePull.merged_at || basePull.merged) && basePull.state === 'closed',
+    (basePull) =>
+      Boolean(basePull.merged_at || basePull.merged) &&
+      basePull.state === 'closed' &&
+      basePull.base?.ref === 'main',
   );
   if (
     mergedBasePull &&

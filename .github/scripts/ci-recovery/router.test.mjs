@@ -163,6 +163,7 @@ function mergedBasePull(overrides = {}) {
     number: 2847,
     state: 'closed',
     merged_at: '2026-08-13T05:28:31Z',
+    base: { ref: 'main' },
     head: { ref: 'nalfeo-spell-broker-progression', sha: 'base-head' },
     ...overrides,
   };
@@ -189,6 +190,18 @@ test('stale-base classifier retargets when a merged base branch remains at its m
       comparison: { status: 'diverged' },
     }),
     { action: 'retarget', reason: 'merged-base-pr', basePrNumber: 2847 },
+  );
+});
+
+test('stale-base classifier leaves a merged base that targeted another stack branch alone', () => {
+  assert.deepEqual(
+    classifyStaleBase({
+      pullRequest: stackedPullRequest(),
+      basePulls: [mergedBasePull({ base: { ref: 'nalfeo-spell-broker-foundation' } })],
+      baseBranch: { object: { sha: 'base-head' } },
+      comparison: { status: 'diverged' },
+    }),
+    { action: 'skip', reason: 'base-not-stale' },
   );
 });
 
@@ -349,6 +362,38 @@ test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
   });
 
   assert.deepEqual(numbers, [1, 2, 3, 4, 5]);
+});
+
+test('flag-off sweeps leave active stacked PRs out of normal reconciliation', () => {
+  const scheduledPulls = [
+    {
+      number: 1,
+      draft: false,
+      labels: [],
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [],
+      base: { ref: 'feature-stack' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  for (const eventName of ['schedule', 'workflow_dispatch']) {
+    assert.deepEqual(
+      collectPrNumbers({
+        payload: { repository: { default_branch: 'main' } },
+        eventName,
+        repository: 'nalfeo/Crawler',
+        scheduledPulls,
+        trainEnabled: false,
+      }),
+      [1],
+    );
+  }
 });
 
 test('flag-off schedule sweeps exclude blocked-labeled PRs from dispatch', () => {
