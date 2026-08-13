@@ -35,6 +35,7 @@ import {
 } from '../../game/ai/settlement-maintenance-planner.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
+import { configureSpellBrokerPurchase } from '../../game/ai/spell-broker-intent.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -488,7 +489,16 @@ interface AiRunnerLabState {
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas?: boolean;
+    /** Single shared flag for both optional AI purchases. Replaces the former independent fields. */
+    optionalPurchases?: boolean;
+    /**
+     * @deprecated Retained for reading old persisted state only.
+     * If present and `optionalPurchases` is absent, treated as the initial
+     * value for `optionalPurchases` (defaults off if either old flag was off).
+     */
     merchantWeaponPurchase?: boolean;
+    /** @deprecated See `merchantWeaponPurchase` deprecation note. */
+    spellBrokerPurchase?: boolean;
   };
 }
 
@@ -658,7 +668,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas: boolean;
-    merchantWeaponPurchase: boolean;
+    /** Single shared flag for both optional AI purchases. Default false. */
+    optionalPurchases: boolean;
   } = {
     pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
     decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
@@ -666,7 +677,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
     weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
-    merchantWeaponPurchase: persisted?.aiConfig?.merchantWeaponPurchase ?? false,
+    // optionalPurchases defaults off. If old state had either individual flag
+    // set, keep it off (the shared flag must be explicitly enabled going forward).
+    optionalPurchases: persisted?.aiConfig?.optionalPurchases ?? false,
   };
 
   let ai = new BehaviorTreeAI({
@@ -716,7 +729,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
         weaponPersonas: aiConfig.weaponPersonas,
-        merchantWeaponPurchase: aiConfig.merchantWeaponPurchase,
+        optionalPurchases: aiConfig.optionalPurchases,
       },
     });
   };
@@ -825,7 +838,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (playerEid === undefined) {
       return;
     }
-    configureMerchantWeaponPurchase(world, aiConfig.merchantWeaponPurchase);
+    configureMerchantWeaponPurchase(world, aiConfig.optionalPurchases);
+    configureSpellBrokerPurchase(world, aiConfig.optionalPurchases);
     autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
     runEagerMaintenanceTick(world, playerEid);
@@ -1237,8 +1251,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       persistLabState();
     });
   aiFolder
-    .add(aiConfig, 'merchantWeaponPurchase')
-    .name('Merchant weapon purchase')
+    .add(aiConfig, 'optionalPurchases')
+    .name('Optional purchases (merchant + broker)')
     .onChange(() => {
       persistLabState();
     });

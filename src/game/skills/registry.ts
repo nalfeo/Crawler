@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SKILL_HARD_CAP } from '../../shared/skills.js';
 import { STAT_KEYS } from '../../shared/stats.js';
+import { SPELL_SKILL_ID_BY_SPELL_ID } from '../../shared/spell-skills.js';
 import type { SkillDefinition } from './types.js';
 
 const skillMilestoneLevelSchema = z.union([
@@ -28,6 +29,7 @@ const skillSchema: z.ZodType<SkillDefinition> = z
       'damage_dealt',
       'distance_dodged_near_threat',
       'weapon_fired',
+      'spell_used',
     ]),
     usageThresholds: z.array(z.number().int().positive()),
     perLevelBonus: perLevelBonusSchema,
@@ -37,7 +39,7 @@ const skillSchema: z.ZodType<SkillDefinition> = z
           level: skillMilestoneLevelSchema,
           name: z.string().trim().min(1),
           description: z.string().trim().min(1),
-          abilityId: z.string().trim().min(1),
+          abilityId: z.string().trim().min(1).optional(),
         }),
       )
       .length(4),
@@ -879,6 +881,56 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
     ],
     flavorText: '"Repurposed sporting goods. Unironically terrifying." — The Director',
   },
+  // ─── Spell skills — usage-based efficacy for every Floor 1 spell ─────────
+  // Spell output modifiers are applied centrally in progressionEffects.ts. These
+  // milestones intentionally have no abilityId: they are real breakpoints, not
+  // placeholder catalog abilities.
+  ...((
+    [
+      ['fireball', 'Fireball', 'Shape a hotter, wider blast with every cast.'],
+      ['heal', 'Heal', 'Channel restorative magic with greater certainty.'],
+      ['pulse-shield', 'Pulse Shield', 'Turn defensive pulses into stronger knockback.'],
+      ['magic-missile', 'Magic Missile', 'Guide arcane bolts farther and harder.'],
+      ['frost-nova', 'Frost Nova', 'Freeze larger groups for longer.'],
+      ['bless', 'Bless', 'Make every blessing last and matter more.'],
+      ['stoneskin', 'Stoneskin', 'Harden the protective ward around your body.'],
+      ['curse', 'Curse', 'Spread a heavier, longer-lasting hex.'],
+      ['vampiric-touch', 'Vampiric Touch', 'Drain more life from every successful touch.'],
+      ['haste', 'Haste', 'Push speed magic beyond ordinary limits.'],
+    ] as const
+  ).map(([spellId, spellName, description]) => ({
+    id: SPELL_SKILL_ID_BY_SPELL_ID[spellId],
+    name: `${spellName} Mastery`,
+    description,
+    category: 'utility' as const,
+    usageMetric: 'spell_used' as const,
+    usageThresholds: [
+      2, 5, 10, 18, 30, 45, 65, 90, 120, 155, 195, 240, 290, 345, 405, 470, 540, 615, 695, 780,
+    ],
+    perLevelBonus: {},
+    milestones: [
+      {
+        level: 5 as const,
+        name: 'Awakening',
+        description: 'Spell efficacy modifier increases materially.',
+      },
+      {
+        level: 10 as const,
+        name: 'Resonance',
+        description: 'Spell efficacy modifier increases materially.',
+      },
+      {
+        level: 15 as const,
+        name: 'Overchannel',
+        description: 'Spell efficacy modifier increases materially.',
+      },
+      {
+        level: 20 as const,
+        name: 'Grandmastery',
+        description: 'Spell efficacy modifier reaches its dramatic peak.',
+      },
+    ],
+  })) as SkillDefinition[]),
 ];
 
 const SKILL_DEFINITIONS = skillCatalogSchema.parse(SKILL_DEFINITIONS_RAW);

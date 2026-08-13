@@ -58,6 +58,7 @@ import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
+import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -248,8 +249,30 @@ export interface HeadlessRunnerConfig {
   recordWeaponTelemetry?: boolean;
   /** Use weapon-specific stat and gear personas. Default true; false preserves the legacy control. */
   weaponPersonas?: boolean;
-  /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
+  /**
+   * Enable both optional AI purchases (merchant weapon + Floor 1 Spell Broker)
+   * as a single shared feature flag. Default false.
+   *
+   * When true the merchant-weapon purchase decision and the Spell Broker
+   * purchase decision are both armed.  When false (the default) neither fires,
+   * keeping the AI on the deterministic required-only path.
+   *
+   * Prefer this flag over the individual `merchantWeaponPurchase` /
+   * `spellBrokerPurchase` fields, which are retained only for compatibility
+   * with tests and callers that have not yet migrated.  When `optionalPurchases`
+   * is supplied it wins over the individual fields.
+   */
+  optionalPurchases?: boolean;
+  /**
+   * @deprecated Use `optionalPurchases` instead.  Retained for caller
+   * compatibility; `optionalPurchases` takes precedence when provided.
+   */
   merchantWeaponPurchase?: boolean;
+  /**
+   * @deprecated Use `optionalPurchases` instead.  Retained for caller
+   * compatibility; `optionalPurchases` takes precedence when provided.
+   */
+  spellBrokerPurchase?: boolean;
   /**
    * Enable the optional latched settlement-return route goal: periodically
    * evaluates whether returning to the Floor 2 settlement to run the
@@ -295,7 +318,9 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: true,
+  optionalPurchases: false,
   merchantWeaponPurchase: false,
+  spellBrokerPurchase: false,
   settlementReturnRouting: false,
   enforcePlayabilityInvariants: true,
 };
@@ -519,7 +544,15 @@ export async function runHeadless(
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
-  configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
+  // `optionalPurchases` is the canonical single flag.  When supplied it
+  // overrides the individual deprecated fields; when absent the individual
+  // fields are used for backward compat with existing callers/tests.
+  const purchasesEnabled =
+    config.optionalPurchases !== undefined
+      ? config.optionalPurchases
+      : mergedConfig.merchantWeaponPurchase || mergedConfig.spellBrokerPurchase;
+  configureMerchantWeaponPurchase(world, purchasesEnabled);
+  configureSpellBrokerPurchase(world, purchasesEnabled);
   configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
