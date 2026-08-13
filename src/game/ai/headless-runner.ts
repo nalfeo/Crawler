@@ -57,6 +57,11 @@ import type { SettlementMaintenanceResult } from './settlement-maintenance-types
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+  planningDeadlineMsFromFrameBudget,
+} from './floor1-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import {
@@ -157,6 +162,12 @@ export interface HeadlessRunnerConfig {
   seed: number;
   /** Maximum frames to simulate (safety limit) */
   maxFrames?: number;
+  /**
+   * Frame budget exposed to budget-aware AI planning. Defaults to `maxFrames`.
+   * Set this only when `maxFrames` is an observation cutoff rather than the
+   * run's actual evaluation budget.
+   */
+  planningMaxFrames?: number;
   /** Maximum wall-clock time in milliseconds */
   maxWallTimeMs?: number;
   /** Report progress every N frames (0 = never) */
@@ -303,6 +314,7 @@ const DEFAULT_CONFIG: Required<
     | 'onFinish'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
+    | 'planningMaxFrames'
   >
 > = {
   seed: 12345,
@@ -311,7 +323,7 @@ const DEFAULT_CONFIG: Required<
   progressInterval: 0,
   debug: false,
   eventSampleInterval: 15,
-  questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
+  questStallFrames: FLOOR1_ACTIVE_TIME_BUDGET_MS / GAME.DELTA_MS,
   enemyDamageMultiplier: 1,
   enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
   floorId: 'floor1',
@@ -526,6 +538,12 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  aiProvider.configurePlanningDeadlineMs?.(
+    planningDeadlineMsFromFrameBudget(
+      config.planningMaxFrames ??
+        (config.maxFrames === undefined ? FLOOR1_DEFAULT_MAX_FRAMES : mergedConfig.maxFrames),
+    ),
+  );
   const startTime = Date.now();
 
   if (mergedConfig.debug) {

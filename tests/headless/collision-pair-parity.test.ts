@@ -21,6 +21,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { FLOOR1_DEFAULT_MAX_FRAMES } from '../../src/game/ai/floor1-run-budget.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIPathingMode, type RunStats } from '../../src/game/ai/types.js';
 
@@ -326,6 +327,7 @@ async function runSlice(seed: number): Promise<RunStats> {
   return runHeadless(ai, {
     seed,
     maxFrames: PARITY_MAX_FRAMES,
+    planningMaxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
     maxWallTimeMs: Number.POSITIVE_INFINITY,
   });
 }
