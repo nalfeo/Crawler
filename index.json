@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5ea6cb36f0253d362abc7ba47a5ea6d0a1594d4a",
+    "commitDate": "2026-08-13T20:56:16Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2879)",
+    "capturedAt": "2026-08-13T22:00:56.656Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31743372829",
+    "winRate": 0.995,
+    "totalWins": 597,
+    "totalRuns": 600,
+    "path": "by-sha/5ea6cb36f0253d362abc7ba47a5ea6d0a1594d4a.json"
+  },
+  {
     "commit": "7ef72f3e30b0b6ef8ee65bf43260ec1f7ac3325e",
     "commitDate": "2026-08-13T20:40:37Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2876)",
