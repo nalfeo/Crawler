@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-12",
+  "session_slug": "seed-69-progression",
+  "task_title": "Fix shared seed-69 Floor 1 progression timeout",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "minor",
+      "notes": "Two adversarial reviews corrected the initial timing hypothesis, identified the true premature hand-in race, required legacy-test setup updates, and rejected quest reordering/eager quest evaluation/stage masking/purchase-only guards."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gpt-5.4"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 2,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

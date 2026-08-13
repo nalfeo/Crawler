@@ -92,6 +92,8 @@ export const FLOOR2_LEAVE_FLOOR_QUEST_ID = 'floor2-leave-floor';
 
 /** The gross, rat/slime-themed key item the shopkeeper sends you to fetch. */
 export const SHOPKEEPER_FETCH_ITEM_ID = 'glistening-rat-tail';
+/** The merchant-quest objective that latches acquisition before the item can be returned. */
+export const SHOPKEEPER_FETCH_OBJECTIVE_ID = 'fetch-prize';
 /** The equipment the shopkeeper sells once you return his prize. */
 export const SHOPKEEPER_EQUIPMENT_ITEM_ID = 'merchants-stained-charm';
 
