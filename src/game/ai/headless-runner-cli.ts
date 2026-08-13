@@ -44,7 +44,6 @@ async function main(): Promise<void> {
   console.log(`Decision mode: ${args.decisionMode}`);
   console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
   console.log(`Persona: ${args.persona}`);
-  console.log(`Merchant weapon purchase: ${args.merchantWeaponPurchase ? 'enabled' : 'disabled'}`);
   console.log(
     `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
   );
@@ -78,7 +77,6 @@ async function main(): Promise<void> {
     weaponPersonas: args.weaponPersonas,
     optionalPurchases: args.optionalPurchases,
     playerPersona: args.persona,
-    merchantWeaponPurchase: args.merchantWeaponPurchase,
     settlementReturnRouting: args.settlementReturnRouting,
     ...(recording
       ? {
