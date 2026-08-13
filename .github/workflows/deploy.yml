@@ -420,6 +420,7 @@ jobs:
 
       - name: Enrich baseline with commit metadata
         env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
           SHA: ${{ steps.sha.outputs.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -429,24 +430,8 @@ jobs:
           COMMIT_DATE=$(git show -s --format=%cI "$SHA")
           COMMIT_SUBJECT=$(git show -s --format=%s "$SHA")
           RUN_URL="$SERVER_URL/$REPO/actions/runs/$RUN_ID"
-          COMMIT_DATE="$COMMIT_DATE" \
-          COMMIT_SUBJECT="$COMMIT_SUBJECT" \
-          RUN_URL="$RUN_URL" \
-          node -e "
-            const fs = require('node:fs');
-            const data = JSON.parse(fs.readFileSync('.cache/baseline/baseline.json','utf8'));
-            const meta = {
-              commit: process.env.SHA,
-              commitDate: process.env.COMMIT_DATE,
-              commitSubject: process.env.COMMIT_SUBJECT,
-              capturedAt: new Date().toISOString(),
-              runId: process.env.RUN_ID,
-              runNumber: Number(process.env.RUN_NUMBER),
-              runUrl: process.env.RUN_URL,
-              sweep: { seeds: '1-100', kind: 'winrate' },
-            };
-            fs.writeFileSync('.cache/baseline/baseline.json', JSON.stringify({ meta, ...data }, null, 2));
-          "
+          COMMIT_DATE="$COMMIT_DATE" COMMIT_SUBJECT="$COMMIT_SUBJECT" RUN_URL="$RUN_URL" \
+            npx tsx scripts/agent/perf/release-baseline.ts
 
       - name: Publish to baselines branch
         env:
@@ -525,7 +510,9 @@ jobs:
 
             # Storage is keyed by commit SHA, so a re-run for the same commit
             # overwrites its by-sha file: this branch holds the latest baseline
-            # per release commit (the sweep is deterministic for a given commit).
+            # per release commit. Gameplay fields are deterministic for a given
+            # commit; each complete RunStats also preserves nondeterministic
+            # wallTimeMs from the runner that captured it.
             mkdir -p "$WORKTREE/by-sha"
             cp "$SRC" "$WORKTREE/by-sha/$SHA.json" || return 1
             [ -f "$WORKTREE/README.md" ] || write_readme || return 1
