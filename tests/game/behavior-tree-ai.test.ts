@@ -1871,6 +1871,38 @@ describe('BehaviorTreeAI', () => {
     },
   );
 
+  it('resolves the retreat-triggering threat before resuming remote progression', () => {
+    const { world, player, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('throwing-knife');
+    world.stores.health.current[player] = 8;
+    world.stores.health.max[player] = 100;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+
+    const retreatThreatEid = (ai as unknown as { retreatThreatEid: number | null })
+      .retreatThreatEid;
+    expect(retreatThreatEid).not.toBeNull();
+    for (const [index, enemy] of enemies.entries()) {
+      world.stores.position.x[enemy] = 46 + index * 2;
+      world.stores.position.y[enemy] = 14;
+    }
+
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: retreatThreatEid,
+    });
+    expect(ai.getDecision().reason).toContain('Resolving retreat threat before progression');
+
+    world.stores.health.current[retreatThreatEid!] = 0;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+    });
+  });
+
   it('abandons a melee NPC threat clear after sustained no progress', () => {
     const { world, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
     const ai = new BehaviorTreeAI({ seed: 12 });
