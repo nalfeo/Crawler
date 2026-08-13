@@ -29,10 +29,14 @@ committed artifact even when no matching workflow run exists or is retained.
 
 Use this order:
 
-1. **Inventory branches first** with `git branch --all`. Identify any branch whose
-   name or current checkout indicates the requested benchmark or sweep; give an
-   explicitly named or active benchmark branch priority over `main` and workflow
-   history.
+1. **Inventory local and remote branches first** with `git branch --all` and
+   `git ls-remote --heads origin`. In a shallow or single-branch checkout, unrelated
+   remote heads are absent from `git branch --all`. Identify any branch whose name
+   or current checkout indicates the requested benchmark or sweep, then fetch each
+   matching remote head with
+   `git fetch --depth=<count> origin refs/heads/<branch>:refs/remotes/origin/<branch>`
+   before inspecting it. Give an explicitly named or active benchmark branch
+   priority over `main` and workflow history.
 2. **Inspect recent history on candidate branches** with
    `git log --oneline --decorate -n <count> <branch>`. Use commit messages and
    changed paths to identify the commit that produced or recorded the result.

@@ -18,9 +18,12 @@ ci-policy, ai-combat-balance
 
 - Added the canonical prior benchmark and sweep result discovery order to
   `docs/agent-os/policies/ci-policy.md`.
-- Agents now inventory branches with `git branch --all`, inspect recent history
-  on candidate branches, and search committed branch trees and artifacts before
-  querying GitHub Actions workflow history.
+- Agents now inventory local branches with `git branch --all` and remote heads
+  with `git ls-remote --heads origin`, then fetch matching remote refs before
+  inspecting candidate history. This covers unrelated branches omitted from
+  shallow or single-branch checkouts.
+- Agents search committed branch trees and artifacts before querying GitHub
+  Actions workflow history.
 - The policy gives an active or explicitly named benchmark branch priority and
   requires reporting the branch and commit when repository evidence supplies
   the result.
