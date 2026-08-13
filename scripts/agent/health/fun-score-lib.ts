@@ -302,7 +302,9 @@ export function normalizeFunSessions(payload: unknown): FunSession[] {
     }
     const bareRun = withDefaultedSafeRoomMs(root);
     if (isRunStats(bareRun)) {
-      return [{ id: 'run-1', run: bareRun }];
+      // Route through `toSession` so a bare RunStats keeps its `playerPersona`
+      // cohort instead of dropping out of `persona_scores`.
+      return [toSession(root, 0)];
     }
   }
   throw new Error(
@@ -697,15 +699,6 @@ export function scoreFunSessions(
     run_distinctness: runDistinctnessAcrossRuns(sessions),
   };
 
-  const unsafeCombatMs = sessions.reduce(
-    (sum, session) => sum + session.run.combat.combatTimeMs,
-    0,
-  );
-  const unsafeGameMs = sessions.reduce(
-    (sum, session) => sum + Math.max(0, session.run.gameTimeMs - session.run.safeRoomMs),
-    0,
-  );
-  const unsafeCombatUptime = ratio(unsafeCombatMs, unsafeGameMs);
   const survivabilityValues = sessions.map((session) => normalizedOutcome(session.run));
   const survivabilityVariance = stdDev(survivabilityValues);
   const criterion = (
@@ -721,10 +714,16 @@ export function scoreFunSessions(
   });
   const criteria: FunCriteria = {
     unsafe_combat_uptime: criterion(
-      round2(unsafeCombatUptime),
+      // `RunStats.combat.combatTimeMs` accumulates on every frame where any
+      // Enemy entity exists anywhere in the world -- including frames spent in
+      // a safe room -- while the denominator would exclude all safe-room time.
+      // That ratio can exceed 1 and report healthy without any sustained
+      // nearby combat, so this stays unmeasured until zone-aware combat time
+      // is recorded on RunStats.
+      null,
       0.75,
-      unsafeCombatUptime >= 0.75,
-      'Combat uptime is measured outside safe-room time.',
+      false,
+      'Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames.',
     ),
     survivability_variance: criterion(
       round2(survivabilityVariance),
@@ -852,6 +851,21 @@ export function scoreFunSessions(
   };
 }
 
+/**
+ * Smallest delta treated as a real movement, expressed in each criterion's own
+ * units. Ratio criteria live in [0,1], so the 2-point dimension threshold would
+ * make even a full 0 -> 1 swing permanently `inconclusive`.
+ */
+const CRITERION_MEANINGFUL_DELTA: Readonly<Record<keyof FunCriteria, number>> = {
+  unsafe_combat_uptime: 0.05,
+  survivability_variance: 0.05,
+  run_variety: 2,
+  dopamine_cadence: 5,
+  snowball_frequency: 0.02,
+  meta_progression: 0.05,
+  item_viability: 0.05,
+};
+
 function compareMetric(
   baseline: number | null,
   candidate: number | null,
@@ -895,6 +909,7 @@ export function compareFunReports(
       baseline.criteria[key].observed,
       candidate.criteria[key].observed,
       higherIsBetter[key],
+      CRITERION_MEANINGFUL_DELTA[key],
     );
   }
 

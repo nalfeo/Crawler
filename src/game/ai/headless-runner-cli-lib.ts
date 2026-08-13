@@ -16,7 +16,12 @@ export interface CLIArgs {
   maxFrames: number;
   maxTimeMs: number;
   progress: number;
-  aggression: number;
+  /**
+   * Explicit `--aggression` override, or `null` when the flag was not supplied.
+   * Nullable (rather than defaulting to 1) so an explicit `--aggression 1` is
+   * still applied on top of a non-default persona preset.
+   */
+  aggression: number | null;
   debug: boolean;
   help: boolean;
   eventLog: string | null;
@@ -48,7 +53,7 @@ export function defaultCLIArgs(
     maxFrames: 100_000,
     maxTimeMs: 5 * 60 * 1000,
     progress: 3600, // Report every minute of game time
-    aggression: 1,
+    aggression: null,
     debug: false,
     help: false,
     eventLog: null,
@@ -109,7 +114,11 @@ export function parseArgs(
       args.progress = parseInt(next, 10);
       i++;
     } else if (arg === '--aggression' && next) {
-      args.aggression = parseFloat(next);
+      const parsed = Number.parseFloat(next);
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`Invalid --aggression "${next}" (must be a finite number)`);
+      }
+      args.aggression = parsed;
       i++;
     } else if (arg === '--event-log' && next) {
       args.eventLog = next;
@@ -169,13 +178,22 @@ export function parseArgs(
       args.optionalPurchases = true;
     } else if (arg === '--settlement-return-routing') {
       args.settlementReturnRouting = true;
-    } else if (arg === '--persona' && next) {
+    } else if (arg === '--persona') {
+      // Handle unconditionally (no `&& next` guard) so a trailing `--persona`
+      // fails fast instead of silently running as `experienced_player` and
+      // mislabelling the playtest.
+      if (next === undefined || next.trim() === '') {
+        throw new Error(
+          `--persona requires a value (must be one of: ${PLAYER_PERSONAS.join(', ')})`,
+        );
+      }
       if (!(PLAYER_PERSONAS as readonly string[]).includes(next)) {
         throw new Error(
           `Invalid --persona "${next}" (must be one of: ${PLAYER_PERSONAS.join(', ')})`,
         );
       }
       args.persona = next as PlayerPersona;
+      i++;
     } else if (arg === '--pathing-mode' && next) {
       if (!(PATHING_MODE_VALUES as string[]).includes(next)) {
         throw new Error(
@@ -213,7 +231,7 @@ Options:
   --max-frames <number>   Maximum frames to simulate (default: 100000)
   --max-time-ms <number>  Maximum wall-clock time in ms (default: 300000)
   --progress <number>     Report progress every N frames (default: 3600)
-  --aggression <number>   AI aggression level 0-2 (default: 1)
+  --aggression <number>   AI aggression override 0-2 (default: the --persona value)
   --weapon <id>           Force a specific starting weapon (e.g. sword, bow, baseball-bat)
   --event-log <path>      Write per-frame telemetry as JSONL to <path>
   --event-summary <path>  Write wasted-time summary JSON to <path>

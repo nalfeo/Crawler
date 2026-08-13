@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RunStats } from '../../src/game/ai/types.js';
-import type { FunSession } from '../../scripts/agent/health/fun-score-lib.js';
+import type { FunScoreReport, FunSession } from '../../scripts/agent/health/fun-score-lib.js';
 import {
   compareFunReports,
   GATED_DIMENSIONS,
@@ -215,7 +215,9 @@ describe('scoreFunSessions', () => {
       { id: 'expert', persona: 'experienced_player', run: makeRun({ startingWeapon: 'bow' }) },
     ]);
 
-    expect(report.criteria.unsafe_combat_uptime.observed).toBeGreaterThan(0);
+    // combatTimeMs accumulates during safe-room frames too, so uptime stays
+    // unmeasured until zone-aware combat time is recorded.
+    expect(report.criteria.unsafe_combat_uptime.status).toBe('unmeasured');
     expect(report.criteria.dopamine_cadence.status).toBe('unmeasured');
     expect(report.criteria.snowball_frequency.status).toBe('unmeasured');
     expect(report.persona_scores.new_player?.runs).toBe(1);
@@ -233,6 +235,24 @@ describe('scoreFunSessions', () => {
 
     expect(comparison.overall_fun_score.status).toBe('improving');
     expect(comparison.criteria.dopamine_cadence.status).toBe('unmeasured');
+  });
+
+  it('uses per-criterion deltas so ratio criteria are not permanently inconclusive', () => {
+    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
+    const candidate: FunScoreReport = {
+      ...baseline,
+      criteria: {
+        ...baseline.criteria,
+        survivability_variance: {
+          ...baseline.criteria.survivability_variance,
+          observed: (baseline.criteria.survivability_variance.observed ?? 0) + 0.2,
+        },
+      },
+    };
+
+    const comparison = compareFunReports(baseline, candidate);
+
+    expect(comparison.criteria.survivability_variance.status).toBe('improving');
   });
 
   it('scales subjective blending with survey coverage', () => {

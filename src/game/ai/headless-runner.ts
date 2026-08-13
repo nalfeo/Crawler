@@ -1505,6 +1505,7 @@ export async function runHeadless(
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
     runStartXp,
+    ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
     floor1BossProgression: collectFloor1BossProgression(world, {

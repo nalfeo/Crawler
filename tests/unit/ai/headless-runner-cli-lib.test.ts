@@ -88,6 +88,26 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(() => cli('--persona', 'speedrunner')).toThrow(/Invalid --persona/);
   });
 
+  it('rejects a --persona flag with no value instead of silently defaulting', () => {
+    expect(() => cli('--persona')).toThrow(/--persona requires a value/);
+    expect(() => cli('--persona', '  ')).toThrow(/--persona requires a value/);
+  });
+
+  it('consumes the persona value so it is not reparsed as a flag', () => {
+    const args = cli('--persona', 'explorer', '--seed', '77');
+    expect(args.persona).toBe('explorer');
+    expect(args.seed).toBe(77);
+  });
+
+  it('treats --aggression as an unset override unless explicitly supplied', () => {
+    expect(cli().aggression).toBeNull();
+    // An explicit `--aggression 1` must still be applied (it used to be
+    // indistinguishable from the old default of 1 and silently dropped).
+    expect(cli('--aggression', '1').aggression).toBe(1);
+    expect(cli('--aggression', '1.8').aggression).toBe(1.8);
+    expect(() => cli('--aggression', 'hot')).toThrow(/Invalid --aggression/);
+  });
+
   it('throws on an invalid --decision-mode', () => {
     expect(() => cli('--decision-mode', 'bogus')).toThrow(/Invalid --decision-mode/);
   });

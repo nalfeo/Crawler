@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   const ai = new BehaviorTreeAI({
     ...getPersonaConfig(args.persona),
     seed: args.seed,
-    ...(args.aggression !== 1 ? { aggression: args.aggression } : {}),
+    ...(args.aggression !== null ? { aggression: args.aggression } : {}),
     debug: args.debug,
     pathingMode: args.pathingMode,
     decisionMode: args.decisionMode,

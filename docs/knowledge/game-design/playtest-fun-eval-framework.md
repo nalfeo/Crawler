@@ -92,7 +92,7 @@ The evaluator also reports criteria independently of the overall score:
 
 | Criterion                 | Current target                                  | Status when telemetry is absent                  |
 | ------------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| Unsafe-zone combat uptime | >=75%                                           | `unmeasured`                                     |
+| Unsafe-zone combat uptime | >=75%                                           | `unmeasured` until zone-aware combat time exists |
 | Survivability variance    | Meaningful outcome spread; inspect tails        | Measured from run outcomes                       |
 | Run variety               | `run_distinctness` >=60                         | Measured                                         |
 | Dopamine cadence          | No gap >90s during active play                  | `unmeasured` until timestamped events exist      |
@@ -100,9 +100,12 @@ The evaluator also reports criteria independently of the overall score:
 | Permanent-power slope     | Slow positive run-over-run slope                | `unmeasured` until meta progression exists       |
 | Item viability            | No exposed item is inert or permanently avoided | `unmeasured` until item telemetry exists         |
 
-These criteria are diagnostic and trendable, not PR gates. Averages must be
-accompanied by distributions, persona breakdowns, sample size, and reproducible
-seed/run identifiers.
+These criteria are diagnostic and trendable, not PR gates. `FunScoreReport`
+emits aggregate means, persona breakdowns, sample size (`runs`), and
+confidence; it does **not** carry per-run distributions or seed/run
+identifiers. Callers that report a criterion must therefore preserve the input
+run set (seeds and run ids) alongside the report so tails stay inspectable and
+the numbers stay reproducible.
 
 ## Confidence model
 

@@ -178,6 +178,13 @@ describe('normalizeFunSessions', () => {
     expect(fromRoot[0]?.run.safeRoomMs).toBe(0);
   });
 
+  it('keeps the persona cohort of a bare-root RunStats payload', () => {
+    const sessions = normalizeFunSessions(makeRun({ playerPersona: 'min_max_cheeser' }));
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.persona).toBe('min_max_cheeser');
+  });
+
   it('rejects a present-but-invalid safeRoomMs (corruption, not a missing legacy field)', () => {
     expect(() => normalizeFunSessions([makeRun({ safeRoomMs: Number.NaN })])).toThrow(
       /missing a valid RunStats payload/,
