@@ -58,24 +58,24 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "claude-opus-5",
+      "grader_model": "grok-4.5",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "7e0a217c2f2e2017ba6298c50377a780bb51fa46",
+      "head_sha": "fd9551ec1f6b5c3bb798f6e3cca0af57b89a9bb1",
       "findings": [
         {
           "severity": "minor",
           "file": "src/game/ai/bt-ai-provider.ts",
-          "detail": "The recovery watchdog clock only samples target HP when LocalThreatRecovery ticks, while frameCount continues under higher-priority Retreat. Re-latching the same eid does not reset the timer, so a long retreat can make the next recovery tick conservatively blacklist the threat. This yields to progression and cannot deadlock; refreshing the timer or health sample on same-eid re-latch would align semantics more precisely."
+          "detail": "The HP watchdog only samples when LocalThreatRecovery ticks. Same-eid Retreat re-entry does not reset startFrame/bestHealth, and damage dealt during higher-priority Retreat is invisible, so a long kite can immediately blacklist on the next recovery tick. This yields to progression rather than deadlocking; refreshing the sample on same-eid re-latch (or sampling HP while retreating) would match the intended elapsed-no-progress semantics."
         },
         {
           "severity": "minor",
           "file": "src/game/ai/bt-ai-provider.ts",
-          "detail": "The non-obvious recovery ownership, HP-progress watchdog, and endRetreat blacklist exemption are documented in the handoff rather than beside the implementation. A short rationale comment would reduce future archaeology."
+          "detail": "Exact-threat ownership, HP-progress (not distance) watchdog, and the endRetreat ignore exemption are non-obvious arbitration rules documented mainly in the handoff. A short rationale beside latch/endRetreat/recovery would reduce future regressions."
         },
         {
           "severity": "minor",
           "file": "tests/game/behavior-tree-ai.test.ts",
-          "detail": "The abandonment test writes private watchdog fields to isolate the timeout branch rather than advancing frames, and does not directly cover every map/range cleanup branch. Additional black-box timing and cleanup tests would harden the suite."
+          "detail": "The abandonment test injects private watchdog fields instead of advancing frames, and map/range/unreachable cleanup branches are only indirectly covered. A pure frame-advanced no-progress case plus one cleanup black-box would harden the suite."
         }
       ],
       "criteria": {
@@ -87,7 +87,7 @@
       },
       "verdict": "pass",
       "findings_count": 3,
-      "notes": "Independent verification at HEAD 7e0a217c found the exact fix fail-to-pass, the targeted and broader suites green, deterministic frame-based behavior, correct layer boundaries, bounded recovery, and complete process artifacts. Residual findings are minor and non-blocking."
+      "notes": "At fd9551ec the diff is a surgical pre-Progress LocalThreatRecovery owning only the retreat-triggering eid, with endRetreat skip-ignore while that threat remains in scan range, HP-loss watchdog reuse of NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES, and full clear on reset paths. Unit tests prove recovery-before-progress and bounded abandonment; headless adds throwing-knife-29. External post-rebase evidence corroborates. Residual findings are minor non-blockers; no criterion below 3."
     }
   }
 }
