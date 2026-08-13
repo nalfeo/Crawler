@@ -350,6 +350,9 @@ jobs:
     name: Baseline win-rate sweep (100 seeds)
     runs-on: ubuntu-latest
     needs: [release-gate, deploy]
+    concurrency:
+      group: baseline-sweep-${{ github.event.workflow_run.head_sha || github.sha }}
+      cancel-in-progress: false
     # Only baseline what we actually released to Pages. `needs: deploy` alone
     # is NOT sufficient here: GitHub Actions does not cascade-skip a job with
     # its own explicit `if:` just because a job it `needs` was skipped -- that
@@ -569,6 +572,22 @@ jobs:
             attempt=$((attempt + 1))
             sleep $((RANDOM % 5 + 2))
           done
+
+      - name: Detect baseline win-rate regression
+        id: baseline-regression
+        env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          BASELINE_INDEX_JSON: ${{ runner.temp }}/baselines-wt/index.json
+          BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+        run: npx tsx scripts/agent/perf/baseline-regression-check.ts
+
+      - name: File regression issue and assign Copilot
+        if: steps.baseline-regression.outputs.regression == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+        run: node .github/scripts/baseline-regression-issue.mjs
 
       - name: Upload baseline as artifact
         if: always()
