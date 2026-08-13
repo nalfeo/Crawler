@@ -1,5 +1,25 @@
 name: Weapon Sweep
 
+# Run a 100-seed optional-purchases A/B (example):
+#
+#   # false arm (control — default loadout, no optional purchases)
+#   gh workflow run weapon-sweep.yml \
+#     -f seed_count=100 -f default_loadout=true -f optional_purchases=false \
+#     -f weapon_personas=false -f max_frames=23760
+#
+#   # true arm (treatment — default loadout, optional purchases enabled)
+#   gh workflow run weapon-sweep.yml \
+#     -f seed_count=100 -f default_loadout=true -f optional_purchases=true \
+#     -f weapon_personas=false -f max_frames=23760
+#
+# Download and compare both arms:
+#   gh run download <run-id-false> -n weapon-sweep-default-false
+#   gh run download <run-id-true>  -n weapon-sweep-default-true
+#   npx tsx scripts/agent/health/fun-score.ts \
+#     --input weapon-sweep-default-false/weapon-sweep-default-false.json
+#   npx tsx scripts/agent/health/fun-score.ts \
+#     --input weapon-sweep-default-true/weapon-sweep-default-true.json
+
 on:
   workflow_dispatch:
     inputs:
@@ -8,7 +28,7 @@ on:
         type: string
         default: '100'
       weapons:
-        description: 'Comma-separated Floor-1 weapons'
+        description: 'Comma-separated Floor-1 weapons (ignored when default_loadout is true)'
         type: string
         default: 'sword,bow,baseball-bat,pistol,throwing-knife,fireball'
       weapon_personas:
@@ -19,6 +39,14 @@ on:
         description: 'Frame budget per run (positive integer ≤ 600000; default 19800 ≈ 330s at 60fps)'
         type: string
         default: '19800'
+      optional_purchases:
+        description: 'Enable optional AI purchases (merchant weapon + Spell Broker) — one arm of the A/B'
+        type: boolean
+        default: false
+      default_loadout:
+        description: 'Skip forced-weapon selection; run one seed-determined-loadout arm instead of the full weapon matrix. Use with optional_purchases to run a clean A/B without the weapon confound.'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,6 +75,7 @@ jobs:
           WEAPONS: ${{ inputs.weapons }}
           WEAPON_PERSONAS: ${{ inputs.weapon_personas }}
           MAX_FRAMES: ${{ inputs.max_frames }}
+          DEFAULT_LOADOUT: ${{ inputs.default_loadout }}
         run: |
           set -euo pipefail
           if ! [[ "$SEED_COUNT" =~ ^[0-9]+$ ]] || [ "$SEED_COUNT" -lt 1 ] || [ "$SEED_COUNT" -gt 100 ]; then
@@ -57,29 +86,38 @@ jobs:
             echo "::error::max_frames must be a positive integer in [1,600000]"
             exit 1
           fi
-          weapon_matrix=$(echo "$WEAPONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF' | jq -R . | jq -sc .)
-          # Validate each weapon token: allow only alphanumerics and hyphens
-          if echo "$weapon_matrix" | jq -e '.[] | select(test("[^a-zA-Z0-9-]"))' > /dev/null 2>&1; then
-            echo "::error::weapons must be alphanumeric (hyphens allowed); no spaces, slashes, or special characters"
-            exit 1
-          fi
-          if [ "$(echo "$weapon_matrix" | jq 'length')" -lt 1 ]; then
-            echo "::error::weapons must contain at least one entry"
-            exit 1
-          fi
-          if [ "$(echo "$weapon_matrix" | jq 'length')" -ne "$(echo "$weapon_matrix" | jq '[.[] | ascii_downcase] | unique | length')" ]; then
-            echo "::error::weapons must not contain duplicates"
-            exit 1
-          fi
-          if echo "$weapon_matrix" | jq -e '.[] | ascii_downcase | select(. != "sword" and . != "bow" and . != "baseball-bat" and . != "pistol" and . != "throwing-knife" and . != "fireball")' > /dev/null 2>&1; then
-            echo "::error::weapons must be a comma-separated subset of: sword,bow,baseball-bat,pistol,throwing-knife,fireball"
-            exit 1
-          fi
           if [ "$WEAPON_PERSONAS" != "true" ] && [ "$WEAPON_PERSONAS" != "false" ]; then
             echo "::error::weapon_personas must be true or false"
             exit 1
           fi
-          weapon_matrix=$(echo "$weapon_matrix" | jq -c '[.[] | ascii_downcase]')
+
+          # default_loadout=true bypasses forced-weapon selection and emits the
+          # sentinel weapon ID "default" as the single-arm matrix entry.  The
+          # weapons input is ignored in this mode.
+          if [ "$DEFAULT_LOADOUT" = "true" ]; then
+            weapon_matrix='["default"]'
+          else
+            weapon_matrix=$(echo "$WEAPONS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF' | jq -R . | jq -sc .)
+            # Validate each weapon token: allow only alphanumerics and hyphens
+            if echo "$weapon_matrix" | jq -e '.[] | select(test("[^a-zA-Z0-9-]"))' > /dev/null 2>&1; then
+              echo "::error::weapons must be alphanumeric (hyphens allowed); no spaces, slashes, or special characters"
+              exit 1
+            fi
+            if [ "$(echo "$weapon_matrix" | jq 'length')" -lt 1 ]; then
+              echo "::error::weapons must contain at least one entry"
+              exit 1
+            fi
+            if [ "$(echo "$weapon_matrix" | jq 'length')" -ne "$(echo "$weapon_matrix" | jq '[.[] | ascii_downcase] | unique | length')" ]; then
+              echo "::error::weapons must not contain duplicates"
+              exit 1
+            fi
+            if echo "$weapon_matrix" | jq -e '.[] | ascii_downcase | select(. != "sword" and . != "bow" and . != "baseball-bat" and . != "pistol" and . != "throwing-knife" and . != "fireball")' > /dev/null 2>&1; then
+              echo "::error::weapons must be a comma-separated subset of: sword,bow,baseball-bat,pistol,throwing-knife,fireball (or use default_loadout=true to skip weapon selection)"
+              exit 1
+            fi
+            weapon_matrix=$(echo "$weapon_matrix" | jq -c '[.[] | ascii_downcase]')
+          fi
+
           echo "weapon_matrix=$weapon_matrix" >> "$GITHUB_OUTPUT"
           run_matrix='[]'
           for weapon in $(echo "$weapon_matrix" | jq -r '.[]'); do
@@ -124,22 +162,28 @@ jobs:
           WEAPON: ${{ matrix.weapon }}
           MAX_FRAMES: ${{ inputs.max_frames }}
           WEAPON_PERSONAS: ${{ inputs.weapon_personas }}
+          OPTIONAL_PURCHASES: ${{ inputs.optional_purchases }}
         run: |
           set -euo pipefail
           persona_flag="--weapon-personas"
           if [ "$WEAPON_PERSONAS" = "false" ]; then
             persona_flag="--no-weapon-personas"
           fi
+          optional_purchases_flag="--no-optional-purchases"
+          if [ "$OPTIONAL_PURCHASES" = "true" ]; then
+            optional_purchases_flag="--optional-purchases"
+          fi
           npx tsx scripts/agent/perf/weapon-sweep.ts \
             --seeds "$SEEDS" \
             --weapons "$WEAPON" \
             --max-frames "$MAX_FRAMES" \
             $persona_flag \
+            $optional_purchases_flag \
             --out "weapon-sweep-${{ matrix.weapon }}-${{ matrix.shard }}.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: weapon-sweep-shard-${{ matrix.weapon }}-${{ matrix.shard }}
+          name: weapon-sweep-shard-${{ matrix.weapon }}-${{ matrix.shard }}-${{ inputs.optional_purchases }}
           path: weapon-sweep-${{ matrix.weapon }}-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 30
@@ -183,23 +227,31 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: weapon-sweep-shard-${{ matrix.weapon.weapon }}-*
+          pattern: weapon-sweep-shard-${{ matrix.weapon.weapon }}-*-${{ inputs.optional_purchases }}
           path: shards
           merge-multiple: true
 
       - name: Aggregate ${{ matrix.weapon.weapon }} shards
         env:
           SEED_COUNT: ${{ inputs.seed_count }}
+          OPTIONAL_PURCHASES: ${{ inputs.optional_purchases }}
         run: |
+          optional_purchases_flag="--no-optional-purchases"
+          if [ "$OPTIONAL_PURCHASES" = "true" ]; then
+            optional_purchases_flag="--optional-purchases"
+          fi
           npx tsx scripts/agent/perf/merge-weapon-sweep-shards.ts \
             --inputs shards \
             --weapon "${{ matrix.weapon.weapon }}" \
             --seed-count "$SEED_COUNT" \
-            --out "weapon-sweep-${{ matrix.weapon.weapon }}.json"
+            --out "weapon-sweep-${{ matrix.weapon.weapon }}-${{ inputs.optional_purchases }}.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: weapon-sweep-${{ matrix.weapon.weapon }}
-          path: weapon-sweep-${{ matrix.weapon.weapon }}.json
+          # Stable arm-labelled name:
+          #   weapon-sweep-default-false  (control arm)
+          #   weapon-sweep-default-true   (treatment arm)
+          name: weapon-sweep-${{ matrix.weapon.weapon }}-${{ inputs.optional_purchases }}
+          path: weapon-sweep-${{ matrix.weapon.weapon }}-${{ inputs.optional_purchases }}.json
           if-no-files-found: error
           retention-days: 30

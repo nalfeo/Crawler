@@ -1,5 +1,13 @@
 import type { RunStats } from '../../../src/game/ai/types.js';
 
+/**
+ * Sentinel weapon ID used when running a sweep without a forced weapon (i.e.
+ * each seed uses its own seed-determined default starting loadout).  This
+ * allows the existing weapon-matrix pipeline to produce a single-arm A/B run
+ * without requiring callers to pick an arbitrary real weapon.
+ */
+export const DEFAULT_LOADOUT_WEAPON_ID = 'default';
+
 export interface WeaponSweepRecord {
   weapon: string;
   seed: number;
@@ -41,6 +49,19 @@ export interface WeaponSweepOutput {
   budgetSec: number;
   summaries: WeaponSweepSummary[];
   allRecords: WeaponSweepRecord[];
+  /**
+   * Whether optional AI purchases (merchant weapon + Spell Broker) were
+   * enabled for this sweep arm.  Absent on pre-feature artifacts; treat as
+   * `false` when missing.
+   */
+  optionalPurchases?: boolean;
+  /**
+   * Full RunStats for every run, in the same order as `allRecords`.  Present
+   * when the sweep was run with full-stats recording enabled.  Consumed by
+   * `fun-score.ts --input` via its `{ runs: RunStats[] }` normalisation path.
+   * Absent on older artifacts written before this field was added.
+   */
+  runs?: RunStats[];
 }
 
 const VALID_RUN_OUTCOMES: ReadonlySet<RunStats['outcome']> = new Set([
@@ -104,6 +125,10 @@ function isValidShardShape(value: unknown, expectedWeapon: string): value is Wea
     return false;
   }
   const shard = value as Partial<WeaponSweepOutput>;
+  // `runs` is an optional backward-compatible field; validate its shape when present.
+  const runsOk =
+    shard.runs === undefined ||
+    (Array.isArray(shard.runs) && shard.runs.every((r) => isPlainObject(r)));
   return (
     typeof shard.runAt === 'string' &&
     Array.isArray(shard.seeds) &&
@@ -118,7 +143,8 @@ function isValidShardShape(value: unknown, expectedWeapon: string): value is Wea
     shard.summaries.length === 1 &&
     isPlainObject(shard.summaries[0]) &&
     Array.isArray((shard.summaries[0] as { records?: unknown }).records) &&
-    Array.isArray(shard.allRecords)
+    Array.isArray(shard.allRecords) &&
+    runsOk
   );
 }
 
@@ -161,7 +187,10 @@ export function mergeWeaponSweepShards(
   }
   const maxFrames = firstShard.maxFrames;
   const weaponPersonas = firstShard.weaponPersonas;
+  // `optionalPurchases` is optional — absent on pre-feature shards (treat as false).
+  const firstOptionalPurchases = firstShard.optionalPurchases ?? false;
   const bySeed = new Map<number, WeaponSweepRecord>();
+  const runsBySeed = new Map<number, RunStats | undefined>();
   const includedFloors = new Set<number>();
   let hasLegacyFloorMetadata = false;
 
@@ -177,6 +206,13 @@ export function mergeWeaponSweepShards(
         `Shard persona-mode mismatch for "${weapon}": ${shard.weaponPersonas} vs ${weaponPersonas}`,
       );
     }
+    const shardOptionalPurchases = shard.optionalPurchases ?? false;
+    if (shardOptionalPurchases !== firstOptionalPurchases) {
+      throw new Error(
+        `Shard optional-purchases mismatch for "${weapon}": expected ${firstOptionalPurchases} but got ${shardOptionalPurchases}. ` +
+          'Mix of true/false shards in one aggregate run is not supported.',
+      );
+    }
     const shardFloors = normalizeWeaponSweepFloors(shard.floors);
     if (shardFloors === undefined) {
       hasLegacyFloorMetadata = true;
@@ -189,6 +225,12 @@ export function mergeWeaponSweepShards(
       shard.summaries[0]?.records.length !== shard.allRecords.length
     ) {
       throw new Error(`Malformed shard coverage for weapon "${weapon}"`);
+    }
+    // Validate runs array length when present
+    if (shard.runs !== undefined && shard.runs.length !== shard.seeds.length) {
+      throw new Error(
+        `Shard runs length mismatch for weapon "${weapon}": expected ${shard.seeds.length} but got ${shard.runs.length}`,
+      );
     }
     for (let index = 0; index < shard.seeds.length; index += 1) {
       const seed = shard.seeds[index]!;
@@ -203,6 +245,7 @@ export function mergeWeaponSweepShards(
         throw new Error(`Duplicate sweep record for ${weapon}/${seed}`);
       }
       bySeed.set(seed, record);
+      runsBySeed.set(seed, shard.runs?.[index]);
     }
   }
 
@@ -221,6 +264,13 @@ export function mergeWeaponSweepShards(
 
   const allRecords = expectedSeeds.map((seed) => bySeed.get(seed)!);
   const summary = summarizeWeaponRecords(weapon, allRecords);
+
+  // Only emit `runs` in the merged output when every shard contributed them.
+  const hasRuns = expectedSeeds.every((seed) => runsBySeed.get(seed) !== undefined);
+  const mergedRuns: RunStats[] | undefined = hasRuns
+    ? expectedSeeds.map((seed) => runsBySeed.get(seed) as RunStats)
+    : undefined;
+
   return {
     runAt: new Date().toISOString(),
     ...(hasLegacyFloorMetadata
@@ -233,5 +283,7 @@ export function mergeWeaponSweepShards(
     budgetSec: maxFrames / 60,
     summaries: [summary],
     allRecords,
+    optionalPurchases: firstOptionalPurchases,
+    ...(mergedRuns !== undefined ? { runs: mergedRuns } : {}),
   };
 }

@@ -20,7 +20,9 @@
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { scoreRun, type ScoreBreakdown } from '../../../src/game/ai/scoring.js';
+import type { RunStats } from '../../../src/game/ai/types.js';
 import {
+  DEFAULT_LOADOUT_WEAPON_ID,
   summarizeWeaponRecords,
   type WeaponSweepRecord as RunRecord,
   type WeaponSweepSummary as WeaponSummary,
@@ -37,6 +39,8 @@ interface CLIArgs {
   maxFrames: number;
   out?: string;
   weaponPersonas: boolean;
+  /** Whether optional AI purchases (merchant weapon + Spell Broker) are enabled. */
+  optionalPurchases: boolean;
 }
 
 const DEFAULT_FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
@@ -49,6 +53,7 @@ function parseArgs(): CLIArgs {
     weapons: DEFAULT_FLOOR1_WEAPONS,
     maxFrames: 19_800, // ~330 s at 60 fps — same budget as the hill-climb baseline
     weaponPersonas: true,
+    optionalPurchases: false,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -70,13 +75,20 @@ function parseArgs(): CLIArgs {
       args.weaponPersonas = true;
     } else if (arg === '--no-weapon-personas') {
       args.weaponPersonas = false;
+    } else if (arg === '--optional-purchases') {
+      args.optionalPurchases = true;
+    } else if (arg === '--no-optional-purchases') {
+      args.optionalPurchases = false;
     }
   }
 
-  const invalidWeapons = args.weapons.filter((weapon) => !ALLOWED_FLOOR1_WEAPONS.includes(weapon));
+  // `default` is the sentinel for "no forced weapon"; skip real-weapon validation for it.
+  const invalidWeapons = args.weapons.filter(
+    (weapon) => weapon !== DEFAULT_LOADOUT_WEAPON_ID && !ALLOWED_FLOOR1_WEAPONS.includes(weapon),
+  );
   if (invalidWeapons.length > 0) {
     throw new Error(
-      `Invalid --weapons entries: ${invalidWeapons.join(', ')}. Allowed: ${ALLOWED_FLOOR1_WEAPONS.join(', ')}`,
+      `Invalid --weapons entries: ${invalidWeapons.join(', ')}. Allowed: ${ALLOWED_FLOOR1_WEAPONS.join(', ')} or "${DEFAULT_LOADOUT_WEAPON_ID}" (seed-determined loadout)`,
     );
   }
 
@@ -101,13 +113,16 @@ async function sweep(args: CLIArgs): Promise<void> {
   console.log(`Weapons:    ${args.weapons.join(', ')}`);
   console.log(`Budget:     ${args.maxFrames} frames (~${(args.maxFrames / 60).toFixed(0)}s)`);
   console.log(`Personas:   ${args.weaponPersonas ? 'enabled' : 'disabled'}`);
+  console.log(`OptBuys:    ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
   console.log(`Total runs: ${args.seeds.length * args.weapons.length}`);
   console.log('');
 
   const allRecords: RunRecord[] = [];
+  const allRunStats: RunStats[] = [];
   const summaries: WeaponSummary[] = [];
 
   for (const weapon of args.weapons) {
+    const isDefaultLoadout = weapon === DEFAULT_LOADOUT_WEAPON_ID;
     console.log(`⚔️  ${weapon.toUpperCase()}`);
     const records: RunRecord[] = [];
 
@@ -117,8 +132,9 @@ async function sweep(args: CLIArgs): Promise<void> {
       const stats = await runHeadless(ai, {
         seed,
         maxFrames: args.maxFrames,
-        forceWeaponId: weapon,
+        ...(isDefaultLoadout ? {} : { forceWeaponId: weapon }),
         weaponPersonas: args.weaponPersonas,
+        optionalPurchases: args.optionalPurchases,
       });
       const bd: ScoreBreakdown = scoreRun(stats, maxGameTimeMs);
       const rec: RunRecord = {
@@ -137,6 +153,7 @@ async function sweep(args: CLIArgs): Promise<void> {
       };
       records.push(rec);
       allRecords.push(rec);
+      allRunStats.push(stats);
 
       const marker = stats.outcome === 'victory' ? '✅' : stats.outcome === 'death' ? '💀' : '⏱️ ';
       console.log(
@@ -212,8 +229,10 @@ async function sweep(args: CLIArgs): Promise<void> {
     maxFrames: args.maxFrames,
     weaponPersonas: args.weaponPersonas,
     budgetSec: args.maxFrames / 60,
+    optionalPurchases: args.optionalPurchases,
     summaries,
     allRecords,
+    runs: allRunStats,
   };
   const outputPath = writeWeaponSweepOutput(output, args.out);
   console.log(`\n💾 Raw data written to: ${outputPath}`);
