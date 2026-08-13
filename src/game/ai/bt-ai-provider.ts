@@ -822,6 +822,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatThreatEid: number | null = null;
   private localThreatRecoveryEid: number | null = null;
   private localThreatRecoveryMap: FloorMap | null = null;
+  private localThreatRecoveryStartFrame: number | null = null;
   private rangedEmergencyRetreating: boolean = false;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
@@ -1261,8 +1262,14 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.rangedDefensiveSpacing = true;
         }
         this.retreatThreatEid = threat.eid;
-        this.localThreatRecoveryEid = threat.eid;
-        this.localThreatRecoveryMap = ctx.world.floorMap;
+        if (
+          this.localThreatRecoveryEid !== threat.eid ||
+          this.localThreatRecoveryMap !== ctx.world.floorMap
+        ) {
+          this.localThreatRecoveryEid = threat.eid;
+          this.localThreatRecoveryMap = ctx.world.floorMap;
+          this.localThreatRecoveryStartFrame = null;
+        }
         ctx.blackboard['retreatThreat'] = threat;
         ctx.blackboard['rangedEmergencyRetreat'] = rangedEmergency;
         return true;
@@ -1312,6 +1319,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private clearLocalThreatRecovery(): void {
     this.localThreatRecoveryEid = null;
     this.localThreatRecoveryMap = null;
+    this.localThreatRecoveryStartFrame = null;
   }
 
   private buildLocalThreatRecoveryBehavior(): BTNode {
@@ -1320,6 +1328,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       condition('Retreat Threat Still Unresolved', (ctx) => {
         const eid = this.localThreatRecoveryEid;
         if (eid === null || this.localThreatRecoveryMap !== ctx.world.floorMap) {
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        if (this.localThreatRecoveryStartFrame === null) {
+          this.localThreatRecoveryStartFrame = ctx.world.frameCount;
+        } else if (
+          ctx.world.frameCount - this.localThreatRecoveryStartFrame >
+          NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES
+        ) {
+          this.ignoredEnemyUntilFrame.set(eid, ctx.world.frameCount + ENEMY_IGNORE_FRAMES);
           this.clearLocalThreatRecovery();
           return false;
         }
