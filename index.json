@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b03d65298447eb6f2c41f553687ed5bde2ef7cc2",
+    "commitDate": "2026-08-13T05:44:26Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2853)",
+    "capturedAt": "2026-08-13T06:40:29.091Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31671413512",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/b03d65298447eb6f2c41f553687ed5bde2ef7cc2.json"
+  },
+  {
     "commit": "0f42f628548b241e25415d56c4dc4fe7541b286d",
     "commitDate": "2026-08-13T05:28:30Z",
     "commitSubject": "feat: add Floor 1 spell broker progression (#2847)",
