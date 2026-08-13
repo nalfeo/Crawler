@@ -583,6 +583,22 @@ jobs:
             sleep $((RANDOM % 5 + 2))
           done
 
+      - name: Detect baseline win-rate regression
+        id: baseline-regression
+        env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          BASELINE_INDEX_JSON: ${{ runner.temp }}/baselines-wt/index.json
+          BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+        run: npx tsx scripts/agent/perf/baseline-regression-check.ts
+
+      - name: File regression issue and assign Copilot
+        if: steps.baseline-regression.outputs.regression == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
+        run: node .github/scripts/baseline-regression-issue.mjs
+
       - name: Upload baseline as artifact
         if: always()
         uses: actions/upload-artifact@v4

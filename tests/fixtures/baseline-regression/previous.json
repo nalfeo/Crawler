@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "commit": "0fccd50588b50a30f42a26348760a9c91327649f",
+    "commitDate": "2026-08-10T12:00:00Z",
+    "commitSubject": "fix(ai): preserve prior release behavior",
+    "capturedAt": "2026-08-10T13:00:00Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/100"
+  },
+  "winRate": 0.9933333333333333,
+  "totalWins": 596,
+  "totalRuns": 600
+}

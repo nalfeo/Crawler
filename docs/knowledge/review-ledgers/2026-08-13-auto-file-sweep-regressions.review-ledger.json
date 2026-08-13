@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "auto-file-sweep-regressions",
+  "task_title": "Auto-file release sweep regressions",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Revised predecessor selection from capturedAt ordering to git first-parent ancestry so out-of-order concurrent sweep completion cannot compare against a future release. Moved issue mutation into a checked-in helper, deduplicating across open and closed issues by hidden SHA marker, reopening/updating existing issues, then reusing runIssueIntake so kickoff instructions precede GraphQL Copilot assignment. Added tests for out-of-order publication, same-SHA reuse, closed reopen, existing unassigned issue, and API failures. Equal totalRuns remains fail-closed with an explicit remediation message."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 inspected the wrong standalone workflow for three findings; the actual deploy.yml wiring, detector, and structural test made them inapplicable. Fixed the valid GraphQL injection and invalid-decision coverage findings. Round 2 found the boundary fixture mismatch and non-atomic result write; both were fixed, then targeted and fast verification passed."
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
