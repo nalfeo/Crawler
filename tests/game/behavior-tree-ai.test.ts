@@ -1913,6 +1913,7 @@ describe('BehaviorTreeAI', () => {
     const harness = ai as unknown as {
       localThreatRecoveryEid: number | null;
       localThreatRecoveryStartFrame: number | null;
+      localThreatRecoveryBestHealth: number | null;
       ignoredEnemyUntilFrame: Map<number, number>;
     };
     const retreatThreatEid = harness.localThreatRecoveryEid;
@@ -1924,6 +1925,16 @@ describe('BehaviorTreeAI', () => {
 
     harness.localThreatRecoveryStartFrame =
       world.frameCount - NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES - 1;
+    const currentThreatHealth = world.stores.health.current[retreatThreatEid!] ?? 0;
+    harness.localThreatRecoveryBestHealth = currentThreatHealth + 1;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(harness.localThreatRecoveryStartFrame).toBe(world.frameCount);
+
+    harness.localThreatRecoveryStartFrame =
+      world.frameCount - NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES - 1;
+    harness.localThreatRecoveryBestHealth = currentThreatHealth;
     ai.poll(createInputState(), world);
 
     expect(ai.getDecision()).toMatchObject({
