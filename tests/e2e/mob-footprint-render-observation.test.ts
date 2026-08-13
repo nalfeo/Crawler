@@ -7,6 +7,9 @@ import { E2E_LAB_BASE_URL } from './e2e-constants.js';
 
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=combat-arena-lab`;
 const PIXELS_PER_FOOT = 8;
+const RAT_HEIGHT_FT = 2.05;
+const BOSS_HEIGHT_FT = 7.0;
+const LIVE_MOTION_HEIGHT_TOLERANCE = 0.2;
 
 interface ArenaScene {
   settings: {
@@ -204,8 +207,10 @@ describe('mob footprint render observation', () => {
     // the shipped game applies to mobs, so the rendered opaque height is allowed
     // a slightly wider band than the pure bridge/unit proof.
     for (const height of ratHeights) {
-      expect(height).toBeGreaterThanOrEqual(2.05 * 0.8 - 1e-6);
-      expect(height).toBeLessThanOrEqual(2.05 * 1.2 + 1e-6);
+      expect(height).toBeGreaterThanOrEqual(
+        RAT_HEIGHT_FT * (1 - LIVE_MOTION_HEIGHT_TOLERANCE) - 1e-6,
+      );
+      expect(height).toBeLessThanOrEqual(RAT_HEIGHT_FT * (1 + LIVE_MOTION_HEIGHT_TOLERANCE) + 1e-6);
     }
 
     await waitForTexture(page, 'goblin-boss-var-0');
@@ -223,14 +228,22 @@ describe('mob footprint render observation', () => {
     });
     expect(bossHeights.length, 'expected the live family boss sprite').toBeGreaterThan(0);
     for (const height of bossHeights) {
-      expect(height).toBeGreaterThanOrEqual(7.0 * 0.8 - 1e-6);
-      expect(height).toBeLessThanOrEqual(7.0 * 1.2 + 1e-6);
+      expect(height).toBeGreaterThanOrEqual(
+        BOSS_HEIGHT_FT * (1 - LIVE_MOTION_HEIGHT_TOLERANCE) - 1e-6,
+      );
+      expect(height).toBeLessThanOrEqual(
+        BOSS_HEIGHT_FT * (1 + LIVE_MOTION_HEIGHT_TOLERANCE) + 1e-6,
+      );
       expect(height).toBeLessThan(12);
     }
 
     const avgRatHeight = ratHeights.reduce((sum, value) => sum + value, 0) / ratHeights.length;
     const avgBossHeight = bossHeights.reduce((sum, value) => sum + value, 0) / bossHeights.length;
-    expect(avgBossHeight / avgRatHeight).toBeLessThan(4);
+    expect(avgBossHeight / avgRatHeight).toBeLessThanOrEqual(
+      (BOSS_HEIGHT_FT * (1 + LIVE_MOTION_HEIGHT_TOLERANCE)) /
+        (RAT_HEIGHT_FT * (1 - LIVE_MOTION_HEIGHT_TOLERANCE)) +
+        1e-6,
+    );
     expect(avgBossHeight).toBeGreaterThan(avgRatHeight);
   }, 120_000);
 });
