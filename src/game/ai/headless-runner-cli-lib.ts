@@ -30,7 +30,8 @@ export interface CLIArgs {
   weaponPersonas: boolean;
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
-  merchantWeaponPurchase: boolean;
+  /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default false. */
+  optionalPurchases: boolean;
   settlementReturnRouting: boolean;
 }
 
@@ -63,7 +64,10 @@ export function defaultCLIArgs(
     // explicitly passes --pathing-mode/--decision-mode.
     pathingMode: DEFAULT_CONFIG.pathingMode,
     decisionMode: DEFAULT_CONFIG.decisionMode,
-    merchantWeaponPurchase:
+    optionalPurchases:
+      env.AI_OPTIONAL_PURCHASES === '1' ||
+      env.AI_OPTIONAL_PURCHASES?.toLowerCase() === 'true' ||
+      // Legacy env var still honoured so existing scripts keep working.
       env.AI_MERCHANT_WEAPON_PURCHASE === '1' ||
       env.AI_MERCHANT_WEAPON_PURCHASE?.toLowerCase() === 'true',
     settlementReturnRouting:
@@ -155,8 +159,11 @@ export function parseArgs(
       args.weaponPersonas = true;
     } else if (arg === '--no-weapon-personas') {
       args.weaponPersonas = false;
+    } else if (arg === '--optional-purchases') {
+      args.optionalPurchases = true;
     } else if (arg === '--merchant-weapon-purchase') {
-      args.merchantWeaponPurchase = true;
+      // Legacy alias: kept for backward compatibility with existing scripts.
+      args.optionalPurchases = true;
     } else if (arg === '--settlement-return-routing') {
       args.settlementReturnRouting = true;
     } else if (arg === '--pathing-mode' && next) {
@@ -212,8 +219,10 @@ Options:
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
   --weapon-personas       Enable weapon-specific stat/gear personas (default)
   --no-weapon-personas    Disable weapon personas for the legacy A/B control
-  --merchant-weapon-purchase
-                           Enable optional post-quest merchant weapon purchase
+  --optional-purchases    Enable both optional AI purchases: post-quest merchant weapon
+                           purchase and Floor 1 Spell Broker purchase (default: off)
+                           Legacy alias: --merchant-weapon-purchase (same effect)
+                           Env: AI_OPTIONAL_PURCHASES=1 (or AI_MERCHANT_WEAPON_PURCHASE=1)
   --settlement-return-routing
                            Enable optional latched AI settlement-return route goal
                            (deterministic expected-gain-vs-travel/risk/opportunity
