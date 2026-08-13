@@ -1,0 +1,69 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "wounded-retreat-arbitration",
+  "task_title": "Fix critical-health retreat arbitration",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 11,
+      "resolved_count": 11,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "major_fork",
+      "notes": "Initial suppression-only plan rejected: post-quest Hunt unavailable, Engage radius-limited, ignored threats could deadlock, scan-wide latch too broad, permanent A/B arm costly. Revised to explicit pre-Progress node owning only retreat-triggering eid; proof arm removed after A/B. Immediate endRetreat ignore is skipped only for owned threat, later watchdog ignore clears recovery. Final includes class arbitration plus exact headless regressions and in-range Interact ordering coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gemini-3.6-flash"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
