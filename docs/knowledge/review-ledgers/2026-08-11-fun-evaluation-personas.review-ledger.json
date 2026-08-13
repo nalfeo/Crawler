@@ -1,0 +1,49 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-11",
+  "session_slug": "fun-evaluation-personas",
+  "task_title": "Deterministic playtest personas and fun evaluator",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Reject-with-changes; all four concerns adopted. (1) A persona label can be false once --aggression/--pathing-mode/--decision-mode override the preset, so a diverging run is now left UNLABELLED (personaConfigDivergence) instead of contaminating the cohort. (2) Baseline comparisons were composition-blind; matchCohorts now downgrades every measured status to inconclusive when run count or persona share drifts >10%. (3) survivability_variance advertised target 0.28 but was healthy at >=0.14 and treated more variance as always better; it is now an explicit 0.14-0.45 band compared by distance to band. (4) experienced_player is derived from DEFAULT_CONFIG by construction rather than a copied literal. No alternative architecture warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

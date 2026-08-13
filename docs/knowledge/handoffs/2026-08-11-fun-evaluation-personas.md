@@ -39,13 +39,19 @@ framework contract update.
 ## Verification
 
 - `git diff --check` ✅
-- `npm run verify:fast` ⚠️ blocked: dependencies are unavailable in the
-  worktree; npm attempted temporary `tsc`/`eslint` installs, but the local
-  TypeScript compiler and Vitest were not present.
-- Targeted Vitest tests not run for the same dependency reason.
+- `npm run typecheck` / `npm run typecheck:src` ✅
+- `npm run lint` + Prettier on the touched files ✅
+- Targeted Vitest (`fun-score-lib`, `fun-score-input`, `headless-runner-cli-lib`) ✅
+- `npm run verify:fast` ✅
+- Review harness: 3🍎 ledger committed at
+  `docs/knowledge/review-ledgers/2026-08-11-fun-evaluation-personas.review-ledger.json`.
 
 ## Unresolved issues
 
+- Unsafe-zone combat uptime stays `unmeasured`: `RunStats.combat.combatTimeMs`
+  accumulates on any frame where an Enemy entity exists (including safe-room
+  frames), so the ratio against unsafe time is not a valid uptime measure until
+  zone-aware combat time is recorded.
 - Dopamine event timestamps, snowball classification, permanent progression,
   item exposure/contribution telemetry, baseline comparisons, and scheduled
   invocation remain follow-up work.

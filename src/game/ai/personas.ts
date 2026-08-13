@@ -1,4 +1,8 @@
+import { DEFAULT_CONFIG } from './bt-ai-tuning.js';
 import type { AIConfig, PlayerPersona } from './types.js';
+
+/** Persona preset shape: every tunable knob except the run-scoped seed/debug. */
+export type PersonaConfig = Omit<AIConfig, 'seed' | 'debug'>;
 
 export const PLAYER_PERSONAS: readonly PlayerPersona[] = [
   'new_player',
@@ -7,7 +11,17 @@ export const PLAYER_PERSONAS: readonly PlayerPersona[] = [
   'explorer',
 ];
 
-const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, Omit<AIConfig, 'seed' | 'debug'>>> = {
+/**
+ * `experienced_player` is the production baseline cohort, so it is derived
+ * from {@link DEFAULT_CONFIG} by construction rather than re-typed here — a
+ * copied literal can drift the moment production tuning is re-promoted.
+ */
+const EXPERIENCED_PLAYER_CONFIG: PersonaConfig = (() => {
+  const { seed: _seed, debug: _debug, ...tuning } = DEFAULT_CONFIG;
+  return tuning;
+})();
+
+const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, PersonaConfig>> = {
   new_player: {
     aggression: 0.55,
     retreatThreshold: 0.45,
@@ -19,17 +33,7 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, Omit<AIConfig, 'seed' | 'd
     collectPullWeight: 0.55,
     farmPullWeight: 0.05,
   },
-  experienced_player: {
-    aggression: 1,
-    retreatThreshold: 0.1,
-    retreatDangerRadius: 20,
-    scanRadius: 50,
-    rangedSafeDistance: 15,
-    opportunisticGrabRadius: 18,
-    dodgeWeight: 0.25,
-    collectPullWeight: 0.5,
-    farmPullWeight: 0.12,
-  },
+  experienced_player: EXPERIENCED_PLAYER_CONFIG,
   min_max_cheeser: {
     aggression: 1.8,
     retreatThreshold: 0.12,
@@ -54,6 +58,32 @@ const PERSONA_CONFIGS: Readonly<Record<PlayerPersona, Omit<AIConfig, 'seed' | 'd
   },
 };
 
-export function getPersonaConfig(persona: PlayerPersona): Omit<AIConfig, 'seed' | 'debug'> {
+export function getPersonaConfig(persona: PlayerPersona): PersonaConfig {
   return { ...PERSONA_CONFIGS[persona] };
+}
+
+/**
+ * Knobs the headless CLI can override on top of a persona preset. Any
+ * divergence here means the run no longer behaves like the named cohort.
+ */
+export type PersonaOverrides = Partial<
+  Pick<PersonaConfig, 'aggression' | 'pathingMode' | 'decisionMode'>
+>;
+
+/**
+ * Return the persona knobs that `overrides` actually changes, sorted for
+ * deterministic reporting. A run with a non-empty result must NOT be labelled
+ * with the persona: grouping it into that cohort would contaminate
+ * `persona_scores` and every downstream comparison with behavior the persona
+ * never had.
+ */
+export function personaConfigDivergence(
+  persona: PlayerPersona,
+  overrides: PersonaOverrides,
+): string[] {
+  const baseline: PersonaConfig = { ...EXPERIENCED_PLAYER_CONFIG, ...PERSONA_CONFIGS[persona] };
+  const keys = ['aggression', 'pathingMode', 'decisionMode'] as const;
+  return keys
+    .filter((key) => overrides[key] !== undefined && overrides[key] !== baseline[key])
+    .sort();
 }

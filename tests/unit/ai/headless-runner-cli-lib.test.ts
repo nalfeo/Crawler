@@ -13,7 +13,7 @@ import {
   parseArgs,
 } from '../../../src/game/ai/headless-runner-cli-lib.js';
 import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
-import { getPersonaConfig } from '../../../src/game/ai/personas.js';
+import { getPersonaConfig, personaConfigDivergence } from '../../../src/game/ai/personas.js';
 import { AIDecisionMode, AIPathingMode } from '../../../src/game/ai/types.js';
 
 // parseArgs skips argv[0] (node) and argv[1] (script), matching process.argv.
@@ -200,5 +200,25 @@ describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
     expect(() => cli('--enemy-telegraph-ms', '   ')).toThrow(
       /--enemy-telegraph-ms requires a value/,
     );
+  });
+});
+
+describe('personaConfigDivergence', () => {
+  it('reports no divergence when overrides match the persona preset', () => {
+    const preset = getPersonaConfig('min_max_cheeser');
+    expect(
+      personaConfigDivergence('min_max_cheeser', {
+        aggression: preset.aggression,
+        pathingMode: DEFAULT_CONFIG.pathingMode,
+        decisionMode: DEFAULT_CONFIG.decisionMode,
+      }),
+    ).toEqual([]);
+  });
+
+  it('reports every knob an override actually changes', () => {
+    expect(personaConfigDivergence('min_max_cheeser', { aggression: 1 })).toEqual(['aggression']);
+    // An explicit override equal to the preset value is NOT a divergence.
+    expect(personaConfigDivergence('experienced_player', { aggression: 1 })).toEqual([]);
+    expect(personaConfigDivergence('new_player', { aggression: 2 })).toEqual(['aggression']);
   });
 });

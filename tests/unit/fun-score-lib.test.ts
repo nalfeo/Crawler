@@ -54,6 +54,17 @@ function makeRun(overrides: Partial<RunStats> = {}): RunStats {
   return { ...run, ...overrides };
 }
 
+/** Clone a report with a forced `survivability_variance` observation. */
+function withVariance(report: FunScoreReport, observed: number): FunScoreReport {
+  return {
+    ...report,
+    criteria: {
+      ...report.criteria,
+      survivability_variance: { ...report.criteria.survivability_variance, observed },
+    },
+  };
+}
+
 describe('scoreFunSessions', () => {
   it('returns a passing score for healthy runs', () => {
     const sessions: FunSession[] = [
@@ -237,21 +248,46 @@ describe('scoreFunSessions', () => {
     expect(comparison.criteria.dopamine_cadence.status).toBe('unmeasured');
   });
 
-  it('uses per-criterion deltas so ratio criteria are not permanently inconclusive', () => {
-    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
-    const candidate: FunScoreReport = {
-      ...baseline,
-      criteria: {
-        ...baseline.criteria,
-        survivability_variance: {
-          ...baseline.criteria.survivability_variance,
-          observed: (baseline.criteria.survivability_variance.observed ?? 0) + 0.2,
-        },
-      },
-    };
+  it('downgrades comparisons to inconclusive when the cohorts are not comparable', () => {
+    const baseline = scoreFunSessions([
+      { id: 'b1', persona: 'new_player', run: makeRun() },
+      { id: 'b2', persona: 'new_player', run: makeRun({ startingWeapon: 'bow' }) },
+    ]);
+    const candidate = scoreFunSessions([
+      { id: 'c1', persona: 'min_max_cheeser', run: makeRun() },
+      { id: 'c2', persona: 'min_max_cheeser', run: makeRun({ startingWeapon: 'bow' }) },
+    ]);
 
     const comparison = compareFunReports(baseline, candidate);
 
+    expect(comparison.cohort.matched).toBe(false);
+    expect(comparison.cohort.reasons.length).toBeGreaterThan(0);
+    expect(comparison.dimensions.engagement.status).toBe('inconclusive');
+    // Unmeasured criteria stay unmeasured rather than being relabelled.
+    expect(comparison.criteria.dopamine_cadence.status).toBe('unmeasured');
+  });
+
+  it('treats survivability variance as a band, so runaway volatility is degrading', () => {
+    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
+    const inBand: FunScoreReport = withVariance(baseline, 0.3);
+    const volatile: FunScoreReport = withVariance(baseline, 0.95);
+
+    expect(compareFunReports(inBand, volatile).criteria.survivability_variance.status).toBe(
+      'degrading',
+    );
+    expect(compareFunReports(volatile, inBand).criteria.survivability_variance.status).toBe(
+      'improving',
+    );
+  });
+
+  it('uses per-criterion deltas so ratio criteria are not permanently inconclusive', () => {
+    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
+    const candidate = withVariance(baseline, 0.2);
+
+    const comparison = compareFunReports(baseline, candidate);
+
+    // A 0.2 move on a [0,1] ratio would be `inconclusive` under the 2-point
+    // dimension threshold; the per-criterion threshold classifies it.
     expect(comparison.criteria.survivability_variance.status).toBe('improving');
   });
 

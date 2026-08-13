@@ -90,7 +90,20 @@ export interface FunMetricComparison {
   readonly status: FunTrendStatus;
 }
 
+/**
+ * Whether the two scored cohorts are comparable at all. `run_distinctness` is
+ * explicitly sample-size sensitive, and persona mix changes behavior, so an
+ * unmatched pair can look better/worse purely from composition drift.
+ */
+export interface FunCohortMatch {
+  readonly matched: boolean;
+  readonly reasons: ReadonlyArray<string>;
+  readonly baseline_runs: number;
+  readonly candidate_runs: number;
+}
+
 export interface FunScoreComparison {
+  readonly cohort: FunCohortMatch;
   readonly overall_fun_score: FunMetricComparison;
   readonly dimensions: Readonly<Record<keyof FunDimensionScores, FunMetricComparison>>;
   readonly criteria: Readonly<Record<keyof FunCriteria, FunMetricComparison>>;
@@ -605,7 +618,7 @@ export function scoreFunSessions(
         },
         survivability_variance: {
           observed: null,
-          target: 0.28,
+          target: SURVIVABILITY_VARIANCE_BAND.min,
           status: 'unmeasured',
           reason: 'No runs provided.',
         },
@@ -727,9 +740,10 @@ export function scoreFunSessions(
     ),
     survivability_variance: criterion(
       round2(survivabilityVariance),
-      0.28,
-      survivabilityVariance >= 0.14,
-      'Variance is measured across normalized run outcomes; inspect tails before tuning.',
+      SURVIVABILITY_VARIANCE_BAND.min,
+      survivabilityVariance >= SURVIVABILITY_VARIANCE_BAND.min &&
+        survivabilityVariance <= SURVIVABILITY_VARIANCE_BAND.max,
+      `Healthy band is ${SURVIVABILITY_VARIANCE_BAND.min}-${SURVIVABILITY_VARIANCE_BAND.max} standard deviations of normalized outcome: too little spread is monotone, too much is coin-flip volatility. Inspect tails before tuning.`,
     ),
     run_variety: criterion(
       dimensions.run_distinctness,
@@ -866,6 +880,14 @@ const CRITERION_MEANINGFUL_DELTA: Readonly<Record<keyof FunCriteria, number>> = 
   item_viability: 0.05,
 };
 
+/**
+ * Survivability variance is a BAND, not a "more is better" metric: no spread
+ * means every run resolves identically, while runaway spread means the outcome
+ * is a coin flip. Both tails are unhealthy, so it is compared by distance to
+ * the band rather than by direction.
+ */
+const SURVIVABILITY_VARIANCE_BAND = { min: 0.14, max: 0.45 } as const;
+
 function compareMetric(
   baseline: number | null,
   candidate: number | null,
@@ -881,6 +903,76 @@ function compareMetric(
   }
   const improved = higherIsBetter ? delta > 0 : delta < 0;
   return { baseline, candidate, delta, status: improved ? 'improving' : 'degrading' };
+}
+
+/** Distance from `value` to the nearest edge of `band` (0 while inside it). */
+function distanceToBand(
+  value: number,
+  band: { readonly min: number; readonly max: number },
+): number {
+  if (value < band.min) return band.min - value;
+  if (value > band.max) return value - band.max;
+  return 0;
+}
+
+function compareToBand(
+  baseline: number | null,
+  candidate: number | null,
+  band: { readonly min: number; readonly max: number },
+  minimumMeaningfulDelta: number,
+): FunMetricComparison {
+  if (baseline === null || candidate === null) {
+    return { baseline, candidate, delta: null, status: 'unmeasured' };
+  }
+  const delta = round2(candidate - baseline);
+  const movedTowardBand = distanceToBand(baseline, band) - distanceToBand(candidate, band);
+  if (Math.abs(movedTowardBand) < minimumMeaningfulDelta) {
+    return { baseline, candidate, delta, status: 'inconclusive' };
+  }
+  return { baseline, candidate, delta, status: movedTowardBand > 0 ? 'improving' : 'degrading' };
+}
+
+/** Largest persona-share drift (in share points) tolerated between cohorts. */
+const MAX_PERSONA_SHARE_DRIFT = 0.1;
+/** Largest relative run-count drift tolerated between cohorts. */
+const MAX_RUN_COUNT_DRIFT = 0.1;
+
+/**
+ * Baseline/candidate reports are only comparable when they were scored over
+ * comparable cohorts. Sample size feeds `run_distinctness` directly and persona
+ * mix changes behavior, so composition drift is reported and downgrades every
+ * measured status to `inconclusive` instead of emitting a confident but
+ * confounded verdict.
+ */
+function matchCohorts(baseline: FunScoreReport, candidate: FunScoreReport): FunCohortMatch {
+  const reasons: string[] = [];
+  const largerRunCount = Math.max(baseline.runs, candidate.runs, 1);
+  if (Math.abs(baseline.runs - candidate.runs) / largerRunCount > MAX_RUN_COUNT_DRIFT) {
+    reasons.push(`run counts differ materially (${baseline.runs} vs ${candidate.runs})`);
+  }
+
+  const personaKeys = new Set([
+    ...Object.keys(baseline.persona_scores),
+    ...Object.keys(candidate.persona_scores),
+  ]);
+  for (const persona of [...personaKeys].sort()) {
+    const baselineShare =
+      (baseline.persona_scores[persona]?.runs ?? 0) / Math.max(baseline.runs, 1);
+    const candidateShare =
+      (candidate.persona_scores[persona]?.runs ?? 0) / Math.max(candidate.runs, 1);
+    if (Math.abs(baselineShare - candidateShare) > MAX_PERSONA_SHARE_DRIFT) {
+      reasons.push(
+        `persona "${persona}" share differs (${round2(baselineShare)} vs ${round2(candidateShare)})`,
+      );
+    }
+  }
+
+  return {
+    matched: reasons.length === 0,
+    reasons,
+    baseline_runs: baseline.runs,
+    candidate_runs: candidate.runs,
+  };
 }
 
 export function compareFunReports(
@@ -905,16 +997,36 @@ export function compareFunReports(
     item_viability: true,
   };
   for (const key of criterionKeys) {
-    criteria[key] = compareMetric(
-      baseline.criteria[key].observed,
-      candidate.criteria[key].observed,
-      higherIsBetter[key],
-      CRITERION_MEANINGFUL_DELTA[key],
-    );
+    criteria[key] =
+      key === 'survivability_variance'
+        ? compareToBand(
+            baseline.criteria[key].observed,
+            candidate.criteria[key].observed,
+            SURVIVABILITY_VARIANCE_BAND,
+            CRITERION_MEANINGFUL_DELTA[key],
+          )
+        : compareMetric(
+            baseline.criteria[key].observed,
+            candidate.criteria[key].observed,
+            higherIsBetter[key],
+            CRITERION_MEANINGFUL_DELTA[key],
+          );
   }
 
+  const cohort = matchCohorts(baseline, candidate);
+  const gate = (comparison: FunMetricComparison): FunMetricComparison =>
+    cohort.matched || comparison.status === 'unmeasured'
+      ? comparison
+      : { ...comparison, status: 'inconclusive' };
+
+  for (const key of dimensionKeys) dimensions[key] = gate(dimensions[key]);
+  for (const key of criterionKeys) criteria[key] = gate(criteria[key]);
+
   return {
-    overall_fun_score: compareMetric(baseline.overall_fun_score, candidate.overall_fun_score, true),
+    cohort,
+    overall_fun_score: gate(
+      compareMetric(baseline.overall_fun_score, candidate.overall_fun_score, true),
+    ),
     dimensions,
     criteria,
   };
