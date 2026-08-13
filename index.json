@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c01e3715b73c3d2e90df22939283f750d1c434db",
+    "commitDate": "2026-08-13T06:01:29Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2856)",
+    "capturedAt": "2026-08-13T07:02:01.959Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31672393154",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/c01e3715b73c3d2e90df22939283f750d1c434db.json"
+  },
+  {
     "commit": "5b99b8d166772f46eca332d60ae2bbc74bd13ac2",
     "commitDate": "2026-08-13T05:52:38Z",
     "commitSubject": "docs(ci): discover benchmark evidence before workflow history (#2852)",
