@@ -34,18 +34,27 @@ ai-behavior-tree, ai-combat-balance
 - Added class-level arbitration, cleanup, progress-refresh, and abandonment
   tests plus an official 23,760-frame throwing-knife-29 headless regression.
 - Confirmed open PR #2823 independently fixes bow-35's wounded ranged spacing
-  but not throwing-knife-29. The combined final code wins bow-35 at frame 21,480
-  and throwing-knife-29 at frame 19,546 without duplicating #2823's tuning.
-- Ran the final 180-case GitHub sample across six weapons and seeds 1-30:
-  179/180 wins versus the release baseline's 177/180. Bow-21 and
+  but not throwing-knife-29. After the required pre-publish rebase, the combined
+  final code wins bow-35 at frame 21,373 and throwing-knife-29 at frame 18,399
+  without duplicating #2823's tuning.
+- Ran the exact-baseline-plus-fix 180-case GitHub sample across six weapons and
+  seeds 1-30: 179/180 wins versus the release baseline's 177/180. Bow-21 and
   throwing-knife-29 changed loss to win, no victory regressed, and
   baseball-bat-2 remained the sole loss. See
   `project:sweep-results-viewer runId=31738299642`.
+- Repeated that panel after rebasing onto current main. The final branch scored
+  179/180 (`project:sweep-results-viewer runId=31744276800`) versus matched main's
+  178/180 (`project:sweep-results-viewer runId=31744723997`): bow-20 changed
+  death to victory and no main victory regressed. Against the historical release
+  baseline the rebased tree remains net +2, with three gains (bow-21,
+  baseball-bat-2, throwing-knife-29) and one mainline-drift loss
+  (baseball-bat-20).
 
 Observed in the real `src/game/ai/headless-runner.ts` pipeline — before:
-throwing-knife-29 died at frame 14,120; after: it won at frame 17,009, and paired
+throwing-knife-29 died at frame 14,120; after the pre-publish rebase it won twice
+at frame 17,403, and paired
 event logs were byte-identical
-(`0F47DC98BEB0727C5D7B6F6AC670D83FDFB957E735D5646D94029812AFDFCE17`).
+(`0DD9890E510EF2F32B03548E5613FE4D90D6DB23180960B958DFCBC92730B35A`).
 
 ## Key Decisions Made
 
