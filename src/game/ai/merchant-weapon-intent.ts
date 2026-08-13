@@ -7,7 +7,7 @@ import {
   type ShopkeeperStockItem,
 } from '../floorScenario.js';
 import { canFarmOptionalMerchantPurchase, type Floor1RunPlan } from './run-planner.js';
-import { ensureSpellBrokerDecision } from './spell-broker-intent.js';
+import { ensureSpellBrokerDecision, getSpellBrokerIntent } from './spell-broker-intent.js';
 
 export type MerchantWeaponIntentStatus =
   | 'pending'
@@ -62,7 +62,12 @@ export function updateMerchantWeaponIntent(
   goldFarmMs: number,
 ): MerchantWeaponIntent {
   let intent = getMerchantWeaponIntent(world);
-  if (intent.enabled && ensureSpellBrokerDecision(world).shouldBuy) {
+  const spellBrokerIntent = ensureSpellBrokerDecision(world);
+  if (
+    intent.enabled &&
+    spellBrokerIntent.shouldBuy &&
+    getSpellBrokerIntent(world).purchaseStatus !== 'abandoned'
+  ) {
     intent = { ...intent, decisionMade: true, status: 'declined' };
     intents.set(world, intent);
     return intent;

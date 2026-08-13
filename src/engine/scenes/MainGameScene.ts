@@ -4327,8 +4327,8 @@ export class MainGameScene extends Phaser.Scene {
     ) {
       return false;
     }
-    broker.meet(this.world);
     if (this.world.featureUnlocks.spells !== true) return false;
+    broker.meet(this.world);
     const offers = broker.getSpellBrokerOffers(this.world);
     const options = offers.map((offer) => ({
       id: offer.spellId,
