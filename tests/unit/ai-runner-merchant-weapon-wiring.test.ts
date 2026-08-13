@@ -9,7 +9,7 @@ describe('AI runner merchant weapon purchase wiring', () => {
       /merchantWeaponPurchase:\s*persisted\?\.aiConfig\?\.merchantWeaponPurchase\s*\?\?\s*false/,
     );
     expect(source).toMatch(
-      /configureMerchantWeaponPurchase\(world,\s*aiConfig\.merchantWeaponPurchase\)\s*;\s*autoFloor1ProgressionSystem\(world,\s*playerEid,\s*ai,\s*aiConfig\.weaponPersonas\)/s,
+      /configureMerchantWeaponPurchase\(world,\s*aiConfig\.merchantWeaponPurchase\)\s*;\s*configureSpellBrokerPurchase\(world,\s*aiConfig\.spellBrokerPurchase\)\s*;\s*autoFloor1ProgressionSystem\(world,\s*playerEid,\s*ai,\s*aiConfig\.weaponPersonas\)/s,
     );
     expect(source).toMatch(/\.add\(aiConfig,\s*'merchantWeaponPurchase'\)/);
   });

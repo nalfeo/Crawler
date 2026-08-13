@@ -10,29 +10,33 @@ import {
   getSpellBrokerOffers,
   initializeFloor1Scenario,
   purchaseSpellBrokerSpell,
+  SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import {
   forceActivateAbility,
   getOrCreateAbilityState,
   memorizeSpell,
 } from '../../src/game/systems/abilitySystem.js';
-import { getSpellSkillEfficacyMultiplier } from '../../src/game/systems/progressionEffects.js';
 import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js';
 import {
   configureSpellBrokerPurchase,
   ensureSpellBrokerDecision,
   markSpellBrokerPurchased,
   updateSpellBrokerIntent,
-  SPELL_BROKER_AI_PURCHASE_CHANCE,
 } from '../../src/game/ai/spell-broker-intent.js';
 import type { Floor1RunPlan } from '../../src/game/ai/run-planner.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
 import {
   FLOOR1_SPELL_BROKER_COST,
   SPELL_SKILL_ID_BY_SPELL_ID,
-  SPELL_SKILL_IDS,
   generateFloor1SpellBrokerOffers,
 } from '../../src/shared/index.js';
+import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
+import {
+  configureMerchantWeaponPurchase,
+  getMerchantWeaponIntent,
+  updateMerchantWeaponIntent,
+} from '../../src/game/ai/merchant-weapon-intent.js';
 
 describe('Floor 1 Spell Broker', () => {
   it('generates three unique deterministic offers from the ten-spell pool', () => {
@@ -78,20 +82,19 @@ describe('Floor 1 Spell Broker', () => {
     expect(purchaseSpellBrokerSpell(world, player, offer!.spellId)).toBe(false);
   });
 
-  it('keeps the normal budget at one purchase rather than two', () => {
-    const representativeBudgets = [35, 38, 42, 46, 50];
-    const oneButNotTwo = representativeBudgets.filter(
-      (budget) => budget >= FLOOR1_SPELL_BROKER_COST && budget < FLOOR1_SPELL_BROKER_COST * 2,
-    );
-    expect(oneButNotTwo.length / representativeBudgets.length).toBeGreaterThanOrEqual(0.8);
+  it('prices a broker spell against the existing Floor 1 shopkeeper gold budget', () => {
+    const normalFloor1Budget = SHOPKEEPER_EQUIPMENT_COST + LOOT_BOX_GOLD_BY_TIER.common;
+    expect(normalFloor1Budget).toBeGreaterThanOrEqual(FLOOR1_SPELL_BROKER_COST);
+    expect(normalFloor1Budget).toBeLessThan(FLOOR1_SPELL_BROKER_COST * 2);
   });
 });
 
 describe('spell skills', () => {
   it('defines one usage skill and four real breakpoints for every spell', () => {
-    expect(SPELL_SKILL_IDS).toHaveLength(10);
+    const spellSkillIds = Object.values(SPELL_SKILL_ID_BY_SPELL_ID);
+    expect(spellSkillIds).toHaveLength(10);
     expect(
-      getAllSkillDefinitions().filter((skill) => SPELL_SKILL_IDS.includes(skill.id)),
+      getAllSkillDefinitions().filter((skill) => spellSkillIds.includes(skill.id)),
     ).toHaveLength(10);
     for (const [spellId, skillId] of Object.entries(SPELL_SKILL_ID_BY_SPELL_ID)) {
       const skill = getSkillDefinition(skillId);
@@ -113,16 +116,15 @@ describe('spell skills', () => {
         return first.shouldBuy;
       });
       const bought = outcomes.filter(Boolean).length;
-      expect(SPELL_BROKER_AI_PURCHASE_CHANCE).toBe(0.25);
       expect(bought).toBeGreaterThanOrEqual(200);
       expect(bought).toBeLessThanOrEqual(300);
     });
 
     it('stays idle until spells are unlocked then transitions to farming/returning', () => {
-      const world = createTestWorld({ seed: 1 });
+      const world = createTestWorld({ seed: 5 });
       configureSpellBrokerPurchase(world, true);
       const decision = ensureSpellBrokerDecision(world);
-      if (!decision.shouldBuy) return; // seed 1 must be a buy seed; skip if not
+      expect(decision.shouldBuy).toBe(true);
 
       world.playerGold = 0; // below cost → farming once active
       world.featureUnlocks.spells = false;
@@ -143,10 +145,10 @@ describe('spell skills', () => {
     });
 
     it('transitions to abandoned when planner drops the spell-broker-purchase bundle', () => {
-      const world = createTestWorld({ seed: 1 });
+      const world = createTestWorld({ seed: 5 });
       configureSpellBrokerPurchase(world, true);
       const decision = ensureSpellBrokerDecision(world);
-      if (!decision.shouldBuy) return;
+      expect(decision.shouldBuy).toBe(true);
 
       world.featureUnlocks.spells = true;
       world.playerGold = 0;
@@ -164,6 +166,35 @@ describe('spell skills', () => {
       };
       const dropped = updateSpellBrokerIntent(world, droppedPlan as Floor1RunPlan, 3_000);
       expect(dropped.purchaseStatus).toBe('abandoned');
+    });
+
+    it('keeps merchant fallback pending while broker is active, then resumes after broker abandonment', () => {
+      const world = createTestWorld({ seed: 5 });
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      configureSpellBrokerPurchase(world, true);
+      configureMerchantWeaponPurchase(world, true);
+      const spellDecision = ensureSpellBrokerDecision(world);
+      expect(spellDecision.shouldBuy).toBe(true);
+
+      updateMerchantWeaponIntent(world, null, 3_000);
+      expect(getMerchantWeaponIntent(world).status).toBe('pending');
+
+      world.featureUnlocks.spells = true;
+      updateSpellBrokerIntent(world, null, 3_000);
+      updateSpellBrokerIntent(
+        world,
+        {
+          slackMs: 0,
+          droppedOptionalBundleIds: ['spell-broker-purchase'],
+          includedOptionalBundleIds: [],
+        } as unknown as Floor1RunPlan,
+        3_000,
+      );
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
+
+      updateMerchantWeaponIntent(world, null, 3_000);
+      expect(getMerchantWeaponIntent(world).status).not.toBe('pending');
+      expect(getMerchantWeaponIntent(world).status).not.toBe('declined');
     });
 
     it('markSpellBrokerPurchased sets purchaseStatus to purchased and is idempotent', () => {
@@ -184,25 +215,19 @@ describe('spell skills', () => {
     });
   });
 
-  it('applies small per-level efficacy and larger breakpoint efficacy', () => {
+  function createSpellEffectWorld(spellId: keyof typeof SPELL_SKILL_ID_BY_SPELL_ID, level: number) {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    const skillId = SPELL_SKILL_ID_BY_SPELL_ID.fireball;
-    const state = {
-      level: 4,
+    initializeBaseStats(world, player);
+    statSystem(world);
+    world.playerSkills.set(SPELL_SKILL_ID_BY_SPELL_ID[spellId], {
+      level,
       usage: 0,
       itemBonus: 0,
       triggeredMilestones: new Set<number>(),
-    };
-    world.playerSkills.set(skillId, state);
-    const level4 = getSpellSkillEfficacyMultiplier(world, player, 'fireball');
-    state.level = 5;
-    const level5 = getSpellSkillEfficacyMultiplier(world, player, 'fireball');
-    state.level = 20;
-    const level20 = getSpellSkillEfficacyMultiplier(world, player, 'fireball');
-    expect(level5).toBeGreaterThan(level4);
-    expect(level20).toBeGreaterThan(level5);
-  });
+    });
+    return { world, player };
+  }
 
   it('changes representative fireball output at a breakpoint', () => {
     const world = createTestWorld();
@@ -241,6 +266,135 @@ describe('spell skills', () => {
     expect(world.stores.health.current[enemy]).toBeLessThanOrEqual(
       world.stores.health.max[enemy] ?? 100,
     );
+  });
+
+  it.each([
+    {
+      label: 'heal amount',
+      spellId: 'heal' as const,
+      read(level: number) {
+        const { world, player } = createSpellEffectWorld('heal', level);
+        world.stores.health.current[player] = 50;
+        applyCatalogEffect(world, {
+          sourceType: 'ability',
+          sourceId: 'heal:active:0',
+          effect: { type: 'spell_heal', heal: { base: 10, scalesWithIntelligence: false } },
+          holderEid: player,
+        });
+        return (world.stores.health.current[player] ?? 0) - 50;
+      },
+    },
+    {
+      label: 'pulse shield radius/knockback',
+      spellId: 'pulse-shield' as const,
+      read(level: number) {
+        const { world, player } = createSpellEffectWorld('pulse-shield', level);
+        const enemy = spawnEnemy(world, 16, 0, 100);
+        applyCatalogEffect(world, {
+          sourceType: 'ability',
+          sourceId: 'pulse-shield:active:0',
+          effect: {
+            type: 'spell_pulse_shield',
+            knockbackForce: { base: 10, scalesWithIntelligence: false },
+            radiusTiles: { base: 3, scalesWithIntelligence: false },
+          },
+          holderEid: player,
+        });
+        return world.stores.knockback.remaining[enemy] ?? 0;
+      },
+    },
+    {
+      label: 'magic missile range',
+      spellId: 'magic-missile' as const,
+      read(level: number) {
+        const { world, player } = createSpellEffectWorld('magic-missile', level);
+        const enemy = spawnEnemy(world, 16, 0, 100);
+        applyCatalogEffect(world, {
+          sourceType: 'ability',
+          sourceId: 'magic-missile:active:0',
+          effect: {
+            type: 'spell_magic_missile',
+            damage: { base: 10, scalesWithIntelligence: false },
+            rangeTiles: { base: 3, scalesWithIntelligence: false },
+          },
+          holderEid: player,
+        });
+        return 100 - (world.stores.health.current[enemy] ?? 100);
+      },
+    },
+    {
+      label: 'timed buff magnitude and duration',
+      spellId: 'bless' as const,
+      read(level: number) {
+        const { world, player } = createSpellEffectWorld('bless', level);
+        applyCatalogEffect(world, {
+          sourceType: 'ability',
+          sourceId: 'bless:active:0',
+          effect: {
+            type: 'spell_timed_buff',
+            durationFrames: { base: 10, scalesWithIntelligence: false },
+            modifiers: [
+              {
+                stat: 'damage',
+                op: 'add',
+                value: { base: 2, scalesWithIntelligence: false },
+              },
+            ],
+          },
+          holderEid: player,
+        });
+        const modifier = world.statModifiers.find((entry) => entry.sourceId === 'bless:active:0');
+        return (modifier?.value ?? 0) + (modifier?.expiresFrame ?? 0);
+      },
+    },
+    {
+      label: 'enemy slow burst duration',
+      spellId: 'curse' as const,
+      read(level: number) {
+        const { world, player } = createSpellEffectWorld('curse', level);
+        const enemy = spawnEnemy(world, 4, 0, 100);
+        applyCatalogEffect(world, {
+          sourceType: 'ability',
+          sourceId: 'curse:active:0',
+          effect: {
+            type: 'spell_enemy_slow_burst',
+            radiusTiles: { base: 3, scalesWithIntelligence: false },
+            slowMultiplier: { base: 0.8, scalesWithIntelligence: false },
+            slowDurationMs: { base: 100, scalesWithIntelligence: false },
+          },
+          holderEid: player,
+        });
+        const slow = world.statusEffectsByEntity
+          .get(enemy)
+          ?.find((entry) => entry.stat === 'speed');
+        return slow?.remainingMs ?? 0;
+      },
+    },
+    {
+      label: 'life drain damage and healing',
+      spellId: 'vampiric-touch' as const,
+      read(level: number) {
+        const { world, player } = createSpellEffectWorld('vampiric-touch', level);
+        world.stores.health.current[player] = 50;
+        const enemy = spawnEnemy(world, 8, 0, 100);
+        applyCatalogEffect(world, {
+          sourceType: 'ability',
+          sourceId: 'vampiric-touch:active:0',
+          effect: {
+            type: 'spell_life_drain',
+            damage: { base: 10, scalesWithIntelligence: false },
+            heal: { base: 5, scalesWithIntelligence: false },
+            rangeTiles: { base: 3, scalesWithIntelligence: false },
+          },
+          holderEid: player,
+        });
+        const damage = 100 - (world.stores.health.current[enemy] ?? 100);
+        const healing = (world.stores.health.current[player] ?? 50) - 50;
+        return damage + healing;
+      },
+    },
+  ])('scales representative $label output at the level 20 breakpoint', ({ read }) => {
+    expect(read(20)).toBeGreaterThan(read(0));
   });
 
   it('emits one spell-use event only after successful player activation', () => {

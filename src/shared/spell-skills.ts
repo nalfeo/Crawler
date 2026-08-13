@@ -17,10 +17,6 @@ export const SPELL_SKILL_ID_BY_SPELL_ID: Readonly<Record<Floor1BossRewardSpellId
   haste: 'spell-haste',
 };
 
-export const SPELL_SKILL_IDS = FLOOR1_BOSS_REWARD_SPELL_IDS.map(
-  (spellId) => SPELL_SKILL_ID_BY_SPELL_ID[spellId],
-) as readonly string[];
-
 export function getSpellSkillId(spellId: string): string | undefined {
   return (SPELL_SKILL_ID_BY_SPELL_ID as Record<string, string | undefined>)[spellId];
 }

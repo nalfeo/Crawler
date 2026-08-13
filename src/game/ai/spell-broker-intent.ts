@@ -3,7 +3,7 @@ import { generateFloor1SpellBrokerOffers } from '../../shared/spell-skills.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import type { Floor1RunPlan } from './run-planner.js';
 
-export const SPELL_BROKER_AI_PURCHASE_CHANCE = 0.25;
+const SPELL_BROKER_AI_PURCHASE_CHANCE = 0.25;
 
 /**
  * Lifecycle of the optional post-spellbook broker purchase.
@@ -51,6 +51,16 @@ export function configureSpellBrokerPurchase(world: GameWorld, enabled: boolean)
 
 export function getSpellBrokerIntent(world: GameWorld): SpellBrokerIntent {
   return intents.get(world) ?? initialIntent(false);
+}
+
+export function isSpellBrokerPurchaseActive(intent: SpellBrokerIntent): boolean {
+  return (
+    intent.enabled &&
+    intent.shouldBuy &&
+    (intent.purchaseStatus === 'idle' ||
+      intent.purchaseStatus === 'farming' ||
+      intent.purchaseStatus === 'returning')
+  );
 }
 
 /**

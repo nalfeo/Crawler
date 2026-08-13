@@ -7,7 +7,7 @@ import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import { statSystem } from '../../core/systems/index.js';
 import { getAllAbilityDefinitions } from '../../game/abilities/registry.js';
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
-import { SPELL_SKILL_IDS } from '../../shared/spell-skills.js';
+import { SPELL_SKILL_ID_BY_SPELL_ID } from '../../shared/spell-skills.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
 import {
   abilitySystem,
@@ -36,8 +36,9 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
   const allSkills = getAllSkillDefinitions();
   const allAbilities = getAllAbilityDefinitions();
+  const spellSkillIdSet = new Set(Object.values(SPELL_SKILL_ID_BY_SPELL_ID));
   const spellSkillIds = allSkills
-    .filter((skill) => SPELL_SKILL_IDS.includes(skill.id))
+    .filter((skill) => spellSkillIdSet.has(skill.id))
     .map((skill) => skill.id);
   const activeOrSpell = allAbilities.filter((a) => a.kind !== 'passive');
   const passives = allAbilities.filter((a) => a.kind === 'passive');

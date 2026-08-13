@@ -36,7 +36,7 @@ const SPELL_SKILL_BREAKPOINT_BONUSES = [
 ] as const;
 
 /** Reusable efficacy layer shared by every spell effect, including utility. */
-export function getSpellSkillEfficacyMultiplier(
+function getSpellSkillEfficacyMultiplier(
   world: GameWorld,
   holderEid: number,
   spellId: string,

@@ -142,7 +142,6 @@ export type {
 } from './skills.js';
 export {
   SPELL_SKILL_ID_BY_SPELL_ID,
-  SPELL_SKILL_IDS,
   getSpellSkillId,
   FLOOR1_SPELL_BROKER_OFFER_COUNT,
   generateFloor1SpellBrokerOffers,

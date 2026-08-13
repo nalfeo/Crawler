@@ -53,7 +53,11 @@ import {
   purchaseSpellBrokerSpell,
   spendPoints,
 } from '../index.js';
-import { ensureSpellBrokerDecision, markSpellBrokerPurchased } from './spell-broker-intent.js';
+import {
+  ensureSpellBrokerDecision,
+  isSpellBrokerPurchaseActive,
+  markSpellBrokerPurchased,
+} from './spell-broker-intent.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
@@ -257,6 +261,7 @@ export function autoFloor1ProgressionSystem(
   }
 
   const spellIntent = ensureSpellBrokerDecision(world);
+  const spellBrokerPurchaseActive = isSpellBrokerPurchaseActive(spellIntent);
 
   if (world.goalFlags.get('floor1-boss-battle-complete') === true && !world.featureUnlocks.spells) {
     const offeredSpellIds = getOfferedBossRewardSpellIds(world);
@@ -283,14 +288,14 @@ export function autoFloor1ProgressionSystem(
       break;
     }
 
-    if (!spellIntent.shouldBuy && getMerchantWeaponIntent(world).status === 'returning') {
+    if (!spellBrokerPurchaseActive && getMerchantWeaponIntent(world).status === 'returning') {
       executeMerchantWeaponPurchase(world, playerEid);
       break;
     }
   }
 
   if (
-    spellIntent.shouldBuy &&
+    spellBrokerPurchaseActive &&
     world.featureUnlocks.spells &&
     (world.goalFlags.get('floor1-boss-battle-complete') === true ||
       world.goalFlags.get('floor1-boss-spellbook-claimed') === true)
