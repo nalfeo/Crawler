@@ -13,7 +13,7 @@
       "adversarial": true,
       "alternatives_considered": 3,
       "plan_divergence": "major_fork",
-      "notes": "Adopted the reviewer-discovered authoritative post-carve placement pass and full pre-unlock reachability invariant. Alt A patch only the provisional joint selector was rejected because the later pass overwrites item/broker placement. Alt B special-case planner errors was rejected because it masks invalid maps. Alt C post-hoc connector carving was rejected because it mutates authored room geometry and can weaken gates. Chosen: make final placement lock-aware for shop, item, and broker while preserving deterministic scoring; add 1-100 class coverage plus exact headless evidence."
+      "notes": "Adopted progression-state reachability as the selection invariant after the placement-only hypothesis was falsified. Alt A planner fallback was rejected because it masks invalid maps. Alt B post-hoc connector carving was rejected because it mutates authored room geometry and can weaken gates. Alt C changing AI door or quest behavior was rejected as a progression cheat. Chosen: filter Slime Rat candidates by merchant reachability with the staircase gate still locked while preserving deterministic scoring; add post-seal seeds 1-100 class coverage plus exact headless evidence."
     },
     "code_review": {
       "clean": true,

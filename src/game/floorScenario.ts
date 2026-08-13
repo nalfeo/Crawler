@@ -811,6 +811,8 @@ function selectMerchantAnchoredQuestItemAndSlime(
         const specialPointsForSlime = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
         const slimeEntry = candidates
           .filter((entry) => entry.room.id !== shopRoomId && entry.room.id !== itemEntry.room.id)
+          // Accepting the Slime Rat quest opens only this arena. Reject rooms whose
+          // sole route still crosses the locked staircase gate (seed 52's cycle).
           .filter((entry) => {
             const slimePos = resolvePassableRoomCenter(floorMap, entry.room);
             return distanceFromFieldAtWorldPos(floorMap, travelToSlimeFromMerchant, slimePos) >= 0;
