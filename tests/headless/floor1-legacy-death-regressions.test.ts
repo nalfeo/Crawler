@@ -22,6 +22,7 @@ const CASES = [
   { weapon: 'throwing-knife', seed: 84 },
 ] as const;
 const BOSS_LOCKIN_CASES = [
+  { weapon: 'baseball-bat', seed: 2 },
   { weapon: 'baseball-bat', seed: 25 },
   { weapon: 'sword', seed: 44 },
   { weapon: 'baseball-bat', seed: 67 },

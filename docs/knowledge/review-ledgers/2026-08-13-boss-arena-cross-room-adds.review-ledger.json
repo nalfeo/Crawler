@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "boss-arena-cross-room-adds",
+  "task_title": "Keep boss lock-in targeting inside the arena room",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Retrospective review after evidence-driven implementation because the harness was loaded late; not represented as pre-code review. Approved narrow room filter. Resolutions: clarified repeated post-fix hashes, kept attribution to cross-room add selection rather than decision-mode superiority, documented unit semantic-vs-headless real-path roles, and recorded the current single-room Floor 1 boss-arena invariant."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
