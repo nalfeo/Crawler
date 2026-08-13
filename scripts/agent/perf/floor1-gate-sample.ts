@@ -10,7 +10,10 @@
  *
  * Changing anything here changes what CI enforces. Do that deliberately.
  */
-import { GAME } from '../../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../../src/game/ai/floor1-run-budget.js';
 
 /**
  * Deterministic seeds, as a **contiguous prefix** (1..N) so the sample cannot be
@@ -27,13 +30,13 @@ export const GATE_SEEDS: readonly number[] = Array.from({ length: 8 }, (_, i) =>
 export const GATE_WEAPONS: readonly string[] = ['sword', 'bow', 'baseball-bat'];
 
 /** The AI's active-time budget for clearing Floor 1, in simulated game time. */
-export const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
+export const FLOOR1_TIME_BUDGET_MS = FLOOR1_ACTIVE_TIME_BUDGET_MS;
 
 /**
  * Frame cap, set just past the AI budget so a run that fails to clear still
  * terminates deterministically rather than spinning to an arbitrary limit.
  */
-export const GATE_MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+export const GATE_MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 
 /**
  * Wall-clock hard stop for a single run. Not a correctness assertion — purely a

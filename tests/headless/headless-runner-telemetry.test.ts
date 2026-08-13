@@ -16,6 +16,7 @@ import {
 
 class ScriptedDecisionProvider implements AIInputProvider {
   private frame = 0;
+  public planningDeadlineMs: number | null | undefined;
   private decision: AIDecision = {
     state: AIState.EXPLORE,
     targetEid: null,
@@ -58,6 +59,10 @@ class ScriptedDecisionProvider implements AIInputProvider {
           };
   }
 
+  configurePlanningDeadlineMs(deadlineMs: number | null): void {
+    this.planningDeadlineMs = deadlineMs;
+  }
+
   getDecision(): AIDecision {
     return {
       ...this.decision,
@@ -71,6 +76,31 @@ class ScriptedDecisionProvider implements AIInputProvider {
 }
 
 describe('headless runner AI telemetry', () => {
+  it('propagates the exact frame-derived planning deadline to budget-aware providers', async () => {
+    const provider = new ScriptedDecisionProvider();
+    await runHeadless(provider, {
+      seed: 42,
+      maxFrames: 3,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+    });
+
+    expect(provider.planningDeadlineMs).toBe(3 * GAME.DELTA_MS);
+  });
+
+  it('supports an explicit planning budget for observation-only slices', async () => {
+    const provider = new ScriptedDecisionProvider();
+    await runHeadless(provider, {
+      seed: 42,
+      maxFrames: 3,
+      planningMaxFrames: 120,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+    });
+
+    expect(provider.planningDeadlineMs).toBe(120 * GAME.DELTA_MS);
+  });
+
   it('rolls up telemetry-only decision labels into run stats', async () => {
     const stats = await runHeadless(new ScriptedDecisionProvider(), {
       seed: 42,
@@ -94,7 +124,8 @@ describe('headless runner AI telemetry', () => {
   });
 
   it('supports jumping to an arbitrary player level at run start', async () => {
-    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+    const provider = new ScriptedDecisionProvider();
+    const stats = await runHeadless(provider, {
       seed: 42,
       maxFrames: 0,
       maxWallTimeMs: 30_000,
@@ -106,6 +137,7 @@ describe('headless runner AI telemetry', () => {
     expect(stats.totalXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
     expect(stats.runStartXp).toBe(stats.totalXp);
     expect(stats.runStartXp).toBeGreaterThanOrEqual(xpRequiredForLevel(3));
+    expect(provider.planningDeadlineMs).toBeNull();
   });
 
   it('level 1 (default) applies no boost', async () => {

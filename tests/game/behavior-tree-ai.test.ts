@@ -1871,6 +1871,128 @@ describe('BehaviorTreeAI', () => {
     },
   );
 
+  it('resolves the retreat-triggering threat before resuming remote progression', () => {
+    const { world, player, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('throwing-knife');
+    world.stores.health.current[player] = 8;
+    world.stores.health.max[player] = 100;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+
+    const retreatThreatEid = (ai as unknown as { retreatThreatEid: number | null })
+      .retreatThreatEid;
+    expect(retreatThreatEid).not.toBeNull();
+    for (const [index, enemy] of enemies.entries()) {
+      world.stores.position.x[enemy] = 46 + index * 2;
+      world.stores.position.y[enemy] = 14;
+    }
+
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: retreatThreatEid,
+    });
+    expect(ai.getDecision().reason).toContain('Resolving retreat threat before progression');
+
+    world.stores.health.current[retreatThreatEid!] = 0;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+    });
+  });
+
+  it('does not let the engage watchdog preempt post-retreat local threat recovery', () => {
+    const { world, player, enemies } = setupNpcApproachThreat('throwing-knife');
+    world.stores.health.current[player] = 8;
+    world.stores.health.max[player] = 100;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+    const internals = ai as unknown as {
+      localThreatRecoveryEid: number | null;
+      engageNoProgressFrames: number;
+      engageBaselinesByEid: Map<number, { bestDistance: number; bestHp: number }>;
+      ignoredEnemyUntilFrame: Map<number, number>;
+    };
+    const retreatThreatEid = internals.localThreatRecoveryEid;
+    expect(retreatThreatEid).not.toBeNull();
+    for (const [index, enemy] of enemies.entries()) {
+      world.stores.position.x[enemy] = 46 + index * 2;
+      world.stores.position.y[enemy] = 14;
+    }
+
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+    expect(decision).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: retreatThreatEid,
+    });
+
+    internals.engageNoProgressFrames = ENGAGE_GIVEUP_FRAMES;
+    const ex = world.stores.position.x[retreatThreatEid!] ?? 0;
+    const ey = world.stores.position.y[retreatThreatEid!] ?? 0;
+    const hp = world.stores.health.current[retreatThreatEid!] ?? 0;
+    internals.engageBaselinesByEid.set(retreatThreatEid!, {
+      bestDistance: Math.hypot(
+        ex - (world.stores.position.x[player] ?? 0),
+        ey - (world.stores.position.y[player] ?? 0),
+      ),
+      bestHp: hp,
+    });
+
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: retreatThreatEid,
+    });
+    expect(internals.ignoredEnemyUntilFrame.has(retreatThreatEid!)).toBe(false);
+  });
+
+  it('abandons post-retreat recovery after the local no-damage budget', () => {
+    const { world, player, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('throwing-knife');
+    world.stores.health.current[player] = 8;
+    world.stores.health.max[player] = 100;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+    const harness = ai as unknown as {
+      localThreatRecoveryEid: number | null;
+      localThreatRecoveryStartFrame: number | null;
+      localThreatRecoveryBestHealth: number | null;
+      ignoredEnemyUntilFrame: Map<number, number>;
+    };
+    const retreatThreatEid = harness.localThreatRecoveryEid;
+    expect(retreatThreatEid).not.toBeNull();
+    for (const [index, enemy] of enemies.entries()) {
+      world.stores.position.x[enemy] = 46 + index * 2;
+      world.stores.position.y[enemy] = 14;
+    }
+
+    harness.localThreatRecoveryStartFrame =
+      world.frameCount - NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES - 1;
+    const currentThreatHealth = world.stores.health.current[retreatThreatEid!] ?? 0;
+    harness.localThreatRecoveryBestHealth = currentThreatHealth + 1;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(harness.localThreatRecoveryStartFrame).toBe(world.frameCount);
+
+    harness.localThreatRecoveryStartFrame =
+      world.frameCount - NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES - 1;
+    harness.localThreatRecoveryBestHealth = currentThreatHealth;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: shopkeeperNpcEid,
+    });
+    expect(harness.ignoredEnemyUntilFrame.get(retreatThreatEid!)).toBeGreaterThan(world.frameCount);
+    expect(harness.localThreatRecoveryEid).toBeNull();
+  });
+
   it('abandons a melee NPC threat clear after sustained no progress', () => {
     const { world, shopkeeperNpcEid } = setupNpcApproachThreat('sword');
     const ai = new BehaviorTreeAI({ seed: 12 });
