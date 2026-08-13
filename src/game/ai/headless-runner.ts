@@ -57,6 +57,7 @@ import type { SettlementMaintenanceResult } from './settlement-maintenance-types
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
+import { planningDeadlineMsFromFrameBudget } from './floor1-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import {
@@ -526,6 +527,9 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  aiProvider.configurePlanningDeadlineMs?.(
+    planningDeadlineMsFromFrameBudget(mergedConfig.maxFrames),
+  );
   const startTime = Date.now();
 
   if (mergedConfig.debug) {

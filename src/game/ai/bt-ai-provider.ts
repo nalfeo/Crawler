@@ -208,7 +208,6 @@ import {
   FARM_FORWARD_SCAN_RADIUS_FT,
   FARM_FORWARD_DOT_MIN,
   FARM_MIN_HEALTH_FRACTION,
-  FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS,
   PANIC_BEELINE_REMAINING_MS,
   PANIC_RAMP_START_REMAINING_MS,
   PANIC_LOCKED_STAIRS_MULTIPLIER,
@@ -278,6 +277,7 @@ import {
   LOOT_SWEEP_PANIC_THRESHOLD,
   LOOT_SWEEP_RADIUS_FT,
 } from './bt-ai-tuning.js';
+import { resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs } from './floor1-run-budget.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
 import { computeFloorProgressScore } from './scoring.js';
@@ -588,7 +588,7 @@ export interface CollapsePanicProfile {
 }
 
 export function resolveFloor1AiCollapsePanicDeadlineMs(objectiveDeadlineMs: number): number {
-  return Math.min(objectiveDeadlineMs, FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS);
+  return resolveConfiguredFloor1PlanningDeadlineMs(objectiveDeadlineMs);
 }
 
 export function computeCollapsePanicProfile(
@@ -767,6 +767,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
   private lastRunPlan: Floor1RunPlan | null = null;
+  private runnerPlanningDeadlineMs: number | null = null;
   private merchantDecisionRunPlan: Floor1RunPlan | null = null;
   private merchantDecisionRunPlanFrame: number = -Infinity;
   /**
@@ -1064,6 +1065,31 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Build the behavior tree
     this.tree = this.buildTree();
+  }
+
+  configurePlanningDeadlineMs(deadlineMs: number | null): void {
+    if (deadlineMs !== null && (!Number.isFinite(deadlineMs) || deadlineMs < 0)) {
+      throw new Error(
+        `Invalid runner planning deadline "${String(deadlineMs)}": expected null or a finite non-negative number.`,
+      );
+    }
+    if (deadlineMs === this.runnerPlanningDeadlineMs) {
+      return;
+    }
+    this.runnerPlanningDeadlineMs = deadlineMs;
+    this.floor1MiddleChainCache = null;
+    this.runPlanCacheKey = null;
+    this.runPlanCache = null;
+    this.lastRunPlan = null;
+    this.merchantDecisionRunPlan = null;
+    this.merchantDecisionRunPlanFrame = -Infinity;
+  }
+
+  resolveFloor1PlanningDeadlineMs(objectiveDeadlineMs: number): number {
+    return resolveConfiguredFloor1PlanningDeadlineMs(
+      objectiveDeadlineMs,
+      this.runnerPlanningDeadlineMs,
+    );
   }
 
   /**
@@ -3872,7 +3898,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     return computeCollapsePanicProfile({
       elapsedMs: world.elapsedMs,
-      deadlineMs: resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       staircaseUnlocked: objective.staircaseUnlocked,
       staircaseDiscovered: objective.staircaseDiscovered,
       playerToStairsTravelMs: this.lastPlayerToStairsTravelMs,
@@ -4272,7 +4298,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           : null;
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       player: { x: playerX, y: playerY },
       currentTarget,
       activeQuestGiverDetour: committedDetourEid !== null && committedDetourAnchor !== null,
@@ -6242,7 +6268,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       player: { x: playerX, y: playerY },
       currentTarget: null,
       activeQuestGiverDetour: false,
