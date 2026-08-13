@@ -88,6 +88,19 @@ describe('headless runner AI telemetry', () => {
     expect(provider.planningDeadlineMs).toBe(3 * GAME.DELTA_MS);
   });
 
+  it('supports an explicit planning budget for observation-only slices', async () => {
+    const provider = new ScriptedDecisionProvider();
+    await runHeadless(provider, {
+      seed: 42,
+      maxFrames: 3,
+      planningMaxFrames: 120,
+      maxWallTimeMs: 30_000,
+      forceWeaponId: 'sword',
+    });
+
+    expect(provider.planningDeadlineMs).toBe(120 * GAME.DELTA_MS);
+  });
+
   it('rolls up telemetry-only decision labels into run stats', async () => {
     const stats = await runHeadless(new ScriptedDecisionProvider(), {
       seed: 42,

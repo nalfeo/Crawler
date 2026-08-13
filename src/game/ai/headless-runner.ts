@@ -158,6 +158,12 @@ export interface HeadlessRunnerConfig {
   seed: number;
   /** Maximum frames to simulate (safety limit) */
   maxFrames?: number;
+  /**
+   * Frame budget exposed to budget-aware AI planning. Defaults to `maxFrames`.
+   * Set this only when `maxFrames` is an observation cutoff rather than the
+   * run's actual evaluation budget.
+   */
+  planningMaxFrames?: number;
   /** Maximum wall-clock time in milliseconds */
   maxWallTimeMs?: number;
   /** Report progress every N frames (0 = never) */
@@ -304,6 +310,7 @@ const DEFAULT_CONFIG: Required<
     | 'onFinish'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
+    | 'planningMaxFrames'
   >
 > = {
   seed: 12345,
@@ -528,7 +535,7 @@ export async function runHeadless(
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
   aiProvider.configurePlanningDeadlineMs?.(
-    planningDeadlineMsFromFrameBudget(mergedConfig.maxFrames),
+    planningDeadlineMsFromFrameBudget(config.planningMaxFrames ?? mergedConfig.maxFrames),
   );
   const startTime = Date.now();
 
