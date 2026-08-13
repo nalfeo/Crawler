@@ -18,6 +18,7 @@ const CASES = [
   { weapon: 'pistol', seed: 30 },
   { weapon: 'throwing-knife', seed: 2 },
   { weapon: 'throwing-knife', seed: 6 },
+  { weapon: 'throwing-knife', seed: 29 },
   { weapon: 'throwing-knife', seed: 81 },
   { weapon: 'throwing-knife', seed: 84 },
 ] as const;
