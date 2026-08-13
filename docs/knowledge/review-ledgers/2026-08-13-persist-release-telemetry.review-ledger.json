@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "persist-release-telemetry",
+  "task_title": "Persist full release sweep RunStats telemetry",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Approved with changes. Adopted: validate complete payloads at runtime through normalizeFunSessions plus exact count; reject preexisting meta during release enrichment; preserve full wallTimeMs but document that only gameplay fields are deterministic and avoid byte-equality claims; use a real runHeadless-produced RunStats sample in focused tests before expanding to 600; retain compact index and note its full-file parse cost as a future optimization, not scope expansion. No different architecture warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
