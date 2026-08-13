@@ -7,6 +7,7 @@ import {
   type ShopkeeperStockItem,
 } from '../floorScenario.js';
 import { canFarmOptionalMerchantPurchase, type Floor1RunPlan } from './run-planner.js';
+import { ensureSpellBrokerDecision, isSpellBrokerPurchaseActive } from './spell-broker-intent.js';
 
 export type MerchantWeaponIntentStatus =
   | 'pending'
@@ -65,6 +66,10 @@ export function updateMerchantWeaponIntent(
     return intent;
   }
   if (intent.status === 'abandoned') {
+    return intent;
+  }
+  const spellBrokerIntent = ensureSpellBrokerDecision(world);
+  if (isSpellBrokerPurchaseActive(spellBrokerIntent)) {
     return intent;
   }
   if (world.goalFlags.get('floor1-shop-quest-complete') !== true) {

@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   }
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
-  console.log(`Merchant weapon purchase: ${args.merchantWeaponPurchase ? 'enabled' : 'disabled'}`);
+  console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
   console.log(
     `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
   );
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
     weaponPersonas: args.weaponPersonas,
-    merchantWeaponPurchase: args.merchantWeaponPurchase,
+    optionalPurchases: args.optionalPurchases,
     settlementReturnRouting: args.settlementReturnRouting,
     ...(recording
       ? {

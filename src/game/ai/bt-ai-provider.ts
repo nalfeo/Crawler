@@ -303,6 +303,7 @@ import {
   type RunPlannerParams,
 } from './run-planner.js';
 import { getMerchantWeaponIntent, updateMerchantWeaponIntent } from './merchant-weapon-intent.js';
+import { getSpellBrokerIntent, updateSpellBrokerIntent } from './spell-broker-intent.js';
 import {
   getSettlementReturnIntent,
   isSettlementReturnRoutingEnabled,
@@ -3518,6 +3519,19 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
       updateMerchantWeaponIntent(world, validatedMerchantPlan, RUN_PLANNER_GOLD_FARM_MS);
     }
+    {
+      const spellBrokerDecision = getSpellBrokerIntent(world);
+      if (spellBrokerDecision.enabled && spellBrokerDecision.shouldBuy) {
+        const validatedMerchantPlan = this.getMerchantDecisionRunPlan(
+          world,
+          playerEid,
+          playerX,
+          playerY,
+          playerSpeedFtPerFrame,
+        );
+        updateSpellBrokerIntent(world, validatedMerchantPlan, RUN_PLANNER_GOLD_FARM_MS);
+      }
+    }
     if (!this.npcApproachThreatProgressEvaluatedThisPoll) {
       this.resetNpcApproachThreatTracking();
     }
@@ -4288,6 +4302,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         (merchantWeaponIntent.status === 'farming' || merchantWeaponIntent.status === 'returning')
           ? { status: merchantWeaponIntent.status, cost: merchantWeaponIntent.cost }
           : null,
+      spellBrokerIntent: (() => {
+        const intent = getSpellBrokerIntent(world);
+        return intent.enabled &&
+          (intent.purchaseStatus === 'farming' || intent.purchaseStatus === 'returning')
+          ? { status: intent.purchaseStatus, cost: intent.cost }
+          : null;
+      })(),
       positions: {
         welcomeOffice: objective.welcomeOfficePos,
         shop: objective.shopRoomPos,
@@ -6252,6 +6273,13 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? { status: intent.status, cost: intent.cost }
           : null;
       })(),
+      spellBrokerIntent: (() => {
+        const intent = getSpellBrokerIntent(world);
+        return intent.enabled &&
+          (intent.purchaseStatus === 'farming' || intent.purchaseStatus === 'returning')
+          ? { status: intent.purchaseStatus, cost: intent.cost }
+          : null;
+      })(),
       positions: {
         welcomeOffice: objective.welcomeOfficePos,
         shop: objective.shopRoomPos,
@@ -6277,6 +6305,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       snapshot.staircaseDiscovered,
       snapshot.merchantWeaponIntent?.status ?? 'none',
       snapshot.merchantWeaponIntent?.cost ?? 0,
+      snapshot.spellBrokerIntent?.status ?? 'none',
+      snapshot.spellBrokerIntent?.cost ?? 0,
     ].join('|');
     const cache = this.floor1MiddleChainCache;
 
@@ -6421,6 +6451,33 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerY,
             reason,
             floorScenario.shopkeeperNpcEid ?? -1,
+          ),
+        );
+      }
+      case 'farm-spell-broker-gold': {
+        const spellIntent = getSpellBrokerIntent(world);
+        const goldOwed = Math.max(0, spellIntent.cost - world.playerGold);
+        const target = this.findMerchantGoldFarmTarget(
+          world,
+          playerX,
+          playerY,
+          goldOwed,
+          'spell broker',
+        );
+        return target ? maybeDetourToQuestGiver(target) : null;
+      }
+      case 'buy-broker-spell': {
+        const reason = 'Returning to the Spell Broker to purchase the offered spell';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.spellQuestGiverPos.x,
+            objective.spellQuestGiverPos.y,
+            playerX,
+            playerY,
+            reason,
+            floorScenario.spellQuestGiverNpcEid ?? -1,
           ),
         );
       }

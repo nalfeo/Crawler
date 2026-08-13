@@ -89,6 +89,10 @@ export interface Floor1RunPlannerSnapshot {
     readonly status: 'farming' | 'returning';
     readonly cost: number;
   } | null;
+  readonly spellBrokerIntent?: {
+    readonly status: 'farming' | 'returning';
+    readonly cost: number;
+  } | null;
   readonly positions: {
     readonly welcomeOffice: RunPlannerPoint;
     readonly shop: RunPlannerPoint;
@@ -438,6 +442,8 @@ export function buildRunPlanCacheKey(
     snapshot.currentTarget?.committedGoalId ?? 'none',
     snapshot.merchantWeaponIntent?.status ?? 'none',
     snapshot.merchantWeaponIntent?.cost ?? 0,
+    snapshot.spellBrokerIntent?.status ?? 'none',
+    snapshot.spellBrokerIntent?.cost ?? 0,
     speedKey,
     budgetBucket,
   ].join('|');

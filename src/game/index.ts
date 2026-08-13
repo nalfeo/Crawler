@@ -60,6 +60,10 @@ export {
   SHOPKEEPER_EQUIPMENT_COST,
   selectSpellFromBossBattle,
   ensureBossBattleSpellReward,
+  getSpellBrokerOffers,
+  canPurchaseSpellBrokerSpell,
+  purchaseSpellBrokerSpell,
+  SPELL_BROKER_SPELL_COST,
 } from './floorScenario.js';
 export type { ShopkeeperStage } from '../shared/quest-types.js';
 export {

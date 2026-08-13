@@ -69,12 +69,24 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(() => cli('--pathing-mode', 'bogus')).toThrow(/Invalid --pathing-mode/);
   });
 
-  it('keeps merchant weapon purchase off by default and enables it by flag or environment', () => {
-    expect(cli().merchantWeaponPurchase).toBe(false);
-    expect(cli('--merchant-weapon-purchase').merchantWeaponPurchase).toBe(true);
+  it('keeps optionalPurchases off by default and enables via --optional-purchases flag or env', () => {
+    expect(cli().optionalPurchases).toBe(false);
+    expect(cli('--optional-purchases').optionalPurchases).toBe(true);
+    // New canonical env var
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: '1' })
+        .optionalPurchases,
+    ).toBe(true);
+    expect(
+      parseArgs(['node', 'headless-runner-cli.js'], { AI_OPTIONAL_PURCHASES: 'true' })
+        .optionalPurchases,
+    ).toBe(true);
+    // Legacy --merchant-weapon-purchase flag is still honoured (backward compat)
+    expect(cli('--merchant-weapon-purchase').optionalPurchases).toBe(true);
+    // Legacy env var is still honoured
     expect(
       parseArgs(['node', 'headless-runner-cli.js'], { AI_MERCHANT_WEAPON_PURCHASE: 'true' })
-        .merchantWeaponPurchase,
+        .optionalPurchases,
     ).toBe(true);
   });
 

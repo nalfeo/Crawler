@@ -80,7 +80,7 @@ import { AI_TYPE } from './enemyAISystem.js';
 import { activateHostileEncounter } from './hostile-encounter-lifecycle.js';
 import { roomHopDistances } from './room-hops.js';
 import { getItemById, getItemIndex } from '../shared/items.js';
-import { GAME, PLAYER_SPEED } from '../shared/constants.js';
+import { FLOOR1_SPELL_BROKER_COST, GAME, PLAYER_SPEED } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, listStaticInventorySlots, removeItem } from '../shared/inventory.js';
 import { FLOOR2_HARVESTABLE_START_INDEX, HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
@@ -110,6 +110,9 @@ import {
   DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
   type Floor1BossRewardSpellId,
 } from '../shared/abilities.js';
+import { generateFloor1SpellBrokerOffers } from '../shared/spell-skills.js';
+import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 import {
   acceptQuest,
@@ -118,7 +121,7 @@ import {
   setQuestCounter,
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
-import { memorizeSpell } from './systems/abilitySystem.js';
+import { getOrCreateAbilityState, memorizeSpell } from './systems/abilitySystem.js';
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
@@ -2132,6 +2135,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     starterWeaponPool,
     starterChoices: pickStarterChoices(world, starterWeaponPool),
     offeredRewardSpellIds: pickOfferedRewardSpellIds(world),
+    spellBrokerOffers: generateFloor1SpellBrokerOffers(world.seed),
     selectedWeaponId: null,
     selectedChoiceIndex: null,
     baseStatBonuses: {
@@ -4123,6 +4127,7 @@ export function returnShopkeeperPrize(world: GameWorld, playerEid: number): bool
 
 /** Cost of the merchant's wares. */
 export const SHOPKEEPER_EQUIPMENT_COST = MERCHANTS_CHARM_COST;
+export const SPELL_BROKER_SPELL_COST = FLOOR1_SPELL_BROKER_COST;
 
 /**
  * Buy the merchant's charm with gold. Adds the (equippable) item to the bag.
@@ -4299,5 +4304,53 @@ export function ensureBossBattleSpellReward(world: GameWorld, playerEid: number)
   const fallbackSpellId = DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID;
   memorizeSpell(world, playerEid, fallbackSpellId);
   world.featureUnlocks.spells = true;
+  return true;
+}
+
+/** Read the authoritative Floor 1 Spell Broker stock for this run. */
+export function getSpellBrokerOffers(world: GameWorld): readonly Floor1SpellBrokerOffer[] {
+  if (world.floorScenario?.spellBrokerOffers) {
+    return world.floorScenario.spellBrokerOffers;
+  }
+  return generateFloor1SpellBrokerOffers(world.seed);
+}
+
+/** True when a holder can buy and memorize a particular broker offer. */
+export function canPurchaseSpellBrokerSpell(
+  world: GameWorld,
+  playerEid: number,
+  spellId: string,
+): boolean {
+  if (world.featureUnlocks.spells !== true) return false;
+  if (
+    world.goalFlags.get('floor1-boss-battle-complete') !== true &&
+    world.goalFlags.get('floor1-boss-spellbook-claimed') !== true
+  ) {
+    return false;
+  }
+  const offer = getSpellBrokerOffers(world).find((entry) => entry.spellId === spellId);
+  if (!offer || offer.purchased || world.playerGold < offer.cost) return false;
+  const state = getOrCreateAbilityState(world, playerEid);
+  if (state.learnedSpellIds.includes(spellId)) return false;
+  if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) return false;
+  return true;
+}
+
+/** Purchase exactly one offered spell through the broker's NPC-gated shop. */
+export function purchaseSpellBrokerSpell(
+  world: GameWorld,
+  playerEid: number,
+  spellId: string,
+): boolean {
+  // Require the durable floor scenario so `offer.purchased = true` persists
+  // for the lifetime of this run.  A missing scenario means the floor was
+  // never initialized — reject cleanly rather than mutating a discarded array.
+  if (!world.floorScenario?.spellBrokerOffers) return false;
+  if (!canPurchaseSpellBrokerSpell(world, playerEid, spellId)) return false;
+  const offer = world.floorScenario.spellBrokerOffers.find((entry) => entry.spellId === spellId);
+  if (!offer) return false;
+  memorizeSpell(world, playerEid, spellId);
+  world.playerGold -= offer.cost;
+  offer.purchased = true;
   return true;
 }

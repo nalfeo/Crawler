@@ -14,7 +14,8 @@ export interface SkillMilestone {
   level: 5 | 10 | 15 | 20;
   name: string;
   description: string;
-  abilityId: string;
+  /** Optional for skills whose milestones are implemented by a reusable modifier layer. */
+  abilityId?: string;
 }
 
 export interface SkillDefinition {
