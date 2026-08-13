@@ -50,13 +50,32 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "0505116f4af77d2c3970a7c8fb6a4f3fc5c750a8",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/floorScenario.ts",
+          "detail": "The new reachability filter is evaluated on PRE-seal geometry: selectMerchantAnchoredQuestItemAndSlime runs at floorScenario.ts:2065, while sealSpecialRooms (floorScenario.ts:2114) later walls perimeter breaches and can append new doors to the boss-staircase room (special-rooms.ts:130-161). Sealing's strand check floods with every door treated as passable, so it may wall a breach whose only alternative route passes through the (locked) staircase doors, or convert such a breach into a staircase door — either of which can make a candidate that passed the filter unreachable at play time. The play-time invariant is currently only established empirically by the seeds 1-100 post-seal assertion in tests/game/floor1-quest-tour-length.test.ts. Smallest remedy: state the pre-seal timing assumption in the new comment and note that the post-seal guarantee rests on the seeds 1-100 regression, or re-validate the chosen slime room after sealSpecialRooms and fall back to the next valid       candidate if the seal broke the route."
+        },
+        {
+          "severity": "minor",
+          "file": "src/game/floorScenario.ts",
+          "detail": "The filter can empty the slime candidate list; that entry then scores with slimePos = questItemPos, its own room doors blocked, so distanceFromMerchant becomes -1 and the entry is dropped (floorScenario.ts:866). If every preferred AND relaxed item entry drops this way, selectMerchantAnchoredQuestItemAndSlime returns undefined and the caller silently keeps chooseObjectiveTiles' raw placement (floorScenario.ts:2077-2082), which is exactly the unvalidated placement the new invariant is meant to prevent. No seed in 1-100 hits it, so this is latent rather than live. Smallest remedy: add a regression asserting alignedPair is non-null across the sampled seeds, or make the caller's fallback path re-check merchant       reachability with the staircase locked."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 2,
+      "notes": "The production change is two lines of real behavior: hoist the merchant tile / staircase-locked travel field out of the per-candidate loop, and reject Slime Rat candidates whose only route from the merchant crosses the still-locked staircase gate. That is the correct invariant for the failure class — accepting the Slime Rat quest opens only that arena, so a candidate reachable solely through the staircase room creates the deterministic progression cycle that produced ObjectiveRoutePlannerError('unreachable-required-goal'). I verified the mechanism independently rather than trusting the write-up: buildTravelDistanceField returns -1 for unreachable tiles, blocking only staircase doors leaves the candidate's own doors traversable, and buildInitiallyLockedDoorTileSet keys off the staircase room's door list, so the filter models exactly the state in which the player must enter the arena. A direct probe of seed 52 on the graded tree shows 9 of 31 rooms are unreachable from the merchant in that locked state, confirming the failure class is easy to hit under the unchanged 'most isolated room' tiebreak, and that the filter is load-bearing rather than cosmetic. The hoist is safe: merchantPos and staircasePos are loop-invariant parameters, so the field is identical for every candidate. Deterministic BFS only — no Math.random, no Date.now, no new layer imports, no new system requiring sim-side wiring — and the existing Euclidean isolation ranking, quest flags, and door behavior are untouched, so the diff is genuinely surgical. Test coverage is real fail-to-pass coverage rather than a mirror of the implementation: the test rebuilds its own locked-aware BFS and measures the POST-seal world after configureWorld, asserts the merchant-to-arena route is positive across seeds 1-100 (widened from 24), and also pins merchant and Spell Broker spawn reachability; I ran the file and all 4 tests pass in ~49s, well inside the 120s timeout, and npm run typecheck is clean. Two minor gaps hold correctness and coverage at 4: the production invariant is enforced on pre-seal geometry while sealing can still alter the locked-state topology afterwards, and the empty-candidate path silently degrades to unvalidated placement. Both are latent, non-blocking, and bounded by the 100-seed post-seal gate. The rationale comment on the filter and the ledger's plan_review notes now match what the code actually does, the handoff records real-pipeline headless victories for all six weapons rather than lab-only evidence, and the 4-apple ledger carries adversarial plan review plus a two-round multi-model review, so the tier's required stages are present with only the independent grade outstanding. No criterion scores below 3 and no blocker was found."
     }
   }
 }
