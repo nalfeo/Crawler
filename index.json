@@ -1,5 +1,16 @@
 [
   {
+    "commit": "dd8588d4f4b0f5c1afde4961dedac1cc54574b24",
+    "commitDate": "2026-08-13T04:19:06Z",
+    "commitSubject": "fix(ai): recover blocked live-player route starts (#2846)",
+    "capturedAt": "2026-08-13T05:28:39.000Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31667322876",
+    "winRate": 0.9733333333333334,
+    "totalWins": 584,
+    "totalRuns": 600,
+    "path": "by-sha/dd8588d4f4b0f5c1afde4961dedac1cc54574b24.json"
+  },
+  {
     "commit": "4046f454aba8190ce05890209a99c0b8ae51f662",
     "commitDate": "2026-08-13T00:42:01Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2842)",
