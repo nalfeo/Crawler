@@ -1,0 +1,52 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "ci-recovery-retargets-stale-bases",
+  "task_title": "Retarget stale merged PR bases",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved with changes. Adopted: router uses CRAWLER_CI_PAT only for mutations; comment uses a managed marker; stale detection requires no open base PR and verifies merged-tip identity when the base ref survives; router dispatches reconcile only after bounded mergeability settlement and excludes same-run retargets from normal dispatch. Retained the existing main-only train eligibility and existing reconcile conflict-rebase state machine."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
