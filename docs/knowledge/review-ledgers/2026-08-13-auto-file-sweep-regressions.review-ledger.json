@@ -35,9 +35,9 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gemini-3.1-pro-preview",
+      "grader_model": "grok-4.5",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "e684a858b8dbdd7267a243409ba1917f10108841",
+      "head_sha": "f83c7927ea51f002dac24da20b4d94fb2bda848f",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -48,7 +48,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The implementation correctly calculates regression thresholds and uses first-parent lineage to ensure accurate baseline comparisons. Deduplication and issue mutations are handled safely using HTML markers and robust GitHub API integration. Tests are comprehensive across bounds, edge cases, and CI workflow wiring, and the scope is perfectly focused."
+      "notes": "The diff correctly implements post-publish release baseline regression detection and idempotent issue filing. Predecessor selection walks first-parent history (current commit excluded) against the published baselines index, so out-of-order concurrent publishes cannot pick a future baseline; equal totalRuns is fail-closed; the dual threshold (drop > 0.5pp via integer loss arithmetic and >=2 additional losses) matches the boundary fixtures. Issue mutation dedupes on a full-SHA HTML marker across open/closed automation issues, reopens when needed, and reuses runIssueIntake with GITHUB_TOKEN create/update plus PAT assignment. deploy.yml wires detect-after-publish, gates filing on the detector output, keeps tokens step-scoped, and serializes same-SHA sweeps without cancel-in-progress. Coverage exercises detector edges, issue create/update/reopen/failure/guard paths, and workflow structure. Scope stays on the automation path plus required 3-apple artifacts; no gameplay/determinism policy breaks."
     }
   }
 }
