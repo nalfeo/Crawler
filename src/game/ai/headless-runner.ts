@@ -34,6 +34,7 @@ import {
   type AIInputProvider,
   type AIPathingModeValue,
   type LootEfficiencyMetrics,
+  type PlayerPersona,
   type RunStats,
   type LevelUpEvent,
   type SkillRunMetrics,
@@ -274,6 +275,8 @@ export interface HeadlessRunnerConfig {
    * is supplied it wins over the individual fields.
    */
   optionalPurchases?: boolean;
+  /** Optional evaluator cohort label retained in RunStats. */
+  playerPersona?: PlayerPersona;
   /**
    * @deprecated Use `optionalPurchases` instead.  Retained for caller
    * compatibility; `optionalPurchases` takes precedence when provided.
@@ -314,6 +317,7 @@ const DEFAULT_CONFIG: Required<
     | 'onFinish'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
+    | 'playerPersona'
     | 'planningMaxFrames'
   >
 > = {
@@ -1417,6 +1421,7 @@ export async function runHeadless(
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
       runStartXp,
+      ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
       floor1BossProgression: collectFloor1BossProgression(world, {
@@ -1518,6 +1523,7 @@ export async function runHeadless(
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
     runStartXp,
+    ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
     floor1BossProgression: collectFloor1BossProgression(world, {

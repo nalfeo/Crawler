@@ -197,6 +197,9 @@ export interface AIConfig {
   debug?: boolean;
 }
 
+/** Deterministic behavioral cohorts used by the fun evaluator. */
+export type PlayerPersona = 'new_player' | 'experienced_player' | 'min_max_cheeser' | 'explorer';
+
 /**
  * AI input provider interface.
  * Reads GameWorld state and outputs simulated InputState.
@@ -567,6 +570,8 @@ export interface RunStats {
   floor2Progression?: Floor2ProgressionMetrics;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
+  /** Optional evaluator cohort that produced this run. */
+  playerPersona?: PlayerPersona;
   /** Optional telemetry rollups for AI decision-state accounting. */
   aiTelemetry?: AIDecisionTelemetryMetrics;
   /**
