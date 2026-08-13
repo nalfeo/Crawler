@@ -576,10 +576,11 @@ function isCriticalProgressNpcType(npcTypeId: string): boolean {
 
 /**
  * Breadth-first tile travel distance from `start`, walking passable tiles plus
- * doors that are not in `blockedDoorTiles`. Returns tile counts per index, with
- * `-1` for tiles that cannot be reached at all. Unlike straight-line distance
- * this is the route the player actually walks, so it is what placement rules
- * should be scored against.
+ * doors that are not in `blockedDoorTiles`; entries in `blockedDoorTiles` are
+ * treated as impassable even when they are pre-seal perimeter gaps. Returns tile
+ * counts per index, with `-1` for tiles that cannot be reached at all. Unlike
+ * straight-line distance this is the route the player actually walks, so it is
+ * what placement rules should be scored against.
  */
 function buildTravelDistanceField(
   floorMap: FloorMap,
@@ -614,11 +615,11 @@ function buildTravelDistanceField(
       if (distances[neighborIndex] !== -1) {
         continue;
       }
+      if (blockedDoorTiles.has(tileKey(nx, ny))) {
+        continue;
+      }
       const doorTile = floorMap.tileMap.isDoor(nx, ny);
-      if (
-        !floorMap.tileMap.isPassable(nx, ny) &&
-        (!doorTile || blockedDoorTiles.has(tileKey(nx, ny)))
-      ) {
+      if (!floorMap.tileMap.isPassable(nx, ny) && !doorTile) {
         continue;
       }
       distances[neighborIndex] = nextDistance;
@@ -657,8 +658,37 @@ export function buildInitiallyLockedDoorTileSet(
     for (const door of room?.doors ?? []) {
       blocked.add(tileKey(door.x, door.y));
     }
+    if (room) {
+      addSealedRoomPerimeterBlocks(floorMap, room, blocked);
+    }
   }
   return blocked;
+}
+
+function addSealedRoomPerimeterBlocks(
+  floorMap: FloorMap,
+  room: RoomData,
+  blocked: Set<string>,
+): void {
+  const { x, y, width, height } = room.bounds;
+  const doorTiles = new Set(room.doors.map((door) => tileKey(door.x, door.y)));
+  const consider = (tx: number, ty: number): void => {
+    const key = tileKey(tx, ty);
+    if (doorTiles.has(key)) {
+      return;
+    }
+    if (floorMap.tileMap.isPassable(tx, ty) && !floorMap.tileMap.isDoor(tx, ty)) {
+      blocked.add(key);
+    }
+  };
+  for (let tx = x; tx < x + width; tx += 1) {
+    consider(tx, y);
+    consider(tx, y + height - 1);
+  }
+  for (let ty = y + 1; ty < y + height - 1; ty += 1) {
+    consider(x, ty);
+    consider(x + width - 1, ty);
+  }
 }
 
 interface ObjectiveRoomCandidate {
@@ -800,6 +830,13 @@ function selectMerchantAnchoredQuestItemAndSlime(
 ):
   | { itemEntry: ObjectiveRoomCandidate; slimeEntry: ObjectiveRoomCandidate | undefined }
   | undefined {
+  const staircaseDoorTiles = buildInitiallyLockedDoorTileSet(floorMap, [staircasePos]);
+  const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
+  const travelToSlimeFromMerchant = buildTravelDistanceField(
+    floorMap,
+    merchantTile,
+    staircaseDoorTiles,
+  );
   const rankEntries = (entries: readonly ObjectiveRoomCandidate[]) =>
     entries
       .map((itemEntry) => {
@@ -807,6 +844,12 @@ function selectMerchantAnchoredQuestItemAndSlime(
         const specialPointsForSlime = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
         const slimeEntry = candidates
           .filter((entry) => entry.room.id !== shopRoomId && entry.room.id !== itemEntry.room.id)
+          // Accepting the Slime Rat quest opens only this arena. Reject rooms whose
+          // sole route still crosses the locked staircase gate (seed 52's cycle).
+          .filter((entry) => {
+            const slimePos = resolvePassableRoomCenter(floorMap, entry.room);
+            return distanceFromFieldAtWorldPos(floorMap, travelToSlimeFromMerchant, slimePos) >= 0;
+          })
           .sort((a, b) => {
             const aPos = resolvePassableRoomCenter(floorMap, a.room);
             const bPos = resolvePassableRoomCenter(floorMap, b.room);
@@ -833,7 +876,6 @@ function selectMerchantAnchoredQuestItemAndSlime(
           staircasePos,
           slimePos,
         ]);
-        const merchantTile = floorMap.worldToTile(merchantPos.x, merchantPos.y);
         const travelFromMerchant = buildTravelDistanceField(
           floorMap,
           merchantTile,
@@ -2065,12 +2107,13 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       merchantPos,
       shopRoomId,
     );
-    if (alignedPair != null) {
-      questItemPos = resolvePassableRoomCenter(world.floorMap, alignedPair.itemEntry.room);
-      slimeRatRoomPos = alignedPair.slimeEntry
-        ? resolvePassableRoomCenter(world.floorMap, alignedPair.slimeEntry.room)
-        : questItemPos;
+    if (alignedPair == null) {
+      throw new Error('Floor 1 objective placement failed: no lock-reachable quest pair');
     }
+    questItemPos = resolvePassableRoomCenter(world.floorMap, alignedPair.itemEntry.room);
+    slimeRatRoomPos = alignedPair.slimeEntry
+      ? resolvePassableRoomCenter(world.floorMap, alignedPair.slimeEntry.room)
+      : questItemPos;
     const usedRoomIds = new Set(
       [
         welcomeRoomId,
