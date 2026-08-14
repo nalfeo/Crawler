@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bf41355af5e2468b6beb926520ec265647b8aa47",
+    "commitDate": "2026-08-14T07:26:57Z",
+    "commitSubject": "fix(ci-recovery): assign Copilot to harvest incidents (#2903)",
+    "capturedAt": "2026-08-14T08:34:42.449Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31780588737",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/bf41355af5e2468b6beb926520ec265647b8aa47.json"
+  },
+  {
     "commit": "bc8b73d01dccd3426e830418a65e449d1e431f0e",
     "commitDate": "2026-08-14T07:14:01Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2904)",
