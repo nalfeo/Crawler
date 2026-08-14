@@ -1,5 +1,16 @@
 [
   {
+    "commit": "70eb3cd738e1709e923463875c0ed1eaa4d149d2",
+    "commitDate": "2026-08-13T23:48:31Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2891)",
+    "capturedAt": "2026-08-14T00:49:19.639Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31755204506",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/70eb3cd738e1709e923463875c0ed1eaa4d149d2.json"
+  },
+  {
     "commit": "0f969da8f1fffc0dfe5d401e6a32719026ebb794",
     "commitDate": "2026-08-13T23:05:19Z",
     "commitSubject": "feat(ai): add deterministic playtest personas and fun evaluator (#2871)",
