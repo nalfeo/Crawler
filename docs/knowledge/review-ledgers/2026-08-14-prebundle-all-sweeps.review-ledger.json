@@ -45,18 +45,18 @@
       "completed": true,
       "grader_model": "gpt-5.5",
       "implementer_model": "gpt-5.6-luna",
-      "head_sha": "768182bc9e7521fdf18b27886fc10c68502e3e26",
+      "head_sha": "d3b5320fb0bf95e17fb826025c555289c0b96225",
       "findings": [],
       "criteria": {
         "correctness": 4,
-        "scope_discipline": 4,
+        "scope_discipline": 3,
         "test_coverage": 4,
         "policy_compliance": 4,
         "maintainability": 4
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "Clean HEAD verified at 768182b. Prebundle CLI, cwd-anchored packageLockHash, workflowSha provenance, bundled worker paths, targeted tests, and required policy artifacts are present."
+      "notes": "The diff implements a reusable prebundle launcher, routes the advertised headless/sweep entrypoints and workflows through it, preserves bundled worker execution paths, and adds targeted tests for provenance, bundle creation, worker behavior, and workflow rewiring. Scope is broader than ideal because it includes AGENTS table reflow and silent-reverts guard changes, but those do not introduce a validated blocker. Coverage is solid for the main changed behavior, with no high-confidence actionable defects found."
     }
   }
 }
