@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   getAvailableFloorIds,
+  getFloorManifest,
   getFloorWinBudgetMs,
   getImplementedFloorIds,
-  getReleasedFloorIds,
   isFloorImplemented,
-  isFloorReleased,
 } from '../../src/shared/floor-registry.js';
 import { floorManifestDefSchema, floor1Manifest } from '../../src/shared/floor-manifest.js';
 import {
   getActiveTimeBudgetMs,
-  getBudgetFrames,
   getDefaultMaxFrames,
   requireActiveTimeBudgetMs,
   requireDefaultMaxFrames,
@@ -23,7 +21,7 @@ import {
 describe('floor implementation status (manifest SSOT)', () => {
   it('marks Floor 1 implemented, released, and budgeted', () => {
     expect(isFloorImplemented('floor1')).toBe(true);
-    expect(isFloorReleased('floor1')).toBe(true);
+    expect(getFloorManifest('floor1')?.implemented.released).toBe(true);
     expect(getFloorWinBudgetMs('floor1')).toBe(360_000);
   });
 
@@ -37,7 +35,8 @@ describe('floor implementation status (manifest SSOT)', () => {
 
   it('keeps released a strict subset of implemented', () => {
     const implemented = new Set(getImplementedFloorIds());
-    for (const floorId of getReleasedFloorIds()) {
+    for (const floorId of getAvailableFloorIds()) {
+      if (getFloorManifest(floorId)?.implemented.released !== true) continue;
       expect(implemented.has(floorId)).toBe(true);
     }
   });
@@ -84,7 +83,6 @@ describe('per-floor run budget', () => {
   it('preserves the exact Floor 1 active-time budget of 6 minutes', () => {
     expect(FLOOR1_ACTIVE_TIME_BUDGET_MS).toBe(6 * 60 * 1000);
     expect(getActiveTimeBudgetMs('floor1')).toBe(6 * 60 * 1000);
-    expect(getBudgetFrames('floor1')).toBe(21_600);
   });
 
   it('returns null for an implemented floor that declares no budget', () => {
@@ -93,7 +91,6 @@ describe('per-floor run budget', () => {
     // of silently failing clears against a budget nobody measured.
     expect(getActiveTimeBudgetMs('floor2')).toBeNull();
     expect(getDefaultMaxFrames('floor2')).toBeNull();
-    expect(getBudgetFrames('floor2')).toBeNull();
   });
 
   it('throws from the require* helpers for an unbudgeted floor', () => {

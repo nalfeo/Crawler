@@ -62,6 +62,13 @@ export interface CLIArgs {
   seeds: number[];
   weapons: string[];
   maxFrames: number;
+  /**
+   * True when `--max-frames` was supplied explicitly. A chained sweep resolves
+   * each floor's own budget-derived cap by default (a short floor's cap must not
+   * truncate a long one), so the flag is forwarded as a per-floor cap ONLY when
+   * the caller actually asked for a bound.
+   */
+  maxFramesExplicit: boolean;
   out: string | null;
   enemyDamageMultiplier: number;
   floorId: string;
@@ -188,11 +195,11 @@ export function parseSweepArgs(
 ): CLIArgs {
   let weaponsProvided = false;
   let workersProvided = false;
-  let maxFramesProvided = false;
   const args: CLIArgs = {
     seeds: Array.from({ length: 40 }, (_, i) => i + 1),
     weapons: FLOOR1_WEAPONS,
     maxFrames: DEFAULT_MAX_FRAMES,
+    maxFramesExplicit: false,
     out: null,
     enemyDamageMultiplier: 1,
     floorId: 'floor1',
@@ -213,7 +220,7 @@ export function parseSweepArgs(
       i++;
     } else if (arg === '--max-frames' && next) {
       args.maxFrames = parsePositiveInt('--max-frames', next);
-      maxFramesProvided = true;
+      args.maxFramesExplicit = true;
       i++;
     } else if (arg === '--out' && next) {
       args.out = next;
@@ -266,7 +273,7 @@ export function parseSweepArgs(
   // floor that declares no budget keeps the prior BUDGET_FRAMES default so this
   // never silently alters its truncation behavior. An explicit --max-frames
   // overrides for every floor.
-  if (!maxFramesProvided && args.floorId !== 'floor1') {
+  if (!args.maxFramesExplicit && args.floorId !== 'floor1') {
     args.maxFrames = getDefaultMaxFrames(args.floorId) ?? BUDGET_FRAMES;
   }
   if (!workersProvided) {

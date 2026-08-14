@@ -40,11 +40,6 @@ export function isFloorImplemented(floorId: string): boolean {
   return getFloorManifest(floorId)?.implemented.mvp === true;
 }
 
-/** True when a floor is shipped to players (`implemented.released`). */
-export function isFloorReleased(floorId: string): boolean {
-  return getFloorManifest(floorId)?.implemented.released === true;
-}
-
 /**
  * Floor ids that are implemented E2E with an attainable victory, in registry
  * order. This is the sweep set: the floors a win-rate sweep may legitimately
@@ -52,11 +47,6 @@ export function isFloorReleased(floorId: string): boolean {
  */
 export function getImplementedFloorIds(): string[] {
   return getAvailableFloorIds().filter(isFloorImplemented);
-}
-
-/** Floor ids shipped to players, in registry order. */
-export function getReleasedFloorIds(): string[] {
-  return getAvailableFloorIds().filter(isFloorReleased);
 }
 
 /**

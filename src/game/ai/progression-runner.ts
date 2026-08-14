@@ -37,6 +37,17 @@ import { activeTimeMs } from './scoring.js';
 export interface ProgressionLeg {
   floorId: string;
   stats: RunStats;
+  /**
+   * The snapshot this leg STARTED from, or undefined for the first leg (a cold
+   * start). Surfaced so a caller can verify the handoff actually happened
+   * instead of inferring it from downstream stats.
+   */
+  startedFrom?: PlayerCarryoverSnapshot;
+  /**
+   * The snapshot captured when this leg was cleared, or undefined when the leg
+   * did not end in a victory that produced one.
+   */
+  captured?: PlayerCarryoverSnapshot;
 }
 
 export interface ProgressionRunStats {
@@ -159,7 +170,12 @@ export async function runProgression(
         capturedCarryover = snapshot;
       },
     });
-    legs.push({ floorId, stats });
+    legs.push({
+      floorId,
+      stats,
+      ...(carryover ? { startedFrom: carryover } : {}),
+      ...(capturedCarryover ? { captured: capturedCarryover } : {}),
+    });
 
     if (stats.outcome !== 'victory') break;
     clearedFloorIds.push(floorId);

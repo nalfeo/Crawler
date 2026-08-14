@@ -607,30 +607,10 @@ jobs:
             # Rebuild index.json from every by-sha/*.json (sorted newest-first by
             # commit date). Because the index is a deterministic derivation of the
             # by-sha files, concurrent jobs never textually merge the shared array.
-            node -e "
-              const fs = require('node:fs');
-              const path = require('node:path');
-              const wt = process.env.WORKTREE;
-              const dir = path.join(wt, 'by-sha');
-              const entries = fs
-                .readdirSync(dir)
-                .filter((f) => f.endsWith('.json'))
-                .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')))
-                .filter((b) => b && b.meta && b.meta.commit)
-                .map((b) => ({
-                  commit: b.meta.commit,
-                  commitDate: b.meta.commitDate,
-                  commitSubject: b.meta.commitSubject,
-                  capturedAt: b.meta.capturedAt,
-                  runUrl: b.meta.runUrl,
-                  winRate: b.winRate,
-                  totalWins: b.totalWins,
-                  totalRuns: b.totalRuns,
-                  path: 'by-sha/' + b.meta.commit + '.json',
-                }));
-              entries.sort((a, b) => (b.commitDate || '').localeCompare(a.commitDate || ''));
-              fs.writeFileSync(path.join(wt, 'index.json'), JSON.stringify(entries, null, 2) + '\n');
-            " || return 1
+            # The derivation lives in a unit-tested module so it cannot silently
+            # drop a field the regression check reads (per-leg metrics, sweep
+            # revision) the way the previous inline script did.
+            BASELINES_DIR="$WORKTREE" npx tsx "$GITHUB_WORKSPACE/scripts/agent/perf/baseline-index.ts" || return 1
 
             git -C "$WORKTREE" add -A || return 1
             if git -C "$WORKTREE" diff --cached --quiet; then

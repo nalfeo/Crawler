@@ -111,21 +111,57 @@ describe('release baseline regression check', () => {
     expect(decision.reason).toContain('no earlier release baseline');
   });
 
-  it('skips exactly one comparison when the sweep matrix is intentionally resized', () => {
-    // The multi-floor rollout resizes the Floor-1 leg (600 → 300 runs). Rates
-    // across different sample sizes are not comparable, and the
-    // additional-losses half of the tolerance rule is meaningless across them.
-    // Previously this threw, which would hard-fail the release job on the first
-    // post-resize run; it now reports a skipped comparison and resumes at full
-    // strength on the next release.
-    const mismatched = { ...indexEntry(previous), totalRuns: 300, totalWins: 298 };
+  function resized(entry: BaselineIndexEntry): BaselineIndexEntry {
+    const mismatched = { ...entry, totalRuns: 300, totalWins: 298 };
     mismatched.winRate = mismatched.totalWins / mismatched.totalRuns;
-    const decision = evaluateBaselineRegression(regression, [mismatched], [previous.meta.commit]);
+    return mismatched;
+  }
+
+  function withRevision(baseline: BaselineFile, revision: number | undefined): BaselineFile {
+    return {
+      ...baseline,
+      meta: {
+        ...baseline.meta,
+        ...(revision === undefined ? {} : { sweep: { seeds: '1-50', kind: 'winrate', revision } }),
+      },
+    };
+  }
+
+  it('skips exactly one comparison when the sweep matrix revision is intentionally bumped', () => {
+    // The multi-floor rollout resizes the Floor-1 leg (600 → 300 runs) under a
+    // NEW RELEASE_SWEEP_REVISION. Rates across different sample sizes are not
+    // comparable, and the additional-losses half of the tolerance rule is
+    // meaningless across them, so exactly one comparison is skipped.
+    const decision = evaluateBaselineRegression(
+      withRevision(regression, 2),
+      [resized(indexEntry(previous))],
+      [previous.meta.commit],
+    );
     expect(decision.regression).toBe(false);
     expect(decision.seriesMigrated).toBe(true);
-    expect(decision.reason).toContain('sweep matrix resized');
+    expect(decision.reason).toContain('sweep matrix resized under a new revision');
     // Crucially it does NOT file an issue for a comparison it never made.
     expect(decision.issue).toBeUndefined();
+  });
+
+  it('fails closed on a run-count change that is not an explicit revision bump', () => {
+    // A truncated producer or an accidental matrix edit must never be laundered
+    // into a "series migration" that silently suppresses regression detection.
+    expect(() =>
+      evaluateBaselineRegression(
+        withRevision(regression, 2),
+        [{ ...resized(indexEntry(previous)), sweepRevision: 2 }],
+        [previous.meta.commit],
+      ),
+    ).toThrow(/cannot compare baseline run counts/);
+
+    expect(() =>
+      evaluateBaselineRegression(
+        withRevision(regression, undefined),
+        [resized(indexEntry(previous))],
+        [previous.meta.commit],
+      ),
+    ).toThrow(/cannot compare baseline run counts/);
   });
 
   it('resumes detecting regressions on the release after a resize', () => {
