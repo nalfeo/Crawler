@@ -62,10 +62,16 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "grok-4.5",
+      "grader_model": "claude-opus-4.8",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "44f746ddf4b2bc422d59f52e080693f56527a104",
-      "findings": [],
+      "head_sha": "60f2be755453486c2a8e7065d731658ea6659a29",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": ".github/extensions/sweep-results-viewer/tests/renderer.test.mjs",
+          "detail": "The new renderer tests assert on JavaScript source substrings inside the emitted HTML rather than on rendered DOM output. They verify code text is present but not that populated baseline-sweep selector and criterion rows render. Prefer state-driven rendered-markup assertions if the renderer gains an executable DOM harness."
+        }
+      ],
       "criteria": {
         "correctness": 5,
         "scope_discipline": 5,
@@ -74,8 +80,8 @@
         "maintainability": 5
       },
       "verdict": "pass",
-      "findings_count": 0,
-      "notes": "Graded origin/main..HEAD feature range (7 commits / 32 files); local main was stale. Prior remedies verified in code and tests: previousLevel = world.playerLevel?.level ?? 0 after applyStartPlayerLevel/loadout (headless-runner.ts), headless regression for startPlayerLevel:3 emits no level_up rewards, and fun-score-lib flags <10% selection after 5+ exposures while still treating zero-selection avoidance separately. Hybrid opt-in runEvents, active-time bounding, release fun-report non-blocking publish/persistence, metaProgression hook-only, and criterion-level Sweep Results Viewer display are consistent with ADR 0084. Targeted unit + headless regressions passed."
+      "findings_count": 1,
+      "notes": "Final rebased release-sweep/index/viewer delta validated against HEAD 60f2be755. Diagnostic scoring remains non-blocking; sibling report publication removes stale same-SHA data, malformed reports degrade to null, and explicit baseline-sweep loading distinguishes not-found from operational failures. Runtime configured-level handling remains deterministic and regression-tested. All targeted unit, headless, viewer, typecheck, lint, and verify-fast checks passed. Test coverage is 4 because generated browser-script branches are currently source-asserted rather than executed under a DOM harness."
     }
   }
 }
