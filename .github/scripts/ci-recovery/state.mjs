@@ -50,7 +50,9 @@ export function hasSubstantiveCopilotReview(reviews) {
 }
 
 function normalizedChangedPath(file) {
-  const path = String(file?.filename ?? file?.path ?? file ?? '').trim().replace(/^\/+/, '');
+  const path = String(file?.filename ?? file?.path ?? file ?? '')
+    .trim()
+    .replace(/^\/+/, '');
   return path;
 }
 
@@ -68,7 +70,10 @@ export function isApprovedArtOnlyDiff(changedFiles) {
 }
 
 export function shouldSkipSubstantiveReview(pr, changedFiles) {
-  return String(pr?.head?.ref || '').trim() === ASSET_PROMOTE_BRANCH && isApprovedArtOnlyDiff(changedFiles);
+  return (
+    String(pr?.head?.ref || '').trim() === ASSET_PROMOTE_BRANCH &&
+    isApprovedArtOnlyDiff(changedFiles)
+  );
 }
 
 export function admissionWaitReasons(
@@ -230,6 +235,32 @@ export function isTrainFastPathPushRun(run, trustedAppId, checkRuns) {
     run?.name === 'CI' &&
     hasTrustedTrainPromotionCheck(checkRuns, trustedAppId)
   );
+}
+
+// Workflow files whose parked (`action_required`) runs the automation can
+// retrigger by itself (see action-required-retrigger.mjs). Identity is the
+// immutable workflow *path*, never the mutable display name: renaming "CI"
+// must not change recovery behaviour, and an unrelated workflow that happens
+// to be named "CI" must not inherit it.
+export const AUTO_RETRIGGER_WORKFLOW_PATHS = Object.freeze([
+  '.github/workflows/ci.yml',
+  '.github/workflows/security-review.yml',
+]);
+
+export function isAutoRetriggerWorkflowRun(run) {
+  const path = String(run?.path ?? '')
+    .trim()
+    .toLowerCase();
+  return AUTO_RETRIGGER_WORKFLOW_PATHS.includes(path);
+}
+
+// A repository incident needs a human/admin hand when automation cannot get
+// the run moving again on its own: a startup failure, or a parked run in a
+// workflow the auto-retrigger path does not cover.
+export function requiresAdminIntervention(run) {
+  const conclusion = String(run?.conclusion ?? '');
+  if (conclusion === 'startup_failure') return true;
+  return conclusion === 'action_required' && !isAutoRetriggerWorkflowRun(run);
 }
 
 const validOwners = new Set(['automation', 'shepherd', 'none']);
