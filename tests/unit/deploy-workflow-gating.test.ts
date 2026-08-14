@@ -111,6 +111,20 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     ]);
   });
 
+  it('skips report-only leg publication unless all release shards and runs are present', () => {
+    const doc = loadDeployWorkflow();
+    const sweep = getJob(doc, 'baseline-sweep');
+    const mergeStep = (sweep.steps ?? []).find((s) => s.name === 'Merge report leg metrics');
+    const script = String(mergeStep?.run ?? '');
+
+    expect(script).toContain('const expectedShards = 15');
+    expect(script).toContain('const expectedRuns = 150');
+    expect(script).toContain('files.length !== expectedShards');
+    expect(script).toContain('totals.totalRuns !== expectedRuns');
+    expect(script).toContain('skipping incomplete leg');
+    expect(script).toContain('continue;');
+  });
+
   it('resolves stale workflow_run releases via release-gate output', () => {
     const doc = loadDeployWorkflow();
     const gate = getJob(doc, 'release-gate');

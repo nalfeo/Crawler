@@ -86,7 +86,7 @@ describe('PR sweep leg matrix parity with ci.yml', () => {
     for (const leg of expected) {
       const entry = include.find((candidate) => candidate.leg === leg.id);
       expect(entry, `matrix entry for ${leg.id}`).toBeDefined();
-      expect(coverage(parseTokens(entry!.args!.split(/\s+/))), `${leg.id} args`).toEqual(
+      expect(coverage(parseTokens(String(entry!.args).split(/\s+/))), `${leg.id} args`).toEqual(
         expectedCoverage(leg),
       );
     }

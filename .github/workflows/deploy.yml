@@ -568,12 +568,27 @@ jobs:
           const fs = require('node:fs');
           const path = require('node:path');
           const dir = '.cache/release-legs';
+          const expectedShards = 15;
+          const expectedRuns = 150;
           for (const leg of ['floor2', 'floor1-chain']) {
+            const shardPattern = new RegExp(`^${leg}-(\\d+)\\.json$`);
+            const shardId = (file) => {
+              const match = path.basename(file).match(shardPattern);
+              if (!match) throw new Error(`unexpected shard filename for ${leg}: ${file}`);
+              return Number(match[1]);
+            };
             const files = fs.readdirSync(dir)
-              .filter((file) => file.startsWith(`${leg}-`) && file.endsWith('.json'))
+              .filter((file) => shardPattern.test(file))
+              .sort((a, b) => shardId(a) - shardId(b))
               .map((file) => path.join(dir, file));
             if (files.length === 0) {
               console.log(`skipping missing leg ${leg}`);
+              continue;
+            }
+            const shards = files.map(shardId);
+            const expectedShardIds = Array.from({ length: expectedShards }, (_, shard) => shard);
+            if (files.length !== expectedShards || shards.some((shard, i) => shard !== expectedShardIds[i])) {
+              console.log(`::warning::skipping incomplete leg ${leg}: found shards ${shards.join(',')}, expected ${expectedShardIds.join(',')}`);
               continue;
             }
             const totals = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')))
@@ -584,6 +599,10 @@ jobs:
                 totalTrueLosses: sum.totalTrueLosses + (part.totalTrueLosses ?? 0),
                 runs: [...sum.runs, ...(Array.isArray(part.runs) ? part.runs : [])],
               }), { totalWins: 0, totalRuns: 0, totalSlowVictories: 0, totalTrueLosses: 0, runs: [] });
+            if (totals.totalRuns !== expectedRuns) {
+              console.log(`::warning::skipping incomplete leg ${leg}: found ${totals.totalRuns} runs, expected ${expectedRuns}`);
+              continue;
+            }
             fs.writeFileSync(`.cache/baseline/leg-${leg}.json`, JSON.stringify({
               floorId: leg === 'floor2' ? 'floor2' : 'floor1',
               legId: leg,
