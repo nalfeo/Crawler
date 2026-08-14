@@ -211,7 +211,21 @@ jobs:
               );
               return { data: response.data };
             };
-            const graphql = async (_token, query, variables) => github.graphql(query, variables);
+            const graphql = async (token, query, variables = {}) => {
+              const { request: requestOptions, ...graphqlVariables } = variables;
+              return github.graphql(query, {
+                ...graphqlVariables,
+                request: token
+                  ? {
+                      ...(requestOptions || {}),
+                      headers: {
+                        ...((requestOptions && requestOptions.headers) || {}),
+                        authorization: `token ${token}`,
+                      },
+                    }
+                  : requestOptions,
+              });
+            };
 
             const result = await lib.reconcileHarvestIncident({
               graphql,

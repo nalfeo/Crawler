@@ -52,13 +52,7 @@ export const DEFAULT_HARVEST_THRESHOLD_MINUTES = 60;
 export const DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS = 8;
 export const DEFAULT_PR_DISPATCH_GAP_HOURS = 4;
 
-export async function assignCopilotToIncident({
-  graphql,
-  token,
-  owner,
-  repo,
-  issueNumber,
-}) {
+export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
   const context = await getCopilotIssueAssignmentContext({
     graphql,
     token,
@@ -297,7 +291,8 @@ export function summarizeDispatchLiveness({
 
   const dispatches = inWindow.filter(
     (record) =>
-      record?.stage === 'terminal' && String(record?.action || '') === DISPATCH_ACTION.DISPATCH_COPILOT,
+      record?.stage === 'terminal' &&
+      String(record?.action || '') === DISPATCH_ACTION.DISPATCH_COPILOT,
   );
   const nonDispatchHistogram = new Map();
   for (const record of inWindow) {
@@ -306,7 +301,9 @@ export function summarizeDispatchLiveness({
     nonDispatchHistogram.set(action, (nonDispatchHistogram.get(action) || 0) + 1);
   }
 
-  const openBlocked = (openBlockedPulls || []).filter((pull) => Number.isFinite(Number(pull?.number)));
+  const openBlocked = (openBlockedPulls || []).filter((pull) =>
+    Number.isFinite(Number(pull?.number)),
+  );
   const staleBlockedPulls = [];
   const neverSummonedBlockedPulls = [];
   for (const pull of openBlocked) {
@@ -317,8 +314,14 @@ export function summarizeDispatchLiveness({
       .filter(Number.isFinite)
       .sort((left, right) => right - left);
     const lastDispatchAt = dispatchTimestamps[0] ?? null;
-    const fallbackAt = Date.parse(String(pull.blocked_since || pull.updated_at || pull.created_at || ''));
-    if (lastDispatchAt === null && Number.isFinite(fallbackAt) && now.getTime() - fallbackAt >= perPrGapMs) {
+    const fallbackAt = Date.parse(
+      String(pull.blocked_since || pull.updated_at || pull.created_at || ''),
+    );
+    if (
+      lastDispatchAt === null &&
+      Number.isFinite(fallbackAt) &&
+      now.getTime() - fallbackAt >= perPrGapMs
+    ) {
       neverSummonedBlockedPulls.push(pull);
       staleBlockedPulls.push(pull);
       continue;
@@ -349,7 +352,9 @@ export function summarizeDispatchLiveness({
     staleBlockedPulls,
     neverSummonedBlockedPulls,
     decisionCountInWindow: inWindow.length,
-    nonDispatchHistogram: [...nonDispatchHistogram.entries()].sort((left, right) => right[1] - left[1]),
+    nonDispatchHistogram: [...nonDispatchHistogram.entries()].sort(
+      (left, right) => right[1] - left[1],
+    ),
   };
 }
 
@@ -522,10 +527,10 @@ function findManagedIncident(issues) {
  */
 export async function reconcileHarvestIncident({
   graphql,
-  assignmentToken = token,
   request,
   paginate,
   token,
+  assignmentToken = token,
   owner,
   repo,
   verdict,

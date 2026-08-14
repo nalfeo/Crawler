@@ -555,7 +555,9 @@ test('reconcileDispatchLivenessIncident creates a managed incident when dispatch
       dispatchCount: 0,
       decisionCountInWindow: 2,
       nonDispatchHistogram: [['skip-merge-train-owned', 2]],
-      neverSummonedBlockedPulls: [{ number: 2414, html_url: 'https://github.com/nalfeo/Crawler/pull/2414' }],
+      neverSummonedBlockedPulls: [
+        { number: 2414, html_url: 'https://github.com/nalfeo/Crawler/pull/2414' },
+      ],
     },
     now: NOW,
   });
@@ -595,13 +597,12 @@ test('CI Liveness Sweep can file the incident it detects', () => {
   assert.equal(SWEEP.permissions.issues, 'write');
 });
 
-// The whole point of the alarm: CRAWLER_CI_PAT shares a user-level budget that
-// can be exhausted account-wide. An alarm authenticating with that same PAT
-// would be dead in exactly the outage it exists to report.
-test('harvest liveness alarm never authenticates with the shared owner PAT', () => {
-  const serialized = JSON.stringify(ALARM_STEP);
-  assert.doesNotMatch(serialized, /CRAWLER_CI_PAT/);
-  assert.doesNotMatch(serialized, /create-github-app-token/);
+// The alarm itself must run on GITHUB_TOKEN for liveness and REST issue ops.
+// Only the GraphQL assignment helper should consume CRAWLER_CI_PAT.
+test('harvest liveness alarm keeps GITHUB_TOKEN for liveness while PAT is assignment-only', () => {
+  assert.match(ALARM_STEP.with.script, /token:\s*null/);
+  assert.match(ALARM_STEP.with.script, /assignmentToken:\s*process\.env\.CRAWLER_CI_PAT/);
+  assert.doesNotMatch(ALARM_STEP.with.script, /create-github-app-token/);
 });
 
 test('CI Liveness Sweep still runs on a schedule', () => {
