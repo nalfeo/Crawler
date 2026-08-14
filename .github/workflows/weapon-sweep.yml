@@ -130,7 +130,7 @@ jobs:
           if [ "$WEAPON_PERSONAS" = "false" ]; then
             persona_flag="--no-weapon-personas"
           fi
-          npx tsx scripts/agent/perf/weapon-sweep.ts \
+          node scripts/agent/perf/prebundle-cli.mjs --entry weapon-sweep \
             --seeds "$SEEDS" \
             --weapons "$WEAPON" \
             --max-frames "$MAX_FRAMES" \

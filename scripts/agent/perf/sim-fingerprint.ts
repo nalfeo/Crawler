@@ -59,6 +59,7 @@ import {
   type WorkerPoolTaskPayload,
   type WorkerTaskFailure,
   type WorkerTaskSuccess,
+  workerOptionsForModule,
 } from './worker-pool.js';
 
 interface FingerprintTask {
@@ -233,15 +234,7 @@ async function main(args: CLIArgs): Promise<void> {
           tasks,
           shared,
           maxWorkers: args.workers,
-          workerOptions: {
-            // tsx's async --import hooks don't remap .js→.ts in worker threads;
-            // the bootstrap registers synchronous hooks which do.
-            execArgv: [
-              ...process.execArgv,
-              '--import',
-              new URL('./tsx-worker-hooks.mjs', import.meta.url).href,
-            ],
-          },
+          workerOptions: workerOptionsForModule(import.meta.url),
         });
 
   const runs: FingerprintRun[] = results.map((result) => ({
