@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "centralize-lore-canon",
+  "task_title": "Centralize provenance-backed lore canon workflow",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Retrospective review identified and addressed workflow staging for canonical lore files, non-circular source citations, complete brief-family scanning, and per-section Sources declarations. The Ollama wording was not treated as a contradiction because the older game-design document describes a proposal while the constitution constrains any implemented runtime generation; no source was silently selected or canonized."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 added retry-path token coverage. Round 2 identified the workflow success guard for lore validation; the guard and regression assertion were added before final validation."
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

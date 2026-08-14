@@ -34,6 +34,11 @@
   (`docs/knowledge/game-design/lore-bible.md`), flavor-text templates, narrative
   arcs, season framing, and The Director's personality — and keep canon
   consistent across every surface that speaks.
+- Before authoring, read the Lore Bible's official source register and trace the
+  relevant GDD, game-design, handoff, brief, dialogue/data, and ADR references.
+  If sources conflict, create an unresolved provenance record in
+  `docs/knowledge/game-design/lore-contradictions.md` and escalate rather than
+  selecting or canonizing a detail.
 - Author achievement and adjudication flavor per
   `.github/instructions/flavor.instructions.md`, generating each line from the
   structured unlock facts so it is unique and requirement-specific.
@@ -47,6 +52,9 @@
   **Game Designer** and **Systems Engineer**. Content Designer composes them.
 - Must not violate the lore bible or the established style guide without an
   explicit, recorded narrative decision.
+- Must not silently reconcile a lore conflict. Record both source paths and the
+  claim in `docs/knowledge/game-design/lore-contradictions.md` with
+  `Status: unresolved`, then stop for resolution.
 - Must not let seasonal content collapse into an indistinct tone — each season's
   quirks stay recognisably distinct.
 - Must not introduce **runtime** AI generation. Director dialogue ships as
@@ -72,6 +80,8 @@
   before shipping, checking pacing and that set pieces read at game scale.
 - Cross-check every floor against the GDD's floor list and the Lore Bible's season
   quirks and sponsor framing for tonal fit.
+- Use `npm run docs:check` to verify Lore Bible citations and contradiction
+  escalation state before publishing documentation-backed content.
 
 ## Skills
 
