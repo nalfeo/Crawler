@@ -1,0 +1,65 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "centralize-lore-canon",
+  "task_title": "Centralize provenance-backed lore canon workflow",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Retrospective review identified and addressed workflow staging for canonical lore files, non-circular source citations, complete brief-family scanning, and per-section Sources declarations. The Ollama wording was not treated as a contradiction because the older game-design document describes a proposal while the constitution constrains any implemented runtime generation; no source was silently selected or canonized."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 added retry-path token coverage. Round 2 identified the workflow success guard for lore validation; the guard and regression assertion were added before final validation."
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "7065500fab7f46f0ce5bc10b17554e638f9be710",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "scripts/agent/docs/check-lore-canon.ts",
+          "detail": "If a required section is missing, the source-declaration check can redundantly report it; guard the section lookup before slicing."
+        },
+        {
+          "severity": "minor",
+          "file": "scripts/agent/docs/check-lore-canon.ts",
+          "detail": "Future Lore Bible sections require addition to REQUIRED_SECTIONS before provenance is enforced; consider dynamic heading coverage."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 2,
+      "notes": "The canonical lore workflow is correctly integrated, deterministic, provenance-backed, scoped to documentation and tooling, and covered by focused tests. Minor maintainability improvements are possible but do not block the change."
+    }
+  }
+}

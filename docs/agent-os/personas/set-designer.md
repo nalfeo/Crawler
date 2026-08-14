@@ -19,6 +19,9 @@ generated.
 - Own the **room art contract** — palette subset, light direction, shadow convention
   and tile-scale class — declared at blockout and inherited by every prop brief the
   room commissions, so individually-good sprites cohere as one space.
+- Read the Lore Bible and trace source citations before fixing or inventing a
+  room's premise. Record and escalate any contradiction in
+  `docs/knowledge/game-design/lore-contradictions.md`; do not silently drift.
 - Hold the deterministic composition bar
   (`npm run setpiece:score`) and the subjective bar (visual judge + lookbook).
 - Commission and iterate prop art through the Graphics Designer's pipeline rather
@@ -89,6 +92,8 @@ clarity is not done.
   → `set-piece-dress` → `set-piece-review`.
 - Reference: `docs/knowledge/game-design/set-piece-lookbook.md` (50-example study set,
   archetype references, the four principles).
+- Lore reference: `docs/knowledge/game-design/lore-bible.md` and its official
+  source register.
 
 ## Collaborates with
 
