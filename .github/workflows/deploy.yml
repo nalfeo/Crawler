@@ -27,6 +27,14 @@ permissions:
 jobs:
   release-gate:
     runs-on: ubuntu-latest
+    # Avoid allocating a runner for CI completions that can never deploy
+    # (scheduled/manual PR-health runs or failed CI). A no-op release-gate runner
+    # failure would otherwise make the whole Pages workflow red even though the
+    # deploy and baseline jobs are intentionally skipped.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     outputs:
       should_run: ${{ steps.gate.outputs.should_run }}
     steps:
