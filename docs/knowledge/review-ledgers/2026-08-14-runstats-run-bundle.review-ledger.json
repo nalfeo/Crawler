@@ -7,7 +7,7 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "",
+      "reviewer_model": "gpt-5.4",
       "concerns_count": 4,
       "resolved_count": 4,
       "adversarial": true,
@@ -19,22 +19,70 @@
       "summary": "Keep world harvesters above shared; use shared generic bundle/assembly seam, optional toJsonl on shared recorder, cursor-based bounded logs, and emit once at terminal presentation before reload/restart. Alternatives rejected: importing game into shared/engine and changing runHeadless return type."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.3-codex",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "842333fec1c2e19e9c4240e26312910e7ae5c8c9",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/engine/scenes/MainGameScene.ts",
+          "detail": "The quit end reason is plumbed but is guarded after the current terminal screens have already emitted their bundle; it becomes active when an active-run quit screen exists."
+        },
+        {
+          "severity": "minor",
+          "file": "src/bootstrap/floor-main-scene-options.ts",
+          "detail": "The production recorder accumulates per-run event data; a later telemetry PR should bound or persist that recorder payload if very long runs are supported."
+        },
+        {
+          "severity": "minor",
+          "file": "src/shared/logger.ts",
+          "detail": "The scene-level emitRunBundle integration is not directly tested, although ring-buffer and bundle contract behavior are covered."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 3,
+      "notes": "The diff is layer-clean and preserves deterministic headless RunStats behavior. Shared contracts remain game-agnostic, human harvesting stays in src/game/ai, and MainGameScene receives the seam through injected factories. Typecheck, targeted tests, fast verification, and focused fingerprint comparison pass."
     }
   }
 }
