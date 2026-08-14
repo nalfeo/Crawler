@@ -370,27 +370,33 @@ test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
+  const auditScript = path.join(tempDir, 'npm-audit.mjs');
+  const cliExceptions = SYNTHETIC_EXCEPTIONS.map((exception) => ({
+    ...exception,
+    expiresOn: '2099-12-31',
+  }));
+  writeFileSync(
+    auditScript,
+    readFileSync(SCRIPT, 'utf8').replace(
+      'export const AUDIT_EXCEPTIONS = [];',
+      `export const AUDIT_EXCEPTIONS = ${JSON.stringify(cliExceptions, null, 2)};`,
+    ),
+  );
   writeFileSync(
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
       report({
-        'brace-expansion': {
-          name: 'brace-expansion',
+        'alpha-pkg': {
+          name: 'alpha-pkg',
           severity: 'high',
-          via: [
-            {
-              source: 1130591,
-              url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
-              severity: 'high',
-            },
-          ],
+          via: [ALPHA_ADVISORY],
         },
-        minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
+        downstream: { name: 'downstream', severity: 'high', via: ['alpha-pkg'] },
       }),
     )}));`,
   );
 
-  const result = spawnSync(process.execPath, [SCRIPT, '--audit-level=high'], {
+  const result = spawnSync(process.execPath, [auditScript, '--audit-level=high'], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -401,9 +407,9 @@ test('reports every matched exception in the success diagnostic', (t) => {
   assert.equal(result.status, 0);
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
+    /Temporary audit exception through 2099-12-31: https:\/\/github\.com\/advisories\/GHSA-alpha-0001/,
   );
-  assert.match(result.stderr, /Suppressed derived findings: brace-expansion, minimatch/);
+  assert.match(result.stderr, /Suppressed derived findings: alpha-pkg, downstream/);
 });
 
 test('suppresses the exact advisory and findings derived solely from it', () => {
@@ -653,7 +659,6 @@ test('rejects temporary dependency exceptions with impossible expiresOn date', (
     /is not a real calendar date/,
   );
 });
-
 
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.
