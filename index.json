@@ -1,5 +1,16 @@
 [
   {
+    "commit": "19ae8f1580a18f73250e75be5cbd66180d76fded",
+    "commitDate": "2026-08-14T09:03:47Z",
+    "commitSubject": "Fix GitHub Pages deploy incident handling (#2913)",
+    "capturedAt": "2026-08-14T10:14:04.846Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31787265255",
+    "winRate": 0.995,
+    "totalWins": 597,
+    "totalRuns": 600,
+    "path": "by-sha/19ae8f1580a18f73250e75be5cbd66180d76fded.json"
+  },
+  {
     "commit": "b350ba410c94334728e774d40849f02e2529143a",
     "commitDate": "2026-08-14T08:48:39Z",
     "commitSubject": "fix(ci): decouple npm-audit success-diagnostic test from the live AUDIT_EXCEPTIONS list (#2897)",
