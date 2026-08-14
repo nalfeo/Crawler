@@ -95,6 +95,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Changed unit tests        | `npm run test:changed`                     |
 | Headless tests            | `npm run test:headless`                    |
 | AI headless runner        | `npm run ai:headless`                      |
+| AI headless (tsx loader)  | `npm run ai:headless:tsx`                  |
 | Sprite enqueue            | `npm run sprites:enqueue`                  |
 | Flash verify              | `npm run verify:flash`                     |
 | Verify core layer         | `npm run verify:core`                      |
