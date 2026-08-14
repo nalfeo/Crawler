@@ -245,7 +245,7 @@ export function parseDiffLineChanges(diffText: string): {
   const added: string[] = [];
   const removed: string[] = [];
   for (const line of diffText.split('\n')) {
-    if (line.startsWith('+++') || line.startsWith('---')) continue;
+    if (line.startsWith('+++ ') || line.startsWith('--- ')) continue;
     if (line.startsWith('+')) added.push(line.slice(1));
     else if (line.startsWith('-')) removed.push(line.slice(1));
   }

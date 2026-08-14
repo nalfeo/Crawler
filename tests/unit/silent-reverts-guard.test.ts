@@ -130,6 +130,20 @@ describe('parseDiffLineChanges', () => {
   it('returns empty arrays for a diff with no content changes', () => {
     expect(parseDiffLineChanges('')).toEqual({ added: [], removed: [] });
   });
+
+  it('does not mistake a content line starting with -- or ++ for a diff file header', () => {
+    const diff = [
+      '--- a/f.md',
+      '+++ b/f.md',
+      '@@ -1 +1 @@',
+      '-old --no-color',
+      '+new ++verbose',
+    ].join('\n');
+    expect(parseDiffLineChanges(diff)).toEqual({
+      added: ['new ++verbose'],
+      removed: ['old --no-color'],
+    });
+  });
 });
 
 describe('sideAdditionsSubsumedByOther', () => {
