@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6326787c198481cf164aeed471b6e0ae1723dd44",
+    "commitDate": "2026-08-14T06:24:01Z",
+    "commitSubject": "feat(devtools): load baselines in sweep viewer (#2860)",
+    "capturedAt": "2026-08-14T07:31:39.649Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31776755737",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/6326787c198481cf164aeed471b6e0ae1723dd44.json"
+  },
+  {
     "commit": "70eb3cd738e1709e923463875c0ed1eaa4d149d2",
     "commitDate": "2026-08-13T23:48:31Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2891)",
