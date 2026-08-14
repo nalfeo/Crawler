@@ -1,0 +1,45 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "in-game-issue-flow",
+  "task_title": "Add in-game issue reporting",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Resolved duplicate-submit and recorder-size concerns; endpoint remains reachable with explicit configuration failure; prompt and mid-run quit metadata are documented tradeoffs."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
