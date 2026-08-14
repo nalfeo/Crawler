@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b350ba410c94334728e774d40849f02e2529143a",
+    "commitDate": "2026-08-14T08:48:39Z",
+    "commitSubject": "fix(ci): decouple npm-audit success-diagnostic test from the live AUDIT_EXCEPTIONS list (#2897)",
+    "capturedAt": "2026-08-14T09:58:40.823Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31786136261",
+    "winRate": 0.995,
+    "totalWins": 597,
+    "totalRuns": 600,
+    "path": "by-sha/b350ba410c94334728e774d40849f02e2529143a.json"
+  },
+  {
     "commit": "bf41355af5e2468b6beb926520ec265647b8aa47",
     "commitDate": "2026-08-14T07:26:57Z",
     "commitSubject": "fix(ci-recovery): assign Copilot to harvest incidents (#2903)",
