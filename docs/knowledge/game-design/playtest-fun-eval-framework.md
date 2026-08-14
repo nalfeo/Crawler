@@ -12,8 +12,8 @@ Implemented by:
 - skill wrapper: `.github/skills/playtest-fun-rater/SKILL.md`
 
 Consumed by the post-release baseline sweep (`deploy.yml`'s `baseline-sweep`
-job): `scripts/agent/perf/release-fun-report.ts` scores that release's
-complete 600-run cohort with this same evaluator and persists the report as
+job): `scripts/agent/perf/release-fun-report.ts` scores every available release
+leg with this same evaluator (600 runs when all three legs complete) and persists the report as
 `.cache/baseline/fun-report.json` / `baselines` branch
 `by-sha/<sha>.fun-report.json`. It is diagnostic/trendable there too, never a
 release gate. `.github/extensions/sweep-results-viewer` renders it (or an

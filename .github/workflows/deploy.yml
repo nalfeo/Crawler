@@ -484,12 +484,17 @@ jobs:
             for (const [id, file] of [["floor2", "leg-floor2.json"], ["floor1-chain", "leg-floor1-chain.json"]]) {
               const p = `${base}/${file}`;
               if (!fs.existsSync(p)) { console.log(`skipping missing leg ${id}`); continue; }
-              legs[id] = pick(JSON.parse(fs.readFileSync(p, "utf8")));
+              legs[id] = pick(JSON.parse(fs.readFileSync(p, "utf8")), true);
             }
             baseline.legs = legs;
             fs.writeFileSync(`${base}/baseline.json`, JSON.stringify(baseline, null, 2));
-            function pick(j) {
-              return { winRate: j.winRate, totalWins: j.totalWins, totalRuns: j.totalRuns };
+            function pick(j, includeRuns = false) {
+              return {
+                winRate: j.winRate,
+                totalWins: j.totalWins,
+                totalRuns: j.totalRuns,
+                ...(includeRuns && Array.isArray(j.runs) ? { runs: j.runs } : {}),
+              };
             }
           '
 
@@ -528,8 +533,8 @@ jobs:
           COMMIT_DATE="$COMMIT_DATE" COMMIT_SUBJECT="$COMMIT_SUBJECT" RUN_URL="$RUN_URL" \
             npx tsx scripts/agent/perf/release-baseline.ts
 
-      # Score the deterministic fun evaluation on this release's complete
-      # 600-run cohort, once `baseline.json` carries both `runs` and `meta`
+      # Score the deterministic fun evaluation on every available release leg
+      # (600 runs when all three legs complete), once `baseline.json` carries `runs` and `meta`
       # (the enrichment step above). This is diagnostic/trendable data, not a
       # release gate: a low fun score must never fail a commit that already
       # shipped, so a scoring failure is downgraded to a warning instead of

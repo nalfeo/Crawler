@@ -3,8 +3,8 @@
  * Scores the deterministic fun evaluation for a published release baseline.
  *
  * This runs immediately after `release-baseline.ts` enriches the post-release
- * 100-seed win-rate sweep with commit metadata, once the full 600-run cohort
- * (`baseline.json`'s `runs: RunStats[]`) exists. It reuses the same evaluator
+ * multi-floor sweep with commit metadata. It scores the top-level Floor 1 runs
+ * plus every available report-only leg under `baseline.legs`. It reuses the same evaluator
  * the `fun-score` CLI and `playtest-fun-rater` skill use elsewhere
  * (`scoreFunSessions`/`normalizeFunSessions` in `fun-score-lib.ts`) so the
  * release report and any ad hoc playtest report are scored identically.
@@ -41,10 +41,8 @@ function isRecord(value: unknown): value is UnknownRecord {
 }
 
 /**
- * Scores a fun-evaluation report for an already-enriched release baseline
- * (i.e. one that has passed through `enrichReleaseBaseline`/`meta`
- * attachment). The baseline's own `runs: RunStats[]` cohort is the input —
- * no separate run set is captured for this step.
+ * Scores a fun-evaluation report for an already-enriched release baseline,
+ * including report-only leg run arrays when present.
  */
 export function buildReleaseFunReport(baseline: unknown): ReleaseFunReport {
   if (!isRecord(baseline)) {
@@ -55,7 +53,27 @@ export function buildReleaseFunReport(baseline: unknown): ReleaseFunReport {
       'Release baseline must include meta (run release-baseline.ts before scoring fun evaluation).',
     );
   }
-  const sessions = normalizeFunSessions(baseline);
+  const topLevelLegId =
+    typeof baseline.legId === 'string'
+      ? baseline.legId
+      : typeof baseline.floorId === 'string'
+        ? baseline.floorId
+        : 'floor1';
+  const sessions = normalizeFunSessions(baseline).map((session) => ({
+    ...session,
+    id: `${topLevelLegId}:${session.id}`,
+  }));
+  if (isRecord(baseline.legs)) {
+    for (const [legId, leg] of Object.entries(baseline.legs)) {
+      if (legId === topLevelLegId || !isRecord(leg) || !Array.isArray(leg.runs)) continue;
+      sessions.push(
+        ...normalizeFunSessions(leg).map((session) => ({
+          ...session,
+          id: `${legId}:${session.id}`,
+        })),
+      );
+    }
+  }
   const report = scoreFunSessions(sessions);
   return { meta: baseline.meta as unknown as ReleaseBaselineMeta, report };
 }

@@ -1,6 +1,7 @@
 import type { GameWorld } from '../../core/world.js';
 import { findGeneratedPhysicalOwners } from '../../core/systems/equipmentSystem.js';
 import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
+import { getQuartermasterOfferViews } from '../../core/quartermaster-purchase.js';
 import type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentInstanceV1,
@@ -87,7 +88,7 @@ function recordSelection(
 }
 
 /** Cross-run generated-item identity excluding run IDs, ordinals, fingerprints, and rolled values. */
-export function generatedEquipmentCatalogKey(instance: GeneratedEquipmentInstanceV1): string {
+function generatedEquipmentCatalogKey(instance: GeneratedEquipmentInstanceV1): string {
   const slots = [...instance.frozen.slots].sort().join(',');
   const effects = instance.resolvedEffects
     .map((effect) => {
@@ -178,10 +179,14 @@ function captureSpellInteractions(
 function captureGeneratedEquipmentInteractions(
   state: HeadlessRunDataState,
   world: GameWorld,
+  playerEid: number,
   activeTimeMs: number,
   frameDeltaMs: number,
 ): void {
   const stock = world.floorExtendedState?.settlement?.quartermasterStock;
+  const canPurchaseByOfferId = new Map(
+    getQuartermasterOfferViews(world, playerEid).map((offer) => [offer.offerId, offer.canPurchase]),
+  );
   for (const offer of stock?.offers ?? []) {
     const instance = getGeneratedEquipmentInstance(world, offer.instanceId);
     if (!instance) continue;
@@ -192,7 +197,7 @@ function captureGeneratedEquipmentInteractions(
       `quartermaster:${stock?.stockId}:${offer.offerId}`,
       catalogKey,
       'generated_equipment',
-      offer.quantity > 0 && world.playerGold >= offer.unitPrice,
+      canPurchaseByOfferId.get(offer.offerId) ?? false,
     );
   }
 
@@ -270,7 +275,7 @@ export function captureHeadlessRunDataFrame(
   frameDeltaMs: number,
 ): void {
   captureSpellInteractions(state, world, playerEid);
-  captureGeneratedEquipmentInteractions(state, world, activeTimeMs, frameDeltaMs);
+  captureGeneratedEquipmentInteractions(state, world, playerEid, activeTimeMs, frameDeltaMs);
   captureActivations(state, world);
 }
 

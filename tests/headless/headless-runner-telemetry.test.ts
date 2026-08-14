@@ -251,11 +251,15 @@ describe('headless runner AI telemetry', () => {
       true,
     );
     const sword = items?.items.find((item) => item.catalogKey === 'weapon:sword');
+    expect(
+      items?.items.filter((item) => item.kind === 'starter_weapon').map((item) => item.catalogKey),
+    ).toEqual(['weapon:sword']);
     expect(sword?.selectableExposureCount).toBe(1);
     expect(sword?.selectionCount).toBe(1);
     expect(sword?.activationCount).toBeGreaterThan(0);
     expect(items?.uniqueActivationCount).toBeGreaterThan(0);
     expect(stats.runPerformance?.dominantItemUsageShare).toBeGreaterThan(0);
+    expect(rewards?.events.some((event) => event.kind === 'level_up')).toBe(true);
     expect(stats.metaProgression).toBeUndefined();
 
     const again = await run();

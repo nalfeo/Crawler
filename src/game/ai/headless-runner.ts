@@ -660,7 +660,9 @@ export async function runHeadless(
     world.floorScenario?.starterChoices[starterWeaponIndex] ??
     'unknown';
   const runData = createHeadlessRunData(
-    world.floorScenario?.starterChoices ?? [startingWeapon],
+    forceWeaponId !== undefined
+      ? [startingWeapon]
+      : (world.floorScenario?.starterChoices ?? [startingWeapon]),
     startingWeapon,
   );
 
@@ -691,7 +693,8 @@ export async function runHeadless(
 
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
-  let previousLevel = world.playerLevel?.level ?? 0;
+  let previousLevel = 0;
+  let previousRewardLevel = world.playerLevel?.level ?? 0;
   const killsByType: Record<string, number> = {};
   let totalKills = 0;
   let combatEventCursor = world.combatEvents.length;
@@ -1043,6 +1046,7 @@ export async function runHeadless(
         }
       }
       quartermasterRestockLatches.set(world, isNowInSafeRoom);
+      captureHeadlessRunDataFrame(runData, world, playerEid, currentActiveTimeMs(), 0);
       runEagerMaintenanceTick(world, playerEid, {
         // When settlement-return routing is active, the router uses unclaimed
         // achievements as its navigation signal (utility ∝ unclaimedAchievements).
@@ -1152,13 +1156,16 @@ export async function runHeadless(
           gameTimeMs: world.elapsedMs,
           frame: frameCount,
         });
-        recordRewardEvent(
-          runData,
-          'level_up',
-          String(currentLevel),
-          world.elapsedMs,
-          currentActiveTimeMs(),
-        );
+        if (currentLevel > previousRewardLevel) {
+          recordRewardEvent(
+            runData,
+            'level_up',
+            String(currentLevel),
+            world.elapsedMs,
+            currentActiveTimeMs(),
+          );
+          previousRewardLevel = currentLevel;
+        }
         previousLevel = currentLevel;
         recordEvent?.(buildEvent('levelup', enemyEids, `reached level ${currentLevel}`));
       }

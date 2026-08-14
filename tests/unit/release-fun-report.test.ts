@@ -72,6 +72,38 @@ describe('release fun report', () => {
     expect(funReport.report.runs).toBe(10);
   });
 
+  it('scores top-level and report-only leg runs without duplicating the blocking leg', async () => {
+    const actualRun = await capturedRun();
+    const floor1Runs = [{ ...actualRun, totalFrames: 1 }];
+    const floor2Runs = [{ ...actualRun, totalFrames: 2, floorId: 'floor2' as const }];
+    const chainedRuns = [{ ...actualRun, totalFrames: 3 }];
+    const baseline = {
+      ...enrichedBaseline(floor1Runs),
+      legs: {
+        floor1: {
+          winRate: 0,
+          totalWins: 0,
+          totalRuns: 1,
+          runs: floor1Runs,
+        },
+        floor2: {
+          winRate: 0,
+          totalWins: 0,
+          totalRuns: 1,
+          runs: floor2Runs,
+        },
+        'floor1-chain': {
+          winRate: 0,
+          totalWins: 0,
+          totalRuns: 1,
+          runs: chainedRuns,
+        },
+      },
+    };
+
+    expect(buildReleaseFunReport(baseline).report.runs).toBe(3);
+  });
+
   it('round-trips through JSON serialization without losing meta or report fields', async () => {
     const actualRun = await capturedRun();
     const baseline = enrichedBaseline([actualRun]);
@@ -103,6 +135,8 @@ describe('release fun report', () => {
     expect(funScore?.env?.BASELINE_JSON).toContain('.cache/baseline/baseline.json');
     expect(funScore?.env?.FUN_REPORT_JSON).toContain('.cache/baseline/fun-report.json');
     expect(funScore?.run).toContain('scripts/agent/perf/release-fun-report.ts');
+    const attachLegs = steps.find((step) => step.name === 'Attach per-leg metrics');
+    expect(attachLegs?.run).toContain('pick(JSON.parse(fs.readFileSync(p, "utf8")), true)');
     // A failing/erroring fun-score run must not fail the job (diagnostic-only).
     expect(funScore?.run).toMatch(/\|\|/);
   });

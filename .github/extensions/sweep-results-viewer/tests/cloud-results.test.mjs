@@ -436,6 +436,16 @@ test('baselineSweepWarning flags a missing fun-eval report as non-fatal (legacy 
   assert.match(result, /fun evaluation report is not available/i);
 });
 
+test('baselineSweepWarning prioritizes a failed run over a missing optional fun report', () => {
+  const result = baselineSweepWarning({
+    run: { status: 'completed', conclusion: 'failure' },
+    hasArtifact: true,
+    hasFunReport: false,
+  });
+  assert.match(result, /failure/i);
+  assert.doesNotMatch(result, /fun evaluation report is not available/i);
+});
+
 test('baselineSweepWarning returns null for a successful terminal run with both baseline and fun report', () => {
   const result = baselineSweepWarning({
     run: { status: 'completed', conclusion: 'success' },

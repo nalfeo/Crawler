@@ -47,6 +47,18 @@ export function toBaselineIndexEntry(
   baseline: BaselineFile,
   funReport: FunReportFile | null = null,
 ): BaselineIndexEntry {
+  const legs = baseline.legs
+    ? Object.fromEntries(
+        Object.entries(baseline.legs).map(([legId, leg]) => [
+          legId,
+          {
+            winRate: leg.winRate,
+            totalWins: leg.totalWins,
+            totalRuns: leg.totalRuns,
+          },
+        ]),
+      )
+    : undefined;
   return {
     commit: baseline.meta.commit,
     commitDate: baseline.meta.commitDate,
@@ -57,7 +69,7 @@ export function toBaselineIndexEntry(
     totalWins: baseline.totalWins,
     totalRuns: baseline.totalRuns,
     path: `by-sha/${baseline.meta.commit}.json`,
-    ...(baseline.legs ? { legs: baseline.legs } : {}),
+    ...(legs ? { legs } : {}),
     ...(typeof baseline.meta.sweep?.revision === 'number'
       ? { sweepRevision: baseline.meta.sweep.revision }
       : {}),

@@ -268,11 +268,11 @@ export function baselineSweepWarning({ run, hasArtifact, hasFunReport, expiredAr
     }
     return 'This deploy run has no baseline-sweep artifact (baseline-sweep only runs for a released push to main).';
   }
-  if (!hasFunReport) {
-    return 'Fun evaluation report is not available for this run (captured before fun evaluation existed, or scoring failed for this release).';
-  }
   if (run.conclusion && run.conclusion !== 'success') {
     return `Run concluded ${run.conclusion}; showing the baseline captured before failure.`;
+  }
+  if (!hasFunReport) {
+    return 'Fun evaluation report is not available for this run (captured before fun evaluation existed, or scoring failed for this release).';
   }
   return null;
 }

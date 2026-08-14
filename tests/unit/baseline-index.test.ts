@@ -44,6 +44,21 @@ describe('release baseline index derivation', () => {
     expect(entry.path).toBe(`by-sha/${'a'.repeat(40)}.json`);
   });
 
+  it('projects rich stored legs to compact index metrics', () => {
+    const rich = baseline() as BaselineFile & {
+      legs: Record<
+        string,
+        { winRate: number; totalWins: number; totalRuns: number; runs?: unknown[] }
+      >;
+    };
+    rich.legs.floor2!.runs = [{ large: 'run payload' }];
+
+    const entry = toBaselineIndexEntry(rich);
+
+    expect(entry.legs?.floor2).toEqual({ winRate: 0.6, totalWins: 90, totalRuns: 150 });
+    expect(entry.legs?.floor2).not.toHaveProperty('runs');
+  });
+
   it('omits legs and revision for a pre-multi-floor baseline', () => {
     const legacy = baseline();
     delete legacy.legs;

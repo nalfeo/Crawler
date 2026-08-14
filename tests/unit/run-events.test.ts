@@ -4,9 +4,14 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
 } from '../../src/shared/generated-equipment-types.js';
-import { generatedEquipmentCatalogKey } from '../../src/game/ai/headless-run-data.js';
+import {
+  captureHeadlessRunDataFrame,
+  createHeadlessRunData,
+  finalizeHeadlessRunData,
+} from '../../src/game/ai/headless-run-data.js';
 
 describe('run event collector', () => {
   it('is a no-op when disabled and de-duplicates owning sources when enabled', () => {
@@ -27,7 +32,7 @@ describe('run event collector', () => {
   it('normalizes generated catalog identity across runs and rolled numeric values', () => {
     const create = (runKey: string, itemLevel: number, value: number) => {
       const world = createTestWorld({ generatedEquipmentRunKey: runKey });
-      return createGeneratedEquipmentInstance(world, {
+      const instance = createGeneratedEquipmentInstance(world, {
         baseId: 'armor.ceremonial-coat',
         itemLevel,
         rarity: 'uncommon',
@@ -57,10 +62,27 @@ describe('run event collector', () => {
           activeWeaponSnapshot: null,
         },
       });
+      const achievementId = `bundle-${runKey}`;
+      world.generatedEquipmentRewardBundles.set(achievementId, {
+        schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+        achievementId,
+        tier: 'tier4',
+        instanceKeys: [instance.instanceId],
+      });
+      const state = createHeadlessRunData(['sword'], 'sword');
+      captureHeadlessRunDataFrame(state, world, 0, 0, 0);
+      captureHeadlessRunDataFrame(state, world, 0, 0, 0);
+      const item = finalizeHeadlessRunData(state, 0, 0, 0).itemInteractions.items.find(
+        (entry) => entry.kind === 'generated_equipment',
+      );
+      expect(item).toMatchObject({
+        offeredCount: 1,
+        selectableExposureCount: 1,
+        activeTimeMs: 0,
+      });
+      return item?.catalogKey;
     };
 
-    expect(generatedEquipmentCatalogKey(create('run-a', 2, 1))).toBe(
-      generatedEquipmentCatalogKey(create('run-b', 9, 7)),
-    );
+    expect(create('run-a', 2, 1)).toBe(create('run-b', 9, 7));
   });
 });
