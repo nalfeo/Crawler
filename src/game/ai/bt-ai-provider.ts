@@ -1584,6 +1584,10 @@ export class BehaviorTreeAI implements AIInputProvider {
                 this.config.scanRadius,
                 false,
                 target.eid,
+                // Floor 1 boss lock-ins are single-room arenas. Keep defensive
+                // add clearing inside that room so remembered enemies beyond the
+                // locked boundary cannot steal the boss target.
+                this.getWorldRoomId(ctx.world, target.x, target.y),
               )
             : null;
         const defensiveAddPressure =
@@ -5352,6 +5356,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     maxRadius: number = this.config.scanRadius,
     includeIgnored: boolean = false,
     excludeEid: number = -1,
+    requiredRoomId: number | null = null,
   ): WorldTarget | null {
     const enemies = query(world.ecs, [Enemy, Position, Health]);
     const candidates: WorldTarget[] = [];
@@ -5376,6 +5381,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
       if (health <= 0) continue;
       if (!this.canPerceiveWorldPosition(world, x, y)) continue;
+      if (requiredRoomId !== null && this.getWorldRoomId(world, x, y) !== requiredRoomId) continue;
 
       const dist = Math.hypot(x - playerX, y - playerY);
       if (dist <= maxRadius) {
@@ -5399,6 +5405,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return null;
+  }
+
+  private getWorldRoomId(world: GameWorld, x: number, y: number): number | null {
+    const floorMap = world.floorMap;
+    if (!floorMap) return null;
+    const tile = floorMap.worldToTile(x, y);
+    const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+    return roomId >= 0 ? roomId : null;
   }
 
   /**
