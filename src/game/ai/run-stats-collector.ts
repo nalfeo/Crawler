@@ -17,7 +17,7 @@ export function collectHumanRunStats(
   const maxHealth = world.stores.health.max[playerEid] ?? 0;
   const currentHealth = world.stores.health.current[playerEid] ?? 0;
   const finalHealthPercent = maxHealth > 0 ? currentHealth / maxHealth : 0;
-  const totalKills = recorderStats?.totalKills ?? 0;
+  const totalKills = countPlayerAttributedEnemyDeaths(world, playerEid);
   const stats: RunStats = {
     totalFrames: world.frameCount,
     wallTimeMs: 0,
@@ -37,9 +37,9 @@ export function collectHumanRunStats(
       damageTakenBySource: {},
     },
     health: {
-      minHealthPercent: finalHealthPercent,
-      closeCallCount: finalHealthPercent < 0.2 ? 1 : 0,
-      lowHealthCount: finalHealthPercent < 0.5 ? 1 : 0,
+      minHealthPercent: recorderStats?.minHealthPercent ?? finalHealthPercent,
+      closeCallCount: recorderStats?.closeCallCount ?? (finalHealthPercent < 0.2 ? 1 : 0),
+      lowHealthCount: recorderStats?.lowHealthCount ?? (finalHealthPercent < 0.5 ? 1 : 0),
       finalHealthPercent,
     },
     quests: {
@@ -60,4 +60,14 @@ export function collectHumanRunStats(
       world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0] ?? 'unknown',
   };
   return assembleRunStats(stats);
+}
+
+function countPlayerAttributedEnemyDeaths(world: GameWorld, playerEid: number): number {
+  let kills = 0;
+  for (const event of world.combatEvents) {
+    if (event.type === 'death' && event.targetType === 'enemy' && event.sourceEid === playerEid) {
+      kills += 1;
+    }
+  }
+  return kills;
 }

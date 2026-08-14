@@ -28,6 +28,12 @@ export interface SessionRecorderStats {
   totalSamples: number;
   totalKills: number;
   durationMs: number;
+  /** Minimum player health ratio observed across the run (0..1). */
+  minHealthPercent?: number;
+  /** Downward crossings through the 20% health threshold. */
+  closeCallCount?: number;
+  /** Downward crossings through the 50% health threshold. */
+  lowHealthCount?: number;
   /** Which controller is currently driving the recorded player. */
   controller: SessionController;
   /**
