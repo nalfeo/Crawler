@@ -10,7 +10,7 @@ import {
   getOrCreateAbilityState,
   grantAbilitySources,
 } from '../../src/game/systems/abilitySystem.js';
-import { createFunTelemetryCollector } from '../../src/core/fun-telemetry.js';
+import { createRunEventCollector } from '../../src/core/run-events.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
@@ -77,10 +77,10 @@ describe('generated equipment ability grants', () => {
       new Set([equipmentAbilityGrantSourceId(instance.instanceId, 1)]),
     );
     expect(state.equippedActiveAbilityIds).toEqual(['fireball']);
-    world.funTelemetry = createFunTelemetryCollector();
+    world.runEvents = createRunEventCollector();
     world.featureUnlocks.spells = true;
     expect(forceActivateAbility(world, player, 'fireball')).toBe(true);
-    expect(world.funTelemetry.activations).toEqual([
+    expect(world.runEvents.itemActivations).toEqual([
       {
         activationId: 1,
         itemSources: [`generated-equipment-instance:${instance.instanceId}`, 'spell:fireball'],

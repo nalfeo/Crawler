@@ -1,25 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createFunTelemetryCollector,
-  recordFunTelemetryActivation,
-} from '../../src/core/fun-telemetry.js';
+import { createRunEventCollector, recordRunItemActivation } from '../../src/core/run-events.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
 } from '../../src/shared/generated-equipment-types.js';
-import { generatedEquipmentFunCatalogKey } from '../../src/game/ai/headless-fun-telemetry.js';
+import { generatedEquipmentCatalogKey } from '../../src/game/ai/headless-run-data.js';
 
-describe('fun telemetry collector', () => {
+describe('run event collector', () => {
   it('is a no-op when disabled and de-duplicates owning sources when enabled', () => {
     const world = createTestWorld();
-    expect(() => recordFunTelemetryActivation(world, ['weapon:sword'])).not.toThrow();
+    expect(() => recordRunItemActivation(world, ['weapon:sword'])).not.toThrow();
 
-    world.funTelemetry = createFunTelemetryCollector();
-    recordFunTelemetryActivation(world, ['spell:heal', 'spell:heal', 'weapon:sword']);
+    world.runEvents = createRunEventCollector();
+    recordRunItemActivation(world, ['spell:heal', 'spell:heal', 'weapon:sword']);
 
-    expect(world.funTelemetry.activations).toEqual([
+    expect(world.runEvents.itemActivations).toEqual([
       {
         activationId: 1,
         itemSources: ['spell:heal', 'weapon:sword'],
@@ -62,8 +59,8 @@ describe('fun telemetry collector', () => {
       });
     };
 
-    expect(generatedEquipmentFunCatalogKey(create('fun-a', 2, 1))).toBe(
-      generatedEquipmentFunCatalogKey(create('fun-b', 9, 7)),
+    expect(generatedEquipmentCatalogKey(create('run-a', 2, 1))).toBe(
+      generatedEquipmentCatalogKey(create('run-b', 9, 7)),
     );
   });
 });

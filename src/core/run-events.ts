@@ -1,41 +1,41 @@
 import type { GameWorld } from './world.js';
 
 /** Raw item identity recorded at a successful runtime activation choke point. */
-export type FunTelemetryItemSource =
+export type RunItemSource =
   | `weapon:${string}`
   | `spell:${string}`
   | `generated-equipment-instance:${string}`;
 
 /** One committed weapon or ability activation, with de-duplicated owning sources. */
-export interface FunTelemetryActivation {
+export interface RunItemActivation {
   readonly activationId: number;
-  readonly itemSources: readonly FunTelemetryItemSource[];
+  readonly itemSources: readonly RunItemSource[];
 }
 
 /**
  * Optional headless-run collector. Shipping worlds leave this undefined, making
  * all capture helpers allocation-free no-ops.
  */
-export interface FunTelemetryCollector {
+export interface RunEventCollector {
   nextActivationId: number;
-  readonly activations: FunTelemetryActivation[];
+  readonly itemActivations: RunItemActivation[];
 }
 
-export function createFunTelemetryCollector(): FunTelemetryCollector {
-  return { nextActivationId: 1, activations: [] };
+export function createRunEventCollector(): RunEventCollector {
+  return { nextActivationId: 1, itemActivations: [] };
 }
 
-export function recordFunTelemetryActivation(
+export function recordRunItemActivation(
   world: GameWorld,
-  itemSources: readonly FunTelemetryItemSource[],
+  itemSources: readonly RunItemSource[],
 ): void {
-  const collector = world.funTelemetry;
+  const collector = world.runEvents;
   if (!collector) return;
 
   const uniqueSources = [...new Set(itemSources)].sort();
   if (uniqueSources.length === 0) return;
 
-  collector.activations.push({
+  collector.itemActivations.push({
     activationId: collector.nextActivationId,
     itemSources: uniqueSources,
   });

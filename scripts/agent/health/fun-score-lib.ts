@@ -492,7 +492,7 @@ function finiteNonNegative(value: unknown): value is number {
 }
 
 function measureDopamineCadence(sessions: readonly FunSession[]): CriterionMeasurement {
-  const measured = sessions.map((session) => session.run.dopamineTelemetry);
+  const measured = sessions.map((session) => session.run.rewardEvents);
   if (
     measured.some(
       (telemetry) =>
@@ -513,7 +513,7 @@ function measureDopamineCadence(sessions: readonly FunSession[]): CriterionMeasu
       target: 90,
       healthy: false,
       reason:
-        'Timestamped dopamine telemetry is absent or malformed in at least one run (legacy/mixed input).',
+        'Timestamped reward events are absent or malformed in at least one run (legacy/mixed input).',
     };
   }
 
@@ -563,7 +563,7 @@ function measureSnowballFrequency(sessions: readonly FunSession[]): CriterionMea
   const wins = sessions.filter((session) =>
     isOfficialWin(session.run, FLOOR1_ACTIVE_TIME_BUDGET_MS),
   );
-  const signals = wins.map((session) => session.run.snowballSignals);
+  const signals = wins.map((session) => session.run.runPerformance);
   if (
     signals.some(
       (signal) =>
@@ -580,7 +580,7 @@ function measureSnowballFrequency(sessions: readonly FunSession[]): CriterionMea
       target: 0.1,
       healthy: false,
       reason:
-        'Snowball signals are absent or malformed in at least one official victory (legacy/mixed input).',
+        'Run performance data is absent or malformed in at least one official victory (legacy/mixed input).',
     };
   }
   if (signals.length < SNOWBALL_MINIMUM_WINS) {
@@ -588,7 +588,7 @@ function measureSnowballFrequency(sessions: readonly FunSession[]): CriterionMea
       observed: null,
       target: 0.1,
       healthy: false,
-      reason: `Need at least ${SNOWBALL_MINIMUM_WINS} official victories with complete snowball signals; found ${signals.length}.`,
+      reason: `Need at least ${SNOWBALL_MINIMUM_WINS} official victories with complete run performance data; found ${signals.length}.`,
     };
   }
 
@@ -624,7 +624,7 @@ function measureSnowballFrequency(sessions: readonly FunSession[]): CriterionMea
 }
 
 function measureItemViability(sessions: readonly FunSession[]): CriterionMeasurement {
-  const telemetry = sessions.map((session) => session.run.itemTelemetry);
+  const telemetry = sessions.map((session) => session.run.itemInteractions);
   if (
     telemetry.some(
       (run) =>
@@ -646,7 +646,7 @@ function measureItemViability(sessions: readonly FunSession[]): CriterionMeasure
       target: 0,
       healthy: false,
       reason:
-        'Item exposure/contribution telemetry is absent or malformed in at least one run (legacy/mixed input).',
+        'Item interaction data is absent or malformed in at least one run (legacy/mixed input).',
     };
   }
 
@@ -711,7 +711,7 @@ function measureMetaProgression(sessions: readonly FunSession[]): CriterionMeasu
       target: META_PROGRESSION_MAX_FRACTION,
       healthy: false,
       reason:
-        'Permanent-power telemetry is absent because the Production Office/full meta-progression system is deferred.',
+        'Permanent-power run data is absent because the Production Office/full meta-progression system is deferred.',
     };
   }
   const averageIncrease = mean(

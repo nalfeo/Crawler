@@ -39,13 +39,13 @@ import {
   type LevelUpEvent,
   type SkillRunMetrics,
 } from './types.js';
-import { createFunTelemetryCollector } from '../../core/fun-telemetry.js';
+import { createRunEventCollector } from '../../core/run-events.js';
 import {
-  captureHeadlessFunTelemetryFrame,
-  createHeadlessFunTelemetry,
-  finalizeHeadlessFunTelemetry,
-  recordDopamineEvent,
-} from './headless-fun-telemetry.js';
+  captureHeadlessRunDataFrame,
+  createHeadlessRunData,
+  finalizeHeadlessRunData,
+  recordRewardEvent,
+} from './headless-run-data.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
@@ -591,7 +591,7 @@ export async function runHeadless(
     seed: mergedConfig.seed,
     generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(mergedConfig.seed),
   });
-  world.funTelemetry = createFunTelemetryCollector();
+  world.runEvents = createRunEventCollector();
   if (mergedConfig.floor2EquipmentFlags) {
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }
@@ -659,7 +659,7 @@ export async function runHeadless(
     world.floorScenario?.selectedWeaponId ??
     world.floorScenario?.starterChoices[starterWeaponIndex] ??
     'unknown';
-  const funTelemetry = createHeadlessFunTelemetry(
+  const runData = createHeadlessRunData(
     world.floorScenario?.starterChoices ?? [startingWeapon],
     startingWeapon,
   );
@@ -756,13 +756,7 @@ export async function runHeadless(
       if (encounter.defeated && !floor1BossDefeatedFrame.has(bossId)) {
         floor1BossDefeatedFrame.set(bossId, frameCount);
         floor1BossDefeatedMs.set(bossId, world.elapsedMs);
-        recordDopamineEvent(
-          funTelemetry,
-          'boss_kill',
-          bossId,
-          world.elapsedMs,
-          currentActiveTimeMs(),
-        );
+        recordRewardEvent(runData, 'boss_kill', bossId, world.elapsedMs, currentActiveTimeMs());
       }
     }
   };
@@ -1063,8 +1057,8 @@ export async function runHeadless(
       void _settlementResult;
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
       updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
-      captureHeadlessFunTelemetryFrame(
-        funTelemetry,
+      captureHeadlessRunDataFrame(
+        runData,
         world,
         playerEid,
         currentActiveTimeMs(),
@@ -1158,8 +1152,8 @@ export async function runHeadless(
           gameTimeMs: world.elapsedMs,
           frame: frameCount,
         });
-        recordDopamineEvent(
-          funTelemetry,
+        recordRewardEvent(
+          runData,
           'level_up',
           String(currentLevel),
           world.elapsedMs,
@@ -1281,8 +1275,8 @@ export async function runHeadless(
         }
         if (questState.status === 'complete' && !questLogCompletedMs.has(questId)) {
           questLogCompletedMs.set(questId, world.elapsedMs);
-          recordDopamineEvent(
-            funTelemetry,
+          recordRewardEvent(
+            runData,
             'quest_complete',
             questId,
             world.elapsedMs,
@@ -1525,7 +1519,7 @@ export async function runHeadless(
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
-      ...finalizeHeadlessFunTelemetry(funTelemetry, currentActiveTimeMs(), damageDealt, totalKills),
+      ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1628,7 +1622,7 @@ export async function runHeadless(
       : {}),
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),
-    ...finalizeHeadlessFunTelemetry(funTelemetry, currentActiveTimeMs(), damageDealt, totalKills),
+    ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

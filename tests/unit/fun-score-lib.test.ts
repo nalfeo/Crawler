@@ -240,7 +240,7 @@ describe('scoreFunSessions', () => {
       {
         id: 'healthy',
         run: makeRun({
-          dopamineTelemetry: {
+          rewardEvents: {
             activeDurationMs: 180_000,
             events: [
               { kind: 'level_up', sourceId: '2', gameTimeMs: 60_000, activeTimeMs: 60_000 },
@@ -265,7 +265,7 @@ describe('scoreFunSessions', () => {
       {
         id: 'sparse',
         run: makeRun({
-          dopamineTelemetry: {
+          rewardEvents: {
             activeDurationMs: 200_000,
             events: [{ kind: 'level_up', sourceId: '2', gameTimeMs: 50_000, activeTimeMs: 50_000 }],
           },
@@ -284,7 +284,7 @@ describe('scoreFunSessions', () => {
       return {
         id: `snow-${index}`,
         run: makeRun({
-          snowballSignals: {
+          runPerformance: {
             activeClearTimeMs: outlier ? 100_000 : 300_000 + index * 1_000,
             damagePerActiveMinute: outlier ? 5_000 : 1_000 + index * 10,
             killsPerActiveMinute: 20 + index,
@@ -307,7 +307,7 @@ describe('scoreFunSessions', () => {
       {
         id: 'one',
         run: makeRun({
-          snowballSignals: {
+          runPerformance: {
             activeClearTimeMs: 300_000,
             damagePerActiveMinute: 1_000,
             killsPerActiveMinute: 20,
@@ -325,7 +325,7 @@ describe('scoreFunSessions', () => {
       {
         id: 'items',
         run: makeRun({
-          itemTelemetry: {
+          itemInteractions: {
             uniqueActivationCount: 12,
             dominantActivationCount: 8,
             items: [
@@ -385,8 +385,8 @@ describe('scoreFunSessions', () => {
       {
         id: 'new',
         run: makeRun({
-          dopamineTelemetry: { activeDurationMs: 10_000, events: [] },
-          itemTelemetry: {
+          rewardEvents: { activeDurationMs: 10_000, events: [] },
+          itemInteractions: {
             items: [],
             uniqueActivationCount: 0,
             dominantActivationCount: 0,

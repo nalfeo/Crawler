@@ -107,22 +107,23 @@ identifiers. Callers that report a criterion must therefore preserve the input
 run set (seeds and run ids) alongside the report so tails stay inspectable and
 the numbers stay reproducible.
 
-### Event-level telemetry contract
+### Run-data contract
 
 `runHeadless` emits three optional evidence blocks on both normal and error
 returns. Older artifacts omit them, so the evaluator treats a mixed old/new
 cohort as `unmeasured` rather than scoring a biased subset.
 
-- `dopamineTelemetry`: ordered `level_up`, `quest_complete`, `boss_kill`, and
+- `rewardEvents`: ordered `level_up`, `quest_complete`, `boss_kill`, and
   rare generated-loot selection events. Each event carries raw game time and
   safe-room-adjusted active time; the block carries terminal active duration.
-- `itemTelemetry`: stable catalog identity, item kind, offered opportunities,
+- `itemInteractions`: stable catalog identity, item kind, offered opportunities,
   selectable opportunities, selections, activations, and equipped active time.
   It covers starter weapons, boss/Broker spells, and generated equipment.
-- `snowballSignals`: active clear duration, damage per active minute, kills per
+- `runPerformance`: active clear duration, damage per active minute, kills per
   active minute, and dominant unique-item activation share.
 
-Runtime weapon/ability hooks record only successful untimestamped activations.
+These are neutral RunStats observations, not "fun telemetry." Runtime
+weapon/ability hooks record only successful untimestamped activations.
 The headless runner exclusively owns active time and acquisition observation, so
 game systems do not depend on evaluator policy.
 

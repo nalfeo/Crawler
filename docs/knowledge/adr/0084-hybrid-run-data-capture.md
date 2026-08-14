@@ -1,4 +1,4 @@
-# ADR 0084: Hybrid deterministic fun event telemetry
+# ADR 0084: Hybrid deterministic run-data capture
 
 ## Status
 
@@ -15,9 +15,9 @@ game-design documentation while preserving gameplay behavior.
 
 ## Context
 
-The deterministic fun evaluator could score only end-of-run aggregates. Dopamine
+The deterministic fun evaluator could score only end-of-run aggregates. Reward
 cadence needs active-play timestamps, item viability needs offers/selections and
-authoritative use, and snowball classification needs comparable per-run features.
+authoritative use, and outlier classification needs comparable per-run features.
 The headless runner can observe durable state transitions, but weapon and ability
 activation queues are transient and cannot be reconstructed reliably after their
 systems run. Conversely, gameplay systems must not own safe-room-adjusted time or
@@ -27,7 +27,7 @@ cross-run evaluation policy.
 
 Use a hybrid, opt-in capture boundary:
 
-- `GameWorld.funTelemetry` is an optional data-only collector installed by
+- `GameWorld.runEvents` is an optional data-only collector installed by
   `runHeadless`. When absent, runtime capture helpers are no-ops and consume no RNG.
 - `weaponSystem` records committed weapon activations at `dispatchAttack`.
   `abilitySystem` records only successful active/spell activations and preserves
@@ -40,8 +40,9 @@ Use a hybrid, opt-in capture boundary:
 - Generated equipment is grouped across runs by base ID, rarity, sorted slots,
   effect/grant kinds, and source weapon. Run keys, ordinals, fingerprints, item
   levels, enhancement levels, and rolled numeric values are excluded.
-- `RunStats` stores optional raw `dopamineTelemetry`, `itemTelemetry`, and
-  `snowballSignals`. Cross-run thresholds stay in `fun-score-lib.ts`.
+- `RunStats` stores optional raw `rewardEvents`, `itemInteractions`, and
+  `runPerformance`. Cross-run interpretations stay in `fun-score-lib.ts`; raw
+  capture code does not name or own fun-evaluation criteria.
 - `RunStats.metaProgression` is only a future before/after permanent-power hook.
   No producer is installed while the Production Office/meta-progression system
   remains deferred.
@@ -57,7 +58,7 @@ Use a hybrid, opt-in capture boundary:
 - Legacy RunStats remain readable because all new fields are optional and mixed
   or malformed cohorts fail to `unmeasured` rather than silently biasing results.
 - Multi-owner ability grants credit each viable item while one activation ID
-  prevents duplicated snowball dominance.
+  prevents duplicated item-use dominance.
 
 ### Negative
 
@@ -74,7 +75,7 @@ Use a hybrid, opt-in capture boundary:
   Focused channel tests and the explicit opportunity-key list mitigate drift.
 - An ability source-ID contract change can break generated-item attribution.
   Ownership-source tests pin learned and generated multi-owner behavior.
-- Robust snowball classification is population-relative. It requires at least
+- Robust outlier classification is population-relative. It requires at least
   ten official wins and treats zero-MAD features as non-evidence.
 
 ## Alternatives Considered

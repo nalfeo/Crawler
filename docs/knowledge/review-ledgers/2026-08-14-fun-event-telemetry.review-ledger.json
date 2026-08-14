@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v2",
   "date": "2026-08-14",
   "session_slug": "fun-event-telemetry",
-  "task_title": "Add deterministic fun event telemetry",
+  "task_title": "Add deterministic run data for fun evaluation",
   "estimated_apples": 5,
   "stages": {
     "plan_review": {
@@ -16,8 +16,25 @@
       "notes": "Alt A extend optional SimEvent log rejected because RunStats evidence must not depend on a debug sink. Alt B pure headless inference rejected because weapon/ability provenance is not reconstructable after transient queues clear. Alt C global event bus rejected as broader and riskier than this slice. Added boss-reward spell opportunities, canonical generated-item keys, one headless active clock, exact MAD policy, opportunity dedupe, shared normal/error finalizer, legacy/comparison tests, and smoke-vs-synthetic evidence boundaries."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "One reachable timestamp-ordering defect required a fix; two acquisition-channel observations were deterministically deferred/unreachable in the current configured evaluator population."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified commit 6fb06dfb4 bounds every dopamine event timestamp by finalized active duration; full second pass found no remaining concerns."
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,

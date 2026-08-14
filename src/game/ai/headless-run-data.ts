@@ -7,17 +7,17 @@ import type {
 } from '../../shared/generated-equipment-types.js';
 import { canPurchaseSpellBrokerSpell, getSpellBrokerOffers } from '../floorScenario.js';
 import type {
-  DopamineEventKind,
-  DopamineTelemetry,
-  ItemTelemetry,
-  ItemTelemetryEntry,
-  ItemTelemetryKind,
-  SnowballSignals,
+  ItemInteractionEntry,
+  ItemInteractionKind,
+  ItemInteractionSummary,
+  RewardEventKind,
+  RewardEventSummary,
+  RunPerformanceMetrics,
 } from './types.js';
 
-interface MutableItemTelemetry {
+interface MutableItemInteraction {
   readonly catalogKey: string;
-  readonly kind: ItemTelemetryKind;
+  readonly kind: ItemInteractionKind;
   offeredCount: number;
   selectableExposureCount: number;
   selectionCount: number;
@@ -25,25 +25,25 @@ interface MutableItemTelemetry {
   activeTimeMs: number;
 }
 
-export interface HeadlessFunTelemetryState {
-  readonly items: Map<string, MutableItemTelemetry>;
+export interface HeadlessRunDataState {
+  readonly items: Map<string, MutableItemInteraction>;
   readonly opportunityKeys: Set<string>;
   readonly selectableOpportunityKeys: Set<string>;
   readonly selectedKeys: Set<string>;
   readonly generatedCatalogKeyByInstanceId: Map<GeneratedEquipmentInstanceId, string>;
-  readonly dopamineEvents: DopamineTelemetry['events'][number][];
+  readonly rewardEvents: RewardEventSummary['events'][number][];
   activationCursor: number;
   uniqueActivationCount: number;
 }
 
 function ensureItem(
-  state: HeadlessFunTelemetryState,
+  state: HeadlessRunDataState,
   catalogKey: string,
-  kind: ItemTelemetryKind,
-): MutableItemTelemetry {
+  kind: ItemInteractionKind,
+): MutableItemInteraction {
   const existing = state.items.get(catalogKey);
   if (existing) return existing;
-  const created: MutableItemTelemetry = {
+  const created: MutableItemInteraction = {
     catalogKey,
     kind,
     offeredCount: 0,
@@ -57,10 +57,10 @@ function ensureItem(
 }
 
 function recordOpportunity(
-  state: HeadlessFunTelemetryState,
+  state: HeadlessRunDataState,
   opportunityKey: string,
   catalogKey: string,
-  kind: ItemTelemetryKind,
+  kind: ItemInteractionKind,
   selectable: boolean,
 ): void {
   const item = ensureItem(state, catalogKey, kind);
@@ -75,10 +75,10 @@ function recordOpportunity(
 }
 
 function recordSelection(
-  state: HeadlessFunTelemetryState,
+  state: HeadlessRunDataState,
   selectionKey: string,
   catalogKey: string,
-  kind: ItemTelemetryKind,
+  kind: ItemInteractionKind,
 ): boolean {
   if (state.selectedKeys.has(selectionKey)) return false;
   state.selectedKeys.add(selectionKey);
@@ -87,7 +87,7 @@ function recordSelection(
 }
 
 /** Cross-run generated-item identity excluding run IDs, ordinals, fingerprints, and rolled values. */
-export function generatedEquipmentFunCatalogKey(instance: GeneratedEquipmentInstanceV1): string {
+export function generatedEquipmentCatalogKey(instance: GeneratedEquipmentInstanceV1): string {
   const slots = [...instance.frozen.slots].sort().join(',');
   const effects = instance.resolvedEffects
     .map((effect) => {
@@ -101,17 +101,17 @@ export function generatedEquipmentFunCatalogKey(instance: GeneratedEquipmentInst
   return `generated:${instance.baseId}:${instance.rarity}:slots=${slots}:effects=${effects}:weapon=${weapon}`;
 }
 
-export function createHeadlessFunTelemetry(
+export function createHeadlessRunData(
   starterChoices: readonly string[],
   selectedStarter: string,
-): HeadlessFunTelemetryState {
-  const state: HeadlessFunTelemetryState = {
+): HeadlessRunDataState {
+  const state: HeadlessRunDataState = {
     items: new Map(),
     opportunityKeys: new Set(),
     selectableOpportunityKeys: new Set(),
     selectedKeys: new Set(),
     generatedCatalogKeyByInstanceId: new Map(),
-    dopamineEvents: [],
+    rewardEvents: [],
     activationCursor: 0,
     uniqueActivationCount: 0,
   };
@@ -133,18 +133,18 @@ export function createHeadlessFunTelemetry(
   return state;
 }
 
-export function recordDopamineEvent(
-  state: HeadlessFunTelemetryState,
-  kind: DopamineEventKind,
+export function recordRewardEvent(
+  state: HeadlessRunDataState,
+  kind: RewardEventKind,
   sourceId: string,
   gameTimeMs: number,
   activeTimeMs: number,
 ): void {
-  state.dopamineEvents.push({ kind, sourceId, gameTimeMs, activeTimeMs });
+  state.rewardEvents.push({ kind, sourceId, gameTimeMs, activeTimeMs });
 }
 
-function captureSpellTelemetry(
-  state: HeadlessFunTelemetryState,
+function captureSpellInteractions(
+  state: HeadlessRunDataState,
   world: GameWorld,
   playerEid: number,
 ): void {
@@ -175,8 +175,8 @@ function captureSpellTelemetry(
   }
 }
 
-function captureGeneratedEquipmentTelemetry(
-  state: HeadlessFunTelemetryState,
+function captureGeneratedEquipmentInteractions(
+  state: HeadlessRunDataState,
   world: GameWorld,
   activeTimeMs: number,
   frameDeltaMs: number,
@@ -185,7 +185,7 @@ function captureGeneratedEquipmentTelemetry(
   for (const offer of stock?.offers ?? []) {
     const instance = getGeneratedEquipmentInstance(world, offer.instanceId);
     if (!instance) continue;
-    const catalogKey = generatedEquipmentFunCatalogKey(instance);
+    const catalogKey = generatedEquipmentCatalogKey(instance);
     state.generatedCatalogKeyByInstanceId.set(instance.instanceId, catalogKey);
     recordOpportunity(
       state,
@@ -200,7 +200,7 @@ function captureGeneratedEquipmentTelemetry(
     for (const instanceId of bundle.instanceKeys) {
       const instance = getGeneratedEquipmentInstance(world, instanceId);
       if (!instance) continue;
-      const catalogKey = generatedEquipmentFunCatalogKey(instance);
+      const catalogKey = generatedEquipmentCatalogKey(instance);
       state.generatedCatalogKeyByInstanceId.set(instance.instanceId, catalogKey);
       recordOpportunity(
         state,
@@ -224,7 +224,7 @@ function captureGeneratedEquipmentTelemetry(
       );
       const generated = getGeneratedEquipmentInstance(world, instance);
       if (firstSelection && generated?.rarity === 'rare') {
-        recordDopamineEvent(state, 'rare_loot', catalogKey, world.elapsedMs, activeTimeMs);
+        recordRewardEvent(state, 'rare_loot', catalogKey, world.elapsedMs, activeTimeMs);
       }
     }
     if (owners.some((owner) => owner.container === 'equipped')) {
@@ -233,15 +233,15 @@ function captureGeneratedEquipmentTelemetry(
   }
 }
 
-function captureActivations(state: HeadlessFunTelemetryState, world: GameWorld): void {
-  const activations = world.funTelemetry?.activations ?? [];
+function captureActivations(state: HeadlessRunDataState, world: GameWorld): void {
+  const activations = world.runEvents?.itemActivations ?? [];
   for (; state.activationCursor < activations.length; state.activationCursor += 1) {
     const activation = activations[state.activationCursor]!;
     state.uniqueActivationCount += 1;
     const creditedKeys = new Set<string>();
     for (const source of activation.itemSources) {
       let catalogKey: string | undefined;
-      let kind: ItemTelemetryKind;
+      let kind: ItemInteractionKind;
       if (source.startsWith('weapon:')) {
         catalogKey = source;
         kind = 'starter_weapon';
@@ -262,29 +262,29 @@ function captureActivations(state: HeadlessFunTelemetryState, world: GameWorld):
   }
 }
 
-export function captureHeadlessFunTelemetryFrame(
-  state: HeadlessFunTelemetryState,
+export function captureHeadlessRunDataFrame(
+  state: HeadlessRunDataState,
   world: GameWorld,
   playerEid: number,
   activeTimeMs: number,
   frameDeltaMs: number,
 ): void {
-  captureSpellTelemetry(state, world, playerEid);
-  captureGeneratedEquipmentTelemetry(state, world, activeTimeMs, frameDeltaMs);
+  captureSpellInteractions(state, world, playerEid);
+  captureGeneratedEquipmentInteractions(state, world, activeTimeMs, frameDeltaMs);
   captureActivations(state, world);
 }
 
-export function finalizeHeadlessFunTelemetry(
-  state: HeadlessFunTelemetryState,
+export function finalizeHeadlessRunData(
+  state: HeadlessRunDataState,
   activeDurationMs: number,
   damageDealt: number,
   totalKills: number,
 ): {
-  readonly dopamineTelemetry: DopamineTelemetry;
-  readonly itemTelemetry: ItemTelemetry;
-  readonly snowballSignals: SnowballSignals;
+  readonly rewardEvents: RewardEventSummary;
+  readonly itemInteractions: ItemInteractionSummary;
+  readonly runPerformance: RunPerformanceMetrics;
 } {
-  const items: ItemTelemetryEntry[] = [...state.items.values()]
+  const items: ItemInteractionEntry[] = [...state.items.values()]
     .map((item) => ({ ...item }))
     .sort((left, right) => left.catalogKey.localeCompare(right.catalogKey));
   const dominantActivationCount = items.reduce(
@@ -293,21 +293,21 @@ export function finalizeHeadlessFunTelemetry(
   );
   const activeMinutes = activeDurationMs / 60_000;
   return {
-    dopamineTelemetry: {
+    rewardEvents: {
       activeDurationMs,
-      events: [...state.dopamineEvents].sort(
+      events: [...state.rewardEvents].sort(
         (left, right) =>
           left.activeTimeMs - right.activeTimeMs ||
           left.kind.localeCompare(right.kind) ||
           left.sourceId.localeCompare(right.sourceId),
       ),
     },
-    itemTelemetry: {
+    itemInteractions: {
       items,
       uniqueActivationCount: state.uniqueActivationCount,
       dominantActivationCount,
     },
-    snowballSignals: {
+    runPerformance: {
       activeClearTimeMs: activeDurationMs,
       damagePerActiveMinute: activeMinutes > 0 ? damageDealt / activeMinutes : 0,
       killsPerActiveMinute: activeMinutes > 0 ? totalKills / activeMinutes : 0,
