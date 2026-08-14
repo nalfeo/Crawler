@@ -9,6 +9,7 @@ import {
   deriveFindings,
   fetchOpenPrs,
   fetchMergedPrs,
+  GUARD_REMEDIATION,
   type BottleneckReport,
   type OpenPrRecord,
   type StageTiming,
@@ -369,6 +370,54 @@ describe('deriveFindings', () => {
 
   it('reports honestly when the sample shows nothing', () => {
     expect(deriveFindings(report({})).join('\n')).toMatch(/Widen --limit/);
+  });
+
+  it('includes guard-specific remediation for known denial guards', () => {
+    const findings = deriveFindings(
+      report({
+        guardFriction: [{ guard: 'pr-review-ledger', allow: 50, deny: 8 }],
+      }),
+    );
+    const text = findings.join('\n');
+    expect(text).toMatch(/pr-review-ledger/);
+    expect(text).toMatch(/8/);
+    // Estimated overhead: 8 denials × 2 retries minimum = 16 avoidable tool calls
+    expect(text).toMatch(/16\+/);
+    // Should include the specific remediation from GUARD_REMEDIATION
+    expect(text).toMatch(/verify:pr-prereqs/);
+    expect(text).toContain(GUARD_REMEDIATION['pr-review-ledger']);
+  });
+
+  it('uses generic fallback message for unknown denial guards', () => {
+    const findings = deriveFindings(
+      report({
+        guardFriction: [{ guard: 'unknown-custom-guard', allow: 10, deny: 3 }],
+      }),
+    );
+    const text = findings.join('\n');
+    expect(text).toMatch(/unknown-custom-guard/);
+    expect(text).toMatch(/6\+/);
+    expect(text).toMatch(/catching real violations or mis-firing/);
+    // Must NOT claim to have a specific fix
+    expect(text).not.toMatch(/verify:pr-prereqs/);
+  });
+
+  it('reports the first guard in the friction list (callers pre-sort by deny count)', () => {
+    // readGuardFriction pre-sorts by deny descending; deriveFindings trusts that order
+    // and reports the first item in the list.
+    const findings = deriveFindings(
+      report({
+        guardFriction: [
+          { guard: 'pr-preflight', allow: 40, deny: 6 },
+          { guard: 'pr-review-ledger', allow: 50, deny: 8 },
+        ],
+      }),
+    );
+    const text = findings.join('\n');
+    // pr-preflight is listed first — that is the one reported
+    expect(text).toMatch(/pr-preflight/);
+    expect(text).toMatch(/verify:pr-prereqs/);
+    expect(text).not.toMatch(/unknown-custom-guard/);
   });
 });
 

@@ -65,6 +65,7 @@ import {
 } from './floor1-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
+import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -263,11 +264,11 @@ export interface HeadlessRunnerConfig {
   weaponPersonas?: boolean;
   /**
    * Enable both optional AI purchases (merchant weapon + Floor 1 Spell Broker)
-   * as a single shared feature flag. Default false.
+   * as a single shared feature flag. Default true.
    *
    * When true the merchant-weapon purchase decision and the Spell Broker
-   * purchase decision are both armed.  When false (the default) neither fires,
-   * keeping the AI on the deterministic required-only path.
+   * purchase decision are both armed. When false neither fires, keeping the AI
+   * on the deterministic required-only path.
    *
    * Prefer this flag over the individual `merchantWeaponPurchase` /
    * `spellBrokerPurchase` fields, which are retained only for compatibility
@@ -334,7 +335,7 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: true,
-  optionalPurchases: false,
+  optionalPurchases: DEFAULT_OPTIONAL_PURCHASES,
   merchantWeaponPurchase: false,
   spellBrokerPurchase: false,
   settlementReturnRouting: false,
@@ -568,11 +569,9 @@ export async function runHeadless(
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
   // `optionalPurchases` is the canonical single flag.  When supplied it
   // overrides the individual deprecated fields; when absent the individual
-  // fields are used for backward compat with existing callers/tests.
-  const purchasesEnabled =
-    config.optionalPurchases !== undefined
-      ? config.optionalPurchases
-      : mergedConfig.merchantWeaponPurchase || mergedConfig.spellBrokerPurchase;
+  // fields are used for backward compat with existing callers/tests. A caller
+  // that supplies no purchase flag inherits the canonical default.
+  const purchasesEnabled = resolveOptionalPurchases(config);
   configureMerchantWeaponPurchase(world, purchasesEnabled);
   configureSpellBrokerPurchase(world, purchasesEnabled);
   configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
