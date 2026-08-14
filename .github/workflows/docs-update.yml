@@ -116,13 +116,22 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/archive-handoffs.ts --apply
 
+      # Archiving mutates docs/knowledge/handoffs/ after the pre-archive lore
+      # gate above already passed. If a handoff cited by the Lore Bible ages
+      # out here, the earlier check can't see it: revalidate now so a
+      # dangling citation hard-blocks the PR instead of shipping silently.
+      - name: Revalidate lore canon after archive
+        id: lore_canon_post_archive
+        if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
+        run: npx tsx scripts/agent/docs/check-lore-canon.ts
+
       - name: Rebuild handoff system-impact index
         if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
         run: npx tsx scripts/agent/docs/build-system-index.ts --apply
 
       - name: Detect docs automation changes
         id: changes
-        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.lore_canon.outcome == 'success'
+        if: (github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true') && steps.lore_canon.outcome == 'success' && steps.lore_canon_post_archive.outcome == 'success'
         run: |
           if [ -n "$(git status --porcelain docs/knowledge/handoffs/ docs/knowledge/agent-memory.jsonl docs/knowledge/game-design/lore-bible.md docs/knowledge/game-design/lore-contradictions.md)" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"

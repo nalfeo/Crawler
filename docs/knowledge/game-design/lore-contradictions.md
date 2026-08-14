@@ -12,7 +12,7 @@ Designer and maintainer resolve it:
 
 ```text
 ### [short contradiction id]
-Status: [unresolved]
+Status: unresolved
 Claim: [the proposed or conflicting claim]
 Source A: [repository-relative path and line/section]
 Source B: [repository-relative path and line/section]

@@ -7,7 +7,7 @@
  * infer narrative truth or silently select a source when claims conflict.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { type Dirent, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
@@ -34,6 +34,30 @@ const REQUIRED_SECTIONS = [
   '## Tone Guide',
 ];
 
+/**
+ * Strip fenced code blocks (```...```) so the record template's example
+ * (which must literally read `Status: unresolved` to match the syntax this
+ * checker enforces) does not itself trip the hard gate before any real
+ * escalation record is copied out of the fence.
+ */
+function stripFencedCodeBlocks(text: string): string {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Locate a required heading as a complete line (e.g. `## The Director`),
+ * not merely as a substring. A substring match would accept a demoted
+ * heading such as `### The Director` or an incidental mention elsewhere.
+ */
+function findHeadingIndex(text: string, heading: string): number {
+  const match = new RegExp(`^${escapeRegExp(heading)}\\s*$`, 'm').exec(text);
+  return match ? match.index : -1;
+}
+
 function pathExists(relativePath: string): boolean {
   try {
     statSync(fromRepo(relativePath));
@@ -57,13 +81,16 @@ export function validateLoreCanon(
   loreText: string,
   contradictionText: string,
 ): LoreCanonValidation {
-  const missingSections = REQUIRED_SECTIONS.filter((section) => !loreText.includes(section));
+  const missingSections = REQUIRED_SECTIONS.filter(
+    (section) => findHeadingIndex(loreText, section) === -1,
+  );
   const citedSources = sourcePaths(loreText);
   const missingSources = citedSources
     .map(resolveMarkdownPath)
     .filter((source) => !pathExists(source));
   const missingSourceDeclarations = REQUIRED_SECTIONS.filter((section) => {
-    const start = loreText.indexOf(section);
+    const start = findHeadingIndex(loreText, section);
+    if (start === -1) return false;
     const next = loreText.indexOf('\n## ', start + section.length);
     const body = loreText.slice(start, next === -1 ? loreText.length : next);
     return (
@@ -72,7 +99,9 @@ export function validateLoreCanon(
       section !== '## Official source register'
     );
   });
-  const unresolvedContradictions = /^Status:\s*unresolved\s*$/im.test(contradictionText);
+  const unresolvedContradictions = /^Status:\s*unresolved\s*$/im.test(
+    stripFencedCodeBlocks(contradictionText),
+  );
 
   return {
     missingSections,
@@ -82,25 +111,36 @@ export function validateLoreCanon(
   };
 }
 
+/**
+ * Recursively discover brief files under `briefs/`. The brief contract is
+ * `briefs/**\/*.yaml` (with sibling `.yml`/`.json`/`.md` variants), including
+ * nested families such as `briefs/icons/abilities` and
+ * `briefs/icons/achievements` — a partial one-level directory list would skip
+ * those and let an unresolved marker there escape the hard gate.
+ */
 function officialSourceFiles(): string[] {
-  const briefDirs = [
-    'briefs/characters',
-    'briefs/enemies',
-    'briefs/items',
-    'briefs/props',
-    'briefs/weapons',
-    'briefs/tiles',
-    'briefs/vfx',
-  ];
-  return briefDirs.flatMap((dir) => {
+  const root = 'briefs';
+  const results: string[] = [];
+
+  function walk(dir: string): void {
+    let entries: Dirent[];
     try {
-      return readdirSync(fromRepo(dir))
-        .filter((entry) => /\.(yaml|yml|json|md)$/.test(entry))
-        .map((entry) => `${dir}/${entry}`);
+      entries = readdirSync(fromRepo(dir), { withFileTypes: true });
     } catch {
-      return [];
+      return;
     }
-  });
+    for (const entry of entries) {
+      const relativePath = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        walk(relativePath);
+      } else if (/\.(yaml|yml|json|md)$/.test(entry.name)) {
+        results.push(relativePath);
+      }
+    }
+  }
+
+  walk(root);
+  return results;
 }
 
 export function findContradictionMarkers(loreText?: string): string[] {
