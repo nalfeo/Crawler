@@ -36,6 +36,7 @@ import {
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from '../../game/ai/spell-broker-intent.js';
+import { resolveOptionalPurchases } from '../../game/ai/optional-purchases.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -675,7 +676,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
     weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
-    optionalPurchases: persisted?.aiConfig?.optionalPurchases ?? true,
+    optionalPurchases: resolveOptionalPurchases(persisted?.aiConfig ?? {}),
   };
 
   let ai = new BehaviorTreeAI({

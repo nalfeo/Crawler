@@ -366,7 +366,7 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
   assert.match(result.stderr, /restated, current justification/);
 });
 
-test('reports every matched exception in the success diagnostic', (t) => {
+test('reports the advisory after its temporary exception is removed', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
@@ -398,12 +398,11 @@ test('reports every matched exception in the success diagnostic', (t) => {
     },
   });
 
-  assert.equal(result.status, 0);
+  assert.equal(result.status, 1);
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
+    /npm audit found 2 blocking high\+ finding\(s\): brace-expansion, minimatch/,
   );
-  assert.match(result.stderr, /Suppressed derived findings: brace-expansion, minimatch/);
 });
 
 test('suppresses the exact advisory and findings derived solely from it', () => {
@@ -653,7 +652,6 @@ test('rejects temporary dependency exceptions with impossible expiresOn date', (
     /is not a real calendar date/,
   );
 });
-
 
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.

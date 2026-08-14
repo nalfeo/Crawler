@@ -12,91 +12,56 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createGameWorld } from '../../../src/core/index.js';
-import { getMerchantWeaponIntent } from '../../../src/game/ai/merchant-weapon-intent.js';
-import { getSpellBrokerIntent } from '../../../src/game/ai/spell-broker-intent.js';
-import { configureMerchantWeaponPurchase } from '../../../src/game/ai/merchant-weapon-intent.js';
-import { configureSpellBrokerPurchase } from '../../../src/game/ai/spell-broker-intent.js';
-
-// Simulate what runHeadless does when resolving the optionalPurchases flag.
-function resolveAndApply(
-  world: ReturnType<typeof createGameWorld>,
-  config: {
-    optionalPurchases?: boolean;
-    merchantWeaponPurchase?: boolean;
-    spellBrokerPurchase?: boolean;
-  },
-): void {
-  const purchasesEnabled =
-    config.optionalPurchases !== undefined
-      ? config.optionalPurchases
-      : config.merchantWeaponPurchase !== undefined || config.spellBrokerPurchase !== undefined
-        ? (config.merchantWeaponPurchase ?? false) || (config.spellBrokerPurchase ?? false)
-        : true;
-  configureMerchantWeaponPurchase(world, purchasesEnabled);
-  configureSpellBrokerPurchase(world, purchasesEnabled);
-}
+import { resolveOptionalPurchases } from '../../../src/game/ai/optional-purchases.js';
 
 describe('optionalPurchases flag — default behaviour', () => {
   it('is on by default: both purchase systems are enabled', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, {});
-    expect(getMerchantWeaponIntent(world).enabled).toBe(true);
-    expect(getSpellBrokerIntent(world).enabled).toBe(true);
+    expect(resolveOptionalPurchases({})).toBe(true);
   });
 });
 
 describe('optionalPurchases flag — enabling', () => {
   it('optionalPurchases:true arms both merchant-weapon and spell-broker systems', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, { optionalPurchases: true });
-    expect(getMerchantWeaponIntent(world).enabled).toBe(true);
-    expect(getSpellBrokerIntent(world).enabled).toBe(true);
+    expect(resolveOptionalPurchases({ optionalPurchases: true })).toBe(true);
   });
 
   it('optionalPurchases:false keeps both systems disabled', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, { optionalPurchases: false });
-    expect(getMerchantWeaponIntent(world).enabled).toBe(false);
-    expect(getSpellBrokerIntent(world).enabled).toBe(false);
+    expect(resolveOptionalPurchases({ optionalPurchases: false })).toBe(false);
   });
 });
 
 describe('optionalPurchases flag — precedence over deprecated fields', () => {
   it('optionalPurchases:true overrides merchantWeaponPurchase:false', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, { optionalPurchases: true, merchantWeaponPurchase: false });
-    expect(getMerchantWeaponIntent(world).enabled).toBe(true);
-    expect(getSpellBrokerIntent(world).enabled).toBe(true);
+    expect(
+      resolveOptionalPurchases({ optionalPurchases: true, merchantWeaponPurchase: false }),
+    ).toBe(true);
   });
 
   it('optionalPurchases:false overrides merchantWeaponPurchase:true', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, { optionalPurchases: false, merchantWeaponPurchase: true });
-    expect(getMerchantWeaponIntent(world).enabled).toBe(false);
-    expect(getSpellBrokerIntent(world).enabled).toBe(false);
+    expect(
+      resolveOptionalPurchases({ optionalPurchases: false, merchantWeaponPurchase: true }),
+    ).toBe(false);
   });
 });
 
 describe('optionalPurchases flag — backward compat (deprecated fields)', () => {
   it('an explicit legacy false still disables both when optionalPurchases is absent', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, { merchantWeaponPurchase: false });
-    expect(getMerchantWeaponIntent(world).enabled).toBe(false);
-    expect(getSpellBrokerIntent(world).enabled).toBe(false);
+    expect(resolveOptionalPurchases({ merchantWeaponPurchase: false })).toBe(false);
   });
 
   it('merchantWeaponPurchase:true still arms both when optionalPurchases is absent', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, { merchantWeaponPurchase: true });
-    expect(getMerchantWeaponIntent(world).enabled).toBe(true);
-    expect(getSpellBrokerIntent(world).enabled).toBe(true);
+    expect(resolveOptionalPurchases({ merchantWeaponPurchase: true })).toBe(true);
   });
 
   it('spellBrokerPurchase:true still arms both when optionalPurchases is absent', () => {
-    const world = createGameWorld({ seed: 1 });
-    resolveAndApply(world, { spellBrokerPurchase: true });
-    expect(getMerchantWeaponIntent(world).enabled).toBe(true);
-    expect(getSpellBrokerIntent(world).enabled).toBe(true);
+    expect(resolveOptionalPurchases({ spellBrokerPurchase: true })).toBe(true);
+  });
+});
+
+describe('optionalPurchases flag — persisted lab state', () => {
+  it('preserves an explicit legacy opt-out when the canonical field is absent', () => {
+    const persistedAiConfig = { merchantWeaponPurchase: false };
+
+    expect(resolveOptionalPurchases(persistedAiConfig)).toBe(false);
   });
 });

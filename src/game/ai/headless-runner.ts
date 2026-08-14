@@ -65,6 +65,7 @@ import {
 } from './floor1-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
+import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -334,7 +335,7 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: true,
-  optionalPurchases: true,
+  optionalPurchases: DEFAULT_OPTIONAL_PURCHASES,
   merchantWeaponPurchase: false,
   spellBrokerPurchase: false,
   settlementReturnRouting: false,
@@ -570,12 +571,7 @@ export async function runHeadless(
   // overrides the individual deprecated fields; when absent the individual
   // fields are used for backward compat with existing callers/tests. A caller
   // that supplies no purchase flag inherits the canonical default.
-  const purchasesEnabled =
-    config.optionalPurchases !== undefined
-      ? config.optionalPurchases
-      : config.merchantWeaponPurchase !== undefined || config.spellBrokerPurchase !== undefined
-        ? (config.merchantWeaponPurchase ?? false) || (config.spellBrokerPurchase ?? false)
-        : DEFAULT_CONFIG.optionalPurchases;
+  const purchasesEnabled = resolveOptionalPurchases(config);
   configureMerchantWeaponPurchase(world, purchasesEnabled);
   configureSpellBrokerPurchase(world, purchasesEnabled);
   configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
