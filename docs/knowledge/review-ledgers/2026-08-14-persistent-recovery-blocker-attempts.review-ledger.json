@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "persistent-recovery-blocker-attempts",
+  "task_title": "Preserve CI recovery attempts across persistent blockers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adopted: preserve attempts and exhaust on unchanged blocker fingerprints across head drift; reset on changed fingerprints; invert the contrary regression; test incident filing; use direct fingerprint equality; align interrupted-release resume. Escalation after two persistent attempts is intentional; resolved or changed blockers avoid it."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
