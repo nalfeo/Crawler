@@ -29,6 +29,7 @@ import {
 import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
+import type { RunBundle } from '../shared/run-bundle.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
@@ -39,6 +40,7 @@ export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 export function createFloorMainSceneOptions(
   floorId: string = 'floor1',
   initializationOptions?: ScenarioInitializationOptions,
+  onRunBundle?: (bundle: RunBundle) => void,
 ): FloorMainSceneOptions {
   const scenario = getScenarioDefinition(floorId);
   const manifest = getFloorManifest(floorId);
@@ -54,6 +56,7 @@ export function createFloorMainSceneOptions(
     sessionRecorderFactory: (world, playerEid) =>
       createPlayerSessionRecorder(world, playerEid, { recordWeaponTelemetry: true }),
     runStatsFactory: collectHumanRunStats,
+    onRunBundle,
     configureWorld: (world: GameWorld, playerEid: number) =>
       scenario.configureWorld(world, playerEid, initializationOptions),
     selectLoadoutOption: scenario.selectLoadoutOption,
@@ -68,7 +71,7 @@ export function createFloorMainSceneOptions(
             window.history.replaceState(window.history.state, '', url);
           }
           return {
-            ...createFloorMainSceneOptions(nextFloorId, { playerCarryover }),
+            ...createFloorMainSceneOptions(nextFloorId, { playerCarryover }, onRunBundle),
             worldSeed: world.seed,
             generatedEquipmentRunKey: playerCarryover.generatedEquipmentRegistry?.runKey,
           };

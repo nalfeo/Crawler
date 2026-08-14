@@ -429,7 +429,7 @@ declare global {
         getPerf: () => FovPerfSnapshot;
       };
     };
-    /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
+    /** Optional human player session recorder. Set when the factory is provided. */
     __playerSessionRecorder?: SessionRecorder;
   }
 }
@@ -466,7 +466,7 @@ export class MainGameScene extends Phaser.Scene {
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
 
   /**
-   * Dev-only: human player session recorder. Non-null only when
+   * Optional human player session recorder. Non-null only when
    * `options.sessionRecorderFactory` is provided.
    */
   private sessionRecorder?: SessionRecorder;
@@ -1925,7 +1925,7 @@ export class MainGameScene extends Phaser.Scene {
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;
 
-      // Dev-only: record telemetry from the human player each sim step.
+      // Record telemetry from the human player each sim step when configured.
       if (this.sessionRecorder) {
         const currentEnemyCount = query(this.world.ecs, [Enemy]).length;
         const currentLevel = this.world.playerLevel?.level ?? 0;
