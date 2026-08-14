@@ -256,6 +256,7 @@ export async function handleRuns(
         : error instanceof SyntaxError ||
             message.includes('must be') ||
             message.includes('exceeds') ||
+            message.includes('screenshot is') ||
             message.includes('required when')
           ? 400
           : 500;

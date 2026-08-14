@@ -42,5 +42,8 @@ describe('dev-build ingest validation', () => {
     const png = 'iVBORw0KGgo=';
     expect(decodePngBase64(`data:image/png;base64,${png}`).readUInt32BE(0)).toBe(0x89504e47);
     expect(() => decodePngBase64('bm90IHBuZw==')).toThrow('not a PNG');
+    expect(() => validateRunBundle({ ...validRun, screenshot: 'bm90IHBuZw==' }, 100)).toThrow(
+      'not a PNG',
+    );
   });
 });

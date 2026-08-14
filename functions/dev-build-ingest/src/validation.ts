@@ -89,6 +89,7 @@ export function validateRunBundle(value: unknown, serializedBytes: number): Vali
   if (screenshot && byteLength(screenshot.base64) > 6 * 1024 * 1024) {
     throw new Error('screenshot exceeds 6 MiB');
   }
+  if (screenshot) decodePngBase64(screenshot.base64);
 
   let survey: Partial<PlaytestSurvey> | undefined;
   if (value.survey !== undefined) {
