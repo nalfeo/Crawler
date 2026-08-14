@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +11,8 @@ import {
   type BaselineFile,
   type BaselineIndexEntry,
 } from '../../scripts/agent/perf/baseline-regression-check';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const FIXTURES = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -111,6 +115,61 @@ describe('release baseline regression check', () => {
     const decision = evaluateBaselineRegression(regression, [indexEntry(regression)], []);
     expect(decision.regression).toBe(true);
     expect(decision.issue?.body).toContain('| Previous | N/A | N/A | N/A |');
+  });
+
+  it('CLI reports a no-history Floor 1 loss instead of crashing on the missing previous baseline', () => {
+    // Regression coverage for a real bug: main() formatted every regression
+    // with `decision.previous!.winRate`, but the no-history branch of
+    // evaluateBaselineRegression intentionally omits `previous`. That crashed
+    // the CLI AFTER the GITHUB_OUTPUT `regression=true` line was already
+    // written, so the step still failed and the workflow skipped the
+    // following issue-filing step entirely.
+    const dir = mkdtempSync(path.join(tmpdir(), 'baseline-regression-cli-'));
+    try {
+      // `firstParentHistory` resolves the commit via `git rev-list`, so the
+      // fixture's synthetic SHA (absent from this checkout) must be swapped
+      // for the real HEAD commit. The index is left empty so no entry can
+      // match any commit in that lineage regardless of its depth.
+      const headCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+      const baselineWithRealCommit: BaselineFile = {
+        ...regression,
+        meta: { ...regression.meta, commit: headCommit },
+      };
+      const baselinePath = path.join(dir, 'baseline.json');
+      const indexPath = path.join(dir, 'index.json');
+      const resultPath = path.join(dir, 'result.json');
+      const githubOutputPath = path.join(dir, 'github-output.txt');
+      writeFileSync(baselinePath, JSON.stringify(baselineWithRealCommit));
+      writeFileSync(indexPath, JSON.stringify([]));
+      writeFileSync(githubOutputPath, '');
+
+      const output = execFileSync(
+        'npx',
+        ['tsx', 'scripts/agent/perf/baseline-regression-check.ts'],
+        {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BASELINE_JSON: baselinePath,
+            BASELINE_INDEX_JSON: indexPath,
+            BASELINE_REGRESSION_RESULT: resultPath,
+            GITHUB_OUTPUT: githubOutputPath,
+          },
+        },
+      );
+
+      expect(output).toContain('release sweep regressed');
+      expect(output).not.toContain('[ERROR]');
+      expect(readFileSync(githubOutputPath, 'utf8')).toContain('regression=true');
+      const decision = JSON.parse(readFileSync(resultPath, 'utf8')) as { regression: boolean };
+      expect(decision.regression).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('files a Floor 1 loss issue when the sweep matrix is resized', () => {

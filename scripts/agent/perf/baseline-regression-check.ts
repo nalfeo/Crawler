@@ -543,8 +543,11 @@ function main(): void {
       fs.appendFileSync(process.env.GITHUB_OUTPUT, `regression=${decision.regression}\n`);
     }
     if (decision.regression) {
+      const previousDescription = decision.previous
+        ? `${formatPercent(decision.previous.winRate)} -> `
+        : '';
       report.warn(
-        `release sweep regressed ${formatPercent(decision.previous!.winRate)} -> ${formatPercent(decision.current.winRate)}; investigation issue required`,
+        `release sweep regressed ${previousDescription}${formatPercent(decision.current.winRate)}; investigation issue required`,
         { file: baselinePath, remediation: 'Run the baseline regression issue-filing step.' },
       );
     } else {
