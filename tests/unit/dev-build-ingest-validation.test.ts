@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { handleRuns } from '../../functions/dev-build-ingest/src/index.js';
+import type { HttpRequest, InvocationContext } from '@azure/functions';
 import {
   decodePngBase64,
   validateRunBundle,
@@ -45,5 +47,19 @@ describe('dev-build ingest validation', () => {
     expect(() => validateRunBundle({ ...validRun, screenshot: 'bm90IHBuZw==' }, 100)).toThrow(
       'not a PNG',
     );
+  });
+
+  it('returns a client error before storage for malformed screenshots', async () => {
+    const request = {
+      method: 'POST',
+      headers: new Headers({ origin: 'https://nalfeo.github.io' }),
+      text: async () => JSON.stringify({ ...validRun, screenshot: 'bm90IHBuZw==' }),
+    } as unknown as HttpRequest;
+    const context = {
+      info: () => undefined,
+      error: () => undefined,
+    } as unknown as InvocationContext;
+    const result = await handleRuns(request, context);
+    expect(result.status).toBe(400);
   });
 });
