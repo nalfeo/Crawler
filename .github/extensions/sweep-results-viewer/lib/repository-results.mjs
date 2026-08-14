@@ -50,7 +50,8 @@ export async function listBenchmarkBranches(workingDirectory, signal) {
   const localRef = refs.find((ref) => ref === `refs/heads/${BASELINES_BRANCH}`);
   const remoteRef = refs.find((ref) => ref === `refs/remotes/origin/${BASELINES_BRANCH}`);
   if (!localRef && !remoteRef) return [];
-  return [{ name: BASELINES_BRANCH, ref: localRef ?? remoteRef, local: Boolean(localRef) }];
+  // Prefer the remote-tracking ref: the local branch can be stale or divergent.
+  return [{ name: BASELINES_BRANCH, ref: remoteRef ?? localRef, local: !remoteRef }];
 }
 
 function isPlainObject(value) {
@@ -70,6 +71,7 @@ export function normalizeRepositoryArtifact(value) {
         isPlainObject(entry) &&
         typeof entry.weapon === 'string' &&
         Number.isInteger(entry.wins) &&
+        Number.isInteger(entry.slowVictories) &&
         Number.isInteger(entry.runs),
     ) ||
     !Number.isInteger(value.totalWins) ||

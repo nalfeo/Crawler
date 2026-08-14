@@ -732,26 +732,26 @@ async function handleRequest(instanceId, token, request, response) {
       jsonResponse(response, 400, { error: `Unsupported source: ${body.source}` });
       return;
     }
-    if (url.pathname === '/api/select-repository-branch' && request.method === 'POST') {
-      const body = await readJsonBody(request);
-      const state = await switchToRepository(instanceId, body.branch);
-      jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
-      return;
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
+    return;
+  }
+  if (url.pathname === '/api/select-repository-branch' && request.method === 'POST') {
+    const body = await readJsonBody(request);
+    const state = await switchToRepository(instanceId, body.branch);
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
+    return;
+  }
+  if (url.pathname === '/api/select-repository-artifact' && request.method === 'POST') {
+    const body = await readJsonBody(request);
+    const state = states.get(instanceId);
+    if (!state) throw new CanvasError('no_state', 'Canvas not open');
+    if (
+      state.source !== 'repository' ||
+      !state.repositoryArtifacts.some((artifact) => artifact.path === body.path)
+    ) {
+      throw new CanvasError('repository_artifact_not_found', `Unknown artifact: ${body.path}`);
     }
-    if (url.pathname === '/api/select-repository-artifact' && request.method === 'POST') {
-      const body = await readJsonBody(request);
-      const state = states.get(instanceId);
-      if (!state) throw new CanvasError('no_state', 'Canvas not open');
-      if (
-        state.source !== 'repository' ||
-        !state.repositoryArtifacts.some((artifact) => artifact.path === body.path)
-      ) {
-        throw new CanvasError('repository_artifact_not_found', `Unknown artifact: ${body.path}`);
-      }
-      await loadRepositorySelection(instanceId, state, body.path);
-      jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
-      return;
-    }
+    await loadRepositorySelection(instanceId, state, body.path);
     jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
     return;
   }
