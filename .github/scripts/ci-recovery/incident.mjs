@@ -103,11 +103,16 @@ async function deployRunActuallyReleased() {
       )
     ).data.jobs || [];
   const deployJob = jobs.find((job) => job.name === 'deploy');
-  if (deployJob?.conclusion === 'success') {
+  const deploymentStepSucceeded = deployJob?.steps?.some(
+    (step) =>
+      ['Deploy to GitHub Pages', 'Deploy to GitHub Pages (retry)'].includes(step.name) &&
+      step.conclusion === 'success',
+  );
+  if (deployJob?.conclusion === 'success' && deploymentStepSucceeded) {
     return true;
   }
   process.stdout.write(
-    `skip auto-close workflow=${run.name} reason=deploy-job-not-success conclusion=${deployJob?.conclusion || 'missing'}\n`,
+    `skip auto-close workflow=${run.name} reason=pages-deploy-not-success job-conclusion=${deployJob?.conclusion || 'missing'} deployment-step-succeeded=${deploymentStepSucceeded || false}\n`,
   );
   return false;
 }

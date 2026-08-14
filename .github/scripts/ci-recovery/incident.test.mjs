@@ -270,8 +270,52 @@ test('does not auto-close a Pages incident on a stale successful run that skippe
   );
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(stdout, /skip auto-close .*reason=deploy-job-not-success conclusion=skipped/);
+  assert.match(stdout, /skip auto-close .*reason=pages-deploy-not-success job-conclusion=skipped/);
   assert.deepEqual(mutatingCalls, [], 'a stale skipped deploy must not close the incident');
+});
+
+test('does not auto-close a Pages incident when the final-tip guard skips deployment steps', async (t) => {
+  const runId = 779;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [OPEN_DEPLOY_INCIDENT] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs/${runId}/jobs`]: () => ({
+      body: {
+        jobs: [
+          {
+            name: 'deploy',
+            conclusion: 'success',
+            steps: [
+              { name: 'Final latest-tip guard', conclusion: 'success' },
+              { name: 'Upload artifact', conclusion: 'skipped' },
+              { name: 'Deploy to GitHub Pages', conclusion: 'skipped' },
+              { name: 'Deploy to GitHub Pages (retry)', conclusion: 'skipped' },
+            ],
+          },
+        ],
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(
+    port,
+    pushRun({
+      id: runId,
+      name: 'Deploy to GitHub Pages',
+      event: 'workflow_run',
+      html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`,
+    }),
+  );
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /skip auto-close .*reason=pages-deploy-not-success job-conclusion=success deployment-step-succeeded=false/,
+  );
+  assert.deepEqual(mutatingCalls, [], 'a final-tip no-op must not close the incident');
 });
 
 test('auto-closes a Pages incident after a successful deploy job', async (t) => {
@@ -285,7 +329,11 @@ test('auto-closes a Pages incident after a successful deploy job', async (t) => 
       body: {
         jobs: [
           { name: 'release-gate', conclusion: 'success' },
-          { name: 'deploy', conclusion: 'success' },
+          {
+            name: 'deploy',
+            conclusion: 'success',
+            steps: [{ name: 'Deploy to GitHub Pages', conclusion: 'success' }],
+          },
           { name: 'Baseline win-rate sweep (100 seeds)', conclusion: 'success' },
         ],
       },

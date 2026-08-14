@@ -32,13 +32,17 @@ Estimated 2🍎, actual 2🍎.
   release-gate condition alongside the existing deploy/baseline gates.
 - Hardened `.github/scripts/ci-recovery/incident.mjs` so Deploy to GitHub Pages
   incidents only auto-close when the later successful workflow has a successful
-  `deploy` job. Stale/no-op Pages successes with `deploy` skipped now leave the
-  incident open.
+  `deploy` job and a successful Pages deployment action step. Stale/no-op Pages
+  successes, including final latest-tip-guard runs with skipped deployment steps,
+  now leave the incident open.
 
 ## Evidence
 
 - `npm run test:unit -- tests/unit/deploy-workflow-gating.test.ts --reporter=verbose`
   passed (10 tests).
+- `node --test .github/scripts/ci-recovery/incident.test.mjs` passed (10 tests),
+  including the final latest-tip-guard no-op regression.
+- `npm run verify:fast` passed.
 
 ## What's Next / Blockers
 
