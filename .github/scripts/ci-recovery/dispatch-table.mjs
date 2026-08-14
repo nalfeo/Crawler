@@ -115,11 +115,13 @@ export const DISPATCH_ACTION = Object.freeze({
   /** GC: duplicate fingerprint, exhausted → release stale lock + file loop incident */
   RELEASE_STALE_AUTOMATION_EXHAUSTED: 'release-stale-automation-exhausted',
   /**
-   * GC: duplicate fingerprint, not yet exhausted (stallAction 'retry' or the
-   * reachable 'progressed' case when the PR head drifted without changing the
-   * blocker fingerprint — see buildTerminalDecisionTable()): release the
-   * stale-but-not-exhausted lock and continue (non-terminal — driver
-   * re-evaluates the remaining table rows, mirrors R04).
+   * GC: duplicate fingerprint, not yet exhausted (stallAction 'retry'; the
+   * 'progressed' stallAction is listed defensively in this row's guard but is
+   * not reachable from real callers, since `isDuplicateDispatch` requires an
+   * exact fingerprint match while 'progressed' requires a fingerprint
+   * mismatch — see buildTerminalDecisionTable()): release the stale-but-not-
+   * exhausted lock and continue (non-terminal — driver re-evaluates the
+   * remaining table rows, mirrors R04).
    */
   RELEASE_STALE_AUTOMATION_RETRY: 'release-stale-automation-retry',
   /** GC: copilot still actively working the PR under a fresh lease */
@@ -355,12 +357,15 @@ export function selectEarlyAction(ctx) {
  *      - SKIP_DUPLICATE_FINGERPRINT (stallAction 'wait'): duplicate dispatch
  *        still within its liveness window — do nothing yet.
  *      - RELEASE_STALE_AUTOMATION_RETRY (R33, non-terminal): duplicate
- *        dispatch not yet exhausted (stallAction 'retry', or the reachable
- *        'progressed' case when the head SHA advanced but the blocker
- *        fingerprint stayed the same). `isDuplicateDispatch` still requires an
- *        exact fingerprint match, but `automationStallAction` can now report
- *        'progressed' from head drift before it compares fingerprints. Release
- *        and re-evaluate — mirrors R04's non-terminal pattern exactly.
+ *        dispatch not yet exhausted (stallAction 'retry'). Blocker identity
+ *        (the fingerprint), not the head SHA, is what `automationStallAction`
+ *        treats as progress — see its NOTE in state.mjs (issue #2914 / PR
+ *        #2823). Since `isDuplicateDispatch` also requires an exact
+ *        fingerprint match, `stallAction === 'progressed'` cannot co-occur
+ *        with `isDuplicateDispatch === true` under normal callers; it is
+ *        listed alongside 'retry' here only as defensive belt-and-braces
+ *        coverage, not a reachable production path. Release and re-evaluate
+ *        — mirrors R04's non-terminal pattern exactly.
  *      - SKIP_ACTIVE_COPILOT_PROGRESS: only reachable once
  *        RELEASE_STALE_AUTOMATION_RETRY has NOT fired (i.e. `!isDuplicateDispatch`)
  *        — see the module doc comment for why this guard must exclude the

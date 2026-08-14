@@ -7476,17 +7476,25 @@ test('queue admission finds a concurrently attached merge-train label on the sec
 });
 
 // ---------------------------------------------------------------------------
-// Regression: head-only drift with unchanged blockers must be treated as
-// progressed so the new head gets a fresh retry budget.
+// Regression (issue #2914 / PR #2823): head-only drift with an unchanged
+// blocker fingerprint must NOT be treated as progress. PR #2823 sat with the
+// ci-recovery label for 56.5h across >=12 dispatches against the same
+// unresolved review-thread blocker because every automation-authored commit
+// advanced the head SHA, which the old logic misread as 'progressed' —
+// resetting the attempt counter to 0 forever. Blocker identity (the
+// fingerprint) is authoritative: a head-only change against an unchanged
+// fingerprint must go through the ordinary stale-automation-retry accounting
+// so the exhaustion ceiling stays reachable.
 // ---------------------------------------------------------------------------
 
-test('stale automation resets attempt when only headSha changes', async (t) => {
+test('stale automation preserves attempt when only headSha changes and the fingerprint is unchanged', async (t) => {
   // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
-  // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
-  // the blockers fingerprint is unchanged (same CI failure). This must classify
-  // as progress for the new head:
-  //   - release trigger is 'blocker-progressed'
-  //   - final attempt resets to 1
+  // with attempt=1. The head has since advanced to HEAD_SHA (e.g. an
+  // ineffective automation-authored commit) but the blockers fingerprint is
+  // unchanged (same CI failure). This must classify as a stale-automation
+  // retry, NOT progress:
+  //   - release trigger is 'stale-automation-retry'
+  //   - final attempt is the prior attempt + 1 (2), not reset to 1
   const PROG_FINGERPRINT = blockerFingerprint([
     {
       kind: 'ci-failure',
@@ -7600,38 +7608,193 @@ test('stale automation resets attempt when only headSha changes', async (t) => {
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  // Must classify as blocker-progressed on head drift.
+  // Must classify as stale-automation-retry, NOT blocker-progressed, since
+  // only the head SHA changed and the blocker fingerprint is unchanged.
   const releasePatch = capturedPatches.find((patch) => {
     const parsed = parseStateComment(patch.body);
-    return parsed?.trigger === 'blocker-progressed';
+    return parsed?.trigger === 'stale-automation-retry';
   });
   assert.ok(
     releasePatch,
-    'the release state must carry trigger=blocker-progressed when headSha changes',
+    'the release state must carry trigger=stale-automation-retry when only headSha changed',
   );
   assert.ok(
     !mutatingCalls.some((call) => {
       if (call.method !== 'PATCH') return false;
       try {
-        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
+        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
       } catch {
         return false;
       }
     }),
-    'must not use stale-automation-retry when the head has changed',
+    'must not classify head-only drift as blocker-progressed (issue #2914 / PR #2823)',
   );
 
-  // Final dispatched state must reset attempt to 1 for the new head.
+  // Final dispatched state must preserve the prior attempt (+1), NOT reset to
+  // 1, so the exhaustion ceiling stays reachable across further head drift.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
-  assert.equal(finalState?.attempt, 1, 'head drift must reset the retry budget for the new head');
+  assert.equal(
+    finalState?.attempt,
+    2,
+    'head-only drift must preserve (not reset) the retry budget: prior attempt=1 + 1 = 2',
+  );
   assert.equal(finalState?.trigger, 'workflow_run:completed');
   assert.equal(finalState?.owner, 'automation');
   assert.equal(finalState?.status, 'dispatched');
 });
 
-// ---------------------------------------------------------------------------
+test('stale automation reaches the exhausted release + loop-incident path when head keeps drifting at the attempt ceiling', async (t) => {
+  // Continuation of the scenario above: the prior attempt is already at the
+  // ceiling (2). Even though the head SHA has (again) drifted to a new,
+  // ineffective commit, the SAME blocker fingerprint must still resolve to
+  // the existing exhausted release + fileLoopIncident path, not another
+  // reset.
+  const PROG_FINGERPRINT = blockerFingerprint([
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+    },
+  ]);
+  const OLD_HEAD = 'old000head000sha000000000000000000000000';
+  const oldProgressKey = automationProgressKey(OLD_HEAD, PROG_FINGERPRINT);
+  const stateComment = {
+    id: 780,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: OLD_HEAD,
+        fingerprint: PROG_FINGERPRINT,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [
+          {
+            kind: 'ci-failure',
+            id: 'ci',
+            summary: 'ci concluded failure.',
+            url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+        attempt: 2,
+        progressKey: oldProgressKey,
+        progressAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+      }),
+    ),
+  };
+  const ciFailure = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  let repoLabelDeleted = false;
+  const capturedPatches = [];
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repoLabelDeleted = true;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      return { body: { id: stateComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 900 } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [ciFailure] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Loop incident routes (this path is expected to file an incident since
+    // the attempt ceiling has been reached).
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+      body: { number: 999, node_id: 'ISSUE_999' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // At the attempt ceiling, head-only drift must still hit the exhausted
+  // release path: a loop incident gets filed and the PR is released rather
+  // than redispatched forever.
+  assert.match(stdout, /released stale automation pr=#42 attempts=2/);
+  assert.match(
+    stdout,
+    /loop-incident pr=#42 issue=#999 action=created/,
+    'must log loop-incident creation on stale-automation-exhausted release even with a drifted head',
+  );
+  const releasePatch = capturedPatches.find((patch) => {
+    const parsed = parseStateComment(patch.body);
+    return parsed?.trigger === 'stale-automation-exhausted';
+  });
+  assert.ok(
+    releasePatch,
+    'the exhausted-release path must still fire when the attempt ceiling is reached, even with a drifted head',
+  );
+  assert.equal(releasePatch && parseStateComment(releasePatch.body)?.attempt, 2);
+  assert.ok(
+    !capturedPatches.some(
+      (patch) => parseStateComment(patch.body)?.trigger === 'blocker-progressed',
+    ),
+    'must never classify this as blocker-progressed',
+  );
+});
+
 // RC-A regression: stale-node 422 + !repositoryLabelPresent + converged state
 // (Threads 1, 2, 6 — PRRT_kwDOSvo2Ms6Rvxir / RvxjH / Rv6pp)
 // ---------------------------------------------------------------------------
@@ -8835,7 +8998,15 @@ test('stale-node 422 absent owner bit fails closed when another run claims the h
   );
 });
 
-test('interrupted stale automation release resets the carried attempt when progressKey changed', async (t) => {
+test('interrupted stale automation release preserves the carried attempt when only the head SHA changed (fingerprint unchanged)', async (t) => {
+  // Regression (issue #2914 / PR #2823): this path previously compared
+  // `progressKey`s (`hash(headSha, fingerprint)`) to decide whether to carry
+  // the attempt count forward. Since `progressKey` embeds the head SHA, a
+  // head-only change (the SAME blocker fingerprint) was misread as "changed"
+  // and reset the attempt to 0 — the same head-sensitive reset bug fixed in
+  // `automationStallAction`. The resume decision must compare the blocker
+  // fingerprint directly: an unchanged fingerprint must carry the attempt
+  // forward even though the head (and therefore the progressKey) changed.
   const failedCheck = {
     id: 3,
     name: 'ci',
@@ -8924,9 +9095,13 @@ test('interrupted stale automation release resets the carried attempt when progr
     RECOVERY_TRIGGER: 'schedule:sweep',
     CI_RECOVERY_MODE: 'live',
   });
-  if (!assertSuccessfulExit(t, code, stderr, 'interrupted release progress reset', true)) return;
+  if (!assertSuccessfulExit(t, code, stderr, 'interrupted release progress preserved', true))
+    return;
 
-  assert.match(stdout, /resuming interrupted release pr=#42 attempt=0/);
+  // The live head (HEAD_SHA) differs from the stale state's head (priorHead),
+  // but the blocker fingerprint is unchanged: the carried attempt (1) must be
+  // preserved, not reset to 0.
+  assert.match(stdout, /resuming interrupted release pr=#42 attempt=1/);
   assert.match(stdout, /assigned copilot pr=#42/);
 
   const finalState = parseStateComment(stateComment.body);
@@ -8935,8 +9110,132 @@ test('interrupted stale automation release resets the carried attempt when progr
   assert.equal(finalState?.progressKey, automationProgressKey(HEAD_SHA, fingerprint));
   assert.equal(
     finalState?.attempt,
+    2,
+    'head-only drift must preserve (not reset) the carried attempt: prior attempt=1 + 1 = 2',
+  );
+});
+
+test('interrupted stale automation release resets the carried attempt when the blocker fingerprint genuinely changed', async (t) => {
+  // Contrast case for the regression above: when the blocker fingerprint
+  // itself changes (a different check failed / the old blocker resolved),
+  // that IS genuine progress and must still reset the carried attempt to 0
+  // so the new blocker set gets a full retry budget.
+  const oldFailedCheck = {
+    id: 3,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/3`,
+  };
+  const oldBlockers = [
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: oldFailedCheck.html_url,
+    },
+  ];
+  const oldFingerprint = blockerFingerprint(oldBlockers);
+  const staleAt = new Date(Date.now() - 5000).toISOString();
+  // Head is unchanged (HEAD_SHA) so the head SHA cannot be the reason a reset
+  // happens here — only the fingerprint differs.
+  const staleAutomationState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: oldFingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: oldBlockers,
+    attempt: 1,
+    progressKey: automationProgressKey(HEAD_SHA, oldFingerprint),
+    progressAt: staleAt,
+    updatedAt: staleAt,
+  });
+  const stateComment = { id: 8904, body: renderStateComment(staleAutomationState) };
+  // The live check that now fails is a DIFFERENT check ('other-ci'), so the
+  // effective blocker set (and therefore the fingerprint) has genuinely
+  // changed even though the head SHA has not.
+  const newFailedCheck = {
+    id: 4,
+    name: 'other-ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/4`,
+  };
+  let repositoryLabelExists = false;
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 9904 },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [newFailedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'interrupted release fingerprint reset', true)) return;
+
+  assert.match(stdout, /resuming interrupted release pr=#42 attempt=0/);
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState?.owner, 'automation');
+  assert.equal(finalState?.status, 'dispatched');
+  assert.equal(
+    finalState?.attempt,
     1,
-    'a changed progress key must reset the carried attempt so the new head gets a full retry budget',
+    'a genuinely changed blocker fingerprint must reset the carried attempt so the new blocker set gets a full retry budget',
   );
 });
 

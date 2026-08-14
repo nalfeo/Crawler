@@ -375,7 +375,16 @@ test('automationStallAction treats a same-fingerprint, different-url retry as wa
   );
 });
 
-test('automationStallAction returns progressed when head SHA changes for an automation-owned state', () => {
+test('automationStallAction preserves attempt when only the head SHA changes and the blocker fingerprint is unchanged (issue #2914 / PR #2823)', () => {
+  // Regression: PR #2823 sat with the ci-recovery label for 56.5h across
+  // >=12 dispatches, all against the SAME unresolved review-thread blocker.
+  // Every automation-authored commit advanced the head SHA, which the old
+  // logic read as 'progressed' purely from head drift — resetting the
+  // attempt counter to 0 on every cycle and making the automation lock
+  // effectively immortal. Blocker identity (the fingerprint) must be
+  // authoritative: a head change against an unchanged fingerprint is an
+  // ineffective commit, not progress, and must NOT reset the attempt
+  // counter — the exhaustion ceiling must stay reachable.
   const oldHead = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const newHead = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
   const fingerprint = blockerFingerprint([
@@ -387,23 +396,62 @@ test('automationStallAction returns progressed when head SHA changes for an auto
     },
   ]);
   const now = new Date('2026-07-30T21:04:27.293Z');
+  const makeAttemptState = (attempt) =>
+    makeState({
+      prNumber: 2373,
+      headSha: oldHead,
+      fingerprint,
+      owner: 'automation',
+      status: 'dispatched',
+      blockers: [],
+      attempt,
+      progressKey: automationProgressKey(oldHead, fingerprint),
+      progressAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
+    });
+
+  // Attempt 1, same fingerprint, changed head: one retry budget remains.
+  assert.equal(
+    automationStallAction({ state: makeAttemptState(1), headSha: newHead, fingerprint, now }),
+    'retry',
+    'head-only drift at attempt=1 must retry (preserving the prior attempt), not reset to progressed',
+  );
+
+  // Attempt 2 (the ceiling), same fingerprint, changed head: must still
+  // reach the exhausted release path even though the head advanced again.
+  assert.equal(
+    automationStallAction({ state: makeAttemptState(2), headSha: newHead, fingerprint, now }),
+    'release',
+    'head-only drift must not perpetually reset the attempt ceiling; attempt=2 must release',
+  );
+});
+
+test('automationStallAction returns progressed when the blocker fingerprint changes, even with an unchanged head SHA', () => {
+  const head = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const oldFingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.' },
+  ]);
+  const newFingerprint = blockerFingerprint([
+    { kind: 'review-thread', id: 'review-thread:PRRT_new:abcd', summary: 'A new finding' },
+  ]);
+  const now = new Date('2026-07-30T21:04:27.293Z');
   const state = makeState({
     prNumber: 2373,
-    headSha: oldHead,
-    fingerprint,
+    headSha: head,
+    fingerprint: oldFingerprint,
     owner: 'automation',
     status: 'dispatched',
     blockers: [],
     attempt: 2,
-    progressKey: automationProgressKey(oldHead, fingerprint),
+    progressKey: automationProgressKey(head, oldFingerprint),
     progressAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
     updatedAt: new Date(now.getTime() - 35 * 60 * 1000).toISOString(),
   });
 
   assert.equal(
-    automationStallAction({ state, headSha: newHead, fingerprint, now }),
+    automationStallAction({ state, headSha: head, fingerprint: newFingerprint, now }),
     'progressed',
-    'head drift must be treated as progress so retry budget can reset on the new head',
+    'a genuinely changed blocker fingerprint must still be treated as progress, resetting the retry budget',
   );
 });
 
@@ -862,7 +910,7 @@ test('rejects duplicate dispatches for the same blocker fingerprint regardless o
   );
 });
 
-test('automation staleness waits, retries once, then releases; head drift is treated as progress', () => {
+test('automation staleness waits, retries once, then releases; head-only drift preserves the attempt (does not reset to progressed)', () => {
   const fingerprint = blockerFingerprint([
     { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
   ]);
@@ -907,6 +955,10 @@ test('automation staleness waits, retries once, then releases; head drift is tre
     }),
     'release',
   );
+  // Same fingerprint, but the head has since drifted to a NEW commit (e.g. an
+  // ineffective automation-authored push): must still resolve via the
+  // ordinary retry/exhaustion accounting (attempt=1 -> 'retry'), NOT
+  // 'progressed'. See issue #2914 / PR #2823.
   assert.equal(
     automationStallAction({
       state,
@@ -914,11 +966,11 @@ test('automation staleness waits, retries once, then releases; head drift is tre
       fingerprint,
       now: new Date('2026-07-17T13:00:00.000Z'),
     }),
-    'progressed',
+    'retry',
   );
 });
 
-test('automation staleness marks progressed when only headSha changes', () => {
+test('automation staleness preserves the attempt ceiling when only headSha changes (issue #2914)', () => {
   const fingerprint = blockerFingerprint([
     { kind: 'review-thread', id: 'review-thread:PRRT_test:abcd', summary: 'Review finding' },
   ]);
@@ -937,6 +989,9 @@ test('automation staleness marks progressed when only headSha changes', () => {
     updatedAt: '2026-07-17T12:20:00.000Z',
   });
 
+  // The head changed but the blocker fingerprint (review thread) did not: at
+  // the attempt ceiling this must release rather than being read as fresh
+  // progress that resets the counter and makes the lock immortal.
   assert.equal(
     automationStallAction({
       state,
@@ -944,7 +999,7 @@ test('automation staleness marks progressed when only headSha changes', () => {
       fingerprint,
       now: new Date('2026-07-17T13:00:00.000Z'),
     }),
-    'progressed',
+    'release',
   );
 });
 
@@ -1002,6 +1057,19 @@ test('legacy state without progressKey is never exhausted regardless of historic
     }),
     'retry',
     'legacy attempt=5 should also resolve to retry under new semantics',
+  );
+  // Legacy state, head SHA drifted, fingerprint unchanged: must still get its
+  // one safe retry (never 'progressed' from head drift, never exhausted
+  // since legacy states are never attempt-gated).
+  assert.equal(
+    automationStallAction({
+      state: legacyStateAttempt2,
+      headSha: 'def',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'retry',
+    'legacy state with a drifted head SHA must still receive its one safe retry',
   );
 });
 

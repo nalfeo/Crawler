@@ -1238,9 +1238,7 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
         await assertExpectedMetadataUnchanged('strip-closing-keywords');
         // Re-fetch the live body to avoid overwriting concurrent author edits:
         // fixedBody was computed from the initial PR fetch and may be stale.
-        const livePr = (
-          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)
-        ).data;
+        const livePr = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data;
         const liveFixedBody = stripClosingKeywordsForIssues(livePr.body, targets, repository);
         const bodyChanged = liveFixedBody !== (livePr.body ?? '');
         if (bodyChanged) {
@@ -1252,9 +1250,7 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
           // Remove the automation-derived label so requiresHumanApproval
           // reflects the cleared state; skips silently if already absent.
           await removePrLabel(HUMAN_APPROVAL_LABEL, { skipIfMissing: true });
-          process.stdout.write(
-            `stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`,
-          );
+          process.stdout.write(`stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`);
         } else {
           pr.body = livePr.body;
         }
@@ -2742,12 +2738,19 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
   // R33 (non-terminal): duplicate dispatch not yet exhausted. Release and
   // re-evaluate — verbatim from the original inline 'progressed'/else branches.
   if (terminalCtx.stallAction === 'progressed') {
-    // The head advanced while the same blockers remained (e.g. a rebase that
-    // did not fix the failing checks). This is genuine new progress, not
-    // stale automation: reset the attempt counter so the new head gets a
-    // full set of retry budget, and use a distinct release reason so
-    // operators can tell head-progress releases apart from timeout-driven
-    // stale retries.
+    // The blocker fingerprint itself changed (a genuinely different blocker
+    // set — the old blockers were resolved or new ones appeared), not merely
+    // the head SHA advancing. This is real progress: reset the attempt
+    // counter so the new blocker set gets a full retry budget, and use a
+    // distinct release reason so operators can tell blocker-progress
+    // releases apart from timeout-driven stale retries.
+    //
+    // NOTE: head SHA drift alone (an ineffective commit against the SAME
+    // blocker fingerprint) is deliberately NOT treated as progress here —
+    // see `automationStallAction` in state.mjs. Perpetually reading head
+    // drift as progress made the automation-retry ceiling unreachable
+    // (issue #2914 / PR #2823: 56.5h open across >=12 dispatches against the
+    // same unresolved review thread).
     dispatchAttemptBase = 0;
     dispatchProgressAt = now.toISOString();
     stopIfReleaseConvergedElsewhere(await release('blocker-progressed'));
@@ -2758,6 +2761,9 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
     // Keeping a stale timestamp here can instantly re-exhaust a newly
     // dispatched recovery attempt (before it has any liveness window),
     // causing repeated "no progress" loops on otherwise actionable PRs.
+    // This is also the path a head-only-drift, same-fingerprint retry takes:
+    // the prior attempt count is preserved (not reset) so the exhaustion
+    // ceiling stays reachable even as the head keeps advancing.
     stopIfReleaseConvergedElsewhere(await release('stale-automation-retry'));
   }
 }
@@ -3120,13 +3126,20 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     stopIfReleaseConvergedElsewhere(await release('blocker-fingerprint-changed'));
   }
   // Resume an interrupted release: the previous run removed the atomic owner
-  // label but left the owning state behind. Carry the attempt count forward only
-  // for legacy states or when the progress key still matches; a changed key gets
-  // a fresh retry budget.
+  // label but left the owning state behind. Carry the attempt count forward
+  // only for legacy states or when the blocker fingerprint still matches; a
+  // changed fingerprint gets a fresh retry budget.
+  //
+  // NOTE: this compares `state.fingerprint` to the live `fingerprint`
+  // directly rather than comparing `progressKey`s. `progressKey` is
+  // `hash(headSha, fingerprint)`, so a progressKey comparison resets the
+  // attempt count whenever the head advances even if the blocker fingerprint
+  // (blocker identity) is unchanged — the same head-sensitive reset bug fixed
+  // in `automationStallAction` (issue #2914 / PR #2823).
   if (!labelExists && staleOwningState && state?.owner === 'automation') {
     const staleAttempt = state.attempt ?? 0;
     const resumedAttempt =
-      !state.progressKey || state.progressKey === currentProgressKey ? staleAttempt : 0;
+      !state.progressKey || state.fingerprint === fingerprint ? staleAttempt : 0;
     // Re-fetch before reacquiring. We intentionally avoid an intermediate idle
     // PATCH: repository-label creation is the atomic fence, and a competing
     // acquisition fails before this run can overwrite its state.

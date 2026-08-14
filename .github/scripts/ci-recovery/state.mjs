@@ -586,6 +586,8 @@ export function isDuplicateDispatch(state, fingerprint) {
 
 export function automationStallAction({
   state,
+  // Retained for call-site/API stability; blocker identity (fingerprint), not
+  // head SHA, decides progress — see NOTE below.
   headSha,
   fingerprint,
   now = new Date(),
@@ -599,12 +601,24 @@ export function automationStallAction({
     return 'new';
   }
 
-  const liveHead = compact(headSha);
-  const stateHead = compact(state.headSha);
-  if (liveHead && stateHead && liveHead !== stateHead) {
-    return 'progressed';
-  }
-
+  // NOTE: blocker identity (the fingerprint) is authoritative for whether the
+  // PR has genuinely progressed — the head SHA is NOT. A head change alone
+  // (an ineffective commit, a no-op rebase, force-push, or any push that does
+  // not actually resolve the blocking review thread/check) must not be read
+  // as progress, or the attempt ceiling can never be reached: every
+  // redispatch produces a new head commit, which would look like fresh
+  // "progress" forever and the automation lock becomes immortal.
+  //
+  // Observed in production on PR #2823 (issue #2914): the PR sat with the
+  // ci-recovery label for 56.5h across >=12 dispatches, all against the same
+  // unresolved review-thread blocker (identical fingerprint) — every
+  // dispatch's own commit was misread as "progressed", resetting the attempt
+  // counter to 0 on every cycle. A genuine fix that actually changes the
+  // blocker set (fingerprint changes) still gets a full fresh budget below;
+  // only head-only drift with an unchanged fingerprint is exempted from that
+  // reset and instead falls through to the same retry/exhaustion accounting
+  // as a same-head cycle, so the ceiling (`attempt >= 2` → 'release') is
+  // still reachable even though the head keeps advancing.
   const currentFingerprint = compact(fingerprint);
   if (compact(state.fingerprint) !== currentFingerprint) {
     return 'progressed';
