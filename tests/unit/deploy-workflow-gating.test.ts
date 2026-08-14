@@ -63,34 +63,66 @@ function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
 }
 
 describe('deploy.yml job gating (scheduled CI must not run a live deploy or sweep)', () => {
-  it('parses deploy.yml and finds release-gate, deploy, and baseline-sweep jobs', () => {
+  it('parses deploy.yml and finds release-gate, deploy, release-report-sweep, and baseline-sweep jobs', () => {
     const doc = loadDeployWorkflow();
     expect(doc.jobs['release-gate']).toBeDefined();
     expect(doc.jobs.deploy).toBeDefined();
+    expect(doc.jobs['release-report-sweep']).toBeDefined();
     expect(doc.jobs['baseline-sweep']).toBeDefined();
   });
 
-  it('gates both `deploy` and `baseline-sweep` on the identical push-only condition', () => {
+  it('gates deploy, report shards, and baseline-sweep on the identical push-only condition', () => {
     const doc = loadDeployWorkflow();
     const deployIf = String(getJob(doc, 'deploy').if).trim();
+    const reportIf = String(getJob(doc, 'release-report-sweep').if).trim();
     const sweepIf = String(getJob(doc, 'baseline-sweep').if).trim();
+    expect(reportIf).toBe(deployIf);
     expect(sweepIf).toBe(deployIf);
+  });
+
+  it('skips release-gate itself for non-deployable workflow_run completions', () => {
+    const doc = loadDeployWorkflow();
+    const gateIf = String(getJob(doc, 'release-gate').if ?? '').trim();
+    expect(gateIf).toContain("github.event_name == 'workflow_dispatch'");
+    expect(gateIf).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(gateIf).toContain("github.event.workflow_run.event == 'push'");
+    expect(gateIf).not.toContain('needs.release-gate.outputs.should_run');
   });
 
   it('requires both a successful conclusion AND a push event (not just a manual dispatch escape hatch)', () => {
     const doc = loadDeployWorkflow();
-    for (const jobName of ['deploy', 'baseline-sweep']) {
+    for (const jobName of ['release-gate', 'deploy', 'release-report-sweep', 'baseline-sweep']) {
       const condition = String(getJob(doc, jobName).if);
-      expect(condition, jobName).toContain("needs.release-gate.outputs.should_run == 'true'");
+      if (jobName !== 'release-gate') {
+        expect(condition, jobName).toContain("needs.release-gate.outputs.should_run == 'true'");
+      }
       expect(condition, jobName).toContain("github.event_name == 'workflow_dispatch'");
       expect(condition, jobName).toContain("github.event.workflow_run.conclusion == 'success'");
       expect(condition, jobName).toContain("github.event.workflow_run.event == 'push'");
     }
   });
 
-  it('keeps baseline-sweep depending on both release-gate and deploy jobs', () => {
+  it('keeps baseline-sweep depending on release-gate, deploy, and report shard jobs', () => {
     const doc = loadDeployWorkflow();
-    expect(getJob(doc, 'baseline-sweep').needs).toEqual(['release-gate', 'deploy']);
+    expect(getJob(doc, 'baseline-sweep').needs).toEqual([
+      'release-gate',
+      'deploy',
+      'release-report-sweep',
+    ]);
+  });
+
+  it('skips report-only leg publication unless all release shards and runs are present', () => {
+    const doc = loadDeployWorkflow();
+    const sweep = getJob(doc, 'baseline-sweep');
+    const mergeStep = (sweep.steps ?? []).find((s) => s.name === 'Merge report leg metrics');
+    const script = String(mergeStep?.run ?? '');
+
+    expect(script).toContain('const expectedShards = 15');
+    expect(script).toContain('const expectedRuns = 150');
+    expect(script).toContain('files.length !== expectedShards');
+    expect(script).toContain('totals.totalRuns !== expectedRuns');
+    expect(script).toContain('skipping incomplete leg');
+    expect(script).toContain('continue;');
   });
 
   it('resolves stale workflow_run releases via release-gate output', () => {
@@ -145,7 +177,33 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     expect(guardScript).not.toContain('exit 1');
   });
 
-  it('gates all stale-sensitive deploy steps on tip-guard skip output', () => {
+  it('baseline-sweep publish function deletes stale same-SHA fun-report before conditional copy', () => {
+    const doc = loadDeployWorkflow();
+    const sweep = getJob(doc, 'baseline-sweep');
+    const publishStep = (sweep.steps ?? []).find((s) => s.name === 'Publish to baselines branch');
+    const script = String(publishStep?.run ?? '');
+    // The rm -f must appear before the conditional cp so a rerun with a missing
+    // score cannot leave stale indexed data from the previous run.
+    const rmIdx = script.indexOf('rm -f "$WORKTREE/by-sha/$SHA.fun-report.json"');
+    const cpIdx = script.indexOf('cp "$FUN_REPORT_SRC" "$WORKTREE/by-sha/$SHA.fun-report.json"');
+    expect(
+      rmIdx,
+      'publish must delete stale fun-report.json before conditional copy',
+    ).toBeGreaterThanOrEqual(0);
+    expect(cpIdx, 'publish must have the conditional fun-report copy').toBeGreaterThanOrEqual(0);
+    expect(rmIdx, 'rm -f must precede cp').toBeLessThan(cpIdx);
+  });
+
+  it('baseline-sweep delegates index rebuilding to the unit-tested indexer', () => {
+    const doc = loadDeployWorkflow();
+    const sweep = getJob(doc, 'baseline-sweep');
+    const publishStep = (sweep.steps ?? []).find((s) => s.name === 'Publish to baselines branch');
+    const script = String(publishStep?.run ?? '');
+
+    expect(script).toContain('scripts/agent/perf/baseline-index.ts');
+  });
+
+  it('deploy job final latest-tip guard gates all downstream steps', () => {
     const doc = loadDeployWorkflow();
     const deploy = getJob(doc, 'deploy');
     const steps = deploy.steps ?? [];

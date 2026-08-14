@@ -1,0 +1,9 @@
+{
+  "date": "2026-08-14",
+  "session": "fun-event-telemetry",
+  "estimated_apples": 5,
+  "actual_apples": 5,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 1
+}

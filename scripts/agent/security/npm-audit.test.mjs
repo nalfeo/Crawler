@@ -369,68 +369,60 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
-  const tempScript = path.join(tempDir, 'npm-audit.mjs');
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
-  const injectedException = {
-    packageName: 'brace-expansion',
-    source: 1130591,
-    url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+  // The live AUDIT_EXCEPTIONS list churns as advisories get fixed/expire (and is
+  // empty whenever nothing is excepted), so this end-to-end diagnostic test
+  // injects its own synthetic, far-future exception into a copy of the script
+  // rather than depending on any specific package's current state.
+  const cliException = {
+    packageName: 'gamma-pkg',
+    source: 5003,
+    url: 'https://github.com/advisories/GHSA-gamma-0003',
     expiresOn: '2099-12-31',
-    reason: 'Synthetic fixture for CLI diagnostic coverage.',
+    reason: 'Synthetic fixture: CLI success-diagnostic coverage only.',
   };
-  const scriptSource = readFileSync(SCRIPT, 'utf8');
-  const auditExceptionsPattern = /export const AUDIT_EXCEPTIONS = \[[\s\S]*?\];/;
-  const replacedScript = scriptSource.replace(
-    auditExceptionsPattern,
-    `export const AUDIT_EXCEPTIONS = ${JSON.stringify([injectedException], null, 2)};`,
+  const scriptCopy = path.join(tempDir, 'npm-audit.mjs');
+  const injectedSource = readFileSync(SCRIPT, 'utf8').replace(
+    /export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/,
+    () => `export const AUDIT_EXCEPTIONS = ${JSON.stringify([cliException], null, 2)};`,
   );
-  assert.notEqual(replacedScript, scriptSource, 'expected AUDIT_EXCEPTIONS declaration to exist');
-  writeFileSync(tempScript, replacedScript);
+  // Fail fast if the declaration shape drifts: a silent no-op replace would run
+  // this test against the real list and reintroduce the coupling it removes.
+  assert.deepEqual(extractAuditExceptionsFromSource(injectedSource), [cliException]);
+  writeFileSync(scriptCopy, injectedSource);
   writeFileSync(
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
       report({
-        'alpha-pkg': {
-          name: 'alpha-pkg',
+        'gamma-pkg': {
+          name: 'gamma-pkg',
           severity: 'high',
-          via: [{ ...ALPHA_ADVISORY }],
+          via: [
+            {
+              source: cliException.source,
+              url: cliException.url,
+              severity: 'high',
+            },
+          ],
         },
-        downstream: { name: 'downstream', severity: 'high', via: ['alpha-pkg'] },
+        'gamma-downstream': { name: 'gamma-downstream', severity: 'high', via: ['gamma-pkg'] },
       }),
     )}));`,
   );
-
-  // Run a copy of the script carrying a synthetic, unexpired exception so the
-  // diagnostic assertions never depend on the live AUDIT_EXCEPTIONS list.
-  const scriptCopy = path.join(tempDir, 'npm-audit.mjs');
-  writeFileSync(
-    scriptCopy,
-    readFileSync(SCRIPT, 'utf8').replace(
-      /export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/,
-      `export const AUDIT_EXCEPTIONS = ${JSON.stringify(
-        [{ ...ALPHA_EXCEPTION, expiresOn: '2999-01-01' }],
-        null,
-        2,
-      )};`,
-    ),
-  );
+  const env = { ...process.env, npm_execpath: fakeNpmCli };
+  delete env.GITHUB_BASE_SHA;
   const result = spawnSync(process.execPath, [scriptCopy, '--audit-level=high'], {
     cwd: tempDir,
     encoding: 'utf8',
-    env: {
-      ...process.env,
-      npm_execpath: fakeNpmCli,
-    },
+    env,
   });
 
   assert.equal(result.status, 0);
   assert.match(
     result.stderr,
-    new RegExp(
-      `Temporary audit exception through 2999-01-01: ${ALPHA_EXCEPTION.url.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}`,
-    ),
+    /Temporary audit exception through 2099-12-31: https:\/\/github\.com\/advisories\/GHSA-gamma-0003/,
   );
-  assert.match(result.stderr, /Suppressed derived findings: alpha-pkg, downstream/);
+  assert.match(result.stderr, /Suppressed derived findings: gamma-downstream, gamma-pkg/);
 });
 
 test('suppresses the exact advisory and findings derived solely from it', () => {

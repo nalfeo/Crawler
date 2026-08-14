@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "prepare": "node scripts/agent/setup-git-hooks.mjs",
-    "postinstall": "playwright install chromium",
+    "postinstall": "node scripts/agent/install-playwright-browser.mjs",
     "dev": "vite",
     "build": "vite build",
     "build:typed": "tsc --noEmit --project tsconfig.src.json && vite build",
@@ -150,7 +150,7 @@
     "bench": "vitest bench",
     "docs:check": "tsx scripts/agent/docs/check-paths.ts && tsx scripts/agent/docs/check-adr-consistency.ts && tsx scripts/agent/docs/check-readme-commands.ts && tsx scripts/agent/docs/check-session-instructions.ts && tsx scripts/agent/docs/check-personas.ts && tsx scripts/agent/docs/stale-game-design.ts && tsx scripts/agent/docs/lint-handoff.ts && tsx scripts/agent/docs/promote-handoffs.ts && tsx scripts/agent/docs/apple-calibration.ts && tsx scripts/agent/docs/guard-telemetry.ts && tsx scripts/agent/docs/archive-handoffs.ts",
     "security:audit": "node scripts/agent/security/npm-audit.mjs --audit-level=high",
-    "security:check": "npm run security:audit && npm run security:exact-deps && bash scripts/agent/security/scan-secrets.sh && tsx scripts/agent/security/check-codeowners.ts && tsx scripts/agent/security/check-deps.ts && bash scripts/agent/security/check-dynamic-patterns.sh && tsx scripts/agent/security/check-ai-prompts.ts",
+    "security:check": "npm run security:audit && npm run security:exact-deps && npm run security:lock-integrity && bash scripts/agent/security/scan-secrets.sh && tsx scripts/agent/security/check-codeowners.ts && tsx scripts/agent/security/check-deps.ts && bash scripts/agent/security/check-dynamic-patterns.sh && tsx scripts/agent/security/check-ai-prompts.ts",
     "check:extensions": "node scripts/agent/health/check-extensions.mjs",
     "health:check": "vitest run --project unit --coverage --reporter=dot && tsx scripts/agent/health/coverage-trend.ts && tsx scripts/agent/health/untested-systems.ts && tsx scripts/agent/health/extended-property.ts && tsx scripts/agent/health/governor-playthroughs.ts && tsx scripts/agent/health/balance-regression.ts && tsx scripts/agent/health/bench-regression.ts && node scripts/agent/health/check-extensions.mjs",
     "perf:profile": "tsx scripts/agent/perf/profile-headless.ts",
@@ -158,7 +158,8 @@
     "setpiece:reachability-sweep": "tsx scripts/agent/set-piece/reachability-sweep.ts",
     "check:tile-mattes": "tsx scripts/sprites/check-tile-seams.ts",
     "sprites:derive-opaque-bounds": "tsx scripts/sprites/derive-opaque-bounds.ts",
-    "security:exact-deps": "node scripts/agent/security/check-exact-deps.mjs"
+    "security:exact-deps": "node scripts/agent/security/check-exact-deps.mjs",
+    "security:lock-integrity": "node scripts/agent/security/check-lock-integrity.mjs"
   },
   "keywords": [
     "game",

@@ -18,6 +18,7 @@ import {
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
   isTrainFastPathPushRun,
+  requiresAdminIntervention,
   isTrustedTrainPromotionCheck,
   makeState,
   reviewThreadBlockerId,
@@ -1620,4 +1621,68 @@ test('parseDispositionCommand: green CI or other-author text does NOT unlock', (
   // author; the caller (workflow) must gate on author identity separately.
   assert.equal(parseDispositionCommand('All checks passed'), null);
   assert.equal(parseDispositionCommand('✅ CI green'), null);
+});
+
+test('requiresAdminIntervention: parked run in an auto-retriggerable workflow needs no admin', () => {
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'action_required',
+    }),
+    false,
+  );
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'Security Review Loop',
+      path: '.github/workflows/security-review.yml',
+      conclusion: 'action_required',
+    }),
+    false,
+  );
+});
+
+test('requiresAdminIntervention: classification follows path, not the display name', () => {
+  // A renamed required workflow keeps its automatic retrigger eligibility.
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'Continuous Integration',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'action_required',
+    }),
+    false,
+  );
+  // An unrelated workflow that merely calls itself "CI" does not inherit it.
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/nightly-sweep.yml',
+      conclusion: 'action_required',
+    }),
+    true,
+  );
+});
+
+test('requiresAdminIntervention: startup failures always need admin intervention', () => {
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'startup_failure',
+    }),
+    true,
+  );
+});
+
+test('requiresAdminIntervention: ordinary failures do not need admin intervention', () => {
+  assert.equal(
+    requiresAdminIntervention({
+      name: 'CI',
+      path: '.github/workflows/ci.yml',
+      conclusion: 'failure',
+    }),
+    false,
+  );
+  assert.equal(requiresAdminIntervention({}), false);
+  assert.equal(requiresAdminIntervention(null), false);
 });
