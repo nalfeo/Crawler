@@ -1,0 +1,20 @@
+{
+  "name": "crawler-dev-build-ingest",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/functions": "4.9.0",
+    "@azure/storage-blob": "12.32.0"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.1",
+    "typescript": "6.0.3"
+  }
+}

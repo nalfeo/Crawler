@@ -84,6 +84,50 @@ resource generatedRunsContainer 'Microsoft.Storage/storageAccounts/blobServices/
   }
 }
 
+resource playtestRunsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: blobService
+  name: 'playtest-runs'
+  properties: {
+    publicAccess: 'None'
+    metadata: {
+      purpose: 'Dev-build run bundles, feedback surveys, and optional screenshots.'
+    }
+  }
+}
+
+resource storageLifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2022-09-01' = {
+  parent: storageAccount
+  name: 'default'
+  properties: {
+    policy: {
+      rules: [
+        {
+          name: 'expire-rate-limit-markers'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: {
+              blobTypes: [
+                'blockBlob'
+              ]
+              prefixMatch: [
+                'playtest-runs/rate-limit/'
+              ]
+            }
+            actions: {
+              baseBlob: {
+                delete: {
+                  daysAfterModificationGreaterThan: 1
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
 // ── Queue Service ─────────────────────────────────────────────────────────────
 
 resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-01-01' = {
@@ -114,6 +158,9 @@ output queueEndpoint string = storageAccount.properties.primaryEndpoints.queue
 
 @description('Generated-runs blob container name.')
 output generatedRunsContainerName string = generatedRunsContainer.name
+
+@description('Dev-build ingest blob container name.')
+output playtestRunsContainerName string = playtestRunsContainer.name
 
 @description('Asset-requests queue name.')
 output assetRequestQueueName string = assetRequestQueue.name
