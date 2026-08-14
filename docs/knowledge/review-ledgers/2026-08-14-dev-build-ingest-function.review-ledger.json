@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "dev-build-ingest-function",
+  "task_title": "Azure dev-build ingest and issue proxy",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 11,
+      "resolved_count": 11,
+      "plan_divergence": "convergent",
+      "notes": "Reviewed the implemented plan; addressed request caps, exact configurable CORS, PNG validation, scoped PAT documentation, retry-safe issue claim markers, lifecycle cleanup, AzureWebJobsStorage, and function workspace verification. APIM/queue alternatives were considered but rejected as unnecessary for this single-hop low-volume endpoint."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
