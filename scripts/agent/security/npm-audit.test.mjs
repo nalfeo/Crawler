@@ -379,13 +379,13 @@ test('reports every matched exception in the success diagnostic', (t) => {
     reason: 'Synthetic fixture for CLI diagnostic coverage.',
   };
   const scriptSource = readFileSync(SCRIPT, 'utf8');
-  writeFileSync(
-    tempScript,
-    scriptSource.replace(
-      'export const AUDIT_EXCEPTIONS = [];',
-      `export const AUDIT_EXCEPTIONS = ${JSON.stringify([injectedException], null, 2)};`,
-    ),
+  const auditExceptionsPattern = /export const AUDIT_EXCEPTIONS = \[[\s\S]*?\];/;
+  const replacedScript = scriptSource.replace(
+    auditExceptionsPattern,
+    `export const AUDIT_EXCEPTIONS = ${JSON.stringify([injectedException], null, 2)};`,
   );
+  assert.notEqual(replacedScript, scriptSource, 'expected AUDIT_EXCEPTIONS declaration to exist');
+  writeFileSync(tempScript, replacedScript);
   writeFileSync(
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
