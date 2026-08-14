@@ -369,7 +369,23 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+  const tempScript = path.join(tempDir, 'npm-audit.mjs');
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
+  const injectedException = {
+    packageName: 'brace-expansion',
+    source: 1130591,
+    url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+    expiresOn: '2099-12-31',
+    reason: 'Synthetic fixture for CLI diagnostic coverage.',
+  };
+  const scriptSource = readFileSync(SCRIPT, 'utf8');
+  const auditExceptionsPattern = /export const AUDIT_EXCEPTIONS = \[[\s\S]*?\];/;
+  const replacedScript = scriptSource.replace(
+    auditExceptionsPattern,
+    `export const AUDIT_EXCEPTIONS = ${JSON.stringify([injectedException], null, 2)};`,
+  );
+  assert.notEqual(replacedScript, scriptSource, 'expected AUDIT_EXCEPTIONS declaration to exist');
+  writeFileSync(tempScript, replacedScript);
   writeFileSync(
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
@@ -398,7 +414,6 @@ test('reports every matched exception in the success diagnostic', (t) => {
       )};`,
     ),
   );
-
   const result = spawnSync(process.execPath, [scriptCopy, '--audit-level=high'], {
     cwd: tempDir,
     encoding: 'utf8',
