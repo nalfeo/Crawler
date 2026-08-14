@@ -67,6 +67,13 @@ test('evaluatePrereqs skips ledger for docs-only changes', () => {
   assert.match(r.notes.join('\n'), /review ledger not required|docs\/art\/deps-only/);
 });
 
+test('evaluatePrereqs passes docs-update INDEX changes through to preflight', () => {
+  const r = evaluatePrereqs(['docs/knowledge/handoffs/INDEX.md'], [], '.', {
+    currentBranch: 'automation/docs-update',
+  });
+  assert.equal(r.ok, true);
+});
+
 test('inferTelemetrySessionSlug prefers the handoff slug when present', () => {
   assert.equal(
     inferTelemetrySessionSlug(
