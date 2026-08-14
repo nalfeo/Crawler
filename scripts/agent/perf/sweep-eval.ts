@@ -68,9 +68,12 @@ import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../../src/game/ai/floor1-run-budget.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { AIDecisionMode, AIPathingMode, type RunStats } from '../../../src/game/ai/types.js';
-import { GAME } from '../../../src/shared/constants.js';
 import {
   LEGACY_COMBO_ID,
   type Combo,
@@ -107,9 +110,9 @@ import {
 import { parseNonNegativeInt, parsePositiveInt, parseSeeds } from './winrate-sweep-args.js';
 
 /** Floor 1 design win budget: 6 minutes of game time. The SSOT win threshold. */
-const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
+const FLOOR1_TIME_BUDGET_MS = FLOOR1_ACTIVE_TIME_BUDGET_MS;
 /** Slack frame budget (≈1.1× the win budget) so a near-6-min clear isn't cut mid-run. */
-const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 /** Hard wall-time cap per run so a pathological config can't hang a job forever. */
 const WALL_CAP_MS = 20 * 60 * 1000;
 

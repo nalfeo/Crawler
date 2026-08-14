@@ -208,7 +208,6 @@ import {
   FARM_FORWARD_SCAN_RADIUS_FT,
   FARM_FORWARD_DOT_MIN,
   FARM_MIN_HEALTH_FRACTION,
-  FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS,
   PANIC_BEELINE_REMAINING_MS,
   PANIC_RAMP_START_REMAINING_MS,
   PANIC_LOCKED_STAIRS_MULTIPLIER,
@@ -278,6 +277,7 @@ import {
   LOOT_SWEEP_PANIC_THRESHOLD,
   LOOT_SWEEP_RADIUS_FT,
 } from './bt-ai-tuning.js';
+import { resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs } from './floor1-run-budget.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
 import { computeFloorProgressScore } from './scoring.js';
@@ -588,7 +588,7 @@ export interface CollapsePanicProfile {
 }
 
 export function resolveFloor1AiCollapsePanicDeadlineMs(objectiveDeadlineMs: number): number {
-  return Math.min(objectiveDeadlineMs, FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS);
+  return resolveConfiguredFloor1PlanningDeadlineMs(objectiveDeadlineMs);
 }
 
 export function computeCollapsePanicProfile(
@@ -767,6 +767,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
   private lastRunPlan: Floor1RunPlan | null = null;
+  private runnerPlanningDeadlineMs: number | null = null;
   private merchantDecisionRunPlan: Floor1RunPlan | null = null;
   private merchantDecisionRunPlanFrame: number = -Infinity;
   /**
@@ -819,6 +820,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
   private retreatThreatEid: number | null = null;
+  private localThreatRecoveryEid: number | null = null;
+  private localThreatRecoveryMap: FloorMap | null = null;
+  private localThreatRecoveryStartFrame: number | null = null;
+  private localThreatRecoveryBestHealth: number | null = null;
   private rangedEmergencyRetreating: boolean = false;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
@@ -1066,6 +1071,31 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.tree = this.buildTree();
   }
 
+  configurePlanningDeadlineMs(deadlineMs: number | null): void {
+    if (deadlineMs !== null && (!Number.isFinite(deadlineMs) || deadlineMs < 0)) {
+      throw new Error(
+        `Invalid runner planning deadline "${String(deadlineMs)}": expected null or a finite non-negative number.`,
+      );
+    }
+    if (deadlineMs === this.runnerPlanningDeadlineMs) {
+      return;
+    }
+    this.runnerPlanningDeadlineMs = deadlineMs;
+    this.floor1MiddleChainCache = null;
+    this.runPlanCacheKey = null;
+    this.runPlanCache = null;
+    this.lastRunPlan = null;
+    this.merchantDecisionRunPlan = null;
+    this.merchantDecisionRunPlanFrame = -Infinity;
+  }
+
+  resolveFloor1PlanningDeadlineMs(objectiveDeadlineMs: number): number {
+    return resolveConfiguredFloor1PlanningDeadlineMs(
+      objectiveDeadlineMs,
+      this.runnerPlanningDeadlineMs,
+    );
+  }
+
   /**
    * Build the behavior tree structure.
    *
@@ -1105,6 +1135,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // when the staircase is unlocked but not yet discovered, so it cannot
         // interfere with any in-progress objective.
         this.buildLootSweepBehavior('pre-exit'),
+        this.buildLocalThreatRecoveryBehavior(),
         // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
         // Priority 3.5: Leave a safe room when enemies are present.
@@ -1141,6 +1172,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       world &&
       this.retreating &&
       this.retreatThreatEid !== null &&
+      (this.localThreatRecoveryEid !== this.retreatThreatEid ||
+        !this.isLocalThreatRecoveryInRange(world, this.retreatThreatEid)) &&
       this.getPlayerHealthFraction(world) < this.config.retreatThreshold
     ) {
       this.ignoredEnemyUntilFrame.set(
@@ -1153,6 +1186,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
+  }
+
+  private isLocalThreatRecoveryInRange(world: GameWorld, enemyEid: number): boolean {
+    const playerEid = query(world.ecs, [Player, Position])[0];
+    if (playerEid === undefined || !hasComponent(world.ecs, enemyEid, Position)) {
+      return false;
+    }
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+    const enemyX = world.stores.position.x[enemyEid] ?? 0;
+    const enemyY = world.stores.position.y[enemyEid] ?? 0;
+    return Math.hypot(enemyX - playerX, enemyY - playerY) <= this.config.scanRadius;
   }
 
   private buildRetreatBehavior(): BTNode {
@@ -1218,6 +1263,15 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.rangedDefensiveSpacing = true;
         }
         this.retreatThreatEid = threat.eid;
+        if (
+          this.localThreatRecoveryEid !== threat.eid ||
+          this.localThreatRecoveryMap !== ctx.world.floorMap
+        ) {
+          this.localThreatRecoveryEid = threat.eid;
+          this.localThreatRecoveryMap = ctx.world.floorMap;
+          this.localThreatRecoveryStartFrame = null;
+          this.localThreatRecoveryBestHealth = null;
+        }
         ctx.blackboard['retreatThreat'] = threat;
         ctx.blackboard['rangedEmergencyRetreat'] = rangedEmergency;
         return true;
@@ -1259,6 +1313,86 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         this.decision.targetX = this.retreatTargetX;
         this.decision.targetY = this.retreatTargetY;
+        return BTStatus.SUCCESS;
+      }),
+    );
+  }
+
+  private clearLocalThreatRecovery(): void {
+    this.localThreatRecoveryEid = null;
+    this.localThreatRecoveryMap = null;
+    this.localThreatRecoveryStartFrame = null;
+    this.localThreatRecoveryBestHealth = null;
+  }
+
+  private buildLocalThreatRecoveryBehavior(): BTNode {
+    return sequence(
+      'LocalThreatRecovery',
+      condition('Retreat Threat Still Unresolved', (ctx) => {
+        const eid = this.localThreatRecoveryEid;
+        if (eid === null || this.localThreatRecoveryMap !== ctx.world.floorMap) {
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
+        if (ignoredUntil !== undefined) {
+          if (ignoredUntil > ctx.world.frameCount) {
+            this.clearLocalThreatRecovery();
+            return false;
+          }
+          this.ignoredEnemyUntilFrame.delete(eid);
+        }
+        if (
+          !entityExists(ctx.world.ecs, eid) ||
+          !hasComponent(ctx.world.ecs, eid, Enemy) ||
+          !hasComponent(ctx.world.ecs, eid, Position) ||
+          !hasComponent(ctx.world.ecs, eid, Health) ||
+          !isEnemyCombatEligible(ctx.world, eid)
+        ) {
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        const x = ctx.world.stores.position.x[eid] ?? 0;
+        const y = ctx.world.stores.position.y[eid] ?? 0;
+        const health = ctx.world.stores.health.current[eid] ?? 0;
+        const distance = Math.hypot(x - ctx.playerX, y - ctx.playerY);
+        const target: WorldTarget = { eid, x, y, distance };
+        if (
+          health <= 0 ||
+          distance > this.config.scanRadius ||
+          !this.canPerceiveWorldPosition(ctx.world, x, y) ||
+          (distance > DIRECT_MOVE_EPSILON_FT &&
+            !this.isTargetReachable(ctx.world, ctx.playerX, ctx.playerY, target))
+        ) {
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        if (
+          this.localThreatRecoveryBestHealth === null ||
+          health < this.localThreatRecoveryBestHealth
+        ) {
+          this.localThreatRecoveryBestHealth = health;
+          this.localThreatRecoveryStartFrame = ctx.world.frameCount;
+        } else if (
+          this.localThreatRecoveryStartFrame !== null &&
+          ctx.world.frameCount - this.localThreatRecoveryStartFrame >
+            NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES
+        ) {
+          this.ignoredEnemyUntilFrame.set(eid, ctx.world.frameCount + ENEMY_IGNORE_FRAMES);
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        ctx.blackboard['localThreatRecoveryTarget'] = target;
+        return true;
+      }),
+      action('Resolve Retreat Threat', (ctx) => {
+        const target = ctx.blackboard['localThreatRecoveryTarget'] as WorldTarget;
+        const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, target);
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        this.decision.targetX = plan.targetX;
+        this.decision.targetY = plan.targetY;
+        this.decision.reason = `Resolving retreat threat before progression — ${plan.reason}`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -2751,6 +2885,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       return;
     }
 
+    // Local retreat-threat recovery owns this ENGAGE target and has its own
+    // HP-loss watchdog budget (NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES).
+    // Keep the generic ENGAGE watchdog from pre-empting that budget.
+    if (this.localThreatRecoveryEid === eid) {
+      this.engageNoProgressFrames = 0;
+      this.engageBaselinesByEid.delete(eid);
+      return;
+    }
+
     // Inside a safe room the weapon is hard-disabled, so the player can neither
     // close the final ft nor drop the enemy's HP. That is not "unreachable" —
     // the LeaveSafeRoom behavior is actively walking the player out. Resetting
@@ -3304,6 +3447,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
+    this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
@@ -3876,7 +4020,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     return computeCollapsePanicProfile({
       elapsedMs: world.elapsedMs,
-      deadlineMs: resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       staircaseUnlocked: objective.staircaseUnlocked,
       staircaseDiscovered: objective.staircaseDiscovered,
       playerToStairsTravelMs: this.lastPlayerToStairsTravelMs,
@@ -4276,7 +4420,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           : null;
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       player: { x: playerX, y: playerY },
       currentTarget,
       activeQuestGiverDetour: committedDetourEid !== null && committedDetourAnchor !== null,
@@ -6256,7 +6400,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       player: { x: playerX, y: playerY },
       currentTarget: null,
       activeQuestGiverDetour: false,
@@ -8815,6 +8959,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
     this.retreatThreatEid = null;
+    this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
