@@ -71,7 +71,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['.github/scripts/*.mjs', '.github/scripts/**/*.mjs'],
+    files: ['.github/scripts/*.mjs', '.github/scripts/**/*.mjs', 'scripts/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
