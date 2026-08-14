@@ -1,5 +1,39 @@
 [
   {
+    "commit": "08445480799ecdb1fd0621b0b738907b51179d89",
+    "commitDate": "2026-08-14T22:01:14Z",
+    "commitSubject": "perf(ci): wire GH Actions PR/release sweep workflows to prebundle launcher (#2920)",
+    "capturedAt": "2026-08-14T23:13:42.622Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31846073621",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/08445480799ecdb1fd0621b0b738907b51179d89.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04666666666666667,
+        "totalWins": 7,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.03,
+      "gatePass": false,
+      "path": "by-sha/08445480799ecdb1fd0621b0b738907b51179d89.fun-report.json"
+    }
+  },
+  {
     "commit": "ea82acac22fb1578a670b2979ddd450f94f0b974",
     "commitDate": "2026-08-14T20:30:05Z",
     "commitSubject": "fix: report every Floor 1 release loss (#2919)",
