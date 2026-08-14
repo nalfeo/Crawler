@@ -86,11 +86,47 @@ const isTrainFastPathSuccess =
   run.name === 'CI' &&
   hasTrustedTrainPromotionCheck(headCheckRuns, trustedAppId);
 
+async function deployRunActuallyReleased() {
+  if (run.name !== 'Deploy to GitHub Pages') {
+    return true;
+  }
+  if (!run.id) {
+    process.stdout.write(
+      `skip auto-close workflow=${run.name} reason=missing-run-id (cannot prove deploy job succeeded)\n`,
+    );
+    return false;
+  }
+  const jobs =
+    (
+      await request(
+        token,
+        `/repos/${owner}/${repo}/actions/runs/${encodeURIComponent(run.id)}/jobs?per_page=100`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+      )
+    ).data.jobs || [];
+  const deployJob = jobs.find((job) => job.name === 'deploy');
+  const deploymentStepSucceeded = deployJob?.steps?.some(
+    (step) =>
+      ['Deploy to GitHub Pages', 'Deploy to GitHub Pages (retry)'].includes(step.name) &&
+      step.conclusion === 'success',
+  );
+  if (deployJob?.conclusion === 'success' && deploymentStepSucceeded) {
+    return true;
+  }
+  process.stdout.write(
+    `skip auto-close workflow=${run.name} reason=pages-deploy-not-success job-conclusion=${deployJob?.conclusion || 'missing'} deployment-step-succeeded=${deploymentStepSucceeded || false}\n`,
+  );
+  return false;
+}
+
 if (run.conclusion === 'success') {
   if (isTrainFastPathSuccess) {
     process.stdout.write(
       `skip auto-close workflow=${run.name} reason=train-fast-path-success (docs_only shortcut is not full-CI evidence)\n`,
     );
+    process.exit(0);
+  }
+  if (!(await deployRunActuallyReleased())) {
     process.exit(0);
   }
   if (existing) {
