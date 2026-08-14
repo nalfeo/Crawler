@@ -3961,8 +3961,8 @@ export class MainGameScene extends Phaser.Scene {
     this.gameOverUI?.show();
   }
 
-  private emitRunBundle(endReason: RunEndReason, allowAfterBundle = false): void {
-    if ((this.runBundleEmitted && !allowAfterBundle) || !this.options.runStatsFactory) {
+  private emitRunBundle(endReason: RunEndReason): void {
+    if (this.runBundleEmitted || !this.options.runStatsFactory) {
       return;
     }
     const outcome =
