@@ -392,12 +392,37 @@ test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the 
 
 function fakeApi({ existing = [] } = {}) {
   const calls = [];
+  const graphqlCalls = [];
   return {
     calls,
+    graphqlCalls,
     paginate: async () => existing,
+    graphql: async (token, query, variables) => {
+      graphqlCalls.push({ token, query, variables });
+      if (query.includes('suggestedActors')) {
+        return {
+          repository: {
+            suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+            issue: {
+              id: 'ISSUE_4242',
+              state: 'OPEN',
+              assignees: { nodes: [] },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          replaceActorsForAssignable: {
+            assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+          },
+        };
+      }
+      throw new Error(`Unexpected GraphQL query: ${query}`);
+    },
     request: async (_token, path, options = {}) => {
       calls.push({ path, method: options.method || 'GET', body: options.body });
-      return { data: { number: 4242 } };
+      return { data: { number: 4242, node_id: 'ISSUE_4242' } };
     },
   };
 }
@@ -423,6 +448,10 @@ test('reconcileHarvestIncident creates a labelled incident when stalled', async 
   const post = api.calls.find((call) => call.method === 'POST');
   assert.equal(post.body.title, HARVEST_INCIDENT_TITLE);
   assert.deepEqual(post.body.labels, [HARVEST_INCIDENT_LABEL]);
+  assert.equal(
+    api.graphqlCalls.filter((call) => call.query.includes('replaceActorsForAssignable')).length,
+    1,
+  );
 });
 
 test('reconcileHarvestIncident updates rather than duplicating an existing incident', async () => {
