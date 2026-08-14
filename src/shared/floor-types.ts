@@ -88,6 +88,8 @@ export interface FloorScenarioState {
   starterWeaponPool: readonly string[];
   starterChoices: string[];
   offeredRewardSpellIds?: Floor1BossRewardSpellId[];
+  /** Deterministic Floor 1 Spell Broker stock; each offer is single-purchase. */
+  spellBrokerOffers?: Floor1SpellBrokerOffer[];
   selectedWeaponId: string | null;
   selectedChoiceIndex: number | null;
   baseStatBonuses: {
@@ -135,6 +137,12 @@ export interface FloorScenarioState {
   objective: FloorObjectiveState;
   failReason: 'stair_timeout' | null;
   runSummary: FloorRunSummary | null;
+}
+
+export interface Floor1SpellBrokerOffer {
+  readonly spellId: Floor1BossRewardSpellId;
+  readonly cost: number;
+  purchased: boolean;
 }
 
 /**

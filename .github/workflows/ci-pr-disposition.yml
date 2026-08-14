@@ -103,41 +103,41 @@ jobs:
               } else {
                 await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
               }
+            }
 
-              async function ensureLabel(name) {
+            async function ensureLabel(name) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
                 try {
-                  await github.rest.issues.getLabel({ owner, repo, name });
-                } catch (error) {
-                  if (error.status !== 404) throw error;
-                  try {
-                    await github.rest.issues.createLabel({
-                      owner,
-                      repo,
-                      name,
-                      color: LABEL_COLORS[name] || '8b949e',
-                    });
-                  } catch (createError) {
-                    if (createError.status !== 422) throw createError;
-                  }
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name,
+                    color: LABEL_COLORS[name] || '8b949e',
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) throw createError;
                 }
               }
+            }
 
-              async function ensureDispositionLabels() {
-                for (const label of REQUIRED_DISPOSITION_LABELS) {
-                  await ensureLabel(label);
-                }
+            async function ensureDispositionLabels() {
+              for (const label of REQUIRED_DISPOSITION_LABELS) {
+                await ensureLabel(label);
               }
+            }
 
-              async function addLabelStrict(prNumber, label) {
-                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
-              }
+            async function addLabelStrict(prNumber, label) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+            }
 
-              async function removeLabelBestEffort(prNumber, label) {
-                try {
-                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
-                } catch (error) {
-                  if (error.status !== 404) throw error;
-                }
+            async function removeLabelBestEffort(prNumber, label) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+              } catch (error) {
+                if (error.status !== 404) throw error;
               }
             }
 
@@ -782,67 +782,67 @@ jobs:
               } else {
                 await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
               }
+            }
 
-              async function ensureLabel(name) {
+            async function ensureLabel(name) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
                 try {
-                  await github.rest.issues.getLabel({ owner, repo, name });
-                } catch (error) {
-                  if (error.status !== 404) throw error;
-                  try {
-                    await github.rest.issues.createLabel({
-                      owner,
-                      repo,
-                      name,
-                      color: LABEL_COLORS[name] || '8b949e',
-                    });
-                  } catch (createError) {
-                    if (createError.status !== 422) throw createError;
-                  }
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name,
+                    color: LABEL_COLORS[name] || '8b949e',
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) throw createError;
                 }
               }
+            }
 
-              async function ensureDispositionLabels() {
-                for (const label of REQUIRED_DISPOSITION_LABELS) {
-                  await ensureLabel(label);
-                }
+            async function ensureDispositionLabels() {
+              for (const label of REQUIRED_DISPOSITION_LABELS) {
+                await ensureLabel(label);
               }
+            }
 
-              async function addLabelStrict(prNumber, label) {
-                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+            async function addLabelStrict(prNumber, label) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+            }
+
+            async function removeLabelBestEffort(prNumber, label) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+              } catch (error) {
+                if (error.status !== 404) throw error;
               }
+            }
 
-              async function removeLabelBestEffort(prNumber, label) {
-                try {
-                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
-                } catch (error) {
-                  if (error.status !== 404) throw error;
-                }
+            function isTrustedLifecycleComment(comment) {
+              const assoc = String(comment.author_association || '').toUpperCase();
+              if (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(assoc)) return true;
+              const appId = Number(comment.performed_via_github_app?.id || 0);
+              return TRUSTED_LIFECYCLE_APP_IDS.has(appId);
+            }
+
+            function parseCurrentLifecycleRecord(comments, prNumber) {
+              const lifecycleComments = comments.filter(
+                (comment) =>
+                  String(comment.body || '').includes(LIFECYCLE_MARKER) &&
+                  isTrustedLifecycleComment(comment),
+              );
+              if (lifecycleComments.length > 1) {
+                core.warning(`quarantine-skip pr=#${prNumber} reason=multiple-trusted-lifecycle-comments`);
+                return { blocked: true, record: null };
               }
-
-              function isTrustedLifecycleComment(comment) {
-                const assoc = String(comment.author_association || '').toUpperCase();
-                if (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(assoc)) return true;
-                const appId = Number(comment.performed_via_github_app?.id || 0);
-                return TRUSTED_LIFECYCLE_APP_IDS.has(appId);
-              }
-
-              function parseCurrentLifecycleRecord(comments, prNumber) {
-                const lifecycleComments = comments.filter(
-                  (comment) =>
-                    String(comment.body || '').includes(LIFECYCLE_MARKER) &&
-                    isTrustedLifecycleComment(comment),
-                );
-                if (lifecycleComments.length > 1) {
-                  core.warning(`quarantine-skip pr=#${prNumber} reason=multiple-trusted-lifecycle-comments`);
-                  return { blocked: true, record: null };
-                }
-                if (lifecycleComments.length === 0) return { blocked: false, record: null };
-                try {
-                  return { blocked: false, record: parseLifecycleComment(lifecycleComments[0].body) };
-                } catch (error) {
-                  core.warning(`quarantine-skip pr=#${prNumber} reason=invalid-lifecycle-comment message=${error.message}`);
-                  return { blocked: true, record: null };
-                }
+              if (lifecycleComments.length === 0) return { blocked: false, record: null };
+              try {
+                return { blocked: false, record: parseLifecycleComment(lifecycleComments[0].body) };
+              } catch (error) {
+                core.warning(`quarantine-skip pr=#${prNumber} reason=invalid-lifecycle-comment message=${error.message}`);
+                return { blocked: true, record: null };
               }
             }
 
@@ -1035,41 +1035,41 @@ jobs:
               } else {
                 await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
               }
+            }
 
-              async function ensureLabel(name) {
+            async function ensureLabel(name) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
                 try {
-                  await github.rest.issues.getLabel({ owner, repo, name });
-                } catch (error) {
-                  if (error.status !== 404) throw error;
-                  try {
-                    await github.rest.issues.createLabel({
-                      owner,
-                      repo,
-                      name,
-                      color: LABEL_COLORS[name] || '8b949e',
-                    });
-                  } catch (createError) {
-                    if (createError.status !== 422) throw createError;
-                  }
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name,
+                    color: LABEL_COLORS[name] || '8b949e',
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) throw createError;
                 }
               }
+            }
 
-              async function ensureDispositionLabels() {
-                for (const label of REQUIRED_DISPOSITION_LABELS) {
-                  await ensureLabel(label);
-                }
+            async function ensureDispositionLabels() {
+              for (const label of REQUIRED_DISPOSITION_LABELS) {
+                await ensureLabel(label);
               }
+            }
 
-              async function addLabelStrict(prNumber, label) {
-                await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
-              }
+            async function addLabelStrict(prNumber, label) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: prNumber, labels: [label] });
+            }
 
-              async function removeLabelBestEffort(prNumber, label) {
-                try {
-                  await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
-                } catch (error) {
-                  if (error.status !== 404) throw error;
-                }
+            async function removeLabelBestEffort(prNumber, label) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: prNumber, name: label });
+              } catch (error) {
+                if (error.status !== 404) throw error;
               }
             }
 

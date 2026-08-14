@@ -22,6 +22,9 @@ import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
+import { pushAbilityActivationEvent } from '../../shared/ability-activation-events.js';
+import { getAbilityPresentation } from '../../shared/ability-presentation.js';
+import { getSpellSkillId } from '../../shared/spell-skills.js';
 
 export type AbilityGrantErrorCode =
   | 'invalid-source'
@@ -706,16 +709,19 @@ export function forceActivateAbility(
   const cooldownFrames = getEffectiveAbilityCooldownFrames(world, holderEid, def.cooldownFrames);
   state.cooldownByAbilityId.set(abilityId, world.frameCount);
   state.cooldownFramesByAbilityId.set(abilityId, cooldownFrames);
+
+  emitAbilityActivationAnnouncement(world, holderEid, abilityId);
+  emitSpellUsageEvent(world, holderEid, def.kind === 'spell' ? abilityId : undefined);
   return true;
 }
 
-function activateAbility(world: GameWorld, holderEid: number, abilityId: string): void {
+function activateAbility(world: GameWorld, holderEid: number, abilityId: string): boolean {
   const state = world.abilityStatesByEntity.get(holderEid);
   const def = getAbilityDefinition(abilityId);
-  if (state === undefined || def === undefined || def.kind === 'passive') return;
+  if (state === undefined || def === undefined || def.kind === 'passive') return false;
 
   if (def.kind === 'spell' && !world.featureUnlocks.spells) {
-    return;
+    return false;
   }
 
   const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
@@ -723,7 +729,7 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
     state.cooldownFramesByAbilityId.get(abilityId) ??
     getEffectiveAbilityCooldownFrames(world, holderEid, def.cooldownFrames);
   if (world.frameCount - lastTriggerFrame < cooldownFramesForGate) {
-    return;
+    return false;
   }
 
   removeStatModifiers(world, 'ability', `${abilityId}:active:${holderEid}`);
@@ -742,6 +748,54 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
   );
   state.cooldownByAbilityId.set(abilityId, world.frameCount);
   state.cooldownFramesByAbilityId.set(abilityId, cooldownFramesForNewWindow);
+
+  emitAbilityActivationAnnouncement(world, holderEid, abilityId);
+  emitSpellUsageEvent(world, holderEid, def.kind === 'spell' ? abilityId : undefined);
+  return true;
+}
+
+/** Spell skills advance only after a gated activation actually succeeded. */
+function emitSpellUsageEvent(world: GameWorld, holderEid: number, spellId?: string): void {
+  if (spellId === undefined || !hasComponent(world.ecs, holderEid, Player)) return;
+  const skillId = getSpellSkillId(spellId);
+  if (skillId === undefined) return;
+  world.skillUsageEvents.push({
+    holderEid,
+    skillId,
+    metric: 'spell_used',
+    amount: 1,
+  });
+}
+
+/**
+ * Announce a *successful* active/spell activation so the player sees which
+ * ability just fired as floating text above their character (same read as a
+ * damage number). Player-only by design: mob/boss activations would clutter the
+ * screen and are already telegraphed by their own VFX. Cosmetic-only — the
+ * queue is never read by game logic, so headless/AI runs are unaffected.
+ */
+function emitAbilityActivationAnnouncement(
+  world: GameWorld,
+  holderEid: number,
+  abilityId: string,
+): void {
+  if (!hasComponent(world.ecs, holderEid, Player)) return;
+
+  const def = getAbilityDefinition(abilityId);
+  if (def === undefined || def.kind === 'passive') return;
+
+  const presentation = getAbilityPresentation(abilityId);
+
+  pushAbilityActivationEvent(world.abilityActivations, {
+    abilityId,
+    label: presentation?.name ?? def.name,
+    kind: def.kind,
+    category: presentation?.category ?? def.category,
+    holderEid,
+    x: world.stores.position.x[holderEid] ?? 0,
+    y: world.stores.position.y[holderEid] ?? 0,
+    elapsedMs: world.elapsedMs,
+  });
 }
 
 /**

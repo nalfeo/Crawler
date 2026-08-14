@@ -15,6 +15,7 @@ export function spawnXpGem(
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(XpGem, { value }));
+  world.lootLedger.xpSpawned += value;
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
   addComponent(
     world.ecs,
@@ -42,6 +43,7 @@ export function spawnGold(
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Gold, { value }));
+  world.lootLedger.goldSpawned += value;
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
   addComponent(
     world.ecs,

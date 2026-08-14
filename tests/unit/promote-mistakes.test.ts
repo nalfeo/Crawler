@@ -62,6 +62,18 @@ describe('summarizeMistakes', () => {
     );
   });
 
+  it('joins wrapped continuation lines with a space, not a semicolon', () => {
+    // Simulates a Markdown bullet whose text soft-wraps over multiple lines.
+    expect(
+      summarizeMistakes([
+        '- First item wraps',
+        '  onto the next line.',
+        '- Second item also',
+        '  continues here.',
+      ]),
+    ).toBe('First item wraps onto the next line.; Second item also continues here.');
+  });
+
   it('truncates overly long summaries on a word boundary with an ellipsis', () => {
     const long = 'word '.repeat(200).trim();
     const out = summarizeMistakes([long]);
@@ -129,6 +141,25 @@ describe('upsertEntity', () => {
     const next = upsertEntity(records, fresh);
     expect(next.map((r) => r.type)).toEqual(['entity', 'entity', 'relation']);
     expect(next[1]).toBe(fresh);
+  });
+
+  it('collapses duplicate entities: only the first match is replaced, extras are dropped', () => {
+    const dup: Entity = {
+      type: 'entity',
+      name: 'Session_Mistakes',
+      entityType: 'lessons',
+      observations: ['old'],
+    };
+    const records: MemoryRecord[] = [
+      dup,
+      { ...dup }, // second copy — simulates a corrupted JSONL
+      { type: 'relation', from: 'a', to: 'b', relationType: 'r' },
+    ];
+    const updated: Entity = { ...dup, observations: ['old', 'new'] };
+    const next = upsertEntity(records, updated);
+    expect(next).toHaveLength(2);
+    expect(next[0]).toBe(updated);
+    expect(next[1]).toBe(records[2]);
   });
 
   it('is idempotent: re-upserting the same entity yields an equivalent layout', () => {

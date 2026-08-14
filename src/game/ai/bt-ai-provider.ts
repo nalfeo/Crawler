@@ -208,7 +208,6 @@ import {
   FARM_FORWARD_SCAN_RADIUS_FT,
   FARM_FORWARD_DOT_MIN,
   FARM_MIN_HEALTH_FRACTION,
-  FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS,
   PANIC_BEELINE_REMAINING_MS,
   PANIC_RAMP_START_REMAINING_MS,
   PANIC_LOCKED_STAIRS_MULTIPLIER,
@@ -272,10 +271,13 @@ import {
   TRAVEL_W_FARM,
   TRAVEL_LOOT_LOOKAHEAD_FT,
   TRAVEL_LOOT_CORRIDOR_FT,
+  TRAVEL_LOOT_SNAP_FT,
   TRAVEL_REL_SPEED_EPSILON_SQ,
   TRAVEL_COLLECT_MIN_STEER_DIST_FT,
-  XP_SWEEP_PANIC_THRESHOLD,
+  LOOT_SWEEP_PANIC_THRESHOLD,
+  LOOT_SWEEP_RADIUS_FT,
 } from './bt-ai-tuning.js';
+import { resolveFloor1PlanningDeadlineMs as resolveConfiguredFloor1PlanningDeadlineMs } from './floor1-run-budget.js';
 // Floor-progress scoring + its weight live in ./scoring.ts (re-exported below so
 // this module's public surface is unchanged).
 import { computeFloorProgressScore } from './scoring.js';
@@ -301,6 +303,7 @@ import {
   type RunPlannerParams,
 } from './run-planner.js';
 import { getMerchantWeaponIntent, updateMerchantWeaponIntent } from './merchant-weapon-intent.js';
+import { getSpellBrokerIntent, updateSpellBrokerIntent } from './spell-broker-intent.js';
 import {
   getSettlementReturnIntent,
   isSettlementReturnRoutingEnabled,
@@ -466,6 +469,7 @@ const TRAVEL_PARAMS: TravelSteeringParams = {
   wFarm: TRAVEL_W_FARM,
   lootLookaheadFt: TRAVEL_LOOT_LOOKAHEAD_FT,
   lootCorridorFt: TRAVEL_LOOT_CORRIDOR_FT,
+  lootSnapFt: TRAVEL_LOOT_SNAP_FT,
   relSpeedEpsilonSq: TRAVEL_REL_SPEED_EPSILON_SQ,
 };
 
@@ -584,7 +588,7 @@ export interface CollapsePanicProfile {
 }
 
 export function resolveFloor1AiCollapsePanicDeadlineMs(objectiveDeadlineMs: number): number {
-  return Math.min(objectiveDeadlineMs, FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS);
+  return resolveConfiguredFloor1PlanningDeadlineMs(objectiveDeadlineMs);
 }
 
 export function computeCollapsePanicProfile(
@@ -763,6 +767,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * recent poll). Exposed via {@link getTravelSteeringDebug} for tests/telemetry. */
   private lastTravelSteering: TravelSteeringResult | null = null;
   private lastRunPlan: Floor1RunPlan | null = null;
+  private runnerPlanningDeadlineMs: number | null = null;
   private merchantDecisionRunPlan: Floor1RunPlan | null = null;
   private merchantDecisionRunPlanFrame: number = -Infinity;
   /**
@@ -815,6 +820,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
   private retreatThreatEid: number | null = null;
+  private localThreatRecoveryEid: number | null = null;
+  private localThreatRecoveryMap: FloorMap | null = null;
+  private localThreatRecoveryStartFrame: number | null = null;
+  private localThreatRecoveryBestHealth: number | null = null;
   private rangedEmergencyRetreating: boolean = false;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
@@ -1043,7 +1052,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * (avoiding zig-zag from re-sorting distance order each tick). Cleared when
    * the entity is collected, becomes unreachable, or the sweep window closes.
    */
-  private xpSweepTargetEid: number | null = null;
+  private lootSweepTargetEid: number | null = null;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1060,6 +1069,31 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Build the behavior tree
     this.tree = this.buildTree();
+  }
+
+  configurePlanningDeadlineMs(deadlineMs: number | null): void {
+    if (deadlineMs !== null && (!Number.isFinite(deadlineMs) || deadlineMs < 0)) {
+      throw new Error(
+        `Invalid runner planning deadline "${String(deadlineMs)}": expected null or a finite non-negative number.`,
+      );
+    }
+    if (deadlineMs === this.runnerPlanningDeadlineMs) {
+      return;
+    }
+    this.runnerPlanningDeadlineMs = deadlineMs;
+    this.floor1MiddleChainCache = null;
+    this.runPlanCacheKey = null;
+    this.runPlanCache = null;
+    this.lastRunPlan = null;
+    this.merchantDecisionRunPlan = null;
+    this.merchantDecisionRunPlanFrame = -Infinity;
+  }
+
+  resolveFloor1PlanningDeadlineMs(objectiveDeadlineMs: number): number {
+    return resolveConfiguredFloor1PlanningDeadlineMs(
+      objectiveDeadlineMs,
+      this.runnerPlanningDeadlineMs,
+    );
   }
 
   /**
@@ -1096,11 +1130,12 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.buildArenaLockinBehavior(),
         // Priority 2: Interact with nearby NPCs
         this.buildInteractBehavior(),
-        // Priority 2.5: Pre-exit XP sweep — collect remaining XP gems before
-        // descending the staircase. Only fires when the staircase is unlocked
-        // and no enemies are in engage range, so it can never interfere with
-        // combat or block an urgent beeline to the exit.
-        this.buildPreExitXpSweepBehavior(),
+        // Priority 2.5: Pre-exit loot sweep — collect XP/gold before descending,
+        // because the floor transition destroys every uncollected pickup. Only fires
+        // when the staircase is unlocked but not yet discovered, so it cannot
+        // interfere with any in-progress objective.
+        this.buildLootSweepBehavior('pre-exit'),
+        this.buildLocalThreatRecoveryBehavior(),
         // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
         // Priority 3.5: Leave a safe room when enemies are present.
@@ -1137,6 +1172,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       world &&
       this.retreating &&
       this.retreatThreatEid !== null &&
+      (this.localThreatRecoveryEid !== this.retreatThreatEid ||
+        !this.isLocalThreatRecoveryInRange(world, this.retreatThreatEid)) &&
       this.getPlayerHealthFraction(world) < this.config.retreatThreshold
     ) {
       this.ignoredEnemyUntilFrame.set(
@@ -1149,6 +1186,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
+  }
+
+  private isLocalThreatRecoveryInRange(world: GameWorld, enemyEid: number): boolean {
+    const playerEid = query(world.ecs, [Player, Position])[0];
+    if (playerEid === undefined || !hasComponent(world.ecs, enemyEid, Position)) {
+      return false;
+    }
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+    const enemyX = world.stores.position.x[enemyEid] ?? 0;
+    const enemyY = world.stores.position.y[enemyEid] ?? 0;
+    return Math.hypot(enemyX - playerX, enemyY - playerY) <= this.config.scanRadius;
   }
 
   private buildRetreatBehavior(): BTNode {
@@ -1214,6 +1263,15 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.rangedDefensiveSpacing = true;
         }
         this.retreatThreatEid = threat.eid;
+        if (
+          this.localThreatRecoveryEid !== threat.eid ||
+          this.localThreatRecoveryMap !== ctx.world.floorMap
+        ) {
+          this.localThreatRecoveryEid = threat.eid;
+          this.localThreatRecoveryMap = ctx.world.floorMap;
+          this.localThreatRecoveryStartFrame = null;
+          this.localThreatRecoveryBestHealth = null;
+        }
         ctx.blackboard['retreatThreat'] = threat;
         ctx.blackboard['rangedEmergencyRetreat'] = rangedEmergency;
         return true;
@@ -1255,6 +1313,86 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         this.decision.targetX = this.retreatTargetX;
         this.decision.targetY = this.retreatTargetY;
+        return BTStatus.SUCCESS;
+      }),
+    );
+  }
+
+  private clearLocalThreatRecovery(): void {
+    this.localThreatRecoveryEid = null;
+    this.localThreatRecoveryMap = null;
+    this.localThreatRecoveryStartFrame = null;
+    this.localThreatRecoveryBestHealth = null;
+  }
+
+  private buildLocalThreatRecoveryBehavior(): BTNode {
+    return sequence(
+      'LocalThreatRecovery',
+      condition('Retreat Threat Still Unresolved', (ctx) => {
+        const eid = this.localThreatRecoveryEid;
+        if (eid === null || this.localThreatRecoveryMap !== ctx.world.floorMap) {
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
+        if (ignoredUntil !== undefined) {
+          if (ignoredUntil > ctx.world.frameCount) {
+            this.clearLocalThreatRecovery();
+            return false;
+          }
+          this.ignoredEnemyUntilFrame.delete(eid);
+        }
+        if (
+          !entityExists(ctx.world.ecs, eid) ||
+          !hasComponent(ctx.world.ecs, eid, Enemy) ||
+          !hasComponent(ctx.world.ecs, eid, Position) ||
+          !hasComponent(ctx.world.ecs, eid, Health) ||
+          !isEnemyCombatEligible(ctx.world, eid)
+        ) {
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        const x = ctx.world.stores.position.x[eid] ?? 0;
+        const y = ctx.world.stores.position.y[eid] ?? 0;
+        const health = ctx.world.stores.health.current[eid] ?? 0;
+        const distance = Math.hypot(x - ctx.playerX, y - ctx.playerY);
+        const target: WorldTarget = { eid, x, y, distance };
+        if (
+          health <= 0 ||
+          distance > this.config.scanRadius ||
+          !this.canPerceiveWorldPosition(ctx.world, x, y) ||
+          (distance > DIRECT_MOVE_EPSILON_FT &&
+            !this.isTargetReachable(ctx.world, ctx.playerX, ctx.playerY, target))
+        ) {
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        if (
+          this.localThreatRecoveryBestHealth === null ||
+          health < this.localThreatRecoveryBestHealth
+        ) {
+          this.localThreatRecoveryBestHealth = health;
+          this.localThreatRecoveryStartFrame = ctx.world.frameCount;
+        } else if (
+          this.localThreatRecoveryStartFrame !== null &&
+          ctx.world.frameCount - this.localThreatRecoveryStartFrame >
+            NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES
+        ) {
+          this.ignoredEnemyUntilFrame.set(eid, ctx.world.frameCount + ENEMY_IGNORE_FRAMES);
+          this.clearLocalThreatRecovery();
+          return false;
+        }
+        ctx.blackboard['localThreatRecoveryTarget'] = target;
+        return true;
+      }),
+      action('Resolve Retreat Threat', (ctx) => {
+        const target = ctx.blackboard['localThreatRecoveryTarget'] as WorldTarget;
+        const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, target);
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        this.decision.targetX = plan.targetX;
+        this.decision.targetY = plan.targetY;
+        this.decision.reason = `Resolving retreat threat before progression — ${plan.reason}`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -2743,6 +2881,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       return;
     }
 
+    // Local retreat-threat recovery owns this ENGAGE target and has its own
+    // HP-loss watchdog budget (NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES).
+    // Keep the generic ENGAGE watchdog from pre-empting that budget.
+    if (this.localThreatRecoveryEid === eid) {
+      this.engageNoProgressFrames = 0;
+      this.engageBaselinesByEid.delete(eid);
+      return;
+    }
+
     // Inside a safe room the weapon is hard-disabled, so the player can neither
     // close the final ft nor drop the enemy's HP. That is not "unreachable" —
     // the LeaveSafeRoom behavior is actively walking the player out. Resetting
@@ -3296,6 +3443,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
+    this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
@@ -3514,6 +3662,19 @@ export class BehaviorTreeAI implements AIInputProvider {
         playerSpeedFtPerFrame,
       );
       updateMerchantWeaponIntent(world, validatedMerchantPlan, RUN_PLANNER_GOLD_FARM_MS);
+    }
+    {
+      const spellBrokerDecision = getSpellBrokerIntent(world);
+      if (spellBrokerDecision.enabled && spellBrokerDecision.shouldBuy) {
+        const validatedMerchantPlan = this.getMerchantDecisionRunPlan(
+          world,
+          playerEid,
+          playerX,
+          playerY,
+          playerSpeedFtPerFrame,
+        );
+        updateSpellBrokerIntent(world, validatedMerchantPlan, RUN_PLANNER_GOLD_FARM_MS);
+      }
     }
     if (!this.npcApproachThreatProgressEvaluatedThisPoll) {
       this.resetNpcApproachThreatTracking();
@@ -3855,7 +4016,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     return computeCollapsePanicProfile({
       elapsedMs: world.elapsedMs,
-      deadlineMs: resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       staircaseUnlocked: objective.staircaseUnlocked,
       staircaseDiscovered: objective.staircaseDiscovered,
       playerToStairsTravelMs: this.lastPlayerToStairsTravelMs,
@@ -4255,7 +4416,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           : null;
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       player: { x: playerX, y: playerY },
       currentTarget,
       activeQuestGiverDetour: committedDetourEid !== null && committedDetourAnchor !== null,
@@ -4285,6 +4446,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         (merchantWeaponIntent.status === 'farming' || merchantWeaponIntent.status === 'returning')
           ? { status: merchantWeaponIntent.status, cost: merchantWeaponIntent.cost }
           : null,
+      spellBrokerIntent: (() => {
+        const intent = getSpellBrokerIntent(world);
+        return intent.enabled &&
+          (intent.purchaseStatus === 'farming' || intent.purchaseStatus === 'returning')
+          ? { status: intent.purchaseStatus, cost: intent.cost }
+          : null;
+      })(),
       positions: {
         welcomeOffice: objective.welcomeOfficePos,
         shop: objective.shopRoomPos,
@@ -6218,7 +6386,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
-      deadlineMs: objective.deadlineMs,
+      deadlineMs: this.resolveFloor1PlanningDeadlineMs(objective.deadlineMs),
       player: { x: playerX, y: playerY },
       currentTarget: null,
       activeQuestGiverDetour: false,
@@ -6249,6 +6417,13 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? { status: intent.status, cost: intent.cost }
           : null;
       })(),
+      spellBrokerIntent: (() => {
+        const intent = getSpellBrokerIntent(world);
+        return intent.enabled &&
+          (intent.purchaseStatus === 'farming' || intent.purchaseStatus === 'returning')
+          ? { status: intent.purchaseStatus, cost: intent.cost }
+          : null;
+      })(),
       positions: {
         welcomeOffice: objective.welcomeOfficePos,
         shop: objective.shopRoomPos,
@@ -6274,6 +6449,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       snapshot.staircaseDiscovered,
       snapshot.merchantWeaponIntent?.status ?? 'none',
       snapshot.merchantWeaponIntent?.cost ?? 0,
+      snapshot.spellBrokerIntent?.status ?? 'none',
+      snapshot.spellBrokerIntent?.cost ?? 0,
     ].join('|');
     const cache = this.floor1MiddleChainCache;
 
@@ -6290,6 +6467,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       const oracle = makeFloor1DoorAwareTravelOracle(world, graph.locations, {
         moveSpeedFtPerMs: params.moveSpeedFtPerMs,
         pathOptions: this.groundPathOptions(),
+        blockedStartRecovery: {
+          locationId: PLAYER_START_LOCATION,
+          bodyRadiusFt: world.stores.size.radius[playerEid] ?? 0,
+        },
       });
 
       const route = planObjectiveRoute({
@@ -6414,6 +6595,33 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerY,
             reason,
             floorScenario.shopkeeperNpcEid ?? -1,
+          ),
+        );
+      }
+      case 'farm-spell-broker-gold': {
+        const spellIntent = getSpellBrokerIntent(world);
+        const goldOwed = Math.max(0, spellIntent.cost - world.playerGold);
+        const target = this.findMerchantGoldFarmTarget(
+          world,
+          playerX,
+          playerY,
+          goldOwed,
+          'spell broker',
+        );
+        return target ? maybeDetourToQuestGiver(target) : null;
+      }
+      case 'buy-broker-spell': {
+        const reason = 'Returning to the Spell Broker to purchase the offered spell';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.spellQuestGiverPos.x,
+            objective.spellQuestGiverPos.y,
+            playerX,
+            playerY,
+            reason,
+            floorScenario.spellQuestGiverNpcEid ?? -1,
           ),
         );
       }
@@ -7154,112 +7362,134 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Finds the nearest reachable XP gem across the **entire** floor — no radius
-   * cap — for the pre-exit sweep phase. Uses a dedicated target latch
-   * (`xpSweepTargetEid`) to avoid re-sorting the full entity list every frame;
-   * the latch is invalidated when the gem is gone, unreachable, or the sweep
-   * window closes.
+   * Finds the nearest reachable sweep pickup (XP gem or gold) within
+   * `maxDistance` feet. Uses a dedicated target latch (`lootSweepTargetEid`) to
+   * avoid re-sorting the full entity list every frame; the latch is invalidated
+   * when the pickup is gone, out of range, unreachable, or the sweep window
+   * closes.
    *
-   * Only XP gems are targeted (not gold/items): gold and loose items are
-   * already handled opportunistically by the normal `buildCollectBehavior` at
-   * its configured `scanRadius`, and sweeping for them post-clear risks
-   * long detours with low XP payoff.
+   * Only XP and gold are targeted (not items/harvestables): both are pure,
+   * always-useful value with no inventory or interaction cost, so collecting
+   * them can never make a run worse in any way other than travel time.
    */
-  private findNearestXpGemForSweep(
+  private findNearestSweepLoot(
     world: GameWorld,
     playerX: number,
     playerY: number,
+    maxDistance: number,
   ): LootTarget | null {
     // Re-validate the sticky sweep target before scanning.
-    if (this.xpSweepTargetEid !== null) {
-      const eid = this.xpSweepTargetEid;
-      if (entityExists(world.ecs, eid) && hasComponent(world.ecs, eid, XpGem)) {
+    if (this.lootSweepTargetEid !== null) {
+      const eid = this.lootSweepTargetEid;
+      const kind: LootKind | null = !entityExists(world.ecs, eid)
+        ? null
+        : hasComponent(world.ecs, eid, XpGem)
+          ? 'xp'
+          : hasComponent(world.ecs, eid, Gold)
+            ? 'gold'
+            : null;
+      if (kind !== null) {
         const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
         if (ignoredUntil === undefined || ignoredUntil <= world.frameCount) {
           if (ignoredUntil !== undefined) this.ignoredLootUntilFrame.delete(eid);
           const x = world.stores.position.x[eid] ?? 0;
           const y = world.stores.position.y[eid] ?? 0;
           const dist = Math.hypot(x - playerX, y - playerY);
-          const loot: LootTarget = { eid, x, y, distance: dist, kind: 'xp' };
-          if (this.isLootCollectable(world, playerX, playerY, loot)) {
+          const loot: LootTarget = { eid, x, y, distance: dist, kind };
+          if (dist <= maxDistance && this.isLootCollectable(world, playerX, playerY, loot)) {
             return loot;
           }
         }
       }
-      this.xpSweepTargetEid = null;
+      this.lootSweepTargetEid = null;
     }
 
-    // Full scan for nearest reachable XP gem — no distance cap.
     const candidates: LootTarget[] = [];
-    for (const eid of query(world.ecs, [XpGem, Position])) {
-      if (eid === undefined) continue;
-      const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
-      if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) continue;
-      if (ignoredUntil !== undefined && ignoredUntil <= world.frameCount) {
-        this.ignoredLootUntilFrame.delete(eid);
+    const sources: ReadonlyArray<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+      { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
+      { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
+    ];
+    for (const source of sources) {
+      for (const eid of source.entities) {
+        if (eid === undefined) continue;
+        const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
+        if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) continue;
+        if (ignoredUntil !== undefined && ignoredUntil <= world.frameCount) {
+          this.ignoredLootUntilFrame.delete(eid);
+        }
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const dist = Math.hypot(x - playerX, y - playerY);
+        if (dist > maxDistance) continue;
+        candidates.push({ eid, x, y, distance: dist, kind: source.kind });
       }
-      const x = world.stores.position.x[eid] ?? 0;
-      const y = world.stores.position.y[eid] ?? 0;
-      const dist = Math.hypot(x - playerX, y - playerY);
-      candidates.push({ eid, x, y, distance: dist, kind: 'xp' });
     }
 
-    candidates.sort((a, b) => a.distance - b.distance);
+    candidates.sort((a, b) => a.distance - b.distance || a.eid - b.eid);
 
     for (const candidate of candidates) {
       if (this.isLootCollectable(world, playerX, playerY, candidate)) {
-        this.xpSweepTargetEid = candidate.eid;
+        this.lootSweepTargetEid = candidate.eid;
         return candidate;
       }
     }
 
-    this.xpSweepTargetEid = null;
+    this.lootSweepTargetEid = null;
     return null;
   }
 
   /**
-   * Pre-exit XP sweep behavior. After the floor staircase is unlocked the AI
-   * collects any remaining XP gems before descending. Fires between Interact
-   * (Priority 2) and Progress (Priority 3), so it delays the stair approach
-   * only while reachable XP exists on the ground.
+   * Loot sweep behavior. The AI collects the XP/gold it has already earned
+   * instead of walking past it toward the next objective. Fires between Interact
+   * (Priority 2) and Progress (Priority 3), so it delays objective travel only
+   * while reachable loot remains.
+   *
+   * Two windows share this node:
+   * - **Post-combat** — bounded to `LOOT_SWEEP_RADIUS_FT`, so it only picks up
+   *   the drops from the fight that just ended and never becomes a cross-floor
+   *   errand.
+   * - **Pre-exit** — unbounded once the staircase is unlocked but not yet
+   *   descended, because the floor transition destroys every uncollected pickup.
    *
    * Guard conditions (all must hold):
-   * 1. Floor cleared: staircase unlocked but not yet discovered.
-   * 2. Collapse panic below threshold (surrender sweep in final time crunch).
-   * 3. No enemies within engage radius — safety first; combat pre-empts sweep.
-   * 4. At least one reachable XP gem exists on the floor.
+   * 1. Collapse panic below threshold (surrender the sweep in a time crunch).
+   * 2. No enemies within engage radius — safety first; combat pre-empts sweep.
+   * 3. At least one reachable XP gem or gold pile inside the active window.
    */
-  private buildPreExitXpSweepBehavior(): BTNode {
+  private buildLootSweepBehavior(window: 'pre-exit' | 'mid-run'): BTNode {
     return sequence(
-      'PreExitXpSweep',
-      condition('Floor Cleared With XP On Ground', (ctx) => {
-        if (!this.isFloorClearedAwaitingSweep(ctx.world)) {
-          this.xpSweepTargetEid = null;
-          return false;
-        }
+      `LootSweep[${window}]`,
+      condition('Sweepable Loot Nearby', (ctx) => {
         const profile = this.getCollapsePanicProfile(ctx.world);
-        if (profile.beeline || profile.panic > XP_SWEEP_PANIC_THRESHOLD) {
-          this.xpSweepTargetEid = null;
+        if (profile.beeline || profile.panic > LOOT_SWEEP_PANIC_THRESHOLD) {
+          this.lootSweepTargetEid = null;
           return false;
         }
-        // Safety gate: don't sweep when an enemy is within engage range.
+        // Safety gate: don't sweep when an enemy is within engage range —
+        // combat always pre-empts the sweep.
         const engageRadius = this.getEngageRadius(ctx.world);
         if (this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY, engageRadius, true)) {
-          this.xpSweepTargetEid = null;
+          this.lootSweepTargetEid = null;
           return false;
         }
-        const gem = this.findNearestXpGemForSweep(ctx.world, ctx.playerX, ctx.playerY);
-        if (!gem) return false;
-        ctx.blackboard['sweepGem'] = gem;
+        const inPreExitWindow = this.isFloorClearedAwaitingSweep(ctx.world);
+        // Window guard: pre-exit fires only when the floor is cleared and the
+        // staircase has not yet been descended; mid-run fires at all other times.
+        if (window === 'pre-exit' && !inPreExitWindow) return false;
+        if (window === 'mid-run' && inPreExitWindow) return false;
+        const maxDistance = inPreExitWindow ? Number.POSITIVE_INFINITY : LOOT_SWEEP_RADIUS_FT;
+        const loot = this.findNearestSweepLoot(ctx.world, ctx.playerX, ctx.playerY, maxDistance);
+        if (!loot) return false;
+        ctx.blackboard['sweepLoot'] = loot;
         return true;
       }),
-      action('Set XP Sweep State', (ctx) => {
-        const gem = ctx.blackboard['sweepGem'] as LootTarget;
+      action('Set Loot Sweep State', (ctx) => {
+        const loot = ctx.blackboard['sweepLoot'] as LootTarget;
         this.decision.state = AIState.COLLECT;
-        this.decision.targetEid = gem.eid;
-        this.decision.targetX = gem.x;
-        this.decision.targetY = gem.y;
-        this.decision.reason = `Pre-exit XP sweep: gem at distance ${gem.distance.toFixed(1)}ft`;
+        this.decision.targetEid = loot.eid;
+        this.decision.targetX = loot.x;
+        this.decision.targetY = loot.y;
+        this.decision.reason = `Loot sweep: ${loot.kind} at distance ${loot.distance.toFixed(1)}ft`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -8715,6 +8945,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
     this.retreatThreatEid = null;
+    this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
@@ -8742,6 +8973,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.committedDetourNoProgressFrames = 0;
     this.resetNpcApproachThreatTracking();
     this.clearSafeRoomEgressWaypoint();
-    this.xpSweepTargetEid = null;
+    this.lootSweepTargetEid = null;
   }
 }

@@ -1,9 +1,9 @@
 # Playtest "Fun" Evaluation Framework
 
-This defines a repeatable way to rate gameplay sessions for fun using a blend of:
+This defines a repeatable, telemetry-only way to rate gameplay sessions for fun:
 
-1. deterministic telemetry from `RunStats`
-2. optional post-session survey scores
+- deterministic telemetry from `RunStats`
+- optional event and item telemetry as those producers are added
 
 Implemented by:
 
@@ -25,13 +25,25 @@ Accepted input JSON:
 - `{ "runs": RunStats[] }`
 - `{ "sessions": [{ "id": "...", "run": RunStats, "survey"?: Survey }] }`
 
-Survey fields are optional 1-5 scores:
+Legacy survey fields may be supplied for exploratory analysis, but they are not
+required by the evaluator:
 
 - `enjoyment`
 - `immersion`
 - `mastery`
 - `control`
 - `tension` (reverse-scored)
+
+Runs may also carry a deterministic evaluator persona:
+
+- `new_player`
+- `experienced_player`
+- `min_max_cheeser`
+- `explorer`
+
+The headless CLI exposes these through `--persona`. Personas are behavioral
+cohorts, not hidden difficulty modifiers; reports must retain per-persona
+results so an expert-heavy average cannot hide a new-player failure.
 
 ## Score model
 
@@ -74,6 +86,27 @@ tracked without hard-failing Floor 1 heavy samples.
 Current gate does **not** fail solely on `run_distinctness`; it is tracked as a
 forward-looking quality signal and hotspot driver.
 
+## Non-gating fun criteria
+
+The evaluator also reports criteria independently of the overall score:
+
+| Criterion                 | Current target                                  | Status when telemetry is absent                  |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------ |
+| Unsafe-zone combat uptime | >=75%                                           | `unmeasured` until zone-aware combat time exists |
+| Survivability variance    | Band 0.14-0.45 std dev of normalized outcome    | Measured from run outcomes                       |
+| Run variety               | `run_distinctness` >=60                         | Measured                                         |
+| Dopamine cadence          | No gap >90s during active play                  | `unmeasured` until timestamped events exist      |
+| Snowball/cheese frequency | Epic outlier runs <=10%                         | `unmeasured` until a deterministic signal exists |
+| Permanent-power slope     | Slow positive run-over-run slope                | `unmeasured` until meta progression exists       |
+| Item viability            | No exposed item is inert or permanently avoided | `unmeasured` until item telemetry exists         |
+
+These criteria are diagnostic and trendable, not PR gates. `FunScoreReport`
+emits aggregate means, persona breakdowns, sample size (`runs`), and
+confidence; it does **not** carry per-run distributions or seed/run
+identifiers. Callers that report a criterion must therefore preserve the input
+run set (seeds and run ids) alongside the report so tails stay inspectable and
+the numbers stay reproducible.
+
 ## Confidence model
 
 Confidence (0-1) combines:
@@ -96,8 +129,28 @@ Use matched seed sets across baseline/candidate to reduce variance.
 
 ```bash
 tsx scripts/agent/health/fun-score.ts --input files/playtests/floor1-runs.json
-tsx scripts/agent/health/fun-score.ts --input files/playtests/floor1-runs.json --min-overall 72 --min-dimension 58 --out files/playtests/fun-score.json
+tsx scripts/agent/health/fun-score.ts --input files/playtests/floor1-runs.json --baseline files/playtests/baseline.json --out files/playtests/fun-score.json
 ```
+
+When `--baseline` is supplied, the output includes non-gating
+`improving`/`degrading`/`inconclusive`/`unmeasured` comparisons for the overall
+score, dimensions, and measurable criteria.
+
+Comparisons are cohort-aware. The report carries a `comparison.cohort` block,
+and when the two cohorts drift materially in run count or persona mix (>10%),
+every measured status is downgraded to `inconclusive`: `run_distinctness` is
+sample-size sensitive and persona mix changes behavior, so an unmatched pair
+can move purely from composition. Use matched seed sets and a matched persona
+mix for any comparison you intend to act on.
+
+Survivability variance is compared against its healthy **band**, not by
+direction: both a monotone (too little spread) and a coin-flip (runaway spread)
+cohort are unhealthy, so movement is scored by distance to the band.
+
+A persona label is only recorded when the run actually used the preset. If
+`--aggression`, `--pathing-mode`, or `--decision-mode` overrides a persona
+value, the CLI warns and leaves `playerPersona` unset so the run cannot
+contaminate that cohort's rollup.
 
 ## Interpretation guidance
 

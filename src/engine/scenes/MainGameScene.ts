@@ -63,6 +63,7 @@ import {
   areLightingRectsEqual,
   findNearestNearbyNpc,
   formatAbilityTrigger,
+  getFloorCompletionPresentation,
   getFloorRunOutcome,
   getLightingViewRect,
   resolveDialogueLines,
@@ -118,7 +119,7 @@ import { createLogger } from '../../shared/logger.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
-import type { Floor2ShopInstance } from '../../shared/floor-types.js';
+import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
@@ -217,7 +218,7 @@ export interface MainGameSceneOptions {
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
-   * Called when Floor 1 is cleared (player descends the stairs).
+   * Called when a cleared floor should transition in-process to the next floor.
    * When it returns next-floor options, the scene restarts in process with a
    * fresh world after the transitional message.
    */
@@ -264,6 +265,9 @@ export interface MainGameSceneOptions {
     meet: (world: GameWorld) => void;
     /** True while the Spell Broker is gated behind the welcome-goon quest. */
     isLocked?: (world: GameWorld) => boolean;
+    getSpellBrokerOffers?: (world: GameWorld) => readonly Floor1SpellBrokerOffer[];
+    canPurchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
+    purchaseSpell?: (world: GameWorld, playerEid: number, spellId: string) => boolean;
   };
   /** Floor 2 Broker callbacks — fired when the player reads all intro dialogue lines. */
   broker?: {
@@ -3815,24 +3819,21 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private showFloorCompletionScreenIfNeeded(): void {
-    const outcome = getFloorRunOutcome(this.world);
-    if (!outcome || !this.shouldShowFloorCompletionMessage()) {
+    const completionPresentation = getFloorCompletionPresentation(
+      this.world,
+      typeof this.options.onFloor1Cleared === 'function',
+    );
+    if (!completionPresentation || !this.shouldShowFloorCompletionMessage()) {
       return;
     }
 
-    if (outcome === 'failed_timeout') {
+    if (completionPresentation === 'failed_timeout') {
       this.floorCompletionTitleText?.setText('Game Over');
       this.floorCompletionSubtitleText?.setText('Floor 1 failed');
       this.floorCompletionBodyText?.setText(
         'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
       );
-    } else if (this.world.floorExtendedState?.familyState?.staircaseDiscovered) {
-      this.floorCompletionTitleText?.setText('Victory!');
-      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
-      this.floorCompletionBodyText?.setText(
-        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
-      );
-    } else if (this.options.onFloor1Cleared) {
+    } else if (completionPresentation === 'transition_to_next_floor') {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');
       this.floorCompletionSubtitleText?.setText('Heading to Floor 2...');
       this.floorCompletionBodyText?.setText('Prepare yourself for the next challenge!');
@@ -3848,6 +3849,12 @@ export class MainGameScene extends Phaser.Scene {
         }
       });
       return;
+    } else if (completionPresentation === 'terminal_victory') {
+      this.floorCompletionTitleText?.setText('Victory!');
+      this.floorCompletionSubtitleText?.setText('Floor 2 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
+      );
     } else {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');
       this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
@@ -4110,6 +4117,12 @@ export class MainGameScene extends Phaser.Scene {
               return;
             }
           }
+          if (instance.defId === 'spell-quest-giver' && this.options.spellQuestGiver) {
+            const openedModal = this.handleSpellBrokerTalk();
+            if (openedModal) {
+              return;
+            }
+          }
           const activeDialogue = resolveDialogueLines(
             instance.defId,
             this.world,
@@ -4192,6 +4205,7 @@ export class MainGameScene extends Phaser.Scene {
     if (!shop) {
       return false;
     }
+
     // Latch the "introduce yourself" objective.
     shop.meet(this.world);
 
@@ -4299,5 +4313,54 @@ export class MainGameScene extends Phaser.Scene {
       return true;
     }
     return false;
+  }
+
+  /** Open the authoritative Floor 1 Spell Broker stock after the quest gate. */
+  private handleSpellBrokerTalk(): boolean {
+    const broker = this.options.spellQuestGiver;
+    if (
+      !broker ||
+      !this.modalPicker ||
+      !broker.getSpellBrokerOffers ||
+      !broker.purchaseSpell ||
+      !broker.canPurchaseSpell
+    ) {
+      return false;
+    }
+    if (this.world.featureUnlocks.spells !== true) return false;
+    broker.meet(this.world);
+    const offers = broker.getSpellBrokerOffers(this.world);
+    const options = offers.map((offer) => ({
+      id: offer.spellId,
+      label: `${getAbilityPresentation(offer.spellId)?.name ?? offer.spellId} (${offer.cost}g)`,
+      description: offer.purchased
+        ? 'Already purchased this run.'
+        : 'A permanent spell for this run. One purchase per offer.',
+      disabled:
+        offer.purchased || !broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),
+    }));
+    if (options.length === 0 || options.every((option) => option.disabled)) {
+      return false;
+    }
+    if (this.modalPicker.isOpen()) return true;
+    this.modalPicker.open(
+      {
+        title: 'The Spell Broker',
+        subtitle: `Gold: ${this.world.playerGold}`,
+        body: 'Choose one expensive spell from the Broker’s rotating stock.',
+        options,
+        allowCancel: true,
+        initialSelectedId: options.find((option) => !option.disabled)?.id,
+      },
+      {
+        onConfirm: ({ option }) => {
+          if (broker.purchaseSpell!(this.world, this.playerEid, option.id)) {
+            this.flashHint('Spell purchased and memorized!');
+            this.updateOverlayText();
+          }
+        },
+      },
+    );
+    return true;
   }
 }

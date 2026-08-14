@@ -56,6 +56,8 @@ import {
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
+import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
+import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import {
   _ZERO_SAFE_AREA_INSETS as ZERO_SAFE_AREA_INSETS,
   getSafeAreaInsets,
@@ -64,6 +66,13 @@ import {
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import type { GeneratedEquipmentInstanceKey } from '../../shared/generated-equipment-types.js';
 import { getItemById, getItemIndex } from '../../shared/items.js';
+import { _isPlaceholderEntry, resolveItemSprite } from '../../shared/item-sprites.js';
+import { hashStringToSeed } from '../../shared/random.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  type GeneratedSpriteRegistry,
+} from '../../shared/generated-assets.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/index.js';
 import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
@@ -328,6 +337,30 @@ export interface RewardAudioCueLogEntryProbe {
   readonly frequencyHz: number;
   readonly durationMs: number;
   readonly gain: number;
+}
+
+export interface FloatingTextProbe {
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly alpha: number;
+}
+
+/**
+ * How one item id's icon resolves against the REAL booted scene's generated
+ * sprite registry. Mirrors exactly what `EquipmentUI`/`InventoryUI` do when
+ * they draw an item icon.
+ */
+export interface ItemIconRenderInfo {
+  readonly itemId: string;
+  /** Resolved brief id, or null when nothing resolved (2-letter text fallback). */
+  readonly briefId: string | null;
+  /** Resolved Phaser texture key, or null when nothing resolved. */
+  readonly textureKey: string | null;
+  /** True when the resolved entry is placeholder art rather than approved art. */
+  readonly isPlaceholder: boolean;
+  /** True when Phaser actually has that texture loaded (i.e. boot preload queued it). */
+  readonly textureLoaded: boolean;
 }
 
 /**
@@ -649,6 +682,25 @@ export interface MainSceneProbeApi {
   queueAbilitiesToggle(): void;
   /** Inject one skill-usage event into the real simulation input queue. */
   queueSkillUsage(skillId: string, metric: UsageMetric, amount: number): void;
+  /**
+   * Equip an active ability on the real player so a subsequent real-sim trigger
+   * (e.g. `queueSkillUsage`) can fire it. Arrangement affordance only — the
+   * activation itself still runs through the shipped `abilitySystem`.
+   * Returns false when the scene/player is not ready.
+   */
+  equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Ability-activation floater labels currently on the REAL scene's display
+   * list, paired with the ability id encoded in the object name.
+   */
+  getAbilityFloaters(): ReadonlyArray<{
+    readonly abilityId: string;
+    readonly label: string;
+    readonly x: number;
+    readonly y: number;
+    readonly visible: boolean;
+    readonly alpha: number;
+  }>;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
@@ -755,6 +807,17 @@ export interface MainSceneProbeApi {
   /** Exact generated instance keys currently equipped by the player. */
   getEquippedGeneratedInstanceKeys(): readonly GeneratedEquipmentInstanceKey[];
   /**
+   * How an item id's icon resolves in the REAL booted scene: the registry the
+   * shipped boot preload populated, resolved by the shipped `resolveItemSprite`,
+   * plus whether Phaser actually has that texture loaded.
+   *
+   * This is the observe seam for equipment art wiring. A lab that force-renders
+   * an icon cannot prove the real boot path loaded the texture, and reading the
+   * diff cannot prove the resolver picked real art over a placeholder — this
+   * reports both against the running game.
+   */
+  getItemIconRenderInfo(itemId: string): ItemIconRenderInfo;
+  /**
    * Ordered log of every reward-opening audio cue actually dispatched to the
    * REAL `AudioCueEngine` (as `SynthCueSpec`s), since the last
    * `clearRewardAudioCueLog()`. Used to prove — against the real scene wiring,
@@ -765,6 +828,8 @@ export interface MainSceneProbeApi {
   getRewardAudioCueLog(): readonly RewardAudioCueLogEntryProbe[];
   /** Reset the reward-opening audio cue log so a scenario starts from empty. */
   clearRewardAudioCueLog(): void;
+  /** Visible floating world-text objects, optionally filtered by a text prefix. */
+  getVisibleFloatingTexts(prefix?: string): readonly FloatingTextProbe[];
 }
 
 function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): () => void {
@@ -1228,6 +1293,35 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.skillUsageEvents.push({ holderEid, skillId, metric, amount });
     },
 
+    equipPlayerActiveAbility: (abilityId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const holderEid = playerEidOf(scene);
+      if (!world || holderEid < 0) return false;
+      getOrCreateAbilityState(world, holderEid);
+      equipActiveAbility(world, holderEid, abilityId);
+      return true;
+    },
+
+    getAbilityFloaters: () => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) return [];
+      return phaserScene.children.list
+        .filter(
+          (child): child is Phaser.GameObjects.Text =>
+            child instanceof Phaser.GameObjects.Text &&
+            child.name.startsWith(ABILITY_FLOATER_NAME_PREFIX),
+        )
+        .map((floater) => ({
+          abilityId: floater.name.slice(ABILITY_FLOATER_NAME_PREFIX.length),
+          label: floater.text,
+          x: floater.x,
+          y: floater.y,
+          visible: floater.visible,
+          alpha: floater.alpha,
+        }));
+    },
+
     tapAbilitiesButton: () => {
       const button = getScene()?.abilitiesButton;
       if (!button?.visible) {
@@ -1583,6 +1677,23 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       );
     },
 
+    getItemIconRenderInfo: (itemId: string): ItemIconRenderInfo => {
+      const phaserScene = getPhaserScene();
+      const registry =
+        (phaserScene?.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
+          | GeneratedSpriteRegistry
+          | undefined) ?? emptyGeneratedSpriteRegistry();
+      const worldSeed = getScene()?.world?.seed ?? 0;
+      const entry = resolveItemSprite(registry, itemId, (hashStringToSeed(itemId) ^ worldSeed) | 0);
+      return {
+        itemId,
+        briefId: entry?.briefId ?? null,
+        textureKey: entry?.textureKey ?? null,
+        isPlaceholder: entry === null ? false : _isPlaceholderEntry(entry),
+        textureLoaded: entry !== null && phaserScene?.textures?.exists(entry.textureKey) === true,
+      };
+    },
+
     getInventoryVisibleItemIds: (): readonly string[] => {
       return getScene()?.inventoryUI?.getVisibleItemIds?.() ?? [];
     },
@@ -1638,6 +1749,28 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene?.rewardAudioCueLog) {
         scene.rewardAudioCueLog.length = 0;
       }
+    },
+    getVisibleFloatingTexts: (prefix = ''): readonly FloatingTextProbe[] => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) {
+        return [];
+      }
+      return phaserScene.children.list
+        .filter(
+          (obj): obj is Phaser.GameObjects.Text =>
+            obj instanceof Phaser.GameObjects.Text &&
+            obj.visible &&
+            obj.active &&
+            obj.alpha > 0 &&
+            obj.text.startsWith(prefix),
+        )
+        .map((text) => ({
+          text: text.text,
+          x: text.x,
+          y: text.y,
+          alpha: text.alpha,
+        }))
+        .sort((a, b) => (a.y - b.y ? a.y - b.y : a.x - b.x));
     },
   };
   probeWindow.__mainSceneProbe = api;

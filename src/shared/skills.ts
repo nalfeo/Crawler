@@ -7,6 +7,7 @@ export type UsageMetric =
   | 'hits_landed'
   | 'damage_dealt'
   | 'distance_dodged_near_threat'
+  | 'spell_used'
   /**
    * Emitted by melee/projectile/beam/area-damage systems when a player attack
    * deals damage to an enemy. Skills only advance on hit — misses grant no XP.

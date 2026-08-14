@@ -73,7 +73,7 @@ No changes to `weaponSystem.ts`, `constants.ts`, `InventoryUI.ts`,
 
 - `npm run verify:fast` — ✅ passes (typecheck + lint + changed unit tests).
 - `npx vitest run tests/integration/generated-manifest-engine.test.ts
- tests/unit/phaser-bridge.test.ts` — ✅ 31 tests pass.
+tests/unit/phaser-bridge.test.ts` — ✅ 31 tests pass.
 - Existing PhaserBridge unit tests still pass; the melee-swing branch has no
   dedicated unit test today, and the fallback path (no registry, no textures
   loaded) produces the same `weapon.bat` behavior as before (bit-for-bit

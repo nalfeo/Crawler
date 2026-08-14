@@ -20,6 +20,58 @@ describe('ci-pr-disposition workflow', () => {
     expect(raw).toContain('await ensureDispositionLabels();');
   });
 
+  it('keeps label helpers at script scope so the provisioning call can resolve them', () => {
+    const raw = loadWorkflowSource();
+    const dispositionBlocks = raw
+      .split('uses: actions/github-script@')
+      .slice(1)
+      .filter((block) => block.includes('await ensureDispositionLabels();'));
+
+    expect(dispositionBlocks).toHaveLength(3);
+    for (const block of dispositionBlocks) {
+      const upsert = block.match(/^([ \t]*)async function upsertLifecycleComment/m);
+      const ensureLabels = block.match(/^([ \t]*)async function ensureDispositionLabels/m);
+      const provisioningCall = block.match(/^([ \t]*)await ensureDispositionLabels\(\);/m);
+
+      if (!upsert || !ensureLabels || !provisioningCall) {
+        throw new Error('disposition script is missing lifecycle provisioning functions');
+      }
+
+      for (const helperName of [
+        'ensureLabel',
+        'ensureDispositionLabels',
+        'addLabelStrict',
+        'removeLabelBestEffort',
+      ]) {
+        const helper = block.match(
+          new RegExp(`^([ \\t]*)async function ${helperName}(?:\\(|$)`, 'm'),
+        );
+        expect(helper?.[1]).toBe(upsert[1]);
+      }
+      expect(ensureLabels[1]).toBe(upsert[1]);
+      expect(provisioningCall[1]).toBe(upsert[1]);
+      expect(block.indexOf(ensureLabels[0])).toBeLessThan(block.indexOf(provisioningCall[0]));
+    }
+
+    const quarantineBlocks = dispositionBlocks.filter((block) =>
+      block.includes('function isTrustedLifecycleComment'),
+    );
+    expect(quarantineBlocks).toHaveLength(1);
+    const quarantineBlock = quarantineBlocks[0];
+    const quarantineUpsert = quarantineBlock?.match(
+      /^([ \t]*)async function upsertLifecycleComment/m,
+    );
+    if (!quarantineBlock || !quarantineUpsert) {
+      throw new Error('quarantine script is missing lifecycle helper functions');
+    }
+    for (const helperName of ['isTrustedLifecycleComment', 'parseCurrentLifecycleRecord']) {
+      const helper = quarantineBlock.match(
+        new RegExp(`^([ \\t]*)function ${helperName}(?:\\(|$)`, 'm'),
+      );
+      expect(helper?.[1]).toBe(quarantineUpsert[1]);
+    }
+  });
+
   it('uses issue-scoped merged closers without a global recency cap', () => {
     const raw = loadWorkflowSource();
     expect(raw).toContain('closedByPullRequestsReferences(first: 100, after: $after)');

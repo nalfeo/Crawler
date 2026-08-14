@@ -261,7 +261,7 @@ describe('Boss chest lifecycle — Floor 1 exclusion', () => {
     spawnPlayer(world, 0, 0);
 
     const result = spawnBossChestForDefeatedBoss(world, 'mirekin');
-    expect(result).toEqual({ created: false, reason: 'notFloor2' });
+    expect(result).toEqual({ created: false, reason: 'bossChestsDisabled' });
     expect(world.bossChests.size).toBe(0);
     expect(world.generatedEquipmentRewardBundles.size).toBe(0);
     expect(listGeneratedEquipmentInstances(world).length).toBe(0);

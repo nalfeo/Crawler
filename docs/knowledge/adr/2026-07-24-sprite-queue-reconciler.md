@@ -241,6 +241,57 @@ queue-commit takes, so a cycle and a concurrent dev-box queue-commit never race.
    data-loss trap (CTX-005): the queue churns during the cycle and a reset would
    drop post-snapshot edits. Harvest-onto-main makes the reset unnecessary.
 
+## Amendment (2026-08-03) — harvest-onto-main alone does NOT converge
+
+Alternative 4 below rejected "reset `assets/queue` to `main` after merge" as a
+data-loss trap and concluded that **"harvest-onto-main makes the reset
+unnecessary."** That conclusion was wrong, and the cost was 104 consecutive
+hourly runs that each opened a promotion PR.
+
+Harvest-onto-main avoided CTX-004's three-dot bug, but the two-dot replacement
+(`git diff --diff-filter=AM <main> <source>`) is still only a **"differs from
+`main`"** test — not a "newer than `main`" test — and **nothing retires a
+source**. With more than one source (the queue plus every orphaned
+`assets/checkin-*` branch), whichever source currently _agrees_ with `main` drops
+out of its own `AM` set, so the other source always wins the overlay and `main`
+flips between them every cycle. Observed live: promote PRs #2704 and #2706, one
+hour apart, carried an **identical 100-file set with exactly inverse patches**,
+and 44 orphan branches (oldest 2026-07-08) were re-harvested every hour forever.
+
+**Amended decision:** a promotion commit now records the **exact source tips it
+harvested** (`Queue-Source:` / `Orphan-Source:` trailers), and the next cycle
+retires precisely those snapshots once that promotion has **merged**. The reset
+of alternative 4 is therefore adopted, but **only under a compare-and-swap
+lease** (`--force-with-lease=refs/heads/<b>:<sha>`) plus a re-derived proof that
+the source adds nothing to the current `main`. That closes CTX-005 exactly: an
+edit that landed during the cycle moves the source tip, the lease misses, and the
+source is left untouched. The queue-reset that was rejected as unconditional
+data loss is safe precisely because it is now conditional on the recorded OID.
+
+See `docs/knowledge/handoffs/2026-08-03-sprite-reconciler-convergence.md`.
+
+## Amendment 2026-08-06 — convergence must gate the DELTA, not retirement
+
+The 2026-08-03 amendment above did not stop the loop: promotion PRs kept opening
+hourly (#2696…#2770) with no approvals since 2026-08-01. Source retirement can
+only retire a source that **adds nothing** to `main`, and a stale source differs
+from `main` by definition — so the CAS retirement was unreachable and every
+source stayed permanently dirty.
+
+**Amended decision:** the two-dot `AM` delta is filtered by
+`filterPromotablePaths` before anything is harvested. A path is promotable only
+when (1) `main`'s history has never carried the source's exact blob at that path
+(otherwise re-landing it is a self-revert that guarantees another delta next
+cycle) and (2) `main`'s current blob at that path is one the source's own history
+contains, or `main` does not have the path (otherwise the source would clobber a
+change it never saw — a July check-in branch overwriting today's
+`sprite-catalog.json`). `main` wins conflicts; withheld paths are reported on the
+result so a blocked approval is visible rather than silent. The filter is
+deliberately NOT applied to tidy-up retirement: art reverted off `main` is
+"superseded" too, and retiring on that basis would delete its last copy.
+
+See `docs/knowledge/handoffs/2026-08-06-sprite-reconciler-ping-pong.md`.
+
 ## References
 
 - Feature ADR (PR1 + scope split):

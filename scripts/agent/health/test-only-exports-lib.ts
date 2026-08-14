@@ -568,6 +568,27 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Ground-decal probability (0.75) used by the in-file decal decision; exported so variance tests assert the density symbolically instead of duplicating the literal.',
     expiresOn: '2027-01-12',
   },
+  {
+    file: 'src/game/floor2Scenario.ts',
+    name: 'denFavorGoalId',
+    reason:
+      'FR13 favor-route goal-id factory (`floor2-family-<id>-favor-earned`); used internally by floor2ObjectiveTick and seeded to false at init; exported so integration tests can assert the favor-specific flag state separately from the den-unlock flag (telemetry/HUD distinguish the two paths).',
+    expiresOn: '2026-11-03',
+  },
+  {
+    file: 'src/game/floor2Scenario.ts',
+    name: 'hasEarnedDenFavor',
+    reason:
+      'Pure predicate for the FR13 win-favor route (Friendly band >75, reputation-system active); used internally by floor2ObjectiveTick; exported so integration tests can drive the predicate in isolation (band-boundary, reputation-inactive guard, relation-drop latch).',
+    expiresOn: '2026-11-03',
+  },
+  {
+    file: 'src/game/ai/auto-progression.ts',
+    name: 'MAX_STAIR_DESCEND_DEFER_FRAMES',
+    reason:
+      'Loot-aware stair-descend deferral cap (1800 frames = 30 s); used internally by shouldDeferStairDescend; exported so integration tests can drive the cap-expiry branch without hard-coding the frame count.',
+    expiresOn: '2026-11-08',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {

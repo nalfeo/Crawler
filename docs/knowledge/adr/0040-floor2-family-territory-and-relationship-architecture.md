@@ -181,4 +181,4 @@ allied/at-war tag — reading `world.factionRelations` and the boss goal flags.
 
 ## Changelog
 
-- **2026-07-02** — Slice 1 landed: family/resource data (Zod-validated), `FamilyMembership` component, `factionRelations` world state + helpers, `familyRelationshipSystem` wired into both real pipelines (visual bootstrap + headless simulation-step), and `family-territory-lab`. See handoff `docs/knowledge/handoffs/2026-07-02-floor2-slice1-relationships.md`.
+- **2026-07-02** — Slice 1 landed: family/resource data (Zod-validated), `FamilyMembership` component, `factionRelations` world state + helpers, `familyRelationshipSystem` wired into both real pipelines (visual bootstrap + headless simulation-step), and `family-territory-lab`. See handoff `docs/knowledge/handoffs/archive/2026-07-02-floor2-slice1-relationships.md`.

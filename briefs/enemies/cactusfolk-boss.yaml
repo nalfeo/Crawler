@@ -1,28 +1,59 @@
 type: enemy
-mobRole: boss
 name: cactusfolk-boss
+mobRole: boss
 floor: 2
+sizeVariant: large
+
 description: |
-  Abuela Saguaro, a towering upright saguaro matriarch with an intimidating
-  elder crime-boss presence. Use industrial salvage adornment and dark-fantasy
-  dungeon wear appropriate to Floor 2 — think scavenged iron chain-mail draped
-  over thick green cactus flesh, cracked leather straps binding rusted plating
-  to the torso, and a battered crown or wide-brimmed hat that reads as gang
-  authority. Preserve the towering vertical saguaro silhouette: a thick central
-  column torso with paired arm-columns raised in a classic saguaro pose. Keep
-  arms and spines firmly connected to the body — no isolated thorns, no fragile
-  protrusions, no floating limbs. Face the sprite toward the right (default
-  enemy facing). Colour palette from the Floor 2 dungeon range: dark greens,
-  rusted iron, and dusty ochre with minimal accent highlights.
+  Abuela Saguaro, a towering saguaro cartel matriarch who reads unmistakably as
+  an elderly grandmother. Stooped, hunched-forward posture — the body mass leans
+  slightly forward rather than standing upright. Deeply wrinkled and weathered
+  green cactus flesh with a lived-in, aged texture. Small wire-rimmed spectacles
+  perched on the face. A faded floral rebozo or shawl draped over one shoulder,
+  its pattern worn and sun-bleached.
+
+  Salvage-armor layering coordinates with — never buries — her grandmotherly
+  age cues: think cracked leather straps over the shawl, a few small salvage
+  pauldron pieces, devotional charms and trinkets hanging from the rebozo fringe,
+  and sun-faded cartel finery (dulled gold stitching, a worn sash). The
+  grandmother silhouette is primary; the crime-boss armor is secondary dressing.
+
+  Preserve ONE unmistakable saguaro landmark per variant: the thick central
+  column torso with paired arm-columns in a classic Y-shape. Keep arms and
+  spines firmly connected — no isolated thorns, no fragile protrusions. Spines
+  are part of the connected body mass.
+
+  Color palette: weathered deep greens (aged cactus flesh), sun-faded florals
+  (rebozo), dusty ochre and rust (salvage armor), tarnished brass accent on
+  charms and finery. Avoid bright or saturated colors that clash with the
+  grandmother-in-decline mood.
+
+  Expression: calm, knowing authority — a grandmother who does not need to
+  raise her voice. Front-facing toward the viewer, both eyes visible through
+  wire-rimmed spectacles.
+
+  Silhouette-first: the hunched saguaro shape with a visible shawl draping one
+  shoulder must still read as a large cactus elder even when painted black.
+
 sensors:
-  # Towering vertical silhouette may graze the top or sides of the frame.
-  edge:
-    allowMainTouch: true
   enemy:
-    # Standard rightward enemy facing.
-    facing: right
+    toleranceDeg: 20
+    # Abuela Saguaro is authored front-facing toward the viewer.
+    facing: front
+  edge:
+    # Large boss — allow silhouette to touch the frame edge.
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  # Boss brief — cap judge calls at 4 variants maximum.
+  maxVariants: 4
+
 variations:
-  - Abuela Saguaro with a battered wide-brimmed hat adorned with iron spike ornaments
-  - Abuela Saguaro wearing rusted pauldrons and a heavy chain across the chest
-  - Abuela Saguaro with a cracked leather eyepatch and a spiked iron crown
-minVariations: 4
+  - 'Abuela Saguaro: stooped saguaro Y-silhouette, wire-rimmed spectacles, faded floral rebozo over left shoulder, one devotional charm hanging from fringe, calm grandmother expression, front-facing'
+  - 'Abuela Saguaro with salvage pauldron on right shoulder over the rebozo, worn gold-stitched sash around the torso, small trinkets clipped to the chest strap, half-lidded knowing expression'
+  - 'Abuela Saguaro sun-faded variant: bleached-out floral rebozo in dusty rose and cream, cracked-leather shoulder strap, tarnished brass charm bracelet across the wrist-column, deep wrinkle lines on face'
+  - 'Abuela Saguaro heavy-silhouette variant: maximum hunched mass, thick central column, rebozo draping both sides of the body, charms and trinkets clustered at the shawl fringe, wide stable stance'
+
+minVariations: 2

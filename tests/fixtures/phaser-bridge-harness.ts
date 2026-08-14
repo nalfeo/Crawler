@@ -50,13 +50,41 @@ export class MockImage {
   displayWidth: number | undefined;
   displayHeight: number | undefined;
 
+  /**
+   * Native pixel size of the current texture, as a real
+   * `Phaser.GameObjects.Image` reports it. Defaults to `0` (unmeasurable) so
+   * every pre-existing test keeps the legacy pixel-multiplier render path;
+   * pass `textureSizes` to {@link createSceneStub} to exercise the
+   * feet-authored footprint path.
+   */
+  width = 0;
+  height = 0;
+
   constructor(
     public x: number,
     public y: number,
     public textureKey: string,
     frame?: number,
+    private readonly sizeOf: (key: string) => { width: number; height: number } | undefined = () =>
+      undefined,
   ) {
     this.frame = frame;
+    this.applyTextureSize();
+  }
+
+  /**
+   * Adopt the native size of the current texture, mirroring Phaser (where
+   * `setTexture` re-reads the frame size). Deliberately a NO-OP for keys the
+   * resolver does not know, so a test that hand-assigns `width`/`height` on a
+   * stub image is not clobbered on the next `setTexture`.
+   */
+  private applyTextureSize(): void {
+    const size = this.sizeOf(this.textureKey);
+    if (size === undefined) {
+      return;
+    }
+    this.width = size.width;
+    this.height = size.height;
   }
 
   setPosition(x: number, y: number): this {
@@ -69,6 +97,7 @@ export class MockImage {
     this.textureKey = key;
     // Match Phaser semantics: setTexture(key) resets frame to the texture default.
     this.frame = frame ?? 0;
+    this.applyTextureSize();
     return this;
   }
 
@@ -294,8 +323,9 @@ class MockSprite extends MockImage {
     textureKey: string,
     frame: number | undefined,
     animationManager: MockAnimationManager,
+    sizeOf?: (key: string) => { width: number; height: number } | undefined,
   ) {
-    super(x, y, textureKey, frame);
+    super(x, y, textureKey, frame, sizeOf);
     this.anims = new MockAnimationState(animationManager);
   }
 }
@@ -500,21 +530,30 @@ export function createSceneStub(
      * before.
      */
     generatedRegistry?: GeneratedSpriteRegistry;
+    /**
+     * Native pixel size per texture key. Without it every {@link MockImage}
+     * reports `width`/`height` of `0` (unmeasurable), so the bridge falls back
+     * to the legacy `generated.scale` pixel multiplier. Supply it to exercise
+     * the feet-authored footprint path (`generated.heightFt`), which sizes a
+     * sprite from its opaque bounds against the loaded texture size.
+     */
+    textureSizes?: (key: string) => { width: number; height: number } | undefined;
   } = {},
 ): SceneStub {
   const images: MockImage[] = [];
   const sprites: MockSprite[] = [];
   const graphics: MockGraphics[] = [];
   const texts: MockText[] = [];
+  const sizeOf = options.textureSizes ?? ((): undefined => undefined);
   const image = vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
-    const mockImage = new MockImage(x, y, textureKey, frame);
+    const mockImage = new MockImage(x, y, textureKey, frame, sizeOf);
     images.push(mockImage);
     return mockImage as unknown as Phaser.GameObjects.Image;
   });
   const animationManager = options.generatedRegistry ? new MockAnimationManager() : null;
   const addSprite = animationManager
     ? vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
-        const mockSprite = new MockSprite(x, y, textureKey, frame, animationManager);
+        const mockSprite = new MockSprite(x, y, textureKey, frame, animationManager, sizeOf);
         sprites.push(mockSprite);
         return mockSprite as unknown as Phaser.GameObjects.Sprite;
       })

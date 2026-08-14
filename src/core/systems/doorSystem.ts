@@ -24,6 +24,7 @@ import { query } from 'bitecs';
 import { DoorState, Player, Position } from '../components.js';
 import { evaluateDoorConditionGroup, getDoorLockConfig } from '../door-lock.js';
 import { isPointInSafeSpace } from '../safe-space.js';
+import { getWorldFloorBehavior } from '../floor-behavior.js';
 import type { GameWorld } from '../world.js';
 
 const AUTO_OPEN_RADIUS_TILES = 1;
@@ -41,6 +42,7 @@ export function doorSystem(world: GameWorld): void {
   const lockedDoorTiles = new Set<string>();
   const forcedClosedDoorTiles = new Set<string>();
   const safeRoom = floorMap.safeRoom;
+  const safeRoomDoorsAutoClose = getWorldFloorBehavior(world).safeRoomDoorsAutoClose;
 
   // Evaluate lock conditions first so auto-open respects currently locked doors.
   for (const eid of doors) {
@@ -80,7 +82,7 @@ export function doorSystem(world: GameWorld): void {
   for (const player of players) {
     const px = world.stores.position.x[player] ?? 0;
     const py = world.stores.position.y[player] ?? 0;
-    if (world.floor === 1 && safeRoom && isPointInSafeSpace(world, px, py)) {
+    if (safeRoomDoorsAutoClose && safeRoom && isPointInSafeSpace(world, px, py)) {
       const playerTile = floorMap.worldToTile(px, py);
       let closeSafeDoors = true;
       for (const door of safeRoom.doors) {

@@ -1,5 +1,6 @@
 import GUI from 'lil-gui';
 import {
+  adjustFactionRelation,
   createGameWorld,
   selectFloor2Roster,
   initializeFactionRelations,
@@ -16,6 +17,7 @@ import {
   initializeFloor2Bosses,
   floor2ObjectiveTick,
   floor2VictorySystem,
+  denFavorGoalId,
   isDenUnlocked,
   isFamilySpawnGated,
   markDenUnlocked,
@@ -108,6 +110,7 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
           `&nbsp;&nbsp;archetype: <i>${obj.archetypeId}</i><br>` +
           `&nbsp;&nbsp;relation: <code>${relation}</code><br>` +
           `&nbsp;&nbsp;unlock: <code>${obj.unlockGoalId}</code> — ${unlocked ? '✅' : '⏳'}<br>` +
+          `&nbsp;&nbsp;favor route: ${world.goalFlags.get(denFavorGoalId(obj.familyId)) === true ? '🤝 earned' : '—'}<br>` +
           `&nbsp;&nbsp;defeat: <code>${obj.defeatGoalId}</code> — ${defeated ? '☠' : '❤'}<br>` +
           `&nbsp;&nbsp;spawn-gated: ${gated ? '🚫 yes' : '✅ no'}`,
       );
@@ -167,6 +170,16 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
     render();
   }
 
+  function winFavorFirst(): void {
+    if (!world || objectives.length === 0) return;
+    // Drive the first family into the Friendly band and run the real objective
+    // tick — the FR13 `win-favor` route latches the unlock, not the lab.
+    const target = objectives[0]!.familyId;
+    adjustFactionRelation(world, target, 100 - getRelation(world, target));
+    floor2ObjectiveTick(world);
+    render();
+  }
+
   function unlockAll(): void {
     if (!world) return;
     for (const obj of objectives) markDenUnlocked(world, obj.familyId);
@@ -214,6 +227,7 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
   const actions = {
     reseed,
     forceUnlockFirst,
+    winFavorFirst,
     killFirstBoss,
     unlockAll,
     forceWinASoleAlly,
@@ -221,6 +235,7 @@ function createFamilyBossDenLab(canvasHost: HTMLElement, controls: HTMLElement):
   };
   gui.add(actions, 'reseed').name('Re-init floor');
   gui.add(actions, 'forceUnlockFirst').name('Force unlock first den');
+  gui.add(actions, 'winFavorFirst').name('Win favor of first family (peaceful unlock)');
   gui.add(actions, 'killFirstBoss').name('Simulate first boss death');
   gui.add(actions, 'unlockAll').name('Unlock all dens');
   gui.add(actions, 'forceWinASoleAlly').name('Force Win A (sole ally)');

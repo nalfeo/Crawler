@@ -1,0 +1,70 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-12",
+  "session_slug": "boss-arena-lock-in",
+  "task_title": "Prevent boss arena lock-in regressions",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Rejected debug-reason/EID inference because add-clearing shares the prefix and sampling cannot define lifecycle. Rejected synthetic-only coverage because it would not prove the three natural seeds. Rejected helper-only observability because the gate needs durable start readiness and duration evidence. Adopted telemetry-only named Floor 1 encounter lifecycle metrics plus exact real-headless gates; no combat behavior change."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "grok-4.5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "a2850223d64e371a51dcac4ba0d279be2224b23e",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Telemetry-only Floor 1 boss lifecycle capture correctly mirrors the existing Floor 2 pattern, records first-start readiness and first-defeat timing from production bossBattles state (including bossEid before defeat clears it), and is emitted on both normal and error runHeadless paths. The three exact historical weapon/seed cases are gated through real headless runs for official victory within the 19,800-frame sweep budget, named encounter start/defeat, entry level/health floors, bounded fight duration, and sampled Boss-room lock-in decisions targeting the lifecycle-captured bossEid (add-clearing reasons are excluded by the targetEid check). No combat/AI behavior changed; scope is limited to types, runner instrumentation, tests, and required session artifacts. Determinism and layer rules are respected. No blocker- or major-severity defects found."
+    }
+  }
+}

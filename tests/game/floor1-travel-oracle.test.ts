@@ -9,6 +9,7 @@ import { makeFloor1DoorAwareTravelOracle } from '../../src/game/ai/floor1-travel
 import { PATH_TRAVERSAL } from '../../src/core/map/pathfinding.js';
 import type { GameWorld } from '../../src/core/world.js';
 import type { FloorScenarioState } from '../../src/shared/floor-types.js';
+import { TilePresets } from '../../src/shared/map-types.js';
 
 const UNLOCK_GOAL_ID = 'test-unlock-goal';
 
@@ -104,6 +105,91 @@ describe('makeFloor1DoorAwareTravelOracle', () => {
       pathOptions: { traversalMode: PATH_TRAVERSAL.GROUND },
     });
     expect(Number.isFinite(oracle.travelCost('a', 'b', new Set()))).toBe(true);
+  });
+
+  it('recovers a blocked live-player start from physically overlapped cardinal floor', () => {
+    world.floorMap = makePathMap(false);
+    const boundaryLocations = new Map([
+      ['player', { x: 6 * 32, y: 3 * 32 + 16 }],
+      ['goal', west],
+    ]);
+    const oracle = makeFloor1DoorAwareTravelOracle(world, boundaryLocations, {
+      moveSpeedFtPerMs: 0.12,
+      pathOptions: { traversalMode: PATH_TRAVERSAL.GROUND },
+      blockedStartRecovery: { locationId: 'player', bodyRadiusFt: 1.5 },
+    });
+
+    expect(Number.isFinite(oracle.travelCost('player', 'goal', new Set()))).toBe(true);
+  });
+
+  it('uses any reachable physically overlapped cardinal start', () => {
+    world.floorMap = makeMapWithDoor();
+    const tileMap = world.floorMap.tileMap;
+    tileMap.setFlags(5, 5, TilePresets.WALL);
+    tileMap.setFlags(3, 5, TilePresets.WALL);
+    tileMap.setFlags(4, 4, TilePresets.WALL);
+    tileMap.setFlags(4, 6, TilePresets.WALL);
+    const cornerLocations = new Map([
+      ['player', { x: 5 * 32, y: 5 * 32 }],
+      ['goal', { x: 7 * 32 + 16, y: 4 * 32 + 16 }],
+    ]);
+    const oracle = makeFloor1DoorAwareTravelOracle(world, cornerLocations, {
+      moveSpeedFtPerMs: 0.12,
+      pathOptions: { traversalMode: PATH_TRAVERSAL.GROUND },
+      blockedStartRecovery: { locationId: 'player', bodyRadiusFt: 1.5 },
+    });
+
+    expect(Number.isFinite(oracle.travelCost('player', 'goal', new Set()))).toBe(true);
+  });
+
+  it('does not recover through a diagonal-only opening', () => {
+    world.floorMap = makeMapWithDoor();
+    const tileMap = world.floorMap.tileMap;
+    tileMap.setFlags(5, 5, TilePresets.WALL);
+    tileMap.setFlags(4, 5, TilePresets.WALL);
+    tileMap.setFlags(6, 5, TilePresets.WALL);
+    tileMap.setFlags(5, 4, TilePresets.WALL);
+    tileMap.setFlags(5, 6, TilePresets.WALL);
+    const diagonalLocations = new Map([
+      ['player', { x: 5 * 32, y: 5 * 32 }],
+      ['goal', { x: 4 * 32 + 16, y: 4 * 32 + 16 }],
+    ]);
+    const oracle = makeFloor1DoorAwareTravelOracle(world, diagonalLocations, {
+      moveSpeedFtPerMs: 0.12,
+      pathOptions: { traversalMode: PATH_TRAVERSAL.GROUND },
+      blockedStartRecovery: { locationId: 'player', bodyRadiusFt: 2 },
+    });
+
+    expect(oracle.travelCost('player', 'goal', new Set())).toBe(Infinity);
+  });
+
+  it('does not recover an unconfigured blocked start', () => {
+    world.floorMap = makePathMap(false);
+    const boundaryLocations = new Map([
+      ['detour', { x: 6 * 32, y: 3 * 32 + 16 }],
+      ['goal', west],
+    ]);
+    const oracle = makeFloor1DoorAwareTravelOracle(world, boundaryLocations, {
+      moveSpeedFtPerMs: 0.12,
+      pathOptions: { traversalMode: PATH_TRAVERSAL.GROUND },
+      blockedStartRecovery: { locationId: 'player', bodyRadiusFt: 1.5 },
+    });
+
+    expect(oracle.travelCost('detour', 'goal', new Set())).toBe(Infinity);
+  });
+
+  it('does not use blocked-start recovery to cross a locked door', () => {
+    const doorBoundaryLocations = new Map([
+      ['player', { x: 6 * 32, y: 4 * 32 + 16 }],
+      ['goal', east],
+    ]);
+    const oracle = makeFloor1DoorAwareTravelOracle(world, doorBoundaryLocations, {
+      moveSpeedFtPerMs: 0.12,
+      pathOptions: { traversalMode: PATH_TRAVERSAL.GROUND },
+      blockedStartRecovery: { locationId: 'player', bodyRadiusFt: 1.5 },
+    });
+
+    expect(oracle.travelCost('player', 'goal', new Set())).toBe(Infinity);
   });
 
   it('floor1-slime-rat-room-open effect forces slime-rat boss-room door tiles passable, enabling exit-to-claim-spell-reward routing', () => {

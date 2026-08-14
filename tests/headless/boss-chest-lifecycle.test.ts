@@ -191,7 +191,7 @@ describe('Boss chest lifecycle — real headless pipeline', () => {
     });
 
     expect(result?.created).toBe(false);
-    expect(result?.reason).toBe('notFloor2');
+    expect(result?.reason).toBe('bossChestsDisabled');
     expect(bossChestCount).toBe(0);
   });
 });

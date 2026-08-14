@@ -11,7 +11,9 @@ import type { InventoryBag } from '../shared/inventory.js';
 import type { StatusEffect } from '../shared/status-effect-types.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
+import type { FloaterEvent } from '../shared/floater-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
+import type { AbilityActivationEvent } from '../shared/ability-activation-events.js';
 import type { MobAbilityRuntime } from './mob-abilities/types.js';
 import { createMobAbilityRuntime } from './mob-abilities/types.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
@@ -125,6 +127,28 @@ export interface FloorExtendedState {
   trashTerritories?: Map<string, string>;
   /** Ambient enemies tracked by the floor director when `world.floorScenario` is intentionally null (e.g. Floor 2). */
   ambientEnemyArchetypes?: Map<number, string>;
+}
+
+/**
+ * Cumulative loot accounting for a world session: how much XP/gold value was
+ * spawned into the world versus how much the player actually collected.
+ * Purely additive counters — never decremented, never reset mid-floor — so
+ * `collected / spawned` is a deterministic collection-efficiency ratio.
+ */
+export interface LootLedger {
+  /** Total XP gem value spawned into the world. */
+  xpSpawned: number;
+  /** Total XP gem value picked up by the player. */
+  xpCollected: number;
+  /** Total gold value spawned into the world. */
+  goldSpawned: number;
+  /** Total gold value picked up by the player. */
+  goldCollected: number;
+}
+
+/** Create a zeroed loot ledger. */
+export function createLootLedger(): LootLedger {
+  return { xpSpawned: 0, xpCollected: 0, goldSpawned: 0, goldCollected: 0 };
 }
 
 export interface GameWorld {
@@ -283,11 +307,24 @@ export interface GameWorld {
    */
   vfxEvents: VfxEvent[];
   /**
+   * Cosmetic non-combat floating-text requests (skill level-ups today) emitted
+   * this frame — drained by the engine-layer `CombatVfx` renderer. Data-only;
+   * never read by game logic. Capped defensively by `pushFloaterEvent`.
+   */
+  floaterEvents: FloaterEvent[];
+  /**
    * HUD announcement banner events pushed by systems (arena start/end today,
    * extensible). Drained by the engine-layer `HudAnnouncementBanner`. Data-only
    * so `src/core` stays portable. Capped defensively by `pushAnnouncement`.
    */
   announcements: AnnouncementEvent[];
+  /**
+   * Player active/spell ability activations emitted this frame — drained by the
+   * engine-layer floating-text renderer, which shows the ability name above the
+   * player. Cosmetic-only; never read by game logic. Capped defensively by
+   * `pushAbilityActivationEvent`.
+   */
+  abilityActivations: AbilityActivationEvent[];
   /** Persistent blood pools authored by simulation-side death/contact logic. */
   bloodPools: BloodPoolSurface[];
   /** Persistent bloody footprints/smears authored by the core step. */
@@ -333,6 +370,14 @@ export interface GameWorld {
   spawnerArenaEverArmed: Set<number>;
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
   playerGold: number;
+  /**
+   * Deterministic cumulative ledger of loot value that entered the world versus
+   * loot value the player actually picked up. Spawn counters are incremented by
+   * `spawnXpGem` / `spawnGold`; collected counters by `itemPickupSystem`. Unlike
+   * end-of-run ground scans, these survive floor transitions destroying pickups,
+   * so `collected / spawned` is a stable collection-efficiency metric.
+   */
+  lootLedger: LootLedger;
   /**
    * Running maximum gold balance seen this floor session. Updated by `achievementSystem`
    * each tick so the "Hoarder's Ledger" run-global achievement can fire even after the
@@ -671,7 +716,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     lethalDamageSourceByTarget: new Map(),
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
+    floaterEvents: [],
     announcements: [],
+    abilityActivations: [],
     mobAbilities: createMobAbilityRuntime(),
     bloodPools: [],
     bloodyFootprints: [],
@@ -681,6 +728,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     barriers: createBarrierRegistry(),
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
+    lootLedger: createLootLedger(),
     peakGold: 0,
     floorMap: null,
     floorId: '',
