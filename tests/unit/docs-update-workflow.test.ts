@@ -15,6 +15,7 @@ interface WorkflowStep {
 }
 
 interface DocsUpdateWorkflow {
+  on?: Record<string, unknown>;
   jobs: Record<string, { steps?: WorkflowStep[] }>;
 }
 
@@ -25,6 +26,42 @@ function loadWorkflow(): DocsUpdateWorkflow {
 }
 
 describe('docs-update workflow', () => {
+  it('runs from merge-train completion instead of raw main pushes or a schedule', () => {
+    const workflow = loadWorkflow();
+    const workflowRun = workflow.on?.workflow_run as
+      { workflows?: string[]; types?: string[]; branches?: string[] } | undefined;
+
+    expect(workflowRun?.workflows).toEqual(['Merge Train']);
+    expect(workflowRun?.types).toEqual(['completed']);
+    expect(workflowRun?.branches).toEqual(['main']);
+    expect(workflow.on).not.toHaveProperty('push');
+    expect(workflow.on).not.toHaveProperty('schedule');
+  });
+
+  it('detects payload scope before installing dependencies or running checks', () => {
+    const steps = loadWorkflow().jobs['docs-update']?.steps ?? [];
+    const detectIndex = steps.findIndex(
+      (step) => step.name === 'Detect non-doc merge-train payload',
+    );
+    const installIndex = steps.findIndex((step) => step.name === 'Install dependencies');
+    const detectStep = steps[detectIndex];
+
+    expect(detectIndex).toBeGreaterThan(-1);
+    expect(installIndex).toBeGreaterThan(detectIndex);
+    expect(detectStep?.run).toContain('grep -qvE');
+    expect(detectStep?.run).toContain('run=true');
+    expect(detectStep?.run).toContain('workflow_run.event');
+    expect(detectStep?.run).toContain('"push"');
+  });
+
+  it('checks out the landed merge-train SHA before classifying its files', () => {
+    const checkout = loadWorkflow().jobs['docs-update']?.steps?.find(
+      (step) => step.uses === 'actions/checkout@v4',
+    );
+
+    expect(checkout?.with?.ref).toContain('github.event.workflow_run.head_sha');
+  });
+
   it('publishes the automation PR with CRAWLER_CI_PAT to avoid parked same-app CI', () => {
     const workflow = loadWorkflow();
     const openPr = workflow.jobs['docs-update']?.steps?.find(
@@ -42,7 +79,7 @@ describe('docs-update workflow', () => {
     const openPrIndex = steps.findIndex((step) => step.name === 'Open docs automation PR');
     const pruneStep = steps[pruneIndex];
 
-    expect(pruneStep?.if).toBe("steps.changes.outputs.changed == 'true'");
+    expect(pruneStep?.if).toContain("steps.payload.outputs.run == 'true'");
     expect(pruneStep?.run).toBe('git fetch --prune origin');
     expect(pruneIndex).toBeGreaterThan(-1);
     expect(openPrIndex).toBeGreaterThan(-1);
