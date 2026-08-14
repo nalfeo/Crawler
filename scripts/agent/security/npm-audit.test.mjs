@@ -369,7 +369,23 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+  const tempScript = path.join(tempDir, 'npm-audit.mjs');
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
+  const injectedException = {
+    packageName: 'brace-expansion',
+    source: 1130591,
+    url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+    expiresOn: '2099-12-31',
+    reason: 'Synthetic fixture for CLI diagnostic coverage.',
+  };
+  const scriptSource = readFileSync(SCRIPT, 'utf8');
+  writeFileSync(
+    tempScript,
+    scriptSource.replace(
+      'export const AUDIT_EXCEPTIONS = [];',
+      `export const AUDIT_EXCEPTIONS = ${JSON.stringify([injectedException], null, 2)};`,
+    ),
+  );
   writeFileSync(
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
@@ -390,7 +406,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
     )}));`,
   );
 
-  const result = spawnSync(process.execPath, [SCRIPT, '--audit-level=high'], {
+  const result = spawnSync(process.execPath, [tempScript, '--audit-level=high'], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -401,7 +417,7 @@ test('reports every matched exception in the success diagnostic', (t) => {
   assert.equal(result.status, 0);
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
+    /Temporary audit exception through 2099-12-31: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
   );
   assert.match(result.stderr, /Suppressed derived findings: brace-expansion, minimatch/);
 });
@@ -653,7 +669,6 @@ test('rejects temporary dependency exceptions with impossible expiresOn date', (
     /is not a real calendar date/,
   );
 });
-
 
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.
