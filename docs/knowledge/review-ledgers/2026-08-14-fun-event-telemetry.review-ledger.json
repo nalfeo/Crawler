@@ -61,13 +61,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "grok-4.5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "44f746ddf4b2bc422d59f52e080693f56527a104",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Graded origin/main..HEAD feature range (7 commits / 32 files); local main was stale. Prior remedies verified in code and tests: previousLevel = world.playerLevel?.level ?? 0 after applyStartPlayerLevel/loadout (headless-runner.ts), headless regression for startPlayerLevel:3 emits no level_up rewards, and fun-score-lib flags <10% selection after 5+ exposures while still treating zero-selection avoidance separately. Hybrid opt-in runEvents, active-time bounding, release fun-report non-blocking publish/persistence, metaProgression hook-only, and criterion-level Sweep Results Viewer display are consistent with ADR 0084. Targeted unit + headless regressions passed."
     }
   }
 }
