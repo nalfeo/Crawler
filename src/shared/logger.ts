@@ -10,8 +10,8 @@ export type Logger = Pick<
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'setLevel' | 'getLevel'
 >;
 
-export const DEFAULT_LOG_BUFFER_SIZE = 500;
-let logBufferLimit = DEFAULT_LOG_BUFFER_SIZE;
+export const _DEFAULT_LOG_BUFFER_SIZE = 500;
+let logBufferLimit = _DEFAULT_LOG_BUFFER_SIZE;
 let nextLogSequence = 0;
 const logBuffer: Array<{ sequence: number; line: string }> = [];
 
@@ -55,7 +55,7 @@ export function readLogsSince(cursor: LogCursor): string[] {
   return logBuffer.filter((entry) => entry.sequence >= cursor.sequence).map((entry) => entry.line);
 }
 
-export function setLogBufferLimit(limit: number): void {
+export function _setLogBufferLimit(limit: number): void {
   if (!Number.isInteger(limit) || limit < 1) {
     throw new Error(`Log buffer limit must be a positive integer, got ${limit}`);
   }

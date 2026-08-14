@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLogCursor,
   createLogger,
-  DEFAULT_LOG_BUFFER_SIZE,
+  _DEFAULT_LOG_BUFFER_SIZE,
   getGlobalLogLevel,
   readLogsSince,
-  setLogBufferLimit,
+  _setLogBufferLimit,
   setGlobalLogLevel,
   type LogLevel,
 } from '../../src/shared/logger';
@@ -17,7 +17,7 @@ describe('logger', () => {
     vi.unstubAllGlobals();
     // Restore a predictable level for any later tests in the suite.
     setGlobalLogLevel('warn');
-    setLogBufferLimit(DEFAULT_LOG_BUFFER_SIZE);
+    _setLogBufferLimit(_DEFAULT_LOG_BUFFER_SIZE);
   });
 
   it('createLogger returns a logger with the expected methods', () => {
@@ -127,7 +127,7 @@ describe('logger', () => {
     logger.info('evict-a');
     logger.info('evict-b');
     logger.info('evict-c');
-    setLogBufferLimit(2);
+    _setLogBufferLimit(2);
     const logs = readLogsSince(cursor);
     expect(logs.some((line) => line.includes('evict-a'))).toBe(false);
     expect(logs.some((line) => line.includes('evict-b'))).toBe(true);
@@ -146,8 +146,8 @@ describe('logger', () => {
   });
 
   it('rejects invalid log buffer limits', () => {
-    expect(() => setLogBufferLimit(0)).toThrow(/positive integer/);
-    expect(() => setLogBufferLimit(1.5)).toThrow(/positive integer/);
-    expect(() => setLogBufferLimit(Number.NaN)).toThrow(/positive integer/);
+    expect(() => _setLogBufferLimit(0)).toThrow(/positive integer/);
+    expect(() => _setLogBufferLimit(1.5)).toThrow(/positive integer/);
+    expect(() => _setLogBufferLimit(Number.NaN)).toThrow(/positive integer/);
   });
 });
