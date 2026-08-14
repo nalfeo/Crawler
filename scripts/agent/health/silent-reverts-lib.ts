@@ -230,7 +230,7 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
 
 /**
  * Split a unified `git diff` for a single path into its added and removed
- * content lines (trimmed, file-header lines excluded).
+ * content lines (file-header lines excluded).
  *
  * Used by `sideAdditionsSubsumedByOther` to detect a subsumed conflict
  * resolution — a genuine textual conflict (so `git merge-tree` cannot
@@ -246,17 +246,29 @@ export function parseDiffLineChanges(diffText: string): {
   const removed: string[] = [];
   for (const line of diffText.split('\n')) {
     if (line.startsWith('+++') || line.startsWith('---')) continue;
-    if (line.startsWith('+')) added.push(line.slice(1).trim());
-    else if (line.startsWith('-')) removed.push(line.slice(1).trim());
+    if (line.startsWith('+')) added.push(line.slice(1));
+    else if (line.startsWith('-')) removed.push(line.slice(1));
   }
   return { added, removed };
+}
+
+/**
+ * Collapse a line's whitespace runs to a single space and trim. Markdown
+ * tables (and similarly padded lists) get re-justified whenever a column's
+ * widest cell changes, which changes inter-cell padding without changing any
+ * cell's content — that padding churn must not defeat the subsumption check
+ * below.
+ */
+function normalizeForComparison(line: string): string {
+  return line.replace(/\s+/g, ' ').trim();
 }
 
 /**
  * True when every non-blank line the incoming side ADDED (relative to the
  * merge base) also appears as an added line in the opposing side's resolution
  * — i.e. the incoming side's content is not lost, only reformatted alongside
- * more content.
+ * more content. Comparison ignores whitespace-run differences (e.g. markdown
+ * table column re-justification); see `normalizeForComparison`.
  *
  * Deliberately conservative: any line the incoming side REMOVED is not
  * verified this way (deletions are easy to silently drop and hard to confirm
@@ -273,10 +285,12 @@ export function sideAdditionsSubsumedByOther(
   sideRemoved: readonly string[],
   otherAdded: readonly string[],
 ): boolean {
-  const meaningfulAdded = sideAdded.filter((line) => line.length > 0);
+  const meaningfulAdded = sideAdded.map(normalizeForComparison).filter((line) => line.length > 0);
   if (meaningfulAdded.length === 0) return false; // nothing to subsume
-  if (sideRemoved.some((line) => line.length > 0)) return false;
-  const otherAddedSet = new Set(otherAdded.filter((line) => line.length > 0));
+  if (sideRemoved.some((line) => normalizeForComparison(line).length > 0)) return false;
+  const otherAddedSet = new Set(
+    otherAdded.map(normalizeForComparison).filter((line) => line.length > 0),
+  );
   return meaningfulAdded.every((line) => otherAddedSet.has(line));
 }
 

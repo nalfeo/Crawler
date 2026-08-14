@@ -2,8 +2,10 @@
 /**
  * Backwards-compatible `ai:headless` launcher.
  *
- * The reusable implementation is in `prebundle-cli.mjs`; keeping this stable
- * path preserves direct invocations and existing documentation.
+ * The reusable implementation — including the atomic, content-addressed
+ * bundle publication scheme that makes concurrent launchers safe — lives in
+ * `prebundle-cli.mjs`; keeping this stable path preserves direct invocations
+ * and existing documentation.
  */
 import { launch } from './prebundle-cli.mjs';
 import { fileURLToPath } from 'node:url';
