@@ -7,7 +7,7 @@
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "",
+      "reviewer_model": "gpt-5.4",
       "concerns_count": 5,
       "resolved_count": 5,
       "adversarial": true,
@@ -45,30 +45,40 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-opus-4.6"],
+          "models": ["claude-opus-4.6", "gpt-5.6-terra"],
           "concerns_count": 1,
           "resolved_count": 1,
+          "valid_count": 1,
           "clean": false,
           "notes": "Restored the sweep-eval Floor-1 guard because its internal budget and frame caps remain Floor-1-specific."
         },
         {
           "round": 2,
-          "models": ["claude-opus-4.6"],
+          "models": ["claude-opus-4.6", "gpt-5.6-terra"],
           "concerns_count": 0,
           "resolved_count": 0,
+          "valid_count": 0,
           "clean": true,
           "notes": "No remaining multi-model findings after the guard correction."
         }
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "2e6cc1681db14d43e093c660e63551d6315e94a5",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation expands the PR and release sweeps to support multi-floor and chained progression while adhering to the specified run counts. Metadata and budget additions are integrated, and the final corrections preserve Floor-1-specific evaluator semantics and prevent an invented initial quartermaster restock. The expired audit exception is a repository-level tracking issue rather than a defect in this change."
     }
   }
 }
