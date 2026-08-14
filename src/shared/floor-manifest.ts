@@ -43,8 +43,10 @@ export const floorManifestDefSchema = z
      * floor is real content (stair-enabling into the next floor, floor-select
      * UI, progression chaining) reads this rather than hardcoding a floor id.
      *
-     * - `mvp`: the floor is implemented E2E with an attainable victory. Such a
-     *   floor is included in the released-floor sweep set.
+     * - `mvp`: the floor is implemented E2E with an attainable victory. This —
+     *   NOT `released` — is what puts a floor in the implemented (sweepable)
+     *   set, so a floor still stabilizing behind the release flag is still
+     *   swept.
      * - `released`: the floor is shipped to players. Implies `mvp`; a floor may
      *   be `mvp` but not yet `released` while it stabilizes.
      * - `winBudgetMs`: the ACTIVE-time budget an official (tournament) win must

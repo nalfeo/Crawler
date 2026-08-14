@@ -1,9 +1,8 @@
 import { execFileSync } from 'node:child_process';
 
-const REQUIRED_WORKFLOW_PATHS = new Set([
-  '.github/workflows/ci.yml',
-  '.github/workflows/security-review.yml',
-]);
+import { AUTO_RETRIGGER_WORKFLOW_PATHS } from './state.mjs';
+
+const REQUIRED_WORKFLOW_PATHS = new Set(AUTO_RETRIGGER_WORKFLOW_PATHS);
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');

@@ -20,6 +20,7 @@
  * consumes when it files a regression issue.
  */
 import { getImplementedFloorIds } from '../../../src/shared/floor-registry.js';
+import { resolveFloorChain } from '../../../src/game/ai/progression-runner.js';
 
 export interface SweepLeg {
   /** Stable id, also used as the release baseline's per-leg key. */
@@ -182,12 +183,11 @@ export function uncoveredImplementedFloors(legs: readonly SweepLeg[]): string[] 
   for (const l of legs) {
     covered.add(l.floorId);
     if (l.chain) {
-      // A chained leg traverses the rest of the implemented chain from its
-      // start floor, so everything at or after it is exercised.
-      const startIndex = implemented.indexOf(l.floorId);
-      if (startIndex !== -1) {
-        for (const floorId of implemented.slice(startIndex)) covered.add(floorId);
-      }
+      // A chained leg covers exactly the floors the runner actually traverses,
+      // which follows each scenario's `nextFloorId` — NOT registry order. A
+      // floor registered after the start floor but disconnected from (or skipped
+      // by) the scenario graph is never reached, so it must stay uncovered.
+      for (const floorId of resolveFloorChain(l.floorId)) covered.add(floorId);
     }
   }
   return implemented.filter((floorId) => !covered.has(floorId));

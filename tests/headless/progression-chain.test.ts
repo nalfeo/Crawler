@@ -79,15 +79,37 @@ describe('multi-floor progression', () => {
         expect(progression.officialWin).toBe(false);
       }
 
-      // The transition itself: if Floor 1 cleared, the run MUST have advanced
-      // to a Floor 2 leg rather than stopping — that advance is only possible
-      // through a captured carryover snapshot.
-      if (progression.clearedFloorIds.includes('floor1')) {
-        expect(progression.legs.map((l) => l.floorId)).toContain('floor2');
-        const floor2Leg = progression.legs.find((l) => l.floorId === 'floor2')!;
-        // A carried-over player arrives leveled, not at a cold level-1 start.
-        expect(floor2Leg.stats.finalLevel).toBeGreaterThan(1);
-      }
+      // The transition itself. Asserted UNCONDITIONALLY: a gated Floor-1 seed
+      // that fails to clear must fail this test rather than silently skipping
+      // every transition assertion and leaving a broken handoff undetected.
+      expect(
+        progression.clearedFloorIds,
+        `seed ${PROGRESSION_SEED} must clear Floor 1 for the transition to be exercised`,
+      ).toContain('floor1');
+      expect(progression.legs.map((l) => l.floorId)).toContain('floor2');
+
+      const floor1Leg = progression.legs.find((l) => l.floorId === 'floor1')!;
+      const floor2Leg = progression.legs.find((l) => l.floorId === 'floor2')!;
+      const captured = floor1Leg.captured;
+      expect(captured, 'a cleared Floor 1 captures a carryover snapshot').toBeDefined();
+      // The Floor-2 leg must START from exactly that snapshot, not a cold boot.
+      expect(floor2Leg.startedFrom).toBe(captured);
+
+      // Concrete carried values are actually restored in the Floor-2 world.
+      // `finalLevel > 1` alone proves nothing: a cold Floor-2 start already
+      // begins at level 5 (applyFloor2DirectStartPlayerState). The level ledger
+      // is decisive — its first entry is recorded on the first simulated frame,
+      // so it IS the level the Floor-2 world booted at. A dropped carryover
+      // boots the cold Floor-2 baseline instead of the carried level.
+      const carriedLevel = captured!.playerLevel.level;
+      const bootLevelUp = floor2Leg.stats.levelUps[0];
+      expect(bootLevelUp, 'Floor 2 records its boot level on frame 1').toBeDefined();
+      expect(bootLevelUp!.frame).toBeLessThanOrEqual(1);
+      expect(bootLevelUp!.level).toBe(carriedLevel);
+
+      // Gold is a second, independent carried value: it is never reset by the
+      // Floor-2 boot, so the run cannot end below what Floor 1 handed over.
+      expect(floor2Leg.stats.totalGold).toBeGreaterThanOrEqual(captured!.playerGold);
     },
     HOOK_TIMEOUT_MS,
   );

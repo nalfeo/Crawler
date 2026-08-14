@@ -17,8 +17,9 @@ runs, preserving the 600-run release budget. PR coverage is 25 standalone Floor-
 
 Added manifest-backed floor maturity and win-budget metadata, floor-aware headless
 budgets, deterministic carryover progression, per-leg baseline diagnostics, and
-run-count migration handling so the intentional 600-to-300 Floor-1 resize skips
-only the incomparable historical sample. Restored downloadable `nanoid@3.3.17`.
+revision-gated run-count migration so the intentional 600-to-300 Floor-1 resize
+skips only the incomparable historical sample and any undeclared run-count change
+still fails closed.
 
 ## Verification
 
@@ -26,13 +27,24 @@ only the incomparable historical sample. Restored downloadable `nanoid@3.3.17`.
 - `npm run verify:fast`: typecheck, lint, changed tests, and integrity checks ran;
   the command is blocked by the repository's expired `brace-expansion` audit
   exception, not by this change.
-- `npm ci` succeeded after restoring nanoid.
+- `npm ci` succeeds on the repository's pinned `nanoid@3.3.18` override; the
+  temporary 3.3.17 downgrade was reverted because it reintroduced a blocking
+  high-severity audit finding.
 
 ## Review
 
-The 4🍎 review harness completed adversarial plan review, code review, multi-model
-review, and the independent grade is pending packet generation because the existing
-grade tool refuses this branch's oversized diff.
+The 4🍎 review harness completed all stages: adversarial plan review, a clean
+two-round code review, a clean two-round multi-model review, and the independent
+grade (`gemini-3.1-pro-preview`, verdict `pass`, zero findings). See
+`docs/knowledge/review-ledgers/2026-08-14-multi-floor-sweep-methodology.review-ledger.json`.
+
+PR review follow-up landed afterwards: workflow/matrix parity is now covered by
+`tests/unit/sweep-legs-workflow-parity.test.ts`, the baselines index derivation
+moved into the unit-tested `scripts/agent/perf/baseline-index.ts` (it previously
+dropped `legs`, disabling every per-leg diagnostic), `--max-frames` is forwarded to
+chained runs, chained coverage is derived with `resolveFloorChain`, and the
+progression gate now asserts the Floor-1 clear plus a concrete restored carryover
+value.
 
 ## Follow-up
 

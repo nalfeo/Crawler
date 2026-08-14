@@ -75,6 +75,8 @@ interface SweepTask {
 
 interface SweepSharedConfig {
   maxFrames: number;
+  /** True when `--max-frames` was supplied explicitly (see `CLIArgs`). */
+  maxFramesExplicit: boolean;
   enemyDamageMultiplier: number;
   floorId: string;
   skipEvents: boolean;
@@ -127,6 +129,10 @@ async function runChainedSweepTask(
       enemyDamageMultiplier: config.enemyDamageMultiplier,
       eventSampleInterval: 60,
       startFloorId: config.floorId,
+      // An explicit --max-frames bounds EVERY leg of the chain; without it each
+      // floor resolves its own manifest-derived cap so a long floor is not
+      // truncated by a short floor's budget.
+      ...(config.maxFramesExplicit ? { maxFramesPerFloor: config.maxFrames } : {}),
       ...recordEventOption,
     },
   );
@@ -310,7 +316,11 @@ async function sweep(args: CLIArgs): Promise<void> {
       ? `Weapons: ${args.weapons.join(', ')}`
       : 'Weapons: seed-selected (--no-force-weapon)',
   );
-  console.log(`Budget:  ${args.maxFrames} frames (~${(args.maxFrames / 60).toFixed(0)}s)`);
+  console.log(
+    args.chain && !args.maxFramesExplicit
+      ? 'Budget:  per-floor manifest caps (no explicit --max-frames)'
+      : `Budget:  ${args.maxFrames} frames (~${(args.maxFrames / 60).toFixed(0)}s)`,
+  );
   console.log(`Damage:  ${args.enemyDamageMultiplier}x hostile damage`);
   console.log(`Runs:    ${tasks.length}`);
   console.log(`Workers: ${Math.max(1, Math.min(args.workers, tasks.length))}`);
@@ -325,6 +335,7 @@ async function sweep(args: CLIArgs): Promise<void> {
   const perWeapon: { weapon: string; wins: number; slowVictories: number; runs: number }[] = [];
   const sharedConfig: SweepSharedConfig = {
     maxFrames: args.maxFrames,
+    maxFramesExplicit: args.maxFramesExplicit,
     enemyDamageMultiplier: args.enemyDamageMultiplier,
     floorId: args.floorId,
     skipEvents: args.skipEvents,
