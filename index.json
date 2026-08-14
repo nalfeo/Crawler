@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5963fe506b2a7c6104afebef788fff80d0dbb5e2",
+    "commitDate": "2026-08-14T06:39:42Z",
+    "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2899)",
+    "capturedAt": "2026-08-14T07:39:46.609Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31777115305",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/5963fe506b2a7c6104afebef788fff80d0dbb5e2.json"
+  },
+  {
     "commit": "6326787c198481cf164aeed471b6e0ae1723dd44",
     "commitDate": "2026-08-14T06:24:01Z",
     "commitSubject": "feat(devtools): load baselines in sweep viewer (#2860)",
