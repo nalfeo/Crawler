@@ -583,7 +583,7 @@ export interface RunStats {
   /** Final score */
   finalScore: number;
   /** Run outcome */
-  outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'error';
+  outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'error' | 'quit';
   /** Error message if outcome is 'error' */
   error?: string;
   /**

@@ -1,0 +1,40 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "runstats-run-bundle",
+  "task_title": "Shared RunStats collector and run bundles",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "",
+      "model": "gpt-5.4",
+      "clean": true,
+      "summary": "Keep world harvesters above shared; use shared generic bundle/assembly seam, optional toJsonl on shared recorder, cursor-based bounded logs, and emit once at terminal presentation before reload/restart. Alternatives rejected: importing game into shared/engine and changing runHeadless return type."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

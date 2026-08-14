@@ -7,9 +7,8 @@
  * with {@link SimEvent}, all existing analysis utilities — {@link summarizeEvents},
  * {@link eventsToJsonl} — work without modification.
  *
- * **Dev/debug only.** Never import this module from production game logic; the
- * recorder is only wired when the lab injects a `sessionRecorderFactory` into
- * `MainGameScene` options.
+ * The recorder is lightweight enough for the dev build and can be injected by
+ * labs or the production bootstrap through `MainGameScene` options.
  *
  * Pure module: no Phaser imports. Safe to import from labs and tests.
  */
