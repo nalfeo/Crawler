@@ -7,6 +7,10 @@
  */
 import { availableParallelism } from 'node:os';
 import { GAME } from '../../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../../src/game/ai/floor1-run-budget.js';
 
 export const FLOOR1_WEAPONS = [
   'sword',
@@ -17,9 +21,9 @@ export const FLOOR1_WEAPONS = [
   'fireball',
 ];
 /** Floor 1 design WIN budget: 6 minutes of ACTIVE (safe-room-credited) game time. */
-export const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
+export const FLOOR1_TIME_BUDGET_MS = FLOOR1_ACTIVE_TIME_BUDGET_MS;
 /** Floor 1 design WIN budget in frames at 60 fps (`FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS`). */
-export const BUDGET_FRAMES = 21_600;
+export const BUDGET_FRAMES = FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS;
 
 /**
  * Default simulation frame cap = the win budget + ~10 % slack, computed with the
@@ -43,7 +47,7 @@ export const BUDGET_FRAMES = 21_600;
  * explicit `--max-frames` still overrides for every floor. This keeps the Floor-1
  * safe-room fix from silently changing another floor's truncation behavior.
  */
-export const DEFAULT_MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+export const DEFAULT_MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 
 export interface CLIArgs {
   seeds: number[];

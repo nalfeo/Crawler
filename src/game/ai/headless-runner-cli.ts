@@ -11,6 +11,7 @@
 import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
+import { getPersonaConfig, personaConfigDivergence } from './personas.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
 import { helpText, parseArgs } from './headless-runner-cli-lib.js';
 
@@ -42,14 +43,31 @@ async function main(): Promise<void> {
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
   console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
+  console.log(`Persona: ${args.persona}`);
   console.log(
     `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
   );
   console.log('');
 
+  // A persona label is only truthful while the run actually uses the preset.
+  // `--aggression`/`--pathing-mode`/`--decision-mode` can override it, so a
+  // diverging run stays UNLABELLED rather than contaminating that cohort's
+  // cohort scores with behavior the persona never had.
+  const personaDivergence = personaConfigDivergence(args.persona, {
+    ...(args.aggression !== null ? { aggression: args.aggression } : {}),
+    pathingMode: args.pathingMode,
+    decisionMode: args.decisionMode,
+  });
+  if (personaDivergence.length > 0) {
+    console.log(
+      `⚠️  Persona "${args.persona}" overridden by: ${personaDivergence.join(', ')} — run will NOT be labelled with this persona.`,
+    );
+  }
+
   const ai = new BehaviorTreeAI({
+    ...getPersonaConfig(args.persona),
     seed: args.seed,
-    aggression: args.aggression,
+    ...(args.aggression !== null ? { aggression: args.aggression } : {}),
     debug: args.debug,
     pathingMode: args.pathingMode,
     decisionMode: args.decisionMode,
@@ -73,6 +91,7 @@ async function main(): Promise<void> {
     recordWeaponTelemetry: args.weaponTelemetry,
     weaponPersonas: args.weaponPersonas,
     optionalPurchases: args.optionalPurchases,
+    ...(personaDivergence.length === 0 ? { playerPersona: args.persona } : {}),
     settlementReturnRouting: args.settlementReturnRouting,
     ...(recording
       ? {
