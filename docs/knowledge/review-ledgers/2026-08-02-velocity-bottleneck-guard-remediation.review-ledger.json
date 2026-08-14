@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-08-02",
+  "session_slug": "velocity-bottleneck-guard-remediation",
+  "task_title": "Velocity bottleneck scan: actionable guard-specific remediation hints",
+  "estimated_apples": 2,
+  "stages": {}
+}

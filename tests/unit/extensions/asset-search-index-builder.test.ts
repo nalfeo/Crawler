@@ -17,7 +17,7 @@ describe('asset-search index builder brief enrichment', () => {
     const doc = buildCorpus().find((entry) => entry.label === 'ability-icon-magic-missile');
     expect(doc).toBeDefined();
     expect(doc?.briefId).toBe('ability-icons-batch-01');
-    expect(doc?.briefText).toContain('precise arcane bolt');
+    expect(doc?.briefText).toContain('Launch a precise arcane bolt');
     expect(doc?.briefText).not.toContain('Ability icon batch 01a');
   });
 
