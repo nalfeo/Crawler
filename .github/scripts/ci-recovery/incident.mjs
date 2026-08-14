@@ -42,6 +42,7 @@ if (shouldSkipRepoIncidentWorkflowRun(run)) {
 }
 
 const label = 'ci-incident';
+const adminInterventionLabel = 'admin-intervention-required';
 const title = `CI incident: ${run.name}`;
 const openIssues = await paginate(
   token,
@@ -127,6 +128,25 @@ try {
   }
 }
 
+const knownAutoRetriggerWorkflow = ['CI', 'Security Review Loop'].includes(String(run.name));
+const requiresAdminIntervention =
+  run.conclusion === 'startup_failure' ||
+  (run.conclusion === 'action_required' && !knownAutoRetriggerWorkflow);
+if (requiresAdminIntervention) {
+  try {
+    await request(token, `/repos/${owner}/${repo}/labels`, {
+      method: 'POST',
+      body: {
+        name: adminInterventionLabel,
+        color: 'b60205',
+        description: 'Automation requires a human or repository-admin intervention',
+      },
+    });
+  } catch (error) {
+    if (error.status !== 422) throw error;
+  }
+}
+
 const body = [
   CI_INCIDENT_MARKER,
   `# ${run.name} needs recovery`,
@@ -151,6 +171,15 @@ const body = [
       : [];
   })(),
   '',
+  ...(requiresAdminIntervention
+    ? [
+        '## Required human/admin intervention',
+        '',
+        'This incident was raised because automation cannot safely recover without a human or repository-admin action.',
+        'The fix must include a deterministic guard, automation change, or documented removal condition so the same intervention is not needed again.',
+        '',
+      ]
+    : []),
   '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
 ].join('\n');
 
@@ -159,14 +188,21 @@ if (existing) {
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
-      body: { body, labels: [label] },
+      body: {
+        body,
+        labels: [label, ...(requiresAdminIntervention ? [adminInterventionLabel] : [])],
+      },
     })
   ).data;
 } else {
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues`, {
       method: 'POST',
-      body: { title, body, labels: [label] },
+      body: {
+        title,
+        body,
+        labels: [label, ...(requiresAdminIntervention ? [adminInterventionLabel] : [])],
+      },
     })
   ).data;
 }

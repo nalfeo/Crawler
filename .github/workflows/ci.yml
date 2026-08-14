@@ -167,6 +167,23 @@ jobs:
           echo "asset_visual_touched=$asset_visual_touched" >>"$GITHUB_OUTPUT"
           echo "devtool_visual_touched=$devtool_visual_touched" >>"$GITHUB_OUTPUT"
 
+  deps-install:
+    name: Cold dependency install
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.dependencies_touched == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install from the registry without caches
+        run: |
+          npm cache clean --force
+          npm ci --ignore-scripts --no-audit --no-fund
+
   # Job 1: Lightweight checks — consolidates Types & Lint, Format & Labs,
   # advisory dead-code/typecheck, and human-approval into a single runner to
   # eliminate three repeated setup/checkout sequences on a full CI run.
@@ -212,6 +229,7 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           install-playwright: ${{ needs.changes.outputs.docs_only != 'true' && 'true' || 'false' }}
+          install-dependencies: ${{ needs.changes.outputs.docs_only != 'true' && 'true' || 'false' }}
 
       # Persist ESLint's incremental cache across runs. The unique run_id suffix
       # forces a fresh (immutable) cache entry each run; restore-keys warm-start
@@ -335,6 +353,7 @@ jobs:
       # Receipt: `npm audit` went red in CI because an exception list quietly
       # expired on a date nobody was watching.
       - name: Allowlist governance + expiry guard
+        if: env.DOCS_ONLY != 'true'
         run: npm run check:allowlist-expiry
 
       # Registry integrity guard: duplicate/blank ids within a registry file and,
@@ -344,6 +363,7 @@ jobs:
       # Floor-2 tier4 achievement collided with a sibling PR's rows and needed a
       # human escalation to untangle.
       - name: Registry ID integrity guard
+        if: env.DOCS_ONLY != 'true'
         run: npm run check:registry-integrity
 
       # Asset identity guard: verifies the shard ↔ PNG ↔ contentHash triple over
@@ -376,6 +396,13 @@ jobs:
       - name: Exact dependency versions
         if: env.DOCS_ONLY != 'true'
         run: npm run security:exact-deps
+
+      - name: Lockfile integrity
+        if: env.DOCS_ONLY != 'true' && needs.changes.outputs.dependencies_touched == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          npm_config_registry: https://registry.npmjs.org/
+        run: npm run security:lock-integrity
 
       # copilot-guards + review-ledger validator tests (node:test). These run
       # nowhere else in CI; this is their merge-gate home.
@@ -699,6 +726,7 @@ jobs:
     needs:
       [
         changes,
+        deps-install,
         check-lightweight,
         check-aggregate-rows,
         check-silent-reverts,
@@ -765,6 +793,7 @@ jobs:
           # skippable check, a `changes`/detect-art-only failure on a code PR
           # would skip every heavy gate and be silently counted as PASS.
           check "Change scope detection"        "${{ needs.changes.result }}"
+          check "Cold dependency install"        "${{ needs.deps-install.result }}" "true"
           # Lightweight Checks consolidates Types & Lint, Format & Labs,
           # advisory dead-code/typecheck, and human-approval. On docs-only
           # changes the non-approval steps are skipped at the step level; the

@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "dependency-integrity-gate",
+  "task_title": "Dependency integrity gate",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Independent plan review identified the canonical lock metadata, docs-only install, and action-required race risks; all were addressed, with the plan remaining convergent."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Review findings covered tarball provenance, dependency-scope wiring, docs-only setup, and admin-intervention false positives; all were fixed and re-reviewed."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
