@@ -691,7 +691,7 @@ export async function runHeadless(
 
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
-  let previousLevel = 0;
+  let previousLevel = world.playerLevel?.level ?? 0;
   const killsByType: Record<string, number> = {};
   let totalKills = 0;
   let combatEventCursor = world.combatEvents.length;

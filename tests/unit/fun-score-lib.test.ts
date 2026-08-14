@@ -367,6 +367,37 @@ describe('scoreFunSessions', () => {
     });
   });
 
+  it('flags items selected below 10% after enough exposures', () => {
+    const report = scoreFunSessions([
+      {
+        id: 'rarely-selected',
+        run: makeRun({
+          itemInteractions: {
+            uniqueActivationCount: 1,
+            dominantActivationCount: 1,
+            items: [
+              {
+                catalogKey: 'spell:rare-choice',
+                kind: 'spell',
+                offeredCount: 11,
+                selectableExposureCount: 11,
+                selectionCount: 1,
+                activationCount: 1,
+                activeTimeMs: 0,
+              },
+            ],
+          },
+        }),
+      },
+    ]);
+
+    expect(report.criteria.item_viability).toMatchObject({
+      observed: 1,
+      status: 'needs_attention',
+    });
+    expect(report.criteria.item_viability.reason).toContain('below 10% after 5+ exposures');
+  });
+
   it('consumes permanent-power hooks but leaves legacy mixed inputs unmeasured', () => {
     const measured = scoreFunSessions([
       {

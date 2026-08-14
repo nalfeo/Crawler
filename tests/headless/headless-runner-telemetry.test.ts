@@ -140,6 +140,18 @@ describe('headless runner AI telemetry', () => {
     expect(provider.planningDeadlineMs).toBeNull();
   });
 
+  it('does not report configured starting levels as in-run level-ups', async () => {
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 1,
+      maxWallTimeMs: 30_000,
+      startPlayerLevel: 3,
+      forceWeaponId: 'sword',
+    });
+
+    expect(stats.rewardEvents?.events.some((event) => event.kind === 'level_up')).toBe(false);
+  });
+
   it('level 1 (default) applies no boost', async () => {
     const stats = await runHeadless(new ScriptedDecisionProvider(), {
       seed: 42,
