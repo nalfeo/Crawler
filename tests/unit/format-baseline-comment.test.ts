@@ -117,6 +117,28 @@ describe('formatBaselineComment', () => {
     expect(body).toContain('↳ 567 fast wins · 15 slow victories · 18 true losses');
   });
 
+  it('shows every complete-floor leg with its gate status', () => {
+    const body = formatBaselineComment(
+      {
+        winRate: 0.99,
+        totalWins: 297,
+        totalRuns: 300,
+        legs: {
+          floor1: { winRate: 0.99, totalWins: 297, totalRuns: 300 },
+          floor2: { winRate: 1, totalWins: 150, totalRuns: 150 },
+          'floor1-chain': { winRate: 0.98, totalWins: 147, totalRuns: 150 },
+        },
+      },
+      [entry(10, 0.99)],
+      options,
+    );
+
+    expect(body).toContain('### Complete-floor coverage');
+    expect(body).toContain('| `floor1` | 99.0% | 297/300 | yes |');
+    expect(body).toContain('| `floor2` | 100.0% | 150/150 | report-only |');
+    expect(body).toContain('| `floor1-chain` | 98.0% | 147/150 | report-only |');
+  });
+
   it('omits breakdown line when totalSlowVictories is absent (backward-compatible with old baselines)', () => {
     const body = formatBaselineComment(
       { winRate: 0.84, totalWins: 252, totalRuns: 300 },
