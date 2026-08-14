@@ -232,6 +232,62 @@ function buildIssue(
 }
 
 /**
+ * Floor 1 is the blocking release gate and has a stronger success criterion
+ * than a historical trend: every sampled run must win. A loss is therefore
+ * actionable even when a preceding baseline is unavailable or the delta would
+ * otherwise fall inside the noise tolerance used for trend reporting.
+ */
+function buildFloor1LossIssue(
+  current: ComparedBaseline,
+  previous: ComparedBaseline | undefined,
+  legs?: readonly BaselineLegRegression[],
+): NonNullable<BaselineRegressionDecision['issue']> {
+  const marker = `<!-- ${BASELINE_REGRESSION_MARKER_PREFIX}:${current.commit} -->`;
+  const previousLine = previous
+    ? `| Previous | \`${previous.commit}\` | ${formatPercent(previous.winRate)} | ${previous.totalWins}/${previous.totalRuns} |`
+    : '| Previous | N/A | N/A | N/A |';
+  const legLines =
+    legs && legs.length > 0
+      ? [
+          '',
+          '### Per-leg breakdown',
+          '',
+          '| Leg | Previous | Current | Drop | Extra losses | Regressed |',
+          '| --- | ---: | ---: | ---: | ---: | :---: |',
+          ...legs.map(
+            (leg) =>
+              `| \`${leg.legId}\` | ${formatPercent(leg.previous.winRate)} | ${formatPercent(leg.current.winRate)} | ` +
+              `${(leg.winRateDrop * 100).toFixed(2)} pp | ${leg.additionalLosses} | ${leg.regression ? '**yes**' : 'no'} |`,
+          ),
+        ]
+      : [];
+  return {
+    marker,
+    title: `bug: Floor 1 release sweep loss at ${current.commit.slice(0, 12)}`,
+    body: [
+      marker,
+      '## Floor 1 release sweep loss',
+      '',
+      `The release sweep for \`${current.commit}\` recorded ${current.totalLosses} Floor 1 loss${current.totalLosses === 1 ? '' : 'es'}. Floor 1 has a 100% success requirement, so every loss is actionable.`,
+      '',
+      '| Baseline | Commit | Win rate | Wins |',
+      '| --- | --- | ---: | ---: |',
+      previousLine,
+      `| Current | \`${current.commit}\` | ${formatPercent(current.winRate)} | ${current.totalWins}/${current.totalRuns} |`,
+      '',
+      `- **Regressing commit:** ${current.commitSubject}`,
+      `- **Commit date:** ${current.commitDate}`,
+      `- **Sweep run:** ${current.runUrl}`,
+      ...legLines,
+      '',
+      '### Investigation',
+      '',
+      'Reproduce every failed Floor 1 seed, identify the root cause, and restore a 100% success rate without weakening the sweep or gameplay requirements. Add deterministic regression coverage, run the required repository verification, and publish a ready-for-review PR.',
+    ].join('\n'),
+  };
+}
+
+/**
  * Apply the SAME tolerance rule used for the aggregate to one leg. Extracted so
  * the aggregate and every leg provably share one definition of "regressed"
  * rather than drifting into two thresholds.
@@ -325,7 +381,16 @@ export function evaluateBaselineRegression(
     .map((commit) => entriesByCommit.get(commit))
     .find((entry): entry is BaselineIndexEntry => entry !== undefined);
 
-  if (!previousEntry) {
+  const previousBaseline = previousEntry;
+  if (!previousBaseline) {
+    if (current.totalLosses > 0) {
+      return {
+        regression: true,
+        reason: `Floor 1 recorded ${current.totalLosses} loss${current.totalLosses === 1 ? '' : 'es'}; the release target is 100% success`,
+        current,
+        issue: buildFloor1LossIssue(current, undefined),
+      };
+    }
     return {
       regression: false,
       reason: 'no earlier release baseline exists on the current first-parent lineage',
@@ -333,8 +398,24 @@ export function evaluateBaselineRegression(
     };
   }
 
-  const previous = compareShape(previousEntry, 'previous baseline');
-  const legs = evaluateLegRegressions(previousEntry.legs, currentBaseline.legs);
+  const previous = compareShape(previousBaseline, 'previous baseline');
+  const legs = evaluateLegRegressions(previousBaseline.legs, currentBaseline.legs);
+
+  // A Floor 1 release sweep loss is never tolerated. Unlike trend regression,
+  // it does not depend on a comparison baseline because the release target is
+  // a direct 100% success invariant.
+  if (current.totalLosses > 0) {
+    return {
+      regression: true,
+      reason: `Floor 1 recorded ${current.totalLosses} loss${current.totalLosses === 1 ? '' : 'es'}; the release target is 100% success`,
+      current,
+      previous,
+      winRateDrop: previous.winRate - current.winRate,
+      additionalLosses: current.totalLosses - previous.totalLosses,
+      ...(legs ? { legs } : {}),
+      issue: buildFloor1LossIssue(current, previous, legs),
+    };
+  }
 
   // A run-count change is comparable only when the sweep matrix REVISION also
   // changed: that is an intentional, declared resize (the multi-floor rollout
@@ -348,7 +429,7 @@ export function evaluateBaselineRegression(
   // suppress regression detection, so it stays fail-closed and throws.
   if (previous.totalRuns !== current.totalRuns) {
     const currentRevision = currentBaseline.meta.sweep?.revision;
-    const previousRevision = previousEntry.sweepRevision;
+    const previousRevision = previousBaseline.sweepRevision;
     if (currentRevision === undefined || currentRevision === previousRevision) {
       throw new Error(
         `cannot compare baseline run counts: previous=${previous.totalRuns}, current=${current.totalRuns} ` +
@@ -462,8 +543,11 @@ function main(): void {
       fs.appendFileSync(process.env.GITHUB_OUTPUT, `regression=${decision.regression}\n`);
     }
     if (decision.regression) {
+      const previousDescription = decision.previous
+        ? `${formatPercent(decision.previous.winRate)} -> `
+        : '';
       report.warn(
-        `release sweep regressed ${formatPercent(decision.previous!.winRate)} -> ${formatPercent(decision.current.winRate)}; investigation issue required`,
+        `release sweep regressed ${previousDescription}${formatPercent(decision.current.winRate)}; investigation issue required`,
         { file: baselinePath, remediation: 'Run the baseline regression issue-filing step.' },
       );
     } else {

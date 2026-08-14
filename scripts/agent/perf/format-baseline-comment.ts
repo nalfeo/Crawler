@@ -14,6 +14,15 @@ interface Baseline {
   totalSlowVictories?: number;
   /** Non-victory runs (deaths, timeouts, stalls). Optional — present in baselines captured after issue #1146. */
   totalTrueLosses?: number;
+  /** Per-leg results for the complete-floor release sweep. */
+  legs?: Record<
+    string,
+    {
+      winRate: number;
+      totalWins: number;
+      totalRuns: number;
+    }
+  >;
 }
 
 interface BaselineIndexEntry {
@@ -109,10 +118,44 @@ export function formatBaselineComment(
     hasBreakdown && fastWins !== null
       ? `  ↳ ${fastWins} fast wins · ${slowVictories} slow victories · ${trueLosses} true losses`
       : null;
+  const legRows = baseline.legs
+    ? Object.entries(baseline.legs)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([legId, leg]) => {
+          assertWinRate(leg.winRate, `baseline leg "${legId}"`);
+          if (!Number.isInteger(leg.totalRuns) || leg.totalRuns <= 0) {
+            throw new Error(`baseline leg "${legId}" has missing or invalid totalRuns`);
+          }
+          if (
+            !Number.isInteger(leg.totalWins) ||
+            leg.totalWins < 0 ||
+            leg.totalWins > leg.totalRuns
+          ) {
+            throw new Error(`baseline leg "${legId}" has missing or invalid totalWins`);
+          }
+          if (Math.abs(leg.totalWins / leg.totalRuns - leg.winRate) > 1e-9) {
+            throw new Error(`baseline leg "${legId}" winRate does not match totalWins/totalRuns`);
+          }
+          const blocking = legId === 'floor1' ? 'yes' : 'report-only';
+          return `| \`${legId}\` | ${(leg.winRate * 100).toFixed(1)}% | ${leg.totalWins}/${leg.totalRuns} | ${blocking} |`;
+        })
+    : [];
+  const legSection =
+    legRows.length > 0
+      ? [
+          '',
+          '### Complete-floor coverage',
+          '',
+          '| Leg | Win rate | Wins | Gate |',
+          '| --- | ---: | ---: | --- |',
+          ...legRows,
+        ]
+      : [];
 
   return [
     `📊 Baseline win-rate for this release: **${pct}%** (${wins}/${baseline.totalRuns})`,
     ...(breakdownLine ? [breakdownLine] : []),
+    ...legSection,
     '',
     `📈 Last ${newestFive.length} recorded baseline${newestFive.length === 1 ? '' : 's'} (oldest → newest):`,
     ...trendLines,
