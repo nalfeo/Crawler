@@ -33,6 +33,13 @@ import type { RunBundle } from '../shared/run-bundle.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
+function defaultRunBundleSink(bundle: RunBundle): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
+}
+
 /**
  * Create main scene options for a floor.
  * @param floorId - The floor identifier (e.g., "floor1")
@@ -56,7 +63,7 @@ export function createFloorMainSceneOptions(
     sessionRecorderFactory: (world, playerEid) =>
       createPlayerSessionRecorder(world, playerEid, { recordWeaponTelemetry: true }),
     runStatsFactory: collectHumanRunStats,
-    onRunBundle,
+    onRunBundle: onRunBundle ?? defaultRunBundleSink,
     configureWorld: (world: GameWorld, playerEid: number) =>
       scenario.configureWorld(world, playerEid, initializationOptions),
     selectLoadoutOption: scenario.selectLoadoutOption,

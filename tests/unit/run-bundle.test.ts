@@ -7,7 +7,13 @@ import { createTestWorld } from '../helpers/world-factory.js';
 describe('run bundle contracts', () => {
   it('collects a stable human RunStats shape from a test world', () => {
     const world = createTestWorld({ seed: 7 });
-    const stats = collectHumanRunStats(world, 0, 'quit', 3, { totalKills: 4 });
+    const stats = collectHumanRunStats(world, 0, 'quit', 3, {
+      totalEvents: 4,
+      totalSamples: 4,
+      totalKills: 4,
+      durationMs: 0,
+      controller: 'MANUAL',
+    });
 
     expect(stats.outcome).toBe('quit');
     expect(stats.combat.totalKills).toBe(4);

@@ -1012,9 +1012,10 @@ export class MainGameScene extends Phaser.Scene {
         window.location.reload();
       },
       onQuit: () => {
-        // Quit is an explicit user action after the death screen has already
-        // recorded the gameplay terminal state; preserve both end intents.
-        this.emitRunBundle('quit', true);
+        // Death/victory/timeout already emitted the terminal bundle before
+        // showing this UI. A future active-run quit screen can use this same
+        // path to emit the distinct quit outcome.
+        this.emitRunBundle('quit');
         window.location.reload();
       },
     });
