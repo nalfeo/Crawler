@@ -74,7 +74,9 @@ function main(): void {
   const dir = process.env.BASELINES_DIR;
   if (!dir) throw new Error('BASELINES_DIR is required');
   const entries = writeBaselineIndex(dir);
-  console.log(`baseline index rebuilt with ${entries.length} entrie(s).`);
+  console.log(
+    `baseline index rebuilt with ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}.`,
+  );
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
