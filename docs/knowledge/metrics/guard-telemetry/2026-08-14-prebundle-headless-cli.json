@@ -1,0 +1,22 @@
+{
+  "schema": "agent-os-guard-telemetry-capture/v1",
+  "session": "prebundle-headless-cli",
+  "date": "2026-08-14",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 2,
+  "guards": {
+    "pr-preflight": {
+      "allow": 1
+    },
+    "pr-review-ledger": {
+      "allow": 1
+    }
+  },
+  "tools": {
+    "create_pull_request": 2
+  },
+  "ignored_events": 0,
+  "unexpected_guard_ids": [],
+  "quarantined": false,
+  "fixture_guard_ids": []
+}

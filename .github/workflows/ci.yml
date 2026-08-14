@@ -676,7 +676,8 @@ jobs:
 
       - name: Sweep leg ${{ matrix.leg }}
         run: >-
-          npx tsx scripts/agent/perf/winrate-sweep.ts ${{ matrix.args }}
+          node scripts/agent/perf/prebundle-cli.mjs --entry winrate-sweep
+          ${{ matrix.args }}
           --workers 4 --skip-events --out "files/sweep-${{ matrix.leg }}.json"
 
       - name: Publish leg summary

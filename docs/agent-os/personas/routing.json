@@ -80,6 +80,7 @@
     { "agent": "perf-optimizer.agent.md", "inherits": "systems-engineer.md" },
     { "agent": "velocity-engineer.agent.md", "inherits": "devops-engineer.md" },
     { "agent": "pr-shepherd.agent.md", "inherits": "devops-engineer.md" },
+    { "agent": "docs-update.agent.md", "inherits": "devops-engineer.md" },
     { "agent": "ci-review-validator.agent.md", "inherits": "reviewer.md" },
     { "agent": "equipment-theme-forge.agent.md", "inherits": "graphics-designer.md" }
   ]

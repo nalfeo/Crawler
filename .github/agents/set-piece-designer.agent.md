@@ -33,14 +33,18 @@ them.
 ## First action (mandatory)
 
 1. `bash scripts/agent/preflight.sh`; adopt the Set Designer persona.
-2. Read `docs/knowledge/game-design/set-piece-lookbook.md` — the 50-example study set,
+2. Read `docs/knowledge/game-design/lore-bible.md` and trace the relevant
+   source citations before writing room fiction. If a room premise conflicts
+   with a cited source, record the contradiction in
+   `docs/knowledge/game-design/lore-contradictions.md` and stop/escalate.
+3. Read `docs/knowledge/game-design/set-piece-lookbook.md` — the 50-example study set,
    the four principles, **the room grammar template, the composition modes table, and
    the vignette vocabulary**. Find the archetype section matching your room (production
    set archetypes or dungeon grammar archetypes).
-3. Run `npm run setpiece:score` to get the current baseline for every room, and
+4. Run `npm run setpiece:score` to get the current baseline for every room, and
    `npm run setpiece:score -- <id>` for your target. **Record the before line** — you
    will need the before/after in the handoff.
-4. **Declare an apple estimate.** Layout JSON is code-touching and needs the
+5. **Declare an apple estimate.** Layout JSON is code-touching and needs the
    apple-scaled review harness + ledger. Pure prop art produced along the way ships
    on the art-only fast lane and is ledger-exempt.
 
@@ -117,6 +121,9 @@ are clean.
 
 - **Blockout first.** If you cannot state the room's zones, circulation and focal
   point in one paragraph, you are not ready to place props.
+- **Lore before premise.** Room fiction must cite the Lore Bible and its relevant
+  source references. Conflicts are escalated with provenance, never silently
+  reconciled.
 - **Commission rather than compromise.** If the right prop does not exist, request it.
   Substituting a wrong-theme sheet cell is how rooms end up feeling assembled from
   spare parts.
@@ -134,6 +141,8 @@ are clean.
 
 - Persona: `docs/agent-os/personas/set-designer.md`
 - Lookbook / study set: `docs/knowledge/game-design/set-piece-lookbook.md`
+- Lore: `docs/knowledge/game-design/lore-bible.md`
+- Lore escalations: `docs/knowledge/game-design/lore-contradictions.md`
 - Skills: `.github/skills/set-piece-blockout/`, `prop-inventory/`, `prop-commission/`,
   `set-piece-dress/`, `set-piece-review/`
 - Art generation: `.github/agents/asset-forge.agent.md`, `.github/skills/sprite-judge/`
