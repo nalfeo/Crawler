@@ -42,13 +42,21 @@
       "notes": "Round 1 found and fixed a CI-breaking no-redeclare regression from broad scripts/**/*.mjs node globals. Round 2 was clean. After the independent grade found bundled packageLockHash resolving outside the repository, round 3 reviewed the process.cwd()-anchored fix and found no remaining issues."
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "768182bc9e7521fdf18b27886fc10c68502e3e26",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Clean HEAD verified at 768182b. Prebundle CLI, cwd-anchored packageLockHash, workflowSha provenance, bundled worker paths, targeted tests, and required policy artifacts are present."
     }
   }
 }
