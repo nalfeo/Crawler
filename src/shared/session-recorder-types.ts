@@ -65,6 +65,8 @@ export interface SessionRecorder {
   onControlChange(controller: SessionController, note?: string): void;
   /** Quick stats without copying the full event array. */
   getStats(): SessionRecorderStats;
+  /** Serialize the captured session without requiring the concrete recorder type. */
+  toJsonl?(): string;
   /**
    * Trigger a browser download of the recorded session as JSONL.
    * No-op in non-browser environments.

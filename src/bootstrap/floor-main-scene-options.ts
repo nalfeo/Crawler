@@ -16,6 +16,8 @@ import {
   type ScenarioInitializationOptions,
 } from '../game/index.js';
 import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
+import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
+import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
 import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
   statSystem,
@@ -49,6 +51,9 @@ export function createFloorMainSceneOptions(
     terrainPackId: manifest.terrainPackId,
     terrainPacks: manifest.terrainPacks,
     lightingConfig: { ambient: manifest.lighting.ambient },
+    sessionRecorderFactory: (world, playerEid) =>
+      createPlayerSessionRecorder(world, playerEid, { recordWeaponTelemetry: true }),
+    runStatsFactory: collectHumanRunStats,
     configureWorld: (world: GameWorld, playerEid: number) =>
       scenario.configureWorld(world, playerEid, initializationOptions),
     selectLoadoutOption: scenario.selectLoadoutOption,

@@ -131,6 +131,7 @@ const VALID_OUTCOMES = new Set<RunStats['outcome']>([
   'timeout',
   'stalled',
   'error',
+  'quit',
 ]);
 
 const DEFAULT_CONFIG: FunScoreConfig = {
@@ -839,7 +840,7 @@ export function scoreFunSessions(
   if (sessions.length === 0) {
     return {
       runs: 0,
-      outcomes: { victory: 0, death: 0, timeout: 0, stalled: 0, error: 0 },
+      outcomes: { victory: 0, death: 0, timeout: 0, stalled: 0, error: 0, quit: 0 },
       survey_coverage: 0,
       overall_fun_score: 0,
       dimensions: {
@@ -923,6 +924,7 @@ export function scoreFunSessions(
     timeout: 0,
     stalled: 0,
     error: 0,
+    quit: 0,
   };
 
   const engagementScores: number[] = [];
