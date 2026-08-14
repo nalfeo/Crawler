@@ -257,5 +257,8 @@ function main(): void {
   writeFileSync(baselinePath, serializeReleaseBaseline(enriched));
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain =
+  process.env.CRAWLER_PREBUNDLED_ENTRY === undefined &&
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) main();

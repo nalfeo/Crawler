@@ -340,6 +340,11 @@ function runCli(argv: readonly string[]): void {
   );
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (
+  process.env.CRAWLER_PREBUNDLED_ENTRY === 'gen-configs' ||
+  (process.env.CRAWLER_PREBUNDLED_ENTRY === undefined &&
+    process.argv[1] &&
+    fileURLToPath(import.meta.url) === process.argv[1])
+) {
   runCli(process.argv);
 }

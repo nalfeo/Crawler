@@ -251,7 +251,7 @@ jobs:
           # Exec-boundary override: `GITHUB_SHA` can't be set via a step `env:`
           # key (the runner discards it — see header comment), so it's assigned
           # right here, immediately before the child process is spawned.
-          GITHUB_SHA="$RECOVER_HEAD_SHA" npx tsx scripts/agent/perf/sweep-eval.ts \
+          GITHUB_SHA="$RECOVER_HEAD_SHA" node scripts/agent/perf/prebundle-cli.mjs --entry sweep-eval \
             --stage validate --combo "$COMBO" \
             --search-artifact "$CHECKPOINT" \
             --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
