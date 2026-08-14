@@ -58,6 +58,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           value: 'node'
         }
         {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~22'
+        }
+        {
           name: 'FUNCTIONS_NODE_BLOCK_ON_ENTRY_POINT_ERROR'
           value: 'true'
         }

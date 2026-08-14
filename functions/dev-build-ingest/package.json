@@ -2,8 +2,9 @@
   "name": "crawler-dev-build-ingest",
   "private": true,
   "type": "module",
+  "main": "dist/index.js",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc",

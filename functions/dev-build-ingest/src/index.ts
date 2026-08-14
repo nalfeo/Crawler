@@ -104,6 +104,10 @@ function signedBlobUrl(container: ReturnType<typeof getContainer>, blobName: str
   return `${container.url}/${blobName}?${sas}`;
 }
 
+function bundleContentHash(bundle: ValidatedBundle['bundle']): string {
+  return createHash('sha256').update(JSON.stringify(bundle)).digest('hex');
+}
+
 async function persistBundle(
   container: ReturnType<typeof getContainer>,
   validated: ValidatedBundle,
@@ -116,9 +120,22 @@ async function persistBundle(
   const runId = validated.requestedRunId ?? randomUUID();
   const key = bundleKey(runId);
   const bundleBlob = container.getBlockBlobClient(`${key}/bundle.json`);
-  if (!(await bundleBlob.exists())) {
+  const contentHash = bundleContentHash(validated.bundle);
+  if (await bundleBlob.exists()) {
+    const existing = JSON.parse((await bundleBlob.downloadToBuffer()).toString('utf8')) as {
+      contentHash?: unknown;
+    };
+    if (existing.contentHash !== contentHash) {
+      throw new Error('runId is already associated with a different run bundle');
+    }
+  } else {
     const bundle = Buffer.from(
-      JSON.stringify({ ...validated.bundle, receivedAt: new Date().toISOString(), runId }),
+      JSON.stringify({
+        ...validated.bundle,
+        receivedAt: new Date().toISOString(),
+        runId,
+        contentHash,
+      }),
     );
     await bundleBlob.uploadData(bundle, {
       blobHTTPHeaders: { blobContentType: 'application/json; charset=utf-8' },
@@ -153,6 +170,44 @@ async function persistBundle(
   };
 }
 
+function githubHeaders(token: string): Record<string, string> {
+  return {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    'User-Agent': 'crawler-dev-build-ingest',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+}
+
+async function findReconciledIssue(
+  repository: string,
+  token: string,
+  runId: string,
+): Promise<string | undefined> {
+  const query = `repo:${repository} in:body "Run ID: \`${runId}\`"`;
+  const result = await fetch(
+    `https://api.github.com/search/issues?q=${encodeURIComponent(query)}`,
+    { headers: githubHeaders(token) },
+  );
+  if (!result.ok) return undefined;
+  const data = (await result.json()) as { items?: Array<{ html_url?: unknown }> };
+  const found = data.items?.find((item) => typeof item.html_url === 'string');
+  return typeof found?.html_url === 'string' ? found.html_url : undefined;
+}
+
+async function recordIssueUrl(
+  container: ReturnType<typeof getContainer>,
+  runId: string,
+  issueUrl: string,
+): Promise<void> {
+  await container
+    .getBlockBlobClient(`${bundleKey(runId)}/issue.json`)
+    .uploadData(Buffer.from(JSON.stringify({ url: issueUrl })), {
+      blobHTTPHeaders: { blobContentType: 'application/json; charset=utf-8' },
+      conditions: { ifNoneMatch: '*' },
+    });
+}
+
 async function fileGitHubIssue(
   container: ReturnType<typeof getContainer>,
   validated: ValidatedBundle,
@@ -161,11 +216,13 @@ async function fileGitHubIssue(
   const token = requiredEnv('CRAWLER_CI_PAT');
   const repository = requiredEnv('GITHUB_REPOSITORY');
   const pendingBlob = container.getBlockBlobClient(`${bundleKey(persisted.runId)}/issue.pending`);
+  let isRetryAfterStaleClaim = false;
   if (await pendingBlob.exists()) {
     const properties = await pendingBlob.getProperties();
     const lastModified = properties.lastModified?.getTime() ?? new Date().getTime();
     if (new Date().getTime() - lastModified > 10 * 60 * 1000) {
       await pendingBlob.deleteIfExists();
+      isRetryAfterStaleClaim = true;
     }
   }
   try {
@@ -181,6 +238,17 @@ async function fileGitHubIssue(
       throw new Error('issue filing in progress', { cause: error });
     }
     throw new Error('failed to claim issue filing marker', { cause: error });
+  }
+  if (isRetryAfterStaleClaim) {
+    // A previous claim expired without an issue.json marker, which can mean
+    // GitHub created the issue but recording it here failed. Reconcile
+    // against GitHub before filing a new one to avoid posting a duplicate.
+    const reconciled = await findReconciledIssue(repository, token, persisted.runId);
+    if (reconciled) {
+      await recordIssueUrl(container, persisted.runId, reconciled).catch(() => undefined);
+      await pendingBlob.deleteIfExists();
+      return reconciled;
+    }
   }
   const description = validated.bundle.issue_description?.trim();
   const survey = validated.bundle.survey;
@@ -199,17 +267,11 @@ async function fileGitHubIssue(
   ];
   const result = await fetch(`https://api.github.com/repos/${repository}/issues`, {
     method: 'POST',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'User-Agent': 'crawler-dev-build-ingest',
-      'X-GitHub-Api-Version': '2022-11-28',
-      'Content-Type': 'application/json',
-    },
+    headers: { ...githubHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       title,
       body: lines.join('\n'),
-      labels: [survey ? 'playtest-feedback' : 'user-reported'],
+      labels: [survey ? 'telemetry' : 'bug'],
     }),
   });
   if (!result.ok) throw new Error(`GitHub issue creation failed with HTTP ${result.status}`);
@@ -217,12 +279,7 @@ async function fileGitHubIssue(
   if (typeof issue.html_url !== 'string')
     throw new Error('GitHub issue response did not include html_url');
   const issueUrl = issue.html_url;
-  await container
-    .getBlockBlobClient(`${bundleKey(persisted.runId)}/issue.json`)
-    .uploadData(Buffer.from(JSON.stringify({ url: issueUrl })), {
-      blobHTTPHeaders: { blobContentType: 'application/json; charset=utf-8' },
-      conditions: { ifNoneMatch: '*' },
-    });
+  await recordIssueUrl(container, persisted.runId, issueUrl);
   await pendingBlob.deleteIfExists();
   return issueUrl;
 }
@@ -251,7 +308,7 @@ export async function handleRuns(
     const message = error instanceof Error ? error.message : 'request failed';
     const status = message.includes('rate limit')
       ? 429
-      : message.includes('issue filing in progress')
+      : message.includes('issue filing in progress') || message.includes('already associated with')
         ? 409
         : error instanceof SyntaxError ||
             message.includes('must be') ||

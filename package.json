@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:src": "tsc --noEmit --project tsconfig.src.json",
     "lint": "eslint src/ tests/ scripts/ functions/ .github/scripts/ --max-warnings 0",
-    "lint:cache": "eslint src/ tests/ scripts/ .github/scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0",
+    "lint:cache": "eslint src/ tests/ scripts/ functions/ .github/scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0",
     "lint:core": "eslint src/core/ tests/ecs/ tests/property/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0",
     "lint:game": "eslint src/game/ tests/game/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0",
     "lint:engine": "eslint src/engine/ tests/unit/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0",
