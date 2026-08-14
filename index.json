@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2b241008102277c7e985e95d415eac0f8716421a",
+    "commitDate": "2026-08-14T06:57:41Z",
+    "commitSubject": "fix(ai): keep boss-arena add targeting inside locked room (#2872)",
+    "capturedAt": "2026-08-14T08:09:03.023Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31778895637",
+    "winRate": 0.9933333333333333,
+    "totalWins": 596,
+    "totalRuns": 600,
+    "path": "by-sha/2b241008102277c7e985e95d415eac0f8716421a.json"
+  },
+  {
     "commit": "5963fe506b2a7c6104afebef788fff80d0dbb5e2",
     "commitDate": "2026-08-14T06:39:42Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2899)",
