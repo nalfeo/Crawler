@@ -30,12 +30,6 @@ export interface BaselineLegMetrics {
   totalRuns: number;
 }
 
-export interface BaselineLegMetrics {
-  winRate: number;
-  totalWins: number;
-  totalRuns: number;
-}
-
 export interface BaselineFile {
   meta: BaselineMetadata;
   winRate: number;
