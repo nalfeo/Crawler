@@ -43,6 +43,14 @@ const DEFAULT_FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
 const EXTRA_FLOOR1_WEAPONS = ['pistol', 'throwing-knife', 'fireball'];
 const ALLOWED_FLOOR1_WEAPONS = [...DEFAULT_FLOOR1_WEAPONS, ...EXTRA_FLOOR1_WEAPONS];
 
+/**
+ * Floor this sweep measures weapon balance on. The weapon lists above are
+ * Floor-1 starter weapons, so this stays Floor 1 until a per-floor weapon panel
+ * is wired; it is named rather than implied so the emitted artifact says which
+ * floor its numbers describe.
+ */
+const WEAPON_SWEEP_FLOOR_ID = 'floor1';
+
 function parseArgs(): CLIArgs {
   const args: CLIArgs = {
     seeds: [2, 4, 7],
@@ -206,6 +214,12 @@ async function sweep(args: CLIArgs): Promise<void> {
   const outputRunAt = new Date().toISOString();
   const output = {
     runAt: outputRunAt,
+    // The weapon sweep runs the headless runner's default floor. Emitting the
+    // resolved floor id (rather than a hardcoded `[1]`) keeps the artifact
+    // honest if this sweep is ever pointed at another floor, and lets a
+    // consumer tell which floor's weapon balance it is looking at.
+    floorIds: [WEAPON_SWEEP_FLOOR_ID],
+    /** @deprecated Use `floorIds`. Retained for existing artifact consumers. */
     floors: [1],
     seeds: args.seeds,
     weapons: args.weapons,

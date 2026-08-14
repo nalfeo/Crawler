@@ -607,10 +607,13 @@ jobs:
 
   # Job 5: Headless Floor 1 completion gate (critical path, must pass)
   # Deterministically proves the behavior-tree AI can still clear Floor 1
-  # (victory + all quests, under the 5-minute game-time budget). Runs the same
+  # (victory + all quests, under the 6-minute active-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
   # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false.
   # Main-push and schedule always run it as a backstop in case the allowlist is wrong.
+  #
+  # This is the BLOCKING leg of the PR sweep tier (see scripts/agent/perf/sweep-legs.ts).
+  # The report-only multi-floor legs run in test-headless-multifloor below.
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
@@ -624,8 +627,84 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      # Includes progression-chain.test.ts: it asserts the multi-floor CHAINING
+      # MECHANISM (chain order, carryover handoff, aggregate accounting), not a
+      # win rate, so it is a legitimate blocking wiring guard. The win-rate legs
+      # that genuinely lack measured thresholds are report-only below.
       - name: Headless Floor 1 completion
         run: npx vitest run --project headless --reporter=verbose
+
+  # Job 5a: Report-only multi-floor sweep legs (NEVER blocking).
+  #
+  # Floor 1 alone can no longer answer "is the game completable end-to-end?" now
+  # that Floor 2 is implemented E2E with an attainable victory. These legs run
+  # the two coverage gaps the blocking Floor-1 gate cannot see:
+  #
+  #   * floor1-chain — Floor 1 → Floor 2 with a carried-over player, the ONLY
+  #     leg that exercises the floor transition at all.
+  #   * floor2       — Floor 2 standalone.
+  #
+  # Deliberately `continue-on-error` and excluded from merge-gate: neither leg
+  # has a measured, trustworthy win-rate threshold yet, and inventing one would
+  # either be meaningless or would pressure someone into tuning Floor 1 to
+  # satisfy it (AGENTS.md r12). They publish numbers now; promoting a leg to
+  # blocking is a separate, evidence-backed decision.
+  #
+  # Shards in parallel with the blocking gate so the PR tier's wall time stays
+  # inside the previous single-job envelope.
+  test-headless-multifloor:
+    name: Headless Multi-Floor Legs (report-only)
+    runs-on: ubuntu-latest
+    needs: [changes]
+    continue-on-error: true
+    if: >-
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true' &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.sim_touched == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: floor1-chain
+            args: --floor floor1 --seeds 1-10 --no-force-weapon --chain
+          - leg: floor2
+            args: --floor floor2 --seeds 1-15 --no-force-weapon
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Sweep leg ${{ matrix.leg }}
+        run: >-
+          npx tsx scripts/agent/perf/winrate-sweep.ts ${{ matrix.args }}
+          --workers 4 --skip-events --out "files/sweep-${{ matrix.leg }}.json"
+
+      - name: Publish leg summary
+        if: always()
+        run: |
+          set -euo pipefail
+          out="files/sweep-${{ matrix.leg }}.json"
+          {
+            echo "### Sweep leg \`${{ matrix.leg }}\` (report-only)"
+            echo ""
+            if [ -f "$out" ]; then
+              node -e '
+                const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                console.log(`- Win rate: **${(j.winRate * 100).toFixed(1)}%** (${j.totalWins}/${j.totalRuns})`);
+                console.log(`- Slow victories: ${j.totalSlowVictories}`);
+                console.log(`- True losses: ${j.totalTrueLosses}`);
+              ' "$out"
+            else
+              echo "- ⚠️ leg produced no artifact (see job log)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sweep-leg-${{ matrix.leg }}
+          path: files/sweep-${{ matrix.leg }}.json
+          if-no-files-found: warn
 
   # Job 5b: Set-piece reachability hard gate (scoped)
   # Runs the 200-seed Floor 1 welcome-room prefab reachability sweep whenever the

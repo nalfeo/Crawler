@@ -5,6 +5,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import type { RunStats } from '../../../src/game/ai/types.js';
 import { normalizeFunSessions } from '../health/fun-score-lib.js';
+import { RELEASE_SWEEP_REVISION } from './sweep-legs.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -19,6 +20,7 @@ export interface ReleaseBaselineMeta {
   sweep: {
     seeds: string;
     kind: 'winrate';
+    revision: number;
   };
 }
 
@@ -250,7 +252,7 @@ function main(): void {
     runId: requiredEnv('RUN_ID'),
     runNumber,
     runUrl: requiredEnv('RUN_URL'),
-    sweep: { seeds: '1-100', kind: 'winrate' },
+    sweep: { seeds: '1-50', kind: 'winrate', revision: RELEASE_SWEEP_REVISION },
   });
   writeFileSync(baselinePath, serializeReleaseBaseline(enriched));
 }
