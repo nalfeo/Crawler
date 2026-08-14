@@ -50,6 +50,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { FLOOR1_DEFAULT_MAX_FRAMES } from '../../src/game/ai/floor1-run-budget.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { summarizeEvents, type EventSummary, type SimEvent } from '../../src/game/ai/event-log.js';
 
@@ -177,6 +178,7 @@ async function runParkProbe(seed: number, weapon: string): Promise<ParkProbe> {
     seed,
     forceWeaponId: weapon,
     maxFrames: PARK_SLICE_FRAMES,
+    planningMaxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
     maxWallTimeMs: Number.POSITIVE_INFINITY,
     recordEvent: (event: SimEvent): void => {
       events.push(event);

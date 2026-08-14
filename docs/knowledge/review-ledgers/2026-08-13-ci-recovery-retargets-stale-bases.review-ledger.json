@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "ci-recovery-retargets-stale-bases",
+  "task_title": "Retarget stale merged PR bases",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved with changes. Adopted: router uses CRAWLER_CI_PAT only for mutations; comment uses a managed marker; stale detection requires no open base PR and verifies merged-tip identity when the base ref survives; router dispatches reconcile only after bounded mergeability settlement and excludes same-run retargets from normal dispatch. Retained the existing main-only train eligibility and existing reconcile conflict-rebase state machine."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-terra",
+      "head_sha": "5907c061e6f77b921977c95ac4019a2be2937b63",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly identifies and retargets stale stacked bases to main if their intermediate base branch was merged, deleted, or is fully contained in main. It robustly handles API edge cases (such as branch lookup failures), properly defers the resolution of mergeability to avoid blocking the workflow, correctly restricts mutations using the required CI token, and adds comprehensive tests validating its behavior under various conditions."
+    }
+  }
+}

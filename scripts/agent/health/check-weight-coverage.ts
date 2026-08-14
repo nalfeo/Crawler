@@ -37,6 +37,7 @@
 import { hasComponent } from 'bitecs';
 import { Report } from '../shared/report.js';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
+import { FLOOR1_DEFAULT_MAX_FRAMES } from '../../../src/game/ai/floor1-run-budget.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { Enemy, Player, Prop } from '../../../src/core/components.js';
 import type { GameWorld } from '../../../src/core/world.js';
@@ -99,6 +100,7 @@ async function main(): Promise<void> {
   const stats = await runHeadless(ai, {
     seed: COVERAGE_SEED,
     maxFrames: COVERAGE_MAX_FRAMES,
+    planningMaxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
     maxWallTimeMs: Number.POSITIVE_INFINITY,
     onFinish: (world) => {
       snapshot = inspectWeights(world);

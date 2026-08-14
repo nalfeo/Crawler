@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
-import { normalizeFunSessions, parseFunScoreArgs, scoreFunSessions } from './fun-score-lib.js';
+import {
+  compareFunReports,
+  normalizeFunSessions,
+  parseFunScoreArgs,
+  scoreFunSessions,
+} from './fun-score-lib.js';
 
 function main(): void {
   const args = parseFunScoreArgs(process.argv);
@@ -12,8 +17,21 @@ function main(): void {
     minOverall: args.minOverall,
     minDimension: args.minDimension,
   });
+  const comparison =
+    args.baselinePath === null
+      ? undefined
+      : compareFunReports(
+          scoreFunSessions(
+            normalizeFunSessions(JSON.parse(readFileSync(args.baselinePath, 'utf8')) as unknown),
+            {
+              minOverall: args.minOverall,
+              minDimension: args.minDimension,
+            },
+          ),
+          report,
+        );
 
-  const output = JSON.stringify(report, null, 2);
+  const output = JSON.stringify(comparison ? { ...report, comparison } : report, null, 2);
   process.stdout.write(`${output}\n`);
   if (args.outputPath) {
     writeFileSync(args.outputPath, `${output}\n`);

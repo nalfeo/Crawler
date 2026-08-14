@@ -197,11 +197,26 @@ export interface AIConfig {
   debug?: boolean;
 }
 
+/** Deterministic behavioral cohorts used by the fun evaluator. */
+export type PlayerPersona = 'new_player' | 'experienced_player' | 'min_max_cheeser' | 'explorer';
+
 /**
  * AI input provider interface.
  * Reads GameWorld state and outputs simulated InputState.
  */
 export interface AIInputProvider {
+  /**
+   * Configure the raw simulated-time deadline derived from the runner's frame
+   * budget. Providers without time-aware planning may omit this capability.
+   */
+  configurePlanningDeadlineMs?(deadlineMs: number | null): void;
+
+  /**
+   * Resolve the provider's effective Floor 1 planning deadline. Used by the
+   * headless auto-progression driver to share the provider's exact budget.
+   */
+  resolveFloor1PlanningDeadlineMs?(objectiveDeadlineMs: number): number;
+
   /**
    * Generate input for the current frame based on world state.
    * @param state - InputState to populate
@@ -555,6 +570,8 @@ export interface RunStats {
   floor2Progression?: Floor2ProgressionMetrics;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
+  /** Optional evaluator cohort that produced this run. */
+  playerPersona?: PlayerPersona;
   /** Optional telemetry rollups for AI decision-state accounting. */
   aiTelemetry?: AIDecisionTelemetryMetrics;
   /**

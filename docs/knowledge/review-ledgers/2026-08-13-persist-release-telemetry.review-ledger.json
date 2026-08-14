@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "persist-release-telemetry",
+  "task_title": "Persist full release sweep RunStats telemetry",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Approved with changes. Adopted: validate complete payloads at runtime through normalizeFunSessions plus exact count; reject preexisting meta during release enrichment; preserve full wallTimeMs but document that only gameplay fields are deterministic and avoid byte-equality claims; use a real runHeadless-produced RunStats sample in focused tests before expanding to 600; retain compact index and note its full-file parse cost as a future optimization, not scope expansion. No different architecture warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "54d075bd1a641a2bcf9ca968d953dce2ac7ab002",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly and rigorously extracts the baseline telemetry enrichment logic into a dedicated TypeScript module with full typing, serialization round-trip validation, and explicit run-count assertions. It maintains strict scope by modifying only the relevant deployment step and persistence hooks, includes focused tests verifying payload size preservation and rejecting invalid provenances, and follows all repository conventions cleanly."
+    }
+  }
+}

@@ -13,9 +13,11 @@ export type {
   LootEfficiencyMetrics,
   AIPathingModeValue,
   AIDecisionModeValue,
+  PlayerPersona,
 } from './types.js';
 export { AIState, AIPathingMode, AIDecisionMode } from './types.js';
 export { runHeadless } from './headless-runner.js';
+export { PLAYER_PERSONAS, getPersonaConfig } from './personas.js';
 export {
   WEAPON_PERSONAS,
   getWeaponPersona,

@@ -47,6 +47,7 @@ import {
 } from './worker-pool.js';
 import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
 import { classifySweepRun } from './winrate-sweep-classify.js';
+import { attachReleaseBaselineRuns, serializeReleaseBaseline } from './release-baseline.js';
 
 interface SweepTask {
   weapon: string;
@@ -377,32 +378,29 @@ async function sweep(args: CLIArgs): Promise<void> {
   console.log(`Total wall time: ${((Date.now() - start) / 1000).toFixed(0)}s`);
 
   if (args.out) {
-    writeFileSync(
-      args.out,
-      JSON.stringify(
-        {
-          floorId: args.floorId,
-          enemyDamageMultiplier: args.enemyDamageMultiplier,
-          perWeapon,
-          totalWins,
-          totalSlowVictories,
-          totalTrueLosses,
-          totalRuns,
-          winRate: totalWins / totalRuns,
-          aggregate: {
-            all: aggregateOf(metrics),
-            wins: aggregateOf(metrics.filter((m) => m.win)),
-            slowVictories: aggregateOf(metrics.filter((m) => m.slowVictory)),
-            losses: aggregateOf(metrics.filter((m) => !m.win)),
-          },
-          metrics,
-          fails,
-          slowFails,
+    const output = attachReleaseBaselineRuns(
+      {
+        floorId: args.floorId,
+        enemyDamageMultiplier: args.enemyDamageMultiplier,
+        perWeapon,
+        totalWins,
+        totalSlowVictories,
+        totalTrueLosses,
+        totalRuns,
+        winRate: totalWins / totalRuns,
+        aggregate: {
+          all: aggregateOf(metrics),
+          wins: aggregateOf(metrics.filter((m) => m.win)),
+          slowVictories: aggregateOf(metrics.filter((m) => m.slowVictory)),
+          losses: aggregateOf(metrics.filter((m) => !m.win)),
         },
-        null,
-        2,
-      ),
+        metrics,
+        fails,
+        slowFails,
+      },
+      taskResults.map((result) => result.stats),
     );
+    writeFileSync(args.out, serializeReleaseBaseline(output));
     console.log(`💾 ${args.out}`);
   }
 }

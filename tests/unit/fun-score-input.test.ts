@@ -53,6 +53,19 @@ function makeRun(overrides: Partial<RunStats> = {}): RunStats {
 }
 
 describe('parseFunScoreArgs', () => {
+  it('parses an optional baseline path for trend comparisons', () => {
+    const parsed = parseFunScoreArgs([
+      'node',
+      'fun-score',
+      '--input',
+      'runs.json',
+      '--baseline',
+      'baseline.json',
+    ]);
+
+    expect(parsed.baselinePath).toBe('baseline.json');
+  });
+
   it('parses required and optional flags', () => {
     const parsed = parseFunScoreArgs([
       'node',
@@ -69,6 +82,7 @@ describe('parseFunScoreArgs', () => {
 
     expect(parsed).toEqual({
       inputPath: 'runs.json',
+      baselinePath: null,
       outputPath: 'out.json',
       minOverall: 72,
       minDimension: 58,
@@ -162,6 +176,13 @@ describe('normalizeFunSessions', () => {
 
     const fromRoot = normalizeFunSessions(legacyRun);
     expect(fromRoot[0]?.run.safeRoomMs).toBe(0);
+  });
+
+  it('keeps the persona cohort of a bare-root RunStats payload', () => {
+    const sessions = normalizeFunSessions(makeRun({ playerPersona: 'min_max_cheeser' }));
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.persona).toBe('min_max_cheeser');
   });
 
   it('rejects a present-but-invalid safeRoomMs (corruption, not a missing legacy field)', () => {
