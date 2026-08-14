@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import { collectHumanRunStats } from '../../src/game/ai/run-stats-collector.js';
 import { assembleRunStats } from '../../src/shared/run-stats-collector.js';
 import { createRunBundle } from '../../src/shared/run-bundle.js';
+import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('run bundle contracts', () => {
+  it('collects a stable human RunStats shape from a test world', () => {
+    const world = createTestWorld({ seed: 7 });
+    const stats = collectHumanRunStats(world, 0, 'quit', 3, { totalKills: 4 });
+
+    expect(stats.outcome).toBe('quit');
+    expect(stats.combat.totalKills).toBe(4);
+    expect(stats.runStartXp).toBe(3);
+    expect(stats.startingWeapon).toBe('unknown');
+  });
+
   it('preserves the assembled RunStats values without pipeline-specific behavior', () => {
     const stats = {
       outcome: 'victory' as const,
