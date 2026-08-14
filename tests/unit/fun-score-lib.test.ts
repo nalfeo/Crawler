@@ -235,6 +235,202 @@ describe('scoreFunSessions', () => {
     expect(report.persona_scores.experienced_player?.runs).toBe(1);
   });
 
+  it('measures dopamine cadence from active-time events including boundary gaps', () => {
+    const healthy = scoreFunSessions([
+      {
+        id: 'healthy',
+        run: makeRun({
+          rewardEvents: {
+            activeDurationMs: 180_000,
+            events: [
+              { kind: 'level_up', sourceId: '2', gameTimeMs: 60_000, activeTimeMs: 60_000 },
+              {
+                kind: 'quest_complete',
+                sourceId: 'main',
+                gameTimeMs: 150_000,
+                activeTimeMs: 120_000,
+              },
+            ],
+          },
+        }),
+      },
+    ]);
+    expect(healthy.criteria.dopamine_cadence).toMatchObject({
+      observed: 60,
+      status: 'healthy',
+    });
+    expect(healthy.criteria.dopamine_cadence.reason).toContain('100%');
+
+    const sparse = scoreFunSessions([
+      {
+        id: 'sparse',
+        run: makeRun({
+          rewardEvents: {
+            activeDurationMs: 200_000,
+            events: [{ kind: 'level_up', sourceId: '2', gameTimeMs: 50_000, activeTimeMs: 50_000 }],
+          },
+        }),
+      },
+    ]);
+    expect(sparse.criteria.dopamine_cadence).toMatchObject({
+      observed: 150,
+      status: 'needs_attention',
+    });
+  });
+
+  it('classifies robust multi-feature snowball outliers without forcing a percentile', () => {
+    const sessions: FunSession[] = Array.from({ length: 10 }, (_, index) => {
+      const outlier = index === 9;
+      return {
+        id: `snow-${index}`,
+        run: makeRun({
+          runPerformance: {
+            activeClearTimeMs: outlier ? 100_000 : 300_000 + index * 1_000,
+            damagePerActiveMinute: outlier ? 5_000 : 1_000 + index * 10,
+            killsPerActiveMinute: 20 + index,
+            dominantItemUsageShare: 0.4 + index * 0.005,
+          },
+        }),
+      };
+    });
+    const report = scoreFunSessions(sessions);
+    expect(report.criteria.snowball_frequency).toMatchObject({
+      observed: 0.1,
+      status: 'healthy',
+    });
+    expect(report.criteria.snowball_frequency.reason).toContain('1/10');
+    expect(report.criteria.snowball_frequency.reason).toContain('3.5');
+  });
+
+  it('requires enough complete official wins before measuring snowball frequency', () => {
+    const report = scoreFunSessions([
+      {
+        id: 'one',
+        run: makeRun({
+          runPerformance: {
+            activeClearTimeMs: 300_000,
+            damagePerActiveMinute: 1_000,
+            killsPerActiveMinute: 20,
+            dominantItemUsageShare: 0.5,
+          },
+        }),
+      },
+    ]);
+    expect(report.criteria.snowball_frequency.status).toBe('unmeasured');
+    expect(report.criteria.snowball_frequency.reason).toContain('at least 10');
+  });
+
+  it('flags avoided and inert catalog items while accepting used items', () => {
+    const report = scoreFunSessions([
+      {
+        id: 'items',
+        run: makeRun({
+          itemInteractions: {
+            uniqueActivationCount: 12,
+            dominantActivationCount: 8,
+            items: [
+              {
+                catalogKey: 'weapon:sword',
+                kind: 'starter_weapon',
+                offeredCount: 1,
+                selectableExposureCount: 1,
+                selectionCount: 1,
+                activationCount: 12,
+                activeTimeMs: 0,
+              },
+              {
+                catalogKey: 'spell:heal',
+                kind: 'spell',
+                offeredCount: 1,
+                selectableExposureCount: 1,
+                selectionCount: 0,
+                activationCount: 0,
+                activeTimeMs: 0,
+              },
+              {
+                catalogKey: 'generated:ring',
+                kind: 'generated_equipment',
+                offeredCount: 1,
+                selectableExposureCount: 1,
+                selectionCount: 1,
+                activationCount: 0,
+                activeTimeMs: 0,
+              },
+            ],
+          },
+        }),
+      },
+    ]);
+    expect(report.criteria.item_viability).toMatchObject({
+      observed: 0.67,
+      status: 'needs_attention',
+    });
+  });
+
+  it('flags items selected below 10% after enough exposures', () => {
+    const report = scoreFunSessions([
+      {
+        id: 'rarely-selected',
+        run: makeRun({
+          itemInteractions: {
+            uniqueActivationCount: 1,
+            dominantActivationCount: 1,
+            items: [
+              {
+                catalogKey: 'spell:rare-choice',
+                kind: 'spell',
+                offeredCount: 11,
+                selectableExposureCount: 11,
+                selectionCount: 1,
+                activationCount: 1,
+                activeTimeMs: 0,
+              },
+            ],
+          },
+        }),
+      },
+    ]);
+
+    expect(report.criteria.item_viability).toMatchObject({
+      observed: 1,
+      status: 'needs_attention',
+    });
+    expect(report.criteria.item_viability.reason).toContain('below 10% after 5+ exposures');
+  });
+
+  it('consumes permanent-power hooks but leaves legacy mixed inputs unmeasured', () => {
+    const measured = scoreFunSessions([
+      {
+        id: 'meta',
+        run: makeRun({
+          metaProgression: { permanentPowerBefore: 100, permanentPowerAfter: 103 },
+        }),
+      },
+    ]);
+    expect(measured.criteria.meta_progression).toMatchObject({
+      observed: 0.03,
+      status: 'healthy',
+    });
+
+    const mixed = scoreFunSessions([
+      {
+        id: 'new',
+        run: makeRun({
+          rewardEvents: { activeDurationMs: 10_000, events: [] },
+          itemInteractions: {
+            items: [],
+            uniqueActivationCount: 0,
+            dominantActivationCount: 0,
+          },
+        }),
+      },
+      { id: 'legacy', run: makeRun() },
+    ]);
+    expect(mixed.criteria.dopamine_cadence.status).toBe('unmeasured');
+    expect(mixed.criteria.item_viability.status).toBe('unmeasured');
+    expect(mixed.criteria.meta_progression.status).toBe('unmeasured');
+  });
+
   it('classifies meaningful baseline deltas without gating on them', () => {
     const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
     const candidate = {
@@ -289,6 +485,23 @@ describe('scoreFunSessions', () => {
     // A 0.2 move on a [0,1] ratio would be `inconclusive` under the 2-point
     // dimension threshold; the per-criterion threshold classifies it.
     expect(comparison.criteria.survivability_variance.status).toBe('improving');
+  });
+
+  it('treats a lower item-viability failure rate as improving', () => {
+    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
+    const candidate = scoreFunSessions([{ id: 'candidate', run: makeRun() }]);
+    const withItemRate = (report: FunScoreReport, observed: number): FunScoreReport => ({
+      ...report,
+      criteria: {
+        ...report.criteria,
+        item_viability: { ...report.criteria.item_viability, observed },
+      },
+    });
+
+    expect(
+      compareFunReports(withItemRate(baseline, 0.5), withItemRate(candidate, 0.1)).criteria
+        .item_viability.status,
+    ).toBe('improving');
   });
 
   it('scales subjective blending with survey coverage', () => {

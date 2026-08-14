@@ -39,6 +39,13 @@ import {
   type LevelUpEvent,
   type SkillRunMetrics,
 } from './types.js';
+import { createRunEventCollector } from '../../core/run-events.js';
+import {
+  captureHeadlessRunDataFrame,
+  createHeadlessRunData,
+  finalizeHeadlessRunData,
+  recordRewardEvent,
+} from './headless-run-data.js';
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
@@ -584,6 +591,7 @@ export async function runHeadless(
     seed: mergedConfig.seed,
     generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(mergedConfig.seed),
   });
+  world.runEvents = createRunEventCollector();
   if (mergedConfig.floor2EquipmentFlags) {
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }
@@ -651,6 +659,12 @@ export async function runHeadless(
     world.floorScenario?.selectedWeaponId ??
     world.floorScenario?.starterChoices[starterWeaponIndex] ??
     'unknown';
+  const runData = createHeadlessRunData(
+    forceWeaponId !== undefined
+      ? [startingWeapon]
+      : (world.floorScenario?.starterChoices ?? [startingWeapon]),
+    startingWeapon,
+  );
 
   // Verify we transitioned to 'playing' state
   if (world.state !== 'playing') {
@@ -670,6 +684,8 @@ export async function runHeadless(
   // read after the sim step that runs safeRoomSystem + floorObjectiveSystem,
   // makes `safeRoomMs` match the game's deadline pause frame-for-frame.
   let safeRoomFrames = 0;
+  const currentActiveTimeMs = (): number =>
+    Math.max(0, world.elapsedMs - safeRoomFrames * GAME.DELTA_MS);
   let lastProgressFrame = 0;
   let outcome: RunStats['outcome'] = 'timeout';
   let stallReason: string | undefined;
@@ -678,6 +694,7 @@ export async function runHeadless(
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
   let previousLevel = 0;
+  let previousRewardLevel = world.playerLevel?.level ?? 0;
   const killsByType: Record<string, number> = {};
   let totalKills = 0;
   let combatEventCursor = world.combatEvents.length;
@@ -742,6 +759,7 @@ export async function runHeadless(
       if (encounter.defeated && !floor1BossDefeatedFrame.has(bossId)) {
         floor1BossDefeatedFrame.set(bossId, frameCount);
         floor1BossDefeatedMs.set(bossId, world.elapsedMs);
+        recordRewardEvent(runData, 'boss_kill', bossId, world.elapsedMs, currentActiveTimeMs());
       }
     }
   };
@@ -1002,13 +1020,13 @@ export async function runHeadless(
       // helpers below) keeps frameCount/safeRoomFrames consistent with
       // world.elapsedMs even if a later helper throws and we emit crash stats.
       frameCount++;
-      // Latch Floor 1 boss lifecycle transitions before any early exit (death
-      // guards) or auto-action helper can run, so a start/defeat on a lethal
-      // frame is still recorded with its frame/time/eid evidence.
-      captureFloor1BossTransitions();
       if (world.playerInSafeRoom === true) {
         safeRoomFrames++;
       }
+      // Latch Floor 1 boss lifecycle transitions before any early exit (death
+      // guards) or auto-action helper can run. Capture after the safe-room
+      // counter so active timestamps cannot exceed the finalized duration.
+      captureFloor1BossTransitions();
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
@@ -1028,6 +1046,7 @@ export async function runHeadless(
         }
       }
       quartermasterRestockLatches.set(world, isNowInSafeRoom);
+      captureHeadlessRunDataFrame(runData, world, playerEid, currentActiveTimeMs(), 0);
       runEagerMaintenanceTick(world, playerEid, {
         // When settlement-return routing is active, the router uses unclaimed
         // achievements as its navigation signal (utility ∝ unclaimedAchievements).
@@ -1042,6 +1061,13 @@ export async function runHeadless(
       void _settlementResult;
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
       updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
+      captureHeadlessRunDataFrame(
+        runData,
+        world,
+        playerEid,
+        currentActiveTimeMs(),
+        world.playerInSafeRoom === true ? 0 : GAME.DELTA_MS,
+      );
 
       // Check win/loss conditions — read HP before the guard so both early-exit
       // paths can record the final frame's HP delta (otherwise the lethal frame
@@ -1130,6 +1156,16 @@ export async function runHeadless(
           gameTimeMs: world.elapsedMs,
           frame: frameCount,
         });
+        if (currentLevel > previousRewardLevel) {
+          recordRewardEvent(
+            runData,
+            'level_up',
+            String(currentLevel),
+            world.elapsedMs,
+            currentActiveTimeMs(),
+          );
+          previousRewardLevel = currentLevel;
+        }
         previousLevel = currentLevel;
         recordEvent?.(buildEvent('levelup', enemyEids, `reached level ${currentLevel}`));
       }
@@ -1246,6 +1282,13 @@ export async function runHeadless(
         }
         if (questState.status === 'complete' && !questLogCompletedMs.has(questId)) {
           questLogCompletedMs.set(questId, world.elapsedMs);
+          recordRewardEvent(
+            runData,
+            'quest_complete',
+            questId,
+            world.elapsedMs,
+            currentActiveTimeMs(),
+          );
           recordEvent?.(buildEvent('quest', enemyEids, `questlog completed: ${questId}`));
         }
       }
@@ -1483,6 +1526,7 @@ export async function runHeadless(
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
+      ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
     };
     if (mergedConfig.onFinish) {
       try {
@@ -1585,6 +1629,7 @@ export async function runHeadless(
       : {}),
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),
+    ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

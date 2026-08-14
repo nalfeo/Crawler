@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   _createListClient,
+  BaselineRunNotFoundError,
   createLruCache,
   parseGitHubRepository,
   sanitizeErrorText,
@@ -177,4 +178,94 @@ test('listAllSweepRuns propagates ai-sweep endpoint rejection', async () => {
     listAllSweepRuns('nalfeo/Crawler', new AbortController().signal),
     /ai endpoint error/,
   );
+});
+
+test('getBaselineSweepRun tags a deploy.yml run with workflowType baseline-sweep', async () => {
+  const raw = {
+    id: 42,
+    path: '.github/workflows/deploy.yml',
+    status: 'completed',
+    conclusion: 'success',
+    head_branch: 'main',
+    head_sha: 'abc',
+    created_at: '2026-08-13T00:00:00Z',
+    updated_at: '2026-08-13T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/42',
+    event: 'workflow_run',
+    run_attempt: 1,
+  };
+  const mockRunGhJson = async (args) => {
+    assert.ok(args.some((a) => a.includes('actions/runs/42')));
+    return raw;
+  };
+  const { getBaselineSweepRun } = _createListClient(mockRunGhJson);
+  const run = await getBaselineSweepRun('nalfeo/Crawler', 42, new AbortController().signal);
+  assert.equal(run.id, 42);
+  assert.equal(run.workflowType, 'baseline-sweep');
+});
+
+test('getBaselineSweepRun rejects a run id that resolves to a different workflow', async () => {
+  const mockRunGhJson = async () => ({
+    id: 43,
+    path: '.github/workflows/weapon-sweep.yml',
+    status: 'completed',
+    conclusion: 'success',
+  });
+  const { getBaselineSweepRun } = _createListClient(mockRunGhJson);
+  await assert.rejects(
+    getBaselineSweepRun('nalfeo/Crawler', 43, new AbortController().signal),
+    /not a "Deploy to GitHub Pages" workflow run/,
+  );
+});
+
+test('getBaselineSweepRun throws BaselineRunNotFoundError for wrong-workflow run', async () => {
+  const mockRunGhJson = async () => ({
+    id: 43,
+    path: '.github/workflows/weapon-sweep.yml',
+    status: 'completed',
+    conclusion: 'success',
+  });
+  const { getBaselineSweepRun } = _createListClient(mockRunGhJson);
+  const error = await getBaselineSweepRun('nalfeo/Crawler', 43, new AbortController().signal).catch(
+    (e) => e,
+  );
+  assert.ok(
+    error instanceof BaselineRunNotFoundError,
+    `expected BaselineRunNotFoundError, got ${error?.constructor?.name}`,
+  );
+  assert.match(error.message, /not a "Deploy to GitHub Pages" workflow run/);
+});
+
+test('getBaselineSweepRun throws BaselineRunNotFoundError for HTTP 404 not-found run', async () => {
+  const mockRunGhJson = async () => {
+    throw new Error(
+      'gh command failed: HTTP 404: Not Found (https://api.github.com/repos/nalfeo/Crawler/actions/runs/99999)',
+    );
+  };
+  const { getBaselineSweepRun } = _createListClient(mockRunGhJson);
+  const error = await getBaselineSweepRun(
+    'nalfeo/Crawler',
+    99999,
+    new AbortController().signal,
+  ).catch((e) => e);
+  assert.ok(
+    error instanceof BaselineRunNotFoundError,
+    `expected BaselineRunNotFoundError, got ${error?.constructor?.name}`,
+  );
+  assert.match(error.message, /not found/i);
+});
+
+test('getBaselineSweepRun propagates operational errors (auth, network, rate-limit)', async () => {
+  const mockRunGhJson = async () => {
+    throw new Error('gh command failed: HTTP 401 authentication failed');
+  };
+  const { getBaselineSweepRun } = _createListClient(mockRunGhJson);
+  const error = await getBaselineSweepRun('nalfeo/Crawler', 55, new AbortController().signal).catch(
+    (e) => e,
+  );
+  assert.ok(
+    !(error instanceof BaselineRunNotFoundError),
+    'auth error must not become BaselineRunNotFoundError',
+  );
+  assert.match(error.message, /HTTP 401/);
 });

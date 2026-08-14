@@ -18,6 +18,11 @@ import type {
 } from '../../src/shared/floor-types.js';
 import { makeRunKey } from '../../src/shared/generated-equipment-types.js';
 import { listGeneratedEquipmentReferences } from '../../src/shared/inventory.js';
+import {
+  captureHeadlessRunDataFrame,
+  createHeadlessRunData,
+  finalizeHeadlessRunData,
+} from '../../src/game/ai/headless-run-data.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 type TestWorld = ReturnType<typeof createTestWorld>;
@@ -130,8 +135,25 @@ describe('Quartermaster atomic purchase', () => {
         enhancementLevel: 0,
       },
     });
+
     expect(views[0]?.displayName).not.toBeNull();
     expect(views[0]?.utility?.slots.length).toBeGreaterThan(0);
+  });
+
+  it('records only canonically purchasable offers as selectable run-data exposures', () => {
+    const { world, playerEid } = setupPurchase();
+    const bag = world.inventories.get(playerEid)!;
+    world.inventories.set(playerEid, { ...bag, generatedEquipmentCapacity: 0 });
+    const state = createHeadlessRunData(['sword'], 'sword');
+
+    captureHeadlessRunDataFrame(state, world, playerEid, 0, 0);
+
+    const generatedItems = finalizeHeadlessRunData(state, 0, 0, 0).itemInteractions.items.filter(
+      (item) => item.kind === 'generated_equipment',
+    );
+    expect(generatedItems.length).toBeGreaterThan(0);
+    expect(generatedItems.every((item) => item.offeredCount === 1)).toBe(true);
+    expect(generatedItems.every((item) => item.selectableExposureCount === 0)).toBe(true);
   });
 
   it('transfers the exact registry instance once and commits gold, bag, and stock together', () => {
