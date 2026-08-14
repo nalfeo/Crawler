@@ -52,7 +52,7 @@ describe('release baseline persistence', () => {
       runId: '123456',
       runNumber: 7,
       runUrl: 'https://example.test/actions/runs/123456',
-      sweep: { seeds: '1-50', kind: 'winrate', revision: 2 },
+      sweep: { seeds: '1-100', kind: 'winrate' },
     });
     const stored = JSON.parse(serializeReleaseBaseline(published)) as unknown;
     const sessions = normalizeFunSessions(stored);
@@ -84,7 +84,7 @@ describe('release baseline persistence', () => {
           runId: '2',
           runNumber: 2,
           runUrl: 'https://example.test/2',
-          sweep: { seeds: '1-50', kind: 'winrate', revision: 2 },
+          sweep: { seeds: '1-100', kind: 'winrate' },
         },
       ),
     ).toThrow(/already contains meta/);

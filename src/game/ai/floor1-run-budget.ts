@@ -1,25 +1,15 @@
 import { GAME } from '../../shared/constants.js';
 import { floor1Config } from '../../shared/floor-config.js';
-import { requireActiveTimeBudgetMs, requireDefaultMaxFrames } from './floor-run-budget.js';
 
-/**
- * Official Floor 1 active-time budget shared by AI planning and evaluation.
- *
- * Now sourced from the Floor 1 manifest (`implemented.winBudgetMs`) rather than
- * hardcoded, so the manifest is the single source of truth for every floor's
- * budget. The manifest value is 360000 (6 min), identical to the constant this
- * replaced — Floor 1 numbers are unchanged.
- */
-export const FLOOR1_ACTIVE_TIME_BUDGET_MS = requireActiveTimeBudgetMs('floor1');
+/** Official Floor 1 active-time budget shared by AI planning and evaluation. */
+export const FLOOR1_ACTIVE_TIME_BUDGET_MS = 6 * 60 * 1000;
 
 const FLOOR1_MANIFEST_DEADLINE_MS = floor1Config.timer.durationMs;
 
-/**
- * Raw simulation cap that leaves room for safe-room-credited official wins.
- * Derived from the manifest budget with the same FP-safe division form, so this
- * remains exactly 23_760.
- */
-export const FLOOR1_DEFAULT_MAX_FRAMES = requireDefaultMaxFrames('floor1');
+/** Raw simulation cap that leaves room for safe-room-credited official wins. */
+export const FLOOR1_DEFAULT_MAX_FRAMES = Math.ceil(
+  (FLOOR1_ACTIVE_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS,
+);
 
 export function planningDeadlineMsFromFrameBudget(maxFrames: number): number | null {
   if (!Number.isSafeInteger(maxFrames) || maxFrames < 0) {

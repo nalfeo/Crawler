@@ -768,14 +768,11 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
     throw new Error('--stage search-eval requires --config-id <id> --config-json <json>');
   }
-  // This evaluator still uses Floor-1-specific budget and frame-cap constants
-  // throughout its search and validation stages. Keep the guard strict until
-  // those internals are parameterized; the general win-rate sweep is the
-  // multi-floor entry point.
   if (args.floorId !== 'floor1') {
     throw new Error(
-      `--floor '${args.floorId}' is not supported: sweep-eval remains calibrated to ` +
-        'floor1 until its budget and frame-cap semantics are generalized.',
+      `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
+        `(the 6-minute budget and safe-room active-time credit are Floor-1-specific). ` +
+        `Non-Floor-1 win semantics are undefined here.`,
     );
   }
   return args;

@@ -111,70 +111,12 @@ describe('release baseline regression check', () => {
     expect(decision.reason).toContain('no earlier release baseline');
   });
 
-  function resized(entry: BaselineIndexEntry): BaselineIndexEntry {
-    const mismatched = { ...entry, totalRuns: 300, totalWins: 298 };
+  it('fails closed when sweep sizes differ', () => {
+    const mismatched = { ...indexEntry(previous), totalRuns: 300, totalWins: 298 };
     mismatched.winRate = mismatched.totalWins / mismatched.totalRuns;
-    return mismatched;
-  }
-
-  function withRevision(baseline: BaselineFile, revision: number | undefined): BaselineFile {
-    return {
-      ...baseline,
-      meta: {
-        ...baseline.meta,
-        ...(revision === undefined ? {} : { sweep: { seeds: '1-50', kind: 'winrate', revision } }),
-      },
-    };
-  }
-
-  it('skips exactly one comparison when the sweep matrix revision is intentionally bumped', () => {
-    // The multi-floor rollout resizes the Floor-1 leg (600 → 300 runs) under a
-    // NEW RELEASE_SWEEP_REVISION. Rates across different sample sizes are not
-    // comparable, and the additional-losses half of the tolerance rule is
-    // meaningless across them, so exactly one comparison is skipped.
-    const decision = evaluateBaselineRegression(
-      withRevision(regression, 2),
-      [resized(indexEntry(previous))],
-      [previous.meta.commit],
-    );
-    expect(decision.regression).toBe(false);
-    expect(decision.seriesMigrated).toBe(true);
-    expect(decision.reason).toContain('sweep matrix resized under a new revision');
-    // Crucially it does NOT file an issue for a comparison it never made.
-    expect(decision.issue).toBeUndefined();
-  });
-
-  it('fails closed on a run-count change that is not an explicit revision bump', () => {
-    // A truncated producer or an accidental matrix edit must never be laundered
-    // into a "series migration" that silently suppresses regression detection.
     expect(() =>
-      evaluateBaselineRegression(
-        withRevision(regression, 2),
-        [{ ...resized(indexEntry(previous)), sweepRevision: 2 }],
-        [previous.meta.commit],
-      ),
-    ).toThrow(/cannot compare baseline run counts/);
-
-    expect(() =>
-      evaluateBaselineRegression(
-        withRevision(regression, undefined),
-        [resized(indexEntry(previous))],
-        [previous.meta.commit],
-      ),
-    ).toThrow(/cannot compare baseline run counts/);
-  });
-
-  it('resumes detecting regressions on the release after a resize', () => {
-    // The migration must be a one-release skip, not a permanent hole: once both
-    // baselines share the new size, the same drop is caught normally.
-    const resizedPrev = { ...previous, totalRuns: 600, totalWins: 596 };
-    resizedPrev.winRate = resizedPrev.totalWins / resizedPrev.totalRuns;
-    const decision = evaluateBaselineRegression(
-      regression,
-      [indexEntry(resizedPrev)],
-      [previous.meta.commit],
-    );
-    expect(decision.regression).toBe(true);
+      evaluateBaselineRegression(regression, [mismatched], [previous.meta.commit]),
+    ).toThrow('cannot compare baseline run counts');
   });
 
   it('rejects inconsistent metrics instead of silently accepting malformed history', () => {
