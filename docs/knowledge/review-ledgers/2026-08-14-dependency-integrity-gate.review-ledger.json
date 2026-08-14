@@ -27,13 +27,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.6-terra",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "6b47e939d64fd7efb1811dc0fae8f230bf0efdc4",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 3,
+        "test_coverage": 3,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The integrity gate is correctly wired to dependency-scoped CI, fails closed on untrusted or unavailable metadata, validates canonical tarball metadata and quarantine age, and includes focused tests for its core decision logic. Coverage does not exercise workflow/action or incident-recovery integration, and the incident-recovery change broadens scope, but neither yields a high-confidence actionable defect."
     }
   }
 }
