@@ -48,8 +48,16 @@ import {
   meetShopkeeper,
   meetSpellQuestGiver,
   meetBroker,
+  canPurchaseSpellBrokerSpell,
+  getSpellBrokerOffers,
+  purchaseSpellBrokerSpell,
   spendPoints,
 } from '../index.js';
+import {
+  ensureSpellBrokerDecision,
+  isSpellBrokerPurchaseActive,
+  markSpellBrokerPurchased,
+} from './spell-broker-intent.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
@@ -252,6 +260,9 @@ export function autoFloor1ProgressionSystem(
     return;
   }
 
+  const spellIntent = ensureSpellBrokerDecision(world);
+  const spellBrokerPurchaseActive = isSpellBrokerPurchaseActive(spellIntent);
+
   if (world.goalFlags.get('floor1-boss-battle-complete') === true && !world.featureUnlocks.spells) {
     const offeredSpellIds = getOfferedBossRewardSpellIds(world);
     const offeredSpellId =
@@ -277,9 +288,33 @@ export function autoFloor1ProgressionSystem(
       break;
     }
 
-    if (getMerchantWeaponIntent(world).status === 'returning') {
+    if (!spellBrokerPurchaseActive && getMerchantWeaponIntent(world).status === 'returning') {
       executeMerchantWeaponPurchase(world, playerEid);
       break;
+    }
+  }
+
+  if (
+    spellBrokerPurchaseActive &&
+    world.featureUnlocks.spells &&
+    (world.goalFlags.get('floor1-boss-battle-complete') === true ||
+      world.goalFlags.get('floor1-boss-spellbook-claimed') === true)
+  ) {
+    const broker = [...world.npcs.entries()].find(
+      ([, instance]) => instance.defId === 'spell-quest-giver',
+    );
+    if (broker && isTargetedNpcActionable(world, aiProvider, broker[0], broker[1].nearbyPlayer)) {
+      const candidateSpellIds = [
+        spellIntent.spellId,
+        ...getSpellBrokerOffers(world).map((offer) => offer.spellId),
+      ].filter((spellId): spellId is string => spellId !== null);
+      const spellId = candidateSpellIds.find((id) =>
+        canPurchaseSpellBrokerSpell(world, playerEid, id),
+      );
+      if (spellId !== undefined && purchaseSpellBrokerSpell(world, playerEid, spellId)) {
+        markSpellBrokerPurchased(world);
+        return;
+      }
     }
   }
 
@@ -306,7 +341,8 @@ export function autoFloor1ProgressionSystem(
     shouldDeferStairDescend(
       world,
       'floor1',
-      resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
+      aiProvider?.resolveFloor1PlanningDeadlineMs?.(objective.deadlineMs) ??
+        resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs),
     )
   ) {
     return;

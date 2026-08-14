@@ -21,6 +21,7 @@ ci-policy
 Updated `ISSUE_INTAKE_BODY` in `.github/scripts/ci-recovery/issue-intake-lib.mjs` to include explicit instructions for Copilot to post a detailed plan comment on the issue before writing any code.
 
 The kickoff comment now instructs Copilot to:
+
 1. Post a plan comment on the issue with high-level design, key decisions, and a checklist of steps — **before writing code** — so the maintainer can review the plan.
 2. Include the same high-level summary in the PR description when it opens the PR.
 

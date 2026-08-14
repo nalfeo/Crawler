@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { extractSummary } from '../../../scripts/agent/docs/build-system-index';
+import {
+  extractSummary,
+  extractSystemsField,
+} from '../../../scripts/agent/docs/build-system-index';
 
 describe('extractSummary', () => {
   it('returns a single-line What Was Done paragraph', () => {
@@ -59,5 +62,19 @@ describe('extractSummary', () => {
     const result = extractSummary(md, 'fallback');
     expect(result.length).toBeLessThanOrEqual(141); // 140 + ellipsis char
     expect(result.endsWith('…')).toBe(true);
+  });
+});
+
+describe('extractSystemsField', () => {
+  it('parses an inline Systems touched declaration', () => {
+    expect(extractSystemsField('## Systems touched: ai-behavior-tree\n')).toEqual([
+      'ai-behavior-tree',
+    ]);
+  });
+
+  it('parses a Systems touched declaration in the following section body', () => {
+    expect(extractSystemsField('## Systems touched\n\nai-behavior-tree\n')).toEqual([
+      'ai-behavior-tree',
+    ]);
   });
 });

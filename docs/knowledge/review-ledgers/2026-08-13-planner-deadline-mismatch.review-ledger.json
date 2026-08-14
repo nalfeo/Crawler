@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-13",
+  "session_slug": "planner-deadline-mismatch",
+  "task_title": "Align AI planning deadline with runner budget",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "major_fork",
+      "notes": "Initial raw-cap-only resolver rejected: preserve the canonical 360s active AI budget and let the runner cap only tighten it. Unified runtime AI, winrate gate, floor1 gate sample, sweep-eval, and all other live evaluator constants. Included auto-progression stair-descend deadline, zero-frame/non-aware provider compatibility, exact cache invalidation, and real Floor 1 gate coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "9c200dd5ec785f08af57c3962fc0046ec2636228",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change cleanly resolves the collision pair parity test blocker by introducing planningMaxFrames to allow explicit decoupling of the planning budget from the simulation observation limit. The default coupling remains strictly intact because it falls back to maxFrames when planningMaxFrames is omitted. Excellent test coverage, cache invalidation on budget changes, and surgical centralization of budget constants."
+    }
+  }
+}

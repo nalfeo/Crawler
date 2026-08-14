@@ -75,13 +75,26 @@ export function isCloudEnv(env: EnvMap): boolean {
 
 /**
  * True when the image provider is the Azure OpenAI path (the default). When the
- * operator opts into `SPRITES_PROVIDER=local-a1111`, the image provider reads its
- * own local endpoint instead — which the Azure env bootstrap cannot write — so we
- * must NOT demand (or try to bootstrap) `AZURE_OPENAI_*` on that path.
+ * operator opts into `SPRITES_PROVIDER=local-a1111` or `SPRITES_PROVIDER=foundry`,
+ * the image provider reads different credentials — which the Azure env bootstrap
+ * cannot write — so we must NOT demand (or try to bootstrap) `AZURE_OPENAI_*` on
+ * those paths.
  */
 export function imageProviderIsAzureOpenAi(env: EnvMap): boolean {
   const which = (env['SPRITES_PROVIDER'] ?? '').trim().toLowerCase() || 'azure-openai';
-  return which !== 'local-a1111';
+  return which !== 'local-a1111' && which !== 'foundry';
+}
+
+export function imageProviderIsFoundry(env: EnvMap): boolean {
+  return (env['SPRITES_PROVIDER'] ?? '').trim().toLowerCase() === 'foundry';
+}
+
+export function hasFoundryImageCreds(env: EnvMap): boolean {
+  return (
+    nonBlank(env['FOUNDRY_ENDPOINT']) &&
+    nonBlank(env['FOUNDRY_API_KEY']) &&
+    nonBlank(env['FOUNDRY_IMAGE_MODEL'])
+  );
 }
 
 function normalizeSelector(raw: string | undefined, fallback: string): string {
@@ -100,6 +113,8 @@ function normalizeSelector(raw: string | undefined, fallback: string): string {
  *    store both live in Azure Storage).
  *  - Azure queue selected (which auto-starts the worker) on the azure-openai
  *    image provider but no Azure OpenAI creds → true.
+ *  - Azure queue selected on the foundry image provider but no Foundry image
+ *    creds → true.
  *  - Otherwise → false.
  */
 export function needsAzureEnvBootstrap(env: EnvMap): boolean {
@@ -111,6 +126,7 @@ export function needsAzureEnvBootstrap(env: EnvMap): boolean {
   if (!usesAzureStore && !usesAzureQueue) return false;
   if (!hasAzureStorageCreds(env)) return true;
   if (usesAzureQueue && imageProviderIsAzureOpenAi(env) && !hasAzureOpenAiCreds(env)) return true;
+  if (usesAzureQueue && imageProviderIsFoundry(env) && !hasFoundryImageCreds(env)) return true;
   return false;
 }
 
@@ -133,6 +149,11 @@ export function missingAzureRequirements(env: EnvMap): string[] {
   }
   if (usesAzureQueue && imageProviderIsAzureOpenAi(env) && !hasAzureOpenAiCreds(env)) {
     missing.push('Azure OpenAI credentials (AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY)');
+  }
+  if (usesAzureQueue && imageProviderIsFoundry(env) && !hasFoundryImageCreds(env)) {
+    missing.push(
+      'Foundry image credentials (FOUNDRY_ENDPOINT + FOUNDRY_API_KEY + FOUNDRY_IMAGE_MODEL)',
+    );
   }
   return missing;
 }
@@ -194,7 +215,7 @@ export function ensureAzureEnvLocal(options: EnsureAzureEnvLocalOptions): EnvBoo
   if (isCloudEnv(env)) {
     throw new EnvBootstrapError(
       [
-        'Sidecar needs Azure credentials but this is a cloud/CI environment',
+        'Sidecar needs provider credentials but this is a cloud/CI environment',
         '(CI / GITHUB_ACTIONS / CODESPACES set), where local `.env.local` bootstrap is disabled.',
         '',
         `Missing: ${missing.join('; ')}`,
@@ -210,8 +231,8 @@ export function ensureAzureEnvLocal(options: EnsureAzureEnvLocalOptions): EnvBoo
   if (fileExists(envFile)) {
     throw new EnvBootstrapError(
       [
-        '`.env.local` exists but is missing required Azure credentials, so the sidecar',
-        'cannot start on the Azure backends.',
+        '`.env.local` exists but is missing required provider credentials, so the sidecar',
+        'cannot start on the selected backends.',
         '',
         `Missing: ${missing.join('; ')}`,
         '',

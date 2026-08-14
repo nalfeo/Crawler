@@ -158,15 +158,23 @@ interface HandoffEntry {
   readonly summary: string;
 }
 
-function extractSystemsField(text: string): string[] | null {
+export function extractSystemsField(text: string): string[] | null {
   // Look for `## Systems touched` header, then grab non-comment lines until the
   // next `##` header.
   const lines = text.split(/\r?\n/);
   let i = 0;
-  while (i < lines.length && !/^##\s+Systems touched\s*$/i.test(lines[i]!)) i++;
+  let inlineValue = '';
+  while (i < lines.length) {
+    const match = /^##\s+Systems touched(?:\s*:\s*(.*))?\s*$/i.exec(lines[i]!);
+    if (match) {
+      inlineValue = match[1] ?? '';
+      break;
+    }
+    i++;
+  }
   if (i >= lines.length) return null;
   i++;
-  const collected: string[] = [];
+  const collected: string[] = [inlineValue];
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     if (/^##\s+/.test(line)) break;

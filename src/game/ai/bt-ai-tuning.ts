@@ -507,9 +507,6 @@ export const FARM_FORWARD_DOT_MIN = 0.35;
 // over-engagement death mode the forward bias must never reintroduce.
 export const FARM_MIN_HEALTH_FRACTION = 0.6;
 // --- Collapse-pressure panic routing ---
-// AI pressure remains tuned to the 6-minute headless Floor 1 gate even if the
-// human-facing floor collapse timer is made more generous in the manifest.
-export const FLOOR1_AI_COLLAPSE_PANIC_DEADLINE_MS = 6 * 60 * 1000;
 // Remaining-time threshold for hard beeline behavior. At or below this value the
 // AI drops opportunistic loot/farm detours and commits to objective progress.
 export const PANIC_BEELINE_REMAINING_MS = 60_000;

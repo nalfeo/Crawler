@@ -34,6 +34,7 @@ import {
   type AIInputProvider,
   type AIPathingModeValue,
   type LootEfficiencyMetrics,
+  type PlayerPersona,
   type RunStats,
   type LevelUpEvent,
   type SkillRunMetrics,
@@ -57,7 +58,13 @@ import type { SettlementMaintenanceResult } from './settlement-maintenance-types
 import { applyStartPlayerLevel } from '../scenarios/playerLevelProgression.js';
 import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+  planningDeadlineMsFromFrameBudget,
+} from './floor1-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
+import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -156,6 +163,12 @@ export interface HeadlessRunnerConfig {
   seed: number;
   /** Maximum frames to simulate (safety limit) */
   maxFrames?: number;
+  /**
+   * Frame budget exposed to budget-aware AI planning. Defaults to `maxFrames`.
+   * Set this only when `maxFrames` is an observation cutoff rather than the
+   * run's actual evaluation budget.
+   */
+  planningMaxFrames?: number;
   /** Maximum wall-clock time in milliseconds */
   maxWallTimeMs?: number;
   /** Report progress every N frames (0 = never) */
@@ -248,8 +261,32 @@ export interface HeadlessRunnerConfig {
   recordWeaponTelemetry?: boolean;
   /** Use weapon-specific stat and gear personas. Default true; false preserves the legacy control. */
   weaponPersonas?: boolean;
-  /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
+  /**
+   * Enable both optional AI purchases (merchant weapon + Floor 1 Spell Broker)
+   * as a single shared feature flag. Default false.
+   *
+   * When true the merchant-weapon purchase decision and the Spell Broker
+   * purchase decision are both armed.  When false (the default) neither fires,
+   * keeping the AI on the deterministic required-only path.
+   *
+   * Prefer this flag over the individual `merchantWeaponPurchase` /
+   * `spellBrokerPurchase` fields, which are retained only for compatibility
+   * with tests and callers that have not yet migrated.  When `optionalPurchases`
+   * is supplied it wins over the individual fields.
+   */
+  optionalPurchases?: boolean;
+  /** Optional evaluator cohort label retained in RunStats. */
+  playerPersona?: PlayerPersona;
+  /**
+   * @deprecated Use `optionalPurchases` instead.  Retained for caller
+   * compatibility; `optionalPurchases` takes precedence when provided.
+   */
   merchantWeaponPurchase?: boolean;
+  /**
+   * @deprecated Use `optionalPurchases` instead.  Retained for caller
+   * compatibility; `optionalPurchases` takes precedence when provided.
+   */
+  spellBrokerPurchase?: boolean;
   /**
    * Enable the optional latched settlement-return route goal: periodically
    * evaluates whether returning to the Floor 2 settlement to run the
@@ -280,6 +317,8 @@ const DEFAULT_CONFIG: Required<
     | 'onFinish'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
+    | 'playerPersona'
+    | 'planningMaxFrames'
   >
 > = {
   seed: 12345,
@@ -288,14 +327,16 @@ const DEFAULT_CONFIG: Required<
   progressInterval: 0,
   debug: false,
   eventSampleInterval: 15,
-  questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
+  questStallFrames: FLOOR1_ACTIVE_TIME_BUDGET_MS / GAME.DELTA_MS,
   enemyDamageMultiplier: 1,
   enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   weaponPersonas: true,
+  optionalPurchases: false,
   merchantWeaponPurchase: false,
+  spellBrokerPurchase: false,
   settlementReturnRouting: false,
   enforcePlayabilityInvariants: true,
 };
@@ -501,6 +542,12 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  aiProvider.configurePlanningDeadlineMs?.(
+    planningDeadlineMsFromFrameBudget(
+      config.planningMaxFrames ??
+        (config.maxFrames === undefined ? FLOOR1_DEFAULT_MAX_FRAMES : mergedConfig.maxFrames),
+    ),
+  );
   const startTime = Date.now();
 
   if (mergedConfig.debug) {
@@ -519,7 +566,15 @@ export async function runHeadless(
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
-  configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
+  // `optionalPurchases` is the canonical single flag.  When supplied it
+  // overrides the individual deprecated fields; when absent the individual
+  // fields are used for backward compat with existing callers/tests.
+  const purchasesEnabled =
+    config.optionalPurchases !== undefined
+      ? config.optionalPurchases
+      : mergedConfig.merchantWeaponPurchase || mergedConfig.spellBrokerPurchase;
+  configureMerchantWeaponPurchase(world, purchasesEnabled);
+  configureSpellBrokerPurchase(world, purchasesEnabled);
   configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
@@ -1366,6 +1421,7 @@ export async function runHeadless(
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
       runStartXp,
+      ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
       floor1BossProgression: collectFloor1BossProgression(world, {
@@ -1467,6 +1523,7 @@ export async function runHeadless(
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
     runStartXp,
+    ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
     floor1BossProgression: collectFloor1BossProgression(world, {

@@ -124,6 +124,13 @@ export const LOOP_INCIDENT_FINGERPRINT_PREFIX = '<!-- crawler-pr-loop-fingerprin
 export const ALREADY_LANDED_COMMENT_MARKER = '<!-- crawler-ci-already-landed:v1 -->';
 
 // ---------------------------------------------------------------------------
+// Stale stacked-base recovery comments
+// ---------------------------------------------------------------------------
+
+/** Leading marker for CI Recovery's automatic stale-base retarget explanation. */
+export const STALE_BASE_RETARGET_MARKER = '<!-- crawler-ci-stale-base-retarget:v1';
+
+// ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
 
@@ -164,4 +171,5 @@ export const MANAGED_COMMENT_MARKERS = [
   LOOP_INCIDENT_MARKER,
   LOOP_INCIDENT_FINGERPRINT_PREFIX,
   ALREADY_LANDED_COMMENT_MARKER,
+  STALE_BASE_RETARGET_MARKER,
 ];

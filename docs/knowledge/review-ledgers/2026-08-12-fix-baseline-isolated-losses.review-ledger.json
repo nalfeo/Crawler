@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-12",
+  "session_slug": "fix-baseline-isolated-losses",
+  "task_title": "Fix isolated Floor 1 route-planner crash",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "minor",
+      "notes": "Initial 3x3 nearest-tile design rejected. Revised to explicit true-player metadata plus physically-overlapped cardinal candidates; final revision evaluates every valid candidate and takes minimum finite strict A* cost. Rejected generic A* permissiveness, player snapping, exception fallback, deferred replanning, and generic virtual multi-source A*. Final re-review passed with no concerns."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "15556bc7e9b1c15e4b3aaee7cfba9847d8dd2ff9",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff adds an opt-in blockedStartRecovery contract to the strict Floor 1 travel oracle: when the configured player-start location's center maps to an impassable tile, it evaluates only cardinal neighbor tiles whose rectangles physically intersect the player body (AABB closest-point vs radius-squared, with EPSILON on the boundary), runs the unchanged strict A* from each, and takes the minimum finite cost. Recovery is correctly scoped to from === recovery.locationId and gated on !passable(startTile), so all other legs, blocked goals, diagonal-only openings, locked doors, unconfigured starts, and zero/negative radius remain strict Infinity failures. Five focused unit tests plus the exact fireball-25 real-headless regression cover the change. Determinism is preserved, the memoization key incorporates the effects set that drives passability, the bt-ai-provider wiring passes canonical Size.radius, and no layer boundary or runtime system wiring contract is violated."
+    }
+  }
+}
