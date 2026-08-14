@@ -1,5 +1,39 @@
 [
   {
+    "commit": "ea82acac22fb1578a670b2979ddd450f94f0b974",
+    "commitDate": "2026-08-14T20:30:05Z",
+    "commitSubject": "fix: report every Floor 1 release loss (#2919)",
+    "capturedAt": "2026-08-14T21:40:09.043Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31839467884",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/ea82acac22fb1578a670b2979ddd450f94f0b974.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.02,
+        "totalWins": 3,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34,
+      "gatePass": false,
+      "path": "by-sha/ea82acac22fb1578a670b2979ddd450f94f0b974.fun-report.json"
+    }
+  },
+  {
     "commit": "19b896c0cf34b50bf0abd591172cd9ceea5a4fed",
     "commitDate": "2026-08-14T17:20:16Z",
     "commitSubject": "fix: prevent release report sweep timeouts (#2918)",
