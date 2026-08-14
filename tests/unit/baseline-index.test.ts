@@ -73,24 +73,21 @@ describe('release baseline index derivation', () => {
       meta: { ...baseline().meta, commit: 'c'.repeat(40), commitDate: '2026-06-01T00:00:00Z' },
     });
     const reports = new Map<string, unknown>([
-      [
-        valid.meta.commit,
-        { report: { overall_fun_score: 73.5, gate: { pass: true } } },
-      ],
+      [valid.meta.commit, { report: { overall_fun_score: 73.5, gate: { pass: true } } }],
       [malformed.meta.commit, { report: { overall_fun_score: 'high', gate: {} } }],
     ]);
 
-    expect(buildBaselineIndex([missing, malformed, valid], reports).map((entry) => entry.fun)).toEqual(
-      [
-        {
-          overallFunScore: 73.5,
-          gatePass: true,
-          path: `by-sha/${valid.meta.commit}.fun-report.json`,
-        },
-        null,
-        null,
-      ],
-    );
+    expect(
+      buildBaselineIndex([missing, malformed, valid], reports).map((entry) => entry.fun),
+    ).toEqual([
+      {
+        overallFunScore: 73.5,
+        gatePass: true,
+        path: `by-sha/${valid.meta.commit}.fun-report.json`,
+      },
+      null,
+      null,
+    ]);
   });
 
   it('round-trips through the published index into a per-leg comparison', () => {
