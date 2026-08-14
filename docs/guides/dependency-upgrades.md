@@ -32,6 +32,14 @@ a semver range in a direct dependency. The check is also included in
 `npm install --save-dev <pkg>` always write an exact version to `package.json`
 by default.
 
+Every dependency PR also has to pass two independent lockfile controls:
+
+- `npm run security:lock-integrity` rejects lockfile-only changes and rejects any
+  newly selected package version published within the seven-day proxy quarantine.
+- CI runs a cacheless `npm ci --ignore-scripts` on dependency changes. The normal
+  CI setup also runs `npm ci` on every job instead of treating a cached
+  `node_modules` tree as proof that the lockfile is installable.
+
 ## How to intentionally upgrade a dependency
 
 Follow this procedure to bump a direct dependency to a newer version:
@@ -70,6 +78,10 @@ Follow this procedure to bump a direct dependency to a newer version:
    ```sh
    npm run security:audit
    ```
+
+The cold install and lock-integrity checks must both pass before merge. If the
+registry proxy has not mirrored the target release, wait until the reported
+eligible date rather than bypassing the check.
 
 ## How to add a new dependency
 
