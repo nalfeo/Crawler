@@ -413,13 +413,97 @@ jobs:
           echo "short=$(echo "$SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
           echo "Baseline will be tagged with SHA: $SHA"
 
-      - name: Run 100-seed win-rate sweep
+      # Multi-floor release sweep — 600 runs across three legs (see the
+      # canonical matrix in scripts/agent/perf/sweep-legs.ts).
+      #
+      # Floor 1 alone can no longer answer "is the game completable
+      # end-to-end?" now that Floor 2 is implemented E2E with an attainable
+      # victory. The legs are:
+      #
+      #   floor1       50 seeds × 6 weapons = 300 runs  (blocking; this is the
+      #                leg the baseline-regression check compares, and the only
+      #                one that measures per-weapon balance)
+      #   floor2      150 seeds, seed-selected weapon  (report-only)
+      #   floor1-chain 150 seeds, chained F1 → F2      (report-only; the ONLY
+      #                leg that exercises the floor transition)
+      #
+      # Total run count is unchanged from the previous Floor-1-only 100-seed ×
+      # 6-weapon baseline, so release wall time stays roughly neutral.
+      #
+      # Resizing the Floor-1 leg (600 → 300 runs) is an intentional sweep
+      # resize, so the regression check reports ONE skipped comparison and then
+      # resumes at full strength from the next release. See
+      # RELEASE_SWEEP_REVISION in scripts/agent/perf/sweep-legs.ts.
+      #
+      # The Floor-1 leg remains the top-level baseline artifact for continuity:
+      # the regression check compares top-level totals against the historical
+      # series, and a run-count change would make it refuse to compare. The
+      # other legs are attached under `legs` for per-leg diagnostics.
+      - name: Run multi-floor release sweep
         id: sweep
         run: |
+          set -euo pipefail
           mkdir -p .cache/baseline
+
+          # Blocking Floor-1 balance leg → the top-level baseline artifact.
           npm run ai:winrate-sweep -- \
-            --seeds 1-100 \
+            --seeds 1-50 \
+            --weapons sword,bow,baseball-bat,pistol,throwing-knife,fireball \
             --out .cache/baseline/baseline.json
+
+          # Report-only legs. `continue-on-error` semantics are achieved with an
+          # explicit guard rather than a job-level flag so a leg crash cannot
+          # take down baseline publication of the blocking leg.
+          npm run ai:winrate-sweep -- \
+            --floor floor2 --seeds 1-150 --no-force-weapon \
+            --out .cache/baseline/leg-floor2.json || echo "::warning::floor2 leg failed"
+
+          npm run ai:winrate-sweep -- \
+            --floor floor1 --seeds 1-150 --no-force-weapon --chain \
+            --out .cache/baseline/leg-floor1-chain.json || echo "::warning::floor1-chain leg failed"
+
+      # Fold the report-only legs into the baseline under `legs`, so the
+      # per-leg regression comparison has data to work with on the NEXT release
+      # while the top-level aggregate stays exactly the Floor-1 leg.
+      - name: Attach per-leg metrics
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const base = ".cache/baseline";
+            const baseline = JSON.parse(fs.readFileSync(`${base}/baseline.json`, "utf8"));
+            const legs = { floor1: pick(baseline) };
+            for (const [id, file] of [["floor2", "leg-floor2.json"], ["floor1-chain", "leg-floor1-chain.json"]]) {
+              const p = `${base}/${file}`;
+              if (!fs.existsSync(p)) { console.log(`skipping missing leg ${id}`); continue; }
+              legs[id] = pick(JSON.parse(fs.readFileSync(p, "utf8")));
+            }
+            baseline.legs = legs;
+            fs.writeFileSync(`${base}/baseline.json`, JSON.stringify(baseline, null, 2));
+            function pick(j) {
+              return { winRate: j.winRate, totalWins: j.totalWins, totalRuns: j.totalRuns };
+            }
+          '
+
+      - name: Publish report-only leg summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### Release sweep legs"
+            echo ""
+            echo "| Leg | Win rate | Wins | Blocking |"
+            echo "| --- | ---: | ---: | :---: |"
+            for f in .cache/baseline/baseline.json .cache/baseline/leg-floor2.json .cache/baseline/leg-floor1-chain.json; do
+              [ -f "$f" ] || continue
+              node -e '
+                const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                const id = j.legId ?? j.floorId;
+                const blocking = id === "floor1" ? "yes" : "no";
+                console.log(`| \`${id}\` | ${(j.winRate * 100).toFixed(1)}% | ${j.totalWins}/${j.totalRuns} | ${blocking} |`);
+              ' "$f"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enrich baseline with commit metadata
         env:

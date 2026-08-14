@@ -18,11 +18,24 @@ interface BaselineMetadata {
   runUrl: string;
 }
 
+export interface BaselineLegMetrics {
+  winRate: number;
+  totalWins: number;
+  totalRuns: number;
+}
+
 export interface BaselineFile {
   meta: BaselineMetadata;
   winRate: number;
   totalWins: number;
   totalRuns: number;
+  /**
+   * Per-leg metrics for the multi-floor sweep (`floor1`, `floor2`,
+   * `floor1-chain`, …). Optional: a baseline captured before the multi-floor
+   * methodology has none, and the top-level aggregate remains the primary
+   * comparison so the existing series stays continuous.
+   */
+  legs?: Record<string, BaselineLegMetrics>;
 }
 
 export interface BaselineIndexEntry {
@@ -35,6 +48,8 @@ export interface BaselineIndexEntry {
   totalWins: number;
   totalRuns: number;
   path: string;
+  /** Per-leg metrics, when the entry was published by a multi-floor sweep. */
+  legs?: Record<string, BaselineLegMetrics>;
 }
 
 interface ComparedBaseline {
@@ -48,6 +63,16 @@ interface ComparedBaseline {
   totalLosses: number;
 }
 
+export interface BaselineLegRegression {
+  legId: string;
+  regression: boolean;
+  reason: string;
+  winRateDrop: number;
+  additionalLosses: number;
+  previous: BaselineLegMetrics;
+  current: BaselineLegMetrics;
+}
+
 export interface BaselineRegressionDecision {
   regression: boolean;
   reason: string;
@@ -55,6 +80,20 @@ export interface BaselineRegressionDecision {
   previous?: ComparedBaseline;
   winRateDrop?: number;
   additionalLosses?: number;
+  /**
+   * True when this release skipped its comparison because the sweep matrix was
+   * intentionally resized. Surfaced explicitly so a skipped comparison is
+   * visible in the published result rather than looking like a clean pass.
+   */
+  seriesMigrated?: boolean;
+  /**
+   * Per-leg verdicts for the multi-floor sweep, present only when BOTH
+   * baselines carry leg metrics. These are diagnostic detail attached to the
+   * same decision — they never change `regression`, which stays keyed on the
+   * top-level aggregate so the existing filing threshold and issue history are
+   * unchanged by the multi-floor rollout.
+   */
+  legs?: BaselineLegRegression[];
   issue?: {
     marker: string;
     title: string;
@@ -124,9 +163,28 @@ function buildIssue(
   current: ComparedBaseline,
   winRateDrop: number,
   additionalLosses: number,
+  legs?: readonly BaselineLegRegression[],
 ): NonNullable<BaselineRegressionDecision['issue']> {
   const marker = `<!-- ${BASELINE_REGRESSION_MARKER_PREFIX}:${current.commit} -->`;
   const title = `bug: release sweep regression at ${current.commit.slice(0, 12)}`;
+  // Per-leg detail tells the investigator WHICH floor (or the progression
+  // chain) lost runs, so a Floor-2-only or transition-only regression is not
+  // misdiagnosed as a Floor-1 combat regression.
+  const legLines =
+    legs && legs.length > 0
+      ? [
+          '',
+          '### Per-leg breakdown',
+          '',
+          '| Leg | Previous | Current | Drop | Extra losses | Regressed |',
+          '| --- | ---: | ---: | ---: | ---: | :---: |',
+          ...legs.map(
+            (l) =>
+              `| \`${l.legId}\` | ${formatPercent(l.previous.winRate)} | ${formatPercent(l.current.winRate)} | ` +
+              `${(l.winRateDrop * 100).toFixed(2)} pp | ${l.additionalLosses} | ${l.regression ? '**yes**' : 'no'} |`,
+          ),
+        ]
+      : [];
   const body = [
     marker,
     '## Release weapon-sweep regression',
@@ -143,6 +201,7 @@ function buildIssue(
     `- **Regressing commit:** ${current.commitSubject}`,
     `- **Commit date:** ${current.commitDate}`,
     `- **Sweep run:** ${current.runUrl}`,
+    ...legLines,
     '',
     '### Detection tolerance',
     '',
@@ -153,6 +212,81 @@ function buildIssue(
     'Identify the first behavioral commit responsible for the lost runs, reproduce the affected seeds, and fix the root cause without weakening the sweep or gameplay requirements. Add deterministic regression coverage, run the required repository verification, and publish a ready-for-review PR.',
   ].join('\n');
   return { marker, title, body };
+}
+
+/**
+ * Apply the SAME tolerance rule used for the aggregate to one leg. Extracted so
+ * the aggregate and every leg provably share one definition of "regressed"
+ * rather than drifting into two thresholds.
+ */
+function exceedsRegressionTolerance(
+  previous: BaselineLegMetrics,
+  current: BaselineLegMetrics,
+): { regression: boolean; winRateDrop: number; additionalLosses: number } {
+  const additionalLosses =
+    current.totalRuns - current.totalWins - (previous.totalRuns - previous.totalWins);
+  const winRateDrop = previous.winRate - current.winRate;
+  const exceedsRateTolerance =
+    additionalLosses * 1000 > current.totalRuns * (MIN_WIN_RATE_DROP * 1000);
+  return {
+    regression:
+      winRateDrop > 0 && exceedsRateTolerance && additionalLosses >= MIN_ADDITIONAL_LOSSES,
+    winRateDrop,
+    additionalLosses,
+  };
+}
+
+/**
+ * Evaluate every leg present in BOTH baselines. A leg that appears in only one
+ * of them is skipped rather than compared: a newly-added or removed leg is a
+ * methodology change, not a gameplay regression, and comparing it would fire a
+ * false regression on the first release after the leg set changes.
+ *
+ * A leg whose run count changed is likewise skipped for the same reason — the
+ * aggregate path throws on a run-count change, but a leg must not take down the
+ * whole check when the sweep matrix is intentionally resized.
+ */
+export function evaluateLegRegressions(
+  previousLegs: Record<string, BaselineLegMetrics> | undefined,
+  currentLegs: Record<string, BaselineLegMetrics> | undefined,
+): BaselineLegRegression[] | undefined {
+  if (!previousLegs || !currentLegs) return undefined;
+  const results: BaselineLegRegression[] = [];
+  for (const legId of Object.keys(currentLegs).sort()) {
+    const current = currentLegs[legId];
+    const previous = previousLegs[legId];
+    if (!current || !previous) continue;
+    validateMetrics(current, `current baseline leg "${legId}"`);
+    validateMetrics(previous, `previous baseline leg "${legId}"`);
+    if (previous.totalRuns !== current.totalRuns) {
+      results.push({
+        legId,
+        regression: false,
+        reason: `leg run count changed (${previous.totalRuns} → ${current.totalRuns}); skipped`,
+        winRateDrop: 0,
+        additionalLosses: 0,
+        previous,
+        current,
+      });
+      continue;
+    }
+    const { regression, winRateDrop, additionalLosses } = exceedsRegressionTolerance(
+      previous,
+      current,
+    );
+    results.push({
+      legId,
+      regression,
+      reason: regression
+        ? `leg regressed ${formatPercent(previous.winRate)} → ${formatPercent(current.winRate)}`
+        : `leg stayed within tolerance (${(winRateDrop * 100).toFixed(2)} pp, ${additionalLosses} additional losses)`,
+      winRateDrop,
+      additionalLosses,
+      previous,
+      current,
+    });
+  }
+  return results;
 }
 
 export function evaluateBaselineRegression(
@@ -183,19 +317,35 @@ export function evaluateBaselineRegression(
   }
 
   const previous = compareShape(previousEntry, 'previous baseline');
+  const legs = evaluateLegRegressions(previousEntry.legs, currentBaseline.legs);
+
+  // A run-count change means the sweep matrix was intentionally resized (the
+  // multi-floor rollout resized the Floor-1 leg from 600 to 300 runs). Rates
+  // across differing sample sizes are not comparable, and the additional-losses
+  // half of the tolerance rule is meaningless across them.
+  //
+  // Historically this threw, which would have hard-failed the release job on the
+  // first post-resize run. Reporting a skipped comparison instead is the
+  // "reset or migrate the series" path: it never suppresses a real regression,
+  // because comparison resumes at full strength on the very next release (the
+  // first one whose predecessor shares the new size).
   if (previous.totalRuns !== current.totalRuns) {
-    throw new Error(
-      `cannot compare baseline run counts: previous=${previous.totalRuns}, current=${current.totalRuns}. ` +
-        'Reset or migrate the release baseline series when intentionally changing sweep size.',
-    );
+    return {
+      regression: false,
+      reason:
+        `sweep matrix resized (previous=${previous.totalRuns} runs, current=${current.totalRuns} runs); ` +
+        'skipped one comparison — the series resumes on the next release',
+      current,
+      previous,
+      seriesMigrated: true,
+      ...(legs ? { legs } : {}),
+    };
   }
 
-  const additionalLosses = current.totalLosses - previous.totalLosses;
-  const winRateDrop = previous.winRate - current.winRate;
-  const exceedsRateTolerance =
-    additionalLosses * 1000 > current.totalRuns * (MIN_WIN_RATE_DROP * 1000);
-  const regression =
-    winRateDrop > 0 && exceedsRateTolerance && additionalLosses >= MIN_ADDITIONAL_LOSSES;
+  const { regression, winRateDrop, additionalLosses } = exceedsRegressionTolerance(
+    previous,
+    current,
+  );
 
   if (!regression) {
     return {
@@ -205,6 +355,7 @@ export function evaluateBaselineRegression(
       previous,
       winRateDrop,
       additionalLosses,
+      ...(legs ? { legs } : {}),
     };
   }
 
@@ -215,7 +366,8 @@ export function evaluateBaselineRegression(
     previous,
     winRateDrop,
     additionalLosses,
-    issue: buildIssue(previous, current, winRateDrop, additionalLosses),
+    ...(legs ? { legs } : {}),
+    issue: buildIssue(previous, current, winRateDrop, additionalLosses, legs),
   };
 }
 

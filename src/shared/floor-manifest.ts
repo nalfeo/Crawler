@@ -35,6 +35,33 @@ export const floorManifestDefSchema = z
     protagonist: z.string().min(1),
     /** Available starter weapons for loadout selection. */
     starterWeapons: z.array(z.string().min(1)).min(1),
+    /**
+     * Implementation maturity for this floor — the single source of truth for
+     * "is this floor actually finishable end-to-end?".
+     *
+     * Deliberately NOT sweep-specific: any system that needs to know whether a
+     * floor is real content (stair-enabling into the next floor, floor-select
+     * UI, progression chaining) reads this rather than hardcoding a floor id.
+     *
+     * - `mvp`: the floor is implemented E2E with an attainable victory. Such a
+     *   floor is included in the released-floor sweep set.
+     * - `released`: the floor is shipped to players. Implies `mvp`; a floor may
+     *   be `mvp` but not yet `released` while it stabilizes.
+     * - `winBudgetMs`: the ACTIVE-time budget an official (tournament) win must
+     *   land under, in simulated game time. Omitted means the floor has no
+     *   validated budget yet, and a win is raw victory with no time bound.
+     *
+     * Defaulted so a manifest that predates this block still parses (as an
+     * unimplemented floor with no budget).
+     */
+    implemented: z
+      .object({
+        mvp: z.boolean().default(false),
+        released: z.boolean().default(false),
+        winBudgetMs: z.number().int().positive().optional(),
+      })
+      .strict()
+      .default(() => ({ mvp: false, released: false })),
     /** Floor timer configuration. */
     timer: z
       .object({
@@ -226,7 +253,19 @@ export const floorManifestDefSchema = z
       .strict()
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, ctx) => {
+    // `released` means shipped-to-players, which cannot be true of a floor that
+    // is not even finishable. Catching this in the schema keeps the released
+    // sweep set from ever containing an unwinnable floor.
+    if (manifest.implemented.released && !manifest.implemented.mvp) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['implemented', 'released'],
+        message: 'implemented.released requires implemented.mvp to be true',
+      });
+    }
+  });
 
 export type FloorManifestDef = z.infer<typeof floorManifestDefSchema>;
 

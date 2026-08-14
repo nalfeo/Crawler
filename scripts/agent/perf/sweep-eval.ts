@@ -73,6 +73,7 @@ import {
   FLOOR1_DEFAULT_MAX_FRAMES,
 } from '../../../src/game/ai/floor1-run-budget.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
+import { isFloorImplemented } from '../../../src/shared/floor-registry.js';
 import { AIDecisionMode, AIPathingMode, type RunStats } from '../../../src/game/ai/types.js';
 import {
   LEGACY_COMBO_ID,
@@ -768,11 +769,17 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
     throw new Error('--stage search-eval requires --config-id <id> --config-json <json>');
   }
-  if (args.floorId !== 'floor1') {
+  // The eval's budget/active-time semantics are resolved per floor from the
+  // manifest, so any implemented floor is admissible. An unimplemented floor is
+  // still rejected: its victory is unreachable, so every run would be a
+  // guaranteed loss and the search gradient would be pure noise. The floorId is
+  // part of the shard provenance meta, so artifacts from different floors stay
+  // mutually incompatible and can never be blended.
+  if (!isFloorImplemented(args.floorId)) {
     throw new Error(
-      `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
-        `(the 6-minute budget and safe-room active-time credit are Floor-1-specific). ` +
-        `Non-Floor-1 win semantics are undefined here.`,
+      `--floor '${args.floorId}' is not supported: it is not an implemented floor ` +
+        `(manifest implemented.mvp !== true), so its victory is unreachable and win ` +
+        `semantics are undefined here.`,
     );
   }
   return args;

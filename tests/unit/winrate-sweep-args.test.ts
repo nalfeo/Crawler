@@ -120,20 +120,47 @@ describe('parseSweepArgs — defaults and flags', () => {
     expect(parseSweepArgs(argv('--weapons', 'sword,bow'), 8).weapons).toEqual(['sword', 'bow']);
   });
 
-  it('defaults floor2 to a single weapon when weapons are not overridden', () => {
-    expect(parseSweepArgs(argv('--floor', 'floor2'), 8).weapons).toEqual(['sword']);
+  it("defaults a non-floor1 sweep to that floor's own manifest starterWeapons", () => {
+    // Previously hardcoded to ['sword']. Sourcing the default from the floor's
+    // own manifest means a floor sweep never silently runs Floor 1's weapon
+    // list, and a manifest weapon change needs no code change here.
+    expect(parseSweepArgs(argv('--floor', 'floor2'), 8).weapons).toEqual([
+      'sword',
+      'knife',
+      'bow',
+      'pistol',
+      'throwing-knife',
+    ]);
+  });
+
+  it('collapses the weapon dimension to one task per seed under --no-force-weapon', () => {
+    // The PR tier does not force a starter weapon: each seed runs once with its
+    // own seed-selected weapon, so run count stays `seeds`, not seeds × weapons.
+    const args = parseSweepArgs(argv('--no-force-weapon'), 8);
+    expect(args.forceWeapon).toBe(false);
+    expect(args.weapons).toHaveLength(1);
+  });
+
+  it('parses --chain as a boolean flag', () => {
+    expect(parseSweepArgs(argv('--chain'), 8).chain).toBe(true);
+    expect(parseSweepArgs(argv(), 8).chain).toBe(false);
+  });
+
+  it('rejects a sweep on a floor that is not implemented E2E', () => {
+    // Every run on an unfinishable floor is a guaranteed loss, so the reported
+    // win-rate would be meaningless noise.
+    expect(() => parseSweepArgs(argv('--floor', 'floor3'), 1)).toThrow(/not an implemented floor/);
   });
 
   it('scopes the DEFAULT_MAX_FRAMES slack cap to floor1 only (regression: floor2 must keep its prior default)', () => {
     // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack, so it must NOT leak
-    // into other floors. A non-floor1 sweep without an explicit --max-frames must
-    // retain the prior BUDGET_FRAMES default — this Floor-1-scoped fix cannot be
-    // allowed to silently inflate a floor2 sweep's frame budget (which could turn
+    // into other floors. A floor that declares no manifest win budget retains the
+    // prior BUDGET_FRAMES default — this Floor-1-scoped fix cannot be allowed to
+    // silently inflate a floor2 sweep's frame budget (which could turn
     // formerly-truncated floor2 runs into victories).
     expect(parseSweepArgs(argv(), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES); // floor1 (default)
     expect(parseSweepArgs(argv('--floor', 'floor1'), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES);
     expect(parseSweepArgs(argv('--floor', 'floor2'), 1).maxFrames).toBe(BUDGET_FRAMES);
-    expect(parseSweepArgs(argv('--floor', 'floor3'), 1).maxFrames).toBe(BUDGET_FRAMES);
   });
 
   it('lets an explicit --max-frames override the floor-aware default for any floor', () => {

@@ -42,6 +42,7 @@ import {
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
 import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import {
@@ -202,6 +203,16 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
+   * Player state carried in from a previous floor, applied during scenario
+   * configuration exactly as the visual runner does when descending stairs
+   * (`src/bootstrap/floor-main-scene-options.ts`). Omitted starts a fresh run.
+   *
+   * This is what makes a headless multi-floor progression run possible: without
+   * it, a chained Floor 2 run would start from a level-1 empty-inventory player
+   * and would not represent an actual playthrough.
+   */
+  playerCarryover?: PlayerCarryoverSnapshot;
+  /**
    * Explicit Floor 2 equipment rollout configuration, applied before scenario
    * configuration. Omitted preserves the world defaults (all disabled); each
    * enabled consumer validates its own dependency closure before mutating
@@ -252,6 +263,14 @@ export interface HeadlessRunnerConfig {
    * mutate the world; it is called after all simulation stops.
    */
   onFinish?: (world: GameWorld) => void;
+  /**
+   * Invoked with the player's carryover snapshot when the run ends in victory,
+   * before {@link HeadlessRunnerConfig.onFinish}. This is the seam a multi-floor
+   * progression run uses to hand player state to the next floor, mirroring the
+   * visual runner's floor-cleared capture in
+   * `src/bootstrap/floor-main-scene-options.ts`.
+   */
+  onPlayerCarryoverCaptured?: (carryover: PlayerCarryoverSnapshot, world: GameWorld) => void;
   /**
    * Opt-in: collect per-run weapon-accuracy telemetry (swings, connecting hits,
    * accuracy, multi-hit rate) and expose it as `RunStats.weaponTelemetry`. OFF by
@@ -320,6 +339,8 @@ const DEFAULT_CONFIG: Required<
     | 'stopWhen'
     | 'playerPersona'
     | 'planningMaxFrames'
+    | 'playerCarryover'
+    | 'onPlayerCarryoverCaptured'
   >
 > = {
   seed: 12345,
@@ -593,7 +614,11 @@ export async function runHeadless(
 
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
-  scenario.configureWorld(world, playerEid);
+  scenario.configureWorld(
+    world,
+    playerEid,
+    config.playerCarryover ? { playerCarryover: config.playerCarryover } : undefined,
+  );
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.
@@ -1564,6 +1589,15 @@ export async function runHeadless(
       fps: fps.toFixed(0),
       combatTimePercent: ((combatTimeMs / world.elapsedMs) * 100).toFixed(1),
     });
+  }
+
+  // Capture carryover BEFORE the onFinish hook so a chaining caller always sees
+  // the terminal player state, regardless of what a user-supplied hook does to
+  // the world. Only captured on a victory (the visual runner captures at the
+  // same floor-cleared point), so a chained next floor is never handed a
+  // snapshot of a dead or timed-out player.
+  if (mergedConfig.onPlayerCarryoverCaptured && stats.outcome === 'victory') {
+    mergedConfig.onPlayerCarryoverCaptured(capturePlayerCarryover(world, playerEid), world);
   }
 
   if (mergedConfig.onFinish) {

@@ -11,6 +11,8 @@ import {
   FLOOR1_ACTIVE_TIME_BUDGET_MS,
   FLOOR1_DEFAULT_MAX_FRAMES,
 } from '../../../src/game/ai/floor1-run-budget.js';
+import { getDefaultMaxFrames } from '../../../src/game/ai/floor-run-budget.js';
+import { getFloorManifest, isFloorImplemented } from '../../../src/shared/floor-registry.js';
 
 export const FLOOR1_WEAPONS = [
   'sword',
@@ -49,6 +51,13 @@ export const BUDGET_FRAMES = FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS;
  */
 export const DEFAULT_MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 
+/**
+ * Placeholder weapon id used when `--no-force-weapon` is active. It is never
+ * passed to the runner as a `forceWeaponId`; it exists only so the sweep's
+ * `seeds × weapons` task expansion yields exactly one task per seed.
+ */
+export const SEED_SELECTED_WEAPON = '(seed-selected)';
+
 export interface CLIArgs {
   seeds: number[];
   weapons: string[];
@@ -58,6 +67,20 @@ export interface CLIArgs {
   floorId: string;
   workers: number;
   skipEvents: boolean;
+  /**
+   * When true the sweep does NOT force a starter weapon: each run uses whatever
+   * weapon its own seed selects. Used by the PR tier, where weapon spread comes
+   * from the seed panel rather than a weapon dimension, so the run count stays
+   * `seeds.length` instead of `seeds.length × weapons.length`. Per-weapon
+   * balance is measured by the release tier, which still forces weapons.
+   */
+  forceWeapon: boolean;
+  /**
+   * When true the sweep chains into subsequent floors on victory, carrying the
+   * player over, and a win means reaching the final floor's victory. Used by the
+   * progression leg.
+   */
+  chain: boolean;
 }
 
 /**
@@ -175,6 +198,8 @@ export function parseSweepArgs(
     floorId: 'floor1',
     workers: 1,
     skipEvents: false,
+    forceWeapon: true,
+    chain: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -205,22 +230,44 @@ export function parseSweepArgs(
       i++;
     } else if (arg === '--skip-events') {
       args.skipEvents = true;
+    } else if (arg === '--no-force-weapon') {
+      args.forceWeapon = false;
+    } else if (arg === '--chain') {
+      args.chain = true;
     }
   }
-  if (
-    args.floorId === 'floor2' &&
-    !weaponsProvided &&
-    args.weapons.length === FLOOR1_WEAPONS.length
-  ) {
-    args.weapons = ['sword'];
+  // A sweep is only meaningful on a floor that is implemented end-to-end with an
+  // attainable victory; on anything else every run is a guaranteed loss and the
+  // reported win-rate is noise. Checked against the manifest rather than a
+  // hardcoded id so a newly-completed floor needs no code change here.
+  if (!isFloorImplemented(args.floorId)) {
+    throw new Error(
+      `--floor "${args.floorId}" is not an implemented floor (manifest implemented.mvp !== true); ` +
+        `a win-rate sweep on it cannot produce a meaningful rate.`,
+    );
   }
-  // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack (see its docstring) and
-  // is Floor-1-specific. A non-Floor-1 sweep that did not explicitly pass
-  // --max-frames retains the prior BUDGET_FRAMES default, so this Floor-1-scoped
-  // safe-room win-definition fix never silently alters another floor's truncation
-  // behavior. An explicit --max-frames overrides for every floor.
+  // Weapon defaults come from the floor's own manifest starterWeapons, so a
+  // floor sweep never silently runs Floor 1's weapon list.
+  if (!weaponsProvided) {
+    const manifest = getFloorManifest(args.floorId);
+    if (manifest && args.floorId !== 'floor1') {
+      args.weapons = [...manifest.starterWeapons];
+    }
+  }
+  // When weapons are not forced, the weapon dimension collapses: each seed runs
+  // once with its own seed-selected weapon. Collapsing the list to a single
+  // placeholder entry keeps the task-expansion arithmetic (seeds × weapons)
+  // correct without special-casing it at every call site.
+  if (!args.forceWeapon) {
+    args.weapons = [SEED_SELECTED_WEAPON];
+  }
+  // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack (see its docstring).
+  // Any other floor resolves its own budget-derived cap from the manifest; a
+  // floor that declares no budget keeps the prior BUDGET_FRAMES default so this
+  // never silently alters its truncation behavior. An explicit --max-frames
+  // overrides for every floor.
   if (!maxFramesProvided && args.floorId !== 'floor1') {
-    args.maxFrames = BUDGET_FRAMES;
+    args.maxFrames = getDefaultMaxFrames(args.floorId) ?? BUDGET_FRAMES;
   }
   if (!workersProvided) {
     args.workers = Math.max(1, Math.min(parallelism, args.seeds.length * args.weapons.length));
