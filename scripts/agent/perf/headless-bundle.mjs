@@ -48,14 +48,14 @@
  * already bundled by `vite build` and never pays this cost.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const ENTRY = path.join(REPO_ROOT, 'src', 'game', 'ai', 'headless-runner-cli.ts');
 const OUT_DIR = path.join(REPO_ROOT, 'files');
-const OUT_FILE = path.join(OUT_DIR, 'headless-runner-cli.bundle.mjs');
 
 /**
  * Bundle the CLI ahead of time.
@@ -75,16 +75,34 @@ async function buildBundle() {
   mkdirSync(OUT_DIR, { recursive: true });
 
   const esbuild = await import('esbuild');
-  await esbuild.build({
+  const result = await esbuild.build({
     entryPoints: [ENTRY],
     bundle: true,
     format: 'esm',
     platform: 'node',
     target: `node${process.versions.node.split('.')[0]}`,
-    outfile: OUT_FILE,
     packages: 'external',
     logLevel: 'warning',
+    write: false,
   });
+  const output = result.outputFiles?.[0];
+  if (!output) throw new Error('esbuild produced no output for the headless runner CLI.');
+
+  const digest = createHash('sha256').update(output.contents).digest('hex').slice(0, 16);
+  const entry = path.join(OUT_DIR, `headless-runner-cli.bundle-${digest}.mjs`);
+  if (!existsSync(entry)) publishAtomically(entry, output.contents);
+  return entry;
+}
+
+function publishAtomically(entry, contents) {
+  const temporary = path.join(OUT_DIR, `.tmp-${randomUUID()}.mjs`);
+  writeFileSync(temporary, contents);
+  try {
+    renameSync(temporary, entry);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    if (!existsSync(entry)) throw error;
+  }
 }
 
 /** Run the CLI through tsx — the historical path, kept as a fallback. */
@@ -98,19 +116,18 @@ function runViaTsx(args) {
 async function main() {
   const args = process.argv.slice(2);
 
-  let built = true;
+  let entry;
   try {
-    await buildBundle();
+    entry = await buildBundle();
   } catch (error) {
-    built = false;
     console.error(
       `ai:headless — ${error instanceof Error ? error.message : String(error)}\n` +
         'Falling back to the tsx loader: slower, but functionally identical.',
     );
   }
 
-  const run = built
-    ? spawnSync(process.execPath, [OUT_FILE, ...args], { cwd: process.cwd(), stdio: 'inherit' })
+  const run = entry
+    ? spawnSync(process.execPath, [entry, ...args], { cwd: process.cwd(), stdio: 'inherit' })
     : runViaTsx(args);
 
   if (run.error) {
