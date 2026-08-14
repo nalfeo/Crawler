@@ -63,17 +63,20 @@ function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
 }
 
 describe('deploy.yml job gating (scheduled CI must not run a live deploy or sweep)', () => {
-  it('parses deploy.yml and finds release-gate, deploy, and baseline-sweep jobs', () => {
+  it('parses deploy.yml and finds release-gate, deploy, release-report-sweep, and baseline-sweep jobs', () => {
     const doc = loadDeployWorkflow();
     expect(doc.jobs['release-gate']).toBeDefined();
     expect(doc.jobs.deploy).toBeDefined();
+    expect(doc.jobs['release-report-sweep']).toBeDefined();
     expect(doc.jobs['baseline-sweep']).toBeDefined();
   });
 
-  it('gates both `deploy` and `baseline-sweep` on the identical push-only condition', () => {
+  it('gates deploy, report shards, and baseline-sweep on the identical push-only condition', () => {
     const doc = loadDeployWorkflow();
     const deployIf = String(getJob(doc, 'deploy').if).trim();
+    const reportIf = String(getJob(doc, 'release-report-sweep').if).trim();
     const sweepIf = String(getJob(doc, 'baseline-sweep').if).trim();
+    expect(reportIf).toBe(deployIf);
     expect(sweepIf).toBe(deployIf);
   });
 
@@ -88,7 +91,7 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
 
   it('requires both a successful conclusion AND a push event (not just a manual dispatch escape hatch)', () => {
     const doc = loadDeployWorkflow();
-    for (const jobName of ['release-gate', 'deploy', 'baseline-sweep']) {
+    for (const jobName of ['release-gate', 'deploy', 'release-report-sweep', 'baseline-sweep']) {
       const condition = String(getJob(doc, jobName).if);
       if (jobName !== 'release-gate') {
         expect(condition, jobName).toContain("needs.release-gate.outputs.should_run == 'true'");
@@ -99,9 +102,13 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     }
   });
 
-  it('keeps baseline-sweep depending on both release-gate and deploy jobs', () => {
+  it('keeps baseline-sweep depending on release-gate, deploy, and report shard jobs', () => {
     const doc = loadDeployWorkflow();
-    expect(getJob(doc, 'baseline-sweep').needs).toEqual(['release-gate', 'deploy']);
+    expect(getJob(doc, 'baseline-sweep').needs).toEqual([
+      'release-gate',
+      'deploy',
+      'release-report-sweep',
+    ]);
   });
 
   it('resolves stale workflow_run releases via release-gate output', () => {
