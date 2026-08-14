@@ -63,6 +63,13 @@ repeatable proxy for simulation cost.
 npm run ai:headless
 ```
 
+`ai:headless` pre-bundles the CLI with esbuild before running (~85ms), which
+removes ~2.7s of per-process `tsx` transpile startup. That startup is fixed
+overhead, so leaving it in dilutes every wall-time comparison — a real 10% sim
+win reads as ~7% when a quarter of the run is loader. Use
+`npm run ai:headless:tsx` only to rule the bundler out when diagnosing a
+loader-specific problem.
+
 For a wider, more stable sample of simulation cost:
 
 ```bash
