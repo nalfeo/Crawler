@@ -6,7 +6,8 @@
  * silently run old game code. The output lives under gitignored files/.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,32 +18,32 @@ export const BUNDLED_ENTRIES = Object.freeze({
   headless: {
     label: 'ai:headless',
     entry: path.join(REPO_ROOT, 'src', 'game', 'ai', 'headless-runner-cli.ts'),
-    output: path.join(OUT_DIR, 'headless-runner-cli.bundle.mjs'),
+    outputPrefix: 'headless-runner-cli.bundle-',
   },
   'winrate-sweep': {
     label: 'ai:winrate-sweep',
     entry: path.join(REPO_ROOT, 'scripts', 'agent', 'perf', 'winrate-sweep.ts'),
-    output: path.join(OUT_DIR, 'winrate-sweep.bundle.mjs'),
+    outputPrefix: 'winrate-sweep.bundle-',
   },
   'sweep-eval': {
     label: 'ai:sweep-eval',
     entry: path.join(REPO_ROOT, 'scripts', 'agent', 'perf', 'sweep-eval.ts'),
-    output: path.join(OUT_DIR, 'sweep-eval.bundle.mjs'),
+    outputPrefix: 'sweep-eval.bundle-',
   },
   'sim-fingerprint': {
     label: 'perf:fingerprint',
     entry: path.join(REPO_ROOT, 'scripts', 'agent', 'perf', 'sim-fingerprint.ts'),
-    output: path.join(OUT_DIR, 'sim-fingerprint.bundle.mjs'),
+    outputPrefix: 'sim-fingerprint.bundle-',
   },
   'weapon-sweep': {
     label: 'ai:weapon-sweep',
     entry: path.join(REPO_ROOT, 'scripts', 'agent', 'perf', 'weapon-sweep.ts'),
-    output: path.join(OUT_DIR, 'weapon-sweep.bundle.mjs'),
+    outputPrefix: 'weapon-sweep.bundle-',
   },
   'hill-climb': {
     label: 'ai:hill-climb',
     entry: path.join(REPO_ROOT, 'scripts', 'agent', 'perf', 'hill-climb.ts'),
-    output: path.join(OUT_DIR, 'hill-climb.bundle.mjs'),
+    outputPrefix: 'hill-climb.bundle-',
   },
 });
 
@@ -57,24 +58,55 @@ function entryForKey(key) {
 }
 
 /**
+ * Publish bundle contents under a content-addressed filename, atomically.
+ *
+ * Concurrent launchers (e.g. parallel sweep workers) can race to build the
+ * same entry. Writing to a per-process temp file and renaming it into place
+ * means a reader either sees the old, complete file or the new, complete
+ * file — never a partially written one. If the content-addressed file
+ * already exists, its contents are already known-good, so the write is
+ * skipped entirely.
+ */
+function publishAtomically(target, contents) {
+  const temporary = path.join(OUT_DIR, `.tmp-${randomUUID()}.mjs`);
+  writeFileSync(temporary, contents);
+  try {
+    renameSync(temporary, target);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    if (!existsSync(target)) throw error;
+  }
+}
+
+/**
  * Bundle the selected CLI with esbuild's JS API. First-party TypeScript is
  * inlined while dependencies remain native node-resolved packages.
+ *
+ * Builds in memory (`write: false`) and publishes to a sha256-addressed
+ * output path so concurrent launchers can never observe a partially written
+ * bundle from another in-flight build.
  */
 export async function buildBundle(key) {
   const entry = entryForKey(key);
   mkdirSync(OUT_DIR, { recursive: true });
   const esbuild = await import('esbuild');
-  await esbuild.build({
+  const result = await esbuild.build({
     entryPoints: [entry.entry],
     bundle: true,
     format: 'esm',
     platform: 'node',
     target: `node${process.versions.node.split('.')[0]}`,
-    outfile: entry.output,
     packages: 'external',
     logLevel: 'warning',
+    write: false,
   });
-  return entry;
+  const output = result.outputFiles?.[0];
+  if (!output) throw new Error(`esbuild produced no output for ${entry.label}.`);
+
+  const digest = createHash('sha256').update(output.contents).digest('hex').slice(0, 16);
+  const target = path.join(OUT_DIR, `${entry.outputPrefix}${digest}.mjs`);
+  if (!existsSync(target)) publishAtomically(target, output.contents);
+  return { ...entry, output: target };
 }
 
 function parseInvocation(argv) {
@@ -112,18 +144,17 @@ export async function launch(argv, defaultKey = 'headless') {
       : { key: defaultKey, args: argv };
   const entry = entryForKey(invocation.key);
 
-  let built = true;
+  let built;
   try {
-    await buildBundle(invocation.key);
+    built = await buildBundle(invocation.key);
   } catch (error) {
-    built = false;
     console.error(
       `${entry.label} — ${error instanceof Error ? error.message : String(error)}\n` +
         'Falling back to the tsx loader: slower, but functionally identical.',
     );
   }
   const run = built
-    ? spawnSync(process.execPath, [entry.output, ...invocation.args], {
+    ? spawnSync(process.execPath, [built.output, ...invocation.args], {
         cwd: process.cwd(),
         env: { ...process.env, CRAWLER_PREBUNDLED_ENTRY: invocation.key },
         stdio: 'inherit',

@@ -229,6 +229,58 @@ export function parseAckTrailers(commitMessage: string): Set<string> {
 }
 
 /**
+ * Split a unified `git diff` for a single path into its added and removed
+ * content lines (trimmed, file-header lines excluded).
+ *
+ * Used by `sideAdditionsSubsumedByOther` to detect a subsumed conflict
+ * resolution — a genuine textual conflict (so `git merge-tree` cannot
+ * auto-resolve it) where the human/agent resolution still keeps every line
+ * the incoming side added, just alongside more of its own edits. That shape
+ * is common for growing tables/lists where both sides append a row.
+ */
+export function parseDiffLineChanges(diffText: string): {
+  added: readonly string[];
+  removed: readonly string[];
+} {
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const line of diffText.split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---')) continue;
+    if (line.startsWith('+')) added.push(line.slice(1).trim());
+    else if (line.startsWith('-')) removed.push(line.slice(1).trim());
+  }
+  return { added, removed };
+}
+
+/**
+ * True when every non-blank line the incoming side ADDED (relative to the
+ * merge base) also appears as an added line in the opposing side's resolution
+ * — i.e. the incoming side's content is not lost, only reformatted alongside
+ * more content.
+ *
+ * Deliberately conservative: any line the incoming side REMOVED is not
+ * verified this way (deletions are easy to silently drop and hard to confirm
+ * by line-presence alone), so this returns `false` whenever `sideRemoved` is
+ * non-empty — those cases still get the ordinary discard treatment. This
+ * complements (does not replace) the `git merge-tree`-based check in
+ * `silent-reverts.ts`, which only fires when the two sides' edits do not
+ * textually conflict; this heuristic instead handles the shape where they DO
+ * conflict (e.g. two PRs both append a row to the same markdown table) but
+ * the chosen resolution still carries every line the incoming side added.
+ */
+export function sideAdditionsSubsumedByOther(
+  sideAdded: readonly string[],
+  sideRemoved: readonly string[],
+  otherAdded: readonly string[],
+): boolean {
+  const meaningfulAdded = sideAdded.filter((line) => line.length > 0);
+  if (meaningfulAdded.length === 0) return false; // nothing to subsume
+  if (sideRemoved.some((line) => line.length > 0)) return false;
+  const otherAddedSet = new Set(otherAdded.filter((line) => line.length > 0));
+  return meaningfulAdded.every((line) => otherAddedSet.has(line));
+}
+
+/**
  * True when the merge dropped a change the incoming side made — either by
  * taking the opposing parent's version wholesale, or by resetting to the base.
  *
