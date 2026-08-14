@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "prebundle-all-sweeps",
+  "task_title": "Pre-bundle all headless and sweep runners",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "The review identified three concerns: the 1.25x gate needed to be tied to representative startup-dominated sweep workloads; bundled sweep-eval needed explicit GITHUB_SHA provenance coverage; and deterministic comparisons must use stable fingerprint/artifact fields rather than wall-clock output. The implementation retained the measured 4.61x winrate smoke result, added a bundled sweep-eval --print-meta test for GITHUB_SHA, and uses SHA-256 fingerprint parity rather than raw timing output."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "completed": true,
+      "notes": "Round 1 found a CI-breaking no-redeclare regression from broad scripts/**/*.mjs node globals; narrowed the ESLint scope to scripts/agent/perf/**/*.mjs. Round 2 found no remaining high-confidence issues and confirmed worker, provenance, guard, and workflow behavior."
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

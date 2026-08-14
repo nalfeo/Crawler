@@ -106,6 +106,7 @@ import {
   type WorkerPoolTaskPayload,
   type WorkerTaskFailure,
   type WorkerTaskSuccess,
+  workerOptionsForModule,
 } from './worker-pool.js';
 import { parseNonNegativeInt, parsePositiveInt, parseSeeds } from './winrate-sweep-args.js';
 
@@ -180,15 +181,7 @@ async function runTasks(tasks: EvalTask[], shared: EvalShared, workers: number):
     tasks,
     shared,
     maxWorkers: workers,
-    workerOptions: {
-      // Same synchronous-hook bootstrap winrate-sweep uses: tsx's async import
-      // hooks don't remap .js→.ts inside worker threads.
-      execArgv: [
-        ...process.execArgv,
-        '--import',
-        new URL('./tsx-worker-hooks.mjs', import.meta.url).href,
-      ],
-    },
+    workerOptions: workerOptionsForModule(import.meta.url),
   });
 }
 
@@ -1004,8 +997,10 @@ if (!isMainThread && workerData != null) {
     });
 } else if (
   isMainThread &&
-  process.argv[1] != null &&
-  fileURLToPath(import.meta.url) === process.argv[1]
+  (process.env.CRAWLER_PREBUNDLED_ENTRY === 'sweep-eval' ||
+    (process.env.CRAWLER_PREBUNDLED_ENTRY === undefined &&
+      process.argv[1] != null &&
+      fileURLToPath(import.meta.url) === process.argv[1]))
 ) {
   main(process.argv).catch((err) => {
     console.error('Fatal:', err instanceof Error ? err.stack : err);

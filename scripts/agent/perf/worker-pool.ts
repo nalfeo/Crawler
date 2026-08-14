@@ -24,6 +24,17 @@ interface WorkerPoolOptions<TTask, TShared> {
   workerOptions?: Omit<WorkerOptions, 'workerData'>;
 }
 
+/** Use tsx's worker hook only for the source .ts execution path. */
+export function workerOptionsForModule(moduleUrl: string | URL): Omit<WorkerOptions, 'workerData'> {
+  const url = moduleUrl instanceof URL ? moduleUrl : new URL(moduleUrl);
+  if (url.pathname.endsWith('.bundle.mjs')) {
+    return {};
+  }
+  return {
+    execArgv: [...process.execArgv, '--import', new URL('./tsx-worker-hooks.mjs', url).href],
+  };
+}
+
 export async function runWorkerPool<TTask, TShared, TResult>({
   workerUrl,
   tasks,

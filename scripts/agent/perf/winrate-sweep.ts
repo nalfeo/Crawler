@@ -44,6 +44,7 @@ import {
   type WorkerPoolTaskPayload,
   type WorkerTaskFailure,
   type WorkerTaskSuccess,
+  workerOptionsForModule,
 } from './worker-pool.js';
 import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
 import { classifySweepRun } from './winrate-sweep-classify.js';
@@ -240,16 +241,7 @@ async function sweep(args: CLIArgs): Promise<void> {
         tasks,
         shared: sharedConfig,
         maxWorkers: args.workers,
-        workerOptions: {
-          // tsx's async --import hooks don't remap .js→.ts in worker threads;
-          // the bootstrap registers synchronous hooks (module.registerHooks)
-          // which do, so add it after the existing execArgv.
-          execArgv: [
-            ...process.execArgv,
-            '--import',
-            new URL('./tsx-worker-hooks.mjs', import.meta.url).href,
-          ],
-        },
+        workerOptions: workerOptionsForModule(import.meta.url),
       })),
     );
   }
