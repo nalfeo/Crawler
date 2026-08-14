@@ -327,6 +327,24 @@ export function readGuardFriction(root: string): BottleneckReport['guardFriction
     .sort((a, b) => b.deny - a.deny);
 }
 
+/**
+ * Guard-specific remediation hints for the top guard friction finding.
+ *
+ * When a guard appears as the top denial source across captured sessions, the
+ * bottleneck scan emits this remediation text so agents know exactly which
+ * command to run to avoid the denial loop on the next PR — rather than the
+ * generic "check whether the guard is mis-firing" fallback.
+ *
+ * Each entry maps a guard ID to a short imperative instruction. The key must
+ * match the guard ID string recorded in the guard-telemetry JSON files.
+ */
+export const GUARD_REMEDIATION: Readonly<Record<string, string>> = {
+  'pr-review-ledger':
+    'run `npm run verify:pr-prereqs` before `create_pull_request` to surface missing or incomplete ledger files early and avoid the denial loop',
+  'pr-preflight':
+    'run `npm run verify:pr-prereqs` before `create_pull_request` to catch missing handoffs, ADR requirements, and forbidden-path violations ahead of the gate',
+};
+
 export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): string[] {
   const findings: string[] = [];
 
@@ -400,9 +418,13 @@ export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): stri
   const noisyGuards = report.guardFriction.filter((g) => g.deny > 0);
   if (noisyGuards.length > 0) {
     const top = noisyGuards[0] as { guard: string; deny: number; allow: number };
+    const remediation = GUARD_REMEDIATION[top.guard];
+    const tail = remediation
+      ? ` Suggested fix: ${remediation}.`
+      : ' Check whether the guard is catching real violations or mis-firing.';
     findings.push(
-      `Guard "${top.guard}" denied ${top.deny} call(s) across captured sessions. Each denial is a ` +
-        `retry loop; check whether the guard is catching real violations or mis-firing.`,
+      `Guard "${top.guard}" denied ${top.deny} call(s) across captured sessions (estimated ` +
+        `${top.deny * 2}+ avoidable extra tool calls). Each denial is a retry loop.${tail}`,
     );
   }
 

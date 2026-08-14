@@ -136,6 +136,8 @@ export function evaluatePrereqs(files, addedFiles, cwd, opts = {}) {
     cwd,
     toolArgs: {},
     skipSemanticTitle: true,
+    currentBranch: opts.currentBranch,
+    mergeBase: opts.mergeBase,
   });
   const ledgerDecision = decideLedger(files, addedFiles, {
     cwd,
@@ -235,7 +237,8 @@ function gatherCurrentDiff(cwd) {
     addedFiles.add(f);
   }
 
-  return { files: [...files], addedFiles: [...addedFiles] };
+  const currentBranch = lines(git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']))[0] ?? '';
+  return { files: [...files], addedFiles: [...addedFiles], mergeBase: base, currentBranch };
 }
 
 function main() {
@@ -251,7 +254,10 @@ function main() {
     process.exit(1);
   }
 
-  const result = evaluatePrereqs(diff.files, diff.addedFiles, cwd);
+  const result = evaluatePrereqs(diff.files, diff.addedFiles, cwd, {
+    currentBranch: diff.currentBranch,
+    mergeBase: diff.mergeBase,
+  });
   const telemetryNote = telemetryCaptureNote(cwd, diff.files, diff.addedFiles);
   if (telemetryNote) {
     result.notes.push(telemetryNote);

@@ -369,7 +369,7 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
 test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
-
+  const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
   // The live AUDIT_EXCEPTIONS list churns as advisories get fixed/expire (and is
   // empty whenever nothing is excepted), so this end-to-end diagnostic test
   // injects its own synthetic, far-future exception into a copy of the script
@@ -390,8 +390,6 @@ test('reports every matched exception in the success diagnostic', (t) => {
   // this test against the real list and reintroduce the coupling it removes.
   assert.deepEqual(extractAuditExceptionsFromSource(injectedSource), [cliException]);
   writeFileSync(scriptCopy, injectedSource);
-
-  const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
   writeFileSync(
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
@@ -411,7 +409,6 @@ test('reports every matched exception in the success diagnostic', (t) => {
       }),
     )}));`,
   );
-
   const env = { ...process.env, npm_execpath: fakeNpmCli };
   delete env.GITHUB_BASE_SHA;
   const result = spawnSync(process.execPath, [scriptCopy, '--audit-level=high'], {
