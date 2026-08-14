@@ -77,11 +77,22 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
     expect(sweepIf).toBe(deployIf);
   });
 
+  it('skips release-gate itself for non-deployable workflow_run completions', () => {
+    const doc = loadDeployWorkflow();
+    const gateIf = String(getJob(doc, 'release-gate').if ?? '').trim();
+    expect(gateIf).toContain("github.event_name == 'workflow_dispatch'");
+    expect(gateIf).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(gateIf).toContain("github.event.workflow_run.event == 'push'");
+    expect(gateIf).not.toContain('needs.release-gate.outputs.should_run');
+  });
+
   it('requires both a successful conclusion AND a push event (not just a manual dispatch escape hatch)', () => {
     const doc = loadDeployWorkflow();
-    for (const jobName of ['deploy', 'baseline-sweep']) {
+    for (const jobName of ['release-gate', 'deploy', 'baseline-sweep']) {
       const condition = String(getJob(doc, jobName).if);
-      expect(condition, jobName).toContain("needs.release-gate.outputs.should_run == 'true'");
+      if (jobName !== 'release-gate') {
+        expect(condition, jobName).toContain("needs.release-gate.outputs.should_run == 'true'");
+      }
       expect(condition, jobName).toContain("github.event_name == 'workflow_dispatch'");
       expect(condition, jobName).toContain("github.event.workflow_run.conclusion == 'success'");
       expect(condition, jobName).toContain("github.event.workflow_run.event == 'push'");
