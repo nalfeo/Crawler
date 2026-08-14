@@ -147,6 +147,12 @@ const OPEN_INCIDENT = {
   pull_request: undefined,
 };
 
+const OPEN_DEPLOY_INCIDENT = {
+  number: 202,
+  title: 'CI incident: Deploy to GitHub Pages',
+  pull_request: undefined,
+};
+
 test('does not auto-close an open incident on a train-fast-path (docs_only) push success', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [OPEN_INCIDENT] }),
@@ -229,6 +235,81 @@ test('auto-closes an open incident on a genuine (non-train) push success', async
   assert.equal(
     mutatingCalls.filter(
       (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/101`,
+    ).length,
+    1,
+  );
+});
+
+test('does not auto-close a Pages incident on a stale successful run that skipped deploy', async (t) => {
+  const runId = 777;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [OPEN_DEPLOY_INCIDENT] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs/${runId}/jobs`]: () => ({
+      body: {
+        jobs: [
+          { name: 'release-gate', conclusion: 'success' },
+          { name: 'deploy', conclusion: 'skipped' },
+          { name: 'Baseline win-rate sweep (100 seeds)', conclusion: 'skipped' },
+        ],
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(
+    port,
+    pushRun({
+      id: runId,
+      name: 'Deploy to GitHub Pages',
+      event: 'workflow_run',
+      html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`,
+    }),
+  );
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /skip auto-close .*reason=deploy-job-not-success conclusion=skipped/);
+  assert.deepEqual(mutatingCalls, [], 'a stale skipped deploy must not close the incident');
+});
+
+test('auto-closes a Pages incident after a successful deploy job', async (t) => {
+  const runId = 778;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [OPEN_DEPLOY_INCIDENT] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs/${runId}/jobs`]: () => ({
+      body: {
+        jobs: [
+          { name: 'release-gate', conclusion: 'success' },
+          { name: 'deploy', conclusion: 'success' },
+          { name: 'Baseline win-rate sweep (100 seeds)', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/202`]: () => ({ body: { number: 202 } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/202/comments`]: () => ({ body: { id: 2 } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(
+    port,
+    pushRun({
+      id: runId,
+      name: 'Deploy to GitHub Pages',
+      event: 'workflow_run',
+      html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${runId}`,
+    }),
+  );
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /closed incident issue=#202/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/202`,
     ).length,
     1,
   );

@@ -84,11 +84,42 @@ const isTrainFastPathSuccess =
   run.name === 'CI' &&
   hasTrustedTrainPromotionCheck(headCheckRuns, trustedAppId);
 
+async function deployRunActuallyReleased() {
+  if (run.name !== 'Deploy to GitHub Pages') {
+    return true;
+  }
+  if (!run.id) {
+    process.stdout.write(
+      `skip auto-close workflow=${run.name} reason=missing-run-id (cannot prove deploy job succeeded)\n`,
+    );
+    return false;
+  }
+  const jobs =
+    (
+      await request(
+        token,
+        `/repos/${owner}/${repo}/actions/runs/${encodeURIComponent(run.id)}/jobs?per_page=100`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+      )
+    ).data.jobs || [];
+  const deployJob = jobs.find((job) => job.name === 'deploy');
+  if (deployJob?.conclusion === 'success') {
+    return true;
+  }
+  process.stdout.write(
+    `skip auto-close workflow=${run.name} reason=deploy-job-not-success conclusion=${deployJob?.conclusion || 'missing'}\n`,
+  );
+  return false;
+}
+
 if (run.conclusion === 'success') {
   if (isTrainFastPathSuccess) {
     process.stdout.write(
       `skip auto-close workflow=${run.name} reason=train-fast-path-success (docs_only shortcut is not full-CI evidence)\n`,
     );
+    process.exit(0);
+  }
+  if (!(await deployRunActuallyReleased())) {
     process.exit(0);
   }
   if (existing) {
