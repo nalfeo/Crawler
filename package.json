@@ -177,7 +177,7 @@
     "rot-js": "2.2.1"
   },
   "devDependencies": {
-    "@azure/functions": "4.9.0",
+    "@azure/functions": "4.16.2",
     "@azure/storage-blob": "12.32.0",
     "@azure/storage-queue": "12.30.0",
     "@eslint/js": "10.0.1",

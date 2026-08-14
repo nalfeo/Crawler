@@ -11,7 +11,7 @@
     "start": "func start"
   },
   "dependencies": {
-    "@azure/functions": "4.9.0",
+    "@azure/functions": "4.16.2",
     "@azure/storage-blob": "12.32.0"
   },
   "devDependencies": {
