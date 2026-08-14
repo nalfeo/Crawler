@@ -284,7 +284,7 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('commitlint.config.ts');
     },
@@ -310,7 +310,7 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.mts');
     },
@@ -355,7 +355,7 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('commitlint.config.ts');
     },

@@ -24,8 +24,8 @@ run_with_timeout() {
 echo "🔍 Step 1/3: Full-project type checking + linting (parallel)..."
 
 # The production verifier always uses the authoritative project, which includes
-# vite.config.ts plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts, and
-# tools/**/*.ts.
+# vite.config.ts plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts, functions/**/*.ts,
+# and tools/**/*.ts.
 # TypeScript's existing incremental metadata keeps repeat runs fast without
 # changing compiler context.
 TSC_PROJECT="tsconfig.json"
@@ -38,7 +38,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
 fi
 
 is_supported_ts_path() {
-  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
+  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|(src|tests|scripts|functions|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
 # Returns true for .mjs files that are actively linted in changed-file mode.
@@ -61,7 +61,7 @@ is_known_mjs_path() {
 # for its cache even when nothing changed (~22s of pure overhead), whereas a
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
-LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ .github/scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ functions/ tools/ .github/scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   # In CI, use GITHUB_BASE_SHA as a fallback when no local branch is resolvable
@@ -124,7 +124,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     # CI lints them in full-tree mode; verify:fast skips them locally.
   done
   if [ "${#unsupported_ts[@]}" -ne 0 ]; then
-    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:" >&2
+    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:" >&2
     printf '   - %s\n' "${unsupported_ts[@]}" >&2
     echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
     exit 1

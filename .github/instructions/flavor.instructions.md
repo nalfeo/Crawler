@@ -6,6 +6,12 @@ applyTo: 'src/shared/data/achievements*.json'
 
 Use this guide when authoring achievement flavor text and Director-style copy.
 
+Before writing, consult `docs/knowledge/game-design/lore-bible.md` and trace the
+relevant source citations (GDD, handoffs, dialogue/data definitions, briefs, and
+ADRs). If a proposed line depends on a conflicting or uncertain fact, record the
+conflict in `docs/knowledge/game-design/lore-contradictions.md` and stop for
+resolution; do not silently canonize it.
+
 ## Voice target
 
 - Inspired by **Dungeon Crawler Carl** achievement energy plus Crawler's **AI runner / Director** tone.
