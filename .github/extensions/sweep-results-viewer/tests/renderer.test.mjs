@@ -7,6 +7,8 @@ test('renders cloud run controls, polling state, and existing aggregate views', 
   assert.match(html, /id="run-select"/);
   assert.match(html, /id="source-select"/);
   assert.match(html, /Local session/);
+  assert.match(html, /Repository branch/);
+  assert.match(html, /id="branch-select"/);
   assert.match(html, /Floors: /);
   assert.match(html, /Invalid local result files/);
   assert.match(html, /source-select'\)\.disabled = state\.refreshing/);
@@ -14,6 +16,15 @@ test('renders cloud run controls, polling state, and existing aggregate views', 
   assert.match(html, /Per-weapon summary/);
   assert.match(html, /Per-seed outcomes/);
   assert.match(html, /new URLSearchParams\(location\.search\)/);
+});
+
+test('renders repository baseline controls and baseline tables', () => {
+  const html = renderHtml('benchmark-test');
+  assert.match(html, /select-repository-branch/);
+  assert.match(html, /select-repository-artifact/);
+  assert.match(html, /renderBaselineResults/);
+  assert.match(html, /Baseline summary/);
+  assert.match(html, /Per-weapon win rate/);
 });
 
 test('does not embed GitHub credentials or authenticated API URLs', () => {
@@ -38,7 +49,7 @@ test('page-title element is present and updated dynamically', () => {
   const html = renderHtml('sweep-test');
   assert.match(html, /id="page-title"/);
   assert.match(html, /titleEl\.textContent/);
-  assert.match(html, /ai-sweep.*AI Sweep Eval Results/);
+  assert.match(html, /AI Sweep Eval Results/);
 });
 
 test('run selector aria-label is generic (not weapon-sweep-specific)', () => {

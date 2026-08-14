@@ -366,7 +366,7 @@ test('CLI exits 1 with package-specific error when expiresOn extends without rea
   assert.match(result.stderr, /restated, current justification/);
 });
 
-test('reports the advisory after its temporary exception is removed', (t) => {
+test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
@@ -374,23 +374,33 @@ test('reports the advisory after its temporary exception is removed', (t) => {
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
       report({
-        'brace-expansion': {
-          name: 'brace-expansion',
+        'alpha-pkg': {
+          name: 'alpha-pkg',
           severity: 'high',
-          via: [
-            {
-              source: 1130591,
-              url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
-              severity: 'high',
-            },
-          ],
+          via: [{ ...ALPHA_ADVISORY }],
         },
-        minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
+        downstream: { name: 'downstream', severity: 'high', via: ['alpha-pkg'] },
       }),
     )}));`,
   );
 
-  const result = spawnSync(process.execPath, [SCRIPT, '--audit-level=high'], {
+  // Run a copy of the script carrying a synthetic, unexpired exception so the
+  // diagnostic assertions never depend on the live AUDIT_EXCEPTIONS list.
+  const scriptCopy = path.join(tempDir, 'npm-audit.mjs');
+  writeFileSync(
+    scriptCopy,
+    readFileSync(SCRIPT, 'utf8').replace(
+      /export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/,
+      `export const AUDIT_EXCEPTIONS = ${JSON.stringify(
+        [{ ...ALPHA_EXCEPTION, expiresOn: '2999-01-01' }],
+        null,
+        2,
+      )};`,
+    ),
+  );
+
+  const result = spawnSync(process.execPath, [scriptCopy, '--audit-level=high'], {
+    cwd: tempDir,
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -398,11 +408,14 @@ test('reports the advisory after its temporary exception is removed', (t) => {
     },
   });
 
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 0);
   assert.match(
     result.stderr,
-    /npm audit found 2 blocking high\+ finding\(s\): brace-expansion, minimatch/,
+    new RegExp(
+      `Temporary audit exception through 2999-01-01: ${ALPHA_EXCEPTION.url.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}`,
+    ),
   );
+  assert.match(result.stderr, /Suppressed derived findings: alpha-pkg, downstream/);
 });
 
 test('suppresses the exact advisory and findings derived solely from it', () => {
