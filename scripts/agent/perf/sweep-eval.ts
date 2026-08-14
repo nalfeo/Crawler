@@ -65,6 +65,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
@@ -568,8 +569,9 @@ async function searchCombo(
 
 function packageLockHash(): string {
   try {
-    const url = new URL('../../../package-lock.json', import.meta.url);
-    return createHash('sha256').update(readFileSync(url)).digest('hex');
+    return createHash('sha256')
+      .update(readFileSync(path.resolve(process.cwd(), 'package-lock.json')))
+      .digest('hex');
   } catch {
     return 'unknown';
   }

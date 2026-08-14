@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,9 +51,15 @@ describe('ai:headless launcher', () => {
   it('preserves workflow provenance through the bundled sweep launcher', () => {
     const workflowSha = '1'.repeat(40);
     const result = runPrebundle('sweep-eval', ['--print-meta'], { GITHUB_SHA: workflowSha });
+    const expectedLockHash = createHash('sha256')
+      .update(readFileSync(path.join(REPO_ROOT, 'package-lock.json')))
+      .digest('hex');
 
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout).workflowSha).toBe(workflowSha);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      workflowSha,
+      packageLockHash: expectedLockHash,
+    });
   }, 120_000);
 
   it('bundles every sweep entrypoint and runs a bundled worker', () => {
