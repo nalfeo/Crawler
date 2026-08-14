@@ -45,7 +45,7 @@
       "completed": true,
       "grader_model": "gpt-5.5",
       "implementer_model": "gpt-5.6-luna",
-      "head_sha": "d3b5320fb0bf95e17fb826025c555289c0b96225",
+      "head_sha": "a9a85ed0426d13f26341f788fd1d71cea8251cea",
       "findings": [],
       "criteria": {
         "correctness": 4,
@@ -56,7 +56,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The diff implements a reusable prebundle launcher, routes the advertised headless/sweep entrypoints and workflows through it, preserves bundled worker execution paths, and adds targeted tests for provenance, bundle creation, worker behavior, and workflow rewiring. Scope is broader than ideal because it includes AGENTS table reflow and silent-reverts guard changes, but those do not introduce a validated blocker. Coverage is solid for the main changed behavior, with no high-confidence actionable defects found."
+      "notes": "The diff implements a reusable prebundle launcher, routes the advertised headless/sweep npm scripts and GitHub workflows through it, preserves worker execution for bundled modules, and adds targeted tests for provenance, bundle creation, workflow rewiring, and worker behavior. Scope is somewhat broad due to AGENTS table reflow and silent-reverts guard changes that are not central to prebundling, but no high-confidence blocker or major correctness defect was found."
     }
   }
 }
