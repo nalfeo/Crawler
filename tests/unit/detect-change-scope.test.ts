@@ -403,6 +403,7 @@ const cases: Case[] = [
   {
     name: 'workflow change',
     files: ['.github/workflows/ci.yml'],
+    // ci.yml hosts the dependency-verification wiring → dependencies_touched=true
     expected: F(
       false,
       false,
@@ -415,7 +416,7 @@ const cases: Case[] = [
       false,
       false,
       false,
-      false,
+      true,
       false,
       true,
     ),
@@ -423,7 +424,8 @@ const cases: Case[] = [
   {
     name: 'github actions change',
     files: ['.github/actions/setup-node/action.yml'],
-    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+    // the shared dependency setup action → dependencies_touched=true
+    expected: F(false, false, true, false, false, false, false, false, false, false, false, true),
   },
   {
     name: 'github extensions change',
@@ -445,7 +447,7 @@ const cases: Case[] = [
       true,
       false,
       false,
-      false,
+      true,
       false,
       true,
       true,
@@ -466,7 +468,7 @@ const cases: Case[] = [
       true,
       false,
       false,
-      false,
+      true,
       false,
       true,
       true,
@@ -719,7 +721,8 @@ const cases: Case[] = [
   {
     name: 'CI-only: github workflow change',
     files: ['.github/workflows/ci.yml'],
-    // .github/workflows/* → codeowners_touched=true
+    // .github/workflows/* → codeowners_touched=true; ci.yml also carries the
+    // dependency-verification wiring → dependencies_touched=true
     expected: F(
       false,
       false,
@@ -732,7 +735,7 @@ const cases: Case[] = [
       false,
       false,
       false,
-      false,
+      true,
       false,
       true,
     ),
@@ -747,7 +750,7 @@ const cases: Case[] = [
   {
     name: 'CI-only: pure .github change',
     files: ['.github/actions/setup-node/action.yml', '.github/instructions/core.instructions.md'],
-    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+    expected: F(false, false, true, false, false, false, false, false, false, false, false, true),
   },
   // Dependency change: unsafe for both sim, coverage, and deps.
   {
@@ -877,6 +880,11 @@ const cases: Case[] = [
   {
     name: 'npm-audit wrapper → dependencies_touched',
     files: ['scripts/agent/security/npm-audit.mjs'],
+    expected: F(false, false, false, false, false, false, false, false, false, false, false, true),
+  },
+  {
+    name: 'lock-integrity guard → dependencies_touched',
+    files: ['scripts/agent/security/check-lock-integrity.mjs'],
     expected: F(false, false, false, false, false, false, false, false, false, false, false, true),
   },
   // Security-impact surfaces: ai_code_touched.

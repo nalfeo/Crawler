@@ -16,6 +16,12 @@ interface BaselineMetadata {
   commitSubject: string;
   capturedAt: string;
   runUrl: string;
+  /**
+   * Sweep provenance written by release-baseline.ts. `sweep.revision` is the
+   * identity of the leg matrix that produced the baseline; a change in it is
+   * the ONLY sanctioned reason for a run-count change.
+   */
+  sweep?: { seeds?: string; kind?: string; revision?: number };
 }
 
 export interface BaselineLegMetrics {
@@ -50,6 +56,17 @@ export interface BaselineIndexEntry {
   path: string;
   /** Per-leg metrics, when the entry was published by a multi-floor sweep. */
   legs?: Record<string, BaselineLegMetrics>;
+  /**
+   * Sweep matrix revision (`meta.sweep.revision`) the entry was captured under.
+   * Absent for baselines published before the revision marker existed.
+   */
+  sweepRevision?: number;
+  /** Diagnostic fun-evaluation summary, when the sibling report was published. */
+  fun?: {
+    overallFunScore: number;
+    gatePass: boolean;
+    path: string;
+  } | null;
 }
 
 interface ComparedBaseline {
@@ -319,21 +336,31 @@ export function evaluateBaselineRegression(
   const previous = compareShape(previousEntry, 'previous baseline');
   const legs = evaluateLegRegressions(previousEntry.legs, currentBaseline.legs);
 
-  // A run-count change means the sweep matrix was intentionally resized (the
-  // multi-floor rollout resized the Floor-1 leg from 600 to 300 runs). Rates
-  // across differing sample sizes are not comparable, and the additional-losses
-  // half of the tolerance rule is meaningless across them.
+  // A run-count change is comparable only when the sweep matrix REVISION also
+  // changed: that is an intentional, declared resize (the multi-floor rollout
+  // resized the Floor-1 leg from 600 to 300 runs under revision 2). Rates across
+  // differing sample sizes are not comparable, and the additional-losses half of
+  // the tolerance rule is meaningless across them, so that one comparison is
+  // skipped and the series resumes at full strength on the next release.
   //
-  // Historically this threw, which would have hard-failed the release job on the
-  // first post-resize run. Reporting a skipped comparison instead is the
-  // "reset or migrate the series" path: it never suppresses a real regression,
-  // because comparison resumes at full strength on the very next release (the
-  // first one whose predecessor shares the new size).
+  // Without a revision bump, a differing run count means a truncated producer or
+  // an accidental matrix edit — treating that as a migration would silently
+  // suppress regression detection, so it stays fail-closed and throws.
   if (previous.totalRuns !== current.totalRuns) {
+    const currentRevision = currentBaseline.meta.sweep?.revision;
+    const previousRevision = previousEntry.sweepRevision;
+    if (currentRevision === undefined || currentRevision === previousRevision) {
+      throw new Error(
+        `cannot compare baseline run counts: previous=${previous.totalRuns}, current=${current.totalRuns} ` +
+          `(sweep revision previous=${previousRevision ?? 'none'}, current=${currentRevision ?? 'none'}). ` +
+          'Reset or migrate the release baseline series by bumping RELEASE_SWEEP_REVISION when intentionally changing sweep size.',
+      );
+    }
     return {
       regression: false,
       reason:
-        `sweep matrix resized (previous=${previous.totalRuns} runs, current=${current.totalRuns} runs); ` +
+        `sweep matrix resized under a new revision (${previousRevision ?? 'none'} → ${currentRevision}; ` +
+        `previous=${previous.totalRuns} runs, current=${current.totalRuns} runs); ` +
         'skipped one comparison — the series resumes on the next release',
       current,
       previous,

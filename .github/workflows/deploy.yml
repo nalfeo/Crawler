@@ -27,6 +27,14 @@ permissions:
 jobs:
   release-gate:
     runs-on: ubuntu-latest
+    # Avoid allocating a runner for CI completions that can never deploy
+    # (scheduled/manual PR-health runs or failed CI). A no-op release-gate runner
+    # failure would otherwise make the whole Pages workflow red even though the
+    # deploy and baseline jobs are intentionally skipped.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     outputs:
       should_run: ${{ steps.gate.outputs.should_run }}
     steps:
@@ -574,7 +582,8 @@ jobs:
                 totalRuns: sum.totalRuns + part.totalRuns,
                 totalSlowVictories: sum.totalSlowVictories + (part.totalSlowVictories ?? 0),
                 totalTrueLosses: sum.totalTrueLosses + (part.totalTrueLosses ?? 0),
-              }), { totalWins: 0, totalRuns: 0, totalSlowVictories: 0, totalTrueLosses: 0 });
+                runs: [...sum.runs, ...(Array.isArray(part.runs) ? part.runs : [])],
+              }), { totalWins: 0, totalRuns: 0, totalSlowVictories: 0, totalTrueLosses: 0, runs: [] });
             fs.writeFileSync(`.cache/baseline/leg-${leg}.json`, JSON.stringify({
               floorId: leg === 'floor2' ? 'floor2' : 'floor1',
               legId: leg,
@@ -599,12 +608,17 @@ jobs:
             for (const [id, file] of [["floor2", "leg-floor2.json"], ["floor1-chain", "leg-floor1-chain.json"]]) {
               const p = `${base}/${file}`;
               if (!fs.existsSync(p)) { console.log(`skipping missing leg ${id}`); continue; }
-              legs[id] = pick(JSON.parse(fs.readFileSync(p, "utf8")));
+              legs[id] = pick(JSON.parse(fs.readFileSync(p, "utf8")), true);
             }
             baseline.legs = legs;
             fs.writeFileSync(`${base}/baseline.json`, JSON.stringify(baseline, null, 2));
-            function pick(j) {
-              return { winRate: j.winRate, totalWins: j.totalWins, totalRuns: j.totalRuns };
+            function pick(j, includeRuns = false) {
+              return {
+                winRate: j.winRate,
+                totalWins: j.totalWins,
+                totalRuns: j.totalRuns,
+                ...(includeRuns && Array.isArray(j.runs) ? { runs: j.runs } : {}),
+              };
             }
           '
 
@@ -643,6 +657,21 @@ jobs:
           COMMIT_DATE="$COMMIT_DATE" COMMIT_SUBJECT="$COMMIT_SUBJECT" RUN_URL="$RUN_URL" \
             npx tsx scripts/agent/perf/release-baseline.ts
 
+      # Score the deterministic fun evaluation on every available release leg
+      # (600 runs when all three legs complete), once `baseline.json` carries `runs` and `meta`
+      # (the enrichment step above). This is diagnostic/trendable data, not a
+      # release gate: a low fun score must never fail a commit that already
+      # shipped, so a scoring failure is downgraded to a warning instead of
+      # failing the job. `fun-report.json` is intentionally allowed to be
+      # absent downstream (publish/upload/index both tolerate its absence).
+      - name: Score fun evaluation
+        env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          FUN_REPORT_JSON: ${{ github.workspace }}/.cache/baseline/fun-report.json
+        run: |
+          npx tsx scripts/agent/perf/release-fun-report.ts || \
+            echo "::warning::Fun evaluation scoring failed; this release's baseline will publish without a fun-report.json."
+
       - name: Publish to baselines branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -664,6 +693,7 @@ jobs:
           # two unrelated orphan histories.
           WORKTREE="$RUNNER_TEMP/baselines-wt"
           SRC="$GITHUB_WORKSPACE/.cache/baseline/baseline.json"
+          FUN_REPORT_SRC="$GITHUB_WORKSPACE/.cache/baseline/fun-report.json"
           export WORKTREE
 
           write_readme() {
@@ -725,35 +755,24 @@ jobs:
             # wallTimeMs from the runner that captured it.
             mkdir -p "$WORKTREE/by-sha"
             cp "$SRC" "$WORKTREE/by-sha/$SHA.json" || return 1
+            # The fun-eval report is diagnostic-only and may legitimately be
+            # absent (scoring failure, or a by-sha file published before this
+            # feature existed) -- publish it opportunistically, never fail.
+            # Delete any stale same-SHA sibling first: a failed/missing score on
+            # a rerun must not leave the previous run's report as indexed data.
+            rm -f "$WORKTREE/by-sha/$SHA.fun-report.json"
+            if [ -f "$FUN_REPORT_SRC" ]; then
+              cp "$FUN_REPORT_SRC" "$WORKTREE/by-sha/$SHA.fun-report.json" || return 1
+            fi
             [ -f "$WORKTREE/README.md" ] || write_readme || return 1
 
             # Rebuild index.json from every by-sha/*.json (sorted newest-first by
             # commit date). Because the index is a deterministic derivation of the
             # by-sha files, concurrent jobs never textually merge the shared array.
-            node -e "
-              const fs = require('node:fs');
-              const path = require('node:path');
-              const wt = process.env.WORKTREE;
-              const dir = path.join(wt, 'by-sha');
-              const entries = fs
-                .readdirSync(dir)
-                .filter((f) => f.endsWith('.json'))
-                .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')))
-                .filter((b) => b && b.meta && b.meta.commit)
-                .map((b) => ({
-                  commit: b.meta.commit,
-                  commitDate: b.meta.commitDate,
-                  commitSubject: b.meta.commitSubject,
-                  capturedAt: b.meta.capturedAt,
-                  runUrl: b.meta.runUrl,
-                  winRate: b.winRate,
-                  totalWins: b.totalWins,
-                  totalRuns: b.totalRuns,
-                  path: 'by-sha/' + b.meta.commit + '.json',
-                }));
-              entries.sort((a, b) => (b.commitDate || '').localeCompare(a.commitDate || ''));
-              fs.writeFileSync(path.join(wt, 'index.json'), JSON.stringify(entries, null, 2) + '\n');
-            " || return 1
+            # The derivation lives in a unit-tested module so it cannot silently
+            # drop a field the regression check reads (per-leg metrics, sweep
+            # revision) the way the previous inline script did.
+            BASELINES_DIR="$WORKTREE" npx tsx "$GITHUB_WORKSPACE/scripts/agent/perf/baseline-index.ts" || return 1
 
             git -C "$WORKTREE" add -A || return 1
             if git -C "$WORKTREE" diff --cached --quiet; then
@@ -801,7 +820,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: baseline-${{ steps.sha.outputs.short }}
-          path: .cache/baseline/baseline.json
+          # fun-report.json is optional (see "Score fun evaluation" above), so
+          # `if-no-files-found: warn` lets this artifact still upload
+          # baseline.json alone when scoring failed for this release.
+          path: |
+            .cache/baseline/baseline.json
+            .cache/baseline/fun-report.json
           if-no-files-found: warn
           retention-days: 90
 

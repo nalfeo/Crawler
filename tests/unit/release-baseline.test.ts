@@ -149,12 +149,36 @@ describe('release baseline persistence', () => {
     };
     const steps = workflow.jobs['baseline-sweep']?.steps ?? [];
     const enrich = steps.find((step) => step.name === 'Enrich baseline with commit metadata');
+    const funScore = steps.find((step) => step.name === 'Score fun evaluation');
     const publish = steps.find((step) => step.name === 'Publish to baselines branch');
     const upload = steps.find((step) => step.name === 'Upload baseline as artifact');
 
     expect(enrich?.run).toContain('scripts/agent/perf/release-baseline.ts');
     expect(publish?.run).toContain('SRC="$GITHUB_WORKSPACE/.cache/baseline/baseline.json"');
     expect(publish?.run).toContain('cp "$SRC" "$WORKTREE/by-sha/$SHA.json"');
-    expect(upload?.with?.path).toBe('.cache/baseline/baseline.json');
+    expect(upload?.with?.path).toBe(
+      '.cache/baseline/baseline.json\n.cache/baseline/fun-report.json\n',
+    );
+
+    // Fun evaluation runs after the runs+meta cohort is complete, and it must
+    // never fail the release: a scoring failure is downgraded to a warning.
+    const enrichIndex = steps.indexOf(enrich!);
+    const funScoreIndex = steps.indexOf(funScore!);
+    const publishIndex = steps.indexOf(publish!);
+    expect(enrichIndex).toBeGreaterThanOrEqual(0);
+    expect(funScoreIndex).toBeGreaterThan(enrichIndex);
+    expect(publishIndex).toBeGreaterThan(funScoreIndex);
+    expect(funScore?.run).toContain('scripts/agent/perf/release-fun-report.ts');
+    expect(funScore?.run).toContain('||');
+
+    // The fun-eval report is diagnostic-only: publish/index/upload all
+    // tolerate its absence so a legacy or failed-scoring commit still
+    // publishes its baseline.
+    expect(publish?.run).toContain(
+      'FUN_REPORT_SRC="$GITHUB_WORKSPACE/.cache/baseline/fun-report.json"',
+    );
+    expect(publish?.run).toContain('if [ -f "$FUN_REPORT_SRC" ]');
+    expect(publish?.run).toContain('cp "$FUN_REPORT_SRC" "$WORKTREE/by-sha/$SHA.fun-report.json"');
+    expect(publish?.run).toContain('scripts/agent/perf/baseline-index.ts');
   });
 });

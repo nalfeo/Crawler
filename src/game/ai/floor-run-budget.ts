@@ -46,15 +46,6 @@ export function getDefaultMaxFrames(floorId: string): number | null {
 }
 
 /**
- * Budget frames WITHOUT slack — the exact win budget expressed in frames.
- * Returns `null` for a floor with no declared budget.
- */
-export function getBudgetFrames(floorId: string): number | null {
-  const budgetMs = getActiveTimeBudgetMs(floorId);
-  return budgetMs === null ? null : budgetMs / GAME.DELTA_MS;
-}
-
-/**
  * Resolve a floor's budget, throwing when the floor declares none. Use from
  * call sites that are only meaningful for a budgeted floor (e.g. the Floor-1
  * gate), so a manifest edit that drops the budget fails loudly.
