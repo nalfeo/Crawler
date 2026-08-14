@@ -57,3 +57,30 @@ test('run selector aria-label is generic (not weapon-sweep-specific)', () => {
   assert.match(html, /aria-label="Cloud sweep run"/);
   assert.doesNotMatch(html, /aria-label="Cloud weapon-sweep run"/);
 });
+
+test('render includes baseline-sweep section markers and title, with a graceful missing fun-report path', () => {
+  const html = renderHtml('sweep-test');
+  assert.match(html, /renderBaselineSweepResults/);
+  assert.match(html, /Release Baseline Results/);
+  assert.match(html, /Release baseline/);
+  assert.match(html, /Fun evaluation/);
+  assert.match(
+    html,
+    /Fun evaluation report is not available for this run \(captured before fun evaluation existed, or scoring failed for this release\)\./,
+  );
+  assert.match(html, /baseline-sweep.*Release Baseline Results/);
+});
+
+test('runLabel prefixes baseline-sweep runs with [B]', () => {
+  const html = renderHtml('sweep-test');
+  assert.match(html, /baseline-sweep.*\[B\]/);
+});
+
+test('run selector prepends explicit option for baseline-sweep run absent from state.runs', () => {
+  const html = renderHtml('sweep-test');
+  // Verify the JS code handles a selected run absent from state.runs (explicit cloud option pattern).
+  assert.match(html, /explicitRun/);
+  assert.match(html, /runs\.some.*run\.id.*selectedId/);
+  // Empty-list cloud path: show selected run if available.
+  assert.match(html, /cloud && state\.selectedRun/);
+});

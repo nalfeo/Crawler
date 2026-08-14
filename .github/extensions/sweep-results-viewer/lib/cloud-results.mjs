@@ -7,6 +7,13 @@ const SWEEP_JOB_PATTERN = /^(?:weapon-sweep|aggregate) \(([a-z0-9][a-z0-9-]*)/;
 export const LEADERBOARD_ARTIFACT_NAME = 'leaderboard';
 
 /**
+ * The post-release baseline-sweep job (`deploy.yml`'s `baseline-sweep`)
+ * uploads its complete cohort + fun-eval report as `baseline-<short-sha>`
+ * (see "Upload baseline as artifact" in `deploy.yml`).
+ */
+const BASELINE_ARTIFACT_PATTERN = /^baseline-[0-9a-f]{6,40}$/i;
+
+/**
  * Maps AI Sweep Eval job name prefixes to their phase keys.
  *
  * The "search" phase key covers BOTH the legacy single `Search <combo>` job
@@ -215,6 +222,57 @@ export function cloudResultWarning({ run, expectedWeapons, availableWeapons, exp
   }
   if (isTerminalRun(run) && run.conclusion && run.conclusion !== 'success') {
     return `Run concluded ${run.conclusion}; showing every available aggregate result.`;
+  }
+  return null;
+}
+
+/**
+ * Returns true when the artifact is the post-release baseline-sweep bundle
+ * (`baseline-<short-sha>`, uploaded by `deploy.yml`'s "Upload baseline as
+ * artifact" step). It carries `baseline.json` and, when fun evaluation scored
+ * successfully for that release, a sibling `fun-report.json`.
+ *
+ * @param {object} artifact
+ */
+export function isBaselineArtifact(artifact) {
+  return (
+    artifact != null &&
+    artifact.expired !== true &&
+    BASELINE_ARTIFACT_PATTERN.test(asString(artifact.name))
+  );
+}
+
+/**
+ * Produce a user-facing warning/status string for a baseline-sweep
+ * (`deploy.yml`) run. Unlike weapon-sweep/AI Sweep Eval, there is only ever
+ * one relevant artifact per run and no job-phase breakdown to report on, so
+ * this stays deliberately simple.
+ *
+ * A missing fun-eval report is expected and non-fatal: it is diagnostic-only
+ * data that legacy runs (captured before fun evaluation existed) or a scoring
+ * failure will not have, so the baseline itself still renders.
+ *
+ * @param {{ run: object, hasArtifact: boolean, hasFunReport: boolean, expiredArtifactCount?: number }} options
+ * @returns {string | null}
+ */
+export function baselineSweepWarning({ run, hasArtifact, hasFunReport, expiredArtifactCount = 0 }) {
+  if (!isTerminalRun(run)) {
+    return 'Baseline sweep is still running (can take up to ~2 hours). This will refresh automatically.';
+  }
+  if (!hasArtifact) {
+    if (expiredArtifactCount > 0) {
+      return "This run's baseline artifact has expired and is no longer downloadable.";
+    }
+    if (run.conclusion && run.conclusion !== 'success') {
+      return `Run concluded ${run.conclusion}; no baseline artifact is available for this deploy.`;
+    }
+    return 'This deploy run has no baseline-sweep artifact (baseline-sweep only runs for a released push to main).';
+  }
+  if (!hasFunReport) {
+    return 'Fun evaluation report is not available for this run (captured before fun evaluation existed, or scoring failed for this release).';
+  }
+  if (run.conclusion && run.conclusion !== 'success') {
+    return `Run concluded ${run.conclusion}; showing the baseline captured before failure.`;
   }
   return null;
 }

@@ -3,9 +3,11 @@ import test from 'node:test';
 import {
   aggregateArtifactWeapon,
   aiSweepWarning,
+  baselineSweepWarning,
   cloudResultWarning,
   expectedWeaponsFromJobs,
   floorProvenanceWarning,
+  isBaselineArtifact,
   isLeaderboardArtifact,
   isTerminalRun,
   mergeAggregateOutputs,
@@ -375,4 +377,70 @@ test('aiSweepWarning reports expired artifact when leaderboard is missing and ex
   });
   assert.match(result, /expired/i);
   assert.match(result, /leaderboard/i);
+});
+
+// ── Baseline-sweep (post-release deploy.yml) helpers ──────────────────────────
+
+test('isBaselineArtifact accepts only a non-expired "baseline-<sha>" artifact', () => {
+  assert.equal(isBaselineArtifact({ name: 'baseline-abc1234def56', expired: false }), true);
+  assert.equal(isBaselineArtifact({ name: 'baseline-abc1234def56', expired: true }), false);
+  assert.equal(isBaselineArtifact({ name: 'baseline-shard-abc123', expired: false }), false);
+  assert.equal(isBaselineArtifact({ name: 'weapon-sweep-sword', expired: false }), false);
+  assert.equal(isBaselineArtifact({ name: 'leaderboard', expired: false }), false);
+  assert.equal(isBaselineArtifact(null), false);
+});
+
+test('baselineSweepWarning reports an active run as still running', () => {
+  const result = baselineSweepWarning({
+    run: { status: 'in_progress' },
+    hasArtifact: false,
+    hasFunReport: false,
+  });
+  assert.match(result, /still running/i);
+});
+
+test('baselineSweepWarning reports a terminal run with no artifact (baseline-sweep skipped)', () => {
+  const result = baselineSweepWarning({
+    run: { status: 'completed', conclusion: 'success' },
+    hasArtifact: false,
+    hasFunReport: false,
+  });
+  assert.match(result, /no baseline-sweep artifact/i);
+});
+
+test('baselineSweepWarning reports expired artifact distinctly from a never-produced one', () => {
+  const result = baselineSweepWarning({
+    run: { status: 'completed', conclusion: 'success' },
+    hasArtifact: false,
+    hasFunReport: false,
+    expiredArtifactCount: 1,
+  });
+  assert.match(result, /expired/i);
+});
+
+test('baselineSweepWarning reports a failed run missing its artifact with the conclusion', () => {
+  const result = baselineSweepWarning({
+    run: { status: 'completed', conclusion: 'failure' },
+    hasArtifact: false,
+    hasFunReport: false,
+  });
+  assert.match(result, /failure/i);
+});
+
+test('baselineSweepWarning flags a missing fun-eval report as non-fatal (legacy or scoring failure)', () => {
+  const result = baselineSweepWarning({
+    run: { status: 'completed', conclusion: 'success' },
+    hasArtifact: true,
+    hasFunReport: false,
+  });
+  assert.match(result, /fun evaluation report is not available/i);
+});
+
+test('baselineSweepWarning returns null for a successful terminal run with both baseline and fun report', () => {
+  const result = baselineSweepWarning({
+    run: { status: 'completed', conclusion: 'success' },
+    hasArtifact: true,
+    hasFunReport: true,
+  });
+  assert.equal(result, null);
 });

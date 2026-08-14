@@ -61,6 +61,12 @@ export interface BaselineIndexEntry {
    * Absent for baselines published before the revision marker existed.
    */
   sweepRevision?: number;
+  /** Diagnostic fun-evaluation summary, when the sibling report was published. */
+  fun?: {
+    overallFunScore: number;
+    gatePass: boolean;
+    path: string;
+  } | null;
 }
 
 interface ComparedBaseline {

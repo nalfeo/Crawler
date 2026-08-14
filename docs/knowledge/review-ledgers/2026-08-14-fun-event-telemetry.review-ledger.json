@@ -21,10 +21,10 @@
         {
           "round": 1,
           "models": ["claude-sonnet-4.6"],
-          "concerns_count": 3,
+          "concerns_count": 2,
           "resolved_count": 2,
           "clean": false,
-          "notes": "One reachable timestamp-ordering defect required a fix; two acquisition-channel observations were deterministically deferred/unreachable in the current configured evaluator population."
+          "notes": "The review stage was restarted after the post-release sweep/viewer scope expansion. It rolled up two validated single-model findings across the final implementation: active-time timestamp ordering and malformed historical fun-report handling. Both were fixed with regression coverage."
         },
         {
           "round": 2,
@@ -32,14 +32,33 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true,
-          "notes": "Verified commit 6fb06dfb4 bounds every dopamine event timestamp by finalized active duration; full second pass found no remaining concerns."
+          "notes": "Verified the complete runtime, evaluator, release workflow, persistence, and viewer diff after all fixes; full second pass found no remaining concerns."
         }
       ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Adjudication validated explicit baseline selector mismatch, stale same-SHA fun-report retention, and operational-error masking. All three were fixed with focused regression coverage."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final complete-diff review after all fixes found no remaining concerns."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

@@ -11,6 +11,16 @@ Implemented by:
 - `scripts/agent/health/fun-score.ts`
 - skill wrapper: `.github/skills/playtest-fun-rater/SKILL.md`
 
+Consumed by the post-release baseline sweep (`deploy.yml`'s `baseline-sweep`
+job): `scripts/agent/perf/release-fun-report.ts` scores that release's
+complete 600-run cohort with this same evaluator and persists the report as
+`.cache/baseline/fun-report.json` / `baselines` branch
+`by-sha/<sha>.fun-report.json`. It is diagnostic/trendable there too, never a
+release gate. `.github/extensions/sweep-results-viewer` renders it (or an
+explicit "not available" message for a legacy release predating this, or a
+scoring failure) for a baseline-sweep run selected by id — see
+`docs/knowledge/handoffs/2026-08-13-release-fun-evaluation.md`.
+
 ## Goals
 
 - Make "fun" trendable across branches and seeds.

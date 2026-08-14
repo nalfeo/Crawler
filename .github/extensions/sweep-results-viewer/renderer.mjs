@@ -292,7 +292,7 @@ export function renderHtml(instanceId) {
   function runLabel(run) {
     const created = run.createdAt ? new Date(run.createdAt).toLocaleString() : 'unknown time';
     const result = run.status === 'completed' ? (run.conclusion || 'completed') : run.status;
-    const typeTag = run.workflowType === 'ai-sweep' ? '[AI] ' : '[W] ';
+    const typeTag = run.workflowType === 'ai-sweep' ? '[AI] ' : run.workflowType === 'baseline-sweep' ? '[B] ' : '[W] ';
     return typeTag + '#' + run.id + ' · ' + created + ' · ' + (run.headBranch || 'detached') + ' · ' + result;
   }
 
@@ -350,6 +350,12 @@ export function renderHtml(instanceId) {
         select.disabled = state.refreshing;
         return;
       }
+      // Cloud: explicit baseline-sweep run selected but absent from state.runs.
+      if (cloud && state.selectedRun) {
+        select.innerHTML = '<option value="' + state.selectedRun.id + '" selected>' + esc(runLabel(state.selectedRun)) + '</option>';
+        select.disabled = state.refreshing;
+        return;
+      }
       const sourceLabel = cloud
         ? 'cloud sweep runs'
         : repository
@@ -361,8 +367,13 @@ export function renderHtml(instanceId) {
     }
     if (cloud) {
       select.setAttribute('aria-label', 'Cloud sweep run');
-      select.innerHTML = runs.map((run) =>
-        '<option value="' + run.id + '"' + (run.id === state.selectedRun?.id ? ' selected' : '') + '>' + esc(runLabel(run)) + '</option>'
+      const selectedId = state.selectedRun?.id;
+      const explicitRun = selectedId !== undefined && !runs.some((run) => run.id === selectedId) ? state.selectedRun : null;
+      const explicitOption = explicitRun
+        ? '<option value="' + explicitRun.id + '" selected>' + esc(runLabel(explicitRun)) + '</option>'
+        : '';
+      select.innerHTML = explicitOption + runs.map((run) =>
+        '<option value="' + run.id + '"' + (run.id === selectedId ? ' selected' : '') + '>' + esc(runLabel(run)) + '</option>'
       ).join('');
     } else if (repository) {
       select.innerHTML = runs.map((artifact) =>
@@ -404,6 +415,7 @@ export function renderHtml(instanceId) {
   function renderStatus(state) {
     const status = document.getElementById('status');
     const run = state.selectedRun;
+    const workflowType = state.workflowType || run?.workflowType;
     const pieces = [];
     const sourceLabel = state.source === 'cloud'
       ? 'GitHub Actions'
@@ -412,15 +424,16 @@ export function renderHtml(instanceId) {
         : 'Local session';
     pieces.push('<span class="pill">' + esc(sourceLabel) + '</span>');
     if (run) {
-      const workflowType = state.workflowType || run.workflowType;
       if (workflowType === 'ai-sweep') {
         pieces.push('<span class="pill">AI Sweep Eval</span>');
+      } else if (workflowType === 'baseline-sweep') {
+        pieces.push('<span class="pill">Release Baseline</span>');
       } else {
         pieces.push('<span class="pill">Weapon Sweep</span>');
       }
       const statusClass = run.status === 'completed' ? esc(run.conclusion || 'completed') : 'active';
       pieces.push('<span class="pill ' + statusClass + '">' + esc(run.status === 'completed' ? (run.conclusion || 'completed') : run.status) + '</span>');
-      if (workflowType !== 'ai-sweep') {
+      if (workflowType !== 'ai-sweep' && workflowType !== 'baseline-sweep') {
         if (state.expectedWeapons?.length) {
           pieces.push('<span class="pill">' + state.availableWeapons.length + '/' + state.expectedWeapons.length + ' weapons</span>');
         } else {
@@ -444,7 +457,7 @@ export function renderHtml(instanceId) {
           + ((state.repositoryArtifacts?.length || 0) === 1 ? '' : 's') + '</span>',
       );
     }
-    if (state.data) {
+    if (state.data && workflowType !== 'ai-sweep' && workflowType !== 'baseline-sweep') {
       const floors = Array.isArray(state.data.floors) ? state.data.floors.join(', ') : 'Unknown';
       pieces.push('<span class="pill">Floors: ' + esc(floors) + '</span>');
     }
@@ -637,12 +650,73 @@ export function renderHtml(instanceId) {
     content.innerHTML = html;
   }
 
+  function renderBaselineSweepResults(state) {
+    const content = document.getElementById('content');
+    if (!state.data) {
+      const detail = state.refreshing
+        ? 'Loading baseline-sweep results…'
+        : 'No baseline-sweep artifact is available for this run.';
+      content.innerHTML = '<div class="empty-state">' + detail + '</div>';
+      return;
+    }
+
+    const data = state.data;
+    let html = '<section><h2>Release baseline</h2><div class="table-wrap"><table><tbody>';
+    html += '<tr><th>Commit</th><td>' + esc(data.meta?.commitSubject || 'Unknown') + ' <code>' + esc((data.meta?.commit || '').slice(0, 12) || 'unknown') + '</code></td></tr>';
+    html += '<tr><th>Win rate</th><td><span class="winrate ' + winRateClass(data.winRate) + '">' + fmtPct(data.winRate) + '</span> (' + esc(data.totalWins ?? '—') + '/' + esc(data.totalRuns ?? '—') + ')</td></tr>';
+    if (Number.isFinite(data.totalSlowVictories) || Number.isFinite(data.totalTrueLosses)) {
+      const fastWins = Number.isFinite(data.totalWins) && Number.isFinite(data.totalSlowVictories)
+        ? data.totalWins - data.totalSlowVictories
+        : null;
+      html += '<tr><th>Breakdown</th><td>' + (fastWins === null ? '—' : esc(fastWins) + ' fast wins · ' + esc(data.totalSlowVictories ?? 0) + ' slow victories · ' + esc(data.totalTrueLosses ?? 0) + ' true losses') + '</td></tr>';
+    }
+    html += '</tbody></table></div></section>';
+
+    if (Array.isArray(data.perWeapon) && data.perWeapon.length) {
+      html += '<section><h2>Per-weapon</h2><div class="table-wrap"><table><thead><tr><th>Weapon</th><th>Wins</th><th>Runs</th><th>Win rate</th><th>Slow victories</th></tr></thead><tbody>';
+      for (const w of data.perWeapon) {
+        const rate = w.runs ? w.wins / w.runs : NaN;
+        html += '<tr><td class="weapon-name">' + esc(w.weapon) + '</td><td>' + esc(w.wins) + '</td><td>' + esc(w.runs) + '</td>'
+          + '<td><span class="winrate ' + winRateClass(rate) + '">' + fmtPct(rate) + '</span></td>'
+          + '<td>' + esc(w.slowVictories ?? 0) + '</td></tr>';
+      }
+      html += '</tbody></table></div></section>';
+    }
+
+    html += '<section><h2>Fun evaluation</h2>';
+    const report = data.funReport;
+    if (!report) {
+      html += '<div class="empty-state">Fun evaluation report is not available for this run (captured before fun evaluation existed, or scoring failed for this release).</div>';
+    } else {
+      const gatePillClass = report.gate ? (report.gate.pass ? 'success' : 'failure') : '';
+      html += '<div class="table-wrap"><table><tbody>';
+      html += '<tr><th>Overall fun score</th><td>' + fmtNum(report.overall_fun_score, 1) + ' / 100'
+        + (report.gate ? ' <span class="pill ' + gatePillClass + '">' + (report.gate.pass ? 'gate pass' : 'gate fail') + '</span>' : '')
+        + '</td></tr>';
+      html += '<tr><th>Confidence</th><td>' + fmtNum(report.confidence, 2) + '</td></tr>';
+      html += '<tr><th>Sameness grade</th><td>' + fmtNum(report.sameness_grade, 1) + '</td></tr>';
+      html += '</tbody></table></div>';
+      if (report.dimensions) {
+        const keys = Object.keys(report.dimensions);
+        html += '<div class="table-wrap"><table><thead><tr>' + keys.map((k) => '<th>' + esc(k) + '</th>').join('') + '</tr></thead><tbody><tr>'
+          + keys.map((k) => '<td>' + fmtNum(report.dimensions[k], 1) + '</td>').join('') + '</tr></tbody></table></div>';
+      }
+      if (Array.isArray(report.hotspots) && report.hotspots.length) {
+        html += '<div class="message warning">Hotspots: ' + report.hotspots.map((h) => esc(h.dimension) + ' (' + fmtNum(h.score, 1) + ')').join(', ') + '</div>';
+      }
+    }
+    html += '</section>';
+    content.innerHTML = html;
+  }
+
   function renderResults(state) {
     const workflowType = state.workflowType || state.selectedRun?.workflowType;
     if (workflowType === 'ai-sweep') {
       renderAiSweepResults(state);
     } else if (workflowType === 'baseline') {
       renderBaselineResults(state);
+    } else if (workflowType === 'baseline-sweep') {
+      renderBaselineSweepResults(state);
     } else {
       renderWeaponSweepResults(state);
     }
@@ -667,6 +741,8 @@ export function renderHtml(instanceId) {
     if (titleEl) {
       titleEl.textContent = workflowType === 'ai-sweep'
         ? '🤖 AI Sweep Eval Results'
+        : workflowType === 'baseline-sweep'
+          ? '📊 Release Baseline Results'
         : '🗡️ Weapon Sweep Results';
     }
     renderRunSelector(state);

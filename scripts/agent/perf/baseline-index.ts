@@ -19,12 +19,34 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import type { BaselineFile, BaselineIndexEntry } from './baseline-regression-check.js';
 
+interface FunReportFile {
+  report: {
+    overall_fun_score: number;
+    gate: { pass: boolean };
+  };
+}
+
+function parseFunReport(value: unknown): FunReportFile | null {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    typeof (value as FunReportFile).report?.overall_fun_score !== 'number' ||
+    typeof (value as FunReportFile).report?.gate?.pass !== 'boolean'
+  ) {
+    return null;
+  }
+  return value as FunReportFile;
+}
+
 /**
  * Map one stored baseline onto its index entry, preserving EVERY field the
  * regression check reads from a previous entry — including `legs` and the sweep
  * matrix revision, both of which gate real comparison behavior.
  */
-export function toBaselineIndexEntry(baseline: BaselineFile): BaselineIndexEntry {
+export function toBaselineIndexEntry(
+  baseline: BaselineFile,
+  funReport: FunReportFile | null = null,
+): BaselineIndexEntry {
   return {
     commit: baseline.meta.commit,
     commitDate: baseline.meta.commitDate,
@@ -39,6 +61,13 @@ export function toBaselineIndexEntry(baseline: BaselineFile): BaselineIndexEntry
     ...(typeof baseline.meta.sweep?.revision === 'number'
       ? { sweepRevision: baseline.meta.sweep.revision }
       : {}),
+    fun: funReport
+      ? {
+          overallFunScore: funReport.report.overall_fun_score,
+          gatePass: funReport.report.gate.pass,
+          path: `by-sha/${baseline.meta.commit}.fun-report.json`,
+        }
+      : null,
   };
 }
 
@@ -51,10 +80,15 @@ function hasCommit(baseline: unknown): baseline is BaselineFile {
 }
 
 /** Build the whole index, newest commit date first. */
-export function buildBaselineIndex(baselines: readonly unknown[]): BaselineIndexEntry[] {
+export function buildBaselineIndex(
+  baselines: readonly unknown[],
+  funReports: ReadonlyMap<string, unknown> = new Map(),
+): BaselineIndexEntry[] {
   return baselines
     .filter(hasCommit)
-    .map(toBaselineIndexEntry)
+    .map((baseline) =>
+      toBaselineIndexEntry(baseline, parseFunReport(funReports.get(baseline.meta.commit))),
+    )
     .sort((a, b) => (b.commitDate || '').localeCompare(a.commitDate || ''));
 }
 
@@ -63,9 +97,22 @@ export function writeBaselineIndex(dir: string): BaselineIndexEntry[] {
   const bySha = path.join(dir, 'by-sha');
   const baselines = fs
     .readdirSync(bySha)
-    .filter((file) => file.endsWith('.json'))
+    .filter((file) => file.endsWith('.json') && !file.endsWith('.fun-report.json'))
     .map((file) => JSON.parse(fs.readFileSync(path.join(bySha, file), 'utf8')) as unknown);
-  const entries = buildBaselineIndex(baselines);
+  const funReports = new Map<string, unknown>();
+  for (const file of fs.readdirSync(bySha).filter((name) => name.endsWith('.fun-report.json'))) {
+    const commit = file.slice(0, -'.fun-report.json'.length);
+    try {
+      funReports.set(
+        commit,
+        JSON.parse(fs.readFileSync(path.join(bySha, file), 'utf8')) as unknown,
+      );
+    } catch {
+      // Historical diagnostic reports must not prevent baseline discovery.
+      funReports.set(commit, null);
+    }
+  }
+  const entries = buildBaselineIndex(baselines, funReports);
   fs.writeFileSync(path.join(dir, 'index.json'), `${JSON.stringify(entries, null, 2)}\n`);
   return entries;
 }

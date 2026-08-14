@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension';
 import {
   aiSweepWarning,
+  baselineSweepWarning,
   cloudResultWarning,
   floorProvenanceWarning,
   isTerminalRun,
@@ -11,10 +12,13 @@ import {
   shouldPollRun,
 } from './lib/cloud-results.mjs';
 import {
+  getBaselineSweepRun,
   listAllSweepRuns,
   loadAiSweepRun,
+  loadBaselineSweepRun,
   loadCloudRun,
   resolveProjectContext,
+  BaselineRunNotFoundError,
 } from './lib/github-client.mjs';
 import { tokensMatch } from './lib/http-security.mjs';
 import { listLocalSweepResults, readLocalSweepFile } from './lib/local-results.mjs';
@@ -219,6 +223,59 @@ async function refreshCloudState(instanceId, options = {}) {
         run: updatedRun,
         jobPhases: cloud.jobPhases,
         hasLeaderboard: Boolean(cloud.leaderboardData),
+        expiredArtifactCount: cloud.expiredArtifactCount,
+      });
+      state.error = null;
+    } else if (workflowType === 'baseline-sweep') {
+      // ── Post-release baseline-sweep path (deploy.yml) ───────────────────────
+      // Diagnostic-only: no job-phase breakdown, and a missing fun-eval report
+      // is expected (legacy release, or a scoring failure) rather than an error.
+      let cloud = await loadBaselineSweepRun(
+        state.context.repository,
+        state.selectedRun.id,
+        controller.signal,
+      );
+      cloud = await stabilizeTerminalSnapshot(cloud, {
+        attempts: TERMINAL_SYNC_ATTEMPTS,
+        delayMs: TERMINAL_SYNC_DELAY_MS,
+        signal: controller.signal,
+        isTerminalRun,
+        loadSnapshot: (signal) =>
+          loadBaselineSweepRun(state.context.repository, state.selectedRun.id, signal),
+        isComplete: (snapshot) => snapshot.hasArtifact || snapshot.expiredArtifactCount > 0,
+      });
+      if (state.closed || state.generation !== generation || state.source !== 'cloud') {
+        return state;
+      }
+
+      const updatedRun = { ...cloud.run, workflowType: 'baseline-sweep' };
+      state.selectedRun = updatedRun;
+      // Reset weapon-sweep/AI-sweep-only fields; they don't apply here.
+      state.expectedWeapons = [];
+      state.availableWeapons = [];
+      state.jobPhases = null;
+      state.expiredArtifactCount = cloud.expiredArtifactCount;
+      // Keep only what rendering needs -- never store the baseline's full
+      // 600-entry `runs: RunStats[]` cohort in client-visible state; it is
+      // large and the summary/fun-report fields are all the UI shows.
+      state.data = cloud.baseline
+        ? {
+            meta: cloud.baseline.meta ?? null,
+            winRate: cloud.baseline.winRate ?? null,
+            totalWins: cloud.baseline.totalWins ?? null,
+            totalRuns: cloud.baseline.totalRuns ?? null,
+            totalSlowVictories: cloud.baseline.totalSlowVictories ?? null,
+            totalTrueLosses: cloud.baseline.totalTrueLosses ?? null,
+            perWeapon: cloud.baseline.perWeapon ?? null,
+            funReport: cloud.funReport?.report ?? null,
+          }
+        : null;
+      state.loadedAt = Date.now();
+      state.lastRefreshedAt = new Date().toISOString();
+      state.warning = baselineSweepWarning({
+        run: updatedRun,
+        hasArtifact: cloud.hasArtifact,
+        hasFunReport: Boolean(cloud.funReport),
         expiredArtifactCount: cloud.expiredArtifactCount,
       });
       state.error = null;
@@ -428,6 +485,30 @@ async function switchToLocalCatalog(instanceId, requestedPath) {
   return loadLocalSelection(instanceId, state, selectedPath, 'catalog-local-file', selectedPath);
 }
 
+/**
+ * Resolves an explicit run id against the already-listed weapon-sweep/AI
+ * Sweep Eval runs, falling back to a direct `deploy.yml` (baseline-sweep)
+ * lookup when not found there. `deploy.yml` runs continuously and is
+ * deliberately excluded from `listAllSweepRuns`'s enumerated catalog (see
+ * `getBaselineSweepRun`), so a baseline-sweep run is only reachable by id.
+ * Returns `undefined` when neither resolves; an in-flight abort/cancellation
+ * still propagates so callers keep correct cancellation semantics.
+ */
+async function resolveExplicitRun(state, parsedRunId) {
+  const found = state.runs.find((run) => run.id === parsedRunId);
+  if (found) return found;
+  try {
+    return await runCancellableOperation(state, (signal) =>
+      getBaselineSweepRun(state.context.repository, parsedRunId, signal),
+    );
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    if (error instanceof BaselineRunNotFoundError) return undefined;
+    // Operational errors (auth/network/rate-limit) propagate so cloud error formatting remains useful.
+    throw error;
+  }
+}
+
 async function switchToCloudRun(instanceId, runId) {
   const state = states.get(instanceId);
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
@@ -444,11 +525,11 @@ async function switchToCloudRun(instanceId, runId) {
       state.runs = runs;
     });
   }
-  const selectedRun = state.runs.find((run) => run.id === parsedRunId);
+  const selectedRun = await resolveExplicitRun(state, parsedRunId);
   if (!selectedRun) {
     throw new CanvasError(
       'run_not_found',
-      `Run ${parsedRunId} is not a weapon-sweep or AI Sweep Eval workflow run in ${state.context.repository}.`,
+      `Run ${parsedRunId} is not a weapon-sweep, AI Sweep Eval, or baseline-sweep workflow run in ${state.context.repository}.`,
     );
   }
   cancelRefresh(state);
@@ -645,10 +726,13 @@ async function initializeCloud(instanceId, explicitRunId) {
       return;
     }
     if (explicitRunId !== undefined) {
-      const selected = state.runs.find((run) => run.id === Number(explicitRunId));
+      const selected = await resolveExplicitRun(state, Number(explicitRunId));
+      if (!isCurrentCloudGeneration(state, generation)) {
+        return;
+      }
       if (!selected) {
         throw new Error(
-          `Run ${explicitRunId} is not a weapon-sweep or AI Sweep Eval workflow run in ${state.context.repository}.`,
+          `Run ${explicitRunId} is not a weapon-sweep, AI Sweep Eval, or baseline-sweep workflow run in ${state.context.repository}.`,
         );
       }
       state.selectedRun = selected;
@@ -828,6 +912,35 @@ function summaryPayload(state) {
     };
   }
 
+  if (workflowType === 'baseline-sweep') {
+    if (!state.data) {
+      throw new CanvasError(
+        'no_data',
+        state.error ?? state.warning ?? 'No baseline-sweep data loaded',
+      );
+    }
+    return {
+      source: state.source,
+      repository: state.context?.repository ?? null,
+      run: safeRun(state.selectedRun),
+      workflowType: 'baseline-sweep',
+      warning: state.warning,
+      commit: state.data.meta?.commit ?? null,
+      commitSubject: state.data.meta?.commitSubject ?? null,
+      winRate: state.data.winRate ?? null,
+      totalWins: state.data.totalWins ?? null,
+      totalRuns: state.data.totalRuns ?? null,
+      perWeapon: state.data.perWeapon ?? null,
+      funReport: state.data.funReport
+        ? {
+            overallFunScore: state.data.funReport.overall_fun_score ?? null,
+            gatePass: state.data.funReport.gate?.pass ?? null,
+            dimensions: state.data.funReport.dimensions ?? null,
+          }
+        : null,
+    };
+  }
+
   if (!state.data) {
     throw new CanvasError('no_data', state.error ?? state.warning ?? 'No sweep data loaded');
   }
@@ -865,7 +978,8 @@ const session = await joinSession({
     createCanvas({
       id: 'sweep-results-viewer',
       displayName: 'Sweep Results Viewer',
-      description: 'Browse GitHub Actions sweeps, local results, and committed baseline snapshots.',
+      description:
+        'Browse GitHub Actions sweeps, local results, committed baseline snapshots, and post-release baseline-sweep runs by explicit run id.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -873,7 +987,7 @@ const session = await joinSession({
             type: 'integer',
             minimum: 1,
             description:
-              'Optional GitHub Actions run id to select (weapon-sweep or AI Sweep Eval).',
+              'Optional GitHub Actions run id to select (weapon-sweep, AI Sweep Eval, or a post-release baseline-sweep deploy.yml run).',
           },
           path: {
             type: 'string',
@@ -997,7 +1111,7 @@ const session = await joinSession({
         {
           name: 'select_cloud_run',
           description:
-            'Select and load a GitHub Actions weapon-sweep or AI Sweep Eval workflow run by run id.',
+            'Select and load a GitHub Actions workflow run by run id: weapon-sweep, AI Sweep Eval, or a post-release baseline-sweep (deploy.yml) run.',
           inputSchema: {
             type: 'object',
             properties: { runId: { type: 'integer', minimum: 1 } },

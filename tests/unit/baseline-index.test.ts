@@ -64,6 +64,35 @@ describe('release baseline index derivation', () => {
     ]);
   });
 
+  it('associates valid fun reports and leaves missing or malformed reports unavailable', () => {
+    const valid = baseline();
+    const malformed = baseline({
+      meta: { ...baseline().meta, commit: 'b'.repeat(40), commitDate: '2026-07-01T00:00:00Z' },
+    });
+    const missing = baseline({
+      meta: { ...baseline().meta, commit: 'c'.repeat(40), commitDate: '2026-06-01T00:00:00Z' },
+    });
+    const reports = new Map<string, unknown>([
+      [
+        valid.meta.commit,
+        { report: { overall_fun_score: 73.5, gate: { pass: true } } },
+      ],
+      [malformed.meta.commit, { report: { overall_fun_score: 'high', gate: {} } }],
+    ]);
+
+    expect(buildBaselineIndex([missing, malformed, valid], reports).map((entry) => entry.fun)).toEqual(
+      [
+        {
+          overallFunScore: 73.5,
+          gatePass: true,
+          path: `by-sha/${valid.meta.commit}.fun-report.json`,
+        },
+        null,
+        null,
+      ],
+    );
+  });
+
   it('round-trips through the published index into a per-leg comparison', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'baseline-index-'));
     try {
@@ -73,11 +102,22 @@ describe('release baseline index derivation', () => {
         path.join(dir, 'by-sha', `${previous.meta.commit}.json`),
         JSON.stringify(previous),
       );
+      writeFileSync(
+        path.join(dir, 'by-sha', `${previous.meta.commit}.fun-report.json`),
+        JSON.stringify({ report: { overall_fun_score: 81, gate: { pass: false } } }),
+      );
+      writeFileSync(path.join(dir, 'by-sha', 'broken.fun-report.json'), '{');
       writeBaselineIndex(dir);
 
       const index = JSON.parse(
         readFileSync(path.join(dir, 'index.json'), 'utf8'),
       ) as BaselineIndexEntry[];
+      expect(index).toHaveLength(1);
+      expect(index[0]?.fun).toEqual({
+        overallFunScore: 81,
+        gatePass: false,
+        path: `by-sha/${previous.meta.commit}.fun-report.json`,
+      });
       const current = baseline({
         meta: { ...previous.meta, commit: 'c'.repeat(40) },
         winRate: 0.98,

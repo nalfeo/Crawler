@@ -528,6 +528,21 @@ jobs:
           COMMIT_DATE="$COMMIT_DATE" COMMIT_SUBJECT="$COMMIT_SUBJECT" RUN_URL="$RUN_URL" \
             npx tsx scripts/agent/perf/release-baseline.ts
 
+      # Score the deterministic fun evaluation on this release's complete
+      # 600-run cohort, once `baseline.json` carries both `runs` and `meta`
+      # (the enrichment step above). This is diagnostic/trendable data, not a
+      # release gate: a low fun score must never fail a commit that already
+      # shipped, so a scoring failure is downgraded to a warning instead of
+      # failing the job. `fun-report.json` is intentionally allowed to be
+      # absent downstream (publish/upload/index both tolerate its absence).
+      - name: Score fun evaluation
+        env:
+          BASELINE_JSON: ${{ github.workspace }}/.cache/baseline/baseline.json
+          FUN_REPORT_JSON: ${{ github.workspace }}/.cache/baseline/fun-report.json
+        run: |
+          npx tsx scripts/agent/perf/release-fun-report.ts || \
+            echo "::warning::Fun evaluation scoring failed; this release's baseline will publish without a fun-report.json."
+
       - name: Publish to baselines branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -549,6 +564,7 @@ jobs:
           # two unrelated orphan histories.
           WORKTREE="$RUNNER_TEMP/baselines-wt"
           SRC="$GITHUB_WORKSPACE/.cache/baseline/baseline.json"
+          FUN_REPORT_SRC="$GITHUB_WORKSPACE/.cache/baseline/fun-report.json"
           export WORKTREE
 
           write_readme() {
@@ -610,6 +626,15 @@ jobs:
             # wallTimeMs from the runner that captured it.
             mkdir -p "$WORKTREE/by-sha"
             cp "$SRC" "$WORKTREE/by-sha/$SHA.json" || return 1
+            # The fun-eval report is diagnostic-only and may legitimately be
+            # absent (scoring failure, or a by-sha file published before this
+            # feature existed) -- publish it opportunistically, never fail.
+            # Delete any stale same-SHA sibling first: a failed/missing score on
+            # a rerun must not leave the previous run's report as indexed data.
+            rm -f "$WORKTREE/by-sha/$SHA.fun-report.json"
+            if [ -f "$FUN_REPORT_SRC" ]; then
+              cp "$FUN_REPORT_SRC" "$WORKTREE/by-sha/$SHA.fun-report.json" || return 1
+            fi
             [ -f "$WORKTREE/README.md" ] || write_readme || return 1
 
             # Rebuild index.json from every by-sha/*.json (sorted newest-first by
@@ -666,7 +691,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: baseline-${{ steps.sha.outputs.short }}
-          path: .cache/baseline/baseline.json
+          # fun-report.json is optional (see "Score fun evaluation" above), so
+          # `if-no-files-found: warn` lets this artifact still upload
+          # baseline.json alone when scoring failed for this release.
+          path: |
+            .cache/baseline/baseline.json
+            .cache/baseline/fun-report.json
           if-no-files-found: warn
           retention-days: 90
 
