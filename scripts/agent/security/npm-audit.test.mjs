@@ -382,13 +382,14 @@ test('reports every matched exception in the success diagnostic', (t) => {
     reason: 'Synthetic fixture: CLI success-diagnostic coverage only.',
   };
   const scriptCopy = path.join(tempDir, 'npm-audit.mjs');
-  writeFileSync(
-    scriptCopy,
-    readFileSync(SCRIPT, 'utf8').replace(
-      /export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/,
-      () => `export const AUDIT_EXCEPTIONS = ${JSON.stringify([cliException], null, 2)};`,
-    ),
+  const injectedSource = readFileSync(SCRIPT, 'utf8').replace(
+    /export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/,
+    () => `export const AUDIT_EXCEPTIONS = ${JSON.stringify([cliException], null, 2)};`,
   );
+  // Fail fast if the declaration shape drifts: a silent no-op replace would run
+  // this test against the real list and reintroduce the coupling it removes.
+  assert.deepEqual(extractAuditExceptionsFromSource(injectedSource), [cliException]);
+  writeFileSync(scriptCopy, injectedSource);
 
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
   writeFileSync(
