@@ -52,18 +52,20 @@ describe('release baseline regression check', () => {
     expect(decision.issue?.body).toContain(regression.meta.runUrl);
   });
 
-  it('suppresses a two-loss change comfortably inside tolerance', () => {
+  it('files an issue for any Floor 1 loss even when the trend change is within tolerance', () => {
     const decision = evaluateBaselineRegression(
       noise,
       [indexEntry(noise), indexEntry(previous)],
       [previous.meta.commit],
     );
-    expect(decision.regression).toBe(false);
+    expect(decision.regression).toBe(true);
     expect(decision.winRateDrop).toBeCloseTo(2 / 600, 10);
     expect(decision.additionalLosses).toBe(2);
+    expect(decision.issue?.title).toContain('Floor 1 release sweep loss');
+    expect(decision.issue?.body).toContain('100% success requirement');
   });
 
-  it('suppresses the exact rate boundary and detects the first value above it', () => {
+  it('files an issue at and above the prior trend threshold when Floor 1 has losses', () => {
     const atBoundary = {
       ...regression,
       winRate: 593 / 600,
@@ -81,7 +83,7 @@ describe('release baseline regression check', () => {
     ]);
     expect(boundaryDecision.winRateDrop).toBeCloseTo(0.005, 10);
     expect(boundaryDecision.additionalLosses).toBe(3);
-    expect(boundaryDecision.regression).toBe(false);
+    expect(boundaryDecision.regression).toBe(true);
 
     const aboveDecision = evaluateBaselineRegression(aboveBoundary, history, [
       previous.meta.commit,
@@ -105,13 +107,13 @@ describe('release baseline regression check', () => {
     expect(decision.previous?.commit).toBe(previous.meta.commit);
   });
 
-  it('reports no regression when no prior release exists on the lineage', () => {
+  it('files a Floor 1 loss issue even when no prior release exists on the lineage', () => {
     const decision = evaluateBaselineRegression(regression, [indexEntry(regression)], []);
-    expect(decision.regression).toBe(false);
-    expect(decision.reason).toContain('no earlier release baseline');
+    expect(decision.regression).toBe(true);
+    expect(decision.issue?.body).toContain('| Previous | N/A | N/A | N/A |');
   });
 
-  it('skips exactly one comparison when the sweep matrix is intentionally resized', () => {
+  it('files a Floor 1 loss issue when the sweep matrix is resized', () => {
     // The multi-floor rollout resizes the Floor-1 leg (600 → 300 runs). Rates
     // across different sample sizes are not comparable, and the
     // additional-losses half of the tolerance rule is meaningless across them.
@@ -121,11 +123,10 @@ describe('release baseline regression check', () => {
     const mismatched = { ...indexEntry(previous), totalRuns: 300, totalWins: 298 };
     mismatched.winRate = mismatched.totalWins / mismatched.totalRuns;
     const decision = evaluateBaselineRegression(regression, [mismatched], [previous.meta.commit]);
-    expect(decision.regression).toBe(false);
-    expect(decision.seriesMigrated).toBe(true);
-    expect(decision.reason).toContain('sweep matrix resized');
-    // Crucially it does NOT file an issue for a comparison it never made.
-    expect(decision.issue).toBeUndefined();
+    expect(decision.regression).toBe(true);
+    expect(decision.reason).toContain('100% success');
+    // Floor 1 losses remain actionable even when trend comparison is skipped.
+    expect(decision.issue?.title).toContain('Floor 1 release sweep loss');
   });
 
   it('resumes detecting regressions on the release after a resize', () => {
