@@ -3,6 +3,7 @@ import { CI_INCIDENT_MARKER } from './markers.mjs';
 import {
   hasTrustedTrainPromotionCheck,
   isTrustedTrainPromotionCheck,
+  requiresAdminIntervention,
   shouldSkipRepoIncidentWorkflowRun,
 } from './state.mjs';
 import { parseEnabledFlag } from '../merge-train/state.mjs';
@@ -128,11 +129,11 @@ try {
   }
 }
 
-const knownAutoRetriggerWorkflow = ['CI', 'Security Review Loop'].includes(String(run.name));
-const requiresAdminIntervention =
-  run.conclusion === 'startup_failure' ||
-  (run.conclusion === 'action_required' && !knownAutoRetriggerWorkflow);
-if (requiresAdminIntervention) {
+// Identity comes from the immutable workflow path shared with
+// action-required-retrigger.mjs, so both recovery paths agree on which runs
+// automation can already retrigger without a human.
+const needsAdminIntervention = requiresAdminIntervention(run);
+if (needsAdminIntervention) {
   try {
     await request(token, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
@@ -171,7 +172,7 @@ const body = [
       : [];
   })(),
   '',
-  ...(requiresAdminIntervention
+  ...(needsAdminIntervention
     ? [
         '## Required human/admin intervention',
         '',
@@ -190,7 +191,7 @@ if (existing) {
       method: 'PATCH',
       body: {
         body,
-        labels: [label, ...(requiresAdminIntervention ? [adminInterventionLabel] : [])],
+        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
       },
     })
   ).data;
@@ -201,7 +202,7 @@ if (existing) {
       body: {
         title,
         body,
-        labels: [label, ...(requiresAdminIntervention ? [adminInterventionLabel] : [])],
+        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
       },
     })
   ).data;

@@ -23,11 +23,15 @@ runs:
 
     - name: Install dependencies
       if: ${{ inputs.install-dependencies == 'true' }}
-      # Skip the postinstall browser download for jobs that don't need Playwright.
-      # The postinstall script runs `playwright install chromium`; when
-      # install-playwright is false we don't want that download.
+      # Never download browsers from the root postinstall. The postinstall
+      # delegates to scripts/agent/install-playwright-browser.mjs, which honours
+      # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD (the `playwright install` CLI itself
+      # does not), so no job pulls ~290 MB of Chromium/FFmpeg it never uses and
+      # the e2e job does not download it once before the browser cache is even
+      # restored. Playwright jobs install the browser in the cache-aware steps
+      # below.
       env:
-        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${{ inputs.install-playwright != 'true' && '1' || '' }}
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       run: npm ci
       shell: bash
 

@@ -7,6 +7,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
+import { URL } from 'node:url';
 
 export const DEFAULT_QUARANTINE_DAYS = 7;
 
@@ -135,9 +136,12 @@ async function fetchPublishTimes(packages) {
     const key = `${entry.name}@${entry.version}`;
     let response;
     try {
-      response = await fetch(`${registry.replace(/\/+$/, '')}/${encodeURIComponent(entry.name)}`, {
-        headers: { accept: 'application/json' },
-      });
+      response = await globalThis.fetch(
+        `${registry.replace(/\/+$/, '')}/${encodeURIComponent(entry.name)}`,
+        {
+          headers: { accept: 'application/json' },
+        },
+      );
     } catch {
       result[key] = null;
       continue;

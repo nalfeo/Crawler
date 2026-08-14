@@ -460,8 +460,10 @@ sprite_pipeline_touched="$sprites_touched"
 # dependencies_touched: at least one changed file is a dependency manifest
 # (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json), the
 # dependency-allowlist security script, the lock-integrity guard, the shared
-# dependency setup action, or CI workflow wiring. Consumed by security-review.yml
-# and ci.yml to gate dependency verification.
+# dependency setup action, or ci.yml (which hosts the cold-install and
+# lock-integrity wiring). security-review.yml is covered by the
+# security_infra_upgrade fail-safe below. Consumed by security-review.yml and
+# ci.yml to gate dependency verification.
 dependencies_touched=false
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -474,8 +476,7 @@ while IFS= read -r file; do
       dependencies_touched=true; break ;;
     scripts/agent/security/check-lock-integrity.mjs | \
     .github/actions/setup-node/action.yml | \
-    .github/workflows/ci.yml | \
-    .github/workflows/security-review.yml)
+    .github/workflows/ci.yml)
       dependencies_touched=true; break ;;
   esac
 done <<<"$changed"

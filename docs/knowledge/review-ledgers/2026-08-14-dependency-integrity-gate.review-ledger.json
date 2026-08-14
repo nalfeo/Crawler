@@ -23,6 +23,14 @@
           "resolved_count": 4,
           "clean": true,
           "notes": "Review findings covered tarball provenance, dependency-scope wiring, docs-only setup, and admin-intervention false positives; all were fixed and re-reviewed."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer", "gpt-5.4"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "PR-time review round: nanoid downgrade reintroduced a high-severity advisory, the ungated root postinstall downloaded Chromium on every job, the lock-integrity script failed lint on URL/fetch globals, the classifier expectation table was stale, and the admin-intervention exclusion keyed on a mutable workflow name. Each was independently revalidated by a different-model agent and fixed."
         }
       ]
     },
