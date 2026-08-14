@@ -58,7 +58,8 @@ shape.
     `path` and `select_cloud_run`/the `runId` canvas input transparently fall
     back to it when the id isn't a weapon-sweep/AI-Sweep-Eval run.
   - The renderer shows commit, win rate, per-weapon breakdown, and the fun
-    report (overall score, gate pass/fail, dimensions, hotspots) when
+    report (overall score, gate pass/fail, dimensions, criterion-level
+    status/observed/target/reason, and hotspots) when
     present, or an explicit "Fun evaluation report is not available for this
     run" message when the sibling file is absent — never an error.
 

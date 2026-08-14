@@ -701,6 +701,18 @@ export function renderHtml(instanceId) {
         html += '<div class="table-wrap"><table><thead><tr>' + keys.map((k) => '<th>' + esc(k) + '</th>').join('') + '</tr></thead><tbody><tr>'
           + keys.map((k) => '<td>' + fmtNum(report.dimensions[k], 1) + '</td>').join('') + '</tr></tbody></table></div>';
       }
+      if (report.criteria) {
+        html += '<div class="table-wrap"><table><thead><tr><th>Criterion</th><th>Status</th><th>Observed</th><th>Target</th><th>Reason</th></tr></thead><tbody>';
+        for (const [name, criterion] of Object.entries(report.criteria)) {
+          const statusClass = criterion.status === 'healthy' ? 'success' : criterion.status === 'needs_attention' ? 'failure' : '';
+          html += '<tr><td><code>' + esc(name) + '</code></td>'
+            + '<td><span class="pill ' + statusClass + '">' + esc(criterion.status) + '</span></td>'
+            + '<td>' + fmtNum(criterion.observed, 2) + '</td>'
+            + '<td>' + fmtNum(criterion.target, 2) + '</td>'
+            + '<td>' + esc(criterion.reason) + '</td></tr>';
+        }
+        html += '</tbody></table></div>';
+      }
       if (Array.isArray(report.hotspots) && report.hotspots.length) {
         html += '<div class="message warning">Hotspots: ' + report.hotspots.map((h) => esc(h.dimension) + ' (' + fmtNum(h.score, 1) + ')').join(', ') + '</div>';
       }

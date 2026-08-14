@@ -71,6 +71,15 @@ test('render includes baseline-sweep section markers and title, with a graceful 
   assert.match(html, /baseline-sweep.*Release Baseline Results/);
 });
 
+test('render includes criterion-level fun evaluation details', () => {
+  const html = renderHtml('sweep-test');
+  assert.match(
+    html,
+    /<th>Criterion<\/th><th>Status<\/th><th>Observed<\/th><th>Target<\/th><th>Reason<\/th>/,
+  );
+  assert.match(html, /Object\.entries\(report\.criteria\)/);
+});
+
 test('runLabel prefixes baseline-sweep runs with [B]', () => {
   const html = renderHtml('sweep-test');
   assert.match(html, /baseline-sweep.*\[B\]/);

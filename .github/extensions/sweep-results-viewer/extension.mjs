@@ -936,6 +936,7 @@ function summaryPayload(state) {
             overallFunScore: state.data.funReport.overall_fun_score ?? null,
             gatePass: state.data.funReport.gate?.pass ?? null,
             dimensions: state.data.funReport.dimensions ?? null,
+            criteria: state.data.funReport.criteria ?? null,
           }
         : null,
     };
