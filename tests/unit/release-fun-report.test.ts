@@ -30,7 +30,7 @@ const TEST_META: ReleaseBaselineMeta = {
   runId: '999',
   runNumber: 42,
   runUrl: 'https://example.test/actions/runs/999',
-  sweep: { seeds: '1-100', kind: 'winrate' },
+  sweep: { seeds: '1-100', kind: 'winrate', revision: 2 },
 };
 
 async function capturedRun(): Promise<RunStats> {

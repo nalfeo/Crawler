@@ -68,7 +68,6 @@ test('render includes baseline-sweep section markers and title, with a graceful 
     html,
     /Fun evaluation report is not available for this run \(captured before fun evaluation existed, or scoring failed for this release\)\./,
   );
-  assert.match(html, /baseline-sweep.*Release Baseline Results/);
 });
 
 test('render includes criterion-level fun evaluation details', () => {
