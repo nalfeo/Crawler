@@ -354,10 +354,99 @@ jobs:
             fi
           done
 
-  baseline-sweep:
-    name: Baseline win-rate sweep (100 seeds)
+  release-report-sweep:
+    name: Release report leg (${{ matrix.leg }} shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     needs: [release-gate, deploy]
+    if: >
+      needs.release-gate.outputs.should_run == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
+    continue-on-error: true
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        include:
+          - { leg: floor2, shard: 0 }
+          - { leg: floor2, shard: 1 }
+          - { leg: floor2, shard: 2 }
+          - { leg: floor2, shard: 3 }
+          - { leg: floor2, shard: 4 }
+          - { leg: floor2, shard: 5 }
+          - { leg: floor2, shard: 6 }
+          - { leg: floor2, shard: 7 }
+          - { leg: floor2, shard: 8 }
+          - { leg: floor2, shard: 9 }
+          - { leg: floor2, shard: 10 }
+          - { leg: floor2, shard: 11 }
+          - { leg: floor2, shard: 12 }
+          - { leg: floor2, shard: 13 }
+          - { leg: floor2, shard: 14 }
+          - { leg: floor1-chain, shard: 0 }
+          - { leg: floor1-chain, shard: 1 }
+          - { leg: floor1-chain, shard: 2 }
+          - { leg: floor1-chain, shard: 3 }
+          - { leg: floor1-chain, shard: 4 }
+          - { leg: floor1-chain, shard: 5 }
+          - { leg: floor1-chain, shard: 6 }
+          - { leg: floor1-chain, shard: 7 }
+          - { leg: floor1-chain, shard: 8 }
+          - { leg: floor1-chain, shard: 9 }
+          - { leg: floor1-chain, shard: 10 }
+          - { leg: floor1-chain, shard: 11 }
+          - { leg: floor1-chain, shard: 12 }
+          - { leg: floor1-chain, shard: 13 }
+          - { leg: floor1-chain, shard: 14 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run report shard
+        continue-on-error: true
+        env:
+          LEG: ${{ matrix.leg }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/release-legs
+          start=$((SHARD * 10 + 1))
+          end=$((start + 9))
+          if [ "$end" -gt 150 ]; then end=150; fi
+          if [ "$LEG" = "floor2" ]; then
+            npm run ai:winrate-sweep -- \
+              --floor floor2 --seeds "$start-$end" --no-force-weapon \
+              --out ".cache/release-legs/$LEG-$SHARD.json"
+          else
+            npm run ai:winrate-sweep -- \
+              --floor floor1 --seeds "$start-$end" --no-force-weapon --chain \
+              --out ".cache/release-legs/$LEG-$SHARD.json"
+          fi
+
+      - name: Upload report shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-leg-${{ matrix.leg }}-${{ matrix.shard }}
+          path: .cache/release-legs/*.json
+          if-no-files-found: ignore
+
+  baseline-sweep:
+    name: Baseline multi-floor sweep (600 runs)
+    runs-on: ubuntu-latest
+    needs: [release-gate, deploy, release-report-sweep]
     concurrency:
       group: baseline-sweep-${{ github.event.workflow_run.head_sha || github.sha }}
       cancel-in-progress: false
@@ -459,16 +548,70 @@ jobs:
             --weapons sword,bow,baseball-bat,pistol,throwing-knife,fireball \
             --out .cache/baseline/baseline.json
 
-          # Report-only legs. `continue-on-error` semantics are achieved with an
-          # explicit guard rather than a job-level flag so a leg crash cannot
-          # take down baseline publication of the blocking leg.
-          npm run ai:winrate-sweep -- \
-            --floor floor2 --seeds 1-150 --no-force-weapon \
-            --out .cache/baseline/leg-floor2.json || echo "::warning::floor2 leg failed"
+          # Report-only legs run in the parallel release-report-sweep matrix.
+          # Download and merge their shard summaries here so publication remains
+          # one atomic baseline operation.
+          mkdir -p .cache/release-legs
 
-          npm run ai:winrate-sweep -- \
-            --floor floor1 --seeds 1-150 --no-force-weapon --chain \
-            --out .cache/baseline/leg-floor1-chain.json || echo "::warning::floor1-chain leg failed"
+      - name: Download report shards
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-leg-*
+          path: .cache/release-legs
+          merge-multiple: true
+
+      - name: Merge report leg metrics
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const dir = '.cache/release-legs';
+          const expectedShards = 15;
+          const expectedRuns = 150;
+          for (const leg of ['floor2', 'floor1-chain']) {
+            const shardPattern = new RegExp(`^${leg}-(\\d+)\\.json$`);
+            const shardId = (file) => {
+              const match = path.basename(file).match(shardPattern);
+              if (!match) throw new Error(`unexpected shard filename for ${leg}: ${file}`);
+              return Number(match[1]);
+            };
+            const files = fs.readdirSync(dir)
+              .filter((file) => shardPattern.test(file))
+              .sort((a, b) => shardId(a) - shardId(b))
+              .map((file) => path.join(dir, file));
+            if (files.length === 0) {
+              console.log(`skipping missing leg ${leg}`);
+              continue;
+            }
+            const shards = files.map(shardId);
+            const expectedShardIds = Array.from({ length: expectedShards }, (_, shard) => shard);
+            if (files.length !== expectedShards || shards.some((shard, i) => shard !== expectedShardIds[i])) {
+              console.log(`::warning::skipping incomplete leg ${leg}: found shards ${shards.join(',')}, expected ${expectedShardIds.join(',')}`);
+              continue;
+            }
+            const totals = files.map((file) => JSON.parse(fs.readFileSync(file, 'utf8')))
+              .reduce((sum, part) => ({
+                totalWins: sum.totalWins + part.totalWins,
+                totalRuns: sum.totalRuns + part.totalRuns,
+                totalSlowVictories: sum.totalSlowVictories + (part.totalSlowVictories ?? 0),
+                totalTrueLosses: sum.totalTrueLosses + (part.totalTrueLosses ?? 0),
+                runs: [...sum.runs, ...(Array.isArray(part.runs) ? part.runs : [])],
+              }), { totalWins: 0, totalRuns: 0, totalSlowVictories: 0, totalTrueLosses: 0, runs: [] });
+            if (totals.totalRuns !== expectedRuns) {
+              console.log(`::warning::skipping incomplete leg ${leg}: found ${totals.totalRuns} runs, expected ${expectedRuns}`);
+              continue;
+            }
+            fs.writeFileSync(`.cache/baseline/leg-${leg}.json`, JSON.stringify({
+              floorId: leg === 'floor2' ? 'floor2' : 'floor1',
+              legId: leg,
+              ...totals,
+              winRate: totals.totalWins / totals.totalRuns,
+            }, null, 2));
+            console.log(`${leg}: ${files.length} shards, ${totals.totalWins}/${totals.totalRuns}`);
+          }
+          NODE
 
       # Fold the report-only legs into the baseline under `legs`, so the
       # per-leg regression comparison has data to work with on the NEXT release

@@ -30,7 +30,7 @@ interface WorkflowStep {
   run?: string;
 }
 interface WorkflowJob {
-  strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+  strategy?: { matrix?: { include?: Array<Record<string, string | number>> } };
   steps?: WorkflowStep[];
 }
 interface WorkflowDoc {
@@ -86,7 +86,7 @@ describe('PR sweep leg matrix parity with ci.yml', () => {
     for (const leg of expected) {
       const entry = include.find((candidate) => candidate.leg === leg.id);
       expect(entry, `matrix entry for ${leg.id}`).toBeDefined();
-      expect(coverage(parseTokens(entry!.args!.split(/\s+/))), `${leg.id} args`).toEqual(
+      expect(coverage(parseTokens(String(entry!.args).split(/\s+/))), `${leg.id} args`).toEqual(
         expectedCoverage(leg),
       );
     }
@@ -110,7 +110,7 @@ describe('release sweep leg matrix parity with deploy.yml', () => {
 
   it('runs exactly the release legs declared in sweep-legs.ts', () => {
     expect(step?.run, 'release sweep step').toBeDefined();
-    const invocations = joinContinuations(step!.run!)
+    const blockingInvocations = joinContinuations(step!.run!)
       .filter((line) => line.includes('ai:winrate-sweep'))
       .map((line) =>
         line
@@ -119,11 +119,41 @@ describe('release sweep leg matrix parity with deploy.yml', () => {
           .slice(line.split(/\s+/).indexOf('--') + 1),
       );
 
-    expect(invocations).toHaveLength(RELEASE_SWEEP_LEGS.length);
-    const actual = invocations.map((tokens) => coverage(parseTokens(tokens)));
-    const expected = RELEASE_SWEEP_LEGS.map(expectedCoverage);
-    for (const leg of expected) {
-      expect(actual, `release leg ${leg.floorId} (chain=${leg.chain})`).toContainEqual(leg);
+    const blockingLegs = RELEASE_SWEEP_LEGS.filter((leg) => leg.blocking);
+    expect(blockingInvocations).toHaveLength(blockingLegs.length);
+    const actualBlocking = blockingInvocations.map((tokens) => coverage(parseTokens(tokens)));
+    for (const leg of blockingLegs.map(expectedCoverage)) {
+      expect(actualBlocking, `blocking release leg ${leg.floorId}`).toContainEqual(leg);
+    }
+
+    const reportJob = doc.jobs['release-report-sweep'];
+    const reportScript =
+      reportJob?.steps?.find((candidate) => candidate.name === 'Run report shard')?.run ?? '';
+    expect(reportScript, 'report shard script').toContain('--floor floor2');
+    expect(reportScript, 'report shard script').toContain('--floor floor1');
+    expect(reportScript, 'report shard script').toContain('--no-force-weapon');
+    expect(reportScript, 'report shard script').toContain('--chain');
+
+    const matrix = reportJob?.strategy?.matrix?.include ?? [];
+    const reportLegs = RELEASE_SWEEP_LEGS.filter((leg) => !leg.blocking);
+    expect(matrix.map((entry) => String(entry.leg)).sort()).toEqual(
+      reportLegs.flatMap((leg) => Array.from({ length: leg.seedCount / 10 }, () => leg.id)).sort(),
+    );
+
+    for (const leg of reportLegs) {
+      const entries = matrix
+        .filter((entry) => entry.leg === leg.id)
+        .map((entry) => Number(entry.shard))
+        .sort((a, b) => a - b);
+      expect(entries, `${leg.id} shards`).toEqual(
+        Array.from({ length: leg.seedCount / 10 }, (_, shard) => shard),
+      );
+
+      const coveredSeeds = entries.flatMap((shard) => {
+        const start = shard * 10 + 1;
+        return Array.from({ length: 10 }, (_, offset) => start + offset);
+      });
+      expect(coveredSeeds, `${leg.id} covered seeds`).toEqual(expectedCoverage(leg).seeds);
     }
   });
 });

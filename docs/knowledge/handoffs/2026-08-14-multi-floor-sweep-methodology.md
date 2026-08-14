@@ -52,3 +52,8 @@ Generalize `sweep-eval.ts`'s remaining Floor-1-specific budget and frame-cap
 internals before allowing it to evaluate non-Floor-1 floors. The current guard
 intentionally remains Floor-1-only; the general win-rate sweep is the multi-floor
 entry point.
+
+The release workflow now runs the two report-only 150-run legs as 15 parallel
+10-seed shards each, then merges their metrics before publishing the single
+baseline. This preserves all 600 approved runs while avoiding the prior
+120-minute monolithic-job timeout.
