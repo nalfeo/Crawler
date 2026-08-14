@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0f969da8f1fffc0dfe5d401e6a32719026ebb794",
+    "commitDate": "2026-08-13T23:05:19Z",
+    "commitSubject": "feat(ai): add deterministic playtest personas and fun evaluator (#2871)",
+    "capturedAt": "2026-08-14T00:16:36.603Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31753324496",
+    "winRate": 0.99,
+    "totalWins": 594,
+    "totalRuns": 600,
+    "path": "by-sha/0f969da8f1fffc0dfe5d401e6a32719026ebb794.json"
+  },
+  {
     "commit": "554befd596b8b903fc754990cb25bd595fda01e2",
     "commitDate": "2026-08-13T22:27:36Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#2884)",
