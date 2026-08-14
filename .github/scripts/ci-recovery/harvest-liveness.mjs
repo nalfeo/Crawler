@@ -33,6 +33,12 @@
 
 import { DECISION_LOG_MARKER } from './decision-log.mjs';
 import { DISPATCH_ACTION } from './dispatch-table.mjs';
+import {
+  buildIssueActorIds,
+  getCopilotIssueAssignmentContext,
+  isCopilotLogin,
+  replaceIssueAssignees,
+} from './issue-intake-lib.mjs';
 
 export const HARVEST_INCIDENT_LABEL = 'ci-incident';
 export const HARVEST_INCIDENT_TITLE = 'CI incident: stale-session harvest not completing';
@@ -45,6 +51,35 @@ export const DISPATCH_LIVENESS_INCIDENT_MARKER = '<!-- crawler:ci-dispatch-liven
 export const DEFAULT_HARVEST_THRESHOLD_MINUTES = 60;
 export const DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS = 8;
 export const DEFAULT_PR_DISPATCH_GAP_HOURS = 4;
+
+export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
+  const context = await getCopilotIssueAssignmentContext({
+    graphql,
+    token,
+    owner,
+    repo,
+    issueNumber,
+  });
+  if (String(context.issueState || '').toUpperCase() !== 'OPEN') {
+    throw new Error(`Issue #${issueNumber} is no longer open; skipping Copilot assignment`);
+  }
+
+  const actorIds = buildIssueActorIds({
+    assignees: context.assignees,
+    copilotActorId: context.copilot.id,
+    includeCopilot: true,
+  });
+  const assignedLogins = await replaceIssueAssignees({
+    graphql,
+    token,
+    assignableId: context.issueId,
+    actorIds,
+  });
+  if (!assignedLogins.some(isCopilotLogin)) {
+    throw new Error(`Copilot assignment did not persist on issue #${issueNumber}`);
+  }
+  return context.copilot.login;
+}
 
 function parseRunTimestamp(run) {
   const at = Date.parse(run?.updated_at || run?.run_started_at || run?.created_at || '');
@@ -256,7 +291,8 @@ export function summarizeDispatchLiveness({
 
   const dispatches = inWindow.filter(
     (record) =>
-      record?.stage === 'terminal' && String(record?.action || '') === DISPATCH_ACTION.DISPATCH_COPILOT,
+      record?.stage === 'terminal' &&
+      String(record?.action || '') === DISPATCH_ACTION.DISPATCH_COPILOT,
   );
   const nonDispatchHistogram = new Map();
   for (const record of inWindow) {
@@ -265,7 +301,9 @@ export function summarizeDispatchLiveness({
     nonDispatchHistogram.set(action, (nonDispatchHistogram.get(action) || 0) + 1);
   }
 
-  const openBlocked = (openBlockedPulls || []).filter((pull) => Number.isFinite(Number(pull?.number)));
+  const openBlocked = (openBlockedPulls || []).filter((pull) =>
+    Number.isFinite(Number(pull?.number)),
+  );
   const staleBlockedPulls = [];
   const neverSummonedBlockedPulls = [];
   for (const pull of openBlocked) {
@@ -276,8 +314,14 @@ export function summarizeDispatchLiveness({
       .filter(Number.isFinite)
       .sort((left, right) => right - left);
     const lastDispatchAt = dispatchTimestamps[0] ?? null;
-    const fallbackAt = Date.parse(String(pull.blocked_since || pull.updated_at || pull.created_at || ''));
-    if (lastDispatchAt === null && Number.isFinite(fallbackAt) && now.getTime() - fallbackAt >= perPrGapMs) {
+    const fallbackAt = Date.parse(
+      String(pull.blocked_since || pull.updated_at || pull.created_at || ''),
+    );
+    if (
+      lastDispatchAt === null &&
+      Number.isFinite(fallbackAt) &&
+      now.getTime() - fallbackAt >= perPrGapMs
+    ) {
       neverSummonedBlockedPulls.push(pull);
       staleBlockedPulls.push(pull);
       continue;
@@ -308,7 +352,9 @@ export function summarizeDispatchLiveness({
     staleBlockedPulls,
     neverSummonedBlockedPulls,
     decisionCountInWindow: inWindow.length,
-    nonDispatchHistogram: [...nonDispatchHistogram.entries()].sort((left, right) => right[1] - left[1]),
+    nonDispatchHistogram: [...nonDispatchHistogram.entries()].sort(
+      (left, right) => right[1] - left[1],
+    ),
   };
 }
 
@@ -480,9 +526,11 @@ function findManagedIncident(issues) {
  * @returns {Promise<{action: 'created'|'updated'|'closed'|'noop', issueNumber?: number}>}
  */
 export async function reconcileHarvestIncident({
+  graphql,
   request,
   paginate,
   token,
+  assignmentToken = token,
   owner,
   repo,
   verdict,
@@ -523,12 +571,26 @@ export async function reconcileHarvestIncident({
       method: 'PATCH',
       body: { body },
     });
+    await assignCopilotToIncident({
+      graphql,
+      token: assignmentToken,
+      owner,
+      repo,
+      issueNumber: existing.number,
+    });
     return { action: 'updated', issueNumber: existing.number };
   }
 
   const created = await request(token, `/repos/${owner}/${repo}/issues`, {
     method: 'POST',
     body: { title: HARVEST_INCIDENT_TITLE, labels: [HARVEST_INCIDENT_LABEL], body },
+  });
+  await assignCopilotToIncident({
+    graphql,
+    token: assignmentToken,
+    owner,
+    repo,
+    issueNumber: created.data.number,
   });
   return { action: 'created', issueNumber: created.data.number };
 }

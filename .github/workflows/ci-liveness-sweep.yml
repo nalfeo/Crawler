@@ -169,6 +169,7 @@ jobs:
       - name: Verify stale-session harvest liveness
         uses: actions/github-script@v7
         env:
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           HARVEST_LIVENESS_THRESHOLD_MINUTES: ${{ vars.HARVEST_LIVENESS_THRESHOLD_MINUTES || '60' }}
           CI_RECOVERY_DISPATCH_WINDOW_HOURS: ${{ vars.CI_RECOVERY_DISPATCH_WINDOW_HOURS || '8' }}
           CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS: ${{ vars.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS || '4' }}
@@ -227,8 +228,25 @@ jobs:
               );
               return { data: response.data };
             };
+            const graphql = async (token, query, variables = {}) => {
+              const { request: requestOptions, ...graphqlVariables } = variables;
+              return github.graphql(query, {
+                ...graphqlVariables,
+                request: token
+                  ? {
+                      ...(requestOptions || {}),
+                      headers: {
+                        ...((requestOptions && requestOptions.headers) || {}),
+                        authorization: `token ${token}`,
+                      },
+                    }
+                  : requestOptions,
+              });
+            };
 
             const result = await lib.reconcileHarvestIncident({
+              graphql,
+              assignmentToken: process.env.CRAWLER_CI_PAT,
               request,
               paginate,
               token: null,
