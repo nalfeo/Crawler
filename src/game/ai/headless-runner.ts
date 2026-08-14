@@ -1023,13 +1023,13 @@ export async function runHeadless(
       // helpers below) keeps frameCount/safeRoomFrames consistent with
       // world.elapsedMs even if a later helper throws and we emit crash stats.
       frameCount++;
-      // Latch Floor 1 boss lifecycle transitions before any early exit (death
-      // guards) or auto-action helper can run, so a start/defeat on a lethal
-      // frame is still recorded with its frame/time/eid evidence.
-      captureFloor1BossTransitions();
       if (world.playerInSafeRoom === true) {
         safeRoomFrames++;
       }
+      // Latch Floor 1 boss lifecycle transitions before any early exit (death
+      // guards) or auto-action helper can run. Capture after the safe-room
+      // counter so active timestamps cannot exceed the finalized duration.
+      captureFloor1BossTransitions();
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);

@@ -235,6 +235,9 @@ describe('headless runner AI telemetry', () => {
         .map((event) => event.activeTimeMs)
         .sort((left, right) => left - right),
     );
+    expect(dopamine?.events.every((event) => event.activeTimeMs <= dopamine.activeDurationMs)).toBe(
+      true,
+    );
     const sword = items?.items.find((item) => item.catalogKey === 'weapon:sword');
     expect(sword?.selectableExposureCount).toBe(1);
     expect(sword?.selectionCount).toBe(1);
