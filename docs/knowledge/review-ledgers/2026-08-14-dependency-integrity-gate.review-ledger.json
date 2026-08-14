@@ -1,0 +1,55 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "dependency-integrity-gate",
+  "task_title": "Dependency integrity gate",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Independent plan review identified the canonical lock metadata, docs-only install, and action-required race risks; all were addressed, with the plan remaining convergent."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Review findings covered tarball provenance, dependency-scope wiring, docs-only setup, and admin-intervention false positives; all were fixed and re-reviewed."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer", "gpt-5.4"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "PR-time review round: nanoid downgrade reintroduced a high-severity advisory, the ungated root postinstall downloaded Chromium on every job, the lock-integrity script failed lint on URL/fetch globals, the classifier expectation table was stale, and the admin-intervention exclusion keyed on a mutable workflow name. Each was independently revalidated by a different-model agent and fixed."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.6-sol",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "9887e1231c9bb8d392dc288444e03edaccb6d166",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 3,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The dependency integrity gate is correctly scoped and wired, fails closed on unverifiable metadata, validates canonical registry provenance and quarantine age, and includes focused decision-logic tests. The incident recovery extension is deliberate, explicitly requested work using existing infrastructure, not scope creep. Workflow and incident integration coverage is limited but reveals no actionable defect. Regraded scope after the PR-time review round: the nanoid override is back on the patched 3.3.18 release, the root postinstall browser download is gated, and the classifier expectation table and admin-intervention path classification are covered by tests."
+    }
+  }
+}
