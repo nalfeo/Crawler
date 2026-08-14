@@ -658,6 +658,10 @@ export async function runHeadless(
   }
   const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
+  // Scenario setup creates the initial settlement stock before the first
+  // simulation frame. Treat that initial safe-room state as already observed so
+  // the headless runner does not invent a production-only first restock.
+  quartermasterRestockLatches.set(world, world.playerInSafeRoom === true);
 
   let frameCount = 0;
   // Frames spent in a safe room, where the floor-collapse deadline is paused

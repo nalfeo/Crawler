@@ -1,0 +1,74 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "multi-floor-sweep-methodology",
+  "task_title": "Expand release sweeps to complete floors",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "",
+      "model": "gpt-5.4",
+      "verdict": "minor",
+      "summary": "Reviewed the implemented methodology. Kept per-floor defaults for chained legs because progression intentionally resolves each floor manifest budget; corrected release baseline provenance and documented the workflow/matrix parity limitation for follow-up hardening."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "One headless initial-restock issue was fixed; two findings were verified as outside this branch diff."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No significant issues found."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Restored the sweep-eval Floor-1 guard because its internal budget and frame caps remain Floor-1-specific."
+        },
+        {
+          "round": 2,
+          "models": ["claude-opus-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No remaining multi-model findings after the guard correction."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
