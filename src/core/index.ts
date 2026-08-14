@@ -11,6 +11,7 @@ export * from './damage-meta.js';
 export * from './effective-stats.js';
 export * from './encumbrance.js';
 export * from './generated-equipment-registry.js';
+export * from './fun-telemetry.js';
 export * from './quartermaster-purchase.js';
 export * from './movement-speed.js';
 export * from './helpers.js';

@@ -510,6 +510,57 @@ export interface LootEfficiencyMetrics {
   combinedRatio: number;
 }
 
+export type DopamineEventKind = 'level_up' | 'quest_complete' | 'boss_kill' | 'rare_loot';
+
+/** Timestamped positive event used to evaluate active-play reward cadence. */
+export interface DopamineEvent {
+  readonly kind: DopamineEventKind;
+  readonly sourceId: string;
+  readonly gameTimeMs: number;
+  readonly activeTimeMs: number;
+}
+
+/** Ordered positive events and the safe-room-adjusted duration they cover. */
+export interface DopamineTelemetry {
+  readonly activeDurationMs: number;
+  readonly events: readonly DopamineEvent[];
+}
+
+export type ItemTelemetryKind = 'starter_weapon' | 'spell' | 'generated_equipment';
+
+/** Per-run opportunity, choice, and contribution evidence for one stable catalog item. */
+export interface ItemTelemetryEntry {
+  /** Cross-run stable identity. Generated entries exclude rolled values and run IDs. */
+  readonly catalogKey: string;
+  readonly kind: ItemTelemetryKind;
+  readonly offeredCount: number;
+  readonly selectableExposureCount: number;
+  readonly selectionCount: number;
+  readonly activationCount: number;
+  readonly activeTimeMs: number;
+}
+
+/** Item viability evidence plus unique activation counts for dominance analysis. */
+export interface ItemTelemetry {
+  readonly items: readonly ItemTelemetryEntry[];
+  readonly uniqueActivationCount: number;
+  readonly dominantActivationCount: number;
+}
+
+/** Raw per-run features used by the cross-run robust snowball classifier. */
+export interface SnowballSignals {
+  readonly activeClearTimeMs: number;
+  readonly damagePerActiveMinute: number;
+  readonly killsPerActiveMinute: number;
+  readonly dominantItemUsageShare: number;
+}
+
+/** Future hook for a permanent-upgrade system; absent until that system exists. */
+export interface MetaProgressionTelemetry {
+  readonly permanentPowerBefore: number;
+  readonly permanentPowerAfter: number;
+}
+
 /**
  * Run statistics for performance tracking.
  */
@@ -607,4 +658,12 @@ export interface RunStats {
   lootEfficiency?: LootEfficiencyMetrics;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
+  /** Timestamped positive events captured by the deterministic headless runner. */
+  dopamineTelemetry?: DopamineTelemetry;
+  /** Offer, selection, activation, and active-time evidence by stable item identity. */
+  itemTelemetry?: ItemTelemetry;
+  /** Raw run-level features for population-based snowball classification. */
+  snowballSignals?: SnowballSignals;
+  /** Future permanent-power hook; omitted while meta-progression remains deferred. */
+  metaProgression?: MetaProgressionTelemetry;
 }

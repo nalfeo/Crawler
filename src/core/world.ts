@@ -26,6 +26,7 @@ import { createBloodyFootprintState } from '../shared/blood-surfaces.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
 import type { WeaponTelemetry } from './weapon-telemetry.js';
+import type { FunTelemetryCollector } from './fun-telemetry.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
   createBarrierRegistry,
@@ -289,6 +290,12 @@ export interface GameWorld {
    * assign a collector via `createWeaponTelemetry()`. See `weapon-telemetry.ts`.
    */
   weaponTelemetry?: WeaponTelemetry;
+  /**
+   * Optional, OFF-by-default event collector used by deterministic headless fun
+   * evaluation. Runtime systems only append successful item activations; the
+   * headless runner owns timestamps, offers, selections, and aggregation.
+   */
+  funTelemetry?: FunTelemetryCollector;
   /**
    * Max REALIZED knockback displacement (feet) applied to any entity this frame.
    * Reset to 0 at the top of `knockbackSystem` and accumulated (max) there after

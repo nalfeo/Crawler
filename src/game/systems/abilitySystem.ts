@@ -25,6 +25,10 @@ import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { pushAbilityActivationEvent } from '../../shared/ability-activation-events.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { getSpellSkillId } from '../../shared/spell-skills.js';
+import {
+  recordFunTelemetryActivation,
+  type FunTelemetryItemSource,
+} from '../../core/fun-telemetry.js';
 
 export type AbilityGrantErrorCode =
   | 'invalid-source'
@@ -712,6 +716,7 @@ export function forceActivateAbility(
 
   emitAbilityActivationAnnouncement(world, holderEid, abilityId);
   emitSpellUsageEvent(world, holderEid, def.kind === 'spell' ? abilityId : undefined);
+  recordAbilityFunTelemetry(world, holderEid, abilityId);
   return true;
 }
 
@@ -751,7 +756,30 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
 
   emitAbilityActivationAnnouncement(world, holderEid, abilityId);
   emitSpellUsageEvent(world, holderEid, def.kind === 'spell' ? abilityId : undefined);
+  recordAbilityFunTelemetry(world, holderEid, abilityId);
   return true;
+}
+
+function recordAbilityFunTelemetry(world: GameWorld, holderEid: number, abilityId: string): void {
+  if (!world.funTelemetry) return;
+  const sources = world.abilityStatesByEntity
+    .get(holderEid)
+    ?.grantOwnership?.activeSourcesByAbilityId.get(abilityId);
+  if (!sources) return;
+
+  const itemSources: FunTelemetryItemSource[] = [];
+  for (const sourceId of sources) {
+    if (sourceId === `learned:${abilityId}`) {
+      itemSources.push(`spell:${abilityId}`);
+      continue;
+    }
+    if (!sourceId.startsWith('equipment:')) continue;
+    const withoutPrefix = sourceId.slice('equipment:'.length);
+    const ordinalSeparator = withoutPrefix.lastIndexOf(':');
+    if (ordinalSeparator <= 0) continue;
+    itemSources.push(`generated-equipment-instance:${withoutPrefix.slice(0, ordinalSeparator)}`);
+  }
+  recordFunTelemetryActivation(world, itemSources);
 }
 
 /** Spell skills advance only after a gated activation actually succeeded. */

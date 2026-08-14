@@ -20,6 +20,7 @@ import {
 import { forceActivateAbility } from '../../src/game/systems/abilitySystem.js';
 import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { createFunTelemetryCollector } from '../../src/core/fun-telemetry.js';
 
 function setupPlayer() {
   const world = createTestWorld();
@@ -663,6 +664,18 @@ describe('abilitySystem', () => {
       expect(state.cooldownByAbilityId.get('heal')).toBe(1001);
       // Effects were applied: HP restored above the pre-cast value.
       expect(world.stores.health.current[player]).toBeGreaterThan(50);
+    });
+
+    it('attributes successful learned-spell activations to the optional fun collector', () => {
+      const { world, player } = setupPlayer();
+      world.funTelemetry = createFunTelemetryCollector();
+      world.featureUnlocks.spells = true;
+      memorizeSpell(world, player, 'heal');
+
+      expect(forceActivateAbility(world, player, 'heal')).toBe(true);
+      expect(world.funTelemetry.activations).toEqual([
+        { activationId: 1, itemSources: ['spell:heal'] },
+      ]);
     });
 
     it('force-fires an active ability twice in quick succession, ignoring its own cooldown', () => {

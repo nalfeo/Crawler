@@ -209,6 +209,44 @@ describe('headless runner AI telemetry', () => {
     expect(stats.lootEfficiency?.xpSpawned).toBeGreaterThanOrEqual(17);
     expect(stats.lootEfficiency?.xpCollected).toBe(0);
     expect(stats.lootEfficiency?.xpRatio).toBe(0);
+    expect(stats.dopamineTelemetry).toBeDefined();
+    expect(stats.itemTelemetry).toBeDefined();
+    expect(stats.snowballSignals).toBeDefined();
+  });
+
+  it('emits deterministic fun telemetry from the real headless pipeline', async () => {
+    const run = () =>
+      runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+        seed: 42,
+        maxFrames: 3_000,
+        maxWallTimeMs: 60_000,
+        forceWeaponId: 'sword',
+      });
+
+    const stats = await run();
+    const dopamine = stats.dopamineTelemetry;
+    const items = stats.itemTelemetry;
+    expect(dopamine).toBeDefined();
+    expect(items).toBeDefined();
+    expect(stats.snowballSignals).toBeDefined();
+    expect(dopamine?.activeDurationMs).toBe(stats.gameTimeMs - stats.safeRoomMs);
+    expect(dopamine?.events.map((event) => event.activeTimeMs)).toEqual(
+      [...(dopamine?.events ?? [])]
+        .map((event) => event.activeTimeMs)
+        .sort((left, right) => left - right),
+    );
+    const sword = items?.items.find((item) => item.catalogKey === 'weapon:sword');
+    expect(sword?.selectableExposureCount).toBe(1);
+    expect(sword?.selectionCount).toBe(1);
+    expect(sword?.activationCount).toBeGreaterThan(0);
+    expect(items?.uniqueActivationCount).toBeGreaterThan(0);
+    expect(stats.snowballSignals?.dominantItemUsageShare).toBeGreaterThan(0);
+    expect(stats.metaProgression).toBeUndefined();
+
+    const again = await run();
+    expect(again.dopamineTelemetry).toEqual(dopamine);
+    expect(again.itemTelemetry).toEqual(items);
+    expect(again.snowballSignals).toEqual(stats.snowballSignals);
   });
 
   it('counts real Floor 2 enemy deaths without treating director pruning as kills', async () => {

@@ -26,6 +26,7 @@ import {
   endWeaponActivation,
   markWeaponAccuracyMiss,
 } from '../core/weapon-telemetry.js';
+import { recordFunTelemetryActivation } from '../core/fun-telemetry.js';
 import type { GameWorld } from '../core/world.js';
 import { getBodyRadius } from '../core/physics-body.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
@@ -728,6 +729,13 @@ function dispatchAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
+  const generatedInstanceId =
+    'generatedEquipmentInstanceId' in def ? String(def.generatedEquipmentInstanceId) : undefined;
+  recordFunTelemetryActivation(world, [
+    generatedInstanceId
+      ? `generated-equipment-instance:${generatedInstanceId}`
+      : `weapon:${def.id}`,
+  ]);
   // Count every committed activation as one telemetry "swing" and open an
   // activation id that spawned attack entities tag to. begin/end are no-ops
   // unless `world.weaponTelemetry` is enabled, so the shipping sim is unaffected.
