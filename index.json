@@ -1,5 +1,39 @@
 [
   {
+    "commit": "1cc74dfb1057b90fbc59259a48421096a937dd51",
+    "commitDate": "2026-08-14T22:34:57Z",
+    "commitSubject": "feat: centralize provenance-backed lore canon workflow (#2921)",
+    "capturedAt": "2026-08-14T23:49:12.602Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31848497774",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/1cc74dfb1057b90fbc59259a48421096a937dd51.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.03333333333333333,
+        "totalWins": 5,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.02,
+      "gatePass": false,
+      "path": "by-sha/1cc74dfb1057b90fbc59259a48421096a937dd51.fun-report.json"
+    }
+  },
+  {
     "commit": "08445480799ecdb1fd0621b0b738907b51179d89",
     "commitDate": "2026-08-14T22:01:14Z",
     "commitSubject": "perf(ci): wire GH Actions PR/release sweep workflows to prebundle launcher (#2920)",
