@@ -11,6 +11,7 @@ interface WorkflowStep {
   uses?: string;
   if?: string;
   run?: string;
+  env?: Record<string, string>;
   with?: Record<string, string>;
 }
 
@@ -29,7 +30,8 @@ describe('docs-update workflow', () => {
   it('runs from merge-train completion instead of raw main pushes or a schedule', () => {
     const workflow = loadWorkflow();
     const workflowRun = workflow.on?.workflow_run as
-      { workflows?: string[]; types?: string[]; branches?: string[] } | undefined;
+      | { workflows?: string[]; types?: string[]; branches?: string[] }
+      | undefined;
 
     expect(workflowRun?.workflows).toEqual(['Merge Train']);
     expect(workflowRun?.types).toEqual(['completed']);
@@ -38,7 +40,7 @@ describe('docs-update workflow', () => {
     expect(workflow.on).not.toHaveProperty('schedule');
   });
 
-  it('detects payload scope before installing dependencies or running checks', () => {
+  it('delegates payload gating to the tested helper before installing dependencies', () => {
     const steps = loadWorkflow().jobs['docs-update']?.steps ?? [];
     const detectIndex = steps.findIndex(
       (step) => step.name === 'Detect non-doc merge-train payload',
@@ -48,10 +50,10 @@ describe('docs-update workflow', () => {
 
     expect(detectIndex).toBeGreaterThan(-1);
     expect(installIndex).toBeGreaterThan(detectIndex);
-    expect(detectStep?.run).toContain('grep -qvE');
-    expect(detectStep?.run).toContain('run=true');
-    expect(detectStep?.run).toContain('workflow_run.event');
-    expect(detectStep?.run).toContain('"push"');
+    expect(detectStep?.run).toContain('.github/scripts/docs-update-payload-gate.mjs');
+    expect(detectStep?.env?.WORKFLOW_RUN_CONCLUSION).toContain('workflow_run.conclusion');
+    expect(detectStep?.env?.WORKFLOW_RUN_EVENT).toContain('workflow_run.event');
+    expect(detectStep?.env?.LANDED_SHA).toContain('workflow_run.head_sha');
   });
 
   it('checks out the landed merge-train SHA before classifying its files', () => {

@@ -2,6 +2,9 @@ name: Docs Update Loop
 
 on:
   # Trigger only when the merge train promotes a real payload onto main.
+  # `merge-train.yml` also runs on raw main pushes, schedules and wake-ups, so
+  # the landing itself is confirmed from the `Merge-Train-PR:` trailer in the
+  # landed commit (see .github/scripts/docs-update-payload-gate.mjs).
   # Docs-only train payloads are intentionally ignored: they do not need the
   # docs automation PR churn, and they should not trigger the release path.
   workflow_run:
@@ -35,38 +38,11 @@ jobs:
         id: payload
         if: github.event_name == 'workflow_run'
         shell: bash
-        run: |
-          set -euo pipefail
-
-          sha="${{ github.event.workflow_run.head_sha }}"
-          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Merge Train also runs on schedules and wake-up events. Only its
-          # push completion represents an actual landing on main.
-          if [ "${{ github.event.workflow_run.event }}" != "push" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if ! git rev-parse "${sha}^" >/dev/null 2>&1; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          changed="$(git diff --name-only "${sha}^" "${sha}" 2>/dev/null || true)"
-          if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if printf '%s\n' "$changed" | grep -qvE '^(docs/|\.specify/specs/|AGENTS\.md|.*\.md$|.*\.txt$)$'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+        env:
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          LANDED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node .github/scripts/docs-update-payload-gate.mjs "$LANDED_SHA"
 
       - uses: actions/setup-node@v4
         if: github.event_name == 'workflow_dispatch' || steps.payload.outputs.run == 'true'
