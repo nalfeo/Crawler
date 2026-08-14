@@ -9,6 +9,13 @@ import {
   localSweepDirectory,
   readLocalSweepFile,
 } from '../lib/local-results.mjs';
+import {
+  listBenchmarkBranches,
+  listRepositoryResultArtifacts,
+  normalizeRepositoryArtifact,
+  readRepositoryResultArtifact,
+} from '../lib/repository-results.mjs';
+import { execFileSync } from 'node:child_process';
 
 function result(runAt, floors) {
   return {
@@ -283,4 +290,97 @@ test('rejects summaries missing required fields: records array, meanXp, meanClos
       /summaries\[0\]\.meanXp must be a finite number/,
     );
   });
+});
+
+test('normalizes baseline artifacts and rejects incomplete baseline fields', () => {
+  const artifact = {
+    meta: { capturedAt: '2026-08-13T00:00:00Z' },
+    perWeapon: [{ weapon: 'sword', wins: 98, runs: 100, slowVictories: 3 }],
+    totalWins: 98,
+    totalRuns: 100,
+    winRate: 0.98,
+  };
+  assert.equal(normalizeRepositoryArtifact(artifact).kind, 'baseline');
+  assert.throws(
+    () => normalizeRepositoryArtifact({ ...artifact, winRate: Number.NaN }),
+    /valid baseline sweep artifact/,
+  );
+  assert.throws(
+    () =>
+      normalizeRepositoryArtifact({
+        ...artifact,
+        perWeapon: [{ weapon: 'sword', wins: 98, runs: 100 }],
+      }),
+    /valid baseline sweep artifact/,
+  );
+});
+
+test('discovers and loads committed baseline snapshots from origin/baselines', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'crawler-repository-results-'));
+  try {
+    const runGit = (...args) =>
+      execFileSync('git', args, { cwd: workspace, encoding: 'utf8', windowsHide: true });
+    runGit('init', '-b', 'main');
+    runGit('config', 'user.email', 'test@example.com');
+    runGit('config', 'user.name', 'Test User');
+    await writeFile(join(workspace, 'README.md'), 'fixture\n');
+    runGit('add', 'README.md');
+    runGit('commit', '-m', 'fixture');
+    runGit('checkout', '-b', 'baselines');
+    await mkdir(join(workspace, 'by-sha'));
+    const artifactPath = join(workspace, 'by-sha', 'abc.json');
+    await writeFile(
+      artifactPath,
+      JSON.stringify({
+        meta: { capturedAt: '2026-08-13T00:00:00Z' },
+        perWeapon: [{ weapon: 'sword', wins: 98, runs: 100, slowVictories: 0 }],
+        totalWins: 98,
+        totalRuns: 100,
+        winRate: 0.98,
+      }),
+    );
+    await writeFile(
+      join(workspace, 'index.json'),
+      JSON.stringify([
+        {
+          commit: 'abc',
+          commitSubject: 'Baseline fixture',
+          capturedAt: '2026-08-13T00:00:00Z',
+          path: 'by-sha/abc.json',
+          winRate: 0.98,
+          totalWins: 98,
+          totalRuns: 100,
+        },
+      ]),
+    );
+    runGit('add', 'by-sha/abc.json', 'index.json');
+    runGit('commit', '-m', 'add baseline result');
+    // The remote-tracking ref keeps the published snapshot; the local branch
+    // then diverges so the precedence between the two refs is observable.
+    runGit('update-ref', 'refs/remotes/origin/baselines', 'refs/heads/baselines');
+    await writeFile(join(workspace, 'index.json'), JSON.stringify([]));
+    runGit('add', 'index.json');
+    runGit('commit', '-m', 'diverge local baselines');
+    runGit('checkout', 'main');
+
+    const branches = await listBenchmarkBranches(workspace);
+    assert.deepEqual(branches, [
+      { name: 'baselines', ref: 'refs/remotes/origin/baselines', local: false },
+    ]);
+    const catalog = await listRepositoryResultArtifacts(workspace, branches[0]);
+    assert.deepEqual(
+      catalog.artifacts.map(({ path, kind }) => ({ path, kind })),
+      [{ path: 'by-sha/abc.json', kind: 'baseline' }],
+    );
+    const loaded = await readRepositoryResultArtifact(workspace, branches[0], 'by-sha/abc.json');
+    assert.equal(loaded.kind, 'baseline');
+    assert.equal(loaded.data.perWeapon[0].weapon, 'sword');
+
+    runGit('update-ref', '-d', 'refs/remotes/origin/baselines');
+    assert.deepEqual(await listBenchmarkBranches(workspace), [
+      { name: 'baselines', ref: 'refs/heads/baselines', local: true },
+    ]);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
 });
