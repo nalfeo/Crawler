@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -146,22 +146,23 @@ describe('release baseline regression check', () => {
       writeFileSync(indexPath, JSON.stringify([]));
       writeFileSync(githubOutputPath, '');
 
-      const output = execFileSync(
-        'npx',
-        ['tsx', 'scripts/agent/perf/baseline-regression-check.ts'],
-        {
-          cwd: REPO_ROOT,
-          encoding: 'utf8',
-          env: {
-            ...process.env,
-            BASELINE_JSON: baselinePath,
-            BASELINE_INDEX_JSON: indexPath,
-            BASELINE_REGRESSION_RESULT: resultPath,
-            GITHUB_OUTPUT: githubOutputPath,
-          },
+      const result = spawnSync('npx', ['tsx', 'scripts/agent/perf/baseline-regression-check.ts'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BASELINE_JSON: baselinePath,
+          BASELINE_INDEX_JSON: indexPath,
+          BASELINE_REGRESSION_RESULT: resultPath,
+          GITHUB_OUTPUT: githubOutputPath,
         },
-      );
+      });
 
+      // Asserting the exit code (rather than letting execFileSync throw) keeps
+      // this a clean assertion failure instead of an uncaught-error path if the
+      // crash regresses.
+      expect(result.status).toBe(0);
+      const output = result.stdout;
       expect(output).toContain('release sweep regressed');
       expect(output).not.toContain('[ERROR]');
       expect(readFileSync(githubOutputPath, 'utf8')).toContain('regression=true');
