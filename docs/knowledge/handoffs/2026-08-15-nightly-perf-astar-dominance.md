@@ -143,7 +143,7 @@ Changes are committed and pushed to the PR branch for issue #2975.
 
 The independent grade was **re-run against the committed sha** with
 `npm run review:grade -- prompt/record` (grader `gemini-3.1-pro-preview`,
-graded tree `eccd3e5c`, 5/5/5/5/5, pass, 0 findings), so the ledger grade is now
+graded tree `5566d7a8`, 5/5/5/5/5, pass, 0 findings), so the ledger grade is now
 bound to a clean tree rather than to a working-tree diff.
 
 Still owed before merge:
