@@ -151,7 +151,7 @@ export class IntroScene extends Phaser.Scene {
 
     // Title.
     this.add
-      .text(cx, y, 'THE CRAWLER', {
+      .text(cx, y, 'Crawler', {
         fontFamily: 'monospace',
         fontSize: '28px',
         fontStyle: 'bold',
