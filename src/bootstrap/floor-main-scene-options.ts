@@ -20,6 +20,10 @@ import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
 import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
+  resolveRunBundleUploadConfig,
+  submitRunBundleUpload,
+} from '../engine/run-bundle-upload.js';
+import {
   statSystem,
   statusEffectSystem,
   familyRelationshipSystem,
@@ -38,6 +42,20 @@ function defaultRunBundleSink(bundle: RunBundle): void {
     return;
   }
   window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
+  const config = resolveRunBundleUploadConfig();
+  if (!config.enabled || !config.endpoint) {
+    if (typeof console !== 'undefined') {
+      console.warn(
+        config.reason ?? 'Run bundle upload is disabled because no endpoint is configured.',
+      );
+    }
+    return;
+  }
+  void submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).catch((error) => {
+    if (typeof console !== 'undefined') {
+      console.warn('Silent run-bundle upload failed', error);
+    }
+  });
 }
 
 /**

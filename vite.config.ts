@@ -41,6 +41,9 @@ export default defineConfig(({ mode }) => {
     define: {
       __CRAWLER_SPRITES_SIDECAR_BASE_URL__: JSON.stringify(sessionPorts.sidecarBaseUrl),
       'import.meta.env.VITE_SPRITES_SIDECAR_BASE_URL': JSON.stringify(sessionPorts.sidecarBaseUrl),
+      'import.meta.env.VITE_CRAWLER_RUNS_API_ENDPOINT': JSON.stringify(
+        process.env.VITE_CRAWLER_RUNS_API_ENDPOINT ?? '',
+      ),
     },
     plugins:
       mode === 'lab'
