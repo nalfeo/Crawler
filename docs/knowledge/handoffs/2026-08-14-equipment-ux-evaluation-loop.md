@@ -40,8 +40,5 @@ engine, tooling
   (`MOVE M SLOT FOR DETAILS`); After: 84/100, zero hard failures. The review
   results explicitly retain still-image interaction limitations, while the e2e
   interaction tests are the behavioral evidence.
-
-## Follow-up
-
-The final independent grade must be run against the post-fix committed diff
-before publishing the PR.
+- The 5-apple review ledger is complete: the final independent grade found no
+  findings and scored all five criteria at 5/5.
