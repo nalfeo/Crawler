@@ -151,8 +151,8 @@ function readSvgCanvas(assetPath: string): { width: number; height: number } {
   const openingTag = /<svg\b[^>]*>/.exec(svg)?.[0] ?? '';
   const width = Number(/\bwidth="(\d+)"/.exec(openingTag)?.[1]);
   const height = Number(/\bheight="(\d+)"/.exec(openingTag)?.[1]);
-  if (!Number.isInteger(width) || !Number.isInteger(height)) {
-    throw new Error(`Pre-render visual asset "${assetPath}" declares no integer width/height.`);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new Error(`Pre-render visual asset "${assetPath}" declares no positive width/height.`);
   }
   return { width, height };
 }
