@@ -469,6 +469,12 @@ export class MainGameScene extends Phaser.Scene {
    * `bridge.sync` and `updateCamera` so both extrapolate identically.
    */
   private renderInterpAlpha = 0;
+  private playerRenderSampleFrame = -1;
+  private playerRenderSampleEid = -1;
+  private playerRenderPrevX = 0;
+  private playerRenderPrevY = 0;
+  private playerRenderCurrX = 0;
+  private playerRenderCurrY = 0;
 
   private simulationPaused = false;
 
@@ -3591,16 +3597,39 @@ export class MainGameScene extends Phaser.Scene {
     }
     const px = this.world.stores.position.x[this.playerEid];
     const py = this.world.stores.position.y[this.playerEid];
+    const playerX = px ?? 0;
+    const playerY = py ?? 0;
+    if (this.playerRenderSampleEid !== this.playerEid) {
+      this.playerRenderSampleEid = this.playerEid;
+      this.playerRenderSampleFrame = this.world.frameCount;
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    } else if (this.playerRenderSampleFrame !== this.world.frameCount) {
+      this.playerRenderPrevX = this.playerRenderCurrX;
+      this.playerRenderPrevY = this.playerRenderCurrY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+      this.playerRenderSampleFrame = this.world.frameCount;
+    } else if (this.playerRenderCurrX !== playerX || this.playerRenderCurrY !== playerY) {
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    }
     // Follow the SAME extrapolated position the bridge renders the player sprite
-    // at (`position + velocity * interpAlpha`). Centering on the raw fixed-step
-    // position while sprites interpolate would make the player slide around the
-    // screen centre once per step instead of staying pinned to it.
+    // at (`position + acceptedStepDisplacement * interpAlpha`).
     const alpha = this.renderInterpAlpha;
-    const vx = this.world.stores.velocity.x[this.playerEid] ?? 0;
-    const vy = this.world.stores.velocity.y[this.playerEid] ?? 0;
+    const stepDx = this.playerRenderCurrX - this.playerRenderPrevX;
+    const stepDy = this.playerRenderCurrY - this.playerRenderPrevY;
     this.cameras.main.centerOn(
-      px !== undefined ? ftToPx(extrapolateRenderPosition(px, vx, alpha)) : GAME.WIDTH * 0.5,
-      py !== undefined ? ftToPx(extrapolateRenderPosition(py, vy, alpha)) : GAME.HEIGHT * 0.5,
+      px !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrX, stepDx, alpha))
+        : GAME.WIDTH * 0.5,
+      py !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrY, stepDy, alpha))
+        : GAME.HEIGHT * 0.5,
     );
     this.updateSafeRoomZoom();
   }

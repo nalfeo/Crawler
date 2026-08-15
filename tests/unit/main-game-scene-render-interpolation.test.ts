@@ -86,7 +86,9 @@ describe('MainGameScene render interpolation wiring', () => {
     expect(source).toContain(
       'this.renderInterpAlpha = renderInterpolationAlpha(this.accumulator, GAME.DELTA_MS);',
     );
-    expect(source).toContain('this.world.elapsedMs + this.renderInterpAlpha * GAME.DELTA_MS,');
+    expect(source).toContain(
+      'this.world.elapsedMs + this.renderInterpAlpha * GAME.DELTA_MS,\n      this.renderInterpAlpha,\n    );',
+    );
   });
 
   it('resets the factor to zero so frozen frames render the last completed step', () => {
@@ -103,10 +105,10 @@ describe('MainGameScene render interpolation wiring', () => {
 
   it('follows the camera on the same extrapolated player position as the sprites', () => {
     expect(source).toContain(
-      'ftToPx(extrapolateRenderPosition(px, vx, alpha)) : GAME.WIDTH * 0.5,',
+      'ftToPx(extrapolateRenderPosition(this.playerRenderCurrX, stepDx, alpha))',
     );
     expect(source).toContain(
-      'ftToPx(extrapolateRenderPosition(py, vy, alpha)) : GAME.HEIGHT * 0.5,',
+      'ftToPx(extrapolateRenderPosition(this.playerRenderCurrY, stepDy, alpha))',
     );
   });
 });
