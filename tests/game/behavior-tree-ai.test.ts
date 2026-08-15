@@ -759,6 +759,39 @@ describe('BehaviorTreeAI', () => {
     expect(CONTACT_RETREAT_EPISODE_GAP_FRAMES).toBeGreaterThan(CONTACT_RETREAT_PROGRESS_FRAMES);
   });
 
+  it('re-opens the pinned verdict once the player is moved off the pinned spot', () => {
+    // The pin is positional, so the latch must not outlive the position that
+    // produced it: if Engage drags the player off that spot while the fight
+    // stays in continuous contact (so the episode never gaps), Retreat has to
+    // become eligible again rather than staying suppressed for the whole floor.
+    const world = createTestWorld({ seed: 33 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
+    const boss = spawnBehaviorEnemy(world, 3, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 33, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const pin = (): void => {
+      for (let frame = 1; frame <= CONTACT_RETREAT_PROGRESS_FRAMES; frame += 1) {
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+      }
+    };
+
+    ai.poll(createInputState(), world);
+    pin();
+    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+
+    // Moved a full progress step away from the pinned spot, still in contact.
+    world.frameCount += 1;
+    world.stores.position.x[player] = CONTACT_RETREAT_PROGRESS_FT;
+    world.stores.position.y[player] = 0;
+    world.stores.position.x[boss] = CONTACT_RETREAT_PROGRESS_FT + 3;
+    world.stores.position.y[boss] = 0;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+  });
+
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
     // Baseball-bat reach = 5.5ft, strike gate = 8.25ft. Enemy at 3.75ft
     // is inside the gate so the player kites. When the swing is READY it pokes in

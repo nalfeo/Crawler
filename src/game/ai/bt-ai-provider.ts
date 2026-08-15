@@ -868,7 +868,8 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private contactRetreatMap: FloorMap | null = null;
   private contactRetreatStartFrame: number = 0;
-  private contactRetreatLastFrame: number = 0;
+  /** Frame the carve-out last fired, or null when no episode is being tracked. */
+  private contactRetreatLastFrame: number | null = null;
   private contactRetreatStartX: number = 0;
   private contactRetreatStartY: number = 0;
   private contactRetreatPinned: boolean = false;
@@ -1413,11 +1414,16 @@ export class BehaviorTreeAI implements AIInputProvider {
    * Once latched the verdict holds until the carve-out stops firing for
    * {@link CONTACT_RETREAT_EPISODE_GAP_FRAMES} (Engage kited back out of
    * contact, or the threat died), so releasing Retreat cannot immediately
-   * re-arm it into a RETREAT/ENGAGE thrash on the very next poll.
+   * re-arm it into a RETREAT/ENGAGE thrash on the very next poll. It also
+   * releases as soon as the player has moved a full
+   * {@link CONTACT_RETREAT_PROGRESS_FT} away from where it was pinned: the pin
+   * is positional, so leaving that spot invalidates the verdict even when
+   * Engage keeps the fight in continuous contact and the episode never gaps.
    */
   private isContactRetreatPinned(ctx: BTContext): boolean {
     const frame = ctx.world.frameCount;
     const continuing =
+      this.contactRetreatLastFrame !== null &&
       this.contactRetreatMap === ctx.world.floorMap &&
       frame - this.contactRetreatLastFrame <= CONTACT_RETREAT_EPISODE_GAP_FRAMES;
     this.contactRetreatMap = ctx.world.floorMap;
@@ -1426,12 +1432,20 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.startContactRetreatWindow(ctx);
       return false;
     }
-    if (this.contactRetreatPinned) return true;
-    if (frame - this.contactRetreatStartFrame < CONTACT_RETREAT_PROGRESS_FRAMES) return false;
     const moved = Math.hypot(
       ctx.playerX - this.contactRetreatStartX,
       ctx.playerY - this.contactRetreatStartY,
     );
+    if (this.contactRetreatPinned) {
+      // Engage moved the player off the pinned spot, so the positional verdict
+      // no longer describes the situation — re-open the question from here.
+      if (moved >= CONTACT_RETREAT_PROGRESS_FT) {
+        this.startContactRetreatWindow(ctx);
+        return false;
+      }
+      return true;
+    }
+    if (frame - this.contactRetreatStartFrame < CONTACT_RETREAT_PROGRESS_FRAMES) return false;
     if (moved >= CONTACT_RETREAT_PROGRESS_FT) {
       // The kite is working — measure the next window from here.
       this.startContactRetreatWindow(ctx);
@@ -1451,7 +1465,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private resetContactRetreatTracking(): void {
     this.contactRetreatMap = null;
     this.contactRetreatStartFrame = 0;
-    this.contactRetreatLastFrame = 0;
+    this.contactRetreatLastFrame = null;
     this.contactRetreatStartX = 0;
     this.contactRetreatStartY = 0;
     this.contactRetreatPinned = false;
