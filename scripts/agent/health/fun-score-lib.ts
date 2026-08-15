@@ -8,6 +8,7 @@ export interface PlaytestSurvey {
   readonly mastery?: number;
   readonly control?: number;
   readonly tension?: number;
+  readonly comment?: string;
 }
 
 export interface FunSession {
@@ -126,6 +127,8 @@ export interface FunScoreCLIArgs {
 }
 
 type UnknownRecord = Record<string, unknown>;
+// 'quit' covers a human player closing/leaving mid-run (distinct from
+// 'stalled'/'error', which are AI-runner-only outcomes).
 const VALID_OUTCOMES = new Set<RunStats['outcome']>([
   'victory',
   'death',
@@ -232,6 +235,7 @@ export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined 
     mastery?: number;
     control?: number;
     tension?: number;
+    comment?: string;
   } = {};
   if (typeof obj.enjoyment === 'number' && Number.isFinite(obj.enjoyment))
     survey.enjoyment = obj.enjoyment;
@@ -240,6 +244,10 @@ export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined 
   if (typeof obj.mastery === 'number' && Number.isFinite(obj.mastery)) survey.mastery = obj.mastery;
   if (typeof obj.control === 'number' && Number.isFinite(obj.control)) survey.control = obj.control;
   if (typeof obj.tension === 'number' && Number.isFinite(obj.tension)) survey.tension = obj.tension;
+  if (typeof obj.comment === 'string') {
+    const trimmed = obj.comment.trim();
+    if (trimmed.length > 0) survey.comment = trimmed;
+  }
   return Object.keys(survey).length > 0 ? survey : undefined;
 }
 

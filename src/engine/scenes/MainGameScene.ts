@@ -80,6 +80,9 @@ import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createQuartermasterUI } from '../QuartermasterUI.js';
+import { createRunSurveyUI } from '../RunSurveyUI.js';
+import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
+import { submitRunSurvey } from '../run-bundle-upload.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -506,6 +509,10 @@ export class MainGameScene extends Phaser.Scene {
   private runStartXp = 0;
   private runLogCursor!: LogCursor;
   private runBundleEmitted = false;
+  private lastRunBundle?: RunBundle;
+  private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
+  private runSurveyShown = false;
+  private runSurveySubmitted = false;
 
   /** Enemy count from the previous simulation step — used to detect kills. */
   private prevEnemyCount = 0;
@@ -867,6 +874,9 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runLogCursor = createLogCursor();
     this.runBundleEmitted = false;
+    this.lastRunBundle = undefined;
+    this.runSurveyShown = false;
+    this.runSurveySubmitted = false;
 
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
@@ -1239,6 +1249,8 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementToast = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
+      this.runSurveyUI?.destroy();
+      this.runSurveyUI = undefined;
       this.levelUpUI?.destroy();
       this.levelUpUI = undefined;
       if (this.uiCamera) {
@@ -3989,6 +4001,9 @@ export class MainGameScene extends Phaser.Scene {
       );
     }
 
+    if (completionPresentation === 'terminal_victory') {
+      this.showRunSurveyIfNeeded('victory');
+    }
     this.floorCompletionMessagePending = false;
     this.floorCompletionMessageShown = true;
     this.floorCompletionScreen?.setVisible(true);
@@ -4075,7 +4090,56 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.deathScreenShown = true;
     this.emitRunBundle('death');
+    this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show();
+  }
+
+  private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
+    if (this.runSurveyShown || this.runSurveySubmitted || !this.lastRunBundle) {
+      return;
+    }
+    if (endReason !== 'death' && endReason !== 'victory') {
+      return;
+    }
+    this.runSurveyShown = true;
+    this.runSurveyUI = createRunSurveyUI({
+      onSubmit: async (survey) => {
+        const validSurvey = validatePlaytestSurvey(survey);
+        if (!validSurvey || !this.lastRunBundle) {
+          return false;
+        }
+        const result = await submitRunSurvey(this.lastRunBundle, validSurvey).catch(
+          (error: unknown) => {
+            if (typeof console !== 'undefined') {
+              console.warn('Run survey submission failed', error);
+            }
+            return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
+          },
+        );
+        if (result.ok) {
+          this.runSurveySubmitted = true;
+        }
+        return result.ok;
+      },
+      onSkip: () => {
+        this.runSurveySubmitted = true;
+        // No survey was submitted: emitRunBundle deliberately deferred the
+        // single upload for this run until skip/submit resolved (see
+        // emitRunBundle), so perform that one silent upload now.
+        if (this.lastRunBundle) {
+          this.options.onRunBundle?.(this.lastRunBundle);
+        }
+      },
+    });
+    this.runSurveyUI.show();
+  }
+
+  private nextRunBundleId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    return `run-${this.world.seed}-${this.world.frameCount}`;
   }
 
   private emitRunBundle(endReason: RunEndReason): void {
@@ -4104,9 +4168,18 @@ export class MainGameScene extends Phaser.Scene {
         endReason,
         floorId: this.options.floorId,
         seed: this.world.seed,
+        runId: this.nextRunBundleId(),
       },
     });
     this.runBundleEmitted = true;
+    this.lastRunBundle = bundle;
+    if (endReason === 'death' || endReason === 'victory') {
+      // A post-run survey may follow (see showRunSurveyIfNeeded). Uploading
+      // here too would resend this run under an unrelated stored ID once the
+      // survey is submitted, creating a duplicate; instead defer the single
+      // upload for this run to whichever of skip/submit resolves the survey.
+      return;
+    }
     this.options.onRunBundle?.(bundle);
   }
 
