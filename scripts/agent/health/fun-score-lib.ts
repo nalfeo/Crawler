@@ -33,6 +33,7 @@ export interface FunCriteria {
   readonly snowball_frequency: FunCriterion;
   readonly meta_progression: FunCriterion;
   readonly item_viability: FunCriterion;
+  readonly early_death_rate: FunCriterion;
 }
 
 export interface FunPersonaScore {
@@ -158,6 +159,16 @@ const DIMENSION_WEIGHTS: Readonly<Record<keyof FunDimensionScores, number>> = {
 // Keep in sync with FLOOR_1_MAX_STARTER_CHOICES in src/game/floorScenario.ts.
 const FLOOR_1_STARTER_WEAPON_CHOICES = 3;
 const SUBJECTIVE_BLEND_WEIGHT = 0.4;
+
+// Dying on Floor 1 or 2 is an "un-fun" tutorial-phase death: the player never
+// got past onboarding. Non-death outcomes (timeout/stalled/error) are excluded
+// here because they are already penalized elsewhere and are not "died early".
+const EARLY_DEATH_MAX_FLOOR = 2;
+const EARLY_DEATH_TARGET_RATE = 0.1;
+
+function isEarlyDeath(run: RunStats): boolean {
+  return run.outcome === 'death' && run.finalFloor <= EARLY_DEATH_MAX_FLOOR;
+}
 
 function hasNumberField(obj: UnknownRecord, key: string): boolean {
   return typeof obj[key] === 'number' && Number.isFinite(obj[key]);
@@ -393,7 +404,11 @@ function challengeBalanceForRun(run: RunStats): number {
   const penalties =
     (run.outcome === 'timeout' ? 20 : 0) +
     (run.outcome === 'stalled' ? 25 : 0) +
-    (run.outcome === 'error' ? 50 : 0);
+    (run.outcome === 'error' ? 50 : 0) +
+    // Dying in the tutorial-phase floors (1-2) is un-fun regardless of how
+    // "balanced" the fight felt in the moment: the player never got past
+    // onboarding, so it is penalized on top of a plain death.
+    (isEarlyDeath(run) ? 35 : 0);
 
   const base =
     bandScore(closeCallsPerMin, 0.8, 0.9) * 0.3 +
@@ -652,6 +667,12 @@ export function scoreFunSessions(
           status: 'unmeasured',
           reason: 'Item exposure/contribution telemetry is not present in RunStats.',
         },
+        early_death_rate: {
+          observed: null,
+          target: EARLY_DEATH_TARGET_RATE,
+          status: 'unmeasured',
+          reason: 'No runs provided.',
+        },
       },
       persona_scores: {},
     };
@@ -775,6 +796,13 @@ export function scoreFunSessions(
       false,
       'Needs item offer, selection, and contribution telemetry with exposure counts.',
     ),
+    early_death_rate: criterion(
+      round2(sessions.filter((session) => isEarlyDeath(session.run)).length / sessions.length),
+      EARLY_DEATH_TARGET_RATE,
+      sessions.filter((session) => isEarlyDeath(session.run)).length / sessions.length <=
+        EARLY_DEATH_TARGET_RATE,
+      `Fraction of runs that ended in death on Floor ${EARLY_DEATH_MAX_FLOOR} or earlier. Tutorial-phase deaths are un-fun; healthy is <= ${EARLY_DEATH_TARGET_RATE * 100}%.`,
+    ),
   };
 
   const objectiveScore = weightedObjectiveScore(dimensions);
@@ -878,6 +906,7 @@ const CRITERION_MEANINGFUL_DELTA: Readonly<Record<keyof FunCriteria, number>> = 
   snowball_frequency: 0.02,
   meta_progression: 0.05,
   item_viability: 0.05,
+  early_death_rate: 0.02,
 };
 
 /**
@@ -995,6 +1024,7 @@ export function compareFunReports(
     snowball_frequency: false,
     meta_progression: true,
     item_viability: true,
+    early_death_rate: false,
   };
   for (const key of criterionKeys) {
     criteria[key] =

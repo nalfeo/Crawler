@@ -85,6 +85,36 @@ describe('scoreFunSessions', () => {
     expect(report.confidence).toBeLessThanOrEqual(1);
   });
 
+  it('reports early_death_rate healthy for tutorial-safe runs and needs_attention for early deaths', () => {
+    const healthySessions: FunSession[] = [
+      { id: 'a', run: makeRun({ outcome: 'victory' }) },
+      { id: 'b', run: makeRun({ outcome: 'death', finalFloor: 4 }) },
+    ];
+    const healthyReport = scoreFunSessions(healthySessions);
+    expect(healthyReport.criteria.early_death_rate.observed).toBe(0);
+    expect(healthyReport.criteria.early_death_rate.status).toBe('healthy');
+
+    const earlyDeathSessions: FunSession[] = [
+      { id: 'a', run: makeRun({ outcome: 'death', finalFloor: 1 }) },
+      { id: 'b', run: makeRun({ outcome: 'death', finalFloor: 2 }) },
+      { id: 'c', run: makeRun({ outcome: 'victory' }) },
+    ];
+    const earlyDeathReport = scoreFunSessions(earlyDeathSessions);
+    expect(earlyDeathReport.criteria.early_death_rate.observed).toBeCloseTo(2 / 3);
+    expect(earlyDeathReport.criteria.early_death_rate.status).toBe('needs_attention');
+    // Dying on Floor 1/2 should also drag challenge_balance down versus a
+    // later-floor death, since it is explicitly un-fun regardless of the fight.
+    const lateFloorDeathReport = scoreFunSessions([
+      { id: 'd', run: makeRun({ outcome: 'death', finalFloor: 5 }) },
+    ]);
+    const earlyFloorDeathReport = scoreFunSessions([
+      { id: 'e', run: makeRun({ outcome: 'death', finalFloor: 1 }) },
+    ]);
+    expect(earlyFloorDeathReport.dimensions.challenge_balance).toBeLessThan(
+      lateFloorDeathReport.dimensions.challenge_balance,
+    );
+  });
+
   it('fails gate for poor timeout-heavy runs', () => {
     const badRun = makeRun({
       outcome: 'timeout',

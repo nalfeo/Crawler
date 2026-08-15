@@ -482,7 +482,7 @@ export function renderHtml(instanceId) {
     const content = document.getElementById('content');
     if (!state.data) {
       const detail = state.source === 'local'
-        ? 'No local sweep data loaded from <code>' + esc(state.localDirectory || 'artifacts/weapon-sweeps') + '</code>.'
+        ? 'No local experiment data loaded from <code>' + esc(state.localDirectory || 'artifacts/experiments') + '</code>.'
         : (state.refreshing ? 'Loading cloud sweep results…' : 'No aggregate cloud results are available for this run.');
       content.innerHTML = '<div class="empty-state">' + detail + '</div>';
       return;
