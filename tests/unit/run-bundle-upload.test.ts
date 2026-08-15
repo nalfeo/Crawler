@@ -169,6 +169,6 @@ describe('run bundle upload delivery', () => {
     expect(body.recorderJsonl).toBe(bundle.recorderJsonl);
     expect(body.logs).toEqual(bundle.logs);
     expect(body.meta).toEqual(bundle.meta);
-    expect(body.survey).toEqual(payload);
+    expect(body.survey).toEqual({ ...payload, comment: payload.comment.trim() });
   });
 });
