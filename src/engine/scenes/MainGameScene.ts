@@ -78,6 +78,9 @@ import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createQuartermasterUI } from '../QuartermasterUI.js';
+import { createRunSurveyUI } from '../RunSurveyUI.js';
+import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
+import { submitRunSurvey } from '../../shared/run-bundle-telemetry.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -473,6 +476,10 @@ export class MainGameScene extends Phaser.Scene {
   private runStartXp = 0;
   private runLogCursor!: LogCursor;
   private runBundleEmitted = false;
+  private lastRunBundle?: RunBundle;
+  private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
+  private runSurveyShown = false;
+  private runSurveySubmitted = false;
 
   /** Enemy count from the previous simulation step — used to detect kills. */
   private prevEnemyCount = 0;
@@ -834,6 +841,9 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runLogCursor = createLogCursor();
     this.runBundleEmitted = false;
+    this.lastRunBundle = undefined;
+    this.runSurveyShown = false;
+    this.runSurveySubmitted = false;
 
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
@@ -1204,6 +1214,8 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementToast = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
+      this.runSurveyUI?.destroy();
+      this.runSurveyUI = undefined;
       this.levelUpUI?.destroy();
       this.levelUpUI = undefined;
       if (this.uiCamera) {
@@ -3891,6 +3903,9 @@ export class MainGameScene extends Phaser.Scene {
       );
     }
 
+    if (completionPresentation === 'terminal_victory') {
+      this.showRunSurveyIfNeeded('victory');
+    }
     this.floorCompletionMessagePending = false;
     this.floorCompletionMessageShown = true;
     this.floorCompletionScreen?.setVisible(true);
@@ -3958,7 +3973,36 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.deathScreenShown = true;
     this.emitRunBundle('death');
+    this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show();
+  }
+
+  private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
+    if (this.runSurveyShown || this.runSurveySubmitted || !this.lastRunBundle) {
+      return;
+    }
+    if (endReason !== 'death' && endReason !== 'victory') {
+      return;
+    }
+    this.runSurveyShown = true;
+    this.runSurveyUI = createRunSurveyUI({
+      onSubmit: (survey) => {
+        const validSurvey = validatePlaytestSurvey(survey);
+        if (!validSurvey || !this.lastRunBundle) {
+          return;
+        }
+        this.runSurveySubmitted = true;
+        void submitRunSurvey(this.lastRunBundle, validSurvey).catch((error: unknown) => {
+          if (typeof console !== 'undefined') {
+            console.warn('Run survey submission failed', error);
+          }
+        });
+      },
+      onSkip: () => {
+        this.runSurveySubmitted = true;
+      },
+    });
+    this.runSurveyUI.show();
   }
 
   private emitRunBundle(endReason: RunEndReason): void {
@@ -3990,6 +4034,7 @@ export class MainGameScene extends Phaser.Scene {
       },
     });
     this.runBundleEmitted = true;
+    this.lastRunBundle = bundle;
     this.options.onRunBundle?.(bundle);
   }
 

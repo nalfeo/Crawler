@@ -111,16 +111,20 @@ export function buildRunSurveyRequest(
   bundle: RunBundle,
   survey: PlaytestSurvey,
 ): RunBundleUploadRequest {
+  const normalizedSurvey = {
+    ...survey,
+    comment: typeof survey.comment === 'string' ? survey.comment.trim() : undefined,
+  };
   return {
     kind: 'survey',
     issue: true,
     createdAt: new Date().toISOString(),
     endReason: bundle.meta.endReason,
     bundle,
-    survey,
+    survey: normalizedSurvey,
     runStats: bundle.runStats,
     meta: bundle.meta,
-    comment: typeof survey.comment === 'string' ? survey.comment : undefined,
+    comment: normalizedSurvey.comment,
   };
 }
 

@@ -14,7 +14,7 @@ function isNumberLike(value: unknown): value is number {
 }
 
 export function serializePlaytestSurvey(input: PlaytestSurvey): PlaytestSurvey {
-  const next: PlaytestSurvey = {};
+  const next: Record<string, unknown> = {};
   for (const key of PLAYTEST_DIMENSIONS) {
     const value = input[key];
     if (isNumberLike(value)) {
@@ -25,7 +25,7 @@ export function serializePlaytestSurvey(input: PlaytestSurvey): PlaytestSurvey {
   if (comment.length > 0) {
     next.comment = comment;
   }
-  return next;
+  return next as PlaytestSurvey;
 }
 
 export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined {
@@ -33,7 +33,7 @@ export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined 
     return undefined;
   }
   const obj = value as Record<string, unknown>;
-  const survey: PlaytestSurvey = {};
+  const survey: Record<string, unknown> = {};
   for (const key of PLAYTEST_DIMENSIONS) {
     if (isNumberLike(obj[key])) {
       survey[key] = obj[key];
@@ -45,7 +45,7 @@ export function parsePlaytestSurvey(value: unknown): PlaytestSurvey | undefined 
       survey.comment = comment;
     }
   }
-  return Object.keys(survey).length > 0 ? survey : undefined;
+  return Object.keys(survey).length > 0 ? (survey as PlaytestSurvey) : undefined;
 }
 
 export function validatePlaytestSurvey(value: unknown): PlaytestSurvey | undefined {

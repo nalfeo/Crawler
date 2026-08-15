@@ -20,6 +20,10 @@ import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
 import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
+  resolveRunBundleUploadConfig,
+  submitRunBundleUpload,
+} from '../shared/run-bundle-telemetry.js';
+import {
   statSystem,
   statusEffectSystem,
   familyRelationshipSystem,
@@ -34,10 +38,23 @@ import type { RunBundle } from '../shared/run-bundle.js';
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
 function defaultRunBundleSink(bundle: RunBundle): void {
-  if (typeof window === 'undefined') {
+  const config = resolveRunBundleUploadConfig();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
+  }
+  if (!config.enabled || !config.endpoint) {
+    if (typeof console !== 'undefined') {
+      console.warn(
+        config.reason ?? 'Run bundle upload is disabled because no endpoint is configured.',
+      );
+    }
     return;
   }
-  window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
+  void submitRunBundleUpload(bundle, { endReason: bundle.meta.endReason }).catch((error) => {
+    if (typeof console !== 'undefined') {
+      console.warn('Silent run-bundle upload failed', error);
+    }
+  });
 }
 
 /**

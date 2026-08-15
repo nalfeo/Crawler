@@ -1,4 +1,3 @@
-import Phaser from 'phaser';
 import type { PlaytestSurvey } from '../shared/playtest-survey.js';
 
 const QUESTION_FIELDS = [
@@ -16,10 +15,7 @@ export interface RunSurveyUIHooks {
   readonly onSkip?: () => void;
 }
 
-export function createRunSurveyUI(
-  scene: Phaser.Scene,
-  hooks: RunSurveyUIHooks,
-): {
+export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
   isVisible(): boolean;
   show(): void;
   hide(): void;
@@ -165,7 +161,7 @@ export function createRunSurveyUI(
     submitBtn.style.padding = '10px 18px';
     submitBtn.style.cursor = 'pointer';
     submitBtn.addEventListener('click', () => {
-      const payload: PlaytestSurvey = {};
+      const payload: Record<string, unknown> = {};
       for (const question of QUESTION_FIELDS) {
         const slider = dialog.querySelector<HTMLInputElement>(
           `input[data-field="${question.key}"]`,
@@ -178,7 +174,7 @@ export function createRunSurveyUI(
         payload.comment = comment;
       }
       hide();
-      hooks.onSubmit(payload);
+      hooks.onSubmit(payload as PlaytestSurvey);
     });
 
     actions.append(skipBtn, submitBtn);
