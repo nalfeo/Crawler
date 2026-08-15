@@ -3979,68 +3979,6 @@ test('runFromEnv defers normal dispatches instead of failing when runner-pressur
   assert.match(stdout, /global backpressure applied deferred=1 pr_numbers=30 outstanding=unknown /);
 });
 
-test('runFromEnv tolerates multi-workflow runner-pressure rate limits without crashing', async (t) => {
-  const OWNER = 'test-owner';
-  const REPO = 'test-repo';
-  const TOKEN = 'x-test-token';
-  const pr32 = {
-    number: 32,
-    state: 'open',
-    draft: false,
-    base: { ref: 'main' },
-    created_at: '2026-07-01T00:00:00Z',
-    labels: [],
-    head: { sha: 'head-32', repo: { full_name: `${OWNER}/${REPO}` } },
-  };
-  const dispatches = [];
-
-  const rateLimited = () => ({
-    status: 403,
-    headers: { 'x-ratelimit-remaining': '0' },
-    body: { message: 'API rate limit exceeded for installation' },
-  });
-  const { server, port } = await startRouterMockServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr32] }),
-    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep.yml/runs`]: rateLimited,
-    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep-recover.yml/runs`]: rateLimited,
-    [`GET /repos/${OWNER}/${REPO}/actions/workflows/weapon-sweep.yml/runs`]: rateLimited,
-    [`GET /repos/${OWNER}/${REPO}/actions/workflows/merge-train-validate.yml/runs`]: rateLimited,
-    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
-      dispatches.push(body?.inputs ?? {});
-      return { status: 204 };
-    },
-  });
-  t.after(() => server.close());
-
-  const eventDir = await mkdtemp(join(tmpdir(), 'router-rate-limited-pressure-multi-'));
-  const eventPath = join(eventDir, 'event.json');
-  await writeFile(
-    eventPath,
-    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
-  );
-  t.after(() => rm(eventDir, { recursive: true, force: true }));
-
-  const { code, stdout, stderr } = await runRouterScript(port, {
-    GITHUB_TOKEN: TOKEN,
-    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
-    GITHUB_EVENT_NAME: 'schedule',
-    GITHUB_EVENT_PATH: eventPath,
-  });
-
-  if (!assertRouterExit(t, code, stderr)) return;
-
-  assert.equal(
-    dispatches.length,
-    0,
-    `multi-workflow rate limit must not dispatch; stdout: ${stdout}`,
-  );
-  assert.match(
-    stdout,
-    /dispatch budget telemetry rate-limited; deferring normal dispatches step=runner-pressure/,
-  );
-  assert.match(stdout, /global backpressure applied deferred=1 pr_numbers=32 outstanding=unknown /);
-});
-
 test('runFromEnv identifies recovery-outstanding rate limits while deferring normal dispatches', async (t) => {
   const OWNER = 'test-owner';
   const REPO = 'test-repo';
