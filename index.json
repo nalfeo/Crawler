@@ -1,5 +1,39 @@
 [
   {
+    "commit": "e654f9d1315670d1e2b43d12489ec18e5bfa84a6",
+    "commitDate": "2026-08-15T14:40:57Z",
+    "commitSubject": "Fix wounded NPC-approach threat clearing for Floor 1 sweep losses (#2977)",
+    "capturedAt": "2026-08-15T15:54:51.493Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31891382496",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/e654f9d1315670d1e2b43d12489ec18e5bfa84a6.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.02,
+        "totalWins": 3,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34,
+      "gatePass": false,
+      "path": "by-sha/e654f9d1315670d1e2b43d12489ec18e5bfa84a6.fun-report.json"
+    }
+  },
+  {
     "commit": "146d83fc9b9326ad7a65ab0e49ae055842d5b370",
     "commitDate": "2026-08-15T13:59:27Z",
     "commitSubject": "feat: add post-run survey and silent run uploads (#2952)",
