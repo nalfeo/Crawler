@@ -31,7 +31,8 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "claude-opus-4.6",
-      "head_sha": "c8fcd87a2d6ade15a352d39e19612927326a42d1",
+      "head_sha": "eccd3e5cfcaac13f79a4e779a9e6c7bbf279637b",
+      "findings": [],
       "criteria": {
         "correctness": 5,
         "scope_discipline": 5,
@@ -41,8 +42,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "findings": [],
-      "notes": "Recorded via review:ledger stage rather than review:grade record: this session was explicitly instructed not to commit or push, and review:grade record refuses to bind a grade to a dirty working tree. head_sha is therefore the session HEAD (c8fcd87) and the graded tree is HEAD plus the uncommitted working-tree diff. The grade itself is genuine: gemini-3.1-pro-preview reviewed nothing else on this change, read git diff plus the untracked bench in full, and returned the verbatim JSON above. Whoever commits this branch MUST re-run npm run review:grade -- prompt/record against the committed sha before opening the PR."
+      "notes": "The change correctly drops dominated duplicate open-list pushes, which is a provably inert optimization. The implementation is tight, handles generation wrapping correctly, and preserves the A* tie-breaking semantics. The test suite was appropriately expanded with liveness and generation wrap tests that verify the exact pruning behavior without relying on timing. The scope is disciplined and all policies are followed, with excellent documentation."
     }
   }
 }

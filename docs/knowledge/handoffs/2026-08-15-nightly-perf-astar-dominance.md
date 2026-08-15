@@ -139,11 +139,16 @@ promising direction is **call-rate** rather than per-call cost — e.g. how ofte
 
 ## State at end of session
 
-Changes are **uncommitted, in the working tree**, per the session instruction; no
-branch was pushed and no PR opened. Before publishing, whoever picks this up must:
+Changes are committed and pushed to the PR branch for issue #2975.
 
-1. commit, then re-run `npm run review:grade -- prompt/record` against the
-   committed sha (the recorder refuses a dirty tree, so the recorded grade is
-   bound to `c8fcd87` + working-tree diff — see the ledger note),
-2. run the **full 24-run** `perf:fingerprint` gate sample on CI,
-3. run `npm run verify:pr-prereqs`.
+The independent grade was **re-run against the committed sha** with
+`npm run review:grade -- prompt/record` (grader `gemini-3.1-pro-preview`,
+graded tree `eccd3e5c`, 5/5/5/5/5, pass, 0 findings), so the ledger grade is now
+bound to a clean tree rather than to a working-tree diff.
+
+Still owed before merge:
+
+1. the **full 24-run** `perf:fingerprint` gate sample on CI (rule 15 keeps broad
+   samples off local compute; `gh` is unauthenticated in the session
+   environment, so it could not be dispatched from here),
+2. `npm run verify:pr-prereqs`.
