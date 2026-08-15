@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "7f28c7a6b42f5f635e7e69be328ec811668738e1",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly addresses the regression by forcing wounded projectile users to engage nearby threats before continuing long approaches to NPCs. The scope is extremely tight and surgical, test coverage is excellent (adding both targeted unit tests and a headless regression test for the specific seed), and all policies regarding determinism and testing are strictly followed. Maintainability is high due to clear variable naming and self-documenting tests."
     }
   }
 }
