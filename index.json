@@ -1,5 +1,39 @@
 [
   {
+    "commit": "69ada7c57bb59d73f7216e2b00f7d535379004a8",
+    "commitDate": "2026-08-15T07:27:28Z",
+    "commitSubject": "Deduplicate release sweep failure issues by signature (#2940)",
+    "capturedAt": "2026-08-15T08:44:22.320Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31872745715",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/69ada7c57bb59d73f7216e2b00f7d535379004a8.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04,
+        "totalWins": 6,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.04,
+      "gatePass": false,
+      "path": "by-sha/69ada7c57bb59d73f7216e2b00f7d535379004a8.fun-report.json"
+    }
+  },
+  {
     "commit": "187bc7d62b513409497439fc64401ef9b5951703",
     "commitDate": "2026-08-15T06:42:09Z",
     "commitSubject": "fix(ci): never auto-close brand-new empty PRs as duplicates (#2950)",
