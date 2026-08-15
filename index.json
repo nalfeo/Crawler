@@ -1,5 +1,39 @@
 [
   {
+    "commit": "3f7332181ef53170229a709b20960855fe8685c3",
+    "commitDate": "2026-08-15T20:07:05Z",
+    "commitSubject": "Fix Floor 1 seed-39 boss-contact retreat regression (#2992)",
+    "capturedAt": "2026-08-15T21:11:59.580Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31906561755",
+    "winRate": 0.9933333333333333,
+    "totalWins": 298,
+    "totalRuns": 300,
+    "path": "by-sha/3f7332181ef53170229a709b20960855fe8685c3.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9933333333333333,
+        "totalWins": 298,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.06,
+        "totalWins": 9,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.07,
+      "gatePass": false,
+      "path": "by-sha/3f7332181ef53170229a709b20960855fe8685c3.fun-report.json"
+    }
+  },
+  {
     "commit": "fb35e05ede2fde3a87cdb3c6c6c777595c93b71f",
     "commitDate": "2026-08-15T17:22:26Z",
     "commitSubject": "Fix Floor 1 bow seed 32 retreat routing (#2988)",
