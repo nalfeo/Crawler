@@ -1,0 +1,117 @@
+{
+  "meta": {
+    "commit": "4e817bfdae25af87e871078ad78caaca114df14f",
+    "commitDate": "2026-08-15T01:28:36Z",
+    "commitSubject": "feat: add in-game issue reporting (#2928)",
+    "capturedAt": "2026-08-15T02:34:49.626Z",
+    "runId": "31857350021",
+    "runNumber": 1508,
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31857350021",
+    "sweep": {
+      "seeds": "1-50",
+      "kind": "winrate",
+      "revision": 2
+    }
+  },
+  "report": {
+    "runs": 600,
+    "outcomes": {
+      "victory": 300,
+      "death": 5,
+      "timeout": 290,
+      "stalled": 5,
+      "error": 0,
+      "quit": 0
+    },
+    "survey_coverage": 0,
+    "overall_fun_score": 34,
+    "dimensions": {
+      "engagement": 46.74,
+      "challenge_balance": 2.74,
+      "excitement": 26.25,
+      "pacing": 27.91,
+      "competence_growth": 35.04,
+      "choice_depth": 88.18,
+      "run_distinctness": 45.19
+    },
+    "sameness_grade": 54.81,
+    "objective_score": 34,
+    "subjective_score": null,
+    "confidence": 0.81,
+    "gate": {
+      "min_overall": 70,
+      "min_dimension": 55,
+      "gating_overall_score": 33.16,
+      "pass": false,
+      "failing_dimensions": [
+        "engagement",
+        "challenge_balance",
+        "excitement",
+        "pacing",
+        "competence_growth"
+      ]
+    },
+    "hotspots": [
+      {
+        "dimension": "challenge_balance",
+        "score": 2.74,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "excitement",
+        "score": 26.25,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "pacing",
+        "score": 27.91,
+        "reason": "Dimension score is below peers and drags overall fun."
+      }
+    ],
+    "criteria": {
+      "unsafe_combat_uptime": {
+        "observed": null,
+        "target": 0.75,
+        "status": "unmeasured",
+        "reason": "Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames."
+      },
+      "survivability_variance": {
+        "observed": 0.33,
+        "target": 0.14,
+        "status": "healthy",
+        "reason": "Healthy band is 0.14-0.45 standard deviations of normalized outcome: too little spread is monotone, too much is coin-flip volatility. Inspect tails before tuning."
+      },
+      "run_variety": {
+        "observed": 45.19,
+        "target": 60,
+        "status": "needs_attention",
+        "reason": "Run variety reuses the existing distinctness score."
+      },
+      "dopamine_cadence": {
+        "observed": 564.7,
+        "target": 90,
+        "status": "needs_attention",
+        "reason": "Worst active-play gap is 564.7s; 75.61% of active time is in gaps at or below 90s."
+      },
+      "snowball_frequency": {
+        "observed": 0,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "1/297 official victories crossed robust z >= 3.5 on at least two non-zero-MAD features."
+      },
+      "meta_progression": {
+        "observed": null,
+        "target": 0.05,
+        "status": "unmeasured",
+        "reason": "Permanent-power run data is absent because the Production Office/full meta-progression system is deferred."
+      },
+      "item_viability": {
+        "observed": 0.6,
+        "target": 0,
+        "status": "needs_attention",
+        "reason": "243/402 exposed catalog items were avoided, selected below 10% after 5+ exposures, or selected but inert."
+      }
+    },
+    "persona_scores": {}
+  }
+}
