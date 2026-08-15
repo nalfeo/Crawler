@@ -1723,7 +1723,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
             const weapon = getActiveWeapon(ctx.world);
             const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
-            if (projectileWeapon) {
+            const woundedProjectile =
+              projectileWeapon && ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION;
+            if (projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
               // direct-approach path below.
