@@ -33,13 +33,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "f527d9de850458278237ac7ae548eb68f41b00e9",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff is coherent and high-confidence: it closes the provenance leak by rejecting committed machine-local fields and unsafe sourceRun values, stops future approvals from writing those fields, makes external approvals portable, preserves atomicity for hard-blocked icon batches, and updates the welcome-room footprint data to match the restored assets. The change is broader than a single-file hotfix because it includes a corpus-wide shard cleanup, but that expansion is still directly tied to the stated repair. Targeted validation is strong overall (sprite approval tests, reprocess helper coverage, set-piece declared-feet coverage, and the committed asset-integrity guard all pass), though the shared sourceRun fallback used by approveFrameSequence is covered indirectly rather than with a dedicated new assertion."
     }
   }
 }
