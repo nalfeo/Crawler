@@ -231,26 +231,26 @@ test('missing canonical directory is an empty catalog, not an error', async () =
       runs: [],
       errors: [],
     });
-
-    test('discovers generic experiment envelopes alongside sweep projections', async () => {
-      await withWorkspace(async ({ workspace, directory }) => {
-        await writeFile(
-          join(directory, 'persona.json'),
-          JSON.stringify(genericResult('2026-07-16T12:00:00Z')),
-        );
-        const discovered = await listLocalSweepResults(workspace);
-        assert.deepEqual(
-          discovered.runs.map(({ name }) => name),
-          ['persona.json'],
-        );
-        const loaded = await readLocalSweepFile(join(directory, 'persona.json'));
-        assert.equal(loaded.data.summaries[0].weapon, 'experienced_player');
-        assert.equal(loaded.data.allRecords[0].finalLevel, 3);
-      });
-    });
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+});
+
+test('discovers generic experiment envelopes alongside sweep projections', async () => {
+  await withWorkspace(async ({ workspace, directory }) => {
+    await writeFile(
+      join(directory, 'persona.json'),
+      JSON.stringify(genericResult('2026-07-16T12:00:00Z')),
+    );
+    const discovered = await listLocalSweepResults(workspace);
+    assert.deepEqual(
+      discovered.runs.map(({ name }) => name),
+      ['persona.json'],
+    );
+    const loaded = await readLocalSweepFile(join(directory, 'persona.json'));
+    assert.equal(loaded.data.summaries[0].weapon, 'experienced_player');
+    assert.equal(loaded.data.allRecords[0].finalLevel, 3);
+  });
 });
 
 test('rejects records with invalid outcome and missing required numeric fields', async () => {
