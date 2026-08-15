@@ -33,13 +33,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "94c9b5953796b95fdad76d590469fe639948641c",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change surgically implements the required threat-clearing behavior for wounded projectile and melee users. It correctly limits the scope to the NPC-approach logic, preserves healthy behavior, and adds robust unit and headless coverage to prevent regressions. No policy violations or missed edge cases were found."
     }
   }
 }
