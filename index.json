@@ -1,5 +1,39 @@
 [
   {
+    "commit": "fb35e05ede2fde3a87cdb3c6c6c777595c93b71f",
+    "commitDate": "2026-08-15T17:22:26Z",
+    "commitSubject": "Fix Floor 1 bow seed 32 retreat routing (#2988)",
+    "capturedAt": "2026-08-15T18:27:16.548Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31898918888",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/fb35e05ede2fde3a87cdb3c6c6c777595c93b71f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.02,
+        "totalWins": 3,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 33.96,
+      "gatePass": false,
+      "path": "by-sha/fb35e05ede2fde3a87cdb3c6c6c777595c93b71f.fun-report.json"
+    }
+  },
+  {
     "commit": "d82ff8fbf831d591d40b49cf6442c767fda8a60f",
     "commitDate": "2026-08-15T16:59:16Z",
     "commitSubject": "Fix Floor 1 melee threat recovery loop (#2980)",
