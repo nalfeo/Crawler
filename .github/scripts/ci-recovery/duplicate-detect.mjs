@@ -161,17 +161,10 @@ export function proveEmptyDiff(pr, options = {}) {
     return { proved: false, reason: null };
   }
 
-  const minAgeMs = Number.isFinite(Number(options.minAgeMs))
-    ? Number(options.minAgeMs)
-    : EMPTY_DIFF_MIN_AGE_MS;
-  const minQuietMs = Number.isFinite(Number(options.minQuietMs))
-    ? Number(options.minQuietMs)
-    : EMPTY_DIFF_MIN_QUIET_MS;
-
   const grace = evaluateCloseGrace(pr, {
     nowMs: options.nowMs,
-    minAgeMs,
-    minQuietMs,
+    minAgeMs: options.minAgeMs,
+    minQuietMs: options.minQuietMs,
   });
   if (grace.tooFresh) {
     return { proved: false, reason: null };
