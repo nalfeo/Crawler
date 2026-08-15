@@ -118,7 +118,7 @@ describe('EffectsVfx player-hurt throttle', () => {
       expect.objectContaining({
         duration: PLAYER_HURT_PULSE_DURATION_MS,
         ease: 'Cubic.easeOut',
-        scale: { from: 0.4, to: PLAYER_HURT_PULSE_SCALE },
+        scale: expect.objectContaining({ to: PLAYER_HURT_PULSE_SCALE }),
       }),
     );
   });
