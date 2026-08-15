@@ -80,7 +80,7 @@ import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createQuartermasterUI } from '../QuartermasterUI.js';
 import { createRunSurveyUI } from '../RunSurveyUI.js';
 import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
-import { submitRunSurvey } from '../../shared/run-bundle-telemetry.js';
+import { submitRunSurvey } from '../run-bundle-upload.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -4042,23 +4042,43 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.runSurveyShown = true;
     this.runSurveyUI = createRunSurveyUI({
-      onSubmit: (survey) => {
+      onSubmit: async (survey) => {
         const validSurvey = validatePlaytestSurvey(survey);
         if (!validSurvey || !this.lastRunBundle) {
-          return;
+          return false;
         }
-        this.runSurveySubmitted = true;
-        void submitRunSurvey(this.lastRunBundle, validSurvey).catch((error: unknown) => {
-          if (typeof console !== 'undefined') {
-            console.warn('Run survey submission failed', error);
-          }
-        });
+        const result = await submitRunSurvey(this.lastRunBundle, validSurvey).catch(
+          (error: unknown) => {
+            if (typeof console !== 'undefined') {
+              console.warn('Run survey submission failed', error);
+            }
+            return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
+          },
+        );
+        if (result.ok) {
+          this.runSurveySubmitted = true;
+        }
+        return result.ok;
       },
       onSkip: () => {
         this.runSurveySubmitted = true;
+        // No survey was submitted: emitRunBundle deliberately deferred the
+        // single upload for this run until skip/submit resolved (see
+        // emitRunBundle), so perform that one silent upload now.
+        if (this.lastRunBundle) {
+          this.options.onRunBundle?.(this.lastRunBundle);
+        }
       },
     });
     this.runSurveyUI.show();
+  }
+
+  private nextRunBundleId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    return `run-${this.world.seed}-${this.world.frameCount}`;
   }
 
   private emitRunBundle(endReason: RunEndReason): void {
@@ -4087,10 +4107,18 @@ export class MainGameScene extends Phaser.Scene {
         endReason,
         floorId: this.options.floorId,
         seed: this.world.seed,
+        runId: this.nextRunBundleId(),
       },
     });
     this.runBundleEmitted = true;
     this.lastRunBundle = bundle;
+    if (endReason === 'death' || endReason === 'victory') {
+      // A post-run survey may follow (see showRunSurveyIfNeeded). Uploading
+      // here too would resend this run under an unrelated stored ID once the
+      // survey is submitted, creating a duplicate; instead defer the single
+      // upload for this run to whichever of skip/submit resolves the survey.
+      return;
+    }
     this.options.onRunBundle?.(bundle);
   }
 

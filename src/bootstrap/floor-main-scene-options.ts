@@ -22,7 +22,7 @@ import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
   resolveRunBundleUploadConfig,
   submitRunBundleUpload,
-} from '../shared/run-bundle-telemetry.js';
+} from '../engine/run-bundle-upload.js';
 import {
   statSystem,
   statusEffectSystem,

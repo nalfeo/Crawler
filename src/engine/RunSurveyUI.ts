@@ -11,7 +11,13 @@ const QUESTION_FIELDS = [
 export type RunSurveyLike = PlaytestSurvey;
 
 export interface RunSurveyUIHooks {
-  readonly onSubmit: (survey: RunSurveyLike) => void;
+  /**
+   * Submit handler. Must resolve to `true` only once the survey has actually
+   * been delivered — the dialog stays open and shows a retryable error state
+   * whenever this resolves `false` (network/HTTP failure), so player feedback
+   * is never silently discarded.
+   */
+  readonly onSubmit: (survey: RunSurveyLike) => Promise<boolean> | boolean;
   readonly onSkip?: () => void;
 }
 
@@ -23,6 +29,11 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
 } {
   let element: HTMLDivElement | null = null;
   let visible = false;
+  let lastFocused: HTMLElement | null = null;
+  let submitBtnRef: HTMLButtonElement | null = null;
+  let skipBtnRef: HTMLButtonElement | null = null;
+  let errorTextRef: HTMLParagraphElement | null = null;
+  let firstSliderRef: HTMLInputElement | null = null;
 
   const setValue = (field: keyof PlaytestSurvey, value: number): void => {
     if (!element) {
@@ -38,6 +49,57 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
     }
   };
 
+  const getFocusableElements = (): HTMLElement[] => {
+    if (!element) {
+      return [];
+    }
+    return Array.from(
+      element.querySelectorAll<HTMLElement>(
+        'input, textarea, button, [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => !el.hasAttribute('disabled'));
+  };
+
+  const trapFocus = (event: KeyboardEvent): void => {
+    if (event.key !== 'Tab') {
+      return;
+    }
+    const focusable = getFocusableElements();
+    if (focusable.length === 0) {
+      return;
+    }
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    const active = document.activeElement as HTMLElement | null;
+    if (event.shiftKey) {
+      if (active === first || !element?.contains(active)) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !element?.contains(active)) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const setSubmitting = (submitting: boolean): void => {
+    if (submitBtnRef) {
+      submitBtnRef.disabled = submitting;
+      submitBtnRef.textContent = submitting ? 'Submitting…' : 'Submit feedback';
+    }
+    if (skipBtnRef) {
+      skipBtnRef.disabled = submitting;
+    }
+  };
+
+  const setError = (message: string | null): void => {
+    if (!errorTextRef) {
+      return;
+    }
+    errorTextRef.textContent = message ?? '';
+    errorTextRef.style.display = message ? 'block' : 'none';
+  };
+
   const createElement = (): HTMLDivElement => {
     const dialog = document.createElement('div');
     dialog.style.position = 'fixed';
@@ -49,8 +111,11 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
     dialog.style.zIndex = '5000';
     dialog.style.fontFamily = 'Segoe UI, Arial, sans-serif';
     dialog.style.pointerEvents = 'auto';
+    dialog.addEventListener('keydown', trapFocus);
 
     const panel = document.createElement('div');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
     panel.style.width = 'min(680px, calc(100vw - 32px))';
     panel.style.background = '#0f172a';
     panel.style.border = '1px solid #334155';
@@ -59,11 +124,14 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
     panel.style.boxShadow = '0 24px 80px rgba(15, 23, 42, 0.8)';
     panel.style.color = '#e2e8f0';
 
+    const titleId = 'crawler-run-survey-title';
     const title = document.createElement('h3');
+    title.id = titleId;
     title.textContent = 'Run feedback';
     title.style.margin = '0 0 6px';
     title.style.color = '#f8fafc';
     title.style.fontSize = '28px';
+    panel.setAttribute('aria-labelledby', titleId);
 
     const subtitle = document.createElement('p');
     subtitle.textContent = 'Tell us how the run felt and what stood out.';
@@ -74,7 +142,7 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
     rows.style.display = 'grid';
     rows.style.gap = '10px';
 
-    for (const question of QUESTION_FIELDS) {
+    QUESTION_FIELDS.forEach((question, index) => {
       const row = document.createElement('div');
       row.style.display = 'grid';
       row.style.gridTemplateColumns = '170px 1fr 38px';
@@ -95,6 +163,7 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
       slider.step = '1';
       slider.value = '3';
       slider.setAttribute('data-field', question.key);
+      slider.setAttribute('aria-label', question.label);
       slider.style.width = '100%';
       slider.style.accentColor = '#fbbf24';
 
@@ -105,9 +174,17 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
       value.style.fontWeight = '700';
       value.style.textAlign = 'right';
 
+      slider.addEventListener('input', () => {
+        value.textContent = slider.value;
+      });
+
+      if (index === 0) {
+        firstSliderRef = slider;
+      }
+
       row.append(label, slider, value);
       rows.appendChild(row);
-    }
+    });
 
     const textareaWrap = document.createElement('div');
     textareaWrap.style.marginTop = '18px';
@@ -132,6 +209,22 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
 
     textareaWrap.append(areaLabel, textarea);
 
+    const disclosure = document.createElement('p');
+    disclosure.textContent =
+      'Submitting creates a public GitHub issue containing your answers, comment, and a temporary link to this run.';
+    disclosure.style.margin = '14px 0 0';
+    disclosure.style.color = '#94a3b8';
+    disclosure.style.fontSize = '12px';
+
+    const errorText = document.createElement('p');
+    errorText.textContent = '';
+    errorText.style.display = 'none';
+    errorText.style.margin = '10px 0 0';
+    errorText.style.color = '#fca5a5';
+    errorText.style.fontSize = '13px';
+    errorText.setAttribute('role', 'alert');
+    errorTextRef = errorText;
+
     const actions = document.createElement('div');
     actions.style.display = 'flex';
     actions.style.justifyContent = 'flex-end';
@@ -150,6 +243,7 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
       hide();
       hooks.onSkip?.();
     });
+    skipBtnRef = skipBtn;
 
     const submitBtn = document.createElement('button');
     submitBtn.type = 'button';
@@ -173,12 +267,26 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
       if (comment.length > 0) {
         payload.comment = comment;
       }
-      hide();
-      hooks.onSubmit(payload as PlaytestSurvey);
+      setError(null);
+      setSubmitting(true);
+      void Promise.resolve(hooks.onSubmit(payload as unknown as PlaytestSurvey))
+        .then((ok) => {
+          setSubmitting(false);
+          if (ok) {
+            hide();
+          } else {
+            setError('Submission failed. Please try again.');
+          }
+        })
+        .catch(() => {
+          setSubmitting(false);
+          setError('Submission failed. Please try again.');
+        });
     });
+    submitBtnRef = submitBtn;
 
     actions.append(skipBtn, submitBtn);
-    panel.append(title, subtitle, rows, textareaWrap, actions);
+    panel.append(title, subtitle, rows, textareaWrap, disclosure, errorText, actions);
     dialog.appendChild(panel);
     return dialog;
   };
@@ -187,6 +295,7 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
     if (typeof document === 'undefined') {
       return;
     }
+    lastFocused = (document.activeElement as HTMLElement | null) ?? null;
     if (!element) {
       element = createElement();
       document.body.appendChild(element);
@@ -194,8 +303,11 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
     for (const key of QUESTION_FIELDS) {
       setValue(key.key, 3);
     }
+    setError(null);
+    setSubmitting(false);
     visible = true;
     element.style.display = 'flex';
+    firstSliderRef?.focus();
   };
 
   const hide = (): void => {
@@ -204,10 +316,13 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
     }
     element.style.display = 'none';
     visible = false;
+    lastFocused?.focus();
+    lastFocused = null;
   };
 
   const destroy = (): void => {
     if (element && element.parentNode) {
+      element.removeEventListener('keydown', trapFocus);
       element.parentNode.removeChild(element);
     }
     element = null;
