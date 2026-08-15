@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   detectDuplicateProof,
   detectQuarantineEvidence,
+  evaluateCloseGrace,
   PROOF_RULES,
   proveEmptyDiff,
   proveSiblingMerged,
@@ -150,12 +151,86 @@ test('Rule 2: does NOT fire on an old empty PR with recent activity', () => {
 
 test('Rule 2: does NOT fire when timestamps or now are unknown', () => {
   const now = Date.UTC(2026, 0, 10);
+  const aged = new Date(now - 72 * 60 * 60 * 1000).toISOString();
   assert.equal(proveEmptyDiff({ additions: 0, deletions: 0 }, { nowMs: now }).proved, false);
   assert.equal(
     proveEmptyDiff({ additions: 0, deletions: 0, createdAt: 'not-a-date' }, { nowMs: now }).proved,
     false,
   );
   assert.equal(proveEmptyDiff({ additions: 0, deletions: 0 }).proved, false);
+  // updatedAt is fail-closed on its own: an aged PR with an absent or unparseable
+  // update timestamp must not fall back to createdAt and prove.
+  assert.equal(
+    proveEmptyDiff({ additions: 0, deletions: 0, createdAt: aged }, { nowMs: now }).proved,
+    false,
+    'missing updatedAt must not prove',
+  );
+  assert.equal(
+    proveEmptyDiff(
+      { additions: 0, deletions: 0, createdAt: aged, updatedAt: 'not-a-date' },
+      { nowMs: now },
+    ).proved,
+    false,
+    'unparseable updatedAt must not prove',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// evaluateCloseGrace — shared close-grace rule for every auto-close path
+// ---------------------------------------------------------------------------
+
+test('evaluateCloseGrace: aged and quiet PR is closable', () => {
+  const now = Date.UTC(2026, 0, 10);
+  const grace = evaluateCloseGrace(
+    {
+      createdAt: new Date(now - 48 * 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
+    },
+    { nowMs: now },
+  );
+  assert.equal(grace.tooFresh, false);
+  assert.equal(grace.reason, null);
+});
+
+test('evaluateCloseGrace: young or recently-active PR is too fresh', () => {
+  const now = Date.UTC(2026, 0, 10);
+  const young = evaluateCloseGrace(
+    {
+      createdAt: new Date(now - 2 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now - 2 * 60 * 1000).toISOString(),
+    },
+    { nowMs: now },
+  );
+  assert.equal(young.tooFresh, true);
+  assert.equal(young.reason, 'pr-too-young');
+
+  const active = evaluateCloseGrace(
+    {
+      createdAt: new Date(now - 72 * 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now - 60 * 1000).toISOString(),
+    },
+    { nowMs: now },
+  );
+  assert.equal(active.tooFresh, true);
+  assert.equal(active.reason, 'recent-activity');
+});
+
+test('evaluateCloseGrace: any unknown timestamp fails closed', () => {
+  const now = Date.UTC(2026, 0, 10);
+  const aged = new Date(now - 72 * 60 * 60 * 1000).toISOString();
+  for (const pr of [
+    {},
+    { createdAt: aged },
+    { createdAt: aged, updatedAt: null },
+    { createdAt: aged, updatedAt: 'not-a-date' },
+    { updatedAt: aged },
+    { createdAt: 'not-a-date', updatedAt: aged },
+  ]) {
+    const grace = evaluateCloseGrace(pr, { nowMs: now });
+    assert.equal(grace.tooFresh, true, `expected fail-closed for ${JSON.stringify(pr)}`);
+    assert.equal(grace.reason, 'unknown-timestamps');
+  }
+  assert.equal(evaluateCloseGrace({ createdAt: aged, updatedAt: aged }).tooFresh, true);
 });
 
 test('Rule 2: does NOT fire when additions>0', () => {

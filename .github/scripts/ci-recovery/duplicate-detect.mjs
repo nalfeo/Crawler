@@ -20,7 +20,9 @@
  *   working on it, so EMPTY_DIFF requires BOTH:
  *     - PR age    >= EMPTY_DIFF_MIN_AGE_MS since createdAt, and
  *     - quiescence >= EMPTY_DIFF_MIN_QUIET_MS since the last updatedAt.
- *   Unknown/unparseable timestamps are treated as "too young" (conservatism).
+ *   Unknown/unparseable timestamps (now, createdAt or updatedAt) are treated as
+ *   "too young" (conservatism). See evaluateCloseGrace(), which callers should
+ *   reuse for any other auto-close path so every path shares one grace rule.
  *
  * Quarantine-evidence helper (not a proof — routes to quarantine, not close):
  *   SIBLING_MERGED — merged sibling closes same issue (issue may still be open).
@@ -103,6 +105,43 @@ function parseTimestamp(value) {
 }
 
 /**
+ * Shared close-grace evaluation used by every auto-close path.
+ *
+ * A PR may only be auto-closed once it is BOTH aged past
+ * EMPTY_DIFF_MIN_AGE_MS and quiet for at least EMPTY_DIFF_MIN_QUIET_MS.
+ * Every timestamp must be known and finite: `nowMs`, `createdAt` and
+ * `updatedAt` are each fail-closed, so an absent or unparseable value makes the
+ * PR "too fresh" rather than silently falling back to another timestamp.
+ *
+ * @param {{ createdAt?: string, updatedAt?: string }} pr
+ * @param {{ nowMs?: number, minAgeMs?: number, minQuietMs?: number }} [options]
+ * @returns {{ tooFresh: boolean, reason: string|null, ageMs: number|null, quietMs: number|null }}
+ */
+export function evaluateCloseGrace(pr, options = {}) {
+  const minAgeMs = Number.isFinite(Number(options.minAgeMs))
+    ? Number(options.minAgeMs)
+    : EMPTY_DIFF_MIN_AGE_MS;
+  const minQuietMs = Number.isFinite(Number(options.minQuietMs))
+    ? Number(options.minQuietMs)
+    : EMPTY_DIFF_MIN_QUIET_MS;
+  const nowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : null;
+
+  const createdMs = parseTimestamp(pr?.createdAt);
+  const updatedMs = parseTimestamp(pr?.updatedAt);
+
+  // Unknown timestamps → treat as freshly opened (never auto-close).
+  if (nowMs === null || createdMs === null || updatedMs === null) {
+    return { tooFresh: true, reason: 'unknown-timestamps', ageMs: null, quietMs: null };
+  }
+
+  const ageMs = nowMs - createdMs;
+  const quietMs = nowMs - updatedMs;
+  if (ageMs < minAgeMs) return { tooFresh: true, reason: 'pr-too-young', ageMs, quietMs };
+  if (quietMs < minQuietMs) return { tooFresh: true, reason: 'recent-activity', ageMs, quietMs };
+  return { tooFresh: false, reason: null, ageMs, quietMs };
+}
+
+/**
  * Try proof rule EMPTY_DIFF:
  *   - The PR's diff against its base is zero: additions + deletions = 0, AND
  *   - the PR is old enough and quiet enough that no session is still filling it.
@@ -128,19 +167,13 @@ export function proveEmptyDiff(pr, options = {}) {
   const minQuietMs = Number.isFinite(Number(options.minQuietMs))
     ? Number(options.minQuietMs)
     : EMPTY_DIFF_MIN_QUIET_MS;
-  const nowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : null;
 
-  const createdMs = parseTimestamp(pr?.createdAt);
-  const updatedMs = parseTimestamp(pr?.updatedAt) ?? createdMs;
-
-  // Unknown timestamps → treat as freshly opened (never auto-close).
-  if (nowMs === null || createdMs === null) {
-    return { proved: false, reason: null };
-  }
-  if (nowMs - createdMs < minAgeMs) {
-    return { proved: false, reason: null };
-  }
-  if (updatedMs !== null && nowMs - updatedMs < minQuietMs) {
+  const grace = evaluateCloseGrace(pr, {
+    nowMs: options.nowMs,
+    minAgeMs,
+    minQuietMs,
+  });
+  if (grace.tooFresh) {
     return { proved: false, reason: null };
   }
 

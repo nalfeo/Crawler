@@ -45,7 +45,7 @@ jobs:
 
             const { pathToFileURL } = await import('url');
             const workspace = process.env.GITHUB_WORKSPACE;
-            const { detectDuplicateProof, detectQuarantineEvidence, EMPTY_DIFF_MIN_AGE_MS, EMPTY_DIFF_MIN_QUIET_MS } = await import(
+            const { detectDuplicateProof, detectQuarantineEvidence, evaluateCloseGrace } = await import(
               pathToFileURL(`${workspace}/.github/scripts/ci-recovery/duplicate-detect.mjs`).href
             );
             const {
@@ -239,15 +239,13 @@ jobs:
               // Shared freshness guard: a brand-new PR with an active agent session is
               // legitimately a no-op until the agent pushes its first commit. Never
               // auto-close inside the grace window, on any close path (PR #2948).
-              const createdMs = new Date(pull.created_at).getTime();
-              const updatedMs = new Date(pull.updated_at || pull.created_at).getTime();
-              const nowMs = Date.now();
-              const tooFresh =
-                !Number.isFinite(createdMs) ||
-                nowMs - createdMs < EMPTY_DIFF_MIN_AGE_MS ||
-                (Number.isFinite(updatedMs) && nowMs - updatedMs < EMPTY_DIFF_MIN_QUIET_MS);
-              if (tooFresh) {
-                core.notice(`skip-close-grace pr=#${pull.number} age_ms=${nowMs - createdMs} quiet_ms=${nowMs - updatedMs}`);
+              // Unknown/unparseable timestamps fail closed (treated as too fresh).
+              const grace = evaluateCloseGrace(
+                { createdAt: pull.created_at, updatedAt: pull.updated_at },
+                { nowMs: Date.now() },
+              );
+              if (grace.tooFresh) {
+                core.notice(`skip-close-grace pr=#${pull.number} reason=${grace.reason} age_ms=${grace.ageMs ?? 'unknown'} quiet_ms=${grace.quietMs ?? 'unknown'}`);
                 continue;
               }
 
@@ -264,6 +262,26 @@ jobs:
                 const proofs = Array.isArray(state?.proofs) ? state.proofs : [];
                 const prProof = proofs.find((p) => Number(p.number) === Number(pull.number));
                 if (prProof?.status === 'superseded') {
+                  // Re-validate freshness against LIVE PR timestamps: the loop guard
+                  // above ran on the repository-wide pulls.list snapshot, which can be
+                  // stale by the time this close executes. Fail closed on fetch failure
+                  // or unknown timestamps (PR #2948).
+                  let liveCoordPr;
+                  try {
+                    const { data } = await github.rest.pulls.get({ owner, repo, pull_number: pull.number });
+                    liveCoordPr = data;
+                  } catch (e) {
+                    core.warning(`pulls.get coordinator-close pr=#${pull.number}: ${e.message}`);
+                    continue;
+                  }
+                  const liveGrace = evaluateCloseGrace(
+                    { createdAt: liveCoordPr.created_at, updatedAt: liveCoordPr.updated_at },
+                    { nowMs: Date.now() },
+                  );
+                  if (liveGrace.tooFresh) {
+                    core.notice(`skip-close-grace pr=#${pull.number} path=coordinator-superseded reason=${liveGrace.reason} age_ms=${liveGrace.ageMs ?? 'unknown'} quiet_ms=${liveGrace.quietMs ?? 'unknown'}`);
+                    continue;
+                  }
                   const representedBy = (prProof.representedBy || []).join(', #') || 'main';
                   const closeBody = makeDuplicateCloseComment(pull.number, {
                     proofRule: 'empty-diff',
@@ -277,7 +295,7 @@ jobs:
                     currentPhase: null,
                     targetPhase: PHASE.ABANDONED,
                     blockReason: `coordinator-superseded:represented-by-${representedBy}`,
-                    headSha: pull.head.sha,
+                    headSha: liveCoordPr.head.sha,
                     mode: 'live',
                     writeComment: (n, body) => upsertLifecycleComment(n, body),
                     addLabel: (n, label) => addLabelStrict(n, label),
