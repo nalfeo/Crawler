@@ -249,7 +249,6 @@ import {
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
-  WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   ARENA_LOCKIN_DEFENSIVE_HP_FRACTION,
@@ -1719,8 +1718,8 @@ export class BehaviorTreeAI implements AIInputProvider {
           const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
           const weapon = getActiveWeapon(ctx.world);
           const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
-          const shouldForceProjectileThreatClear =
-            projectileWeapon && ctx.healthPercent < WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION;
+          const woundedProjectile =
+            projectileWeapon && ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION;
           // Wounded melee users need the full engage radius instead of the normal
           // 8 ft NPC-approach cap; baseball-bat seed 34 otherwise walks past a
           // lethal threat while travelling to the quest NPC.
@@ -1730,7 +1729,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             ? this.getEngageRadius(ctx.world)
             : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (projectileWeapon && !shouldForceProjectileThreatClear) {
+            if (projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
               // direct-approach path below.

@@ -1901,6 +1901,22 @@ describe('BehaviorTreeAI', () => {
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
   });
 
+  it.each(['bow', 'fireball'])(
+    'clears nearby threats before long NPC approach paths when a wounded %s user routes to an NPC',
+    (weaponId) => {
+      const { world, player, enemies } = setupNpcApproachThreat(weaponId);
+      world.stores.health.current[player] = 120;
+      world.stores.health.max[player] = 240;
+      const ai = new BehaviorTreeAI({ seed: 12 });
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.ENGAGE);
+      expect(enemies).toContain(decision.targetEid);
+      expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
+    },
+  );
+
   it('resolves the retreat-triggering threat before resuming remote progression', () => {
     const { world, player, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('throwing-knife');
     world.stores.health.current[player] = 8;

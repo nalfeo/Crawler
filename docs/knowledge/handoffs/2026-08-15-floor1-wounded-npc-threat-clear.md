@@ -24,8 +24,8 @@ requirement, so the losses were treated as actionable. The affected release leg
 was viewed with `project:sweep-results-viewer runId=31874790650`.
 
 The fix keeps healthy projectile NPC travel behavior intact, but when a
-projectile user is wounded below `WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION`
-(30% HP), the Progress NPC-approach branch no longer skips `ENGAGE` for a nearby
+projectile user is wounded below the existing `RANGED_DEFENSIVE_HP_FRACTION`
+(70% HP), the Progress NPC-approach branch no longer skips `ENGAGE` for a nearby
 threat. The runner clears the local threat before continuing to the quest NPC.
 Wounded melee users also expand NPC-approach threat clearing from the normal 8 ft
 cap to their full engagement radius; this is required for baseball-bat seed 34.
@@ -37,8 +37,6 @@ cap to their full engagement radius; this is required for baseball-bat seed 34.
     decisions.
   - Wounded projectile users now clear nearby NPC-approach threats instead of
     relying on auto-fire while continuing travel.
-- `src/game/ai/bt-ai-tuning.ts`
-  - Added the 30% wounded projectile NPC threat-clear threshold.
 - `tests/game/behavior-tree-ai.test.ts`
   - Added direct unit coverage for the wounded projectile NPC-approach contract,
     plus healthy/wounded melee coverage beyond the old 8 ft boundary.

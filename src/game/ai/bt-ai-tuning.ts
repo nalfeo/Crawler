@@ -618,7 +618,6 @@ export const NPC_INTERACTION_RADIUS_FT = 12.5;
 // Clamp for the "clear a nearby threat before approaching an NPC" check: a threat
 // must be within min(engageRadius, this) feet to pre-empt the NPC approach.
 export const NPC_APPROACH_THREAT_RADIUS_FT = 8;
-export const WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION = 0.3;
 // Stop re-entering threat-clear ENGAGE when it has failed to reduce the distance
 // to the same NPC for this many consecutive polls. The bypass stays latched until
 // the gate exits, so one small improvement cannot restart the same livelock.
