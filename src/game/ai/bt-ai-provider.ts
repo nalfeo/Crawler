@@ -1721,6 +1721,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
           const shouldForceProjectileThreatClear =
             projectileWeapon && ctx.healthPercent < WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION;
+          // Wounded melee users need the full engage radius instead of the normal
+          // 8 ft NPC-approach cap; baseball-bat seed 34 otherwise walks past a
+          // lethal threat while travelling to the quest NPC.
           const shouldExpandMeleeThreatClear =
             !projectileWeapon && ctx.healthPercent < FARM_MIN_HEALTH_FRACTION;
           const npcThreatRadius = shouldExpandMeleeThreatClear

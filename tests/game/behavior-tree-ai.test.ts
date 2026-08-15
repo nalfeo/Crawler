@@ -1855,6 +1855,24 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
   });
 
+  it.each([
+    { health: 40, expectedState: AIState.ENGAGE, behavior: 'expands when wounded' },
+    { health: 80, expectedState: AIState.EXPLORE, behavior: 'keeps the 8 ft cap when healthy' },
+  ])('$behavior for melee NPC-approach threat clearing', ({ health, expectedState }) => {
+    const { world, player, enemies } = setupNpcApproachThreat('baseball-bat');
+    world.stores.health.current[player] = health;
+    world.stores.health.max[player] = 100;
+    world.stores.position.x[enemies[0]!] = 24;
+    world.stores.position.y[enemies[0]!] = 14;
+    world.stores.position.x[enemies[1]!] = 25;
+    world.stores.position.y[enemies[1]!] = 15;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(expectedState);
+  });
+
   it.each(['bow', 'fireball', 'boomerang', 'laser'])(
     'keeps %s travelling toward an NPC while auto-fire handles nearby threats',
     (weaponId) => {

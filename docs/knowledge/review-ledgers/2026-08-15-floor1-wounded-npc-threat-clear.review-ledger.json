@@ -14,8 +14,23 @@
       "notes": "Retrospective separate-model plan review approved the surgical wounded-projectile NPC threat-clear design but required additional validation/process proof. Resolutions: (1) ran/recording exact Floor 1 release-leg sweep locally because no workflow_dispatch tool is available in-session; (2) kept the generic NPC branch behavior but added focused unit coverage and will rely on verify:fast/pr-prereqs for cross-floor regressions; (3) completed the 3-apple ledger stages before PR; (4) added a direct wounded projectile NPC-approach unit assertion."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["github-copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["github-copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
