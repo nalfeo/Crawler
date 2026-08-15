@@ -1719,15 +1719,15 @@ export class BehaviorTreeAI implements AIInputProvider {
           const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
           const weapon = getActiveWeapon(ctx.world);
           const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
-          const woundedNpcApproach = projectileWeapon
-            ? ctx.healthPercent < WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION
-            : ctx.healthPercent < FARM_MIN_HEALTH_FRACTION;
-          const npcThreatRadius =
-            woundedNpcApproach && !projectileWeapon
-              ? this.getEngageRadius(ctx.world)
-              : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
+          const shouldForceProjectileThreatClear =
+            projectileWeapon && ctx.healthPercent < WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION;
+          const shouldExpandMeleeThreatClear =
+            !projectileWeapon && ctx.healthPercent < FARM_MIN_HEALTH_FRACTION;
+          const npcThreatRadius = shouldExpandMeleeThreatClear
+            ? this.getEngageRadius(ctx.world)
+            : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            if (projectileWeapon && !woundedNpcApproach) {
+            if (projectileWeapon && !shouldForceProjectileThreatClear) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
               // direct-approach path below.
