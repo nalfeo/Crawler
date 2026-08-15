@@ -1,0 +1,48 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "floor1-seed39-boss-contact-retreat",
+  "task_title": "Fix Floor 1 seed-39 boss-contact retreat regression",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 1,
+      "plan_divergence": "none - implementation matched the reviewed root-cause/fix plan exactly; reviewer flagged 3 non-blocking follow-up suggestions and 1 optional hardening suggestion, not a divergence",
+      "notes": "Verdict: approved_with_changes. Reviewer confirmed the fix is well-targeted (narrow distance-based carve-out on the existing ranged-shooter Retreat bail-out) and no different architecture is warranted. Addressed concern #1 (test proves symptom not exact predicate) by adding two focused unit tests in tests/game/behavior-tree-ai.test.ts pinning the exact attackRange+distance boundary (contact-range retreats; still-at-range defers to Engage), and confirmed the new predicate-pinning test fails against the pre-fix condition. Concerns #2 (CONTACT_SAFE_ORBIT_FT double-duty naming), #3 (mid-floor slime-rat boss may share the same shape), and #4 (potential boundary thrash near the threshold) are noted as follow-up hardening ideas outside this regressions minimal-fix scope; none block this narrowly-scoped bugfix."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer": "code_review tool (session)",
+          "findings": [
+            {
+              "file": "tests/headless/floor1-throwing-knife39-boss-contact-regression.test.ts",
+              "issue": "maxWallTimeMs (300000ms) exceeded the Vitest test timeout (120000ms), so Vitest would kill the test with a generic timeout instead of the runner surfacing a controlled timeout message",
+              "resolution": "lowered maxWallTimeMs to 90000ms, safely below the 120000ms test timeout; re-ran test to confirm it still passes (28s actual runtime)"
+            },
+            {
+              "file": "docs/knowledge/review-ledgers/2026-08-15-floor1-seed39-boss-contact-retreat.review-ledger.json",
+              "issue": "code_review and independent_grade stages were incomplete for the declared 3-apple tier",
+              "resolution": "completing both stages now via this recording and the subsequent independent_grade stage"
+            }
+          ],
+          "resolved": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

@@ -1275,7 +1275,15 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
           const attackRange = ctx.world.stores.enemyBehavior.attackRange[threat.eid] ?? 0;
           const retreatEscapeRadius = this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT;
-          if (attackRange > retreatEscapeRadius) {
+          // Only defer to Engage's kite/strafe while the shooter is actually
+          // USING that range — i.e. still outside melee contact distance.
+          // Some bosses (e.g. the Floor 1 stair boss) combine a long-range
+          // attackRange for a projectile ability with normal melee contact
+          // damage once they close in; once `threat` has already closed to
+          // CONTACT_SAFE_ORBIT_FT, it is not "sniping from range" regardless of
+          // its nominal attackRange, and blocking Retreat here left the AI with
+          // no escape from a boss meleeing it point-blank at critical health.
+          if (attackRange > retreatEscapeRadius && threat.distance > CONTACT_SAFE_ORBIT_FT) {
             // Backing to the retreat hysteresis edge cannot disengage a shooter
             // whose real attack range extends beyond it. Radial retreat then
             // alternates with radial re-approach on the same projectile line.
