@@ -23,3 +23,5 @@ Estimated 2🍎, actual 2🍎 — four localized findings shared one experiment 
 
 - `npx vitest run --project unit tests/unit/weapon-sweep-output.test.ts`
 - `node --test .github/extensions/sweep-results-viewer/tests/*.mjs`
+- `npm run verify:fast`
+- `npm run verify:pr-prereqs`
