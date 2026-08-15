@@ -23,8 +23,6 @@ import {
   type PlayerGender,
 } from '../../shared/intro-config.js';
 
-export type { PlayerGender };
-
 declare global {
   interface Window {
     __introDebug?: {

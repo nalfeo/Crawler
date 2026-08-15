@@ -13,4 +13,4 @@ export type {
 export { BootScene } from './scenes/BootScene.js';
 export { MainGameScene } from './scenes/MainGameScene.js';
 export { IntroScene } from './scenes/IntroScene.js';
-export type { PlayerGender } from './scenes/IntroScene.js';
+export type { PlayerGender } from '../shared/intro-config.js';

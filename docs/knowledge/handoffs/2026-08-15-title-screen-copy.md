@@ -17,6 +17,7 @@ The requested issue plan was posted before code changes as a reply to issue comm
 
 - `src/engine/scenes/BootScene.ts`
 - `src/engine/scenes/IntroScene.ts`
+- `src/engine/index.ts`
 - `tests/unit/title-screen-copy.test.ts`
 
 ## Verification
@@ -25,6 +26,8 @@ The requested issue plan was posted before code changes as a reply to issue comm
 - `npm run test:unit -- tests/unit/title-screen-copy.test.ts`
 - After edit real-app observation via the same Vite dev server + Playwright canvas text probe: rendered `Crawler`.
 - `npm run verify:fast`
+- CI recovery: removed the unused `IntroScene` type re-export while preserving the
+  engine barrel API from its canonical `shared/intro-config` definition.
 
 ## Unresolved issues
 
