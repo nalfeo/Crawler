@@ -19,7 +19,9 @@ ai-behavior-tree, ai-combat-balance
 ## Summary
 
 Issue #2989 reported the forced-bow seed 32 Floor 1 loss from release run
-`31897808277` (`project:sweep-results-viewer runId=31897808277`). The exact
+`31897808277` (`project:sweep-results-viewer runId=31897808277`), and was
+already fixed by PR #2988 (`fb35e05`) before this handoff correction branch.
+This branch updates only the handoff evidence to match the merged fix. The exact
 current-baseline artifact for `d82ff8fbf831d591d40b49cf6442c767fda8a60f` died at
 211.9 seconds with 2.9% minimum HP.
 
