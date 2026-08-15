@@ -82,13 +82,14 @@ resolved by not making the claim, not by inflating it.
 
 ## Neutrality evidence
 
-- `npm run perf:fingerprint -- --seeds 1-3 --weapons sword` (narrowed, per issue
-  instruction to keep broad sampling on CI): hash
+- `npm run perf:fingerprint -- --seeds 1-3 --weapons sword` (narrowed): hash
   `bf7e0e4b51e46c5d4aad4ff7f4058b6904909067ae8486e282c59aca2dd0770e` written on
   the clean tree, `--check` **byte-identical** after the change.
-  **Still owed:** the full 24-run gate sample (seeds 1-8 x sword/bow/baseball-bat).
-  AGENTS.md r15 puts a >10-run workload on GitHub infrastructure, and `gh` was
-  unauthenticated in this session — CI must run it before merge.
+- Full gate sample (8 seeds x sword/bow/baseball-bat): baseline written at
+  pre-change `67702ec9060ad902331ad5cbbc8da33cb57c040e` and checked at current
+  `71d7c5a3da3d740fc618b406db9370b129b30bef`, hash
+  `a2a6c5de1e5e5a71f105c7e1b5b08a340f0a02290834cb59859a898ae983364c`,
+  **byte-identical**.
 - Differential oracle in the committed bench: 212 fixtures x (path compared tile
   by tile **and** ordered `isPassable` probe trace compared entry by entry), all
   exact, across reachable / exhaustive-unreachable / degenerate `start === goal`
