@@ -50,6 +50,7 @@ import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
 import { classifySweepRun } from './winrate-sweep-classify.js';
 import { runProgression } from '../../../src/game/ai/progression-runner.js';
 import { attachReleaseBaselineRuns, serializeReleaseBaseline } from './release-baseline.js';
+import { runStatsToExperiment } from './experiment-result.js';
 import { buildFailureSignature } from './baseline-regression-check.js';
 
 /**
@@ -521,7 +522,19 @@ async function sweep(args: CLIArgs): Promise<void> {
       },
       taskResults.map((result) => result.stats),
     );
-    writeFileSync(args.out, serializeReleaseBaseline(output));
+    const legacy = JSON.parse(serializeReleaseBaseline(output)) as Record<string, unknown>;
+    const experiment = runStatsToExperiment(
+      'ai-sweep',
+      `ai-sweep-${start}`,
+      new Date(start).toISOString(),
+      taskResults.map((result) => result.stats),
+      {
+        floorId: args.floorId,
+        enemyDamageMultiplier: args.enemyDamageMultiplier,
+        maxFrames: args.maxFrames,
+      },
+    );
+    writeFileSync(args.out, `${JSON.stringify({ ...legacy, ...experiment }, null, 2)}\n`);
     console.log(`💾 ${args.out}`);
   }
 }

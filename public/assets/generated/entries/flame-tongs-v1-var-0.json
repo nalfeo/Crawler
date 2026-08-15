@@ -92,9 +92,6 @@
   },
   "type": "weapon",
   "contentHash": "1fe7be83bc8d37df5b574792d9b9be9a4adf55112399e094a4826eac18d21147",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/flame-tongs-v1/2026-07-25T05-31-20-45a06703/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/flame-tongs-v1/2026-07-25T05-31-20-45a06703/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/flame-tongs-v1/2026-07-25T05-31-20-45a06703/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

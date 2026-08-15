@@ -170,9 +170,6 @@
     "canvasWidth": 64,
     "canvasHeight": 64
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-collar-v1/2026-07-28T04-13-00-f8c3b3c4/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-collar-v1/2026-07-28T04-13-00-f8c3b3c4/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-collar-v1/2026-07-28T04-13-00-f8c3b3c4/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right"
 }

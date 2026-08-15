@@ -92,9 +92,6 @@
   },
   "type": "weapon",
   "contentHash": "526391db732d4d94b8381e23e8135eba543d3fec574b19fa229e98e06dc568ee",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/crystal-cannon-v1/2026-07-25T06-14-48-d1ad9f0a/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crystal-cannon-v1/2026-07-25T06-14-48-d1ad9f0a/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crystal-cannon-v1/2026-07-25T06-14-48-d1ad9f0a/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

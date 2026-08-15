@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": "enemy",
   "contentHash": "a6e2e17528812cb0fe39d452e170d4ba250f534ab69a156bb60201a5a4effd28",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cave-slime\\2026-07-08T00-42-00-a96f1cdb\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

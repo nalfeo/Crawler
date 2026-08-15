@@ -122,9 +122,6 @@
     "canvasWidth": 522,
     "canvasHeight": 512
   },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\kobold-boss\\2026-07-31T19-42-44-a22534e4\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\kobold-boss\\2026-07-31T19-42-44-a22534e4\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\kobold-boss\\2026-07-31T19-42-44-a22534e4\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

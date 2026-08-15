@@ -347,6 +347,57 @@ async function setControlValue(page, selector, value) {
   }, value);
 }
 
+/**
+ * Installs a fake scale Worker whose failure is delivered only when the test
+ * explicitly asks for it.
+ *
+ * These tests assert that a scale result arriving *after* an interfering change
+ * cannot overwrite it. A fixed `setTimeout` raced the very edit it was supposed
+ * to arrive after: under CI load the interfering edit took longer than the
+ * timer, so the failure landed against still-pristine state and the in-tab
+ * fallback correctly applied the scale — a 4x4-vs-2x2 flake, not a product bug.
+ * Explicit delivery makes "stale" deterministically stale.
+ */
+async function installDeferredFailureWorker(page) {
+  await page.evaluate(() => {
+    window.__failScaleWorker = null;
+    window.Worker = class DeferredFailureWorker {
+      listeners = {};
+
+      addEventListener(type, listener) {
+        this.listeners[type] = listener;
+      }
+
+      postMessage() {
+        window.__failScaleWorker = () => {
+          this.listeners.error?.(new Event('error'));
+        };
+      }
+
+      terminate() {}
+    };
+  });
+}
+
+/** Waits until the editor reports a scale is genuinely in flight. */
+async function waitForScaleInFlight(page) {
+  await page.waitForFunction(
+    () =>
+      typeof window.__failScaleWorker === 'function' &&
+      Boolean(document.querySelector('.tool-panel')?.textContent?.includes('Scaling…')),
+  );
+}
+
+/** Delivers the pending stale scale failure and waits for the editor to settle. */
+async function deliverStaleScaleFailure(page) {
+  await page.evaluate(() => {
+    window.__failScaleWorker?.();
+  });
+  await page.waitForFunction(
+    () => !document.querySelector('.tool-panel')?.textContent?.includes('Scaling…'),
+  );
+}
+
 test('sprite editor wires OpenCV scaling controls and methods', () => {
   const html = renderHtml('x');
   assert.match(html, /\/vendor\/opencv\.js/);
@@ -1185,32 +1236,19 @@ test('save race baseline uses the normalized server response, not raw submitted 
 
 test('stale scaling results cannot overwrite a newly selected sprite', async () => {
   await withEditor(async (page) => {
-    await page.evaluate(() => {
-      window.Worker = class DelayedFailureWorker {
-        listeners = {};
-
-        addEventListener(type, listener) {
-          this.listeners[type] = listener;
-        }
-
-        postMessage() {
-          setTimeout(() => this.listeners.error?.(new Event('error')), 150);
-        }
-
-        terminate() {}
-      };
-    });
+    await installDeferredFailureWorker(page);
     await page.locator('#tool-scale').click();
     await page.locator('#scale-factor').evaluate((element) => {
       element.value = '2';
       element.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await waitForScaleInFlight(page);
     await page.getByRole('button', { name: /Second Fixture/ }).click();
     await page.waitForFunction(
       () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
     );
-    await page.waitForTimeout(250);
+    await deliverStaleScaleFailure(page);
 
     assert.deepEqual(
       await page.locator('.sprite-canvas').evaluate((element) => [element.width, element.height]),
@@ -1222,21 +1260,7 @@ test('stale scaling results cannot overwrite a newly selected sprite', async () 
 
 test('stale scaling results cannot overwrite a mid-flight edit', async () => {
   await withEditor(async (page) => {
-    await page.evaluate(() => {
-      window.Worker = class DelayedFailureWorker {
-        listeners = {};
-
-        addEventListener(type, listener) {
-          this.listeners[type] = listener;
-        }
-
-        postMessage() {
-          setTimeout(() => this.listeners.error?.(new Event('error')), 150);
-        }
-
-        terminate() {}
-      };
-    });
+    await installDeferredFailureWorker(page);
 
     await page.locator('#tool-scale').click();
     await page.locator('#scale-factor').evaluate((element) => {
@@ -1253,6 +1277,7 @@ test('stale scaling results cannot overwrite a mid-flight edit', async () => {
       };
     });
     await page.locator('.tool-panel').getByRole('button', { name: 'Scale' }).click();
+    await waitForScaleInFlight(page);
     await page.locator('#comment').fill('Keep this in-flight note');
     await setControlValue(page, '#frame', 3);
     await page.locator('#favorite-heart').click();
@@ -1270,7 +1295,7 @@ test('stale scaling results cannot overwrite a mid-flight edit', async () => {
       });
     });
 
-    await page.waitForTimeout(300);
+    await deliverStaleScaleFailure(page);
 
     assert.deepEqual(
       await page.locator('.sprite-canvas').evaluate((element) => [element.width, element.height]),

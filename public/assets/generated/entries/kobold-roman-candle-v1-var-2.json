@@ -181,9 +181,6 @@
     "canvasWidth": 256,
     "canvasHeight": 261
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/kobold-roman-candle-v1/2026-08-01T00-15-25-856b72d7/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/kobold-roman-candle-v1/2026-08-01T00-15-25-856b72d7/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/kobold-roman-candle-v1/2026-08-01T00-15-25-856b72d7/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

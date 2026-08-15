@@ -31,6 +31,25 @@ function result(runAt, floors) {
   };
 }
 
+function genericResult(runAt) {
+  return {
+    schemaVersion: 'crawler.experiment.v1',
+    experiment: { type: 'persona-matrix', id: 'persona-matrix-1', parameters: {} },
+    runAt,
+    dimensions: { persona: ['experienced_player'] },
+    records: [
+      {
+        id: 'persona-matrix-1:1',
+        seed: 1,
+        outcome: 'victory',
+        dimensions: { persona: 'experienced_player' },
+        metrics: { finalLevel: 3, totalXp: 100, totalGold: 20 },
+      },
+    ],
+    aggregates: [],
+  };
+}
+
 async function withWorkspace(callback) {
   const workspace = await mkdtemp(join(tmpdir(), 'crawler-local-sweeps-'));
   try {
@@ -215,6 +234,60 @@ test('missing canonical directory is an empty catalog, not an error', async () =
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+});
+
+test('discovers generic experiment envelopes alongside sweep projections', async () => {
+  await withWorkspace(async ({ workspace, directory }) => {
+    await writeFile(
+      join(directory, 'persona.json'),
+      JSON.stringify(genericResult('2026-07-16T12:00:00Z')),
+    );
+    const discovered = await listLocalSweepResults(workspace);
+    assert.deepEqual(
+      discovered.runs.map(({ name }) => name),
+      ['persona.json'],
+    );
+    const loaded = await readLocalSweepFile(join(directory, 'persona.json'));
+    assert.equal(loaded.data.summaries[0].weapon, 'experienced_player');
+    assert.equal(loaded.data.allRecords[0].finalLevel, 3);
+  });
+});
+
+test('projects producer dimensions and preserves outcome-less records as unmeasured', async () => {
+  await withWorkspace(async ({ directory }) => {
+    const data = genericResult('2026-07-16T12:00:00Z');
+    data.dimensions = {
+      startingWeapon: ['sword', 'bow'],
+      playerPersona: ['new_player', 'experienced_player'],
+    };
+    data.records = [
+      {
+        id: 'persona-matrix-1:1:0',
+        seed: 1,
+        dimensions: { startingWeapon: 'sword', playerPersona: 'new_player' },
+        metrics: { finalLevel: 2 },
+      },
+      {
+        id: 'persona-matrix-1:1:1',
+        seed: 1,
+        dimensions: { startingWeapon: 'bow', playerPersona: 'experienced_player' },
+        metrics: { finalLevel: 3 },
+      },
+    ];
+    const path = join(directory, 'producer-dimensions.json');
+    await writeFile(path, JSON.stringify(data));
+
+    const loaded = await readLocalSweepFile(path);
+    assert.deepEqual(
+      loaded.data.summaries.map(({ weapon }) => weapon),
+      ['sword', 'bow'],
+    );
+    assert.deepEqual(
+      loaded.data.summaries.map(({ winRate }) => winRate),
+      [null, null],
+    );
+    assert.equal(loaded.data.allRecords[0].outcome, undefined);
+  });
 });
 
 test('rejects records with invalid outcome and missing required numeric fields', async () => {

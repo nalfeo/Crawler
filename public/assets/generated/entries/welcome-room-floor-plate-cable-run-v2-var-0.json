@@ -98,9 +98,6 @@
   },
   "type": "tile",
   "contentHash": "d1fd825e24264c8a260a727619b83af33426a3f8632f7494553d2d09419b195c",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run-v2\\2026-07-27T18-50-22-91760a5d\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run-v2\\2026-07-27T18-50-22-91760a5d\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-cable-run-v2\\2026-07-27T18-50-22-91760a5d\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {
