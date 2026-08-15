@@ -122,6 +122,12 @@ import {
   type LogCursor,
 } from '../../shared/logger.js';
 import { createRunBundle, type RunBundle, type RunEndReason } from '../../shared/run-bundle.js';
+import {
+  buildFileIssuePayload,
+  serializeIssueScreenshot,
+  submitFileIssue,
+  type FileIssuePayload,
+} from '../file-issue.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
@@ -464,6 +470,17 @@ export class MainGameScene extends Phaser.Scene {
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
+  private issueButton?: Phaser.GameObjects.Text;
+  private issueReportPausedState?: boolean;
+  private issueReportDescription = '';
+  private issueReportIncludeLogs = true;
+  private issueReportIncludeScreenshot = false;
+  private issueReportScreenshot?: string;
+  private issueReportScreenshotError?: string;
+  private issueReportSubmitting = false;
+  private issueReportRunId?: string;
+  private issueReportRetryPayload?: FileIssuePayload;
+  private issueReportAttemptCounter = 0;
 
   /**
    * Optional human player session recorder. Non-null only when
@@ -1199,6 +1216,8 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton = undefined;
       this.abilitiesButton?.destroy();
       this.abilitiesButton = undefined;
+      this.issueButton?.destroy();
+      this.issueButton = undefined;
       this.abilitiesModalOpen = false;
       this.achievementToast?.destroy();
       this.achievementToast = undefined;
@@ -1304,7 +1323,8 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
-      isCornerButtonHit(this.quartermasterButton)
+      isCornerButtonHit(this.quartermasterButton) ||
+      isCornerButtonHit(this.issueButton)
     ) {
       return;
     }
@@ -1363,6 +1383,11 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.isBlockingSurfaceOpen()) {
+      return;
+    }
+    if (event.code === 'F8' && !event.repeat) {
+      event.preventDefault();
+      this.openIssueReport();
       return;
     }
     if (event.code === 'KeyE') {
@@ -2420,6 +2445,9 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 224, '✕ Shop', () => {
       this.queuedQuartermasterToggle = true;
     });
+    this.issueButton = makeCornerButton(cornerButtonTop() + 280, '⚑ Issue', () => {
+      this.openIssueReport();
+    });
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -2427,6 +2455,7 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
+      this.issueButton?.setScale(buttonScale);
       // Re-anchor to the current safe rect (rotation can change the insets).
       const top = cornerButtonTop();
       const left = MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left;
@@ -2436,6 +2465,7 @@ export class MainGameScene extends Phaser.Scene {
         this.achievementsButton,
         this.abilitiesButton,
         this.quartermasterButton,
+        this.issueButton,
       ]) {
         button?.setX(left);
       }
@@ -2449,6 +2479,8 @@ export class MainGameScene extends Phaser.Scene {
       this.abilitiesButton?.setY(top + bagH + gearH + awardsH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
       this.quartermasterButton?.setY(top + bagH + gearH + awardsH + skillsH);
+      const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
+      this.issueButton?.setY(top + bagH + gearH + awardsH + skillsH + shopH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -3717,6 +3749,7 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton?.setVisible(false);
         this.equipButton?.setVisible(false);
         this.achievementsButton?.setVisible(false);
+        this.issueButton?.setVisible(false);
         this.quartermasterButton
           ?.setDepth(quartermasterOpen2 ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
           .setVisible(quartermasterOpen2);
@@ -3731,6 +3764,7 @@ export class MainGameScene extends Phaser.Scene {
     this.abilitiesButton?.setDepth(
       abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
     );
+    const issueOpen = this.issueReportPausedState !== undefined;
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();
@@ -3739,6 +3773,9 @@ export class MainGameScene extends Phaser.Scene {
       this.loadoutText?.setVisible(false);
       return;
     }
+
+    const canFileIssue = this.canFileIssue(issueOpen);
+    this.issueButton?.setVisible(canFileIssue);
 
     if (this.world.state === 'loadout') {
       const modalOpen = this.modalPicker?.isOpen() ?? false;
@@ -3948,6 +3985,25 @@ export class MainGameScene extends Phaser.Scene {
    * those cases are already handled by showFloorCompletionScreenIfNeeded() and
    * should not additionally trigger the death screen.
    */
+  private canFileIssue(issueOpen = this.issueReportPausedState !== undefined): boolean {
+    return (
+      !issueOpen &&
+      !this.issueReportSubmitting &&
+      this.world.state !== 'loadout' &&
+      this.world.state !== 'game_over' &&
+      !this.isBlockingSurfaceOpen()
+    );
+  }
+
+  private nextIssueReportRunId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    this.issueReportAttemptCounter += 1;
+    return `issue-${this.world.seed}-${this.world.frameCount}-${this.issueReportAttemptCounter}`;
+  }
+
   private showDeathScreenIfNeeded(): void {
     if (
       this.world.state !== 'game_over' ||
@@ -3991,6 +4047,237 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runBundleEmitted = true;
     this.options.onRunBundle?.(bundle);
+  }
+
+  private createIssueRunBundle(): RunBundle | null {
+    if (!this.options.runStatsFactory) {
+      return null;
+    }
+    const runId = this.issueReportRunId ?? this.nextIssueReportRunId();
+    this.issueReportRunId = runId;
+    return createRunBundle({
+      runStats: this.options.runStatsFactory(
+        this.world,
+        this.playerEid,
+        'quit',
+        this.runStartXp,
+        this.sessionRecorder?.getStats(),
+      ),
+      recorderJsonl: this.sessionRecorder?.toJsonl?.() ?? '',
+      logs: readLogsSince(this.runLogCursor),
+      meta: {
+        endReason: 'quit',
+        floorId: this.options.floorId,
+        seed: this.world.seed,
+        runId,
+      },
+    });
+  }
+
+  private openIssueReport(): void {
+    if (
+      !this.modalPicker ||
+      this.issueReportPausedState !== undefined ||
+      this.issueReportSubmitting ||
+      !this.canFileIssue()
+    ) {
+      return;
+    }
+    if (!this.issueReportRetryPayload) {
+      this.issueReportRunId = undefined;
+    }
+    const bundle = this.createIssueRunBundle();
+    if (!bundle) {
+      this.flashHint('Issue reporting is unavailable in this build.');
+      return;
+    }
+    this.issueReportPausedState = this.isSimulationPaused();
+    this.setSimulationPaused(true);
+    if (this.issueReportRetryPayload) {
+      this.issueReportDescription = this.issueReportRetryPayload.issue_description;
+      this.issueReportIncludeLogs = this.issueReportRetryPayload.logs.length > 0;
+      this.issueReportIncludeScreenshot = !!this.issueReportRetryPayload.screenshot?.base64;
+      this.issueReportScreenshot = this.issueReportRetryPayload.screenshot?.base64;
+      this.issueReportScreenshotError = undefined;
+      this.issueReportRunId = this.issueReportRetryPayload.meta.runId;
+    } else {
+      this.issueReportDescription = '';
+      this.issueReportIncludeLogs = true;
+      this.issueReportIncludeScreenshot = false;
+      this.issueReportScreenshot = undefined;
+      this.issueReportScreenshotError = undefined;
+      this.issueReportRunId = bundle.meta.runId;
+    }
+    void this.prepareIssueReport(bundle);
+  }
+
+  private async prepareIssueReport(bundle: RunBundle): Promise<void> {
+    await this.captureIssueScreenshot();
+    if (this.issueReportPausedState !== undefined) {
+      this.showIssueReportPicker(bundle);
+    }
+  }
+
+  private showIssueReportPicker(bundle: RunBundle, feedback?: string): void {
+    if (!this.modalPicker) {
+      this.finishIssueReport();
+      return;
+    }
+    const description = this.issueReportDescription
+      ? `Description: ${this.issueReportDescription.slice(0, 120)}`
+      : 'Description: required';
+    const screenshot = this.issueReportScreenshotError
+      ? `Screenshot unavailable: ${this.issueReportScreenshotError}`
+      : this.issueReportIncludeScreenshot
+        ? this.issueReportScreenshot
+          ? 'Attach screenshot: on'
+          : 'Attach screenshot: waiting'
+        : 'Attach screenshot: off';
+    this.modalPicker.open(
+      {
+        title: 'File an issue',
+        subtitle: feedback ?? 'F8 opens this flow. Simulation is paused while it is open.',
+        body: description,
+        options: [
+          {
+            id: 'description',
+            label: 'Describe issue',
+            description: this.issueReportDescription
+              ? 'Edit the report description.'
+              : 'Required before submit.',
+          },
+          {
+            id: 'logs',
+            label: this.issueReportIncludeLogs ? 'Attach logs: on' : 'Attach logs: off',
+            description: 'Attach the current bounded run log buffer.',
+          },
+          {
+            id: 'screenshot',
+            label: screenshot,
+            description: 'Capture the current Phaser game renderer as PNG.',
+            disabled: this.issueReportIncludeScreenshot && !this.issueReportScreenshot,
+          },
+          {
+            id: 'submit',
+            label: this.issueReportSubmitting ? 'Submitting issue…' : 'Submit issue',
+            description: 'Uploads this run bundle and creates a GitHub issue.',
+            disabled: !this.issueReportDescription.trim() || this.issueReportSubmitting,
+          },
+        ],
+        allowCancel: true,
+      },
+      {
+        onCancel: () => this.finishIssueReport(),
+        onConfirm: ({ option }) => {
+          switch (option.id) {
+            case 'description': {
+              const description = window.prompt(
+                'Describe what happened:',
+                this.issueReportDescription,
+              );
+              if (description !== null) {
+                this.issueReportDescription = description.slice(0, 4_000);
+                this.issueReportRetryPayload = undefined;
+              }
+              this.reopenIssueReportPicker(bundle);
+              break;
+            }
+            case 'logs':
+              this.issueReportIncludeLogs = !this.issueReportIncludeLogs;
+              this.issueReportRetryPayload = undefined;
+              this.reopenIssueReportPicker(bundle);
+              break;
+            case 'screenshot':
+              this.issueReportIncludeScreenshot = !this.issueReportIncludeScreenshot;
+              this.issueReportRetryPayload = undefined;
+              this.reopenIssueReportPicker(bundle);
+              break;
+            case 'submit':
+              void this.submitIssueReport(bundle);
+              break;
+          }
+        },
+      },
+    );
+  }
+
+  private reopenIssueReportPicker(bundle: RunBundle): void {
+    this.time.delayedCall(0, () => this.showIssueReportPicker(bundle));
+  }
+
+  private async captureIssueScreenshot(): Promise<void> {
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        if (!this.game.renderer) {
+          reject(new Error('Renderer is unavailable.'));
+          return;
+        }
+        this.game.renderer.snapshot((snapshot) => {
+          if (snapshot instanceof HTMLImageElement) {
+            resolve(snapshot);
+            return;
+          }
+          reject(new Error('Renderer screenshot did not produce an image.'));
+        });
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth || image.width;
+      canvas.height = image.naturalHeight || image.height;
+      const context = canvas.getContext('2d');
+      if (!context || canvas.width <= 0 || canvas.height <= 0) {
+        throw new Error('Renderer screenshot was empty.');
+      }
+      context.drawImage(image, 0, 0);
+      this.issueReportScreenshot = serializeIssueScreenshot(canvas);
+    } catch (error) {
+      this.issueReportScreenshot = undefined;
+      this.issueReportScreenshotError =
+        error instanceof Error ? error.message : 'Screenshot capture failed.';
+      logger.warn('Issue screenshot capture failed', error);
+    }
+  }
+
+  private async submitIssueReport(bundle: RunBundle): Promise<void> {
+    if (this.issueReportSubmitting) {
+      return;
+    }
+    this.issueReportSubmitting = true;
+    this.finishIssueReport();
+    try {
+      const payload =
+        this.issueReportRetryPayload ??
+        buildFileIssuePayload(bundle, this.issueReportDescription, {
+          includeLogs: this.issueReportIncludeLogs,
+          ...(this.issueReportIncludeScreenshot && this.issueReportScreenshot
+            ? { screenshotBase64: this.issueReportScreenshot }
+            : {}),
+        });
+      this.issueReportRetryPayload = payload;
+      const response = await submitFileIssue(payload);
+      this.flashHint(
+        response.issueUrl
+          ? `Issue created: ${response.issueUrl}`
+          : `Run ${response.runId} uploaded. Issue creation is pending.`,
+      );
+      this.issueReportRetryPayload = undefined;
+      this.issueReportRunId = undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Issue submission failed.';
+      this.flashHint(`Could not submit issue: ${message}`);
+    } finally {
+      this.issueReportSubmitting = false;
+    }
+  }
+
+  private finishIssueReport(): void {
+    const wasPaused = this.issueReportPausedState;
+    this.issueReportPausedState = undefined;
+    if (!this.issueReportSubmitting && !this.issueReportRetryPayload) {
+      this.issueReportRunId = undefined;
+    }
+    if (wasPaused !== undefined) {
+      this.setSimulationPaused(wasPaused);
+    }
   }
 
   /**
