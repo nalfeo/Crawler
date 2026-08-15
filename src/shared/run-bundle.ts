@@ -12,6 +12,7 @@ export interface RunBundleMeta {
   readonly endReason: RunEndReason;
   readonly floorId?: string;
   readonly seed?: number;
+  readonly runId?: string;
 }
 
 export interface RunBundle<TRunStats = unknown> {

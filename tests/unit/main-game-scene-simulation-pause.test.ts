@@ -67,4 +67,15 @@ describe('MainGameScene simulation pause / step accounting', () => {
     expect(source).toContain('this.issueReportSubmitting ||');
     expect(source).toContain('!this.issueReportSubmitting &&');
   });
+
+  it('blocks F8 issue reporting in non-reportable world states', () => {
+    expect(source).toContain("this.world.state !== 'loadout'");
+    expect(source).toContain("this.world.state !== 'game_over'");
+    expect(source).toContain('!this.canFileIssue()');
+  });
+
+  it('reuses the same prepared issue payload across retry attempts', () => {
+    expect(source).toContain('this.issueReportRetryPayload ??');
+    expect(source).toContain('this.issueReportRetryPayload = payload;');
+  });
 });

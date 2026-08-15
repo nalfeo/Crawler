@@ -122,7 +122,12 @@ import {
   type LogCursor,
 } from '../../shared/logger.js';
 import { createRunBundle, type RunBundle, type RunEndReason } from '../../shared/run-bundle.js';
-import { buildFileIssuePayload, serializeIssueScreenshot, submitFileIssue } from '../file-issue.js';
+import {
+  buildFileIssuePayload,
+  serializeIssueScreenshot,
+  submitFileIssue,
+  type FileIssuePayload,
+} from '../file-issue.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
@@ -473,6 +478,9 @@ export class MainGameScene extends Phaser.Scene {
   private issueReportScreenshot?: string;
   private issueReportScreenshotError?: string;
   private issueReportSubmitting = false;
+  private issueReportRunId?: string;
+  private issueReportRetryPayload?: FileIssuePayload;
+  private issueReportAttemptCounter = 0;
 
   /**
    * Optional human player session recorder. Non-null only when
@@ -3766,12 +3774,7 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    const canFileIssue =
-      !issueOpen &&
-      !this.issueReportSubmitting &&
-      this.world.state !== 'loadout' &&
-      this.world.state !== 'game_over' &&
-      !this.isBlockingSurfaceOpen();
+    const canFileIssue = this.canFileIssue(issueOpen);
     this.issueButton?.setVisible(canFileIssue);
 
     if (this.world.state === 'loadout') {
@@ -3982,6 +3985,25 @@ export class MainGameScene extends Phaser.Scene {
    * those cases are already handled by showFloorCompletionScreenIfNeeded() and
    * should not additionally trigger the death screen.
    */
+  private canFileIssue(issueOpen = this.issueReportPausedState !== undefined): boolean {
+    return (
+      !issueOpen &&
+      !this.issueReportSubmitting &&
+      this.world.state !== 'loadout' &&
+      this.world.state !== 'game_over' &&
+      !this.isBlockingSurfaceOpen()
+    );
+  }
+
+  private nextIssueReportRunId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    this.issueReportAttemptCounter += 1;
+    return `issue-${this.world.seed}-${this.world.frameCount}-${this.issueReportAttemptCounter}`;
+  }
+
   private showDeathScreenIfNeeded(): void {
     if (
       this.world.state !== 'game_over' ||
@@ -4031,6 +4053,8 @@ export class MainGameScene extends Phaser.Scene {
     if (!this.options.runStatsFactory) {
       return null;
     }
+    const runId = this.issueReportRunId ?? this.nextIssueReportRunId();
+    this.issueReportRunId = runId;
     return createRunBundle({
       runStats: this.options.runStatsFactory(
         this.world,
@@ -4045,6 +4069,7 @@ export class MainGameScene extends Phaser.Scene {
         endReason: 'quit',
         floorId: this.options.floorId,
         seed: this.world.seed,
+        runId,
       },
     });
   }
@@ -4054,9 +4079,12 @@ export class MainGameScene extends Phaser.Scene {
       !this.modalPicker ||
       this.issueReportPausedState !== undefined ||
       this.issueReportSubmitting ||
-      this.isBlockingSurfaceOpen()
+      !this.canFileIssue()
     ) {
       return;
+    }
+    if (!this.issueReportRetryPayload) {
+      this.issueReportRunId = undefined;
     }
     const bundle = this.createIssueRunBundle();
     if (!bundle) {
@@ -4065,11 +4093,21 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.issueReportPausedState = this.isSimulationPaused();
     this.setSimulationPaused(true);
-    this.issueReportDescription = '';
-    this.issueReportIncludeLogs = true;
-    this.issueReportIncludeScreenshot = false;
-    this.issueReportScreenshot = undefined;
-    this.issueReportScreenshotError = undefined;
+    if (this.issueReportRetryPayload) {
+      this.issueReportDescription = this.issueReportRetryPayload.issue_description;
+      this.issueReportIncludeLogs = this.issueReportRetryPayload.logs.length > 0;
+      this.issueReportIncludeScreenshot = !!this.issueReportRetryPayload.screenshot?.base64;
+      this.issueReportScreenshot = this.issueReportRetryPayload.screenshot?.base64;
+      this.issueReportScreenshotError = undefined;
+      this.issueReportRunId = this.issueReportRetryPayload.meta.runId;
+    } else {
+      this.issueReportDescription = '';
+      this.issueReportIncludeLogs = true;
+      this.issueReportIncludeScreenshot = false;
+      this.issueReportScreenshot = undefined;
+      this.issueReportScreenshotError = undefined;
+      this.issueReportRunId = bundle.meta.runId;
+    }
     void this.prepareIssueReport(bundle);
   }
 
@@ -4139,16 +4177,19 @@ export class MainGameScene extends Phaser.Scene {
               );
               if (description !== null) {
                 this.issueReportDescription = description.slice(0, 4_000);
+                this.issueReportRetryPayload = undefined;
               }
               this.reopenIssueReportPicker(bundle);
               break;
             }
             case 'logs':
               this.issueReportIncludeLogs = !this.issueReportIncludeLogs;
+              this.issueReportRetryPayload = undefined;
               this.reopenIssueReportPicker(bundle);
               break;
             case 'screenshot':
               this.issueReportIncludeScreenshot = !this.issueReportIncludeScreenshot;
+              this.issueReportRetryPayload = undefined;
               this.reopenIssueReportPicker(bundle);
               break;
             case 'submit':
@@ -4203,18 +4244,23 @@ export class MainGameScene extends Phaser.Scene {
     this.issueReportSubmitting = true;
     this.finishIssueReport();
     try {
-      const payload = buildFileIssuePayload(bundle, this.issueReportDescription, {
-        includeLogs: this.issueReportIncludeLogs,
-        ...(this.issueReportIncludeScreenshot && this.issueReportScreenshot
-          ? { screenshotBase64: this.issueReportScreenshot }
-          : {}),
-      });
+      const payload =
+        this.issueReportRetryPayload ??
+        buildFileIssuePayload(bundle, this.issueReportDescription, {
+          includeLogs: this.issueReportIncludeLogs,
+          ...(this.issueReportIncludeScreenshot && this.issueReportScreenshot
+            ? { screenshotBase64: this.issueReportScreenshot }
+            : {}),
+        });
+      this.issueReportRetryPayload = payload;
       const response = await submitFileIssue(payload);
       this.flashHint(
         response.issueUrl
           ? `Issue created: ${response.issueUrl}`
           : `Run ${response.runId} uploaded. Issue creation is pending.`,
       );
+      this.issueReportRetryPayload = undefined;
+      this.issueReportRunId = undefined;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Issue submission failed.';
       this.flashHint(`Could not submit issue: ${message}`);
@@ -4226,6 +4272,9 @@ export class MainGameScene extends Phaser.Scene {
   private finishIssueReport(): void {
     const wasPaused = this.issueReportPausedState;
     this.issueReportPausedState = undefined;
+    if (!this.issueReportSubmitting && !this.issueReportRetryPayload) {
+      this.issueReportRunId = undefined;
+    }
     if (wasPaused !== undefined) {
       this.setSimulationPaused(wasPaused);
     }

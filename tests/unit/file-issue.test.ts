@@ -1,19 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildFileIssuePayload,
-  MAX_ISSUE_RECORDER_BYTES,
-  MAX_ISSUE_LOG_BYTES,
-  MAX_ISSUE_SCREENSHOT_BASE64_BYTES,
   serializeIssueScreenshot,
   submitFileIssue,
 } from '../../src/engine/file-issue.js';
 import type { RunBundle } from '../../src/shared/run-bundle.js';
 
+const MAX_ISSUE_RECORDER_BYTES = 1024 * 1024;
+const MAX_ISSUE_LOG_BYTES = 512 * 1024;
+const MAX_ISSUE_SCREENSHOT_BASE64_BYTES = 2 * 1024 * 1024;
+
 const bundle: RunBundle<Record<string, unknown>> = {
   runStats: { elapsedMs: 1200 },
   recorderJsonl: '{"event":"tick"}',
   logs: ['[info] test'],
-  meta: { endReason: 'quit', floorId: 'floor1', seed: 42 },
+  meta: { endReason: 'quit', floorId: 'floor1', seed: 42, runId: 'run-123' },
 };
 
 describe('file issue payload', () => {
@@ -30,6 +31,11 @@ describe('file issue payload', () => {
       file_issue: true,
       issue_description: 'The player became stuck.',
     });
+  });
+
+  it('preserves meta.runId for ingest retry dedupe', () => {
+    const payload = buildFileIssuePayload(bundle, 'Retry-safe issue', { includeLogs: true });
+    expect(payload.meta.runId).toBe('run-123');
   });
 
   it('rejects an empty issue description before a network request', () => {

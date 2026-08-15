@@ -1,8 +1,8 @@
 import type { RunBundle } from '../shared/run-bundle.js';
 
-export const MAX_ISSUE_SCREENSHOT_BASE64_BYTES = 2 * 1024 * 1024;
-export const MAX_ISSUE_RECORDER_BYTES = 1024 * 1024;
-export const MAX_ISSUE_LOG_BYTES = 512 * 1024;
+const MAX_ISSUE_SCREENSHOT_BASE64_BYTES = 2 * 1024 * 1024;
+const MAX_ISSUE_RECORDER_BYTES = 1024 * 1024;
+const MAX_ISSUE_LOG_BYTES = 512 * 1024;
 
 export interface FileIssuePayload extends RunBundle {
   readonly screenshot?: { readonly base64: string; readonly filename: string };
@@ -71,7 +71,7 @@ export function buildFileIssuePayload(
   };
 }
 
-export function getRunsIngestUrl(): string | undefined {
+function getRunsIngestUrl(): string | undefined {
   const value = (import.meta as RunsIngestEnv).env?.VITE_RUNS_INGEST_URL?.trim();
   return value || undefined;
 }
