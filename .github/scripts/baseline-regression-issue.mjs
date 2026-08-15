@@ -12,10 +12,41 @@ function isOpen(issue) {
   return String(issue?.state || '').toLowerCase() === 'open';
 }
 
+function issueSignatures(issue) {
+  return Array.isArray(issue?.failureSignatures) ? issue.failureSignatures : [];
+}
+
+function issueSignaturesFromBody(body) {
+  if (typeof body !== 'string') return [];
+  return body
+    .split('\n')
+    .filter((line) => line.startsWith('- `') && line.endsWith('`'))
+    .map((line) => line.slice(3, -1))
+    .filter((signature) => signature.includes('|seed=') && signature.includes('|weapon='));
+}
+
+function bodyForSignatures(body, signatures) {
+  const lines = body.split('\n');
+  const start = lines.indexOf('### Failure signatures');
+  if (start < 0) return body;
+  const end = lines.findIndex((line, index) => index > start && line.startsWith('### '));
+  const before = lines.slice(0, start);
+  const after = end < 0 ? [] : lines.slice(end);
+  return [
+    ...before,
+    '### Failure signatures',
+    '',
+    ...signatures.map((signature) => `- \`${signature}\``),
+    '',
+    ...after,
+  ].join('\n');
+}
+
 function validateDecision(decision) {
   if (!decision?.regression || !decision.issue?.marker || !decision.issue?.title) {
     throw new Error('baseline regression decision does not contain a fileable issue');
   }
+
   if (!String(decision.issue.body || '').includes(decision.issue.marker)) {
     throw new Error('baseline regression issue body is missing its idempotency marker');
   }
@@ -38,14 +69,53 @@ export async function fileBaselineRegressionIssue({
     mutationToken,
     `/repos/${owner}/${repo}/issues?state=all&labels=automation`,
   );
-  const matches = issues.filter(
-    (issue) => !issue.pull_request && String(issue.body || '').includes(marker),
-  );
-  const existingOpen = matches.find(isOpen);
-  const existingClosed = [...matches]
-    .filter((issue) => !isOpen(issue))
-    .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0];
-  const existing = existingOpen ?? existingClosed;
+  const openIssues = issues.filter((issue) => !issue.pull_request && isOpen(issue));
+  const signatures = issueSignatures(decision.issue);
+  if (signatures.length > 0) {
+    const outcomes = [];
+    for (const signature of signatures) {
+      const existing = openIssues.find((issue) =>
+        issueSignaturesFromBody(issue.body).includes(signature),
+      );
+      const response = existing
+        ? await requestFn(mutationToken, `/repos/${owner}/${repo}/issues/${existing.number}`, {
+            method: 'PATCH',
+            body: {
+              title,
+              body: bodyForSignatures(body, [signature]),
+              labels: BASELINE_REGRESSION_LABELS,
+            },
+          })
+        : await requestFn(mutationToken, `/repos/${owner}/${repo}/issues`, {
+            method: 'POST',
+            body: {
+              title,
+              body: bodyForSignatures(body, [signature]),
+              labels: BASELINE_REGRESSION_LABELS,
+            },
+          });
+      const issue = response.data;
+      const action = existing ? 'updated' : 'created';
+      if (!issue?.number || !issue?.node_id) {
+        throw new Error(`GitHub ${action} response did not include an issue number and node_id`);
+      }
+      const intake = await intakeFn({
+        graphql: graphqlFn,
+        paginate: paginateFn,
+        request: requestFn,
+        token: intakeToken,
+        owner,
+        repo,
+        issue,
+      });
+      outcomes.push({ action, issueNumber: issue.number, assignee: intake.assignee });
+    }
+    return outcomes;
+  }
+
+  const markerMatches = openIssues.filter((issue) => String(issue.body || '').includes(marker));
+  const existingOpen = markerMatches[0];
+  const existing = existingOpen;
 
   let issue;
   let action;
@@ -59,16 +129,19 @@ export async function fileBaselineRegressionIssue({
           title,
           body,
           labels: BASELINE_REGRESSION_LABELS,
-          ...(existingOpen ? {} : { state: 'open' }),
         },
       },
     );
     issue = response.data;
-    action = existingOpen ? 'updated' : 'reopened';
+    action = 'updated';
   } else {
     const response = await requestFn(mutationToken, `/repos/${owner}/${repo}/issues`, {
       method: 'POST',
-      body: { title, body, labels: BASELINE_REGRESSION_LABELS },
+      body: {
+        title,
+        body,
+        labels: BASELINE_REGRESSION_LABELS,
+      },
     });
     issue = response.data;
     action = 'created';
@@ -112,9 +185,11 @@ async function main() {
     repo,
     decision,
   });
-  process.stdout.write(
-    `${outcome.action} release regression issue #${outcome.issueNumber}; assigned @${outcome.assignee}\n`,
-  );
+  for (const issue of Array.isArray(outcome) ? outcome : [outcome]) {
+    process.stdout.write(
+      `${issue.action} release regression issue #${issue.issueNumber}; assigned @${issue.assignee}\n`,
+    );
+  }
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

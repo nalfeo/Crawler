@@ -69,6 +69,27 @@ describe('release baseline regression check', () => {
     expect(decision.issue?.body).toContain('100% success requirement');
   });
 
+  it('includes seed and sweep configuration in each Floor 1 failure signature', () => {
+    const current: BaselineFile = {
+      ...noise,
+      floorId: 'floor1',
+      legId: 'floor1',
+      forceWeapon: true,
+      chained: false,
+      enemyDamageMultiplier: 1,
+      fails: [{ seed: 7, weapon: 'sword' }],
+    };
+    const decision = evaluateBaselineRegression(
+      current,
+      [indexEntry(previous)],
+      [previous.meta.commit],
+    );
+
+    expect(decision.issue?.failureSignatures).toEqual([
+      'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword',
+    ]);
+  });
+
   it('files an issue at and above the prior trend threshold when Floor 1 has losses', () => {
     const atBoundary = {
       ...regression,
@@ -146,17 +167,24 @@ describe('release baseline regression check', () => {
       writeFileSync(indexPath, JSON.stringify([]));
       writeFileSync(githubOutputPath, '');
 
-      const result = spawnSync('npx', ['tsx', 'scripts/agent/perf/baseline-regression-check.ts'], {
-        cwd: REPO_ROOT,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          BASELINE_JSON: baselinePath,
-          BASELINE_INDEX_JSON: indexPath,
-          BASELINE_REGRESSION_RESULT: resultPath,
-          GITHUB_OUTPUT: githubOutputPath,
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+          'scripts/agent/perf/baseline-regression-check.ts',
+        ],
+        {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BASELINE_JSON: baselinePath,
+            BASELINE_INDEX_JSON: indexPath,
+            BASELINE_REGRESSION_RESULT: resultPath,
+            GITHUB_OUTPUT: githubOutputPath,
+          },
         },
-      });
+      );
 
       // Asserting the exit code (rather than letting execFileSync throw) keeps
       // this a clean assertion failure instead of an uncaught-error path if the

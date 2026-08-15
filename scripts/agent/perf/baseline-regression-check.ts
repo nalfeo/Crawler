@@ -42,6 +42,13 @@ export interface BaselineFile {
    * comparison so the existing series stays continuous.
    */
   legs?: Record<string, BaselineLegMetrics>;
+  /** Failure diagnostics emitted by the sweep, including seed and weapon. */
+  fails?: Array<{ seed: number; weapon: string }>;
+  floorId?: string;
+  legId?: string;
+  forceWeapon?: boolean;
+  chained?: boolean;
+  enemyDamageMultiplier?: number;
 }
 
 export interface BaselineIndexEntry {
@@ -115,6 +122,8 @@ export interface BaselineRegressionDecision {
     marker: string;
     title: string;
     body: string;
+    /** Stable identifiers used to deduplicate recurring failures across releases. */
+    failureSignatures?: string[];
   };
 }
 
@@ -173,6 +182,22 @@ function compareShape(
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(2)}%`;
+}
+
+function failureSignatures(baseline: BaselineFile): string[] {
+  if (!Array.isArray(baseline.fails)) return [];
+  const prefix = [
+    `floor=${baseline.floorId ?? 'floor1'}`,
+    `leg=${baseline.legId ?? 'floor1'}`,
+    `forceWeapon=${baseline.forceWeapon ?? true}`,
+    `chained=${baseline.chained ?? false}`,
+    `damage=${baseline.enemyDamageMultiplier ?? 1}`,
+  ].join('|');
+  return [
+    ...new Set(
+      baseline.fails.map((failure) => `${prefix}|seed=${failure.seed}|weapon=${failure.weapon}`),
+    ),
+  ].sort();
 }
 
 function buildIssue(
@@ -241,6 +266,7 @@ function buildFloor1LossIssue(
   current: ComparedBaseline,
   previous: ComparedBaseline | undefined,
   legs?: readonly BaselineLegRegression[],
+  signatures: readonly string[] = [],
 ): NonNullable<BaselineRegressionDecision['issue']> {
   const marker = `<!-- ${BASELINE_REGRESSION_MARKER_PREFIX}:${current.commit} -->`;
   const previousLine = previous
@@ -264,6 +290,7 @@ function buildFloor1LossIssue(
   return {
     marker,
     title: `bug: Floor 1 release sweep loss at ${current.commit.slice(0, 12)}`,
+    ...(signatures.length > 0 ? { failureSignatures: [...signatures] } : {}),
     body: [
       marker,
       '## Floor 1 release sweep loss',
@@ -278,6 +305,9 @@ function buildFloor1LossIssue(
       `- **Regressing commit:** ${current.commitSubject}`,
       `- **Commit date:** ${current.commitDate}`,
       `- **Sweep run:** ${current.runUrl}`,
+      ...(signatures.length > 0
+        ? ['', '### Failure signatures', '', ...signatures.map((signature) => `- \`${signature}\``)]
+        : []),
       ...legLines,
       '',
       '### Investigation',
@@ -388,7 +418,12 @@ export function evaluateBaselineRegression(
         regression: true,
         reason: `Floor 1 recorded ${current.totalLosses} loss${current.totalLosses === 1 ? '' : 'es'}; the release target is 100% success`,
         current,
-        issue: buildFloor1LossIssue(current, undefined),
+        issue: buildFloor1LossIssue(
+          current,
+          undefined,
+          undefined,
+          failureSignatures(currentBaseline),
+        ),
       };
     }
     return {
@@ -413,7 +448,7 @@ export function evaluateBaselineRegression(
       winRateDrop: previous.winRate - current.winRate,
       additionalLosses: current.totalLosses - previous.totalLosses,
       ...(legs ? { legs } : {}),
-      issue: buildFloor1LossIssue(current, previous, legs),
+      issue: buildFloor1LossIssue(current, previous, legs, failureSignatures(currentBaseline)),
     };
   }
 
