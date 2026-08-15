@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "1f5971d41742f9510f4e6286199fd5bb6742b5f3",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change surgically resolves the local threat recovery issue for melee weapons, preventing endless retreat loops, and adds a robust headless regression test that also verifies determinism. All policies are followed, including the 3-apple review ledger requirement."
     }
   }
 }
