@@ -19,7 +19,7 @@ ai-combat-balance, ai-pathfinding
 ## What Was Done
 
 Fixed the release-sweep regression from issue #2991: Floor 1 seed 39 with forced
-`throwing-knife` died against the stair boss (`slime-rat`), a genuine regression
+`throwing-knife` died against the stair boss (`rat-slime`), a genuine regression
 introduced by PR #2988's retreat-scoring bugfix (a butterfly effect — #2988 targeted
 seed 32, not 39). Confirmed via `git worktree` at the pre-#2988 commit that the
 same seed/weapon wins there.

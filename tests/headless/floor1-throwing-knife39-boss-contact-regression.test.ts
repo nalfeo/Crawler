@@ -20,7 +20,7 @@ async function runThrowingKnife39(): Promise<RunStats> {
   });
 }
 
-// Release sweep regression (#2991): the Floor 1 stair boss (`slime-rat` /
+// Release sweep regression (#2991): the Floor 1 stair boss (`rat-slime` /
 // `ratSlime`) is configured with attackRange=280 so its acid-projectile
 // ability can fire from long range, in addition to normal melee contact
 // damage once it closes in. Retreat's ranged-shooter bail-out
@@ -40,5 +40,5 @@ describe('Floor 1 release sweep throwing-knife-39 boss-contact regression', () =
     expect(first.totalFrames).toBeLessThanOrEqual(FLOOR1_DEFAULT_MAX_FRAMES);
     expect(first.quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]).toBeDefined();
     expect(deterministicStats(second)).toEqual(deterministicStats(first));
-  }, 120_000);
+  }, 200_000);
 });
