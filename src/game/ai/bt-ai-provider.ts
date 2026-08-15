@@ -249,6 +249,7 @@ import {
   QUEST_GIVER_DETOUR_ABANDON_FRAMES,
   NPC_INTERACTION_RADIUS_FT,
   NPC_APPROACH_THREAT_RADIUS_FT,
+  WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
   ARENA_LOCKIN_DEFENSIVE_HP_FRACTION,
@@ -1716,14 +1717,17 @@ export class BehaviorTreeAI implements AIInputProvider {
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {
           const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
-          const npcThreatRadius = Math.min(
-            this.getEngageRadius(ctx.world),
-            NPC_APPROACH_THREAT_RADIUS_FT,
-          );
+          const weapon = getActiveWeapon(ctx.world);
+          const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
+          const woundedNpcApproach = projectileWeapon
+            ? ctx.healthPercent < WOUNDED_PROJECTILE_NPC_THREAT_CLEAR_HP_FRACTION
+            : ctx.healthPercent < FARM_MIN_HEALTH_FRACTION;
+          const npcThreatRadius =
+            woundedNpcApproach && !projectileWeapon
+              ? this.getEngageRadius(ctx.world)
+              : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            const weapon = getActiveWeapon(ctx.world);
-            const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
-            if (projectileWeapon) {
+            if (projectileWeapon && !woundedNpcApproach) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
               // direct-approach path below.
