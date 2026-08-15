@@ -14,7 +14,7 @@ ai-combat-balance, ai-pathfinding
 
 ## Apples
 
-2🍎 exact
+3🍎 exact
 
 ## What Was Done
 
