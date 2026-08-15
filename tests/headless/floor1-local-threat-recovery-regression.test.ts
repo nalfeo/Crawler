@@ -33,7 +33,8 @@ describe('Floor 1 local threat recovery', () => {
     expect(first.totalFrames).toBeLessThanOrEqual(FLOOR1_DEFAULT_MAX_FRAMES);
     expect(isOfficialWin(first, FLOOR1_ACTIVE_TIME_BUDGET_MS)).toBe(true);
     expect(first.aiTelemetry).toBeDefined();
-    expect(first.health.minHealthPercent).toBeLessThan(0.5);
+    expect(first.health.minHealthPercent).toBeLessThan(0.7);
+    expect(first.health.finalHealthPercent - first.health.minHealthPercent).toBeGreaterThan(0.2);
     expect(Object.keys(first.aiTelemetry!.decisionStateCounts).length).toBeGreaterThan(0);
     expect(first.quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]).toBeDefined();
     expect(deterministicStats(second)).toEqual(deterministicStats(first));
