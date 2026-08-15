@@ -33,13 +33,37 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "3c172ac53b95a2471c0b98377f2a1a2c99ef1198",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/handoffs/2026-08-15-floor1-bow-seed-32.md",
+          "detail": "The change alters EVERY retreat candidate score on every seed and weapon, but the recorded evidence is 4 regression tuples plus 2 healthy spot-checks. AGENTS.md r12 gates on win-RATE, and r15/r19 push >10-run sweeps to GitHub `ai-sweep.yml`. My own 8-seed local smoke was 8/8 victories at BOTH base and head, so no regression is visible at small sample size, but that cannot qualify broad drift. Smallest remedy: dispatch a standard-panel win-rate sweep and record the runId plus the `project:sweep-results-viewer runId=<id>` deep link in the handoff before merge."
+        },
+        {
+          "severity": "minor",
+          "file": "src/game/ai/bt-ai-tuning.ts",
+          "detail": "RETREAT_OBJECTIVE_BIAS_WEIGHT (=1) and RETREAT_OBJECTIVE_BIAS_BAND_FRACTION (=0.5) are two multiplicative knobs on the same already-capped term, so the effective cap is their product and a future tuner editing one will misjudge the band. The added comment now spells out the full product, which mitigates it, but the redundancy remains. Smallest remedy: fold the weight into the band fraction so a single constant controls the cap."
+        },
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/review-ledgers/2026-08-15-floor1-bow-seed-32.review-ledger.json",
+          "detail": "`stages.independent_grade.head_sha` is 78828ee4..., which is not the graded/committed head 3c172ac5. `scripts/agent/review/grade-cli.mjs` refuses to record a grade whose head_sha differs from current HEAD, so the ledger as committed documents a grade of a different tree. Smallest remedy: commit the re-recorded ledger from this grading run (head 3c172ac5) before opening/updating the PR."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 3,
+      "notes": "I graded the code rather than the summary and reproduced the key claims. The regression is real and correctly diagnosed: the retreat candidate score previously added raw `objectiveGain` in feet (unbounded up to the 50 ft candidate radius) directly to `minEnemyDist`, so a remote objective could dominate enemy clearance; the fix divides by candidate travel `dist` (bounded to [-1,1] by the reverse triangle inequality, correctly stated in the comment) and scales by half the retreat hysteresis band, yielding a signed +/-5 ft contribution and at most one 10 ft band of spread between opposing candidates - a coherent coupling to the existing hysteresis rather than an arbitrary magic number. The divide is safe because a zero-length candidate is filtered by the same-tile guard before the division. I verified both new tests are genuinely fail-to-pass on a clean worktree of base 146d83fc (unit: 42.43 vs required >=60.03; headless bow-32: outcome 'death'), that all four headless tuples pass at head, that tsc is clean, and that an 8-seed smoke is 8/8 at both trees. The test refactor from local 23_760/396_000 constants to FLOOR1_DEFAULT_MAX_FRAMES/FLOOR1_ACTIVE_TIME_BUDGET_MS keeps the frame cap byte-identical while tightening the official-win assertion to the release 360 s budget, and the paired-replay equality is safe because wallTimeMs is the only non-simulated RunStats field. The diff is surgical (13 src lines plus tests and required publication artifacts), deterministic, free of Date.now/unseeded RNG, and respects layer boundaries. The only gaps are evidence breadth against the win-rate rule, a mildly redundant tuning knob, and a stale ledger head_sha - none blocking."
     }
   }
 }

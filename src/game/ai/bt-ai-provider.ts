@@ -192,6 +192,7 @@ import {
   RETREAT_MAX_PATH_VERIFICATIONS,
   RETREAT_REPICK_INTERVAL_FRAMES,
   RETREAT_REPICK_ARRIVE_FT,
+  RETREAT_OBJECTIVE_BIAS_BAND_FRACTION,
   RETREAT_OBJECTIVE_BIAS_WEIGHT,
   RETREAT_OBJECTIVE_MEMORY_FRAMES,
   RETREAT_DAMAGE_WINDOW_FRAMES,
@@ -1557,6 +1558,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     const objectiveDistance = objective
       ? Math.hypot(objective.x - playerX, objective.y - playerY)
       : 0;
+    const maxObjectiveBias =
+      this.config.retreatDangerRadius *
+      (RETREAT_HYSTERESIS_MULT - 1) *
+      RETREAT_OBJECTIVE_BIAS_BAND_FRACTION;
     const candidates: Array<{ x: number; y: number; score: number }> = [];
     for (const offset of RETREAT_ARC_OFFSETS_RAD) {
       const angle = baseAngle + offset;
@@ -1585,9 +1590,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? objectiveDistance - Math.hypot(objective.x - wx, objective.y - wy)
           : 0;
         // Normalize route progress to the fraction of candidate travel that closes
-        // the objective gap. The reverse triangle inequality bounds this to [-1, 1],
-        // so a remote objective cannot overwhelm the enemy-clearance score.
-        const maxObjectiveBias = this.config.retreatDangerRadius * (RETREAT_HYSTERESIS_MULT - 1);
+        // the objective gap. The reverse triangle inequality bounds this to [-1, 1];
+        // using half the hysteresis band keeps the full signed bias range to one
+        // band, so opposing objectives cannot outweigh materially safer lanes.
         const objectiveProgressFraction = objectiveGain / dist;
         const boundedObjectiveGain = maxObjectiveBias * objectiveProgressFraction;
         candidates.push({

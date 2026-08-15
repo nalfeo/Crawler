@@ -429,10 +429,15 @@ export const RETREAT_REPICK_ARRIVE_FT = 10;
 // bleeding 120 HP). Adding a subordinate progress term makes the kite run
 // ALONG the route: the player is ~2.4x faster than a rat, so fleeing toward the
 // objective both breaks contact and banks progress instead of undoing it.
-// The provider normalizes objective progress to directional alignment and bounds
-// its contribution to the retreat hysteresis band. This weight retains a
-// one-for-one trade inside that band without letting a remote objective outweigh
-// materially safer open space.
+// The provider normalizes objective progress to directional alignment and caps
+// each signed candidate contribution to this fraction of the retreat hysteresis
+// band, so two opposing candidates can differ by at most one band.
+export const RETREAT_OBJECTIVE_BIAS_BAND_FRACTION = 0.5;
+// Weight applied to that capped objective bias band. Keep this at 1 unless a
+// sweep shows route-aware retreat should use less than the available safety
+// band; the effective per-candidate cap is retreatDangerRadius *
+// (RETREAT_HYSTERESIS_MULT - 1) * RETREAT_OBJECTIVE_BIAS_BAND_FRACTION *
+// RETREAT_OBJECTIVE_BIAS_WEIGHT.
 export const RETREAT_OBJECTIVE_BIAS_WEIGHT = 1;
 // The remembered progression objective is only used while it is this fresh
 // (frames). Retreat and progression interleave within ~1 s, so a short memory is

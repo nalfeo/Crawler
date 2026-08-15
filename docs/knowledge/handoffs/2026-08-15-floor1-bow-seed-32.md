@@ -29,9 +29,10 @@ objective directly to enemy clearance. A remote Spell Broker objective could
 therefore outweigh a materially safer retreat lane.
 
 The fix normalizes objective progress by candidate travel distance. Reverse
-triangle inequality bounds that fraction to `[-1, 1]`, so route awareness can
-trade at most the existing retreat hysteresis band of enemy clearance. No
-weapon, enemy, damage, deadline, seed list, sweep, or gate value changed.
+triangle inequality bounds that fraction to `[-1, 1]`; each signed candidate
+contribution is capped to half the retreat hysteresis band, so two opposing
+candidates can differ by at most one band of enemy clearance. No weapon, enemy,
+damage, deadline, seed list, sweep, or gate value changed.
 
 ## Real-pipeline evidence
 
