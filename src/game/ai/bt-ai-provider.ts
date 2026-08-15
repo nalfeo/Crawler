@@ -1827,15 +1827,19 @@ export class BehaviorTreeAI implements AIInputProvider {
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {
           const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
-          const npcThreatRadius = Math.min(
-            this.getEngageRadius(ctx.world),
-            NPC_APPROACH_THREAT_RADIUS_FT,
-          );
+          const weapon = getActiveWeapon(ctx.world);
+          const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
+          const woundedProjectile =
+            projectileWeapon && ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION;
+          // Wounded melee users need the full engage radius instead of the normal
+          // 8 ft NPC-approach cap; baseball-bat seed 34 otherwise walks past a
+          // lethal threat while travelling to the quest NPC.
+          const shouldExpandMeleeThreatClear =
+            !projectileWeapon && ctx.healthPercent < FARM_MIN_HEALTH_FRACTION;
+          const npcThreatRadius = shouldExpandMeleeThreatClear
+            ? this.getEngageRadius(ctx.world)
+            : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            const weapon = getActiveWeapon(ctx.world);
-            const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
-            const woundedProjectile =
-              projectileWeapon && ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION;
             if (projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
