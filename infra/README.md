@@ -196,9 +196,11 @@ az deployment group create `
 > (`Microsoft.Compute`), and that quota is **0** on some subscription types
 > (e.g. Visual Studio Enterprise) with no self-service increase path. FC1 draws
 > from a separate `Microsoft.Web` quota pool and deploys successfully on those
-> subscriptions. If your subscription has normal VM quota you can still use
-> FC1 — it works everywhere Y1 does. Live deployment: `crawler-dev-ingest` in
-> `crawler-sprites-rg` (eastus), state `Running`.
+> subscriptions. FC1 is **not** offered in every region that supports Y1, and
+> the supported list changes over time — check it before deploying with
+> `az functionapp list-flexconsumption-locations` and pick a listed region.
+> Live deployment: `crawler-dev-ingest` in `crawler-sprites-rg` (eastus),
+> state `Running`.
 
 Build and publish the Function from its directory:
 
@@ -252,10 +254,17 @@ after one day. The Function CORS allowlist is
 
 - Storage: `playtest-runs` container exists on `crawlersprites`.
 - Function App `crawler-dev-ingest` is deployed and **running** the built
-  `functions/dev-build-ingest` code; `POST /runs` is live and validates
-  requests (confirmed via a manual smoke test returning a 400 with a clear
-  validation error for a malformed body, and would return 2xx for a well-formed
-  `RunBundle`).
+  `functions/dev-build-ingest` code. Only **routing and request validation**
+  have been verified end-to-end (a manual smoke test with a malformed body
+  returned the expected 400). That request is rejected before the Function
+  touches Blob Storage, so it does **not** prove the storage connection or
+  `playtest-runs` write access works. To verify the persistence path, POST a
+  well-formed `RunBundle` and confirm the resulting blob:
+
+  ```powershell
+  az storage blob list --account-name crawlersprites --container-name playtest-runs --output table
+  ```
+
 - `CRAWLER_CI_PAT` is **not yet set** on the Function App. Telemetry ingest
   (storing run bundles) works without it; only the **survey/explicit
   "file an issue"** path (which creates a GitHub issue) needs it. Set it with
