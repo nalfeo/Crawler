@@ -9,7 +9,7 @@ coverage/
 .eslintcache
 .cache/
 tmp/
-artifacts/weapon-sweeps/
+artifacts/experiments/
 
 # TypeScript in-place compiled outputs (scripts and source dirs that use tsc without outDir)
 scripts/sprites/**/*.js

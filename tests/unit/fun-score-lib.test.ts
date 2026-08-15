@@ -85,6 +85,35 @@ describe('scoreFunSessions', () => {
     expect(report.confidence).toBeLessThanOrEqual(1);
   });
 
+  it('reports and penalizes tutorial-phase deaths', () => {
+    const healthyReport = scoreFunSessions([
+      { id: 'a', run: makeRun({ outcome: 'victory' }) },
+      { id: 'b', run: makeRun({ outcome: 'death', finalFloor: 4 }) },
+    ]);
+    expect(healthyReport.criteria.early_death_rate).toMatchObject({
+      observed: 0,
+      status: 'healthy',
+    });
+
+    const earlyDeathReport = scoreFunSessions([
+      { id: 'a', run: makeRun({ outcome: 'death', finalFloor: 1 }) },
+      { id: 'b', run: makeRun({ outcome: 'death', finalFloor: 2 }) },
+      { id: 'c', run: makeRun({ outcome: 'victory' }) },
+    ]);
+    expect(earlyDeathReport.criteria.early_death_rate.observed).toBeCloseTo(2 / 3);
+    expect(earlyDeathReport.criteria.early_death_rate.status).toBe('needs_attention');
+
+    const lateFloorDeath = scoreFunSessions([
+      { id: 'late', run: makeRun({ outcome: 'death', finalFloor: 5 }) },
+    ]);
+    const earlyFloorDeath = scoreFunSessions([
+      { id: 'early', run: makeRun({ outcome: 'death', finalFloor: 1 }) },
+    ]);
+    expect(earlyFloorDeath.dimensions.challenge_balance).toBeLessThan(
+      lateFloorDeath.dimensions.challenge_balance,
+    );
+  });
+
   it('fails gate for poor timeout-heavy runs', () => {
     const badRun = makeRun({
       outcome: 'timeout',

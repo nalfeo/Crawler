@@ -3,7 +3,7 @@ import { basename, join } from 'node:path';
 
 import { normalizeSweepResult } from './result-data.mjs';
 
-export const LOCAL_SWEEP_DIRECTORY = join('artifacts', 'weapon-sweeps');
+export const LOCAL_SWEEP_DIRECTORY = join('artifacts', 'experiments');
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
