@@ -133,6 +133,9 @@ import {
   MELEE_DEFENSIVE_HP_FRACTION,
   ATTACK_GATE_MULTIPLIER,
   CONTACT_SAFE_ORBIT_FT,
+  CONTACT_RETREAT_PROGRESS_FRAMES,
+  CONTACT_RETREAT_PROGRESS_FT,
+  CONTACT_RETREAT_EPISODE_GAP_FRAMES,
   MELEE_DODGE_AMPLITUDE_FT,
   KITE_DODGE_BUFFER_FT,
   KITE_STEP_FT,
@@ -855,6 +858,21 @@ export class BehaviorTreeAI implements AIInputProvider {
   private localThreatRecoveryBestHealth: number | null = null;
   private rangedEmergencyRetreating: boolean = false;
   /**
+   * Contact-retreat futility tracking. Set while the contact carve-out in
+   * {@link buildRetreatBehavior} is the only reason Retreat is still running
+   * against a long-`attackRange` threat, so a retreat that provably cannot move
+   * the player (cornered, no reachable escape tile) can hand the fight back to
+   * Engage instead of standing still in body contact. Keyed on the floor rather
+   * than the threat eid because the pin is positional and the nearest enemy
+   * churns constantly inside a swarm.
+   */
+  private contactRetreatMap: FloorMap | null = null;
+  private contactRetreatStartFrame: number = 0;
+  private contactRetreatLastFrame: number = 0;
+  private contactRetreatStartX: number = 0;
+  private contactRetreatStartY: number = 0;
+  private contactRetreatPinned: boolean = false;
+  /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
    * of jittering; reversed every {@link KITE_FLIP_FRAMES} frames so it juke-dodges
@@ -1291,6 +1309,15 @@ export class BehaviorTreeAI implements AIInputProvider {
             this.endRetreat(ctx.world);
             return false;
           }
+          // ...and the contact carve-out above only earns its keep while the
+          // retreat is actually creating separation. Cornered against geometry
+          // it degenerates into standing still in body contact, which is
+          // strictly worse than Engage's kite; hand the fight back once the
+          // retreat has provably failed to move the player.
+          if (attackRange > retreatEscapeRadius && this.isContactRetreatPinned(ctx)) {
+            this.endRetreat(ctx.world);
+            return false;
+          }
         }
         // Hysteresis: an enemy must close to within retreatDangerRadius to START
         // a retreat, but the AI keeps retreating until the gap exceeds
@@ -1370,6 +1397,64 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
+  }
+
+  /**
+   * True once the contact-range retreat carve-out has provably failed to move
+   * the player, i.e. Retreat is pinned rather than kiting.
+   *
+   * Called only on polls where the carve-out is what keeps Retreat running (a
+   * long-`attackRange` threat already inside {@link CONTACT_SAFE_ORBIT_FT}).
+   * Displacement — not distance to the threat — is the signal, because the
+   * failure mode is positional: `pickRetreatTarget` runs out of A*-reachable
+   * escape tiles, returns a raw away-vector into geometry, and the player stops
+   * moving entirely while contact damage keeps landing.
+   *
+   * Once latched the verdict holds until the carve-out stops firing for
+   * {@link CONTACT_RETREAT_EPISODE_GAP_FRAMES} (Engage kited back out of
+   * contact, or the threat died), so releasing Retreat cannot immediately
+   * re-arm it into a RETREAT/ENGAGE thrash on the very next poll.
+   */
+  private isContactRetreatPinned(ctx: BTContext): boolean {
+    const frame = ctx.world.frameCount;
+    const continuing =
+      this.contactRetreatMap === ctx.world.floorMap &&
+      frame - this.contactRetreatLastFrame <= CONTACT_RETREAT_EPISODE_GAP_FRAMES;
+    this.contactRetreatMap = ctx.world.floorMap;
+    this.contactRetreatLastFrame = frame;
+    if (!continuing) {
+      this.startContactRetreatWindow(ctx);
+      return false;
+    }
+    if (this.contactRetreatPinned) return true;
+    if (frame - this.contactRetreatStartFrame < CONTACT_RETREAT_PROGRESS_FRAMES) return false;
+    const moved = Math.hypot(
+      ctx.playerX - this.contactRetreatStartX,
+      ctx.playerY - this.contactRetreatStartY,
+    );
+    if (moved >= CONTACT_RETREAT_PROGRESS_FT) {
+      // The kite is working — measure the next window from here.
+      this.startContactRetreatWindow(ctx);
+      return false;
+    }
+    this.contactRetreatPinned = true;
+    return true;
+  }
+
+  private startContactRetreatWindow(ctx: BTContext): void {
+    this.contactRetreatStartFrame = ctx.world.frameCount;
+    this.contactRetreatStartX = ctx.playerX;
+    this.contactRetreatStartY = ctx.playerY;
+    this.contactRetreatPinned = false;
+  }
+
+  private resetContactRetreatTracking(): void {
+    this.contactRetreatMap = null;
+    this.contactRetreatStartFrame = 0;
+    this.contactRetreatLastFrame = 0;
+    this.contactRetreatStartX = 0;
+    this.contactRetreatStartY = 0;
+    this.contactRetreatPinned = false;
   }
 
   private clearLocalThreatRecovery(): void {
@@ -3596,6 +3681,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
+    this.resetContactRetreatTracking();
     this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
@@ -9114,6 +9200,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
     this.retreatThreatEid = null;
+    this.resetContactRetreatTracking();
     this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
