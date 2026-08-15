@@ -190,6 +190,16 @@ az deployment group create `
   --parameters functionAppName=<globally-unique-name> storageAccountName=crawlersprites
 ```
 
+> [!IMPORTANT]
+> The template uses a **Flex Consumption (FC1)** plan, not the classic Dynamic
+> (Y1) plan. Y1 provisions against the subscription's regional VM-core quota
+> (`Microsoft.Compute`), and that quota is **0** on some subscription types
+> (e.g. Visual Studio Enterprise) with no self-service increase path. FC1 draws
+> from a separate `Microsoft.Web` quota pool and deploys successfully on those
+> subscriptions. If your subscription has normal VM quota you can still use
+> FC1 — it works everywhere Y1 does. Live deployment: `crawler-dev-ingest` in
+> `crawler-sprites-rg` (eastus), state `Running`.
+
 Build and publish the Function from its directory:
 
 ```powershell
@@ -199,6 +209,26 @@ npm run build
 func azure functionapp publish <function-app-name> --javascript
 Pop-Location
 ```
+
+> [!NOTE]
+> If `npm ci`/`npm install` in `functions/dev-build-ingest` fails on a nested
+> transitive dependency (seen with `strnum@2.4.2` behind some corporate npm
+> proxies that 404 on that specific tarball while `npm view`/`npm pack` for the
+> same package succeed), you do not need working `npm install` for every
+> package to deploy: `npm pack <name>@<version>` fetches the missing tarball
+> directly, or you can build with `tsc` alone (once dependency folders are
+> present) and zip-deploy without the `func` CLI:
+>
+> ```powershell
+> az functionapp deployment source config-zip `
+>   --resource-group crawler-sprites-rg `
+>   --name <function-app-name> `
+>   --src <path-to-zip-containing-dist+host.json+package.json+node_modules>
+> ```
+>
+> Include only the **production** dependencies (`dependencies` in
+> `package-lock.json`, not `devDependencies`) in the zip's `node_modules` to
+> keep the package small.
 
 Set the GitHub credential after deployment; never commit it or put it in the
 browser bundle:
@@ -217,6 +247,20 @@ are enforced by the Function. Rate-limit marker blobs are lifecycle-deleted
 after one day. The Function CORS allowlist is
 `https://nalfeo.github.io` and `http://localhost:5173` (override with the
 `allowedOrigins` Bicep parameter).
+
+### Current deployment status (as of this writing)
+
+- Storage: `playtest-runs` container exists on `crawlersprites`.
+- Function App `crawler-dev-ingest` is deployed and **running** the built
+  `functions/dev-build-ingest` code; `POST /runs` is live and validates
+  requests (confirmed via a manual smoke test returning a 400 with a clear
+  validation error for a malformed body, and would return 2xx for a well-formed
+  `RunBundle`).
+- `CRAWLER_CI_PAT` is **not yet set** on the Function App. Telemetry ingest
+  (storing run bundles) works without it; only the **survey/explicit
+  "file an issue"** path (which creates a GitHub issue) needs it. Set it with
+  the command above using a PAT scoped to `repo` (issue creation) on
+  `nalfeo/Crawler` before relying on in-game issue filing.
 
 If you only want resource provisioning (no `.env.local` writes or secrets sync), run:
 
