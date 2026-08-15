@@ -28,6 +28,12 @@ export interface SessionRecorderStats {
   totalSamples: number;
   totalKills: number;
   durationMs: number;
+  /** Minimum player health ratio observed across the run (0..1). */
+  minHealthPercent?: number;
+  /** Downward crossings through the 20% health threshold. */
+  closeCallCount?: number;
+  /** Downward crossings through the 50% health threshold. */
+  lowHealthCount?: number;
   /** Which controller is currently driving the recorded player. */
   controller: SessionController;
   /**
@@ -65,6 +71,8 @@ export interface SessionRecorder {
   onControlChange(controller: SessionController, note?: string): void;
   /** Quick stats without copying the full event array. */
   getStats(): SessionRecorderStats;
+  /** Serialize the captured session without requiring the concrete recorder type. */
+  toJsonl?(): string;
   /**
    * Trigger a browser download of the recorded session as JSONL.
    * No-op in non-browser environments.

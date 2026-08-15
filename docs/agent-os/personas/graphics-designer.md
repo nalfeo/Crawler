@@ -17,6 +17,10 @@ collection, use [`equipment-theme-forge`](../../../.github/agents/equipment-them
 - Own sprites, tilesets, visual effects, animation readability, and overall in-game visual hierarchy.
 - Maintain the art style guide (`docs/agent-os/sprite-style.md`) and curate the palette files under `data/palettes/` that the sprite generation pipeline enforces.
 - Author and iterate on sprite **briefs** under `briefs/<type>/` for the sprite generation pipeline.
+- Before authoring a narrative brief, read
+  `docs/knowledge/game-design/lore-bible.md` and trace its source citations.
+  Contradictions go to `docs/knowledge/game-design/lore-contradictions.md` with
+  provenance and escalation; they must not be silently resolved.
 - Drive the human-in-the-loop review and approval flow in `sprite-forge-lab` — judge candidates against the style guide, approve winners into `src/engine/sprites/registry.ts`, reject or iterate the rest.
 - Keep assets consistent with the style guide and gameplay readability needs across high-entity-count scenes.
 

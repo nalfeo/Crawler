@@ -8,6 +8,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 interface WorkflowStep {
   name?: string;
+  id?: string;
   uses?: string;
   if?: string;
   run?: string;
@@ -64,14 +65,42 @@ describe('docs-update workflow', () => {
     expect(checkout?.with?.ref).toContain('github.event.workflow_run.head_sha');
   });
 
+  it('runs the lore provenance gate before other docs checks', () => {
+    const steps = loadWorkflow().jobs['docs-update']?.steps ?? [];
+    const loreIndex = steps.findIndex((step) => step.name === 'Validate lore canon and provenance');
+    const readmeIndex = steps.findIndex(
+      (step) => step.name === 'Check README vs package.json scripts',
+    );
+    const loreStep = steps[loreIndex];
+
+    expect(loreIndex).toBeGreaterThan(-1);
+    expect(loreStep?.run).toContain('scripts/agent/docs/check-lore-canon.ts');
+    expect(loreStep?.id).toBe('lore_canon');
+    expect(loreStep).not.toHaveProperty('continue-on-error');
+    expect(loreIndex).toBeLessThan(readmeIndex);
+  });
+
+  it('does not open an automation PR when lore validation fails', () => {
+    const detect = loadWorkflow().jobs['docs-update']?.steps?.find(
+      (step) => step.name === 'Detect docs automation changes',
+    );
+
+    expect(detect?.if).toContain("steps.lore_canon.outcome == 'success'");
+  });
+
   it('publishes the automation PR with CRAWLER_CI_PAT to avoid parked same-app CI', () => {
     const workflow = loadWorkflow();
     const openPr = workflow.jobs['docs-update']?.steps?.find(
       (step) => step.name === 'Open docs automation PR',
     );
+    const retryPr = workflow.jobs['docs-update']?.steps?.find(
+      (step) => step.name === 'Retry docs automation PR after branch race',
+    );
 
     expect(openPr?.uses).toBe('peter-evans/create-pull-request@v7');
     expect(openPr?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    expect(retryPr?.uses).toBe('peter-evans/create-pull-request@v7');
+    expect(retryPr?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
   });
 
   it('prunes stale remote refs before opening the automation PR', () => {

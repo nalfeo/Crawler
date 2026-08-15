@@ -278,11 +278,11 @@ export function renderHtml(instanceId) {
   let currentState = null;
 
   function outcomeAbbrev(outcome) {
-    return ({ victory: 'W', death: 'D', timeout: 'T', stalled: 'S', error: 'E' })[outcome] || '?';
+    return ({ victory: 'W', death: 'D', timeout: 'T', stalled: 'S', error: 'E', quit: 'Q' })[outcome] || '?';
   }
 
   function outcomeClass(outcome) {
-    return ({ victory: 'victory', death: 'death', timeout: 'timeout', stalled: 'stalled', error: 'errored' })[outcome] || 'empty';
+    return ({ victory: 'victory', death: 'death', timeout: 'timeout', stalled: 'stalled', error: 'errored', quit: 'stalled' })[outcome] || 'empty';
   }
 
   function winRateClass(rate) {

@@ -19,16 +19,16 @@ The loop you own is the same regardless of scale:
 
 **scope → brief → generate → judge/review → approve → wire → observe**
 
-You are not a gameplay engineer. Wiring art into the game is in scope; changing what the game *does* is not.
+You are not a gameplay engineer. Wiring art into the game is in scope; changing what the game _does_ is not.
 
 ## Execution modes
 
 Only **step 3 (generate)** differs between modes. Everything else — scoping, judging, approval, wiring, observation — is identical, and you must not fork the loop.
 
-| Mode           | Use when                                                                          | Generation step                                                                                 |
-| -------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **`local`** (default) | A bounded, interactive scope you will judge yourself this session               | `npm run sprites:run -- --brief <path>` (or `--all`) against the Azure sidecar                   |
-| **`issue-wave`**      | A large unattended burndown, or the human asks for issue-driven/CI generation | One `asset-request` issue per target; `.github/workflows/asset-request.yml` generates on Azure   |
+| Mode                  | Use when                                                                      | Generation step                                                                                |
+| --------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **`local`** (default) | A bounded, interactive scope you will judge yourself this session             | `npm run sprites:run -- --brief <path>` (or `--all`) against the Azure sidecar                 |
+| **`issue-wave`**      | A large unattended burndown, or the human asks for issue-driven/CI generation | One `asset-request` issue per target; `.github/workflows/asset-request.yml` generates on Azure |
 
 Pick `issue-wave` when the request names a wave count, a stop condition, or "unattended"/"issue-driven". Otherwise default to `local`.
 
@@ -45,9 +45,13 @@ Pick `issue-wave` when the request names a wave count, a stop condition, or "una
 ## First action (mandatory)
 
 1. `bash scripts/agent/preflight.sh`; adopt the Graphics Designer persona (`docs/agent-os/personas/graphics-designer.md`).
-2. Read the canonical style ground-truth `docs/agent-os/sprite-style.md` (it is loaded verbatim into every prompt AND the judge — your accept criteria come from it).
-3. **Declare an apple estimate** for the art scope before generating: pure art (brief+generate+approve) is review-ledger-exempt and typically small; **any wiring / engine change is code-touching** and runs the full gate + apple-scaled review harness + ledger.
-4. Invoke the **`sprite-judge` skill** — it is the authoritative review playbook (the sensors + VLM judge + eyeball decision tree) and you use it for every generated sheet before approval.
+2. Read `docs/knowledge/game-design/lore-bible.md` and trace the subject's
+   narrative premise to its official source citations before writing a brief.
+   If the premise conflicts with canon, record the contradiction with provenance
+   in `docs/knowledge/game-design/lore-contradictions.md` and stop/escalate.
+3. Read the canonical style ground-truth `docs/agent-os/sprite-style.md` (it is loaded verbatim into every prompt AND the judge — your accept criteria come from it).
+4. **Declare an apple estimate** for the art scope before generating: pure art (brief+generate+approve) is review-ledger-exempt and typically small; **any wiring / engine change is code-touching** and runs the full gate + apple-scaled review harness + ledger.
+5. Invoke the **`sprite-judge` skill** — it is the authoritative review playbook (the sensors + VLM judge + eyeball decision tree) and you use it for every generated sheet before approval.
 
 ## The pipeline (run it wave-by-wave, never all upfront)
 

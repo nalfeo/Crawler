@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +11,8 @@ import {
   type BaselineFile,
   type BaselineIndexEntry,
 } from '../../scripts/agent/perf/baseline-regression-check';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const FIXTURES = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -52,18 +56,20 @@ describe('release baseline regression check', () => {
     expect(decision.issue?.body).toContain(regression.meta.runUrl);
   });
 
-  it('suppresses a two-loss change comfortably inside tolerance', () => {
+  it('files an issue for any Floor 1 loss even when the trend change is within tolerance', () => {
     const decision = evaluateBaselineRegression(
       noise,
       [indexEntry(noise), indexEntry(previous)],
       [previous.meta.commit],
     );
-    expect(decision.regression).toBe(false);
+    expect(decision.regression).toBe(true);
     expect(decision.winRateDrop).toBeCloseTo(2 / 600, 10);
     expect(decision.additionalLosses).toBe(2);
+    expect(decision.issue?.title).toContain('Floor 1 release sweep loss');
+    expect(decision.issue?.body).toContain('100% success requirement');
   });
 
-  it('suppresses the exact rate boundary and detects the first value above it', () => {
+  it('files an issue at and above the prior trend threshold when Floor 1 has losses', () => {
     const atBoundary = {
       ...regression,
       winRate: 593 / 600,
@@ -81,7 +87,7 @@ describe('release baseline regression check', () => {
     ]);
     expect(boundaryDecision.winRateDrop).toBeCloseTo(0.005, 10);
     expect(boundaryDecision.additionalLosses).toBe(3);
-    expect(boundaryDecision.regression).toBe(false);
+    expect(boundaryDecision.regression).toBe(true);
 
     const aboveDecision = evaluateBaselineRegression(aboveBoundary, history, [
       previous.meta.commit,
@@ -105,10 +111,81 @@ describe('release baseline regression check', () => {
     expect(decision.previous?.commit).toBe(previous.meta.commit);
   });
 
-  it('reports no regression when no prior release exists on the lineage', () => {
+  it('files a Floor 1 loss issue even when no prior release exists on the lineage', () => {
     const decision = evaluateBaselineRegression(regression, [indexEntry(regression)], []);
-    expect(decision.regression).toBe(false);
-    expect(decision.reason).toContain('no earlier release baseline');
+    expect(decision.regression).toBe(true);
+    expect(decision.issue?.body).toContain('| Previous | N/A | N/A | N/A |');
+  });
+
+  it('CLI reports a no-history Floor 1 loss instead of crashing on the missing previous baseline', () => {
+    // Regression coverage for a real bug: main() formatted every regression
+    // with `decision.previous!.winRate`, but the no-history branch of
+    // evaluateBaselineRegression intentionally omits `previous`. That crashed
+    // the CLI AFTER the GITHUB_OUTPUT `regression=true` line was already
+    // written, so the step still failed and the workflow skipped the
+    // following issue-filing step entirely.
+    const dir = mkdtempSync(path.join(tmpdir(), 'baseline-regression-cli-'));
+    try {
+      // `firstParentHistory` resolves the commit via `git rev-list`, so the
+      // fixture's synthetic SHA (absent from this checkout) must be swapped
+      // for the real HEAD commit. The index is left empty so no entry can
+      // match any commit in that lineage regardless of its depth.
+      const headCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+      const baselineWithRealCommit: BaselineFile = {
+        ...regression,
+        meta: { ...regression.meta, commit: headCommit },
+      };
+      const baselinePath = path.join(dir, 'baseline.json');
+      const indexPath = path.join(dir, 'index.json');
+      const resultPath = path.join(dir, 'result.json');
+      const githubOutputPath = path.join(dir, 'github-output.txt');
+      writeFileSync(baselinePath, JSON.stringify(baselineWithRealCommit));
+      writeFileSync(indexPath, JSON.stringify([]));
+      writeFileSync(githubOutputPath, '');
+
+      const result = spawnSync('npx', ['tsx', 'scripts/agent/perf/baseline-regression-check.ts'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BASELINE_JSON: baselinePath,
+          BASELINE_INDEX_JSON: indexPath,
+          BASELINE_REGRESSION_RESULT: resultPath,
+          GITHUB_OUTPUT: githubOutputPath,
+        },
+      });
+
+      // Asserting the exit code (rather than letting execFileSync throw) keeps
+      // this a clean assertion failure instead of an uncaught-error path if the
+      // crash regresses.
+      expect(result.status).toBe(0);
+      const output = result.stdout;
+      expect(output).toContain('release sweep regressed');
+      expect(output).not.toContain('[ERROR]');
+      expect(readFileSync(githubOutputPath, 'utf8')).toContain('regression=true');
+      const decision = JSON.parse(readFileSync(resultPath, 'utf8')) as { regression: boolean };
+      expect(decision.regression).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('files a Floor 1 loss issue when the sweep matrix is resized', () => {
+    // The multi-floor rollout resizes the Floor-1 leg (600 → 300 runs). Rates
+    // across different sample sizes are not comparable, and the
+    // additional-losses half of the tolerance rule is meaningless across them.
+    // A Floor 1 loss is still actionable regardless: it never depends on the
+    // resize/revision comparison being reachable at all.
+    const mismatched = { ...indexEntry(previous), totalRuns: 300, totalWins: 298 };
+    mismatched.winRate = mismatched.totalWins / mismatched.totalRuns;
+    const decision = evaluateBaselineRegression(regression, [mismatched], [previous.meta.commit]);
+    expect(decision.regression).toBe(true);
+    expect(decision.reason).toContain('100% success');
+    // Floor 1 losses remain actionable even when trend comparison is skipped.
+    expect(decision.issue?.title).toContain('Floor 1 release sweep loss');
   });
 
   function resized(entry: BaselineIndexEntry): BaselineIndexEntry {
@@ -127,13 +204,21 @@ describe('release baseline regression check', () => {
     };
   }
 
+  // A Floor 1 loss now always short-circuits to an actionable issue (see above),
+  // so the resize/revision migration path below is only reachable for a
+  // CURRENT baseline with zero losses. These tests use a perfect-win current
+  // baseline to exercise that migration logic in isolation.
+  function perfectCurrent(baseline: BaselineFile): BaselineFile {
+    return { ...baseline, totalWins: baseline.totalRuns, winRate: 1 };
+  }
+
   it('skips exactly one comparison when the sweep matrix revision is intentionally bumped', () => {
     // The multi-floor rollout resizes the Floor-1 leg (600 → 300 runs) under a
     // NEW RELEASE_SWEEP_REVISION. Rates across different sample sizes are not
     // comparable, and the additional-losses half of the tolerance rule is
     // meaningless across them, so exactly one comparison is skipped.
     const decision = evaluateBaselineRegression(
-      withRevision(regression, 2),
+      withRevision(perfectCurrent(regression), 2),
       [resized(indexEntry(previous))],
       [previous.meta.commit],
     );
@@ -149,7 +234,7 @@ describe('release baseline regression check', () => {
     // into a "series migration" that silently suppresses regression detection.
     expect(() =>
       evaluateBaselineRegression(
-        withRevision(regression, 2),
+        withRevision(perfectCurrent(regression), 2),
         [{ ...resized(indexEntry(previous)), sweepRevision: 2 }],
         [previous.meta.commit],
       ),
@@ -157,7 +242,7 @@ describe('release baseline regression check', () => {
 
     expect(() =>
       evaluateBaselineRegression(
-        withRevision(regression, undefined),
+        withRevision(perfectCurrent(regression), undefined),
         [resized(indexEntry(previous))],
         [previous.meta.commit],
       ),

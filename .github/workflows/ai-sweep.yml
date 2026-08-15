@@ -308,7 +308,7 @@ jobs:
       - name: Compute this run's expected provenance (schema/floor/budget/frames/runner/node/lock/sha)
         run: |
           set -euo pipefail
-          npx tsx scripts/agent/perf/sweep-eval.ts --print-meta > current-meta.json
+          node scripts/agent/perf/prebundle-cli.mjs --entry sweep-eval --print-meta > current-meta.json
           cat current-meta.json
 
       - name: Download prior run's checkpoint artifacts (cross-run resume)
@@ -544,7 +544,6 @@ jobs:
   # replaces the old flat `search` job's implicit round-0 evaluation with an
   # explicit, independently-timed stage (see header for the timing rationale).
 
-
   # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
   # replaces the old flat `search` job's implicit round-0 evaluation with an
   # explicit, independently-timed stage (see header for the timing rationale).
@@ -575,7 +574,7 @@ jobs:
           WORKERS: ${{ inputs.workers }}
         run: |
           set -euo pipefail
-          npx tsx scripts/agent/perf/sweep-eval.ts \
+          node scripts/agent/perf/prebundle-cli.mjs --entry sweep-eval \
             --stage search-baseline --combo "$COMBO" \
             --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
             --workers "$WORKERS" \
@@ -824,7 +823,7 @@ jobs:
           HASH: ${{ steps.hash.outputs.hash }}
         run: |
           set -euo pipefail
-          npx tsx scripts/agent/perf/sweep-eval.ts \
+          node scripts/agent/perf/prebundle-cli.mjs --entry sweep-eval \
             --stage search-eval --combo "$COMBO" \
             --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
             --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
@@ -1064,7 +1063,7 @@ jobs:
           HASH: ${{ steps.hash.outputs.hash }}
         run: |
           set -euo pipefail
-          npx tsx scripts/agent/perf/sweep-eval.ts \
+          node scripts/agent/perf/prebundle-cli.mjs --entry sweep-eval \
             --stage search-eval --combo "$COMBO" \
             --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
             --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
@@ -1274,7 +1273,7 @@ jobs:
           HASH: ${{ steps.hash.outputs.hash }}
         run: |
           set -euo pipefail
-          npx tsx scripts/agent/perf/sweep-eval.ts \
+          node scripts/agent/perf/prebundle-cli.mjs --entry sweep-eval \
             --stage search-eval --combo "$COMBO" \
             --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
             --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
@@ -1416,7 +1415,15 @@ jobs:
   validate:
     name: Validate ${{ matrix.combo.combo }}
     needs:
-      [preflight, checkpoint-init, round1-select, round2-select, round3-select, validate-budget, resume-import]
+      [
+        preflight,
+        checkpoint-init,
+        round1-select,
+        round2-select,
+        round3-select,
+        validate-budget,
+        resume-import,
+      ]
     if: ${{ !cancelled() }}
     concurrency:
       group: crawler-sweep-slot-${{ matrix.combo.sweepSlot }}
@@ -1471,7 +1478,7 @@ jobs:
             exit 1
           fi
           echo "Using checkpoint: $CHECKPOINT"
-          npx tsx scripts/agent/perf/sweep-eval.ts \
+          node scripts/agent/perf/prebundle-cli.mjs --entry sweep-eval \
             --stage validate --combo "$COMBO" \
             --search-artifact "$CHECKPOINT" \
             --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
