@@ -30,6 +30,12 @@ export interface BaselineLegMetrics {
   totalRuns: number;
 }
 
+export interface BaselineFailure {
+  seed: number;
+  weapon: string;
+  signature?: string;
+}
+
 export interface BaselineFile {
   meta: BaselineMetadata;
   winRate: number;
@@ -42,6 +48,13 @@ export interface BaselineFile {
    * comparison so the existing series stays continuous.
    */
   legs?: Record<string, BaselineLegMetrics>;
+  /** Failure diagnostics emitted by the sweep, including their stable signatures. */
+  fails?: BaselineFailure[];
+  floorId?: string;
+  legId?: string;
+  forceWeapon?: boolean;
+  chained?: boolean;
+  enemyDamageMultiplier?: number;
 }
 
 export interface BaselineIndexEntry {
@@ -115,6 +128,8 @@ export interface BaselineRegressionDecision {
     marker: string;
     title: string;
     body: string;
+    /** Stable identifiers used to deduplicate recurring failures across releases. */
+    failureSignatures?: string[];
   };
 }
 
@@ -173,6 +188,40 @@ function compareShape(
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(2)}%`;
+}
+
+export function buildFailureSignature(
+  failure: Pick<BaselineFailure, 'seed' | 'weapon'>,
+  baseline: Pick<
+    BaselineFile,
+    'floorId' | 'legId' | 'forceWeapon' | 'chained' | 'enemyDamageMultiplier'
+  >,
+): string {
+  const prefix = [
+    `floor=${baseline.floorId ?? 'floor1'}`,
+    `leg=${baseline.legId ?? 'floor1'}`,
+    `forceWeapon=${baseline.forceWeapon ?? true}`,
+    `chained=${baseline.chained ?? false}`,
+    `damage=${baseline.enemyDamageMultiplier ?? 1}`,
+  ].join('|');
+  return `${prefix}|seed=${failure.seed}|weapon=${failure.weapon}`;
+}
+
+function failureSignatures(baseline: BaselineFile): string[] {
+  if (!Array.isArray(baseline.fails)) return [];
+  return [
+    ...new Set(
+      baseline.fails.map((failure) => {
+        const signature = buildFailureSignature(failure, baseline);
+        if (failure.signature !== undefined && failure.signature !== signature) {
+          throw new Error(
+            `failure signature does not match seed and sweep configuration: ${signature}`,
+          );
+        }
+        return signature;
+      }),
+    ),
+  ].sort();
 }
 
 function buildIssue(
@@ -241,6 +290,7 @@ function buildFloor1LossIssue(
   current: ComparedBaseline,
   previous: ComparedBaseline | undefined,
   legs?: readonly BaselineLegRegression[],
+  signatures: readonly string[] = [],
 ): NonNullable<BaselineRegressionDecision['issue']> {
   const marker = `<!-- ${BASELINE_REGRESSION_MARKER_PREFIX}:${current.commit} -->`;
   const previousLine = previous
@@ -264,6 +314,7 @@ function buildFloor1LossIssue(
   return {
     marker,
     title: `bug: Floor 1 release sweep loss at ${current.commit.slice(0, 12)}`,
+    ...(signatures.length > 0 ? { failureSignatures: [...signatures] } : {}),
     body: [
       marker,
       '## Floor 1 release sweep loss',
@@ -278,6 +329,9 @@ function buildFloor1LossIssue(
       `- **Regressing commit:** ${current.commitSubject}`,
       `- **Commit date:** ${current.commitDate}`,
       `- **Sweep run:** ${current.runUrl}`,
+      ...(signatures.length > 0
+        ? ['', '### Failure signatures', '', ...signatures.map((signature) => `- \`${signature}\``)]
+        : []),
       ...legLines,
       '',
       '### Investigation',
@@ -388,7 +442,12 @@ export function evaluateBaselineRegression(
         regression: true,
         reason: `Floor 1 recorded ${current.totalLosses} loss${current.totalLosses === 1 ? '' : 'es'}; the release target is 100% success`,
         current,
-        issue: buildFloor1LossIssue(current, undefined),
+        issue: buildFloor1LossIssue(
+          current,
+          undefined,
+          undefined,
+          failureSignatures(currentBaseline),
+        ),
       };
     }
     return {
@@ -413,7 +472,7 @@ export function evaluateBaselineRegression(
       winRateDrop: previous.winRate - current.winRate,
       additionalLosses: current.totalLosses - previous.totalLosses,
       ...(legs ? { legs } : {}),
-      issue: buildFloor1LossIssue(current, previous, legs),
+      issue: buildFloor1LossIssue(current, previous, legs, failureSignatures(currentBaseline)),
     };
   }
 
@@ -563,5 +622,8 @@ function main(): void {
   report.finish();
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain =
+  process.env.CRAWLER_PREBUNDLED_ENTRY === undefined &&
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) main();

@@ -50,6 +50,7 @@ import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
 import { classifySweepRun } from './winrate-sweep-classify.js';
 import { runProgression } from '../../../src/game/ai/progression-runner.js';
 import { attachReleaseBaselineRuns, serializeReleaseBaseline } from './release-baseline.js';
+import { buildFailureSignature } from './baseline-regression-check.js';
 
 /**
  * Per-leg AI seed offset for a chained run, so leg N's decision RNG differs
@@ -211,6 +212,13 @@ async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise
     const record: FailRecord = {
       weapon: task.weapon,
       seed: task.seed,
+      signature: buildFailureSignature(task, {
+        floorId: config.floorId,
+        legId: config.chain ? `${config.floorId}-chain` : config.floorId,
+        chained: config.chain,
+        forceWeapon: config.forceWeapon,
+        enemyDamageMultiplier: config.enemyDamageMultiplier,
+      }),
       outcome: stats.outcome,
       gameTimeSec: Math.round(stats.gameTimeMs / 1000),
       level: stats.finalLevel,
@@ -236,6 +244,7 @@ async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise
 interface FailRecord {
   weapon: string;
   seed: number;
+  signature: string;
   outcome: RunStats['outcome'];
   gameTimeSec: number;
   level: number;
