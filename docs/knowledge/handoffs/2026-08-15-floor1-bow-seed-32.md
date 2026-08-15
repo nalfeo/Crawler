@@ -18,10 +18,10 @@ ai-behavior-tree, ai-combat-balance
 
 ## Summary
 
-Issue #2987 reported the forced-bow seed 32 Floor 1 loss from release run
-`31887873050` (`project:sweep-results-viewer runId=31887873050`). The exact
-current-baseline replay died at frame 12,716 with 2.9% minimum HP; the same tuple
-at previous baseline `48a515cd183b7988d2b66235e1a6ee876221793d` won.
+Issue #2989 reported the forced-bow seed 32 Floor 1 loss from release run
+`31897808277` (`project:sweep-results-viewer runId=31897808277`). The exact
+current-baseline artifact for `d82ff8fbf831d591d40b49cf6442c767fda8a60f` died at
+211.9 seconds with 2.9% minimum HP.
 
 The gameplay regressor was PR #2960's retreat candidate score, not the later CI
 commit named by the automated issue. It added raw progress toward a remembered
@@ -40,7 +40,7 @@ Observed through `src/game/ai/headless-runner.ts` with the release configuration
 forced bow, seed 32, damage multiplier 1, and the unchanged 23,760-frame cap.
 
 - Before: death at frame 12,716, 211.9 seconds, 2.9% minimum HP.
-- After: official victory at frame 14,786, 246.4 seconds, 37.5% minimum HP.
+- After: official victory at frame 14,683, 244.7 seconds, 58.2% minimum HP.
 - Paired post-fix runs are identical after excluding `wallTimeMs`.
 - Nearby bow seed 31 and non-bow sword seed 32 remain official victories.
 - Prior bow-35, baseball-bat-34, and throwing-knife-44 retreat regressions remain
@@ -59,6 +59,7 @@ forced bow, seed 32, damage multiplier 1, and the unchanged 23,760-frame cap.
 
 - Focused retreat unit tests: 3 passed.
 - Exact Floor 1 retreat headless regressions: 4 passed.
+- Focused behavior-tree unit file: 126 passed.
 - Healthy-case CLI panel: bow-31 and sword-32 won.
 - `bash scripts/agent/verify-fast.sh`: passed (138 files, 2,259 tests).
 - Code review: clean after two rounds.
