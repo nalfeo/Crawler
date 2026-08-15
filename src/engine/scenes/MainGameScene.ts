@@ -115,7 +115,13 @@ import {
   type FovPresetId,
 } from '../fov/fov-config.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
-import { createLogger } from '../../shared/logger.js';
+import {
+  createLogCursor,
+  createLogger,
+  readLogsSince,
+  type LogCursor,
+} from '../../shared/logger.js';
+import { createRunBundle, type RunBundle, type RunEndReason } from '../../shared/run-bundle.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
@@ -313,6 +319,16 @@ export interface MainGameSceneOptions {
    * shared {@link SessionRecorder} interface, keeping layer boundaries intact.
    */
   sessionRecorderFactory?: (world: GameWorld, playerEid: number) => SessionRecorder;
+  /** Builds the concrete game-layer RunStats without importing game code here. */
+  runStatsFactory?: (
+    world: GameWorld,
+    playerEid: number,
+    outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'quit',
+    runStartXp?: number,
+    recorderStats?: ReturnType<SessionRecorder['getStats']>,
+  ) => unknown;
+  /** Receives the completed run artifact before reload or scene restart. */
+  onRunBundle?: (bundle: RunBundle) => void;
   /**
    * Per-floor lighting overrides, merged over {@link DEFAULT_LIGHTING_CONFIG}
    * when the scene is created. The shipped game passes the floor manifest's
@@ -413,7 +429,7 @@ declare global {
         getPerf: () => FovPerfSnapshot;
       };
     };
-    /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
+    /** Optional human player session recorder. Set when the factory is provided. */
     __playerSessionRecorder?: SessionRecorder;
   }
 }
@@ -450,10 +466,13 @@ export class MainGameScene extends Phaser.Scene {
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
 
   /**
-   * Dev-only: human player session recorder. Non-null only when
+   * Optional human player session recorder. Non-null only when
    * `options.sessionRecorderFactory` is provided.
    */
   private sessionRecorder?: SessionRecorder;
+  private runStartXp = 0;
+  private runLogCursor!: LogCursor;
+  private runBundleEmitted = false;
 
   /** Enemy count from the previous simulation step — used to detect kills. */
   private prevEnemyCount = 0;
@@ -813,6 +832,8 @@ export class MainGameScene extends Phaser.Scene {
       generatedEquipmentRunKey:
         this.options.generatedEquipmentRunKey ?? generatedEquipmentRunKeyFromSeed(worldSeed),
     });
+    this.runLogCursor = createLogCursor();
+    this.runBundleEmitted = false;
 
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
@@ -862,6 +883,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
+    this.runStartXp = this.world.playerLevel?.xp ?? 0;
 
     logger.info('Main game scene created', {
       state: this.world.state,
@@ -990,6 +1012,10 @@ export class MainGameScene extends Phaser.Scene {
         window.location.reload();
       },
       onQuit: () => {
+        // Death/victory/timeout already emitted the terminal bundle before
+        // showing this UI. A future active-run quit screen can use this same
+        // path to emit the distinct quit outcome.
+        this.emitRunBundle('quit');
         window.location.reload();
       },
     });
@@ -1900,7 +1926,7 @@ export class MainGameScene extends Phaser.Scene {
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;
 
-      // Dev-only: record telemetry from the human player each sim step.
+      // Record telemetry from the human player each sim step when configured.
       if (this.sessionRecorder) {
         const currentEnemyCount = query(this.world.ecs, [Enemy]).length;
         const currentLevel = this.world.playerLevel?.level ?? 0;
@@ -3827,6 +3853,8 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    this.emitRunBundle(completionPresentation === 'failed_timeout' ? 'timeout' : 'victory');
+
     if (completionPresentation === 'failed_timeout') {
       this.floorCompletionTitleText?.setText('Game Over');
       this.floorCompletionSubtitleText?.setText('Floor 1 failed');
@@ -3929,7 +3957,40 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.deathScreenShown = true;
+    this.emitRunBundle('death');
     this.gameOverUI?.show();
+  }
+
+  private emitRunBundle(endReason: RunEndReason): void {
+    if (this.runBundleEmitted || !this.options.runStatsFactory) {
+      return;
+    }
+    const outcome =
+      endReason === 'victory'
+        ? 'victory'
+        : endReason === 'death'
+          ? 'death'
+          : endReason === 'timeout'
+            ? 'timeout'
+            : 'quit';
+    const bundle = createRunBundle({
+      runStats: this.options.runStatsFactory(
+        this.world,
+        this.playerEid,
+        outcome,
+        this.runStartXp,
+        this.sessionRecorder?.getStats(),
+      ),
+      recorderJsonl: this.sessionRecorder?.toJsonl?.() ?? '',
+      logs: readLogsSince(this.runLogCursor),
+      meta: {
+        endReason,
+        floorId: this.options.floorId,
+        seed: this.world.seed,
+      },
+    });
+    this.runBundleEmitted = true;
+    this.options.onRunBundle?.(bundle);
   }
 
   /**

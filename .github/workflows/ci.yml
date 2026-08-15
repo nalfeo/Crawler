@@ -702,6 +702,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: sweep-leg-${{ matrix.leg }}
           path: files/sweep-${{ matrix.leg }}.json

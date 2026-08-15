@@ -16,6 +16,8 @@ import {
   type ScenarioInitializationOptions,
 } from '../game/index.js';
 import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
+import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
+import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
 import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
   statSystem,
@@ -27,8 +29,16 @@ import {
 import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
+import type { RunBundle } from '../shared/run-bundle.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
+
+function defaultRunBundleSink(bundle: RunBundle): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
+}
 
 /**
  * Create main scene options for a floor.
@@ -37,6 +47,7 @@ export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 export function createFloorMainSceneOptions(
   floorId: string = 'floor1',
   initializationOptions?: ScenarioInitializationOptions,
+  onRunBundle?: (bundle: RunBundle) => void,
 ): FloorMainSceneOptions {
   const scenario = getScenarioDefinition(floorId);
   const manifest = getFloorManifest(floorId);
@@ -49,6 +60,10 @@ export function createFloorMainSceneOptions(
     terrainPackId: manifest.terrainPackId,
     terrainPacks: manifest.terrainPacks,
     lightingConfig: { ambient: manifest.lighting.ambient },
+    sessionRecorderFactory: (world, playerEid) =>
+      createPlayerSessionRecorder(world, playerEid, { recordWeaponTelemetry: true }),
+    runStatsFactory: collectHumanRunStats,
+    onRunBundle: onRunBundle ?? defaultRunBundleSink,
     configureWorld: (world: GameWorld, playerEid: number) =>
       scenario.configureWorld(world, playerEid, initializationOptions),
     selectLoadoutOption: scenario.selectLoadoutOption,
@@ -63,7 +78,7 @@ export function createFloorMainSceneOptions(
             window.history.replaceState(window.history.state, '', url);
           }
           return {
-            ...createFloorMainSceneOptions(nextFloorId, { playerCarryover }),
+            ...createFloorMainSceneOptions(nextFloorId, { playerCarryover }, onRunBundle),
             worldSeed: world.seed,
             generatedEquipmentRunKey: playerCarryover.generatedEquipmentRegistry?.runKey,
           };

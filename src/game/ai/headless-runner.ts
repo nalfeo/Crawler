@@ -39,6 +39,7 @@ import {
   type LevelUpEvent,
   type SkillRunMetrics,
 } from './types.js';
+import { assembleRunStats } from '../../shared/run-stats-collector.js';
 import { createRunEventCollector } from '../../core/run-events.js';
 import {
   captureHeadlessRunDataFrame,
@@ -1453,7 +1454,7 @@ export async function runHeadless(
     const playerHealth = world.stores.health.current[playerEid] ?? 0;
     const currentHealthPercent = playerHealth / playerMaxHealth;
 
-    const crashStats: RunStats = {
+    const crashStats: RunStats = assembleRunStats({
       totalFrames: frameCount,
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
@@ -1527,7 +1528,7 @@ export async function runHeadless(
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
       ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
-    };
+    });
     if (mergedConfig.onFinish) {
       try {
         mergedConfig.onFinish(world);
@@ -1556,7 +1557,7 @@ export async function runHeadless(
   // floor-local collection efficiency.
   const xpOnGroundAtEnd = computeXpOnGroundAtEnd(world);
 
-  const stats: RunStats = {
+  const stats: RunStats = assembleRunStats({
     totalFrames: frameCount,
     wallTimeMs,
     gameTimeMs: world.elapsedMs,
@@ -1630,7 +1631,7 @@ export async function runHeadless(
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),
     ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
-  };
+  });
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
     logger.info('Headless run complete', {
