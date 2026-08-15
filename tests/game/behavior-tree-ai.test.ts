@@ -490,6 +490,34 @@ describe('BehaviorTreeAI', () => {
     expect(harness.retreatThreatEid).toBe(enemy);
   });
 
+  it('does not drop an active melee retreat on the second tick for the same threat', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 10, 0, 20);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 1;
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const harness = ai as unknown as {
+      retreating: boolean;
+      retreatThreatEid: number | null;
+      localThreatRecoveryEid: number | null;
+    };
+
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(harness.retreating).toBe(true);
+    expect(harness.retreatThreatEid).toBe(enemy);
+    expect(harness.localThreatRecoveryEid).toBe(enemy);
+
+    world.frameCount += 1;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(harness.retreating).toBe(true);
+    expect(harness.retreatThreatEid).toBe(enemy);
+  });
+
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
     // Baseball-bat reach = 5.5ft, strike gate = 8.25ft. Enemy at 3.75ft
     // is inside the gate so the player kites. When the swing is READY it pokes in

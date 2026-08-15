@@ -1231,6 +1231,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           // Let melee close/attack instead of re-entering RETREAT at the outer
           // danger radius forever; projectile users still need defensive spacing.
           if (
+            !this.retreating &&
             activeWeapon?.weaponType === WeaponType.MELEE &&
             threat.eid === this.localThreatRecoveryEid &&
             this.localThreatRecoveryMap === ctx.world.floorMap
