@@ -9,18 +9,20 @@ function readSceneSource(sceneFileName: string): string {
   return readFileSync(resolve(testDir, '../../src/engine/scenes', sceneFileName), 'utf-8');
 }
 
+const titleTextCallPattern = /\.text\([\s\S]*?[`'"]Crawler[`'"]\s*,/;
+
 describe('title screen copy', () => {
   it('uses Crawler as the boot loading title', () => {
     const bootSceneSource = readSceneSource('BootScene.ts');
 
-    expect(bootSceneSource).toContain('Crawler');
+    expect(bootSceneSource).toMatch(titleTextCallPattern);
     expect(bootSceneSource).not.toContain('THE CRAWLER');
   });
 
   it('uses Crawler as the intro title', () => {
     const introSceneSource = readSceneSource('IntroScene.ts');
 
-    expect(introSceneSource).toContain('Crawler');
+    expect(introSceneSource).toMatch(titleTextCallPattern);
     expect(introSceneSource).not.toContain('THE CRAWLER');
   });
 });
