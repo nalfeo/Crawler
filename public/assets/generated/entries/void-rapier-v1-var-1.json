@@ -3,7 +3,7 @@
   "spriteName": "void-rapier-v1-var-1",
   "assetPath": "generated/void-rapier-v1-var-1.png",
   "approvedAt": "2026-07-20T04:40:36.780Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-NewqIX/void-rapier-v1/2026-07-18T03-33-16-93ca7871",
+  "sourceRun": "generated/runs/void-rapier-v1/imported-085628ff2e00",
   "variantIndex": 1,
   "anchor": {
     "x": 31,
@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": "weapon",
   "contentHash": "085628ff2e0060da4a9cd388bdb007212890d8d2a9abb192ff43a752009c5de6",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/void-rapier-v1/2026-07-18T03-33-16-93ca7871/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/void-rapier-v1/2026-07-18T03-33-16-93ca7871/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/void-rapier-v1/2026-07-18T03-33-16-93ca7871/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

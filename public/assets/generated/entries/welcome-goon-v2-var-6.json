@@ -102,9 +102,6 @@
   },
   "type": "character",
   "contentHash": "8684435aaa6160dfdf8c7a02b1009dc56cbde3ae0612ad061a2295c8667be613",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

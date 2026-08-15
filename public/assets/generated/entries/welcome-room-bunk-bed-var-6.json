@@ -102,9 +102,6 @@
   },
   "type": "prop",
   "contentHash": "b22dcbee5cdfd8419fa8b35fe846a1e2b255ed92c9fba20145e0b6daf993db23",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-bunk-bed\\2026-07-26T23-38-22-56dd7acc\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-bunk-bed\\2026-07-26T23-38-22-56dd7acc\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-bunk-bed\\2026-07-26T23-38-22-56dd7acc\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

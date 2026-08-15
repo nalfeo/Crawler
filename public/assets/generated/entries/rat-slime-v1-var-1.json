@@ -3,7 +3,7 @@
   "spriteName": "rat-slime-v1-var-1",
   "assetPath": "generated/rat-slime-v1-var-1.png",
   "approvedAt": "2026-06-29T06:24:00.271Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-iCGLoe/rat-slime-v1/2026-06-29T06-19-46-662c0523",
+  "sourceRun": "generated/runs/rat-slime-v1/imported-9fa3e05ce0b7",
   "variantIndex": 1,
   "anchor": {
     "x": 65,

@@ -101,10 +101,7 @@
     }
   },
   "type": "prop",
-  "contentHash": "4844f743e559e79b1b687c1e886ceec20bacdf757cc8d8a47156b9aaaba8c062",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-cable-coil\\2026-07-25T06-21-26-fc98a538\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-cable-coil\\2026-07-25T06-21-26-fc98a538\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-cable-coil\\2026-07-25T06-21-26-fc98a538\\postprocess.pipeline.effective.yaml",
+  "contentHash": "eaa5408259d17ac59672c6b3538a3a0ada5b5df5fc2a598f8e2a0f3b996b1420",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {
