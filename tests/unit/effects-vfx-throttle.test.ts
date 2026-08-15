@@ -1,18 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-  createEffectsVfx,
-  PLAYER_HURT_PULSE_ALPHA,
-  PLAYER_HURT_PULSE_COLOR,
-  PLAYER_HURT_PULSE_DURATION_MS,
-  PLAYER_HURT_PULSE_RADIUS_PX,
-  PLAYER_HURT_PULSE_SCALE,
-  PLAYER_HURT_SHAKE_DURATION_MS,
-  PLAYER_HURT_SHAKE_INTENSITY,
-} from '../../src/engine/EffectsVfx.js';
+import { createEffectsVfx } from '../../src/engine/EffectsVfx.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { CombatEvent } from '../../src/shared/combat-events.js';
 
 type EffectsScene = Parameters<typeof createEffectsVfx>[0];
+const EXPECTED_PLAYER_HURT_SHAKE_DURATION_MS = 80;
+const EXPECTED_PLAYER_HURT_SHAKE_INTENSITY = 0.003;
+const EXPECTED_PLAYER_HURT_PULSE_RADIUS_PX = 10;
+const EXPECTED_PLAYER_HURT_PULSE_COLOR = 0xff4d4d;
+const EXPECTED_PLAYER_HURT_PULSE_ALPHA = 0.32;
+const EXPECTED_PLAYER_HURT_PULSE_DURATION_MS = 220;
+const EXPECTED_PLAYER_HURT_PULSE_SCALE = 2.4;
 
 /** Minimal Phaser scene mock that satisfies the EffectsVfx capability guard and
  *  exposes VFX/camera spies so player-hurt feedback can be observed. */
@@ -106,19 +104,22 @@ describe('EffectsVfx player-hurt throttle', () => {
     vfx.update(world, 0);
 
     expect(flash).not.toHaveBeenCalled();
-    expect(shake).toHaveBeenCalledWith(PLAYER_HURT_SHAKE_DURATION_MS, PLAYER_HURT_SHAKE_INTENSITY);
+    expect(shake).toHaveBeenCalledWith(
+      EXPECTED_PLAYER_HURT_SHAKE_DURATION_MS,
+      EXPECTED_PLAYER_HURT_SHAKE_INTENSITY,
+    );
     expect(addCircle).toHaveBeenCalledWith(
       0,
       0,
-      PLAYER_HURT_PULSE_RADIUS_PX,
-      PLAYER_HURT_PULSE_COLOR,
-      PLAYER_HURT_PULSE_ALPHA,
+      EXPECTED_PLAYER_HURT_PULSE_RADIUS_PX,
+      EXPECTED_PLAYER_HURT_PULSE_COLOR,
+      EXPECTED_PLAYER_HURT_PULSE_ALPHA,
     );
     expect(addTween).toHaveBeenCalledWith(
       expect.objectContaining({
-        duration: PLAYER_HURT_PULSE_DURATION_MS,
+        duration: EXPECTED_PLAYER_HURT_PULSE_DURATION_MS,
         ease: 'Cubic.easeOut',
-        scale: expect.objectContaining({ to: PLAYER_HURT_PULSE_SCALE }),
+        scale: expect.objectContaining({ to: EXPECTED_PLAYER_HURT_PULSE_SCALE }),
       }),
     );
   });

@@ -28,6 +28,7 @@ hud-ux, vfx
 
 - Before change: `npm run lab -- --host 127.0.0.1 --port 4176`, opened `http://127.0.0.1:4176/lab.html?lab=juice-lab`, clicked `Player Hurt`, and sampled the rendered canvas. The center-region average shifted from RGB `(10,15,28)` to `(73,22,31)` after 30ms; red-excess jumped from `-18` to `42`, confirming a full-screen red wash.
 - After change: repeated the same Juice Lab observation. The center-region average stayed essentially unchanged after the `Player Hurt` trigger (`redExcess` stayed about `-18`), confirming the full-screen red flash is gone while unit coverage verifies the localized pulse and soft shake still fire.
+- Real MainGameScene path (`npm run dev -- --host 127.0.0.1 --port 4173`, open `http://127.0.0.1:4173/?lab=1`): used a deterministic headless probe against `window.__floor1Debug` (fixed-seed runtime). After resolving loadout with `Enter`, injected a real player `combatEvents.push({ type: 'hit', targetType: 'player', ... })` at the live player position. The queue drained on the next frame (`combatEvents: 1 → 0`), and screen-region sampling 80ms later showed no global red wash (all four corner regions red-excess delta `0.00`; center delta `+0.16` only), which confirms hurt feedback is localized in shipped MainGameScene wiring.
 
 ## Validation
 
