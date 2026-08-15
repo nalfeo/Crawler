@@ -494,6 +494,34 @@ describe('BehaviorTreeAI', () => {
     expect(harness.retreatThreatEid).toBe(enemy);
   });
 
+  it('does not drop an active melee retreat on the second tick for the same threat', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 10, 0, 20);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 1;
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const harness = ai as unknown as {
+      retreating: boolean;
+      retreatThreatEid: number | null;
+      localThreatRecoveryEid: number | null;
+    };
+
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(harness.retreating).toBe(true);
+    expect(harness.retreatThreatEid).toBe(enemy);
+    expect(harness.localThreatRecoveryEid).toBe(enemy);
+
+    world.frameCount += 1;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(harness.retreating).toBe(true);
+    expect(harness.retreatThreatEid).toBe(enemy);
+  });
+
   it('biases the retreat lane toward the remembered progression objective', () => {
     // Regression: the release sweep at 187bc7d6 lost Floor 1 on bow/35 and
     // throwing-knife/44 because retreat scored flee tiles purely by open space.
