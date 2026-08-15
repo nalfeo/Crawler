@@ -14,8 +14,16 @@
       "notes": "Separate-model review approved with changes. Concern 1 (plan review timing) is recorded transparently as post-implementation because the human-facing issue plan was posted before coding but the separate-model review was missed until ledger setup. Concern 2 (projectile-wide behavior) addressed by expanding the wounded regression to cover fireball as well as bow while preserving existing healthy projectile coverage. Concern 3 (threshold coupling) assessed as acceptable because the behavior intentionally uses the existing ranged defensive HP threshold rather than introducing new tuning for this surgical fix."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
