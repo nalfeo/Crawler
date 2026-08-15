@@ -636,6 +636,16 @@ export function createPhaserBridge(scene: Phaser.Scene): {
    */
   const generatedBoundsByTexture = new Map<string, OpaqueBounds>();
   const playerWalkMovingByEid = new Map<number, boolean>();
+  const acceptedStepDisplacementByEid = new Map<
+    number,
+    {
+      frameCount: number;
+      prevX: number;
+      prevY: number;
+      currX: number;
+      currY: number;
+    }
+  >();
   const mobMotionStates = new Map<number, MobMotionRenderState>();
   const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
@@ -954,8 +964,37 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         // Positions/velocities are stored in feet; scale feet → pixels for
         // rendering (the only place pixels exist). All downstream geometry
         // (beam/melee/aoe lengths, tip offsets) is computed in pixels too.
-        const x = ftToPx((position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha);
-        const y = ftToPx((position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha);
+        const positionX = position.x[eid] ?? 0;
+        const positionY = position.y[eid] ?? 0;
+        let sample = acceptedStepDisplacementByEid.get(eid);
+        if (!sample) {
+          sample = {
+            frameCount: world.frameCount,
+            prevX: positionX,
+            prevY: positionY,
+            currX: positionX,
+            currY: positionY,
+          };
+          acceptedStepDisplacementByEid.set(eid, sample);
+        } else if (sample.frameCount !== world.frameCount) {
+          sample.prevX = sample.currX;
+          sample.prevY = sample.currY;
+          sample.currX = positionX;
+          sample.currY = positionY;
+          sample.frameCount = world.frameCount;
+        } else if (sample.currX !== positionX || sample.currY !== positionY) {
+          // Position changed without an accompanying sim frame tick (teleport,
+          // spawn, floor transitions): snap to the new position and render from
+          // there with zero extrapolation to avoid stale offsets.
+          sample.prevX = positionX;
+          sample.prevY = positionY;
+          sample.currX = positionX;
+          sample.currY = positionY;
+        }
+        const stepDx = sample.currX - sample.prevX;
+        const stepDy = sample.currY - sample.prevY;
+        const x = ftToPx(sample.currX + stepDx * interpAlpha);
+        const y = ftToPx(sample.currY + stepDy * interpAlpha);
 
         // --- Harvestable node rendering (generated sprite when wired, else a
         // procedural tinted circle) + harvest progress ring ---
@@ -2261,6 +2300,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
         visuals.delete(eid);
         playerWalkMovingByEid.delete(eid);
+        acceptedStepDisplacementByEid.delete(eid);
         // Remove weapon anchor so dead/despawned entities don't leave stale
         // offsets that could be picked up if the eid is reused later.
         world.entityWeaponAnchors.delete(eid);
@@ -2407,6 +2447,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
       }
       visuals.clear();
+      playerWalkMovingByEid.clear();
+      acceptedStepDisplacementByEid.clear();
       mobMotionStates.clear();
       for (const overlay of mobFlashOverlays.values()) {
         overlay.destroy();
