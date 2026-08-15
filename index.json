@@ -1,5 +1,39 @@
 [
   {
+    "commit": "d82ff8fbf831d591d40b49cf6442c767fda8a60f",
+    "commitDate": "2026-08-15T16:59:16Z",
+    "commitSubject": "Fix Floor 1 melee threat recovery loop (#2980)",
+    "capturedAt": "2026-08-15T18:10:08.046Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31897808277",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/d82ff8fbf831d591d40b49cf6442c767fda8a60f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04,
+        "totalWins": 6,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.04,
+      "gatePass": false,
+      "path": "by-sha/d82ff8fbf831d591d40b49cf6442c767fda8a60f.fun-report.json"
+    }
+  },
+  {
     "commit": "e654f9d1315670d1e2b43d12489ec18e5bfa84a6",
     "commitDate": "2026-08-15T14:40:57Z",
     "commitSubject": "Fix wounded NPC-approach threat clearing for Floor 1 sweep losses (#2977)",
