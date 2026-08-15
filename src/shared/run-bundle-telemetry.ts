@@ -1,5 +1,5 @@
 import type { RunBundle, RunBundleMeta } from './run-bundle.js';
-import type { PlaytestSurvey } from './playtest-survey.js';
+import { serializePlaytestSurvey, type PlaytestSurvey } from './playtest-survey.js';
 
 /**
  * Pure request-shape builders for the PR2 `/runs` ingest contract. Every field
@@ -29,6 +29,6 @@ export function buildRunSurveyRequest(
 ): RunBundleUploadRequest {
   return {
     ...buildRunBundleUploadRequest(bundle),
-    survey,
+    survey: serializePlaytestSurvey(survey),
   };
 }
