@@ -3709,7 +3709,10 @@ function startRouterMockServer(routes) {
           handler = entry?.[1];
         }
         const result = (handler ? handler(req.url, parsed) : {}) ?? {};
-        res.writeHead(result.status ?? 200, { 'Content-Type': 'application/json' });
+        res.writeHead(result.status ?? 200, {
+          'Content-Type': 'application/json',
+          ...(result.headers ?? {}),
+        });
         res.end(result.body !== undefined ? JSON.stringify(result.body) : '{}');
       });
     });
@@ -3910,6 +3913,142 @@ test('runFromEnv respects runtime busy/global caps under a simulated schedule bu
     stdout,
     /dispatch cap applied sent=3 total_eligible=10 cap=8 budget=3 outstanding=0/,
     `expected run output to show the bounded budget; stdout: ${stdout}`,
+  );
+});
+
+test('runFromEnv defers normal dispatches instead of failing when runner-pressure telemetry is rate-limited', async (t) => {
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const pr30 = {
+    number: 30,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [],
+    head: { sha: 'head-30', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+  const dispatches = [];
+
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr30] }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep.yml/runs`]: () => ({
+      status: 403,
+      headers: { 'x-ratelimit-remaining': '0' },
+      body: { message: 'API rate limit exceeded for installation' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep-recover.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/weapon-sweep.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/merge-train-validate.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-rate-limited-pressure-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  assert.equal(dispatches.length, 0, `rate-limited telemetry must not dispatch; stdout: ${stdout}`);
+  assert.match(
+    stdout,
+    /dispatch budget telemetry rate-limited; deferring normal dispatches step=runner-pressure/,
+  );
+  assert.match(stdout, /global backpressure applied deferred=1 pr_numbers=30 outstanding=unknown /);
+});
+
+test('runFromEnv identifies recovery-outstanding rate limits while deferring normal dispatches', async (t) => {
+  const OWNER = 'test-owner';
+  const REPO = 'test-repo';
+  const TOKEN = 'x-test-token';
+  const pr31 = {
+    number: 31,
+    state: 'open',
+    draft: false,
+    base: { ref: 'main' },
+    created_at: '2026-07-01T00:00:00Z',
+    labels: [],
+    head: { sha: 'head-31', repo: { full_name: `${OWNER}/${REPO}` } },
+  };
+  const dispatches = [];
+
+  const { server, port } = await startRouterMockServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({ body: [pr31] }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ai-sweep-recover.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/weapon-sweep.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/merge-train-validate.yml/runs`]: () => ({
+      body: { total_count: 0, workflow_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/runs`]: () => ({
+      status: 403,
+      headers: { 'x-ratelimit-remaining': '0' },
+      body: { message: 'API rate limit exceeded for installation' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery.yml/dispatches`]: (_url, body) => {
+      dispatches.push(body?.inputs ?? {});
+      return { status: 204 };
+    },
+  });
+  t.after(() => server.close());
+
+  const eventDir = await mkdtemp(join(tmpdir(), 'router-rate-limited-outstanding-'));
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { full_name: `${OWNER}/${REPO}`, default_branch: 'main' } }),
+  );
+  t.after(() => rm(eventDir, { recursive: true, force: true }));
+
+  const { code, stdout, stderr } = await runRouterScript(port, {
+    GITHUB_TOKEN: TOKEN,
+    GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_PATH: eventPath,
+  });
+
+  if (!assertRouterExit(t, code, stderr)) return;
+
+  assert.equal(
+    dispatches.length,
+    0,
+    `rate-limited outstanding count must not dispatch; stdout: ${stdout}`,
+  );
+  assert.match(
+    stdout,
+    /dispatch budget telemetry rate-limited; deferring normal dispatches step=recovery-outstanding/,
+  );
+  assert.match(
+    stdout,
+    /global backpressure applied deferred=1 pr_numbers=31 outstanding=unknown .*sweep_runs=0 validation_runs=0/,
   );
 });
 

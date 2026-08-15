@@ -61,11 +61,13 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
   areLightingRectsEqual,
+  extrapolateRenderPosition,
   findNearestNearbyNpc,
   formatAbilityTrigger,
   getFloorCompletionPresentation,
   getFloorRunOutcome,
   getLightingViewRect,
+  renderInterpolationAlpha,
   resolveDialogueLines,
   resolveNpcQuestIndicatorState,
 } from './main-game-scene-helpers.js';
@@ -462,6 +464,20 @@ export class MainGameScene extends Phaser.Scene {
   private accumulator = 0;
 
   private accumulatorClampCount = 0;
+
+  /**
+   * Render-side interpolation factor for the current frame (`0..1`): how far
+   * into the next fixed simulation step the rendered frame sits. Zero on frozen
+   * frames (pause, modals, dialogue) where no step is in flight. Consumed by
+   * `bridge.sync` and `updateCamera` so both extrapolate identically.
+   */
+  private renderInterpAlpha = 0;
+  private playerRenderSampleFrame = -1;
+  private playerRenderSampleEid = -1;
+  private playerRenderPrevX = 0;
+  private playerRenderPrevY = 0;
+  private playerRenderCurrX = 0;
+  private playerRenderCurrY = 0;
 
   private simulationPaused = false;
 
@@ -1758,6 +1774,10 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    // Frozen frames (modals, dialogue, pause, level-up) render the world exactly
+    // as the last completed step left it; only the fixed-step path below has a
+    // partially-elapsed step to interpolate.
+    this.renderInterpAlpha = 0;
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionScreenIfNeeded();
     this.showDeathScreenIfNeeded();
@@ -1998,7 +2018,18 @@ export class MainGameScene extends Phaser.Scene {
 
     this.updateDoorOverlay();
     this.updateLightingOverlay();
-    this.bridge.sync(this.world);
+    // Render between fixed steps: the accumulator holds the fraction of the next
+    // step already elapsed in wall-clock time. Feeding it to the bridge (and to
+    // the camera below, via the same alpha) removes the judder caused by rAF
+    // frames not lining up with the 60Hz sim step — most visible on high-refresh
+    // displays, where sprites would otherwise only move on every other frame.
+    // This is render-side only: no world state is read or written differently.
+    this.renderInterpAlpha = renderInterpolationAlpha(this.accumulator, GAME.DELTA_MS);
+    this.bridge.sync(
+      this.world,
+      this.world.elapsedMs + this.renderInterpAlpha * GAME.DELTA_MS,
+      this.renderInterpAlpha,
+    );
     this.resumePendingRewardPresentations();
     if (this.rewardOpeningUI?.isOpen()) {
       this.updateCamera();
@@ -3578,9 +3609,39 @@ export class MainGameScene extends Phaser.Scene {
     }
     const px = this.world.stores.position.x[this.playerEid];
     const py = this.world.stores.position.y[this.playerEid];
+    const playerX = px ?? 0;
+    const playerY = py ?? 0;
+    if (this.playerRenderSampleEid !== this.playerEid) {
+      this.playerRenderSampleEid = this.playerEid;
+      this.playerRenderSampleFrame = this.world.frameCount;
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    } else if (this.playerRenderSampleFrame !== this.world.frameCount) {
+      this.playerRenderPrevX = this.playerRenderCurrX;
+      this.playerRenderPrevY = this.playerRenderCurrY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+      this.playerRenderSampleFrame = this.world.frameCount;
+    } else if (this.playerRenderCurrX !== playerX || this.playerRenderCurrY !== playerY) {
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    }
+    // Follow the SAME extrapolated position the bridge renders the player sprite
+    // at (`position + acceptedStepDisplacement * interpAlpha`).
+    const alpha = this.renderInterpAlpha;
+    const stepDx = this.playerRenderCurrX - this.playerRenderPrevX;
+    const stepDy = this.playerRenderCurrY - this.playerRenderPrevY;
     this.cameras.main.centerOn(
-      px !== undefined ? ftToPx(px) : GAME.WIDTH * 0.5,
-      py !== undefined ? ftToPx(py) : GAME.HEIGHT * 0.5,
+      px !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrX, stepDx, alpha))
+        : GAME.WIDTH * 0.5,
+      py !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrY, stepDy, alpha))
+        : GAME.HEIGHT * 0.5,
     );
     this.updateSafeRoomZoom();
   }

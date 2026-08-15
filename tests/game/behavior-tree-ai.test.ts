@@ -70,6 +70,9 @@ import {
   FLOOR2_HUNT_NO_PROGRESS_FRAMES,
   FLOOR2_HUNT_RECOVERY_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
+  RETREAT_DAMAGE_WINDOW_FRAMES,
+  RETREAT_DAMAGE_WINDOW_MIN_DAMAGE,
+  RETREAT_OBJECTIVE_MEMORY_FRAMES,
   PROJECTILE_DODGE_AOE_BUFFER_FT,
   PROJECTILE_DODGE_CLEARANCE_FT,
   PROJECTILE_DODGE_VECTOR_SCALE,
@@ -488,6 +491,129 @@ describe('BehaviorTreeAI', () => {
     ai.poll(createInputState(), world);
     expect(ai.getDecision().state).toBe(AIState.RETREAT);
     expect(harness.retreatThreatEid).toBe(enemy);
+  });
+
+  it('biases the retreat lane toward the remembered progression objective', () => {
+    // Regression: the release sweep at 187bc7d6 lost Floor 1 on bow/35 and
+    // throwing-knife/44 because retreat scored flee tiles purely by open space.
+    // The escape lane ran backwards off the route, and the next progression poll
+    // re-walked the same ground into the same pursuers.
+    const world = createTestWorld({ seed: 90 });
+    world.floorMap = makeOpenRoom(40, 40);
+    spawnPlayer(world, 80, 80);
+    const threat = { x: 60, y: 80 };
+    spawnEnemy(world, threat.x, threat.y, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 90, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const harness = ai as unknown as {
+      retreatObjectiveX: number | null;
+      retreatObjectiveY: number | null;
+      retreatObjectiveFrame: number;
+      retreatObjectiveMap: unknown;
+      rememberRetreatObjective(world: GameWorld, x: number, y: number): void;
+      getRetreatObjective(world: GameWorld): { x: number; y: number } | null;
+      pickRetreatTarget(
+        world: GameWorld,
+        playerX: number,
+        playerY: number,
+        threat: { x: number; y: number },
+      ): { x: number; y: number };
+    };
+
+    const objective = { x: 140, y: 30 };
+    const unbiased = harness.pickRetreatTarget(world, 80, 80, threat);
+    harness.rememberRetreatObjective(world, objective.x, objective.y);
+    const biased = harness.pickRetreatTarget(world, 80, 80, threat);
+
+    const distTo = (p: { x: number; y: number }) =>
+      Math.hypot(objective.x - p.x, objective.y - p.y);
+    expect(distTo(biased)).toBeLessThan(distTo(unbiased));
+
+    // The objective memory is dropped once stale so a retreat never chases an
+    // objective the AI has since abandoned.
+    world.frameCount = harness.retreatObjectiveFrame + RETREAT_OBJECTIVE_MEMORY_FRAMES + 1;
+    expect(harness.getRetreatObjective(world)).toBeNull();
+
+    // ...and once the AI is on a different floor map.
+    world.frameCount = harness.retreatObjectiveFrame;
+    expect(harness.getRetreatObjective(world)).not.toBeNull();
+    world.floorMap = makeOpenRoom(40, 40);
+    expect(harness.getRetreatObjective(world)).toBeNull();
+  });
+
+  it('retreats on sustained damage rate before the remaining-HP threshold trips', () => {
+    // Regression: the release sweep at 187bc7d6 lost Floor 1 on baseball-bat/34
+    // because the fixed remaining-HP retreat threshold (10%) only reacts to HP
+    // left, never to damage RATE — a pinned melee runner bled 121 -> 21 HP in
+    // 5.3s before retreat could trigger.
+    const ai = new BehaviorTreeAI({ seed: 91 });
+    const harness = ai as unknown as {
+      bleedingOut: boolean;
+      updateBleedOutRisk(frame: number, health: number): void;
+      resetBleedOutRisk(): void;
+    };
+    // The provider samples health every poll, so feed a contiguous frame run.
+    const bleed = (from: number, to: number, frames: number): void => {
+      harness.resetBleedOutRisk();
+      for (let frame = 0; frame <= frames; frame += 1) {
+        harness.updateBleedOutRisk(frame, from + ((to - from) * frame) / frames);
+      }
+    };
+
+    // A slow, survivable exchange: 12 HP per damage window with 100 HP left is
+    // far outside the bleed-out horizon.
+    bleed(124, 100, 2 * RETREAT_DAMAGE_WINDOW_FRAMES);
+    expect(harness.bleedingOut).toBe(false);
+
+    // The same window at a lethal rate: 60 HP per window with 40 HP left is
+    // well inside it.
+    bleed(160, 40, 2 * RETREAT_DAMAGE_WINDOW_FRAMES);
+    expect(harness.bleedingOut).toBe(true);
+
+    // Chip damage under the minimum-damage floor never trips the trigger, so a
+    // single graze at low HP cannot masquerade as a sustained exchange.
+    bleed(RETREAT_DAMAGE_WINDOW_MIN_DAMAGE - 7, 2, 2 * RETREAT_DAMAGE_WINDOW_FRAMES);
+    expect(harness.bleedingOut).toBe(false);
+
+    // Health gains (a Constitution level-up) clear the flag rather than
+    // extrapolating a negative damage rate.
+    bleed(160, 40, 2 * RETREAT_DAMAGE_WINDOW_FRAMES);
+    expect(harness.bleedingOut).toBe(true);
+    for (let frame = 1; frame <= RETREAT_DAMAGE_WINDOW_FRAMES; frame += 1) {
+      harness.updateBleedOutRisk(2 * RETREAT_DAMAGE_WINDOW_FRAMES + frame, 40 + frame);
+    }
+    expect(harness.bleedingOut).toBe(false);
+  });
+
+  it('enters RETREAT while bleeding out even above the remaining-HP threshold', () => {
+    const world = createTestWorld({ seed: 92 });
+    world.floorMap = makeOpenRoom(40, 40);
+    const player = spawnPlayer(world, 80, 80);
+    // Inside retreatDangerRadius (20ft) so the threat gate is satisfied.
+    spawnEnemy(world, 90, 80, 20);
+    world.stores.health.max[player] = 100;
+    // 60% HP — far above the 10% retreatThreshold, so only the damage-rate
+    // trigger can produce RETREAT here.
+    world.stores.health.current[player] = 60;
+
+    const ai = new BehaviorTreeAI({ seed: 92, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const harness = ai as unknown as { bleedingOut: boolean };
+
+    ai.poll(createInputState(), world);
+    expect(harness.bleedingOut).toBe(false);
+    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+
+    // Sustained lethal chip across the damage window, holding HP well above the
+    // 10% remaining-HP retreatThreshold the whole time.
+    const frames = RETREAT_DAMAGE_WINDOW_FRAMES;
+    for (let frame = 1; frame <= frames; frame += 1) {
+      world.frameCount += 1;
+      world.stores.health.current[player] = 60 - (40 * frame) / frames;
+      ai.poll(createInputState(), world);
+    }
+    expect(world.stores.health.current[player]).toBeGreaterThan(10);
+    expect(harness.bleedingOut).toBe(true);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
   });
 
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
@@ -1868,6 +1994,22 @@ describe('BehaviorTreeAI', () => {
       expect(decision.targetX).toBe(38);
       expect(decision.targetY).toBe(14);
       expect(decision.reason).not.toContain('Clearing nearby threat');
+    },
+  );
+
+  it.each(['bow', 'fireball'])(
+    'clears nearby threats before long NPC approach paths when a wounded %s user routes to an NPC',
+    (weaponId) => {
+      const { world, player, enemies } = setupNpcApproachThreat(weaponId);
+      world.stores.health.current[player] = 120;
+      world.stores.health.max[player] = 240;
+      const ai = new BehaviorTreeAI({ seed: 12 });
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.ENGAGE);
+      expect(enemies).toContain(decision.targetEid);
+      expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
     },
   );
 
