@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "floor1-local-threat-recovery",
+  "task_title": "Fix Floor 1 local threat recovery",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "convergent",
+      "notes": "Plan reviewer approved the root-cause approach and raised one adjacent-behavior concern: explicitly preserve projectile defensive retreat. Resolved by final melee-only RETREAT-to-LocalThreatRecovery yield plus rerunning the Floor 1 safety panel that includes throwing-knife seed 29; the initial over-broad version regressed that case and the final scoped version passed it."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
