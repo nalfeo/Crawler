@@ -1066,7 +1066,7 @@ const session = await joinSession({
         },
         {
           name: 'load_file',
-          description: 'Switch to a local weapon-sweep JSON file.',
+          description: 'Switch to a local experiment JSON file.',
           inputSchema: {
             type: 'object',
             properties: { path: { type: 'string' } },
@@ -1081,7 +1081,7 @@ const session = await joinSession({
         {
           name: 'list_local_runs',
           description:
-            'List valid weapon-sweep results from the attached session worktree, newest first.',
+            'List valid experiment results from the attached session worktree, newest first.',
           handler: async (ctx) => {
             const state = states.get(ctx.instanceId);
             if (!state) throw new CanvasError('no_state', 'Canvas not open');
@@ -1097,7 +1097,7 @@ const session = await joinSession({
         },
         {
           name: 'select_local_run',
-          description: 'Select a discovered attached-session local weapon-sweep result.',
+          description: 'Select a discovered attached-session local experiment result.',
           inputSchema: {
             type: 'object',
             properties: { path: { type: 'string' } },
