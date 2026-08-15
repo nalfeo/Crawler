@@ -407,6 +407,24 @@ export const RETREAT_ARC_OFFSETS_RAD = [
   (2 * Math.PI) / 3,
   -(2 * Math.PI) / 3,
 ] as const;
+// Cornered breakout arc: the remaining rearward directions (±150° and 180°),
+// scanned ONLY when every candidate in the primary ±120° arc is wall or
+// unreachable. That happens when the player is wedged into a room corner with
+// the pack occupying the only open quadrant; without these directions Retreat
+// falls back to the naive away-vector, which points into the corner the player
+// is already pressed against, so collision zeroes its movement and it dies
+// standing still (release-sweep seed 25, #2993). Running past the pack is worse
+// spacing but strictly better than no movement at all.
+// A retreat that covers less than this many feet across a whole re-pick
+// interval is not kiting — it is pressed into geometry with its movement
+// cancelled by collision (normal travel covers roughly 6-7 ft in that window).
+// Only such a wedged retreat widens its escape scan to the breakout arc.
+export const RETREAT_WEDGE_PROGRESS_FT = 1;
+export const RETREAT_BREAKOUT_ARC_OFFSETS_RAD = [
+  (5 * Math.PI) / 6,
+  -(5 * Math.PI) / 6,
+  Math.PI,
+] as const;
 // Sample each arc direction at full and half scan radius so a reachable target
 // exists even in tight rooms where the far ring is all walls.
 export const RETREAT_DISTANCE_MULTS = [1, 0.5] as const;
