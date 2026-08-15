@@ -3,7 +3,7 @@
   "spriteName": "the-stairs-v2-var-2",
   "assetPath": "generated/the-stairs-v2-var-2.png",
   "approvedAt": "2026-07-07T00:20:55.266Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Gwhgqc/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a",
+  "sourceRun": "generated/runs/the-stairs-v2/imported-4091f871dab6",
   "variantIndex": 2,
   "anchor": {
     "x": 255,
@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": "tile",
   "contentHash": "4091f871dab669c14f46060a90e359745ecce63d263635a5c7d17a786546afa5",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "opaqueBounds": {
     "x": 0,

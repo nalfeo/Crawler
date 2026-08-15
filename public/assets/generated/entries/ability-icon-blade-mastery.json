@@ -90,8 +90,5 @@
     "canvasWidth": 128,
     "canvasHeight": 131
   },
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": null
 }
