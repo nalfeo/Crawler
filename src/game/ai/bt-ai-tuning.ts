@@ -421,6 +421,44 @@ export const RETREAT_MAX_PATH_VERIFICATIONS = 6;
 // calls to roughly three re-picks per second instead of one per frame.
 export const RETREAT_REPICK_INTERVAL_FRAMES = 18;
 export const RETREAT_REPICK_ARRIVE_FT = 10;
+// Objective bias for the kite destination. Retreat scores candidates purely on
+// open space, so a wounded runner kites BACKWARD off its route; the very next
+// poll progression walks the same ground forward into the same pursuers, and the
+// pair nets ~zero displacement while contact damage keeps landing (measured on
+// the release Floor-1 losses: 684 ft travelled for 133 ft of net movement while
+// bleeding 120 HP). Adding a subordinate progress term makes the kite run
+// ALONG the route: the player is ~2.4x faster than a rat, so fleeing toward the
+// objective both breaks contact and banks progress instead of undoing it.
+// Weight is deliberately well under 1 so open space still decides the direction —
+// this is a tiebreak among comparably safe lanes, never a licence to kite into
+// the swarm.
+export const RETREAT_OBJECTIVE_BIAS_WEIGHT = 1;
+// The remembered progression objective is only used while it is this fresh
+// (frames). Retreat and progression interleave within ~1 s, so a short memory is
+// always populated during the oscillation this fixes, and a stale objective from
+// a previous route never steers a later escape.
+export const RETREAT_OBJECTIVE_MEMORY_FRAMES = 180;
+// --- Sustained-damage (time-to-death) retreat trigger -----------------------
+// `retreatThreshold` is a fixed fraction of max HP, so it only reacts to how
+// much health is LEFT, never to how fast it is leaving. A melee runner pinned in
+// contact with a pack drains ~19 HP/s: it burns from full to the 10 % floor in
+// about five seconds and only then starts kiting, by which point the run is
+// unrecoverable with no healing on Floor 1 (measured on the release Floor-1
+// baseball-bat loss: 121 → 21 HP in 5.3 s, all of it above the threshold).
+// Sampling the recent health slope lets the AI disengage while the damage is
+// still survivable: it retreats when sustained incoming damage would kill it
+// inside {@link RETREAT_TIME_TO_DEATH_FRAMES}.
+// Window over which the incoming-damage slope is measured (frames). Long enough
+// that a single hit does not read as a fatal rate, short enough to react inside
+// one contact exchange.
+export const RETREAT_DAMAGE_WINDOW_FRAMES = 90;
+// Predicted survival horizon (frames). Breaking contact takes about a second of
+// kiting (danger radius 20 ft at ~22.5 ft/s), so the horizon must be a small
+// multiple of that or the retreat starts too late to matter.
+export const RETREAT_TIME_TO_DEATH_FRAMES = 180;
+// Ignore the slope until this much damage has landed inside the window, so
+// isolated chip hits on a nearly-dead runner cannot masquerade as a burst.
+export const RETREAT_DAMAGE_WINDOW_MIN_DAMAGE = 10;
 
 // When the player still owes gold for the merchant charm, the AI actively farms
 // the ambient swarm instead of wandering. These scan radii are deliberately
