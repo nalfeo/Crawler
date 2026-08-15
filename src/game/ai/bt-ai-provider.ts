@@ -1584,11 +1584,12 @@ export class BehaviorTreeAI implements AIInputProvider {
         const objectiveGain = objective
           ? objectiveDistance - Math.hypot(objective.x - wx, objective.y - wy)
           : 0;
-        // Normalize route progress to directional alignment so a remote objective
-        // cannot overwhelm the enemy-clearance score. The objective may trade only
-        // the retreat hysteresis band of safety, regardless of its distance.
+        // Normalize route progress to the fraction of candidate travel that closes
+        // the objective gap. The reverse triangle inequality bounds this to [-1, 1],
+        // so a remote objective cannot overwhelm the enemy-clearance score.
         const maxObjectiveBias = this.config.retreatDangerRadius * (RETREAT_HYSTERESIS_MULT - 1);
-        const boundedObjectiveGain = maxObjectiveBias * (objectiveGain / dist);
+        const objectiveProgressFraction = objectiveGain / dist;
+        const boundedObjectiveGain = maxObjectiveBias * objectiveProgressFraction;
         candidates.push({
           x: wx,
           y: wy,
