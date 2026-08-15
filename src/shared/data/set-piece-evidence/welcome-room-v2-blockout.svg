@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Welcome Room v2 pre-decomposition blockout</title>
+  <desc>Lore-grounded native-resolution target: three residents frame an exposed shared backstage gap.</desc>
+  <rect width="512" height="512" fill="#171522"/>
+  <rect x="32" y="32" width="448" height="448" rx="4" fill="#3b3040" stroke="#d7a86e" stroke-width="8"/>
+  <rect x="96" y="96" width="128" height="192" fill="#745052"/>
+  <rect x="224" y="96" width="128" height="192" fill="#65505b"/>
+  <rect x="352" y="96" width="128" height="192" fill="#4f465f"/>
+  <rect x="96" y="288" width="384" height="192" fill="#463d4c"/>
+  <path d="M288 480V384H416V288M288 384H160V288" fill="none" stroke="#e8d4a4" stroke-width="28" opacity=".9"/>
+  <path d="M288 384H416V176" fill="none" stroke="#f3c878" stroke-width="8" stroke-dasharray="12 10"/>
+  <rect x="368" y="112" width="96" height="80" fill="#b86f62" stroke="#f3c878" stroke-width="6"/>
+  <rect x="112" y="112" width="96" height="64" fill="#ba8b55" stroke="#f3c878" stroke-width="6"/>
+  <rect x="240" y="112" width="96" height="64" fill="#8d6d7b" stroke="#f3c878" stroke-width="6"/>
+  <circle cx="160" cy="224" r="20" fill="#d98a62" stroke="#171522" stroke-width="6"/>
+  <circle cx="288" cy="336" r="20" fill="#d8b26f" stroke="#171522" stroke-width="6"/>
+  <circle cx="416" cy="224" r="20" fill="#9d9bd0" stroke="#171522" stroke-width="6"/>
+  <path d="M176 224C224 192 352 192 400 224M176 232C240 288 336 288 400 232" fill="none" stroke="#d98b9f" stroke-width="5" stroke-dasharray="10 9"/>
+  <rect x="256" y="452" width="64" height="28" fill="#d7a86e"/>
+  <g fill="#f8e5bd" font-family="monospace" font-size="14">
+    <text x="104" y="88">MERCHANT SERVICE</text>
+    <text x="232" y="88">GOON ORIENTATION</text>
+    <text x="360" y="88">BROKER ALCOVE</text>
+    <text x="184" y="332">EXPOSED SHARED BACKSTAGE</text>
+    <text x="350" y="210">FOCAL BOOKCASE MASS</text>
+    <text x="222" y="438">DOOR / ENTRY</text>
+  </g>
+</svg>
