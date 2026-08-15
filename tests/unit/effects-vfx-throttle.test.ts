@@ -1,8 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   createEffectsVfx,
+  PLAYER_HURT_PULSE_ALPHA,
   PLAYER_HURT_PULSE_COLOR,
   PLAYER_HURT_PULSE_DURATION_MS,
+  PLAYER_HURT_PULSE_RADIUS_PX,
+  PLAYER_HURT_PULSE_SCALE,
   PLAYER_HURT_SHAKE_DURATION_MS,
   PLAYER_HURT_SHAKE_INTENSITY,
 } from '../../src/engine/EffectsVfx.js';
@@ -104,11 +107,18 @@ describe('EffectsVfx player-hurt throttle', () => {
 
     expect(flash).not.toHaveBeenCalled();
     expect(shake).toHaveBeenCalledWith(PLAYER_HURT_SHAKE_DURATION_MS, PLAYER_HURT_SHAKE_INTENSITY);
-    expect(addCircle).toHaveBeenCalledWith(0, 0, 10, PLAYER_HURT_PULSE_COLOR, 0.32);
+    expect(addCircle).toHaveBeenCalledWith(
+      0,
+      0,
+      PLAYER_HURT_PULSE_RADIUS_PX,
+      PLAYER_HURT_PULSE_COLOR,
+      PLAYER_HURT_PULSE_ALPHA,
+    );
     expect(addTween).toHaveBeenCalledWith(
       expect.objectContaining({
         duration: PLAYER_HURT_PULSE_DURATION_MS,
         ease: 'Cubic.easeOut',
+        scale: { from: 0.4, to: PLAYER_HURT_PULSE_SCALE },
       }),
     );
   });

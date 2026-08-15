@@ -46,6 +46,9 @@ const COLOR_CRIT_SPARK = 0xff8800;
 const COLOR_LEVEL_UP = 0xffd166;
 const COLOR_SPAWNER_PULSE = 0x9be15d;
 export const PLAYER_HURT_PULSE_COLOR = 0xff4d4d;
+export const PLAYER_HURT_PULSE_RADIUS_PX = 10;
+export const PLAYER_HURT_PULSE_SCALE = 2.4;
+export const PLAYER_HURT_PULSE_ALPHA = 0.32;
 export const PLAYER_HURT_PULSE_DURATION_MS = 220;
 export const PLAYER_HURT_SHAKE_DURATION_MS = 80;
 export const PLAYER_HURT_SHAKE_INTENSITY = 0.003;
@@ -495,11 +498,11 @@ export function createEffectsVfx(scene: Phaser.Scene): {
       x,
       y,
       PLAYER_HURT_PULSE_COLOR,
-      10,
-      2.4,
+      PLAYER_HURT_PULSE_RADIUS_PX,
+      PLAYER_HURT_PULSE_SCALE,
       WORLD_VFX_DEPTH.hitSpark,
       PLAYER_HURT_PULSE_DURATION_MS,
-      0.32,
+      PLAYER_HURT_PULSE_ALPHA,
     );
     const cam = scene.cameras?.main;
     if (typeof cam?.shake === 'function') {
