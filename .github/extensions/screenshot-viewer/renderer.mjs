@@ -426,7 +426,6 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
                 src="\${escapeHtml(imgUrl)}"
                 alt="\${escapeHtml(screenshot.filename)}"
                 loading="lazy"
-                onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\"thumb-load-error\\">Unable to load image</div>'"
               />
             </div>
             <div class="thumb-meta">
@@ -468,6 +467,20 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         }
 
         galleryEl.innerHTML = '<div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
+        for (const img of galleryEl.querySelectorAll('.thumb-img-wrap img')) {
+          img.addEventListener('error', handleThumbError);
+        }
+      }
+
+      function handleThumbError(event) {
+        const img = event.currentTarget;
+        const wrap = img.parentElement;
+        if (!wrap) return;
+        img.remove();
+        const notice = document.createElement('div');
+        notice.className = 'thumb-load-error';
+        notice.textContent = 'Unable to load image';
+        wrap.replaceChildren(notice);
       }
 
       function renderError(message) {
