@@ -1871,6 +1871,18 @@ describe('BehaviorTreeAI', () => {
     },
   );
 
+  it('clears nearby NPC-approach threats for wounded projectile users', () => {
+    const { world, player } = setupNpcApproachThreat('throwing-knife');
+    world.stores.health.current[player] = 20;
+    world.stores.health.max[player] = 100;
+    const ai = new BehaviorTreeAI({ seed: 12 });
+
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
   it('resolves the retreat-triggering threat before resuming remote progression', () => {
     const { world, player, enemies, shopkeeperNpcEid } = setupNpcApproachThreat('throwing-knife');
     world.stores.health.current[player] = 8;
