@@ -429,9 +429,10 @@ export const RETREAT_REPICK_ARRIVE_FT = 10;
 // bleeding 120 HP). Adding a subordinate progress term makes the kite run
 // ALONG the route: the player is ~2.4x faster than a rat, so fleeing toward the
 // objective both breaks contact and banks progress instead of undoing it.
-// Weight is an explicit one-for-one trade: one foot of objective progress can
-// offset one foot of enemy spacing, so retreat banks route progress while the
-// open-space term still rejects lanes that run into the swarm.
+// The provider normalizes objective progress to directional alignment and bounds
+// its contribution to the retreat hysteresis band. This weight retains a
+// one-for-one trade inside that band without letting a remote objective outweigh
+// materially safer open space.
 export const RETREAT_OBJECTIVE_BIAS_WEIGHT = 1;
 // The remembered progression objective is only used while it is this fresh
 // (frames). Retreat and progression interleave within ~1 s, so a short memory is
