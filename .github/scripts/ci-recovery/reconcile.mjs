@@ -9,6 +9,8 @@ import {
   isDuplicateDispatch,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
+  isSelfRecoveryCheckRun,
+  selfRecoveryWorkflowRunIds,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
@@ -1238,9 +1240,7 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
         await assertExpectedMetadataUnchanged('strip-closing-keywords');
         // Re-fetch the live body to avoid overwriting concurrent author edits:
         // fixedBody was computed from the initial PR fetch and may be stale.
-        const livePr = (
-          await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)
-        ).data;
+        const livePr = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data;
         const liveFixedBody = stripClosingKeywordsForIssues(livePr.body, targets, repository);
         const bodyChanged = liveFixedBody !== (livePr.body ?? '');
         if (bodyChanged) {
@@ -1252,9 +1252,7 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
           // Remove the automation-derived label so requiresHumanApproval
           // reflects the cleared state; skips silently if already absent.
           await removePrLabel(HUMAN_APPROVAL_LABEL, { skipIfMissing: true });
-          process.stdout.write(
-            `stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`,
-          );
+          process.stdout.write(`stripped-closing-keywords pr=#${prNumber} issues=${issuesList}\n`);
         } else {
           pr.body = livePr.body;
         }
@@ -2319,6 +2317,20 @@ const rawCheckRuns =
       { headers: { Accept: 'application/vnd.github+json' } },
     )
   ).data.check_runs || [];
+
+const runs =
+  (
+    await request(
+      readToken,
+      `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
+    )
+  ).data.workflow_runs || [];
+// Checks produced by the CI Recovery pipeline's own workflows describe faults in
+// the automation, not in the PR, so they must never become blockers the recovery
+// agent is asked to clear (PR #2952 stalled on a `ci-failure route` blocker that
+// was the router's own job).
+const selfRecoveryRunIds = selfRecoveryWorkflowRunIds(runs);
+
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
@@ -2328,7 +2340,7 @@ for (const check of checkRuns) {
   if (
     check.status === 'completed' &&
     ['failure', 'timed_out', 'startup_failure', 'stale'].includes(check.conclusion) &&
-    !checkName.includes('ci recovery') &&
+    !isSelfRecoveryCheckRun(check, selfRecoveryRunIds) &&
     !(pendingHumanApproval && humanApprovalDerivedChecks.has(checkName))
   ) {
     blockers.push({
@@ -2341,13 +2353,6 @@ for (const check of checkRuns) {
 }
 const waitingRequiredChecks = unsatisfiedChecks(checkRuns, mergeTrainAdmissionChecks);
 
-const runs =
-  (
-    await request(
-      readToken,
-      `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(pr.head.sha)}&per_page=100`,
-    )
-  ).data.workflow_runs || [];
 // Collapse to the latest run per (normalized path, event) so a successful rerun
 // of a workflow replaces a stale action_required run before any blocker classification.
 const latestRunsByKey = new Map();

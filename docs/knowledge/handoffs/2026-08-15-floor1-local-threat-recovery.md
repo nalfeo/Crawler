@@ -49,14 +49,11 @@ The local real-headless reproduction matched the artifact:
 Observed through the production `BehaviorTreeAI` and `runHeadless` pipeline with
 weapon personas enabled and the release 23,760-frame cap:
 
-| Case                 | Before                                          | After                                                             |
-| -------------------- | ----------------------------------------------- | ----------------------------------------------------------------- |
-| baseball-bat seed 34 | death at 334.2s, level 6, 67 kills, min HP 0.6% | victory at 298.1s, level 7, 86 kills, min HP 7.1%, final HP 77.1% |
-
-Release-sweep classifier replay:
-
-- `npm run ai:winrate-sweep -- --seeds 34 --weapons baseball-bat --max-frames 23760 --workers 1 --out /tmp/crawler-2967-onecase-sweep.json`
-- Result: `baseball-bat 1/1 100.0%`.
+| Panel                          | Before                                                                | After                                                                                                                                                                                                                     |
+| ------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Release sweep repro case       | `baseball-bat seed 34` died at 334.2s, level 6, 67 kills, min HP 0.6% | official victory at 298.1s, level 7, 86 kills, min HP 7.1%, final HP 77.1%                                                                                                                                                |
+| GitHub broad seed/weapon panel | release sweep incident included this melee death in the issue panel   | GitHub CI run `31886626208` (`Headless Floor 1 Gate` job `95016886447`) passed `tests/headless/floor1-legacy-death-regressions.test.ts` at 10/10 wins (100%) across pistol, throwing-knife, baseball-bat, and sword seeds |
+| GitHub seed-panel sanity gate  | failing release sweep showed a non-100% Floor 1 release panel         | the same GitHub job passed `tests/headless/floor1-completion.test.ts` (`win-rate over seeds 1–25`, mixed starter weapons) and `tests/headless/floor1-local-threat-recovery-regression.test.ts` (baseball-bat seed 34)     |
 
 ## Review
 
@@ -75,7 +72,7 @@ Release-sweep classifier replay:
 - Exact post-fix CLI replay: passed, victory at 298.1s.
 - `npx -y node@22 node_modules/vitest/vitest.mjs run tests/headless/floor1-local-threat-recovery-regression.test.ts --project headless --reporter=dot`: passed.
 - `npx -y node@22 node_modules/vitest/vitest.mjs run tests/headless/floor1-legacy-death-regressions.test.ts tests/headless/floor1-planning-deadline.test.ts --project headless --reporter=dot`: passed after melee scoping (11/11).
-- One-case winrate sweep for seed 34 / baseball-bat: passed, 1/1 wins.
+- GitHub broad panel evidence: CI run `31886626208` / job `95016886447` passed the Floor 1 legacy seed/weapon regression panel at 10/10 wins and the seeds 1–25 mixed-weapon completion gate.
 - `npm run verify:fast`: passed.
 - Review ledger validation: passed.
 

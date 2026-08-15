@@ -792,6 +792,83 @@ export function collapseCheckRunsByName(checkRuns) {
   return [...latest.values()];
 }
 
+// Workflow files that belong to the CI Recovery automation itself. A failed job
+// in one of these is an infrastructure fault in the recovery pipeline, never
+// something a PR author (or the recovery agent acting on the PR) can fix by
+// changing the branch, so such checks must never become PR blockers -- doing so
+// hands recovery a permanently unclearable blocker and the loop stalls until
+// attempts exhaust.
+//
+// Identity is the immutable workflow *path*, never the mutable display name
+// (same rationale as AUTO_RETRIGGER_WORKFLOW_PATHS). The pre-existing
+// name-substring filter in reconcile.mjs only matched jobs whose *job* name
+// contains "CI recovery"; the router's job is named `route`, which slipped
+// through and produced the `ci-failure route` blocker behind the PR #2952
+// recovery-loop incident.
+export const SELF_RECOVERY_WORKFLOW_PATHS = Object.freeze([
+  '.github/workflows/ci-recovery.yml',
+  '.github/workflows/ci-recovery-router.yml',
+  '.github/workflows/ci-recovery-incidents.yml',
+  '.github/workflows/ci-recovery-review-wake-bridge.yml',
+]);
+
+const SELF_RECOVERY_WORKFLOW_PATH_SET = new Set(
+  SELF_RECOVERY_WORKFLOW_PATHS.map((path) => path.toLowerCase()),
+);
+
+/**
+ * Extracts the owning workflow run id from an Actions check run. Actions check
+ * runs expose a job URL of the form
+ * `https://github.com/<owner>/<repo>/actions/runs/<runId>/job/<jobId>`, so the
+ * run id is recoverable without an extra API call.
+ *
+ * @param {object} check
+ * @returns {number|null} run id, or null when the URL is absent/unparseable
+ * (e.g. a check posted by a non-Actions App).
+ */
+export function checkRunWorkflowRunId(check) {
+  const url = String(check?.html_url || check?.details_url || '');
+  const match = /\/actions\/runs\/(\d+)(?:\/|$)/.exec(url);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+/**
+ * Returns the ids of the supplied workflow runs that belong to the CI Recovery
+ * automation itself.
+ *
+ * @param {object[]} workflowRuns runs from `/actions/runs?head_sha=...`
+ * @returns {Set<number>}
+ */
+export function selfRecoveryWorkflowRunIds(workflowRuns) {
+  const ids = new Set();
+  for (const run of workflowRuns || []) {
+    const path = compact(run?.path).toLowerCase();
+    if (SELF_RECOVERY_WORKFLOW_PATH_SET.has(path)) {
+      ids.add(Number(run.id));
+    }
+  }
+  return ids;
+}
+
+/**
+ * True when the check run was produced by a CI Recovery workflow, so it must be
+ * excluded from PR blocker classification.
+ *
+ * @param {object} check
+ * @param {Set<number>} selfRecoveryRunIds from `selfRecoveryWorkflowRunIds`
+ * @returns {boolean}
+ */
+export function isSelfRecoveryCheckRun(check, selfRecoveryRunIds) {
+  const runId = checkRunWorkflowRunId(check);
+  if (runId !== null && selfRecoveryRunIds?.has(runId)) return true;
+  // Fallback for the case where the owning run is not in the caller's run list
+  // (e.g. more than one page of runs on the head SHA): the recovery reconcile
+  // job carries "CI recovery" in its job name.
+  return compact(check?.name).toLowerCase().includes('ci recovery');
+}
+
 export function shouldSkipRepoIncidentWorkflowRun(run) {
   const event = compact(run?.event);
   return (
