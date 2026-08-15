@@ -1,5 +1,39 @@
 [
   {
+    "commit": "146d83fc9b9326ad7a65ab0e49ae055842d5b370",
+    "commitDate": "2026-08-15T13:59:27Z",
+    "commitSubject": "feat: add post-run survey and silent run uploads (#2952)",
+    "capturedAt": "2026-08-15T15:16:19.426Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31889605930",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/146d83fc9b9326ad7a65ab0e49ae055842d5b370.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04666666666666667,
+        "totalWins": 7,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.02,
+      "gatePass": false,
+      "path": "by-sha/146d83fc9b9326ad7a65ab0e49ae055842d5b370.fun-report.json"
+    }
+  },
+  {
     "commit": "646133c46ad3be6b681db18c2ce96c2263d8a30a",
     "commitDate": "2026-08-15T13:19:39Z",
     "commitSubject": "fix(ci-recovery): never treat the recovery router's own failed job as a PR blocker (#2982)",
