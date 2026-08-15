@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "commit": "9a2c6bf7dd91b95af9495535979e4dba3eeed6a2",
+    "commitDate": "2026-08-15T09:26:55Z",
+    "commitSubject": "fix(sprites): repair corrupted mappings and provenance (#2958)",
+    "capturedAt": "2026-08-15T11:24:03.911Z",
+    "runId": "31878335173",
+    "runNumber": 1515,
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31878335173",
+    "sweep": {
+      "seeds": "1-50",
+      "kind": "winrate",
+      "revision": 2
+    }
+  },
+  "report": {
+    "runs": 600,
+    "outcomes": {
+      "victory": 309,
+      "death": 6,
+      "timeout": 280,
+      "stalled": 5,
+      "error": 0,
+      "quit": 0
+    },
+    "survey_coverage": 0,
+    "overall_fun_score": 34.1,
+    "dimensions": {
+      "engagement": 46.96,
+      "challenge_balance": 2.69,
+      "excitement": 26.26,
+      "pacing": 28.12,
+      "competence_growth": 35.21,
+      "choice_depth": 88.18,
+      "run_distinctness": 45.27
+    },
+    "sameness_grade": 54.73,
+    "objective_score": 34.1,
+    "subjective_score": null,
+    "confidence": 0.81,
+    "gate": {
+      "min_overall": 70,
+      "min_dimension": 55,
+      "gating_overall_score": 33.26,
+      "pass": false,
+      "failing_dimensions": [
+        "engagement",
+        "challenge_balance",
+        "excitement",
+        "pacing",
+        "competence_growth"
+      ]
+    },
+    "hotspots": [
+      {
+        "dimension": "challenge_balance",
+        "score": 2.69,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "excitement",
+        "score": 26.26,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "pacing",
+        "score": 28.12,
+        "reason": "Dimension score is below peers and drags overall fun."
+      }
+    ],
+    "criteria": {
+      "unsafe_combat_uptime": {
+        "observed": null,
+        "target": 0.75,
+        "status": "unmeasured",
+        "reason": "Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames."
+      },
+      "survivability_variance": {
+        "observed": 0.32,
+        "target": 0.14,
+        "status": "healthy",
+        "reason": "Healthy band is 0.14-0.45 standard deviations of normalized outcome: too little spread is monotone, too much is coin-flip volatility. Inspect tails before tuning."
+      },
+      "run_variety": {
+        "observed": 45.27,
+        "target": 60,
+        "status": "needs_attention",
+        "reason": "Run variety reuses the existing distinctness score."
+      },
+      "dopamine_cadence": {
+        "observed": 705.03,
+        "target": 90,
+        "status": "needs_attention",
+        "reason": "Worst active-play gap is 705.03s; 74% of active time is in gaps at or below 90s."
+      },
+      "snowball_frequency": {
+        "observed": 0,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "1/297 official victories crossed robust z >= 3.5 on at least two non-zero-MAD features."
+      },
+      "meta_progression": {
+        "observed": null,
+        "target": 0.05,
+        "status": "unmeasured",
+        "reason": "Permanent-power run data is absent because the Production Office/full meta-progression system is deferred."
+      },
+      "item_viability": {
+        "observed": 0.61,
+        "target": 0,
+        "status": "needs_attention",
+        "reason": "247/406 exposed catalog items were avoided, selected below 10% after 5+ exposures, or selected but inert."
+      },
+      "early_death_rate": {
+        "observed": 0.01,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "Fraction of runs that ended in death on Floor 2 or earlier. Tutorial-phase deaths are un-fun; healthy is <= 10%."
+      }
+    },
+    "persona_scores": {}
+  }
+}

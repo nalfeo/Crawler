@@ -1,5 +1,39 @@
 [
   {
+    "commit": "9a2c6bf7dd91b95af9495535979e4dba3eeed6a2",
+    "commitDate": "2026-08-15T09:26:55Z",
+    "commitSubject": "fix(sprites): repair corrupted mappings and provenance (#2958)",
+    "capturedAt": "2026-08-15T11:24:03.911Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31878335173",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/9a2c6bf7dd91b95af9495535979e4dba3eeed6a2.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.08,
+        "totalWins": 12,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.1,
+      "gatePass": false,
+      "path": "by-sha/9a2c6bf7dd91b95af9495535979e4dba3eeed6a2.fun-report.json"
+    }
+  },
+  {
     "commit": "38c1e873afaa275066894d5ae01abd43c1ecfd43",
     "commitDate": "2026-08-15T08:08:00Z",
     "commitSubject": "feat: ground set-piece design in lookbook evidence (#2943)",
