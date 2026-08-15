@@ -23,23 +23,30 @@ commit `38c1e873afaa275066894d5ae01abd43c1ecfd43`. Floor 1 has a 100% success
 requirement, so the losses were treated as actionable. The affected release leg
 was viewed with `project:sweep-results-viewer runId=31874790650`.
 
-The fix keeps healthy projectile NPC travel behavior intact, but when a
-projectile user is wounded below the existing `RANGED_DEFENSIVE_HP_FRACTION`
-(70% HP), the Progress NPC-approach branch no longer skips `ENGAGE` for a nearby
-threat. The runner clears the local threat before continuing to the quest NPC.
-Wounded melee users also expand NPC-approach threat clearing from the normal 8 ft
-cap to their full engagement radius; this is required for baseball-bat seed 34.
+Wounded-projectile NPC-approach threat clearing (skip `ENGAGE` only while
+healthy, gated on the existing `RANGED_DEFENSIVE_HP_FRACTION` 70% HP threshold)
+was already merged to `main` via #2971 and is **inherited unchanged** by this
+branch — it is not a new behavior introduced here. This PR's only functional
+change is the wounded-melee case: it hoists the `weapon`/`projectileWeapon`
+lookup earlier in the Progress branch (so the new melee decision can see the
+weapon type before the threat radius is computed) and expands NPC-approach
+threat clearing for wounded melee users from the normal 8 ft cap to their full
+engagement radius; this is required for baseball-bat seed 34.
 
 ## Files touched
 
 - `src/game/ai/bt-ai-provider.ts`
-  - Added explicit projectile-force-clear and wounded-melee radius-expansion
-    decisions.
-  - Wounded projectile users now clear nearby NPC-approach threats instead of
-    relying on auto-fire while continuing travel.
+  - Hoisted the existing projectile/wounded-projectile lookup earlier in the
+    Progress NPC-approach branch (no behavior change — inherited from #2971).
+  - Added the new wounded-melee radius-expansion decision
+    (`shouldExpandMeleeThreatClear`) required for baseball-bat seed 34.
 - `tests/game/behavior-tree-ai.test.ts`
-  - Added direct unit coverage for the wounded projectile NPC-approach contract,
-    plus healthy/wounded melee coverage beyond the old 8 ft boundary.
+  - Added a focused 8–22 ft boundary `it.each` case for wounded vs. healthy
+    baseball-bat NPC-approach threat clearing (verifies the new melee
+    expansion specifically; reverting the expansion hunk fails this test).
+  - Extended the wounded-projectile NPC-approach assertion to throwing-knife;
+    this exercises the inherited #2971 behavior end-to-end but does not itself
+    depend on this diff's code change.
 - `tests/headless/floor1-legacy-death-regressions.test.ts`
   - Added deterministic real-headless regression cases for bow seed 35,
     baseball-bat seed 34, and throwing-knife seed 44.
@@ -58,9 +65,21 @@ Observed through the real `src/game/ai/headless-runner.ts` pipeline at the
 | throwing-knife seed 44 | death at frame ~15,006, 250.1s, min HP 1.8% | victory, 245.3s, final HP 6.2%  |
 
 The local exact Floor 1 release-leg sweep (50 seeds × 6 forced weapons, 300 runs)
-finished at **300/300 victories (100%)**, with every weapon at 50/50 and no
-failures. The JSON evidence SHA-256 is
-`11c0c6928fb78cf2236a4f1dcdaedfc1f1d84d4f428304bc3bcf4c1ec6cee0ed`.
+was re-run in full against the final head (`32b3c3b6f27fea397fe92165b5199eaaafa3a262`)
+with:
+
+```
+npm run ai:winrate-sweep -- --floor floor1 --seeds 1-50 --weapons sword,bow,baseball-bat,pistol,throwing-knife,fireball --out /tmp/floor1-release-current.json
+```
+
+Actual aggregate: **300/300 official wins, 0 true losses (100%)** — every
+weapon at 50/50 wins, with 1 slow victory (bow seed 35, over the active-time
+budget but still a win, not a failure) and 0 failures/losses of any kind. Full
+per-weapon breakdown: sword 50/50, bow 50/50 (1 slow), baseball-bat 50/50,
+pistol 50/50, throwing-knife 50/50, fireball 50/50. The JSON evidence SHA-256
+is `4e072c18dcf96d8631d5af79da2f5b2211a56a04be103d1d65ad05c1e26d02b6`
+(`totalWins:300, totalSlowVictories:1, totalTrueLosses:0, totalRuns:300,
+winRate:1`).
 
 ## Key decisions made
 
@@ -83,7 +102,8 @@ failures. The JSON evidence SHA-256 is
 - `npx vitest run --project headless tests/headless/floor1-legacy-death-regressions.test.ts --reporter=verbose --testNamePattern "baseball-bat seed 34"` — passed after confirming that restoring the old 8 ft cap deterministically reintroduced the death.
 - `bash scripts/agent/preflight.sh` — passed after dependencies were installed.
 - `npm run verify:fast` — passed before final cleanup; rerun after final changes before publication.
-- `npm run ai:winrate-sweep -- --floor floor1 --seeds 1-50 --weapons sword,bow,baseball-bat,pistol,throwing-knife,fireball --out /tmp/floor1-release-current.json` — passed 300/300 with no failures.
+- `npm run ai:winrate-sweep -- --floor floor1 --seeds 1-50 --weapons sword,bow,baseball-bat,pistol,throwing-knife,fireball --out /tmp/floor1-release-current.json` — re-run against final head `32b3c3b6f27fea397fe92165b5199eaaafa3a262` during CI recovery: 300/300 official wins, 0 true losses, 1 slow victory (bow seed 35), 0 failures. See the real aggregate above.
+- Independent grade re-run against final head `32b3c3b6f27fea397fe92165b5199eaaafa3a262` by an uninvolved model during CI recovery — `pass` (correctness 5, scope_discipline 5, test_coverage 5, policy_compliance 5, maintainability 4; 1 minor doc-accuracy finding, resolved above). See `docs/knowledge/review-ledgers/2026-08-15-floor1-wounded-npc-threat-clear.review-ledger.json`.
 
 ## Unresolved issues
 
