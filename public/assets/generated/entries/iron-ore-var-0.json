@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "ea97f1b5420730c7372472f8310a67f3c71a5f8bfb78ef6069c5a664bf7596fa",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-ore-v1/2026-07-07T23-54-29-5c27396d/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

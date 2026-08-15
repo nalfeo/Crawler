@@ -177,9 +177,6 @@ export interface ManifestEntry {
    * to whole-canvas behaviour. Backfilled by `sprites:derive-opaque-bounds`.
    */
   readonly opaqueBounds?: DerivedBounds;
-  readonly postprocessOverrideProfilePath?: string | null;
-  readonly effectivePipelineSnapshotPath?: string | null;
-  readonly effectivePipelineSnapshotYamlPath?: string | null;
   readonly effectiveAnchorSource?: ManifestAnchor['source'] | null;
   readonly facingDirection?: 'left' | 'right';
   /**
@@ -387,9 +384,6 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const sourceRun = options.sourceRunOverride
-    ? normalizeSourceRunOverride(options.sourceRunOverride)
-    : toRepoRelativePosix(options.repoRoot, options.runDir);
   const rawBriefId = summary.brief;
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
@@ -400,6 +394,9 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   // / briefId are all the bare item id and the icon resolves by item id. Genuine
   // non-item briefs (enemies, tiles, props) keep their `-vN` lineage untouched.
   const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const sourceRun = options.sourceRunOverride
+    ? normalizeSourceRunOverride(options.sourceRunOverride)
+    : toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === options.variantIndex);
   if (!candidate) {
@@ -555,9 +552,6 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     type,
     contentHash,
     ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
-    postprocessOverrideProfilePath: summary.postprocessOverrides?.profilePath ?? null,
-    effectivePipelineSnapshotPath: summary.postprocessOverrides?.snapshotJsonPath ?? null,
-    effectivePipelineSnapshotYamlPath: summary.postprocessOverrides?.snapshotYamlPath ?? null,
     effectiveAnchorSource: anchors.hold?.source ?? null,
     facingDirection: resolveFacingDirection(summary, options.variantIndex),
     ...(preservedCatalog ? { catalog: preservedCatalog } : {}),
@@ -644,14 +638,14 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const sourceRun = options.sourceRunOverride
-    ? normalizeSourceRunOverride(options.sourceRunOverride)
-    : toRepoRelativePosix(options.repoRoot, options.runDir);
   const rawBriefId = summary.brief;
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
   }
   const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const sourceRun = options.sourceRunOverride
+    ? normalizeSourceRunOverride(options.sourceRunOverride)
+    : toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
 
   const frameSequence = summary.frameSequence;
   const frameCount = frameSequence?.frameCount;
@@ -1133,26 +1127,34 @@ function padIndex(index: number): string {
   return String(index).padStart(2, '0');
 }
 
-function toRepoRelativePosix(repoRoot: string, abs: string): string {
+function toRepoRelativePosix(repoRoot: string, abs: string, briefId: string): string {
   const rel = path.relative(repoRoot, abs);
-  return rel.split(path.sep).join('/');
+  const normalized = rel.split(path.sep).join('/');
+  if (isSafeSourceRun(normalized)) return normalized;
+
+  const runName = path.basename(abs).replace(/[^A-Za-z0-9._-]/g, '-');
+  return `generated/runs/${briefId}/external-${runName || 'run'}`;
 }
 
 function normalizeSourceRunOverride(value: string): string {
   const normalized = value.replace(/\\/g, '/');
-  const segments = normalized.split('/');
-  if (
-    normalized.length === 0 ||
-    normalized.startsWith('/') ||
-    /^[A-Za-z]:\//.test(normalized) ||
-    segments.some((segment) => segment === '' || segment === '.' || segment === '..')
-  ) {
+  if (!isSafeSourceRun(normalized)) {
     throw new ApproveError(
       'summary-invalid',
       `sourceRunOverride must be a safe repo-relative path, got: ${value}`,
     );
   }
   return normalized;
+}
+
+export function isSafeSourceRun(value: string): boolean {
+  const segments = value.split('/');
+  return (
+    value.length > 0 &&
+    !value.startsWith('/') &&
+    !/^[A-Za-z]:/.test(value) &&
+    !segments.some((segment) => segment === '' || segment === '.' || segment === '..')
+  );
 }
 
 /**
@@ -1229,12 +1231,12 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
   }
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const sourceRun = toRepoRelativePosix(options.repoRoot, options.runDir);
   const rawBriefId = summary.brief;
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
   }
   const briefId = rawBriefId;
+  const sourceRun = toRepoRelativePosix(options.repoRoot, options.runDir, briefId);
 
   const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
   const generatedDir = path.join(options.publicAssetsDir, 'generated');
@@ -1259,6 +1261,23 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
 
   const approved: ManifestEntry[] = [];
 
+  // Validate every veto before writing any cell so a late hard-block cannot
+  // leave an uncommitted partial batch on disk.
+  for (let cellIndex = 0; cellIndex < options.iconBatch.length; cellIndex++) {
+    if (skipIndices.has(cellIndex)) continue;
+    const candidate = candidatesByIndex.get(cellIndex);
+    if (candidate?.judgeScorecard?.hardBlocked === true && !options.allowHardBlocked) {
+      const iconId = options.iconBatch[cellIndex]!.id;
+      const instruction = candidate.judgeScorecard.hardBlockInstruction;
+      throw new ApproveError(
+        'hard-blocked',
+        `Cell ${cellIndex} (${iconId}) was hard-blocked by the judge and cannot be approved. ` +
+          (instruction ? `Judge instruction: "${instruction}". ` : '') +
+          `Pass allowHardBlocked: true to override deliberately.`,
+      );
+    }
+  }
+
   for (let cellIndex = 0; cellIndex < options.iconBatch.length; cellIndex++) {
     if (skipIndices.has(cellIndex)) continue;
 
@@ -1278,20 +1297,7 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
     const processedBytes = fs.readFileSync(processedPng);
     const contentHash = createHash('sha256').update(processedBytes).digest('hex');
 
-    // Hard-block gate: mirrors the same contract in approveVariant. A judge-
-    // issued hard-block is a veto, not a score to be weighed. Refuse unless
-    // the caller explicitly opts out with allowHardBlocked: true (reserved for
-    // conscious human overrides; automated batch runs must not set this flag).
     const candidate = candidatesByIndex.get(cellIndex);
-    if (candidate?.judgeScorecard?.hardBlocked === true && !options.allowHardBlocked) {
-      const instruction = candidate.judgeScorecard.hardBlockInstruction;
-      throw new ApproveError(
-        'hard-blocked',
-        `Cell ${cellIndex} (${iconId}) was hard-blocked by the judge and cannot be approved. ` +
-          (instruction ? `Judge instruction: "${instruction}". ` : '') +
-          `Pass allowHardBlocked: true to override deliberately.`,
-      );
-    }
 
     if (!options.allowReapprove) {
       const existing = readManifestEntry(fs, options.manifestPath, iconId);
@@ -1346,9 +1352,6 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
       type,
       contentHash,
       ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
-      postprocessOverrideProfilePath: null,
-      effectivePipelineSnapshotPath: null,
-      effectivePipelineSnapshotYamlPath: null,
       effectiveAnchorSource: null,
     };
 

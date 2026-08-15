@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "9b116c70f9f3c7e06bf7797369105224e52fe5ee84d55e58cac072a8b4b781c7",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

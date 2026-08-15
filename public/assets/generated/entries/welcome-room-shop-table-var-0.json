@@ -3,7 +3,7 @@
   "spriteName": "welcome-room-shop-table-var-0",
   "assetPath": "generated/welcome-room-shop-table-var-0.png",
   "approvedAt": "2026-07-08T22:09:05.191Z",
-  "sourceRun": "../nalfeo-upgraded-enigma/generated/runs/welcome-room-shop-table/2026-07-08T04-00-23-d83d5284",
+  "sourceRun": "generated/runs/welcome-room-shop-table/imported-2f586e0fb648",
   "variantIndex": 0,
   "anchor": {
     "x": 71,
@@ -25,10 +25,7 @@
   "sensorScore": "7/7",
   "judgeScore": "3",
   "type": null,
-  "contentHash": "f2f6fdeadecebb249faa9e5e8abd521edd108a1b3838b80987e01481e167d175",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\welcome-room-shop-table\\2026-07-08T04-00-23-d83d5284\\postprocess.pipeline.effective.yaml",
+  "contentHash": "2f586e0fb648e14267f455075745c030a59916f924f07f5fc2a2d7b859c98499",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {
