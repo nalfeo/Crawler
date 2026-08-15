@@ -15,10 +15,13 @@ const BOSS_ENTRY_MIN_HEALTH_FRACTION = 0.5;
 const BOSS_ENTRY_MIN_LEVEL = 2;
 const MAX_WALL_TIME_MS = 170_000;
 const CASES = [
+  { weapon: 'bow', seed: 35 },
+  { weapon: 'baseball-bat', seed: 34 },
   { weapon: 'pistol', seed: 30 },
   { weapon: 'throwing-knife', seed: 2 },
   { weapon: 'throwing-knife', seed: 6 },
   { weapon: 'throwing-knife', seed: 29 },
+  { weapon: 'throwing-knife', seed: 44 },
   { weapon: 'throwing-knife', seed: 81 },
   { weapon: 'throwing-knife', seed: 84 },
 ] as const;
