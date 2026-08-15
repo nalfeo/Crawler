@@ -1092,7 +1092,7 @@ export async function countOutstandingWorkflowRuns(
   statuses = OUTSTANDING_RUN_STATUSES,
   requestFn = request,
 ) {
-  const counts = await Promise.all(
+  const counts = await Promise.allSettled(
     statuses.map((status) =>
       requestWithBackoff(
         () =>
@@ -1104,7 +1104,14 @@ export async function countOutstandingWorkflowRuns(
       ).then(({ data }) => data?.total_count ?? 0),
     ),
   );
-  return counts.reduce((sum, c) => sum + c, 0);
+  const firstError = counts.find((result) => result.status === 'rejected');
+  if (firstError) {
+    throw firstError.reason;
+  }
+  return counts.reduce(
+    (sum, result) => sum + (result.status === 'fulfilled' ? result.value : 0),
+    0,
+  );
 }
 
 // Convenience wrapper for CI Recovery runs specifically.  Delegates to the
