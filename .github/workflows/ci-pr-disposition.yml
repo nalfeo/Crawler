@@ -29,7 +29,9 @@ jobs:
           script: |
             // Duplicate detection — deterministic proof rules only.
             // Auto-closes a PR ONLY when one of these proof rules fires:
-            //   1. empty-diff: the PR's diff is zero (all changes already on main)
+            //   1. empty-diff: the PR's diff is zero (all changes already on main) AND the PR
+            //      has aged past the empty-diff grace window with no recent activity, so an
+            //      in-flight agent session on a brand-new PR is never closed (incident: PR #2948)
             //   2. coordinator-superseded: coordinator marked this PR as a full-tree no-op (legacy, retained)
             // SIBLING_MERGED: merged sibling closes same issue (issue may still be open) — suspicious
             //   but NOT a proof. Routes to quarantine (adds abandon-candidate label for step 2 pickup).
@@ -43,7 +45,7 @@ jobs:
 
             const { pathToFileURL } = await import('url');
             const workspace = process.env.GITHUB_WORKSPACE;
-            const { detectDuplicateProof, detectQuarantineEvidence } = await import(
+            const { detectDuplicateProof, detectQuarantineEvidence, EMPTY_DIFF_MIN_AGE_MS, EMPTY_DIFF_MIN_QUIET_MS } = await import(
               pathToFileURL(`${workspace}/.github/scripts/ci-recovery/duplicate-detect.mjs`).href
             );
             const {
@@ -234,6 +236,21 @@ jobs:
             const closedPrNumbers = [];
 
             for (const pull of inScope) {
+              // Shared freshness guard: a brand-new PR with an active agent session is
+              // legitimately a no-op until the agent pushes its first commit. Never
+              // auto-close inside the grace window, on any close path (PR #2948).
+              const createdMs = new Date(pull.created_at).getTime();
+              const updatedMs = new Date(pull.updated_at || pull.created_at).getTime();
+              const nowMs = Date.now();
+              const tooFresh =
+                !Number.isFinite(createdMs) ||
+                nowMs - createdMs < EMPTY_DIFF_MIN_AGE_MS ||
+                (Number.isFinite(updatedMs) && nowMs - updatedMs < EMPTY_DIFF_MIN_QUIET_MS);
+              if (tooFresh) {
+                core.notice(`skip-close-grace pr=#${pull.number} age_ms=${nowMs - createdMs} quiet_ms=${nowMs - updatedMs}`);
+                continue;
+              }
+
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner, repo, issue_number: pull.number, per_page: 100,
               });
@@ -294,8 +311,14 @@ jobs:
               }
 
               const proof = detectDuplicateProof(
-                { number: pull.number, additions: fullPr.additions, deletions: fullPr.deletions },
-                { closingIssues, mergedSiblings: dedupedSiblings },
+                {
+                  number: pull.number,
+                  additions: fullPr.additions,
+                  deletions: fullPr.deletions,
+                  createdAt: fullPr.created_at,
+                  updatedAt: fullPr.updated_at,
+                },
+                { closingIssues, mergedSiblings: dedupedSiblings, nowMs: Date.now() },
               );
 
               if (proof.proofRule) {
@@ -323,8 +346,14 @@ jobs:
                 const liveMergedSiblings = liveSiblingsByIssue.flat();
                 const liveDedupedSiblings = [...new Map(liveMergedSiblings.map((s) => [s.number, s])).values()];
                 const liveProof = detectDuplicateProof(
-                  { number: pull.number, additions: livePr.additions, deletions: livePr.deletions },
-                  { closingIssues: liveClosingIssues, mergedSiblings: liveDedupedSiblings },
+                  {
+                    number: pull.number,
+                    additions: livePr.additions,
+                    deletions: livePr.deletions,
+                    createdAt: livePr.created_at,
+                    updatedAt: livePr.updated_at,
+                  },
+                  { closingIssues: liveClosingIssues, mergedSiblings: liveDedupedSiblings, nowMs: Date.now() },
                 );
                 const stillMatches =
                   liveProof.proofRule === proof.proofRule &&
