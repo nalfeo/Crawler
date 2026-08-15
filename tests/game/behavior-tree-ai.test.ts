@@ -65,6 +65,7 @@ import {
   type AIStateValue,
 } from '../../src/game/ai/types.js';
 import {
+  CONTACT_SAFE_ORBIT_FT,
   ENGAGE_GIVEUP_FRAMES,
   FLOOR2_HUNT_ENGAGE_FRAMES,
   FLOOR2_HUNT_NO_PROGRESS_FRAMES,
@@ -653,6 +654,44 @@ describe('BehaviorTreeAI', () => {
     expect(world.stores.health.current[player]).toBeGreaterThan(10);
     expect(harness.bleedingOut).toBe(true);
     expect(ai.getDecision().state).toBe(AIState.RETREAT);
+  });
+
+  it('retreats from a critical-health point-blank hit even against a long-range attacker', () => {
+    // Regression: the release sweep at fb35e05 lost Floor 1 on
+    // throwing-knife/39 because the stair boss (attackRange=280, far above
+    // retreatEscapeRadius=30) bailed Retreat out unconditionally once it
+    // qualified as a "shooter", even after it had already closed to melee
+    // contact — leaving no escape behavior at all at critical health.
+    const world = createTestWorld({ seed: 39 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8; // below the 10% retreatThreshold
+    // A boss-like enemy with a large attackRange (a projectile/ranged stat)
+    // that has already closed to point-blank contact distance.
+    spawnBehaviorEnemy(world, 3, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 39, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+  });
+
+  it('still defers to Engage for a long-range attacker still outside contact distance', () => {
+    // Same critical-health/long-attackRange setup as above, but the threat has
+    // NOT yet closed to melee contact (distance > CONTACT_SAFE_ORBIT_FT), so
+    // the "let Engage's kite/strafe handle a real shooter" bail-out must still
+    // apply — this fix only narrows the bail-out, it does not remove it.
+    const world = createTestWorld({ seed: 39 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
+    expect(CONTACT_SAFE_ORBIT_FT).toBeLessThan(10);
+    spawnBehaviorEnemy(world, 10, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 39, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
   });
 
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
