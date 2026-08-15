@@ -271,14 +271,14 @@ export function renderHtml(instanceId) {
   <script>
   const token = new URLSearchParams(location.search).get('token');
   const apiUrl = (path) => path + '?token=' + encodeURIComponent(token || '');
-  const fmtPct = (value) => Number.isFinite(Number(value)) ? (Number(value) * 100).toFixed(1) + '%' : '—';
+  const fmtPct = (value) => value != null && Number.isFinite(Number(value)) ? (Number(value) * 100).toFixed(1) + '%' : '—';
   const fmtNum = (value, digits = 1) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
   const fmtMs = (ms) => Number.isFinite(Number(ms)) ? fmtNum(Number(ms) / 1000, 1) + 's' : '—';
   const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   let currentState = null;
 
   function outcomeAbbrev(outcome) {
-    return ({ victory: 'W', death: 'D', timeout: 'T', stalled: 'S', error: 'E', quit: 'Q' })[outcome] || '?';
+    return ({ victory: 'W', death: 'D', timeout: 'T', stalled: 'S', error: 'E', quit: 'Q' })[outcome] || 'N/A';
   }
 
   function outcomeClass(outcome) {
@@ -286,6 +286,7 @@ export function renderHtml(instanceId) {
   }
 
   function winRateClass(rate) {
+    if (rate == null || !Number.isFinite(Number(rate))) return 'empty';
     return rate >= .9 ? 'high' : rate >= .5 ? 'mid' : 'low';
   }
 
@@ -602,7 +603,7 @@ export function renderHtml(instanceId) {
             html += '<div class="cell empty" title="' + esc(weapon) + ' seed ' + esc(seed) + ': no data">—</div>';
             continue;
           }
-          const title = esc(weapon) + ' seed=' + esc(seed) + ' · ' + esc(record.outcome)
+          const title = esc(weapon) + ' seed=' + esc(seed) + ' · ' + esc(record.outcome ?? 'N/A')
             + ' · t=' + fmtNum(record.gameTimeSec, 0) + 's · lv=' + esc(record.finalLevel)
             + ' · kills=' + esc(record.totalKills) + ' · score=' + fmtNum(record.score, 0)
             + ' · minHP=' + fmtPct(record.minHealthPct);

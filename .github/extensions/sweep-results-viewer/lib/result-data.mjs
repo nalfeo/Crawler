@@ -49,9 +49,22 @@ export function normalizeSweepResult(value) {
       throw new Error('generic experiment requires experiment, runAt, records, and aggregates');
     }
     const dimensions = isPlainObject(value.dimensions) ? value.dimensions : {};
-    const weapons = Array.isArray(dimensions.weapon)
-      ? dimensions.weapon.filter((item) => typeof item === 'string')
-      : [];
+    const dimensionLabels = (...names) => {
+      for (const name of names) {
+        const labels = Array.isArray(dimensions[name])
+          ? dimensions[name].filter((item) => typeof item === 'string')
+          : [];
+        if (labels.length > 0) return labels;
+      }
+      return [];
+    };
+    const weapons = dimensionLabels(
+      'weapon',
+      'startingWeapon',
+      'persona',
+      'playerPersona',
+      'weaponPersona',
+    );
     const seeds = value.records
       .map((record) => record?.seed)
       .filter((seed) => isPositiveInteger(seed));
@@ -68,11 +81,17 @@ export function normalizeSweepResult(value) {
       const weapon =
         typeof record.dimensions.weapon === 'string'
           ? record.dimensions.weapon
-          : String(record.dimensions.persona ?? value.experiment.type);
+          : typeof record.dimensions.startingWeapon === 'string'
+            ? record.dimensions.startingWeapon
+            : typeof record.dimensions.persona === 'string'
+              ? record.dimensions.persona
+              : typeof record.dimensions.playerPersona === 'string'
+                ? record.dimensions.playerPersona
+                : String(record.dimensions.weaponPersona ?? value.experiment.type);
       return {
         weapon,
         seed: isPositiveInteger(record.seed) ? record.seed : index + 1,
-        outcome: typeof record.outcome === 'string' ? record.outcome : 'error',
+        outcome: typeof record.outcome === 'string' ? record.outcome : undefined,
         gameTimeSec: metric('gameTimeSec'),
         finalLevel: metric('finalLevel'),
         totalKills: metric('totalKills'),
@@ -94,12 +113,13 @@ export function normalizeSweepResult(value) {
         records.length === 0
           ? 0
           : records.reduce((sum, record) => sum + record[field], 0) / records.length;
-      const victories = records.filter((record) => record.outcome === 'victory').length;
+      const measuredRecords = records.filter((record) => typeof record.outcome === 'string');
+      const victories = measuredRecords.filter((record) => record.outcome === 'victory').length;
       return {
         weapon,
         runs: records.length,
         victories,
-        winRate: records.length === 0 ? 0 : victories / records.length,
+        winRate: measuredRecords.length === 0 ? null : victories / measuredRecords.length,
         meanScore: mean('score'),
         meanGameTimeSec: mean('gameTimeSec'),
         meanLevel: mean('finalLevel'),

@@ -8,6 +8,7 @@ import {
   defaultWeaponSweepOutputPath,
   writeWeaponSweepOutput,
 } from '../../scripts/agent/perf/weapon-sweep-output';
+import { runStatsToExperiment } from '../../scripts/agent/perf/experiment-result';
 import type { WeaponSweepOutput } from '../../scripts/agent/perf/weapon-sweep-results';
 
 const temporaryDirectories: string[] = [];
@@ -48,6 +49,24 @@ describe('weapon sweep output paths', () => {
     );
     expect(basename(path)).toBe('weapon-sweep-2026-07-16T16-31-44.116Z.json');
     expect(JSON.parse(readFileSync(path, 'utf8')).floors).toEqual([1]);
+  });
+
+  describe('generic experiment records', () => {
+    it('uses unique record IDs when dimensions share a seed', () => {
+      const runs = [
+        { seed: 7, startingWeapon: 'sword', outcome: 'victory' },
+        { seed: 7, startingWeapon: 'bow', outcome: 'death' },
+      ] as unknown as Parameters<typeof runStatsToExperiment>[3];
+
+      const result = runStatsToExperiment(
+        'ai-sweep',
+        'ai-sweep-1',
+        '2026-07-16T16:31:44.116Z',
+        runs,
+      );
+
+      expect(new Set(result.records.map(({ id }) => id)).size).toBe(result.records.length);
+    });
   });
 
   it('adds deterministic numeric suffixes when the stable filename already exists', () => {

@@ -43,8 +43,8 @@ Use this order:
 3. **Search each candidate branch tree for committed evidence** with
    `git ls-tree -r --name-only <branch>` and `git grep` (or `git show`) scoped to
    benchmark names, run IDs, and expected artifact paths. Check committed result
-   files and summaries, including canonical artifact directories such as
-   `artifacts/weapon-sweeps/`, before treating a result as unavailable.
+   files and summaries, including the canonical `artifacts/experiments/`
+   directory, before treating a result as unavailable.
 4. **Only then inspect GitHub Actions workflow history and downloadable
    artifacts.** Use Actions as a fallback for runs not represented in repository
    branches or committed artifacts, not as the first source of prior results.

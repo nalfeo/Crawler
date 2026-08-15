@@ -120,7 +120,7 @@ export function runStatsToExperiment(
     }
     const seed = typeof raw.seed === 'number' ? raw.seed : undefined;
     return {
-      id: `${id}:${seed ?? index}`,
+      id: `${id}:${seed ?? 'record'}:${index}`,
       seed,
       outcome: typeof raw.outcome === 'string' ? raw.outcome : undefined,
       dimensions,

@@ -253,6 +253,43 @@ test('discovers generic experiment envelopes alongside sweep projections', async
   });
 });
 
+test('projects producer dimensions and preserves outcome-less records as unmeasured', async () => {
+  await withWorkspace(async ({ directory }) => {
+    const data = genericResult('2026-07-16T12:00:00Z');
+    data.dimensions = {
+      startingWeapon: ['sword', 'bow'],
+      playerPersona: ['new_player', 'experienced_player'],
+    };
+    data.records = [
+      {
+        id: 'persona-matrix-1:1:0',
+        seed: 1,
+        dimensions: { startingWeapon: 'sword', playerPersona: 'new_player' },
+        metrics: { finalLevel: 2 },
+      },
+      {
+        id: 'persona-matrix-1:1:1',
+        seed: 1,
+        dimensions: { startingWeapon: 'bow', playerPersona: 'experienced_player' },
+        metrics: { finalLevel: 3 },
+      },
+    ];
+    const path = join(directory, 'producer-dimensions.json');
+    await writeFile(path, JSON.stringify(data));
+
+    const loaded = await readLocalSweepFile(path);
+    assert.deepEqual(
+      loaded.data.summaries.map(({ weapon }) => weapon),
+      ['sword', 'bow'],
+    );
+    assert.deepEqual(
+      loaded.data.summaries.map(({ winRate }) => winRate),
+      [null, null],
+    );
+    assert.equal(loaded.data.allRecords[0].outcome, undefined);
+  });
+});
+
 test('rejects records with invalid outcome and missing required numeric fields', async () => {
   await withWorkspace(async ({ workspace, directory }) => {
     const invalidOutcome = {
