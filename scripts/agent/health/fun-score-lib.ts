@@ -126,6 +126,8 @@ export interface FunScoreCLIArgs {
 }
 
 type UnknownRecord = Record<string, unknown>;
+// 'quit' covers a human player closing/leaving mid-run (distinct from
+// 'stalled'/'error', which are AI-runner-only outcomes).
 const VALID_OUTCOMES = new Set<RunStats['outcome']>([
   'victory',
   'death',

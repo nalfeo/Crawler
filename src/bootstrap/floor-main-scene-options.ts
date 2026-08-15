@@ -38,10 +38,11 @@ import type { RunBundle } from '../shared/run-bundle.js';
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
 function defaultRunBundleSink(bundle: RunBundle): void {
-  const config = resolveRunBundleUploadConfig();
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
+  if (typeof window === 'undefined') {
+    return;
   }
+  window.dispatchEvent(new CustomEvent('crawler:run-bundle', { detail: bundle }));
+  const config = resolveRunBundleUploadConfig();
   if (!config.enabled || !config.endpoint) {
     if (typeof console !== 'undefined') {
       console.warn(
