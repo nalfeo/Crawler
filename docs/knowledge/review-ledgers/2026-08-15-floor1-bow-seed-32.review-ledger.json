@@ -36,22 +36,17 @@
       "completed": true,
       "grader_model": "claude-opus-5",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "a2091d1118c9cbe9bb64cd586a093e9bb6a666da",
+      "head_sha": "bd62ca0797d6469e903df82625ab4d42d597d5c5",
       "findings": [
         {
           "severity": "minor",
           "file": "docs/knowledge/handoffs/2026-08-15-floor1-bow-seed-32.md",
-          "detail": "The fix changes EVERY retreat candidate score on every seed/weapon/persona, but the recorded evidence is 4 exact regression tuples plus 2 healthy spot-checks; no post-change win-rate sweep runId is recorded, which AGENTS.md r12 (gate on win-RATE) and r15/r17 (broad sweeps on ai-sweep.yml, with a `project:sweep-results-viewer runId=<id>` deep link) ask for. I independently ran tests/headless/floor1-completion.test.ts (25-seed win-rate gate) plus floor1-legacy-death-regressions, floor1-bow35-release-regression, and floor1-npc-objective-anchor-regression at head: all 24 assertions pass, so no drift is visible at that sample size. Smallest remedy: dispatch a standard-panel win-rate sweep and record the runId plus the viewer deep link in the handoff before merge."
+          "detail": "The fix changes every retreat candidate score, but the recorded evidence is focused regression coverage plus spot checks rather than a broad sweep. Smallest remedy: dispatch a standard-panel win-rate sweep and record the Sweep Results Viewer runId before merge."
         },
         {
           "severity": "minor",
           "file": "src/game/ai/bt-ai-tuning.ts",
-          "detail": "RETREAT_OBJECTIVE_BIAS_WEIGHT (=1) and RETREAT_OBJECTIVE_BIAS_BAND_FRACTION (=0.5) are two multiplicative knobs on the same already-capped term, so the true per-candidate cap is their product; a future tuner editing one in isolation will misjudge the band. The new comment spelling out the full product mitigates but does not remove the redundancy. Smallest remedy: fold the weight into the band fraction so one constant controls the cap."
-        },
-        {
-          "severity": "minor",
-          "file": "docs/knowledge/review-ledgers/2026-08-15-floor1-bow-seed-32.review-ledger.json",
-          "detail": "`stages.independent_grade.head_sha` is 3c172ac53b95a2471c0b98377f2a1a2c99ef1198, which is not the graded head a2091d1118c9cbe9bb64cd586a093e9bb6a666da, so the committed ledger documents a grade of a different tree (grade-cli's record path enforces graded head == current HEAD). Smallest remedy: record THIS grading run's result into the ledger at head a2091d11 before opening/updating the PR."
+          "detail": "RETREAT_OBJECTIVE_BIAS_WEIGHT and RETREAT_OBJECTIVE_BIAS_BAND_FRACTION multiply the same capped term. The comment documents the product, but a future cleanup could fold them into one cap constant."
         }
       ],
       "criteria": {
@@ -62,8 +57,8 @@
         "maintainability": 4
       },
       "verdict": "pass",
-      "findings_count": 3,
-      "notes": "I graded the diff itself and reproduced its key claims rather than trusting the handoff. The regression is real and correctly attributed: the retreat candidate score previously added raw `objectiveGain` in feet (unbounded up to the full candidate offset) straight onto `minEnemyDist`, so a remote remembered objective could outweigh materially safer lanes; the fix divides by candidate travel `dist` (bounded to [-1,1] by the reverse triangle inequality, since the candidate is exactly `dist` from the player) and scales by half the retreat hysteresis band, giving a signed +/-5 ft contribution and at most one 10 ft band of spread between opposing candidates — a principled coupling to existing hysteresis, not a magic number, and not a seed-rescuing balance tweak. Division by zero is impossible because `dist = scanRadius * mult` with mults [1, 0.5] and the same-tile candidate is filtered before scoring. I verified fail-to-pass on a clean base worktree at e654f9d: the new unit assertion fails (42.43 vs required >= 60.03) and headless bow seed 32 is 'death'; at head all four headless tuples pass, the 25-seed floor1-completion win-rate gate and the adjacent legacy/bow-35/NPC-anchor headless suites pass, tsc --noEmit is clean, eslint on the four changed source/test files is clean, and the review ledger validates as a 3-apple ledger. The test refactor to FLOOR1_DEFAULT_MAX_FRAMES/FLOOR1_ACTIVE_TIME_BUDGET_MS keeps the frame cap byte-identical (23_760) while tightening the official-win assertion from 396 s to the release 360 s budget, and the paired-replay equality is safe because wallTimeMs is the only wall-clock field in RunStats (LevelUpEvent timestamps are game time/frames). Critically for this re-grade: the diff deletes nothing from the merged wounded-NPC threat-clear work at base e654f9d — its handoff, apples metric, and review ledger are all present at head, and the only removals anywhere in src/tests are the lines this fix legitimately replaces. The change is deterministic, free of Date.now/unseeded RNG, respects layer boundaries, and is 13 source lines plus tests and required publication artifacts. Remaining gaps are evidence breadth against the win-rate rule, one redundant tuning knob, and a stale ledger head_sha — none blocking."
+      "findings_count": 2,
+      "notes": "The retreat-bias fix is correct, scoped, deterministic, and covered by fail-to-pass unit and headless regressions. The wounded NPC threat-clear work from main remains intact. Remaining items are non-blocking evidence breadth and tuning-comment cleanup opportunities."
     }
   }
 }
