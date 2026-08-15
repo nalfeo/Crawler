@@ -30,6 +30,12 @@ export interface BaselineLegMetrics {
   totalRuns: number;
 }
 
+export interface BaselineFailure {
+  seed: number;
+  weapon: string;
+  signature?: string;
+}
+
 export interface BaselineFile {
   meta: BaselineMetadata;
   winRate: number;
@@ -42,8 +48,8 @@ export interface BaselineFile {
    * comparison so the existing series stays continuous.
    */
   legs?: Record<string, BaselineLegMetrics>;
-  /** Failure diagnostics emitted by the sweep, including seed and weapon. */
-  fails?: Array<{ seed: number; weapon: string }>;
+  /** Failure diagnostics emitted by the sweep, including their stable signatures. */
+  fails?: BaselineFailure[];
   floorId?: string;
   legId?: string;
   forceWeapon?: boolean;
@@ -184,8 +190,13 @@ function formatPercent(value: number): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
-function failureSignatures(baseline: BaselineFile): string[] {
-  if (!Array.isArray(baseline.fails)) return [];
+export function buildFailureSignature(
+  failure: Pick<BaselineFailure, 'seed' | 'weapon'>,
+  baseline: Pick<
+    BaselineFile,
+    'floorId' | 'legId' | 'forceWeapon' | 'chained' | 'enemyDamageMultiplier'
+  >,
+): string {
   const prefix = [
     `floor=${baseline.floorId ?? 'floor1'}`,
     `leg=${baseline.legId ?? 'floor1'}`,
@@ -193,9 +204,22 @@ function failureSignatures(baseline: BaselineFile): string[] {
     `chained=${baseline.chained ?? false}`,
     `damage=${baseline.enemyDamageMultiplier ?? 1}`,
   ].join('|');
+  return `${prefix}|seed=${failure.seed}|weapon=${failure.weapon}`;
+}
+
+function failureSignatures(baseline: BaselineFile): string[] {
+  if (!Array.isArray(baseline.fails)) return [];
   return [
     ...new Set(
-      baseline.fails.map((failure) => `${prefix}|seed=${failure.seed}|weapon=${failure.weapon}`),
+      baseline.fails.map((failure) => {
+        const signature = buildFailureSignature(failure, baseline);
+        if (failure.signature !== undefined && failure.signature !== signature) {
+          throw new Error(
+            `failure signature does not match seed and sweep configuration: ${signature}`,
+          );
+        }
+        return signature;
+      }),
     ),
   ].sort();
 }

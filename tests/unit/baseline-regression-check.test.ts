@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildFailureSignature,
   evaluateBaselineRegression,
   type BaselineFile,
   type BaselineIndexEntry,
@@ -77,7 +78,22 @@ describe('release baseline regression check', () => {
       forceWeapon: true,
       chained: false,
       enemyDamageMultiplier: 1,
-      fails: [{ seed: 7, weapon: 'sword' }],
+      fails: [
+        {
+          seed: 7,
+          weapon: 'sword',
+          signature: buildFailureSignature(
+            { seed: 7, weapon: 'sword' },
+            {
+              floorId: 'floor1',
+              legId: 'floor1',
+              forceWeapon: true,
+              chained: false,
+              enemyDamageMultiplier: 1,
+            },
+          ),
+        },
+      ],
     };
     const decision = evaluateBaselineRegression(
       current,
@@ -88,6 +104,18 @@ describe('release baseline regression check', () => {
     expect(decision.issue?.failureSignatures).toEqual([
       'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword',
     ]);
+    expect(current.fails?.[0]?.signature).toBe(decision.issue?.failureSignatures?.[0]);
+  });
+
+  it('rejects a persisted failure signature that does not match its sweep configuration', () => {
+    const current: BaselineFile = {
+      ...noise,
+      fails: [{ seed: 7, weapon: 'sword', signature: 'floor=floor1|seed=8|weapon=sword' }],
+    };
+
+    expect(() =>
+      evaluateBaselineRegression(current, [indexEntry(previous)], [previous.meta.commit]),
+    ).toThrow(/failure signature does not match/);
   });
 
   it('files an issue at and above the prior trend threshold when Floor 1 has losses', () => {

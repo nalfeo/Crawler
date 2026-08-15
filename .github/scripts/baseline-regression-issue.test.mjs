@@ -165,6 +165,34 @@ test('creates an issue only for a new failure signature', async () => {
   assert.match(create[3].body.body, new RegExp(newSignature.replaceAll('|', '\\\\|')));
 });
 
+test('does not update an unrelated automation issue with a copied signature', async () => {
+  const signature =
+    'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword';
+  const h = harness([
+    {
+      number: 14,
+      node_id: 'ISSUE_14',
+      state: 'open',
+      body: `Unrelated automation issue\n\n- \`${signature}\``,
+    },
+  ]);
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: signatureDecision([signature], 'newer'),
+  });
+
+  assert.deepEqual(result, [{ action: 'created', issueNumber: 42, assignee: 'copilot-swe-agent' }]);
+  const create = h.calls.find((call) => call[0] === 'request' && call[2].endsWith('/issues'));
+  assert.equal(create[2], '/repos/nalfeo/Crawler/issues');
+});
+
 test('does not treat a closed issue as an open duplicate', async () => {
   const h = harness([
     {

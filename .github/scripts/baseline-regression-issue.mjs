@@ -25,6 +25,13 @@ function issueSignaturesFromBody(body) {
     .filter((signature) => signature.includes('|seed=') && signature.includes('|weapon='));
 }
 
+function isManagedReleaseRegressionIssue(issue) {
+  const body = String(issue?.body || '');
+  return (
+    body.includes('<!-- release-baseline-regression:') && body.includes('### Failure signatures')
+  );
+}
+
 function bodyForSignatures(body, signatures) {
   const lines = body.split('\n');
   const start = lines.indexOf('### Failure signatures');
@@ -72,9 +79,10 @@ export async function fileBaselineRegressionIssue({
   const openIssues = issues.filter((issue) => !issue.pull_request && isOpen(issue));
   const signatures = issueSignatures(decision.issue);
   if (signatures.length > 0) {
+    const managedOpenIssues = openIssues.filter(isManagedReleaseRegressionIssue);
     const outcomes = [];
     for (const signature of signatures) {
-      const existing = openIssues.find((issue) =>
+      const existing = managedOpenIssues.find((issue) =>
         issueSignaturesFromBody(issue.body).includes(signature),
       );
       const response = existing
