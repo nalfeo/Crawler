@@ -38,6 +38,44 @@ Observed in the **real game** (`npm run dev`, not a lab):
 
 Before: 24 fragmented concepts. After: **0**.
 
+## Review harness (5🍎)
+
+Ran an adversarial plan review plus two independent code reviews on different
+models. Two reviewers **independently found the same real bug**, which is now
+fixed in this branch:
+
+**The codemod preserved `-var-N` indices across a renumbering.**
+`repoint-sprite-name-refs.ts` stripped the lineage tag from the brief id but kept
+the variant index verbatim. For `tile-stone-floor` the migration had renumbered
+`v2-var-2` → `var-0` (and `v1-var-2` → `var-2`), so the rewritten pin
+`tile-stone-floor-var-2` silently pointed at the **original magenta-matte art** —
+the exact defect that tiled a hot-pink lattice across every stone room and that
+the v2 regeneration existed to fix. The key still resolved and every guard still
+passed, because nothing verified the *content* behind a pinned key.
+
+Audited all 355 renamed keys: 14 had a codemod substitution that diverged from the
+true destination, of which exactly **2 were live references** (both the stone
+floor). Fixed, and pinned by a new fail-to-pass regression test
+`tests/unit/pinned-texture-provenance.test.ts` that asserts the *provenance*
+(sourceRun), not just existence, of pinned texture keys.
+
+Also fixed from review findings:
+
+- **The guard was blind to non-variant entries.** `clean` was derived from planned
+  renames, and the planner only emits renames for keys it parses as
+  `<concept>-var-N`. A lone `player-walk-v2` produced no rename and passed
+  `--check` while violating the invariant. Added `findLineageViolations`, an
+  independent sweep over every entry's `briefId`, with its own fail-to-pass test.
+- **The guard was not in CI.** It was wired only into local `verify.sh`. The asset
+  queue, issue-driven art waves, and art-only PRs never run that script, so the
+  exact paths most likely to reintroduce the problem were unguarded. Added a
+  blocking `Sprite name taxonomy guard` step to `.github/workflows/ci.yml`.
+
+Reviewer concerns deliberately **not** actioned (documented, not silently dropped):
+a compatibility-alias layer for stale external references (Azure blobs, open PRs),
+and recording texture identity in replay data for cross-version visual replay.
+Both are real but are follow-up scope, not regressions introduced here.
+
 ## Verification
 
 | Gate                                         | Result                                               |
@@ -71,6 +109,18 @@ confusing Prettier "no files matching" error). Fixed with a **two-phase staged
 rename** through `__migrating__/` temp keys, making the operation order-independent.
 Covered by a verified fail-to-pass regression test in
 `tests/unit/sprites/normalize-sprite-names.test.ts`.
+
+**The pinned-key aliasing bug — the one two reviewers caught and I missed.**
+A pinned `textureKey` names an EXACT manifest entry, so renumbering silently
+repoints it at different pixels. The reference codemod stripped lineage tags but
+preserved `-var-N` verbatim, so `tile-stone-floor-v2-var-2` became
+`tile-stone-floor-var-2` — which after renumbering is the ORIGINAL magenta-matte
+art, the very defect the v2 regeneration existed to fix. The key resolved, every
+guard passed, and the floor of every stone room would have quietly regressed. A
+reference rewrite driven by brief-id substitution is **not** safe across a
+renumbering: it must use the migration's own `fromKey → toKey` map. Now pinned by
+`tests/unit/pinned-texture-provenance.test.ts`, which asserts provenance
+(`sourceRun`) rather than mere existence.
 
 **Rolling back an asset migration needs `git reset --hard` + `git clean -fd`.**
 A plain `git checkout -- public/assets/generated` leaves you with 990 shards: it

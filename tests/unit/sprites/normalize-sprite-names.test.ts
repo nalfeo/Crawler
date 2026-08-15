@@ -244,3 +244,42 @@ describe('normalizeSpriteNames', () => {
     expect(shardKeys()).toEqual(['lonely-thing-placeholder']);
   });
 });
+
+describe('lineage-violation sweep (independent of the rename planner)', () => {
+  it('flags a NON-VARIANT entry whose briefId still carries a lineage tag', async () => {
+    // The rename planner only emits a rename for a key it can parse as
+    // <concept>-var-N. A lone entry keyed by its bare brief id produces no
+    // rename at all, so before the independent sweep existed this sailed
+    // through --check while violating the very invariant it guards.
+    shard('player-walk-v2', {
+      briefId: 'player-walk-v2',
+      spriteName: 'player-walk-v2',
+      assetPath: 'generated/player-walk-v2.png',
+      variantIndex: 0,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      contentHash: 'hash-pw',
+    });
+
+    const result = await normalizeSpriteNames({ generatedDir: dir, mode: 'check' });
+
+    expect(result.plan.renames).toHaveLength(0);
+    expect(result.lineageViolations).toEqual(['player-walk-v2 (briefId: player-walk-v2)']);
+    expect(result.clean).toBe(false);
+  });
+
+  it('is clean for a bare non-variant entry', async () => {
+    shard('player-walk', {
+      briefId: 'player-walk',
+      spriteName: 'player-walk',
+      assetPath: 'generated/player-walk.png',
+      variantIndex: 0,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      contentHash: 'hash-pw',
+    });
+
+    const result = await normalizeSpriteNames({ generatedDir: dir, mode: 'check' });
+
+    expect(result.lineageViolations).toEqual([]);
+    expect(result.clean).toBe(true);
+  });
+});

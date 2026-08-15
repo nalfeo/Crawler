@@ -16,7 +16,7 @@
     "silently drift from what the game actually stamps."
   ],
   "default": {
-    "floorSpriteId": "tile-stone-floor-var-2",
+    "floorSpriteId": "tile-stone-floor-var-0",
     "wallSpriteId": "tile-stone-wall-var-5"
   },
   "bySetPiece": {

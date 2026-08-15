@@ -305,6 +305,17 @@ jobs:
       - name: Generated-manifest invariants
         if: env.DOCS_ONLY != 'true'
         run: npm run sprites:check-manifest
+
+      # Sprite name taxonomy (ADR 0086): every generated brief id must be a BARE
+      # concept with `-var-N` variants only. A lineage-tagged id (`rat-v1`)
+      # silently splits a concept into a second variant bucket in
+      # `loadGeneratedManifest`, stranding approved art that `pickGeneratedVariant`
+      # can never draw. This runs on art-only PRs too — the asset queue and
+      # issue-driven waves are exactly the paths that can reintroduce it, and
+      # they never execute the local `verify.sh`.
+      - name: Sprite name taxonomy guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:sprite-name-taxonomy
       # Manifest hard-block invariant: no approved shard entry may carry
       # judgeScorecard.hardBlocked=true. The judge hard-block is a veto, not a
       # score to be weighed. approve.ts gates this at approval-time; this

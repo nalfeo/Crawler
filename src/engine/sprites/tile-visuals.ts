@@ -234,17 +234,18 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   /**
    * Stone floor — cool grey worn flagstone.
    *
-   * Was `tile-stone-floor-var-2`, which shipped with a magenta chroma-key
-   * matte fused into its border pixels and therefore tiled a hot-pink lattice
-   * across every stone room in the game. v2 is a purpose-generated replacement:
-   * seamless at 2x2, 0% edge magenta, and deliberately cool-grey so props and
-   * NPCs read against it (the warm tan floor destroyed figure/ground with the
-   * warm-brown wall and wood furniture). Guarded by `npm run check:tile-mattes`.
+   * `tile-stone-floor-var-2` is the ORIGINAL art, which shipped with a magenta
+   * chroma-key matte fused into its border pixels and therefore tiled a hot-pink
+   * lattice across every stone room in the game. `-var-0` is the purpose-
+   * generated replacement: seamless at 2x2, 0% edge magenta, and deliberately
+   * cool-grey so props and NPCs read against it (the warm tan floor destroyed
+   * figure/ground with the warm-brown wall and wood furniture). Guarded by
+   * `npm run check:tile-mattes`.
    */
   [TerrainType.STONE_FLOOR]: {
     sheetKey: TD,
     frame: td(0, 4),
-    textureKey: 'tile-stone-floor-var-2',
+    textureKey: 'tile-stone-floor-var-0',
   },
 
   /**

@@ -35,6 +35,7 @@ import { formatJsonFiles } from './catalog-io.js';
 import { deleteShard, readAllShards, writeShard } from './generated-shards.js';
 import {
   buildTaxonomyPlan,
+  hasLineageTag,
   isPlaceholder,
   type SpriteRename,
   type TaxonomyPlan,
@@ -51,8 +52,35 @@ export interface NormalizeResult {
   readonly plan: TaxonomyPlan;
   /** Manifest keys of placeholder entries retired by this run. */
   readonly retiredPlaceholders: readonly string[];
+  /**
+   * Entries whose `briefId` still carries a generation-lineage tag, found by an
+   * INDEPENDENT sweep rather than by the rename planner.
+   *
+   * The planner only emits a rename for a key it can parse as `<concept>-var-N`,
+   * so a lone non-variant entry (`player-walk-v2`, or an icon-batch entry whose
+   * briefId is the batch id) produces no rename and would otherwise sail through
+   * `--check` while violating the very invariant the guard exists to enforce.
+   */
+  readonly lineageViolations: readonly string[];
   /** True when the tree is already canonical (nothing to do). */
   readonly clean: boolean;
+}
+
+/**
+ * Independent invariant sweep: every entry's `briefId` must be a bare concept.
+ *
+ * Deliberately does NOT go through the rename planner — this is the check that
+ * catches what the planner structurally cannot see.
+ */
+export function findLineageViolations(entries: Record<string, { briefId?: string }>): string[] {
+  const violations: string[] = [];
+  for (const [key, entry] of Object.entries(entries)) {
+    const briefId = entry?.briefId;
+    if (typeof briefId === 'string' && hasLineageTag(briefId)) {
+      violations.push(`${key} (briefId: ${briefId})`);
+    }
+  }
+  return violations.sort();
 }
 
 /** Resolve the absolute PNG path for an entry `assetPath` (`generated/x.png`). */
@@ -159,10 +187,12 @@ export async function normalizeSpriteNames(options: NormalizeOptions): Promise<N
   >;
   const plan = buildTaxonomyPlan(entries as never);
   const retiredPlaceholders = planPlaceholderRetirements(entries as never, plan);
-  const clean = plan.renames.length === 0 && retiredPlaceholders.length === 0;
+  const lineageViolations = findLineageViolations(entries as never);
+  const clean =
+    plan.renames.length === 0 && retiredPlaceholders.length === 0 && lineageViolations.length === 0;
 
   if (options.mode !== 'apply') {
-    return { plan, retiredPlaceholders, clean };
+    return { plan, retiredPlaceholders, lineageViolations, clean };
   }
 
   if (plan.conflicts.length > 0) {
@@ -192,7 +222,7 @@ export async function normalizeSpriteNames(options: NormalizeOptions): Promise<N
     await formatJsonFiles(written);
   }
 
-  return { plan, retiredPlaceholders, clean };
+  return { plan, retiredPlaceholders, lineageViolations, clean };
 }
 
 function parseMode(argv: readonly string[]): Mode {
@@ -211,14 +241,19 @@ export async function main(argv: readonly string[]): Promise<number> {
   const generatedDir = parseFlagValue(argv, '--generated-dir') ?? 'public/assets/generated';
 
   const result = await normalizeSpriteNames({ generatedDir, mode });
-  const { plan, retiredPlaceholders } = result;
+  const { plan, retiredPlaceholders, lineageViolations } = result;
 
   console.log(`mode: ${mode}`);
   console.log(`renames: ${plan.renames.length}`);
   console.log(`  renumbered: ${plan.renames.filter((r) => r.renumbered).length}`);
   console.log(`merged concepts: ${plan.mergedConcepts.length}`);
   console.log(`retired placeholders: ${retiredPlaceholders.length}`);
+  console.log(`lineage violations: ${lineageViolations.length}`);
   console.log(`conflicts: ${plan.conflicts.length}`);
+
+  for (const violation of lineageViolations) {
+    console.error(`  LINEAGE TAG ${violation}`);
+  }
 
   for (const conflict of plan.conflicts) {
     console.error(
