@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": null,
   "contentHash": "4c6ba95742d299731f526c9ef08114b3cf7b429b0365b54f7768675e1c8d2eb3",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

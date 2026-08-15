@@ -26,9 +26,6 @@
   "judgeScore": "5",
   "type": "enemy",
   "contentHash": "ea2857fe1e048936703db89dcfdba8e07dac647905b857dacd45a27ccbd1f6d6",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\raccoons-boss\\2026-07-08T02-47-01-09a78ec7\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

@@ -26,9 +26,6 @@
   "judgeScore": "5",
   "type": "enemy",
   "contentHash": "7924f1f30687cb883eb521c5e9f3cc862080c4293abe51754e3d7492875d9af8",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-honker\\2026-07-08T05-12-25-5b1d7a49\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-honker\\2026-07-08T05-12-25-5b1d7a49\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\geese-honker\\2026-07-08T05-12-25-5b1d7a49\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

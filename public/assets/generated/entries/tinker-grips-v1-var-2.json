@@ -102,9 +102,6 @@
   },
   "type": "item",
   "contentHash": "e4fa5b3102cff3712769b8ceb7191da6e1cd8cbf5a1454c34a49ac655110a1b7",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tinker-grips-v1/2026-07-25T05-21-51-912c9470/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tinker-grips-v1/2026-07-25T05-21-51-912c9470/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tinker-grips-v1/2026-07-25T05-21-51-912c9470/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

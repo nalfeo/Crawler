@@ -92,9 +92,6 @@
   },
   "type": "weapon",
   "contentHash": "5d8941b57e717b8bcdf25c7d2e79325a97ec934151ea8e4f5f9a10495f866f3a",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ritual-dagger-v1/2026-07-25T05-32-12-e32ce037/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

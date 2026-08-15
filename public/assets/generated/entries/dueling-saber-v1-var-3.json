@@ -3,7 +3,7 @@
   "spriteName": "dueling-saber-v1-var-3",
   "assetPath": "generated/dueling-saber-v1-var-3.png",
   "approvedAt": "2026-07-20T04:39:33.313Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-I9da9G/dueling-saber-v1/2026-07-18T03-37-29-7149ffde",
+  "sourceRun": "generated/runs/dueling-saber-v1/imported-0411b9f7b23c",
   "variantIndex": 3,
   "anchor": null,
   "anchors": {
@@ -18,9 +18,6 @@
   "judgeScore": "4",
   "type": "weapon",
   "contentHash": "0411b9f7b23cbefa3b378032da6af20c0734a9172bb33968aad66c35f1b4b9b6",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

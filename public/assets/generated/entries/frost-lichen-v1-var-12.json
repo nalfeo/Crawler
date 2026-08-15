@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": "item",
   "contentHash": "e086d1d895e1258b2a2fcf2b689a5dbd85784d8b8192da194fc0e5e6c1f3c8d8",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\frost-lichen-v1\\2026-07-08T07-33-36-da4ad214\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {
