@@ -1,5 +1,39 @@
 [
   {
+    "commit": "38c1e873afaa275066894d5ae01abd43c1ecfd43",
+    "commitDate": "2026-08-15T08:08:00Z",
+    "commitSubject": "feat: ground set-piece design in lookbook evidence (#2943)",
+    "capturedAt": "2026-08-15T09:44:12.258Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31874790650",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/38c1e873afaa275066894d5ae01abd43c1ecfd43.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.03333333333333333,
+        "totalWins": 5,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.01,
+      "gatePass": false,
+      "path": "by-sha/38c1e873afaa275066894d5ae01abd43c1ecfd43.fun-report.json"
+    }
+  },
+  {
     "commit": "69ada7c57bb59d73f7216e2b00f7d535379004a8",
     "commitDate": "2026-08-15T07:27:28Z",
     "commitSubject": "Deduplicate release sweep failure issues by signature (#2940)",
