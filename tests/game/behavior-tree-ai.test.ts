@@ -548,13 +548,14 @@ describe('BehaviorTreeAI', () => {
         playerX: number,
         playerY: number,
         threat: { x: number; y: number },
+        wedged: boolean,
       ): { x: number; y: number };
     };
 
     const objective = { x: 140, y: 30 };
-    const unbiased = harness.pickRetreatTarget(world, 80, 80, threat);
+    const unbiased = harness.pickRetreatTarget(world, 80, 80, threat, false);
     harness.rememberRetreatObjective(world, objective.x, objective.y);
-    const biased = harness.pickRetreatTarget(world, 80, 80, threat);
+    const biased = harness.pickRetreatTarget(world, 80, 80, threat, false);
 
     const distTo = (p: { x: number; y: number }) =>
       Math.hypot(objective.x - p.x, objective.y - p.y);
@@ -564,7 +565,7 @@ describe('BehaviorTreeAI', () => {
     // primary enemy-clearance score. Route bias can trade at most the existing
     // retreat hysteresis band of safety.
     harness.rememberRetreatObjective(world, 20, 80);
-    const opposed = harness.pickRetreatTarget(world, 80, 80, threat);
+    const opposed = harness.pickRetreatTarget(world, 80, 80, threat, false);
     const safety = (p: { x: number; y: number }) => Math.hypot(threat.x - p.x, threat.y - p.y);
     const maxSafetyTradeoff = harness.config.retreatDangerRadius * (RETREAT_HYSTERESIS_MULT - 1);
     expect(safety(opposed)).toBeGreaterThanOrEqual(safety(unbiased) - maxSafetyTradeoff);
@@ -579,6 +580,52 @@ describe('BehaviorTreeAI', () => {
     expect(harness.getRetreatObjective(world)).not.toBeNull();
     world.floorMap = makeOpenRoom(40, 40);
     expect(harness.getRetreatObjective(world)).toBeNull();
+  });
+
+  it('breaks a cornered retreat out past the pack instead of into the wall', () => {
+    // Regression: the release sweep at 3f733218 lost Floor 1 on
+    // throwing-knife/25 because a retreat that wedged into a room corner kept
+    // aiming at the naive away-from-threat fallback, which points INTO the
+    // corner the player is already pressed against. Collision cancelled both
+    // axes, so the runner stood at exactly one position for ~500 frames at full
+    // throttle while contact damage took it from 67% HP to 0.
+    const world = createTestWorld({ seed: 92 });
+    const map = makeOpenRoom(40, 40);
+    world.floorMap = map;
+    // Inner corner tile (1,1) of a wall-bordered room: everything on the -x/-y
+    // side is wall, so the whole away-from-the-swarm arc is unreachable.
+    const corner = map.tileToWorld(1, 1);
+    spawnPlayer(world, corner.x, corner.y);
+    const threat = { x: corner.x + 12, y: corner.y + 12 };
+    spawnEnemy(world, threat.x, threat.y, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 92, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const harness = ai as unknown as {
+      pickRetreatTarget(
+        world: GameWorld,
+        playerX: number,
+        playerY: number,
+        threat: { x: number; y: number },
+        wedged: boolean,
+      ): { x: number; y: number };
+    };
+
+    const isPassableTarget = (p: { x: number; y: number }): boolean => {
+      const tile = map.worldToTile(p.x, p.y);
+      return map.tileMap.isPassable(tile.x, tile.y);
+    };
+
+    // Un-wedged (still travelling): unchanged behavior — the arc scan finds
+    // nothing reachable in the corner and falls back to the away-vector, which
+    // lies outside the room.
+    const cornered = harness.pickRetreatTarget(world, corner.x, corner.y, threat, false);
+    expect(isPassableTarget(cornered)).toBe(false);
+
+    // Wedged: the breakout arc must produce a target the runner can actually
+    // walk to, even though it means running past the threat.
+    const breakout = harness.pickRetreatTarget(world, corner.x, corner.y, threat, true);
+    expect(isPassableTarget(breakout)).toBe(true);
+    expect(Math.hypot(breakout.x - corner.x, breakout.y - corner.y)).toBeGreaterThan(0);
   });
 
   it('retreats on sustained damage rate before the remaining-HP threshold trips', () => {
