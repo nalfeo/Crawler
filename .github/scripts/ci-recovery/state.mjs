@@ -812,7 +812,9 @@ export const SELF_RECOVERY_WORKFLOW_PATHS = Object.freeze([
   '.github/workflows/ci-recovery-review-wake-bridge.yml',
 ]);
 
-const SELF_RECOVERY_WORKFLOW_PATH_SET = new Set(SELF_RECOVERY_WORKFLOW_PATHS);
+const SELF_RECOVERY_WORKFLOW_PATH_SET = new Set(
+  SELF_RECOVERY_WORKFLOW_PATHS.map((path) => path.toLowerCase()),
+);
 
 /**
  * Extracts the owning workflow run id from an Actions check run. Actions check

@@ -10,7 +10,7 @@ const WORKFLOW_PATH = path.join(REPO_ROOT, '.github/workflows/ci-recovery-router
 interface WorkflowDoc {
   name: string;
   'run-name'?: string;
-  jobs: Record<string, { name?: string }>;
+  jobs: Record<string, { name?: string } | undefined>;
 }
 
 function loadWorkflow(): { doc: WorkflowDoc; raw: string } {
@@ -34,7 +34,7 @@ describe('CI Recovery Router parked-run identity', () => {
     // was literally "route", which reconcile.mjs classified as a PR ci-failure
     // blocker the recovery agent could never clear (PR #2952 loop incident).
     const { doc } = loadWorkflow();
-    expect(doc.jobs.route.name?.toLowerCase()).toContain('ci recovery');
+    expect(doc.jobs.route?.name?.toLowerCase()).toContain('ci recovery');
   });
 
   it('binds review events through REST evidence rather than the mutable display title', () => {
