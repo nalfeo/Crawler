@@ -9,7 +9,7 @@ function readSceneSource(sceneFileName: string): string {
   return readFileSync(resolve(testDir, '../../src/engine/scenes', sceneFileName), 'utf-8');
 }
 
-const titleTextCallPattern = /\.text\(\s*[^,]+,\s*[^,]+,\s*[`'"]Crawler[`'"]/;
+const titleTextCallPattern = /\.text\(\s*[^,]+,\s*[^,]+,\s*(?:'Crawler'|"Crawler"|`Crawler`)/;
 
 describe('title screen copy', () => {
   it('uses Crawler as the boot loading title', () => {
