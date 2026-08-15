@@ -1227,6 +1227,17 @@ export class BehaviorTreeAI implements AIInputProvider {
           true,
         );
         if (threat) {
+          // LocalThreatRecovery is the bounded follow-up for this same threat.
+          // Let melee close/attack instead of re-entering RETREAT at the outer
+          // danger radius forever; projectile users still need defensive spacing.
+          if (
+            activeWeapon?.weaponType === WeaponType.MELEE &&
+            threat.eid === this.localThreatRecoveryEid &&
+            this.localThreatRecoveryMap === ctx.world.floorMap
+          ) {
+            this.endRetreat(ctx.world);
+            return false;
+          }
           const attackRange = ctx.world.stores.enemyBehavior.attackRange[threat.eid] ?? 0;
           const retreatEscapeRadius = this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT;
           if (attackRange > retreatEscapeRadius) {
