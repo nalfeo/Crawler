@@ -16,8 +16,8 @@ type EffectsScene = Parameters<typeof createEffectsVfx>[0];
 function createMockScene() {
   const flash = vi.fn();
   const shake = vi.fn();
-  const addCircle = vi.fn(() => shape);
   const shape = { setDepth: vi.fn(), setBlendMode: vi.fn(), destroy: vi.fn() };
+  const addCircle = vi.fn(() => shape);
   const scene = {
     add: {
       circle: addCircle,
