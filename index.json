@@ -1,5 +1,39 @@
 [
   {
+    "commit": "4510597055d2b4c2b76ff9200f0b6aeacc4b601f",
+    "commitDate": "2026-08-15T00:19:30Z",
+    "commitSubject": "feat: capture human run bundles (#2925)",
+    "capturedAt": "2026-08-15T01:26:15.101Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31854111683",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/4510597055d2b4c2b76ff9200f0b6aeacc4b601f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04,
+        "totalWins": 6,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.01,
+      "gatePass": false,
+      "path": "by-sha/4510597055d2b4c2b76ff9200f0b6aeacc4b601f.fun-report.json"
+    }
+  },
+  {
     "commit": "55c87d91b3a751d2b59e501288e6709ace48c361",
     "commitDate": "2026-08-14T23:16:21Z",
     "commitSubject": "feat: add dev-build run ingest and issue proxy (#2922)",
