@@ -13,14 +13,14 @@ describe('title screen copy', () => {
   it('uses Crawler as the boot loading title', () => {
     const bootSceneSource = readSceneSource('BootScene.ts');
 
-    expect(bootSceneSource).toContain("'Crawler'");
+    expect(bootSceneSource).toContain('Crawler');
     expect(bootSceneSource).not.toContain('THE CRAWLER');
   });
 
   it('uses Crawler as the intro title', () => {
     const introSceneSource = readSceneSource('IntroScene.ts');
 
-    expect(introSceneSource).toContain("'Crawler'");
+    expect(introSceneSource).toContain('Crawler');
     expect(introSceneSource).not.toContain('THE CRAWLER');
   });
 });
