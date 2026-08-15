@@ -24,9 +24,11 @@ const ENDPOINT_KEYS = [
   'CRAWLER_RUN_BUNDLE_ENDPOINT',
   'CRAWLER_RUNS_ENDPOINT',
   'CRAWLER_RUNS_API_URL',
+  'CRAWLER_RUNS_API_ENDPOINT',
   'VITE_CRAWLER_RUN_BUNDLE_ENDPOINT',
   'VITE_CRAWLER_RUNS_ENDPOINT',
   'VITE_CRAWLER_RUNS_API_URL',
+  'VITE_CRAWLER_RUNS_API_ENDPOINT',
 ] as const;
 
 const toTrimmedString = (value: unknown): string | null => {
@@ -46,10 +48,13 @@ function readWindowEndpoint(): string | null {
       .__CRAWLER_RUN_BUNDLE_ENDPOINT__,
     (window as typeof window & { __CRAWLER_RUNS_ENDPOINT__?: unknown }).__CRAWLER_RUNS_ENDPOINT__,
     (window as typeof window & { __CRAWLER_RUNS_API_URL__?: unknown }).__CRAWLER_RUNS_API_URL__,
+    (window as typeof window & { __CRAWLER_RUNS_API_ENDPOINT__?: unknown })
+      .__CRAWLER_RUNS_API_ENDPOINT__,
     (window as typeof window & { CRAWLER_RUN_BUNDLE_ENDPOINT?: unknown })
       .CRAWLER_RUN_BUNDLE_ENDPOINT,
     (window as typeof window & { CRAWLER_RUNS_ENDPOINT?: unknown }).CRAWLER_RUNS_ENDPOINT,
     (window as typeof window & { CRAWLER_RUNS_API_URL?: unknown }).CRAWLER_RUNS_API_URL,
+    (window as typeof window & { CRAWLER_RUNS_API_ENDPOINT?: unknown }).CRAWLER_RUNS_API_ENDPOINT,
   ]) {
     const trimmed = toTrimmedString(candidate);
     if (trimmed) {

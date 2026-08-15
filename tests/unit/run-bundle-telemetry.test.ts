@@ -56,6 +56,23 @@ describe('run bundle telemetry', () => {
     expect(config.endpoint).toBeNull();
   });
 
+  it('resolves the endpoint from VITE_CRAWLER_RUNS_API_ENDPOINT (vite.config.ts define key)', () => {
+    const original = process.env.VITE_CRAWLER_RUNS_API_ENDPOINT;
+    process.env.VITE_CRAWLER_RUNS_API_ENDPOINT = 'https://example.test/api/runs';
+    try {
+      const config = resolveRunBundleUploadConfig();
+      expect(config.enabled).toBe(true);
+      expect(config.endpoint).toBe('https://example.test/api/runs');
+      expect(config.source).toBe('env');
+    } finally {
+      if (original === undefined) {
+        delete process.env.VITE_CRAWLER_RUNS_API_ENDPOINT;
+      } else {
+        process.env.VITE_CRAWLER_RUNS_API_ENDPOINT = original;
+      }
+    }
+  });
+
   it('uses sendBeacon during quit/unload-safe submits', async () => {
     const beacon = vi.fn(() => true);
     Object.defineProperty(globalThis, 'window', {
