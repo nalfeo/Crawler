@@ -828,4 +828,26 @@ describe('equipment decision gate (e2e)', () => {
       await closeQuietly(context);
     }
   });
+
+  it('retains an active bag comparison when filtering rerenders the panel', async () => {
+    const { context, page: decisionPage } = await openDecisionState({
+      width: 1280,
+      height: 800,
+    });
+    try {
+      await probe.previewEquipmentBagItem(decisionPage, 'iron-breastplate');
+      await decisionPage.waitForTimeout(150);
+      expect(await probe.getEquipmentPreviewTargetSlots(decisionPage)).toContain('chest');
+      expect(await probe.isEquipmentTooltipVisible(decisionPage)).toBe(true);
+
+      expect(await probe.selectEquipmentSlot(decisionPage, 'chest')).toBe(true);
+      await decisionPage.waitForTimeout(150);
+
+      expect(await probe.getEquipmentPreviewTargetSlots(decisionPage)).toContain('chest');
+      expect(await probe.getEquipmentTargetMarkerBounds(decisionPage, 'chest')).not.toBeNull();
+      expect(await probe.isEquipmentTooltipVisible(decisionPage)).toBe(true);
+    } finally {
+      await closeQuietly(context);
+    }
+  });
 });

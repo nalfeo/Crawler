@@ -29,7 +29,8 @@ engine, tooling
 
 ## Verification
 
-- `npx vitest run tests/e2e/inventory-flow.test.ts` passes (40 tests).
+- `npx vitest run tests/e2e/inventory-flow.test.ts` passes (42 tests), including
+  preview persistence through a filter-driven panel re-render.
 - Screenshot viewer and arbitrary evaluator tests pass.
 - `npm run verify:fast` passes.
 - The Before render was captured from `main` at `8d53c5323` through the real
@@ -42,6 +43,5 @@ engine, tooling
 
 ## Follow-up
 
-The independent-grade packet still needs a split review because the aggregate
-diff exceeds its size limit. Do not treat a partial grade as coverage of this
-whole change.
+The final independent grade must be run against the post-fix committed diff
+before publishing the PR.

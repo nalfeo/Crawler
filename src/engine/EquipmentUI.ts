@@ -1165,7 +1165,11 @@ export function createEquipmentUI(
 
   function renderSlots(): void {
     clearPool(slotObjects);
-    clearTooltip();
+    if (previewEntryIdentity) {
+      clearInspectorText();
+    } else {
+      clearTooltip();
+    }
     slotBounds.clear();
     slotIconBounds.clear();
     slotCenters.clear();
@@ -1585,8 +1589,9 @@ export function createEquipmentUI(
     rendering = true;
     try {
       renderSlots();
-      renderStats();
       renderBag();
+      restorePreviewAfterRender();
+      renderStats();
       renderTargetMarkers();
     } finally {
       rendering = false;
@@ -1768,6 +1773,18 @@ export function createEquipmentUI(
         bagObjects.push(qty);
       }
     }
+  }
+
+  /** Keep an active bag comparison stable across layout-driven re-renders. */
+  function restorePreviewAfterRender(): void {
+    if (!previewEntryIdentity || !currentBag) return;
+    const entries: InventoryBagEntry[] = selectedSlotFilter
+      ? filterByEquipmentSlot(currentBag, selectedSlotFilter, generatedBagMetadata)
+      : filterEquippable(currentBag, generatedBagMetadata);
+    const entry = entries.find(
+      (candidate) => inventoryEntryIdentity(candidate) === previewEntryIdentity,
+    );
+    previewBagEntry(entry ?? null);
   }
 
   function computeSignature(): string {
