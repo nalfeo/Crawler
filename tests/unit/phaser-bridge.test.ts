@@ -246,6 +246,41 @@ describe('createPhaserBridge', () => {
     expect(images[0]).toMatchObject({ x: 240, y: 320 });
   });
 
+  it('interpolates from accepted per-step displacement when velocity is blocked', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 10, y: 20 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 1, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world, world.elapsedMs, 0.5);
+    expect(images).toHaveLength(1);
+    const img = images[0]!;
+    expect(img.x).toBe(ftToPx(10));
+
+    // Simulate a step where movement intent persisted but collision rejected it:
+    // position stayed unchanged while velocity remained non-zero.
+    world.frameCount += 1;
+    world.elapsedMs += 16.6667;
+    world.stores.position.x[eid] = 10;
+    world.stores.velocity.x[eid] = 1;
+    bridge.sync(world, world.elapsedMs, 0.5);
+    expect(img.x).toBe(ftToPx(10));
+
+    // Next step accepts one-foot movement; interpolation should now advance from
+    // that accepted displacement (never from stale blocked velocity).
+    world.frameCount += 1;
+    world.elapsedMs += 16.6667;
+    world.stores.position.x[eid] = 11;
+    world.stores.velocity.x[eid] = 1;
+    bridge.sync(world, world.elapsedMs, 0.5);
+    expect(img.x).toBeCloseTo(ftToPx(11.5), 6);
+  });
+
   it('applies per-instance NPC flip and rotation transforms from runtime metadata', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     const bridge = createPhaserBridge(scene);
