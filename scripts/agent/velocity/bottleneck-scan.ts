@@ -492,8 +492,8 @@ export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): stri
     findings.push(
       `${waste.abandoned} of ${waste.closedPrs} closed PRs (${(waste.wasteRate * 100).toFixed(0)}%) ` +
         `never merged — that work consumed agent sessions and CI minutes and shipped nothing, and ` +
-        `it is invisible in merged-PR lead time.${cause} Fix the automation that produces this class ` +
-        `before optimizing any stage timing.`,
+        `it is invisible in merged-PR lead time.${cause} Validate whether the dominant class reflects ` +
+        `a fixable automation pattern before acting on this finding.`,
     );
   }
 
@@ -938,7 +938,7 @@ export function buildReport(
   return { ...partial, findings: deriveFindings(partial) };
 }
 
-function render(report: BottleneckReport): string {
+export function render(report: BottleneckReport): string {
   const lines: string[] = [];
   lines.push(`\n═══ Crawler delivery bottleneck scan ═══`);
   lines.push(
@@ -1000,7 +1000,7 @@ function render(report: BottleneckReport): string {
   }
 
   const waste = report.abandonedWaste;
-  if (waste && waste.closedPrs > 0) {
+  if (waste) {
     const alarm =
       waste.closedPrs >= WASTE_MIN_SAMPLE && waste.wasteRate >= WASTE_RATE_ALERT
         ? ' ← ⚠ WASTE ALARM'

@@ -12,6 +12,7 @@ import {
   fetchOpenPrs,
   fetchMergedPrs,
   GUARD_REMEDIATION,
+  render,
   UNLABELED_WASTE_BUCKET,
   type BottleneckReport,
   type ClosedPrRecord,
@@ -749,6 +750,64 @@ describe('deriveFindings — abandoned PR waste', () => {
   it('stays quiet on a sample too small to trust', () => {
     const text = deriveFindings(report({ abandonedWaste: wastePanel(5, 10) })).join('\n');
     expect(text).not.toMatch(/never merged/);
+  });
+});
+
+describe('render — abandoned PR waste', () => {
+  it('renders the abandoned waste panel, alarm, labels, and recent abandoned PRs', () => {
+    const text = render({
+      ...report({
+        abandonedWaste: {
+          closedPrs: 100,
+          merged: 77,
+          abandoned: 23,
+          wasteRate: 0.23,
+          labelBreakdown: [
+            { label: 'ci-lifecycle-abandoned', count: 11 },
+            { label: 'copilot-empty-draft-repaired', count: 10 },
+            { label: UNLABELED_WASTE_BUCKET, count: 2 },
+          ],
+          recent: [
+            {
+              prNumber: 2973,
+              title: 'Fix Floor 1 release sweep loss',
+              closedAt: at(100),
+              labels: ['ci-lifecycle-abandoned'],
+            },
+          ],
+        },
+      }),
+      findings: [],
+    });
+
+    expect(text).toContain('─── Abandoned PR waste ───');
+    expect(text).toContain('23 of 100 closed PRs never merged (23%) ← ⚠ WASTE ALARM');
+    expect(text).toContain('   11  ci-lifecycle-abandoned');
+    expect(text).toContain('   10  copilot-empty-draft-repaired');
+    expect(text).toContain(`    2  ${UNLABELED_WASTE_BUCKET}`);
+    expect(text).toContain('Most recently abandoned:');
+    expect(text).toContain('#2973');
+    expect(text).toContain('[ci-lifecycle-abandoned]  Fix Floor 1 release sweep loss');
+  });
+
+  it('renders a supplied empty closed-PR snapshot instead of treating it as omitted', () => {
+    const text = render({
+      ...report({
+        abandonedWaste: {
+          closedPrs: 0,
+          merged: 0,
+          abandoned: 0,
+          wasteRate: 0,
+          labelBreakdown: [],
+          recent: [],
+        },
+      }),
+      findings: [],
+    });
+
+    expect(text).toContain('─── Abandoned PR waste ───');
+    expect(text).toContain('0 of 0 closed PRs never merged (0%)');
+    expect(text).not.toContain('WASTE ALARM');
   });
 });
 

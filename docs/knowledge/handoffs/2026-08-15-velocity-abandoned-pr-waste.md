@@ -103,8 +103,8 @@ Rendered finding (new):
 ```
 23 of 100 closed PRs (23%) never merged — that work consumed agent sessions and CI
 minutes and shipped nothing, and it is invisible in merged-PR lead time. Dominant
-class: "ci-lifecycle-abandoned" (11 of 23). Fix the automation that produces this
-class before optimizing any stage timing.
+class: "ci-lifecycle-abandoned" (11 of 23). Validate whether the dominant class
+reflects a fixable automation pattern before acting on this finding.
 ```
 
 Per §10 of the velocity lab policy this is observational, not causal: it is a metric that
