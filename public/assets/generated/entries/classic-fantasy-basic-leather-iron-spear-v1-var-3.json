@@ -104,9 +104,6 @@
     "canvasWidth": 64,
     "canvasHeight": 64
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-spear-v1/2026-07-28T04-09-27-74dda790/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-spear-v1/2026-07-28T04-09-27-74dda790/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-iron-spear-v1/2026-07-28T04-09-27-74dda790/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right"
 }

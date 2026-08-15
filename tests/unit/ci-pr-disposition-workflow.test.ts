@@ -86,6 +86,29 @@ describe('ci-pr-disposition workflow', () => {
     expect(raw).toContain('const liveProof = detectDuplicateProof(');
   });
 
+  it('applies the close-grace window to every close path, using live PR timestamps', () => {
+    const raw = loadWorkflowSource();
+    // Shared, fail-closed grace evaluation (PR #2948) instead of ad-hoc timestamp math.
+    expect(raw).toContain('evaluateCloseGrace');
+    expect(raw).not.toMatch(/const tooFresh\s*=/);
+    // Loop-level guard on the pulls.list snapshot.
+    expect(raw).toContain('const grace = evaluateCloseGrace(');
+    // The legacy coordinator-superseded close re-fetches the PR and re-evaluates
+    // freshness on live timestamps, so activity after the list snapshot is seen.
+    expect(raw).toContain('pulls.get coordinator-close');
+    expect(raw).toContain('const liveGrace = evaluateCloseGrace(');
+    expect(raw).toContain('createdAt: liveCoordPr.created_at, updatedAt: liveCoordPr.updated_at');
+    expect(raw).toContain('path=coordinator-superseded');
+
+    // The live re-check must precede the coordinator close mutation.
+    const coordFetchIndex = raw.indexOf('pulls.get coordinator-close');
+    const coordCloseIndex = raw.indexOf(
+      'closed-duplicate pr=#${pull.number} rule=coordinator-superseded',
+    );
+    expect(coordFetchIndex).toBeGreaterThan(-1);
+    expect(coordCloseIndex).toBeGreaterThan(coordFetchIndex);
+  });
+
   it('hydrates current lifecycle phase/head from trusted lifecycle comment for quarantine', () => {
     const raw = loadWorkflowSource();
     expect(raw).toContain('function parseCurrentLifecycleRecord(comments, prNumber)');

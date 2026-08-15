@@ -3,7 +3,7 @@
   "spriteName": "rat-king-v1-var-0",
   "assetPath": "generated/rat-king-v1-var-0.png",
   "approvedAt": "2026-07-06T17:32:31.147Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-VF1HzT/rat-king-v1/2026-07-03T21-41-59-74b768fa",
+  "sourceRun": "generated/runs/rat-king-v1/imported-2575c5eea24a",
   "variantIndex": 0,
   "anchor": {
     "x": 32,
@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "2575c5eea24a7c5f974d4071defcc545ddcb8f09b2dda55c3dfde5f8dc53ac80",
-  "postprocessOverrideProfilePath": null,
-  "effectivePipelineSnapshotPath": null,
-  "effectivePipelineSnapshotYamlPath": null,
   "effectiveAnchorSource": "brief",
   "opaqueBounds": {
     "x": 6,

@@ -57,6 +57,11 @@ const ASSETS_ROOT = 'public/assets';
 
 const scriptName = 'check-asset-integrity';
 const jsonMode = process.argv.includes('--json');
+const FORBIDDEN_PROVENANCE_FIELDS = [
+  'postprocessOverrideProfilePath',
+  'effectivePipelineSnapshotPath',
+  'effectivePipelineSnapshotYamlPath',
+] as const;
 
 /** Recursively collect `*.json` shard paths, sorted for deterministic output. */
 function collectShardFiles(absDir: string, relDir: string): string[] {
@@ -136,6 +141,22 @@ function scanCorpus(shardFiles: readonly string[]): CorpusScan {
       continue;
     }
     const contentHash = typeof rawHash === 'string' ? rawHash : undefined;
+    const provenanceViolations = [
+      ...FORBIDDEN_PROVENANCE_FIELDS.filter((field) => field in shard).map(
+        (field) => `forbidden field "${field}"`,
+      ),
+    ];
+    const sourceRun = shard['sourceRun'];
+    if (
+      typeof sourceRun !== 'string' ||
+      sourceRun.length === 0 ||
+      sourceRun.includes('\\') ||
+      sourceRun.startsWith('/') ||
+      /^[A-Za-z]:/.test(sourceRun) ||
+      sourceRun.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+    ) {
+      provenanceViolations.push(`unsafe sourceRun ${JSON.stringify(sourceRun)}`);
+    }
 
     let absAsset: string;
     try {
@@ -172,7 +193,15 @@ function scanCorpus(shardFiles: readonly string[]): CorpusScan {
       actualHash = hashed;
     }
 
-    records.push({ shardFile, spriteName, assetPath, contentHash, actualHash, fileExists });
+    records.push({
+      shardFile,
+      spriteName,
+      assetPath,
+      contentHash,
+      actualHash,
+      fileExists,
+      provenanceViolations,
+    });
   }
 
   return { records, malformed };
@@ -236,6 +265,7 @@ function byKind(findings: readonly Finding[]): readonly Finding[] {
     'missing-file',
     'duplicate-name',
     'duplicate-path',
+    'unsafe-provenance',
   ];
   return [...findings].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
 }

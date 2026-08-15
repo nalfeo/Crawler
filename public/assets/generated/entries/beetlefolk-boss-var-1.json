@@ -122,9 +122,6 @@
     "canvasWidth": 512,
     "canvasHeight": 385
   },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\beetlefolk-boss\\2026-07-31T19-53-55-7be4cec4\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\beetlefolk-boss\\2026-07-31T19-53-55-7be4cec4\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-ubiquitous-engine\\generated\\runs\\beetlefolk-boss\\2026-07-31T19-53-55-7be4cec4\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

@@ -16,6 +16,8 @@ test('renders cloud run controls, polling state, and existing aggregate views', 
   assert.match(html, /Per-weapon summary/);
   assert.match(html, /Per-seed outcomes/);
   assert.match(html, /new URLSearchParams\(location\.search\)/);
+  assert.match(html, /record\.outcome \?\? 'N\/A'/);
+  assert.match(html, /rate == null \|\| !Number\.isFinite/);
 });
 
 test('renders repository baseline controls and baseline tables', () => {

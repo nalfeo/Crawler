@@ -102,9 +102,6 @@
   },
   "type": "item",
   "contentHash": "82f90f862628626600452535e6add1c565f92d48321d96a1ca7367e480a0b31e",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/duelist-gloves-v2/2026-07-25T05-24-58-c3c8edc4/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/duelist-gloves-v2/2026-07-25T05-24-58-c3c8edc4/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/duelist-gloves-v2/2026-07-25T05-24-58-c3c8edc4/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildFailureSignature,
   evaluateBaselineRegression,
   type BaselineFile,
   type BaselineIndexEntry,
@@ -67,6 +68,54 @@ describe('release baseline regression check', () => {
     expect(decision.additionalLosses).toBe(2);
     expect(decision.issue?.title).toContain('Floor 1 release sweep loss');
     expect(decision.issue?.body).toContain('100% success requirement');
+  });
+
+  it('includes seed and sweep configuration in each Floor 1 failure signature', () => {
+    const current: BaselineFile = {
+      ...noise,
+      floorId: 'floor1',
+      legId: 'floor1',
+      forceWeapon: true,
+      chained: false,
+      enemyDamageMultiplier: 1,
+      fails: [
+        {
+          seed: 7,
+          weapon: 'sword',
+          signature: buildFailureSignature(
+            { seed: 7, weapon: 'sword' },
+            {
+              floorId: 'floor1',
+              legId: 'floor1',
+              forceWeapon: true,
+              chained: false,
+              enemyDamageMultiplier: 1,
+            },
+          ),
+        },
+      ],
+    };
+    const decision = evaluateBaselineRegression(
+      current,
+      [indexEntry(previous)],
+      [previous.meta.commit],
+    );
+
+    expect(decision.issue?.failureSignatures).toEqual([
+      'floor=floor1|leg=floor1|forceWeapon=true|chained=false|damage=1|seed=7|weapon=sword',
+    ]);
+    expect(current.fails?.[0]?.signature).toBe(decision.issue?.failureSignatures?.[0]);
+  });
+
+  it('rejects a persisted failure signature that does not match its sweep configuration', () => {
+    const current: BaselineFile = {
+      ...noise,
+      fails: [{ seed: 7, weapon: 'sword', signature: 'floor=floor1|seed=8|weapon=sword' }],
+    };
+
+    expect(() =>
+      evaluateBaselineRegression(current, [indexEntry(previous)], [previous.meta.commit]),
+    ).toThrow(/failure signature does not match/);
   });
 
   it('files an issue at and above the prior trend threshold when Floor 1 has losses', () => {
@@ -146,17 +195,24 @@ describe('release baseline regression check', () => {
       writeFileSync(indexPath, JSON.stringify([]));
       writeFileSync(githubOutputPath, '');
 
-      const result = spawnSync('npx', ['tsx', 'scripts/agent/perf/baseline-regression-check.ts'], {
-        cwd: REPO_ROOT,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          BASELINE_JSON: baselinePath,
-          BASELINE_INDEX_JSON: indexPath,
-          BASELINE_REGRESSION_RESULT: resultPath,
-          GITHUB_OUTPUT: githubOutputPath,
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+          'scripts/agent/perf/baseline-regression-check.ts',
+        ],
+        {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BASELINE_JSON: baselinePath,
+            BASELINE_INDEX_JSON: indexPath,
+            BASELINE_REGRESSION_RESULT: resultPath,
+            GITHUB_OUTPUT: githubOutputPath,
+          },
         },
-      });
+      );
 
       // Asserting the exit code (rather than letting execFileSync throw) keeps
       // this a clean assertion failure instead of an uncaught-error path if the

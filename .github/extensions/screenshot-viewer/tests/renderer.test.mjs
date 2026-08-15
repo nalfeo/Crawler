@@ -101,3 +101,10 @@ test('gallery cards expose button semantics for keyboard and assistive tech', ()
   assert.match(html, /class="thumb-card" tabindex="0" role="button"/);
   assert.match(html, /aria-label="Open screenshot:/);
 });
+
+test('image error handling cannot corrupt the thumbnail markup', () => {
+  const html = renderHtml(OPTS);
+  assert.doesNotMatch(html, /onerror=/);
+  assert.match(html, /addEventListener\('error', handleThumbError\)/);
+  assert.match(html, /function handleThumbError/);
+});
