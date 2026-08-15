@@ -6,7 +6,7 @@
  *      effect requests pushed by game/core systems (pickups, level-ups).
  *   2. `world.combatEvents` — READ but NOT drained (CombatVfx drains them). Used
  *      to synthesise combat juice (hit sparks, crit bursts, death pops, and the
- *      player-hurt screen flash) without any extra core plumbing.
+ *      player-hurt pulse) without any extra core plumbing.
  *
  * ORDER: must run AFTER GoreVfx and BEFORE CombatVfx in the bridge so it sees
  * combat events before CombatVfx clears the queue (mirrors GoreVfx).
@@ -38,14 +38,17 @@ const DEATH_POP_SPARK_COUNT = 7;
 const PICKUP_MOTE_COUNT = 4;
 const LEVEL_UP_MOTE_COUNT = 9;
 
-/** Minimum gap between player-hurt screen shakes so rapid hits don't strobe. */
+/** Minimum gap between player-hurt feedback so rapid hits don't strobe. */
 const PLAYER_HURT_THROTTLE_MS = 120;
 
 const COLOR_HIT_SPARK = 0xfff1a8;
 const COLOR_CRIT_SPARK = 0xff8800;
 const COLOR_LEVEL_UP = 0xffd166;
 const COLOR_SPAWNER_PULSE = 0x9be15d;
-const COLOR_PLAYER_HURT = { r: 220, g: 40, b: 40 } as const;
+export const PLAYER_HURT_PULSE_COLOR = 0xff4d4d;
+export const PLAYER_HURT_PULSE_DURATION_MS = 220;
+export const PLAYER_HURT_SHAKE_DURATION_MS = 80;
+export const PLAYER_HURT_SHAKE_INTENSITY = 0.003;
 const COLOR_FIREBALL_CORE = 0xffe066;
 const COLOR_FIREBALL_RING = 0xff5522;
 const COLOR_PULSE_SHIELD_INNER = 0xe0f7ff;
@@ -485,15 +488,22 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
-  function playerHurt(renderElapsedMs: number): void {
+  function playerHurt(renderElapsedMs: number, x: number, y: number): void {
     if (renderElapsedMs - lastPlayerHurtMs < PLAYER_HURT_THROTTLE_MS) return;
     lastPlayerHurtMs = renderElapsedMs;
+    spawnRing(
+      x,
+      y,
+      PLAYER_HURT_PULSE_COLOR,
+      10,
+      2.4,
+      WORLD_VFX_DEPTH.hitSpark,
+      PLAYER_HURT_PULSE_DURATION_MS,
+      0.32,
+    );
     const cam = scene.cameras?.main;
-    if (typeof cam?.flash === 'function') {
-      cam.flash(120, COLOR_PLAYER_HURT.r, COLOR_PLAYER_HURT.g, COLOR_PLAYER_HURT.b);
-    }
     if (typeof cam?.shake === 'function') {
-      cam.shake(110, 0.006);
+      cam.shake(PLAYER_HURT_SHAKE_DURATION_MS, PLAYER_HURT_SHAKE_INTENSITY);
     }
   }
 
@@ -584,7 +594,7 @@ export function createEffectsVfx(scene: Phaser.Scene): {
       case 'playerHurt':
         // Queue-sourced player-hurt shares the combat throttle; stamp it with the
         // real render clock so `lastPlayerHurtMs` stays finite (see init note).
-        playerHurt(renderElapsedMs);
+        playerHurt(renderElapsedMs, x, y);
         break;
     }
   }
@@ -592,7 +602,7 @@ export function createEffectsVfx(scene: Phaser.Scene): {
   function handleCombatEvent(event: CombatEvent, renderElapsedMs: number): void {
     if (event.type === 'hit') {
       if (event.targetType === 'player') {
-        playerHurt(renderElapsedMs);
+        playerHurt(renderElapsedMs, ftToPx(event.x), ftToPx(event.y));
         return;
       }
       // World-feet → render px (world-space Phaser objects).
