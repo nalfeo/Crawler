@@ -135,6 +135,25 @@ describe('AzureOpenAIVisionProvider.evaluate', () => {
     expect(capturedBody?.max_tokens).toBe(1500);
   });
 
+  it('preserves the supplied screenshot MIME type in the image data URL', async () => {
+    let capturedBody: { messages: Array<{ content: unknown }> } | undefined;
+    const stubFetch: typeof fetch = async (_input, init) => {
+      capturedBody = JSON.parse(init?.body as string);
+      return jsonResponse(200, chatCompletion(JSON.stringify({ ok: true })));
+    };
+    const provider = new AzureOpenAIVisionProvider({ ...baseOptions, fetch: stubFetch });
+    await provider.evaluate({
+      ...fakeRequest(),
+      images: [
+        { label: 'jpeg-screenshot', png: Buffer.from([0xff, 0xd8, 0xff]), mediaType: 'image/jpeg' },
+      ],
+    });
+    const parts = capturedBody?.messages[1]?.content as Array<{ image_url?: { url: string } }>;
+    expect(parts[1]?.image_url?.url).toBe(
+      `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 0xff]).toString('base64')}`,
+    );
+  });
+
   it('strips a ```json ... ``` fence before parsing', async () => {
     const fenced = '```json\n{ "style_match": { "score": 3, "rationale": "x" } }\n```';
     const stubFetch: typeof fetch = async () => jsonResponse(200, chatCompletion(fenced));

@@ -194,6 +194,32 @@ Written under:
 
 - `files/visual-review/*.png`
 - `files/visual-review/*.review.json`
+- `files/visual-review/before/<task>.png`
+- `files/visual-review/after/<task>.png`
+- `files/visual-review/feedback/*.jsonl`
+- `files/visual-review/reviews/*.review.json`
+
+## Before/After review loop
+
+For a UX change, save the baseline and revised screenshots with the same task
+name under `before/` and `after/`. Then open the `screenshot-viewer` canvas.
+It renders paired comparisons, individual screenshots, and a feedback form.
+Classify feedback as:
+
+- **This task only** — keep the note attached to the current implementation.
+- **Promote to UX agent / skill / workflow** — record a reusable rule or
+  deterministic check that prevents the finding from recurring.
+
+The extension stores task feedback in
+`files/visual-review/feedback/before-after-feedback.jsonl`. Reusable feedback
+also creates a durable promotion proposal in `docs/knowledge/ux-feedback/`;
+acceptance requires changing the selected agent, skill, deterministic eval, or
+workflow, not merely recording the proposal. Screenshots are session artifacts,
+so PR-facing visual evidence must be uploaded and embedded rather than cited
+only by local path. Agents must include the relevant screenshot, review, and
+feedback paths in the handoff.
+The viewer is review evidence, not a CI gate; deterministic geometry and
+behavior checks remain authoritative in CI.
 
 ## Policy
 

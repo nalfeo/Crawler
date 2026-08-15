@@ -24,6 +24,8 @@
 export interface VisionImageInput {
   /** PNG bytes of the image to show the model. */
   readonly png: Buffer;
+  /** MIME type for arbitrary screenshot inputs; defaults to image/png. */
+  readonly mediaType?: 'image/png' | 'image/jpeg' | 'image/webp';
   /**
    * Short label the prompt references when asking the model about this
    * image (e.g. "candidate", "reference-1", "readability-composite").

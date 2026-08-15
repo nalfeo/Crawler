@@ -36,6 +36,7 @@ import {
 } from '../../core/systems/equipmentSystem.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
+import type { EquipmentTextRun } from '../../engine/EquipmentUI.js';
 import { createHudMinimap } from '../../engine/HudMinimap.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
@@ -143,6 +144,18 @@ export interface UiProbeApi {
   previewEquipmentBagItem(itemId: string | null): void;
   /** Equip a bag item straight from the integrated bag column. */
   equipFromEquipmentBag(itemId: string): boolean;
+  /** Unequip whatever is in `slotId`, returning it to the bag. */
+  unequipEquipmentSlot(slotId: EquipmentSlotId): void;
+  /** Screen bounds of the stats column background. */
+  getEquipmentStatsBounds(): ScreenBounds | null;
+  /** Screen bounds of the inspector strip background. */
+  getEquipmentInspectorBounds(): ScreenBounds | null;
+  /** Every visible text run in the equipment panel, tagged by owning region. */
+  getEquipmentTextRuns(): EquipmentTextRun[];
+  /** Paper-doll slots the active preview would fill (empty when no preview). */
+  getEquipmentPreviewTargetSlots(): EquipmentSlotId[];
+  /** Screen bounds of the preview target marker drawn over `slotId`. */
+  getEquipmentTargetMarkerBounds(slotId: EquipmentSlotId): ScreenBounds | null;
   /** Effective Charisma of the player (base + equipment bonuses). */
   getCharisma(): number;
   /** Equip the merchant's charm via the real equipment system (safe-room). */
@@ -572,6 +585,15 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         previewEquipmentBagItem: (itemId: string | null) =>
           this.equipmentUI?.previewBagItem(itemId),
         equipFromEquipmentBag: (itemId: string) => this.equipmentUI?.equipBagItem(itemId) ?? false,
+        unequipEquipmentSlot: (slotId: EquipmentSlotId) => {
+          this.equipmentUI?.unequipSlot(slotId);
+        },
+        getEquipmentStatsBounds: () => this.equipmentUI?.getStatsColumnScreenBounds() ?? null,
+        getEquipmentInspectorBounds: () => this.equipmentUI?.getInspectorScreenBounds() ?? null,
+        getEquipmentTextRuns: () => this.equipmentUI?.getTextRuns() ?? [],
+        getEquipmentPreviewTargetSlots: () => this.equipmentUI?.getPreviewTargetSlots() ?? [],
+        getEquipmentTargetMarkerBounds: (slotId: EquipmentSlotId) =>
+          this.equipmentUI?.getPreviewTargetMarkerScreenBounds(slotId) ?? null,
         getCharisma: () => getEffectiveStats(this.world, this.playerEid).charisma,
         equipCharm: () => {
           const result = equip(this.world, this.playerEid, MERCHANTS_CHARM_DEF);

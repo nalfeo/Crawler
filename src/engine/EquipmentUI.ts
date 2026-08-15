@@ -27,6 +27,7 @@ import {
 } from '../core/systems/equipmentSystem.js';
 import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
+import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../shared/stats.js';
 import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
 import {
@@ -138,6 +139,32 @@ export interface EquipmentUIConfig {
   onInventoryChanged?: () => void;
 }
 
+/**
+ * Which sub-region of the panel a rendered text run belongs to. Derived from the
+ * render pool that owns the object, so it is exact rather than inferred from
+ * geometry.
+ */
+export type EquipmentTextRegion = 'header' | 'doll' | 'stats' | 'bag' | 'inspector';
+
+/**
+ * One rendered text run inside the panel — a test/automation affordance (like
+ * the `ScreenBounds` getters) that lets e2e assert "no clipping, no overlap,
+ * still readable" on the real rendered glyphs instead of re-deriving layout
+ * maths or eyeballing a screenshot.
+ *
+ * `bounds` is world/canvas space (matching every other `*ScreenBounds` getter
+ * here, i.e. already multiplied by the panel's ui-scale). `fontSize` is the
+ * authored design-space size; `renderedFontSize` is that size after ui-scale, so
+ * a caller only has to apply the canvas→CSS ratio to get physical pixels.
+ */
+export interface EquipmentTextRun {
+  readonly text: string;
+  readonly region: EquipmentTextRegion;
+  readonly fontSize: number;
+  readonly renderedFontSize: number;
+  readonly bounds: ScreenBounds;
+}
+
 export function createEquipmentUI(
   scene: Phaser.Scene,
   config: EquipmentUIConfig = {},
@@ -153,11 +180,25 @@ export function createEquipmentUI(
   getTooltipScreenBounds(): ScreenBounds | null;
   isTooltipVisible(): boolean;
   isTooltipTopmost(): boolean;
+  /** Static item ids in visible-bag order; excludes generated instances. */
   getBagItemIds(): string[];
   /** Render-order cell for one exact generated inventory instance. */
   getGeneratedBagCellScreenBounds(instanceKey: string): ScreenBounds | null;
+  /** Cell for an index returned by {@link getBagItemIds}; excludes generated instances. */
   getBagCellScreenBounds(index: number): ScreenBounds | null;
   getBagColumnScreenBounds(): ScreenBounds;
+  /** Live bounds of the stats column frame (world space). */
+  getStatsColumnScreenBounds(): ScreenBounds;
+  /** Live bounds of the fixed inspector strip (world space). */
+  getInspectorScreenBounds(): ScreenBounds;
+  /** Every visible text run in the panel, tagged by owning region. */
+  getTextRuns(): EquipmentTextRun[];
+  /** Slots the currently-previewed bag item would fill, in render order. */
+  getPreviewTargetSlots(): EquipmentSlotId[];
+  /** Bounds of the "this is where it lands" marker drawn over a target slot. */
+  getPreviewTargetMarkerScreenBounds(slotId: EquipmentSlotId): ScreenBounds | null;
+  /** Unequip a slot directly (the same action a second click on it performs). */
+  unequipSlot(slotId: EquipmentSlotId): void;
   scrollBag(rows: number): boolean;
   getBagScrollRow(): number;
   getBagMaxScrollRow(): number;
@@ -405,7 +446,12 @@ export function createEquipmentUI(
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
   const slotBounds = new Map<EquipmentSlotId, ScreenBounds>();
   const slotIconBounds = new Map<EquipmentSlotId, ScreenBounds>();
+  /** Panel-local slot centres, so overlays can be placed without ui-scale maths. */
+  const slotCenters = new Map<EquipmentSlotId, { x: number; y: number }>();
   const bagObjects: Phaser.GameObjects.GameObject[] = [];
+  /** Target-slot markers for the active preview — an overlay, NOT part of renderSlots. */
+  const targetMarkerObjects: Phaser.GameObjects.GameObject[] = [];
+  const targetMarkerBounds = new Map<EquipmentSlotId, ScreenBounds>();
   let bagCellBounds: (ScreenBounds | null)[] = [];
   let bagItemIds: string[] = [];
   let bagStaticEntryIndices: number[] = [];
@@ -413,6 +459,32 @@ export function createEquipmentUI(
   let bagMaxScroll = 0;
   let previewEntryIdentity: string | null = null;
   let tooltipBounds: ScreenBounds | null = null;
+
+  /**
+   * The live "what would this swap do?" comparison.
+   *
+   * Set while a bag item is previewed (hover or probe), and consumed by the
+   * stats column (per-stat `new (±delta)` readouts) and by the paper-doll target
+   * markers. Keeping it as panel state — rather than only as tooltip text — is
+   * what makes the panel decision-first: the numbers the player is comparing
+   * live next to the numbers they already have, in the same rows, and the
+   * destination slot is pointed at on the doll.
+   */
+  interface CompareState {
+    readonly label: string;
+    readonly deltas: Partial<Record<StatId, number>>;
+    readonly targetSlots: readonly EquipmentSlotId[];
+    readonly canEquip: boolean;
+    /**
+     * False for generated-equipment instances, whose net swap delta is not
+     * derivable from the static def table. The stats column then says so
+     * explicitly rather than implying "no change".
+     */
+    readonly statsKnown: boolean;
+  }
+  let compare: CompareState | null = null;
+  /** True only while `render()` is running (see setCompare). */
+  let rendering = false;
   const getPanelScreenBounds = (): ScreenBounds => ({
     x: panelX,
     y: panelY,
@@ -427,9 +499,15 @@ export function createEquipmentUI(
     pool.length = 0;
   }
 
-  function clearTooltip(): void {
+  /** Drop the inspector's text objects only (keeps any active comparison). */
+  function clearInspectorText(): void {
     clearPool(tooltipObjects);
     tooltipBounds = null;
+  }
+
+  function clearTooltip(): void {
+    clearInspectorText();
+    setCompare(null);
     refreshInspectorIdleText();
     inspectorPlaceholder.setVisible(true);
   }
@@ -700,8 +778,92 @@ export function createEquipmentUI(
     size: number;
   }
 
+  /**
+   * Draw / clear the "this is where it lands" markers on the paper doll for the
+   * slots the previewed item would occupy.
+   *
+   * These live in their own overlay pool instead of `renderSlots()` so a preview
+   * never re-renders (and therefore never re-lays-out) the doll: the spatial
+   * model the player is reading must not move while they compare.
+   */
+  function renderTargetMarkers(): void {
+    clearPool(targetMarkerObjects);
+    targetMarkerBounds.clear();
+    if (!compare) return;
+    const markerColor = compare.canEquip ? COLORS.accent : COLORS.statNerf;
+    for (const slotId of compare.targetSlots) {
+      const centre = slotCenters.get(slotId);
+      if (!centre) continue;
+      const frame = scene.add.rectangle(
+        snap(centre.x),
+        snap(centre.y),
+        SLOT_W + 8,
+        SLOT_H + 8,
+        markerColor,
+        0,
+      );
+      frame.setStrokeStyle(3, markerColor, 1);
+      container.add(frame);
+      container.bringToTop(frame);
+      targetMarkerObjects.push(frame);
+      const b = frame.getBounds();
+      targetMarkerBounds.set(slotId, { x: b.x, y: b.y, width: b.width, height: b.height });
+    }
+  }
+
+  /**
+   * Install (or clear) the active comparison and refresh only what depends on
+   * it: the stats column values and the doll's target markers. Slots, bag cells
+   * and panel chrome are deliberately untouched.
+   */
+  function setCompare(next: CompareState | null): void {
+    const changed =
+      (compare === null) !== (next === null) ||
+      (compare !== null &&
+        next !== null &&
+        (compare.label !== next.label ||
+          compare.canEquip !== next.canEquip ||
+          compare.statsKnown !== next.statsKnown ||
+          compare.targetSlots.join(',') !== next.targetSlots.join(',') ||
+          ALL_STAT_IDS.some(
+            (statId) => (compare?.deltas[statId] ?? 0) !== (next.deltas[statId] ?? 0),
+          )));
+    compare = next;
+    if (!changed) return;
+    // During a full render() the stats column and markers are drawn anyway;
+    // skipping here avoids re-entrant double work (renderSlots → clearTooltip).
+    if (visible && !rendering) {
+      renderStats();
+      renderTargetMarkers();
+    }
+  }
+
+  /** Target slots for an item id, or `[]` when it is not equippable. */
+  function targetSlotsForItem(itemId: string): EquipmentSlotId[] {
+    return [...(getEquipmentDefForItem(itemId)?.slots ?? [])];
+  }
+
   function truncateToWidth(text: string, fontPx: number): string {
     const budget = Math.max(4, Math.floor((inspectorW - 24) / (fontPx * 0.92)));
+    if (text.length <= budget) return text;
+    return `${text.slice(0, Math.max(1, budget - 1))}…`;
+  }
+
+  /**
+   * Conservative advance width for 8px stats-column text.
+   *
+   * "Press Start 2P" is monospaced at ~0.95em; we round up to a full em so the
+   * fitted label always leaves *more* room than it needs. The e2e gate measures
+   * the real rendered glyph boxes, so over-estimating here is the safe direction.
+   */
+  const STATS_FONT_PX = 8;
+  function measureStatsText(text: string): number {
+    return text.length * STATS_FONT_PX;
+  }
+
+  /** Truncate `text` (with an ellipsis) so it fits `maxWidth` design px. */
+  function fitStatsText(text: string, maxWidth: number): string {
+    const budget = Math.max(3, Math.floor(maxWidth / STATS_FONT_PX));
     if (text.length <= budget) return text;
     return `${text.slice(0, Math.max(1, budget - 1))}…`;
   }
@@ -711,11 +873,14 @@ export function createEquipmentUI(
   // tooltip). Text goes into the tooltip pool so isTooltipVisible/topmost and
   // the deterministic probes keep their existing contract.
   function renderInspector(lines: InspectorLine[]): void {
-    clearTooltip();
+    clearInspectorText();
     inspectorPlaceholder.setVisible(false);
-    const lineH = 20;
-    const blockH = (lines.length - 1) * lineH + 10;
-    const yStart = inspectorY + Math.max(8, Math.round((INSPECTOR_H - blockH) / 2));
+    // Four-line inspectors (generated gear) must still fit the fixed 72px strip:
+    // at the 20px pitch the last line rendered past the bottom edge and was
+    // clipped by the panel. Tighten the pitch instead of spilling.
+    const lineH = lines.length <= 3 ? 20 : 16;
+    const blockH = (lines.length - 1) * lineH + 11;
+    const yStart = inspectorY + Math.max(6, Math.round((INSPECTOR_H - blockH) / 2));
     lines.forEach((line, index) => {
       const text = crispText(inspectorX + 14, snap(yStart + index * lineH), line.text, {
         fontFamily: FONT_FAMILY,
@@ -730,23 +895,45 @@ export function createEquipmentUI(
     tooltipBounds = measureTooltipBounds(tooltipObjects);
   }
 
-  function showTooltip(def: ItemDef, quantity: number): void {
+  /**
+   * Inspector content for an occupied paper-doll slot.
+   *
+   * Decision-first: the first thing a player needs from a slot they already
+   * filled is "what is this giving me, and what happens if I click it" — not the
+   * flavour text. Stat bonuses lead, and the action line states the exact next
+   * click (select vs. unequip) so the two-stage slot interaction is discoverable
+   * instead of being something you learn by accident.
+   */
+  function showTooltip(def: ItemDef, slotId: EquipmentSlotId): void {
+    setCompare(null);
     const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
+    const bonuses = Object.entries(getEquipmentDefForItem(def.id)?.statBonuses ?? {})
+      .filter(([, value]) => typeof value === 'number' && value !== 0)
+      .map(
+        ([statId, value]) =>
+          `${value! > 0 ? '+' : ''}${formatStatValue(value!)} ${statId.toUpperCase()}`,
+      )
+      .join('  ');
     renderInspector([
       { text: truncateToWidth(def.name, 9), color: rarityColor, size: 9 },
-      { text: truncateToWidth(def.description, 8), color: 0x9ca3af, size: 8 },
       {
-        text: truncateToWidth(
-          `${def.rarity.toUpperCase()} · x${quantity} · [${def.tags.join(', ')}]`,
-          8,
-        ),
-        color: 0x8792ad,
+        text: truncateToWidth(bonuses || def.description, 8),
+        color: bonuses ? COLORS.statBuff : 0x9ca3af,
+        size: 8,
+      },
+      {
+        text:
+          selectedSlotFilter === slotId
+            ? 'CLICK AGAIN TO UNEQUIP'
+            : 'CLICK TO SELECT SLOT AND FILTER BAG',
+        color: COLORS.accent,
         size: 8,
       },
     ]);
   }
 
   function showGeneratedEquipmentTooltip(def: EquipmentItemDef): void {
+    setCompare(null);
     const rarityColor =
       def.rarity === 'common'
         ? RARITY_COLORS[ItemRarity.Common]
@@ -769,6 +956,7 @@ export function createEquipmentUI(
   }
 
   function showEmptySlotTooltip(slotLabel: string): void {
+    setCompare(null);
     renderInspector([
       { text: slotLabel.toUpperCase(), color: COLORS.textPrimary, size: 9 },
       { text: 'EMPTY SLOT', color: COLORS.textSecondary, size: 8 },
@@ -784,9 +972,23 @@ export function createEquipmentUI(
 
   // Diablo-style equip preview: shows the item plus the NET stat change from
   // equipping it (including stats lost by unequipping the item(s) it replaces).
+  // The per-stat numbers themselves live in the stats column (see setCompare) —
+  // this strip carries identity, the destination slot, and the verdict.
   function showEquipPreview(def: ItemDef, preview: EquipDeltaPreview): void {
     const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
     const changed = ALL_STAT_IDS.filter((statId) => Math.abs(preview.deltas[statId] ?? 0) > 1e-9);
+    const targets = targetSlotsForItem(def.id);
+    setCompare({
+      label: def.name,
+      deltas: preview.deltas,
+      targetSlots: targets,
+      canEquip: preview.canEquip,
+      statsKnown: true,
+    });
+    const targetLabel = targets
+      .map((slotId) => SLOT_REGISTRY.find((entry) => entry.id === slotId)?.label ?? slotId)
+      .join(' + ')
+      .toUpperCase();
     const lines: InspectorLine[] = [
       { text: truncateToWidth(def.name, 9), color: rarityColor, size: 9 },
     ];
@@ -802,15 +1004,25 @@ export function createEquipmentUI(
       );
       lines.push({ text: truncateToWidth(parts.join('  '), 8), color: deltaColor, size: 8 });
     }
-    if (preview.swappedOut.length > 0) {
+    // Destination is stated in words as well as marked on the doll: the marker
+    // answers "where", this answers "where" when the doll is off the eye-line.
+    if (!preview.canEquip) {
+      lines.push({ text: 'CANNOT EQUIP — REQUIREMENTS NOT MET', color: COLORS.statNerf, size: 8 });
+    } else if (preview.swappedOut.length > 0) {
       const names = preview.swappedOut
         .map((swapped) => getItemById(swapped.id)?.name ?? swapped.name)
         .join(', ');
-      lines.push({ text: truncateToWidth(`REPLACES: ${names}`, 8), color: 0x8792ad, size: 8 });
-    } else if (!preview.canEquip) {
-      lines.push({ text: 'CANNOT EQUIP', color: COLORS.statNerf, size: 8 });
+      lines.push({
+        text: truncateToWidth(`${targetLabel || 'SLOT'} — REPLACES ${names}`, 8),
+        color: 0x8792ad,
+        size: 8,
+      });
     } else {
-      lines.push({ text: 'CLICK TO EQUIP', color: COLORS.accent, size: 8 });
+      lines.push({
+        text: truncateToWidth(`CLICK TO EQUIP → ${targetLabel || 'SLOT'}`, 8),
+        color: COLORS.accent,
+        size: 8,
+      });
     }
     renderInspector(lines);
   }
@@ -867,6 +1079,15 @@ export function createEquipmentUI(
       .filter(([, value]) => value !== 0)
       .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`)
       .join('  ');
+    // Generated instances have no requirements in their frozen schema; only the
+    // net stat delta is unavailable because there is no static def to diff against.
+    setCompare({
+      label: instance.frozen.displayName,
+      deltas: {},
+      targetSlots: [...instance.frozen.slots],
+      canEquip: true,
+      statsKnown: false,
+    });
     renderInspector([
       {
         text: truncateToWidth(instance.frozen.displayName, 9),
@@ -947,6 +1168,7 @@ export function createEquipmentUI(
     clearTooltip();
     slotBounds.clear();
     slotIconBounds.clear();
+    slotCenters.clear();
     if (!lastWorld || playerEid < 0) return;
     const state = getEquipmentState(lastWorld, playerEid);
     const innerPadX = 22;
@@ -986,6 +1208,7 @@ export function createEquipmentUI(
       box.setInteractive({ useHandCursor: true });
       const b = box.getBounds();
       slotBounds.set(slot.id, { x: b.x, y: b.y, width: b.width, height: b.height });
+      slotCenters.set(slot.id, { x: cx, y: cy });
       const pipColor = isSelected ? COLORS.slotSelectedBorder : COLORS.panelBorder;
       const cornerPips = [
         scene.add.rectangle(
@@ -1092,7 +1315,7 @@ export function createEquipmentUI(
       box.on('pointerover', () => {
         box.setFillStyle(COLORS.slotHover);
         if (itemDef) {
-          showTooltip(itemDef, 1);
+          showTooltip(itemDef, slot.id);
         } else if (instance) {
           showGeneratedEquipmentTooltip(instance.def);
         } else {
@@ -1139,6 +1362,20 @@ export function createEquipmentUI(
     }
   }
 
+  /**
+   * Stats column.
+   *
+   * Two invariants this function is responsible for:
+   *
+   * 1. **It always fits.** The row pitch is derived from the space actually
+   *    available in the stats frame, not clamped up to a fixed 20px. The old
+   *    clamp overflowed by ~140px with the shipped stat list, so the MASS
+   *    section (equipped load / total mass / encumbrance band — the panel's only
+   *    visible *constraint*) was clipped off the bottom of the panel entirely.
+   * 2. **It never reflows.** Rows are laid out identically whether or not a
+   *    comparison is active; a preview only changes text, colour and row
+   *    highlight. The player's eye keeps its place while they compare.
+   */
   function renderStats(): void {
     clearPool(statObjects);
     if (!lastWorld || playerEid < 0) return;
@@ -1165,16 +1402,60 @@ export function createEquipmentUI(
     container.addAt(headingFrame, 5);
     statObjects.push(headingFrame);
 
-    let rowY = dollY + 68;
     const colW = STATS_W - 14;
+
+    // Fixed-height comparison banner. Present in BOTH states (idle text vs.
+    // "VS <item>") so turning a preview on/off cannot move a single stat row.
+    const compareBarY = dollY + 52;
+    const compareBg = scene.add.rectangle(
+      statsX + colW / 2 + 6,
+      compareBarY,
+      colW - 8,
+      18,
+      compare ? 0x2a4a3a : 0x2f4369,
+      0.95,
+    );
+    compareBg.setStrokeStyle(1, compare ? COLORS.accent : 0x5f7db0, compare ? 1 : 0.7);
+    const compareText = crispText(
+      statsX + 10,
+      compareBarY,
+      compare
+        ? fitStatsText(
+            compare.statsKnown
+              ? `VS ${compare.label.toUpperCase()}`
+              : `VS ${compare.label.toUpperCase()} (NO DELTA)`,
+            colW - 20,
+          )
+        : 'CURRENT TOTALS',
+      {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: hex(compare ? COLORS.accent : COLORS.textSecondary),
+      },
+    );
+    compareText.setOrigin(0, 0.5);
+    container.add(compareBg);
+    container.add(compareText);
+    statObjects.push(compareBg, compareText);
+
+    let rowY = dollY + 68;
     const ENCUMBRANCE_ROW_COUNT = 3; // equipped weight, total mass, band status
     const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length + ENCUMBRANCE_ROW_COUNT;
-    const reservedSectionSpace = 18 * 3 + 4; // PRIMARY + SECONDARY + MASS section headers
+    const reservedSectionSpace = 20 * 3 + 8; // PRIMARY + SECONDARY + MASS headers + gaps
     const rowsEndY = dollY + dollH - 12;
+    // Fit the rows into the space that exists. MIN_STAT_ROW_STEP keeps 8px text
+    // legible (glyph box ~11px) even at the tightest fit; MAX keeps the column
+    // from looking gappy when the stat list is short.
+    const MIN_STAT_ROW_STEP = 13;
+    const MAX_STAT_ROW_STEP = 22;
     const rowStep = Math.max(
-      20,
-      Math.floor((rowsEndY - rowY - reservedSectionSpace) / totalStatRows),
+      MIN_STAT_ROW_STEP,
+      Math.min(
+        MAX_STAT_ROW_STEP,
+        Math.floor((rowsEndY - rowY - reservedSectionSpace) / totalStatRows),
+      ),
     );
+    const rowTextDy = Math.max(1, Math.round((rowStep - 10) / 2));
     const drawSection = (titleText: string): void => {
       const sectionTitle = crispText(statsX + 10, rowY + 1, titleText, {
         fontFamily: FONT_FAMILY,
@@ -1199,30 +1480,41 @@ export function createEquipmentUI(
       rowY += 20;
     };
 
-    const drawStat = (statId: StatId): void => {
-      const value = effective[statId] ?? 0;
-      const base = baseStore[statId]?.[playerEid] ?? 0;
-      const buffed = value > base;
+    /** Shared row chrome for stat and info rows. */
+    const drawRow = (
+      label: string,
+      valueText: string,
+      valueColor: number,
+      emphasis: boolean,
+      highlight: boolean,
+    ): void => {
       const rowBg = scene.add.rectangle(
         statsX + colW / 2 + 6,
         rowY + Math.floor(rowStep / 2),
         colW - 8,
-        Math.max(20, rowStep - 2),
-        rowY % 48 === 0 ? 0x2f4369 : 0x38507d,
+        Math.max(11, rowStep - 2),
+        highlight ? 0x3d5a52 : rowY % 48 === 0 ? 0x2f4369 : 0x38507d,
         0.92,
       );
-      rowBg.setStrokeStyle(1, 0x5f7db0, 0.7);
-      const name = crispText(statsX + 10, rowY + 6, formatStatLabel(statId), {
-        fontFamily: FONT_FAMILY,
-        fontSize: '8px',
-        color: hex(COLORS.textPrimary),
-      });
+      rowBg.setStrokeStyle(1, highlight ? valueColor : 0x5f7db0, highlight ? 1 : 0.7);
+      // Label budget is whatever the value does not need, so a long stat name
+      // and a long "12 (+3)" readout can never collide.
+      const name = crispText(
+        statsX + 10,
+        rowY + rowTextDy,
+        fitStatsText(label, colW - 24 - measureStatsText(valueText)),
+        {
+          fontFamily: FONT_FAMILY,
+          fontSize: '8px',
+          color: hex(COLORS.textPrimary),
+        },
+      );
       name.setOrigin(0, 0);
-      const val = crispText(statsX + colW, rowY + 6, formatStatValue(value), {
+      const val = crispText(statsX + colW, rowY + rowTextDy, valueText, {
         fontFamily: FONT_FAMILY,
         fontSize: '8px',
-        color: buffed ? hex(COLORS.statBuff) : hex(COLORS.textPrimary),
-        fontStyle: buffed ? 'bold' : 'normal',
+        color: hex(valueColor),
+        fontStyle: emphasis ? 'bold' : 'normal',
       });
       val.setOrigin(1, 0);
       container.add(rowBg);
@@ -1232,40 +1524,40 @@ export function createEquipmentUI(
       rowY += rowStep;
     };
 
-    // Encumbrance rows share the same row chrome as `drawStat` but display
-    // pre-formatted label/value text instead of resolving a StatId — equipped
-    // weight/total mass/band aren't EffectiveStats fields (encumbrance is
-    // computed from Weight + equipped gear + effective Strength, see
-    // core/encumbrance.ts), yet the plan requires them UI-visible even while
-    // fully inert (the shipped catalog's weightLb is all 0).
+    const drawStat = (statId: StatId): void => {
+      const value = effective[statId] ?? 0;
+      const base = baseStore[statId]?.[playerEid] ?? 0;
+      const buffed = value > base;
+      const delta = compare?.deltas[statId] ?? 0;
+      const changed = Math.abs(delta) > 1e-9;
+      // Comparison rows read "<result> (<signed change>)": the number the
+      // player would end up with, and how far it moved. Colour encodes
+      // direction so the answer survives a glance.
+      const valueText = changed
+        ? `${formatStatValue(value + delta)} (${delta > 0 ? '+' : '-'}${formatStatValue(Math.abs(delta))})`
+        : formatStatValue(value);
+      const valueColor = changed
+        ? delta > 0
+          ? COLORS.statBuff
+          : COLORS.statNerf
+        : buffed
+          ? COLORS.statBuff
+          : COLORS.textPrimary;
+      drawRow(formatStatLabel(statId), valueText, valueColor, buffed || changed, changed);
+    };
+
+    // Encumbrance rows share the row chrome but display pre-formatted
+    // label/value text instead of resolving a StatId — equipped weight/total
+    // mass/band aren't EffectiveStats fields (encumbrance is computed from
+    // Weight + equipped gear + effective Strength, see core/encumbrance.ts).
     const drawInfoRow = (label: string, valueText: string, highlighted: boolean): void => {
-      const rowBg = scene.add.rectangle(
-        statsX + colW / 2 + 6,
-        rowY + Math.floor(rowStep / 2),
-        colW - 8,
-        Math.max(20, rowStep - 2),
-        rowY % 48 === 0 ? 0x2f4369 : 0x38507d,
-        0.92,
+      drawRow(
+        label,
+        valueText,
+        highlighted ? COLORS.statNerf : COLORS.textPrimary,
+        highlighted,
+        false,
       );
-      rowBg.setStrokeStyle(1, 0x5f7db0, 0.7);
-      const name = crispText(statsX + 10, rowY + 6, label, {
-        fontFamily: FONT_FAMILY,
-        fontSize: '8px',
-        color: hex(COLORS.textPrimary),
-      });
-      name.setOrigin(0, 0);
-      const val = crispText(statsX + colW, rowY + 6, valueText, {
-        fontFamily: FONT_FAMILY,
-        fontSize: '8px',
-        color: highlighted ? hex(COLORS.statNerf) : hex(COLORS.textPrimary),
-        fontStyle: highlighted ? 'bold' : 'normal',
-      });
-      val.setOrigin(1, 0);
-      container.add(rowBg);
-      container.add(name);
-      container.add(val);
-      statObjects.push(rowBg, name, val);
-      rowY += rowStep;
     };
 
     drawSection('PRIMARY');
@@ -1290,9 +1582,15 @@ export function createEquipmentUI(
   }
 
   function render(): void {
-    renderSlots();
-    renderStats();
-    renderBag();
+    rendering = true;
+    try {
+      renderSlots();
+      renderStats();
+      renderBag();
+      renderTargetMarkers();
+    } finally {
+      rendering = false;
+    }
     const forcedTooltipSlot = (globalThis as { __forceEquipmentTooltipSlot?: string })
       .__forceEquipmentTooltipSlot;
     if (forcedTooltipSlot) {
@@ -1568,6 +1866,43 @@ export function createEquipmentUI(
   // Public API
   // ---------------------------------------------------------------------------
 
+  /**
+   * Snapshot every visible text run in the panel, tagged by the render pool that
+   * owns it. Used by the deterministic e2e gate to prove — at each supported
+   * viewport, on the real renderer — that no label is clipped out of its column,
+   * no two labels collide, and every glyph is still large enough to read.
+   */
+  function collectTextRuns(): EquipmentTextRun[] {
+    const runs: EquipmentTextRun[] = [];
+    const push = (obj: Phaser.GameObjects.GameObject, region: EquipmentTextRegion): void => {
+      if (!(obj instanceof Phaser.GameObjects.Text)) return;
+      if (!obj.visible) return;
+      const value = obj.text.trim();
+      if (value.length === 0) return;
+      const b = obj.getBounds();
+      if (b.width <= 0 || b.height <= 0) return;
+      const declared = obj.style.fontSize;
+      const fontSize =
+        typeof declared === 'number' ? declared : Number.parseFloat(String(declared ?? '0'));
+      const safeSize = Number.isFinite(fontSize) ? fontSize : 0;
+      runs.push({
+        text: value,
+        region,
+        fontSize: safeSize,
+        renderedFontSize: safeSize * uiScale,
+        bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
+      });
+    };
+    push(title, 'header');
+    push(hint, 'header');
+    push(inspectorPlaceholder, 'inspector');
+    for (const obj of slotObjects) push(obj, 'doll');
+    for (const obj of statObjects) push(obj, 'stats');
+    for (const obj of bagObjects) push(obj, 'bag');
+    for (const obj of tooltipObjects) push(obj, 'inspector');
+    return runs;
+  }
+
   function findPlayerEid(world: GameWorld): number {
     for (const [eid] of world.inventories) {
       return eid;
@@ -1667,6 +2002,19 @@ export function createEquipmentUI(
       const b = bagBg.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
+    getStatsColumnScreenBounds: (): ScreenBounds => {
+      const b = statsBg.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    getInspectorScreenBounds: (): ScreenBounds => {
+      const b = inspectorBg.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    getTextRuns: (): EquipmentTextRun[] => collectTextRuns(),
+    getPreviewTargetSlots: () => [...(compare?.targetSlots ?? [])],
+    getPreviewTargetMarkerScreenBounds: (slotId: EquipmentSlotId) =>
+      targetMarkerBounds.get(slotId) ?? null,
+    unequipSlot: (slotId: EquipmentSlotId) => unequipSlot(slotId),
     scrollBag: (rows: number) => scrollBag(rows),
     getBagScrollRow: () => bagScrollRow,
     getBagMaxScrollRow: () => bagMaxScroll,
@@ -1679,9 +2027,12 @@ export function createEquipmentUI(
       clearPool(statObjects);
       clearPool(bagObjects);
       clearPool(tooltipObjects);
+      clearPool(targetMarkerObjects);
+      targetMarkerBounds.clear();
       tooltipBounds = null;
       slotBounds.clear();
       slotIconBounds.clear();
+      slotCenters.clear();
       bagCellBounds = [];
       bagItemIds = [];
       bagStaticEntryIndices = [];

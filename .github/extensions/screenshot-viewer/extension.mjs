@@ -17,10 +17,13 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, basename, join, resolve, normalize } from 'node:path';
+import process from 'node:process';
+import { URL } from 'node:url';
 
 import { createCanvas, joinSession } from '@github/copilot-sdk/extension';
 
@@ -31,6 +34,15 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
 /** Sub-directories inside the workspace to scan for screenshots. */
 const SCAN_SUBDIRS = ['files/visual-review', 'files'];
+const FEEDBACK_DIR = 'files/visual-review/feedback';
+const FEEDBACK_FILE = 'before-after-feedback.jsonl';
+const PROMOTION_DIR = 'docs/knowledge/ux-feedback';
+const FEEDBACK_TARGETS = new Set([
+  'ux-agent',
+  'visual-review-skill',
+  'deterministic-eval',
+  'workflow',
+]);
 
 /** Maximum depth when scanning a directory (1 = immediate children only). */
 const SCAN_MAX_DEPTH = 3;
@@ -38,8 +50,8 @@ const SCAN_MAX_DEPTH = 3;
 /** Maximum size of a request body (16 KiB). */
 const MAX_BODY_BYTES = 16_384;
 
-const servers = new Map();   // instanceId → { server, url, token, sseClients }
-const states = new Map();    // instanceId → state object
+const servers = new Map(); // instanceId → { server, url, token, sseClients }
+const states = new Map(); // instanceId → state object
 
 // ── tracked workspace paths ────────────────────────────────────────────────
 let trackedWorkspacePath = null;
@@ -89,6 +101,78 @@ function sortedScreenshots() {
   );
 }
 
+function feedbackPath() {
+  const workspacePath = getWorkspacePath();
+  return workspacePath ? join(workspacePath, FEEDBACK_DIR, FEEDBACK_FILE) : null;
+}
+
+function readFeedback() {
+  const path = feedbackPath();
+  if (!path || !existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        return [];
+      }
+    });
+}
+
+function reviewResults() {
+  const workspacePath = getWorkspacePath();
+  if (!workspacePath) return new Map();
+  const root = join(workspacePath, 'files', 'visual-review');
+  const results = new Map();
+  const scan = (directory, depth) => {
+    if (depth <= 0 || !existsSync(directory)) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) scan(path, depth - 1);
+      if (!entry.isFile() || !entry.name.endsWith('.review.json')) continue;
+      try {
+        const review = JSON.parse(readFileSync(path, 'utf8'));
+        if (review?.schemaVersion !== 1 || typeof review.image !== 'string') continue;
+        results.set(normalize(resolve(review.image)), {
+          path,
+          score: review.score,
+          coverage: review.coverage,
+          hardFailures: Array.isArray(review.hardFailures) ? review.hardFailures : [],
+          findings: Array.isArray(review.prioritizedFindings) ? review.prioritizedFindings : [],
+        });
+      } catch {
+        // A partially-written optional review artifact must not break screenshot browsing.
+      }
+    }
+  };
+  scan(root, SCAN_MAX_DEPTH);
+  return results;
+}
+
+function pairs(reviews = reviewResults()) {
+  const byKey = new Map();
+  for (const screenshot of sortedScreenshots()) {
+    const normalized = screenshot.path.replaceAll('\\', '/');
+    const match = normalized.match(/\/(before|after)\/([^/]+)$/i);
+    if (!match) continue;
+    const key = match[2].replace(/\.[^.]+$/, '');
+    const side = match[1].toLowerCase();
+    const review = reviews.get(normalize(resolve(screenshot.path))) ?? null;
+    const item = byKey.get(key) ?? {
+      key,
+      before: null,
+      after: null,
+      reviews: { before: null, after: null },
+    };
+    item[side] = screenshot;
+    item.reviews[side] = review;
+    byKey.set(key, item);
+  }
+  return [...byKey.values()].filter((pair) => pair.before || pair.after);
+}
+
 // ── live tool-use tracking ─────────────────────────────────────────────────
 
 /**
@@ -102,9 +186,10 @@ function extractScreenshotPath(toolName, toolArgs, toolResult, cwd) {
   if (toolName !== 'playwright-browser_take_screenshot') return null;
 
   // 1. Explicit filename arg
-  const filename = toolArgs && typeof toolArgs.filename === 'string' && toolArgs.filename.trim()
-    ? toolArgs.filename.trim()
-    : null;
+  const filename =
+    toolArgs && typeof toolArgs.filename === 'string' && toolArgs.filename.trim()
+      ? toolArgs.filename.trim()
+      : null;
 
   if (filename) {
     const absPath = resolve(cwd || trackedCwd || process.cwd(), filename);
@@ -117,12 +202,12 @@ function extractScreenshotPath(toolName, toolArgs, toolResult, cwd) {
   }
 
   // 2. Try to extract path from result text e.g. "Screenshot saved to page-...png"
-  const resultText = typeof toolResult === 'string'
-    ? toolResult
-    : (toolResult?.content ?? toolResult?.text ?? '');
-  const match = typeof resultText === 'string'
-    ? resultText.match(/page-\d[^"'\s)]+\.(?:png|jpg|jpeg|webp)/i)
-    : null;
+  const resultText =
+    typeof toolResult === 'string' ? toolResult : (toolResult?.content ?? toolResult?.text ?? '');
+  const match =
+    typeof resultText === 'string'
+      ? resultText.match(/page-\d[^"'\s)]+\.(?:png|jpg|jpeg|webp)/i)
+      : null;
   if (match) {
     const candidate = resolve(cwd || trackedCwd || process.cwd(), match[0]);
     if (existsSync(candidate)) return candidate;
@@ -181,7 +266,9 @@ async function scanWorkspace(workspacePath) {
       try {
         const s = await stat(normalizedPath);
         takenAt = s.mtime.toISOString();
-      } catch {}
+      } catch {
+        // The filesystem timestamp is optional metadata.
+      }
       screenshotRegistry.set(normalizedPath, {
         path: normalizedPath,
         filename: basename(normalizedPath),
@@ -201,10 +288,57 @@ function buildState(instanceId) {
     instanceId,
     workspacePath: workspacePath ?? null,
     screenshots: sortedScreenshots(),
+    pairs: pairs(),
+    feedback: readFeedback(),
     liveTracking: true,
     scannedAt: lastScannedAt,
     error: null,
   };
+}
+
+function normalizeFeedback(entry) {
+  if (!entry || typeof entry.comment !== 'string' || !entry.comment.trim()) {
+    throw new Error('comment is required');
+  }
+  const scope = entry.scope === 'reusable' ? 'reusable' : 'task';
+  const target = scope === 'reusable' && FEEDBACK_TARGETS.has(entry.target) ? entry.target : null;
+  if (scope === 'reusable' && !target) {
+    throw new Error('reusable feedback requires a valid target');
+  }
+  return {
+    comment: entry.comment.trim(),
+    scope,
+    target,
+    pairKey:
+      typeof entry.pairKey === 'string' && entry.pairKey.trim() ? entry.pairKey.trim() : null,
+    findingId:
+      typeof entry.findingId === 'string' && entry.findingId.trim() ? entry.findingId.trim() : null,
+  };
+}
+
+function saveFeedback(entry) {
+  const path = feedbackPath();
+  if (!path) throw new Error('Workspace path is not available.');
+  const dir = join(getWorkspacePath(), FEEDBACK_DIR);
+  mkdirSync(dir, { recursive: true });
+  const record = {
+    schemaVersion: 1,
+    ...normalizeFeedback(entry),
+    id: randomBytes(8).toString('hex'),
+    createdAt: new Date().toISOString(),
+    status: entry.scope === 'reusable' ? 'proposed' : 'recorded',
+  };
+  writeFileSync(path, `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'a' });
+  if (record.scope === 'reusable') {
+    const durableDir = join(getWorkspacePath(), PROMOTION_DIR);
+    mkdirSync(durableDir, { recursive: true });
+    writeFileSync(
+      join(durableDir, `${record.createdAt.slice(0, 10)}-${record.id}.json`),
+      `${JSON.stringify(record, null, 2)}\n`,
+      'utf8',
+    );
+  }
+  return record;
 }
 
 // ── SSE broadcast ──────────────────────────────────────────────────────────
@@ -248,7 +382,8 @@ async function readJsonBody(req) {
   let length = 0;
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > MAX_BODY_BYTES) throw Object.assign(new Error('Request body too large.'), { code: 'BODY_TOO_LARGE' });
+    if (length > MAX_BODY_BYTES)
+      throw Object.assign(new Error('Request body too large.'), { code: 'BODY_TOO_LARGE' });
     chunks.push(chunk);
   }
   const body = Buffer.concat(chunks).toString('utf8');
@@ -306,7 +441,10 @@ async function handleRequest(instanceId, token, req, res) {
   // GET /events — SSE
   if (url.pathname === '/events' && req.method === 'GET') {
     const entry = servers.get(instanceId);
-    if (!entry) { jsonResponse(res, 404, { error: 'not_open' }); return; }
+    if (!entry) {
+      jsonResponse(res, 404, { error: 'not_open' });
+      return;
+    }
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-store',
@@ -334,10 +472,27 @@ async function handleRequest(instanceId, token, req, res) {
     return;
   }
 
+  if (url.pathname === '/api/feedback' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    let record;
+    try {
+      record = saveFeedback(body);
+    } catch (error) {
+      jsonResponse(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    notifyClients(instanceId);
+    jsonResponse(res, 201, record);
+    return;
+  }
+
   // GET /img?path=<encoded> — serve image binary
   if (url.pathname === '/img' && req.method === 'GET') {
     const rawPath = url.searchParams.get('path');
-    if (!rawPath) { jsonResponse(res, 400, { error: 'missing path' }); return; }
+    if (!rawPath) {
+      jsonResponse(res, 400, { error: 'missing path' });
+      return;
+    }
 
     const absPath = normalize(resolve(rawPath));
     if (!isAllowedPath(absPath)) {
@@ -377,8 +532,14 @@ async function startServer(instanceId, token) {
     });
   });
   await new Promise((resolve, reject) => {
-    server.once('error', (err) => { server.removeAllListeners('error'); reject(err); });
-    server.listen(0, '127.0.0.1', () => { server.removeAllListeners('error'); resolve(); });
+    server.once('error', (err) => {
+      server.removeAllListeners('error');
+      reject(err);
+    });
+    server.listen(0, '127.0.0.1', () => {
+      server.removeAllListeners('error');
+      resolve();
+    });
   });
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
@@ -398,9 +559,15 @@ async function closeServer(entry) {
 
 await joinSession({
   hooks: {
-    onSessionStart: async (input) => { rememberPaths(input); },
-    onUserPromptSubmitted: async (input) => { rememberPaths(input); },
-    onPreToolUse: async (input) => { rememberPaths(input); },
+    onSessionStart: async (input) => {
+      rememberPaths(input);
+    },
+    onUserPromptSubmitted: async (input) => {
+      rememberPaths(input);
+    },
+    onPreToolUse: async (input) => {
+      rememberPaths(input);
+    },
     onPostToolUse: async (input) => {
       rememberPaths(input);
       // Track Playwright screenshots as they happen
@@ -418,7 +585,9 @@ await joinSession({
         }
       }
     },
-    onPostToolUseFailure: async (input) => { rememberPaths(input); },
+    onPostToolUseFailure: async (input) => {
+      rememberPaths(input);
+    },
   },
   canvases: [
     createCanvas({
@@ -451,6 +620,16 @@ await joinSession({
             return { screenshots, count: screenshots.length };
           },
         },
+        {
+          name: 'save_feedback',
+          description:
+            'Store feedback for a Before/After screenshot pair as task-specific or reusable guidance.',
+          handler: async (input) => {
+            const record = saveFeedback(input ?? {});
+            for (const instanceId of servers.keys()) notifyClients(instanceId);
+            return record;
+          },
+        },
       ],
       open: async (ctx) => {
         const token = randomBytes(16).toString('hex');
@@ -466,7 +645,8 @@ await joinSession({
         const count = screenshotRegistry.size;
         return {
           title: 'Screenshot Viewer',
-          status: count === 0 ? 'no screenshots yet' : `${count} screenshot${count === 1 ? '' : 's'}`,
+          status:
+            count === 0 ? 'no screenshots yet' : `${count} screenshot${count === 1 ? '' : 's'}`,
           url: entry.url + `?token=${entry.token}`,
         };
       },

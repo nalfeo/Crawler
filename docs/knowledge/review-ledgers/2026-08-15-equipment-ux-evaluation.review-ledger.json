@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "equipment-ux-evaluation",
+  "task_title": "Equipment UX evaluation loop",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-5",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "major_fork",
+      "notes": "Alt A: add arbitrary-image mode to the existing Playwright evaluator — rejected for high blast radius in its 67KB capture pipeline. Alt B: deterministic-only review — rejected as the sole approach because it cannot assess decision hierarchy; adopted as the CI gate. Chosen: a shared evidence-normalization module with thin arbitrary-image CLI, deterministic real-Phaser e2e gates, and the existing screenshot viewer extension. Review findings changed load-bearing contracts: local coverage computation, schema validation, Windows entrypoint, durable reusable-feedback proposals, and viewer-bound review results. divergence=major_fork."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

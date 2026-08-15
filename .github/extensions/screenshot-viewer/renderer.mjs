@@ -165,6 +165,26 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
         gap: 12px;
       }
 
+      .pair-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      .pair-card, .feedback-panel {
+        border: 1px solid var(--border-color-default, #30363d);
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .pair-images { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .pair-images figure { margin: 0; }
+      .pair-images img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; }
+      figcaption { color: var(--text-color-muted, #8b949e); font-size: 11px; margin-top: 4px; }
+      .feedback-panel { margin: 16px 0; display: grid; gap: 8px; }
+      textarea, select { width: 100%; font: inherit; padding: 8px; color: inherit; background: var(--background-color-default, #0d1117); border: 1px solid var(--border-color-default, #30363d); border-radius: 5px; }
+      .feedback-list { display: grid; gap: 6px; }
+      .feedback-item { padding: 8px; border-left: 3px solid var(--true-color-blue, #58a6ff); background: color-mix(in srgb, var(--background-color-default, #0d1117) 88%, white); }
+
       .thumb-card {
         border: 1px solid var(--border-color-default, #30363d);
         border-radius: 8px;
@@ -299,7 +319,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
   <body>
     <main>
       <header>
-        <h1>Screenshot Viewer</h1>
+        <h1>UX Screenshot Review</h1>
         <div class="toolbar">
           <button type="button" id="refresh-button">↻ Refresh</button>
         </div>
@@ -312,12 +332,30 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
 
       <div class="error-box" id="error-box" hidden></div>
 
+      <div id="pairs"></div>
       <div id="gallery">
         <div class="empty-state">
           <strong>No screenshots yet</strong>
           Screenshots taken with the Playwright tool will appear here.
         </div>
       </div>
+      <section class="feedback-panel" aria-labelledby="feedback-heading">
+        <strong id="feedback-heading">Capture review feedback</strong>
+        <select id="feedback-pair"><option value="">General screenshot feedback</option></select>
+        <select id="feedback-scope">
+          <option value="task">This task only</option>
+          <option value="reusable">Promote to reusable guidance</option>
+        </select>
+        <select id="feedback-target" hidden>
+          <option value="ux-agent">UX Designer agent</option>
+          <option value="visual-review-skill">Visual review skill</option>
+          <option value="deterministic-eval">Deterministic evaluation</option>
+          <option value="workflow">Review workflow</option>
+        </select>
+        <textarea id="feedback-comment" rows="3" placeholder="What should change, and what evidence supports it?"></textarea>
+        <button type="button" id="feedback-submit">Save feedback</button>
+        <div class="feedback-list" id="feedback-list"></div>
+      </section>
     </main>
 
     <!-- Lightbox overlay -->
@@ -346,6 +384,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       const pollIntervalMs = ${JSON.stringify(pollIntervalMs)};
 
       const galleryEl = document.getElementById('gallery');
+      const pairsEl = document.getElementById('pairs');
       const statusBar = document.getElementById('status-bar');
       const statusText = document.getElementById('status-text');
       const liveBadge = document.getElementById('live-badge');
@@ -355,6 +394,12 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
       const lightboxImg = document.getElementById('lightbox-img');
       const lightboxCaption = document.getElementById('lightbox-caption');
       const lightboxClose = document.getElementById('lightbox-close');
+      const feedbackPair = document.getElementById('feedback-pair');
+      const feedbackScope = document.getElementById('feedback-scope');
+      const feedbackTarget = document.getElementById('feedback-target');
+      const feedbackComment = document.getElementById('feedback-comment');
+      const feedbackSubmit = document.getElementById('feedback-submit');
+      const feedbackList = document.getElementById('feedback-list');
 
       function escapeHtml(value) {
         return String(value)
@@ -426,6 +471,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
                 src="\${escapeHtml(imgUrl)}"
                 alt="\${escapeHtml(screenshot.filename)}"
                 loading="lazy"
+                onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\"thumb-load-error\\">Unable to load image</div>'"
               />
             </div>
             <div class="thumb-meta">
@@ -455,6 +501,7 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
 
         liveBadge.hidden = !state.liveTracking;
 
+        const pairs = Array.isArray(state.pairs) ? state.pairs : [];
         if (count === 0) {
           galleryEl.innerHTML = \`
             <div class="empty-state">
@@ -466,22 +513,38 @@ export function renderHtml({ instanceId, pollIntervalMs }) {
           return;
         }
 
-        galleryEl.innerHTML = '<div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
-        for (const img of galleryEl.querySelectorAll('.thumb-img-wrap img')) {
-          img.addEventListener('error', handleThumbError);
-        }
+        const pairHtml = pairs.map((pair) => {
+          const reviewMeta = (review) => review
+            ? '<div class="meta"><strong>UX ' + escapeHtml(review.score) + '/100</strong> · evidence ' + escapeHtml(review.coverage) + '%<br>Hard failures: ' + escapeHtml(review.hardFailures.length) + '<br>' + review.findings.slice(0, 3).map(escapeHtml).join('<br>') + '</div>'
+            : '<div class="meta">No evaluator result attached.</div>';
+          const image = (side) => pair[side]
+            ? '<figure><img src="' + buildImgUrl(pair[side].path) + '" alt="' + side + ' ' + escapeHtml(pair.key) + '"><figcaption>' + side + '</figcaption>' + reviewMeta(pair.reviews?.[side]) + '</figure>'
+            : '<figure><div class="empty-state">missing</div><figcaption>' + side + '</figcaption></figure>';
+          return '<article class="pair-card"><strong>' + escapeHtml(pair.key) + '</strong><div class="pair-images">' + image('before') + image('after') + '</div></article>';
+        }).join('');
+        pairsEl.innerHTML = pairHtml ? '<h2>Before / After</h2><div class="pair-grid">' + pairHtml + '</div>' : '';
+        galleryEl.innerHTML = '<h2>All screenshots</h2><div class="grid">' + screenshots.map(renderThumb).join('') + '</div>';
+        feedbackPair.innerHTML = '<option value="">General screenshot feedback</option>' + pairs.map((pair) => '<option value="' + escapeHtml(pair.key) + '">' + escapeHtml(pair.key) + '</option>').join('');
+        feedbackList.innerHTML = (state.feedback ?? []).slice().reverse().map((item) => '<div class="feedback-item"><strong>' + escapeHtml(item.scope) + '</strong> · ' + escapeHtml(item.target || item.pairKey || 'general') + '<br>' + escapeHtml(item.comment) + '</div>').join('');
       }
 
-      function handleThumbError(event) {
-        const img = event.currentTarget;
-        const wrap = img.parentElement;
-        if (!wrap) return;
-        img.remove();
-        const notice = document.createElement('div');
-        notice.className = 'thumb-load-error';
-        notice.textContent = 'Unable to load image';
-        wrap.replaceChildren(notice);
-      }
+      feedbackScope.addEventListener('change', () => {
+        feedbackTarget.hidden = feedbackScope.value !== 'reusable';
+      });
+
+      feedbackSubmit.addEventListener('click', async () => {
+        const comment = feedbackComment.value.trim();
+        if (!comment) return;
+        feedbackSubmit.disabled = true;
+        try {
+          const response = await fetch(buildUrl('/api/feedback'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ comment, scope: feedbackScope.value, target: feedbackScope.value === 'reusable' ? feedbackTarget.value : null, pairKey: feedbackPair.value || null }) });
+          if (!response.ok) throw new Error('feedback save failed');
+          feedbackComment.value = '';
+          await refresh();
+        } finally {
+          feedbackSubmit.disabled = false;
+        }
+      });
 
       function renderError(message) {
         if (message) {

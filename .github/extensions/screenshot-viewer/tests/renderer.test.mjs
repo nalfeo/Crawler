@@ -8,7 +8,7 @@ const OPTS = { instanceId: 'screenshot-viewer-test', pollIntervalMs: 10_000 };
 test('renders page title and main heading', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /<title>Screenshot Viewer/);
-  assert.match(html, /<h1[^>]*>Screenshot Viewer/);
+  assert.match(html, /<h1[^>]*>UX Screenshot Review/);
 });
 
 test('embeds the instanceId in the title (escaped)', () => {
@@ -94,6 +94,26 @@ test('live badge element is present', () => {
   const html = renderHtml(OPTS);
   assert.match(html, /id="live-badge"/);
   assert.match(html, /status-badge--live/);
+});
+
+test('includes Before/After review and feedback controls', () => {
+  const html = renderHtml(OPTS);
+  assert.match(html, /Before \/ After/);
+  assert.match(html, /id="feedback-pair"/);
+  assert.match(html, /id="feedback-scope"/);
+  assert.match(html, /Promote to reusable guidance/);
+  assert.match(html, /\/api\/feedback/);
+  assert.match(html, /id="pairs"/);
+  assert.match(html, /id="feedback-target"/);
+  assert.match(html, /pairsEl\.innerHTML/);
+});
+
+test('keeps feedback controls outside gallery render ownership', () => {
+  const html = renderHtml(OPTS);
+  const galleryIndex = html.indexOf('<div id="gallery">');
+  const feedbackIndex = html.indexOf('<section class="feedback-panel"');
+  assert.ok(galleryIndex >= 0 && feedbackIndex > galleryIndex);
+  assert.ok(html.slice(galleryIndex, feedbackIndex).includes('</div>'));
 });
 
 test('gallery cards expose button semantics for keyboard and assistive tech', () => {

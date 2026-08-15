@@ -18,9 +18,16 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parsePng, regionContainsColor } from './helpers/pixels.js';
+import {
+  captureArtifactPath,
+  captureEquipmentPanel,
+  MIN_READABLE_GLYPH_PX,
+  physicalGlyphPx,
+  seedEquipmentDecisionState,
+} from './helpers/equipment-capture.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
@@ -501,6 +508,88 @@ describe('inventory flow (e2e)', () => {
     ).toBe(false);
   });
 
+  it('supports pointer-driven equipped and bag tooltips, filtering, equip, and unequip', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+    await probe.openEquipmentOnly(page);
+    await page.waitForTimeout(250);
+
+    const rect = await getCanvasRect(page);
+    const game = await getGameSize(page);
+
+    // Selecting an empty slot filters the integrated bag to that destination;
+    // clicking it again clears the filter before we inspect the full bag.
+    const emptyChestSlot = await probe.getEquipmentSlotBounds(page, 'chest');
+    expect(emptyChestSlot, 'the empty chest slot should be interactive').not.toBeNull();
+    if (!emptyChestSlot) return;
+    const emptyChestCenter = boundsCenterScreen(rect, game, emptyChestSlot);
+    await page.mouse.click(emptyChestCenter.x, emptyChestCenter.y);
+    await page.waitForTimeout(150);
+    expect(await probe.getEquipmentSlotFilter(page)).toBe('chest');
+    expect(await probe.getInventorySlotFilter(page)).toBe('chest');
+    expect(await probe.getEquipmentBagItemIds(page)).toContain('iron-breastplate');
+
+    await page.mouse.click(emptyChestCenter.x, emptyChestCenter.y);
+    await page.waitForTimeout(150);
+    expect(await probe.getEquipmentSlotFilter(page)).toBeNull();
+
+    // An unequipped bag item uses the inspector as a hover preview and its
+    // target marker identifies the paper-doll destination before commitment.
+    const bagItems = await probe.getEquipmentBagItemIds(page);
+    const bagIndex = bagItems.indexOf('iron-breastplate');
+    expect(
+      bagIndex,
+      'the chest item should be available in the integrated bag',
+    ).toBeGreaterThanOrEqual(0);
+    const bagCell = await probe.getEquipmentBagCellBounds(page, bagIndex);
+    expect(bagCell, 'the chest item should have a visible bag cell').not.toBeNull();
+    if (!bagCell) return;
+    const bagCenter = boundsCenterScreen(rect, game, bagCell);
+    await page.mouse.move(bagCenter.x, bagCenter.y);
+    await page.waitForTimeout(150);
+    expect(
+      await probe.isEquipmentTooltipVisible(page),
+      'bag hover should show the item preview',
+    ).toBe(true);
+    expect(
+      await probe.isEquipmentTooltipTopmost(page),
+      'bag preview must not render behind the panel',
+    ).toBe(true);
+    expect(await probe.getEquipmentPreviewTargetSlots(page)).toContain('chest');
+
+    await page.mouse.click(bagCenter.x, bagCenter.y);
+    await page.waitForTimeout(150);
+    expect(await probe.getEquippedSlotIds(page)).toContain('chest');
+
+    const chestSlot = await probe.getEquipmentSlotBounds(page, 'chest');
+    expect(chestSlot, 'the equipped chest slot should remain interactive').not.toBeNull();
+    if (!chestSlot) return;
+    const chestCenter = boundsCenterScreen(rect, game, chestSlot);
+    await page.mouse.move(chestCenter.x, chestCenter.y);
+    await page.waitForTimeout(150);
+    expect(
+      await probe.isEquipmentTooltipVisible(page),
+      'equipped-item hover should show its tooltip',
+    ).toBe(true);
+    expect(await probe.getEquipmentTooltipBounds(page)).not.toBeNull();
+    expect(
+      await probe.isEquipmentTooltipTopmost(page),
+      'equipped tooltip must stay above the paper doll',
+    ).toBe(true);
+
+    // The first click selects and visibly filters the matching bag slot; the
+    // second click performs the advertised unequip action.
+    await page.mouse.click(chestCenter.x, chestCenter.y);
+    await page.waitForTimeout(150);
+    expect(await probe.getEquipmentSlotFilter(page)).toBe('chest');
+    expect(await probe.getInventorySlotFilter(page)).toBe('chest');
+
+    await page.mouse.click(chestCenter.x, chestCenter.y);
+    await page.waitForTimeout(150);
+    expect(await probe.getEquippedSlotIds(page)).not.toContain('chest');
+    expect(await probe.getEquipmentBagItemIds(page)).toContain('iron-breastplate');
+  });
+
   it('equips a gear item directly from the integrated bag column', async () => {
     await loadUiProbeLab(page);
     await hideLabChrome(page);
@@ -630,6 +719,113 @@ describe('inventory flow (e2e)', () => {
         overlaps(panel, dockedBefore),
         'the panel should geometrically overlap where the minimap was docked (proving the hide is necessary)',
       ).toBe(true);
+    }
+  });
+});
+
+/**
+ * Equipment decision gate (UX Designer slice).
+ *
+ * These are the deterministic checks that back the equipment UX work: the
+ * player must be able to see what a swap does *before* committing to it, the
+ * spatial model must stay stable while they do, and the text must survive every
+ * supported viewport. Everything here drives the real Phaser panel through the
+ * probe API and reads real rendered geometry — no mocks, no eyeballing.
+ */
+describe('equipment decision gate (e2e)', () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  async function openDecisionState(viewport: {
+    width: number;
+    height: number;
+  }): Promise<{ context: BrowserContext; page: Page }> {
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+    const decisionPage = await context.newPage();
+    await loadUiProbeLab(decisionPage);
+    await hideLabChrome(decisionPage);
+    await seedEquipmentDecisionState(decisionPage);
+    return { context, page: decisionPage };
+  }
+
+  it('captures the equipment panel for visual review', async () => {
+    const { context, page: shot } = await openDecisionState({ width: 1280, height: 800 });
+    try {
+      const outPath = captureArtifactPath('equipment');
+      await captureEquipmentPanel(shot, outPath);
+      expect(existsSync(outPath), `capture should be written to ${outPath}`).toBe(true);
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
+  it('keeps rendered text inside its owning region and readable at the capture viewport', async () => {
+    const { context, page: decisionPage } = await openDecisionState({
+      width: 1280,
+      height: 800,
+    });
+    try {
+      const panel = await probe.getEquipmentPanelBounds(decisionPage);
+      const stats = await probe.getEquipmentStatsBounds(decisionPage);
+      const inspector = await probe.getEquipmentInspectorBounds(decisionPage);
+      const canvas = await getCanvasRect(decisionPage);
+      const runs = await probe.getEquipmentTextRuns(decisionPage);
+      expect(stats).not.toBeNull();
+      expect(inspector).not.toBeNull();
+      expect(runs.length, 'the live panel should expose rendered text runs').toBeGreaterThan(0);
+
+      for (const run of runs) {
+        const region =
+          run.region === 'stats' ? stats : run.region === 'inspector' ? inspector : panel;
+        expect(region, `${run.region} region should exist`).not.toBeNull();
+        if (!region) continue;
+        expect(
+          run.bounds.x >= region.x - 1 &&
+            run.bounds.y >= region.y - 1 &&
+            run.bounds.x + run.bounds.width <= region.x + region.width + 1 &&
+            run.bounds.y + run.bounds.height <= region.y + region.height + 1,
+          `${run.region} text "${run.text}" must remain inside its region`,
+        ).toBe(true);
+        expect(
+          physicalGlyphPx(run.renderedFontSize, canvas),
+          `${run.region} text "${run.text}" must remain readable`,
+        ).toBeGreaterThanOrEqual(MIN_READABLE_GLYPH_PX);
+      }
+    } finally {
+      await closeQuietly(context);
+    }
+  });
+
+  it('marks the preview destination and reverses an equip with unequip', async () => {
+    const { context, page: decisionPage } = await openDecisionState({
+      width: 1280,
+      height: 800,
+    });
+    try {
+      await probe.previewEquipmentBagItem(decisionPage, 'iron-breastplate');
+      await decisionPage.waitForTimeout(150);
+      expect(await probe.getEquipmentPreviewTargetSlots(decisionPage)).toContain('chest');
+      expect(await probe.getEquipmentTargetMarkerBounds(decisionPage, 'chest')).not.toBeNull();
+
+      const beforeCharisma = await probe.getCharisma(decisionPage);
+      expect(await probe.equipFromEquipmentBag(decisionPage, 'iron-breastplate')).toBe(true);
+      await decisionPage.waitForTimeout(150);
+      expect(await probe.getEquippedSlotIds(decisionPage)).toContain('chest');
+
+      await probe.unequipEquipmentSlot(decisionPage, 'chest');
+      await decisionPage.waitForTimeout(150);
+      expect(await probe.getEquippedSlotIds(decisionPage)).not.toContain('chest');
+      expect(await probe.getEquipmentBagItemIds(decisionPage)).toContain('iron-breastplate');
+      expect(await probe.getCharisma(decisionPage)).toBe(beforeCharisma);
+    } finally {
+      await closeQuietly(context);
     }
   });
 });
