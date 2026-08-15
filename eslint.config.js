@@ -24,6 +24,7 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      'functions/**/dist/**',
       'node_modules/**',
       'coverage/**',
       'src/engine/sprites/*.js',

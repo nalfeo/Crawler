@@ -130,6 +130,13 @@ export function createPlayerSessionRecorder(
   let totalKills = 0;
   let lastLoggedState = '';
   let currentController: SessionController = initialController;
+  const initialHealthMax = world.stores.health.max[playerEid] ?? 0;
+  const initialHealthCurrent = world.stores.health.current[playerEid] ?? 0;
+  const initialHealthPercent = initialHealthMax > 0 ? initialHealthCurrent / initialHealthMax : 0;
+  let minHealthPercent = initialHealthPercent;
+  let closeCallCount = 0;
+  let lowHealthCount = 0;
+  let lastHealthPercent = initialHealthPercent;
 
   // Movement-window tracking (mirrors headless runner).
   let lastSampleX = world.stores.position.x[playerEid] ?? 0;
@@ -207,6 +214,20 @@ export function createPlayerSessionRecorder(
 
   function tick(inputState: InputState): void {
     frameCount += 1;
+
+    const healthMax = world.stores.health.max[playerEid] ?? 0;
+    const healthCurrent = world.stores.health.current[playerEid] ?? 0;
+    const healthPercent = healthMax > 0 ? healthCurrent / healthMax : 0;
+    if (healthPercent < minHealthPercent) {
+      minHealthPercent = healthPercent;
+    }
+    if (healthPercent < 0.2 && lastHealthPercent >= 0.2) {
+      closeCallCount += 1;
+    }
+    if (healthPercent < 0.5 && lastHealthPercent >= 0.5) {
+      lowHealthCount += 1;
+    }
+    lastHealthPercent = healthPercent;
 
     const px = world.stores.position.x[playerEid] ?? lastFrameX;
     const py = world.stores.position.y[playerEid] ?? lastFrameY;
@@ -313,6 +334,9 @@ export function createPlayerSessionRecorder(
       totalSamples: samples.length,
       totalKills: kills.length,
       durationMs: Math.max(0, lastMs - firstMs),
+      minHealthPercent,
+      closeCallCount,
+      lowHealthCount,
       controller: currentController,
       // Only surface telemetry when THIS recorder opted in — a recorder that did
       // not request telemetry must not report a collector installed elsewhere
@@ -349,6 +373,13 @@ export function createPlayerSessionRecorder(
     frameCount = 0;
     totalKills = 0;
     lastLoggedState = '';
+    const resetHealthMax = world.stores.health.max[playerEid] ?? 0;
+    const resetHealthCurrent = world.stores.health.current[playerEid] ?? 0;
+    const resetHealthPercent = resetHealthMax > 0 ? resetHealthCurrent / resetHealthMax : 0;
+    minHealthPercent = resetHealthPercent;
+    closeCallCount = 0;
+    lowHealthCount = 0;
+    lastHealthPercent = resetHealthPercent;
     // Deliberately preserve currentController: clearing the recorded log does
     // not change who is actually driving the player. The owning lab is the sole
     // authority on the controller (via onControlChange), so reverting to

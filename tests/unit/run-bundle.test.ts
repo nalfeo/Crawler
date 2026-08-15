@@ -7,16 +7,40 @@ import { createTestWorld } from '../helpers/world-factory.js';
 describe('run bundle contracts', () => {
   it('collects a stable human RunStats shape from a test world', () => {
     const world = createTestWorld({ seed: 7 });
+    world.combatEvents.push({
+      type: 'death',
+      x: 0,
+      y: 0,
+      amount: 1,
+      targetType: 'enemy',
+      timestamp: 0,
+      sourceEid: 0,
+    });
+    world.combatEvents.push({
+      type: 'death',
+      x: 0,
+      y: 0,
+      amount: 1,
+      targetType: 'enemy',
+      timestamp: 0,
+      sourceEid: 999,
+    });
     const stats = collectHumanRunStats(world, 0, 'quit', 3, {
       totalEvents: 4,
       totalSamples: 4,
       totalKills: 4,
       durationMs: 0,
+      minHealthPercent: 0.1,
+      closeCallCount: 2,
+      lowHealthCount: 3,
       controller: 'MANUAL',
     });
 
     expect(stats.outcome).toBe('quit');
-    expect(stats.combat.totalKills).toBe(4);
+    expect(stats.combat.totalKills).toBe(1);
+    expect(stats.health.minHealthPercent).toBe(0.1);
+    expect(stats.health.closeCallCount).toBe(2);
+    expect(stats.health.lowHealthCount).toBe(3);
     expect(stats.runStartXp).toBe(3);
     expect(stats.startingWeapon).toBe('unknown');
   });

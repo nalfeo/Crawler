@@ -9,6 +9,7 @@ that unlock the Azure backends for the sprite pipeline.
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Storage Account                 | Parent resource for blobs and queues                                                                                                             |
 | Blob container `generated-runs` | Ephemeral sprite-generation artifacts (sheets, processed variants, scorecards, summaries) — replaces the gitignored local `generated/runs/` tree |
+| Blob container `playtest-runs`  | Dev-build run bundles, feedback surveys, and optional screenshots                                                                                |
 | Queue `asset-requests`          | Generation-request queue consumed by the worker                                                                                                  |
 
 Approved sprites and metadata **stay in the git repo for now**. Nothing in this
@@ -56,6 +57,7 @@ The deployment takes ~30 seconds. It creates:
 
 - The storage account
 - The `generated-runs` blob container
+- The `playtest-runs` blob container
 - The `asset-requests` queue
 
 ### 4. Retrieve the access key
@@ -167,9 +169,54 @@ With `-SyncGitHubSecrets` the following repo secrets are written (for `nalfeo/Cr
 - `AZURE_OPENAI_IMAGE_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`
 - `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_KEY`, `AZURE_STORAGE_CONNECTION_STRING`
 - `AZURE_STORAGE_QUEUE_NAME`, `AZURE_STORAGE_RUNS_CONTAINER`
+- `AZURE_STORAGE_PLAYTEST_RUNS_CONTAINER`
 - `SPRITES_ASSET_QUEUE`, `SPRITES_RUN_STORE`
 
 Use `-GitHubRepo owner/repo` to target a different repository.
+
+## Dev-build ingest Function
+
+The static dev build posts run bundles to the Azure Function in
+`functions/dev-build-ingest`. The Function stores every accepted request in the
+private `playtest-runs` container and only files a GitHub issue when a survey or
+an explicit `file_issue` request is present.
+
+Provision the Function App using the existing storage account:
+
+```powershell
+az deployment group create `
+  --resource-group crawler-sprites-rg `
+  --template-file infra/dev-build-ingest.bicep `
+  --parameters functionAppName=<globally-unique-name> storageAccountName=crawlersprites
+```
+
+Build and publish the Function from its directory:
+
+```powershell
+Push-Location functions/dev-build-ingest
+npm ci
+npm run build
+func azure functionapp publish <function-app-name> --javascript
+Pop-Location
+```
+
+Set the GitHub credential after deployment; never commit it or put it in the
+browser bundle:
+
+```powershell
+az functionapp config appsettings set `
+  --name <function-app-name> `
+  --resource-group crawler-sprites-rg `
+  --settings CRAWLER_CI_PAT=<repository-owner-PAT-with-issues-write>
+```
+
+The app setting `GITHUB_REPOSITORY` defaults to `nalfeo/Crawler` in the Bicep
+template. The endpoint is anonymous by design because the public GitHub Pages
+client cannot hold a credential; request size and blob-backed IP rate limiting
+are enforced by the Function. Rate-limit marker blobs are lifecycle-deleted
+after one day. The Function CORS allowlist is
+`https://nalfeo.github.io` and `http://localhost:5173` (override with the
+`allowedOrigins` Bicep parameter).
 
 If you only want resource provisioning (no `.env.local` writes or secrets sync), run:
 
