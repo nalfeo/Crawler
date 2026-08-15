@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <title>Welcome Room v2 pre-decomposition blockout</title>
-  <desc>Lore-grounded native-resolution target: three residents frame an exposed shared backstage gap.</desc>
+  <desc>Lore-grounded blockout target rendered at 4x the 128x128 native projection (8 tiles at 16 px): three residents frame an exposed shared backstage gap.</desc>
   <rect width="512" height="512" fill="#171522"/>
   <rect x="32" y="32" width="448" height="448" rx="4" fill="#3b3040" stroke="#d7a86e" stroke-width="8"/>
   <rect x="96" y="96" width="128" height="192" fill="#745052"/>

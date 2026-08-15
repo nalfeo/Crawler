@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { z } from 'zod';
 
 import evidenceJson from '../../../src/shared/data/set-piece-evidence/welcome-room-v2.json';
@@ -47,9 +51,10 @@ const evidenceSchema = z.object({
     stage: z.literal('pre-decomposition'),
     visualAsset: z.string().endsWith('.svg'),
     canvas: z.object({
-      width: z.literal(512),
-      height: z.literal(512),
-      scale: z.literal('native-1x'),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+      scale: z.enum(['native-1x', 'blockout-4x']),
+      scaleFactor: z.number().int().positive(),
     }),
     focal: z.object({
       zoneId: z.string().min(1),
@@ -121,10 +126,35 @@ const evidenceSchema = z.object({
 
 export type SetPieceEvidence = z.infer<typeof evidenceSchema>;
 
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
+const SCALE_FACTORS: Record<SetPieceEvidence['preRenderTarget']['canvas']['scale'], number> = {
+  'native-1x': 1,
+  'blockout-4x': 4,
+};
+
 function assertWithinRoom(point: { x: number; y: number }, def: SetPieceDef, label: string): void {
   if (point.x >= def.width || point.y >= def.height) {
     throw new Error(`${label} (${point.x},${point.y}) is outside ${def.width}x${def.height}.`);
   }
+}
+
+/** Reads the declared pixel canvas of the committed pre-render target. */
+function readSvgCanvas(assetPath: string): { width: number; height: number } {
+  const absolute = path.resolve(repoRoot, assetPath);
+  let svg: string;
+  try {
+    svg = readFileSync(absolute, 'utf8');
+  } catch {
+    throw new Error(`Pre-render visual asset "${assetPath}" does not exist.`);
+  }
+  const openingTag = /<svg\b[^>]*>/.exec(svg)?.[0] ?? '';
+  const width = Number(/\bwidth="(\d+)"/.exec(openingTag)?.[1]);
+  const height = Number(/\bheight="(\d+)"/.exec(openingTag)?.[1]);
+  if (!Number.isInteger(width) || !Number.isInteger(height)) {
+    throw new Error(`Pre-render visual asset "${assetPath}" declares no integer width/height.`);
+  }
+  return { width, height };
 }
 
 export function validateWelcomeRoomV2Evidence(raw: unknown = evidenceJson): SetPieceEvidence {
@@ -161,8 +191,48 @@ export function validateWelcomeRoomV2Evidence(raw: unknown = evidenceJson): SetP
   ) {
     throw new Error('Pre-render focal bounds extend outside the set-piece footprint.');
   }
-  if (evidence.preRenderTarget.circulation.route[0] !== 'door-entry') {
+  const focalZone = evidence.zones.find(
+    (zone) => zone.id === evidence.preRenderTarget.focal.zoneId,
+  );
+  if (focalZone === undefined) {
+    throw new Error(`Pre-render focal zone "${evidence.preRenderTarget.focal.zoneId}" is missing.`);
+  }
+  const feet = evidence.projection.feetPerTile;
+  if (
+    focalBounds.x < focalZone.x * feet ||
+    focalBounds.y < focalZone.y * feet ||
+    focalBounds.x + focalBounds.width > (focalZone.x + focalZone.width) * feet ||
+    focalBounds.y + focalBounds.height > (focalZone.y + focalZone.height) * feet
+  ) {
+    throw new Error(`Pre-render focal bounds extend outside zone "${focalZone.id}".`);
+  }
+  const { canvas, visualAsset } = evidence.preRenderTarget;
+  if (canvas.scaleFactor !== SCALE_FACTORS[canvas.scale]) {
+    throw new Error(`Pre-render canvas scale "${canvas.scale}" contradicts its scale factor.`);
+  }
+  const expectedWidth = def.width * evidence.projection.tilePx * canvas.scaleFactor;
+  const expectedHeight = def.height * evidence.projection.tilePx * canvas.scaleFactor;
+  if (canvas.width !== expectedWidth || canvas.height !== expectedHeight) {
+    throw new Error(
+      `Pre-render canvas ${canvas.width}x${canvas.height} does not match the ${canvas.scale} projection ${expectedWidth}x${expectedHeight}.`,
+    );
+  }
+  const svgCanvas = readSvgCanvas(visualAsset);
+  if (svgCanvas.width !== canvas.width || svgCanvas.height !== canvas.height) {
+    throw new Error(
+      `Pre-render visual asset "${visualAsset}" is ${svgCanvas.width}x${svgCanvas.height}, not the declared ${canvas.width}x${canvas.height}.`,
+    );
+  }
+
+  const anchorIds = new Set(evidence.anchors.map((anchor) => anchor.id));
+  const route = evidence.preRenderTarget.circulation.route;
+  if (route[0] !== 'door-entry') {
     throw new Error('Pre-render circulation must start at the room door.');
+  }
+  for (const node of route) {
+    if (!zoneIds.has(node) && !anchorIds.has(node)) {
+      throw new Error(`Pre-render circulation node "${node}" is not a declared zone or anchor.`);
+    }
   }
 
   const propIds = new Set(def.props.map((prop) => prop.id));

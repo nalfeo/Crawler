@@ -6,7 +6,8 @@
 ## Summary
 
 Turned the lore-grounded `welcome-room-v2` blockout into a deterministic
-pre-decomposition target. The target is a native-resolution SVG showing the
+pre-decomposition target. The target is a 4x-scaled SVG (512x512 for the
+128x128 native 8-tile projection) showing the
 three resident activity zones, the exposed shared backstage gap, the
 two-tile circulation route from the door, and the broker bookcase as the focal
 mass. It intentionally stops before individual prop decomposition.
