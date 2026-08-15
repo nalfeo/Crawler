@@ -1,5 +1,39 @@
 [
   {
+    "commit": "646133c46ad3be6b681db18c2ce96c2263d8a30a",
+    "commitDate": "2026-08-15T13:19:39Z",
+    "commitSubject": "fix(ci-recovery): never treat the recovery router's own failed job as a PR blocker (#2982)",
+    "capturedAt": "2026-08-15T14:33:17.696Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31887873050",
+    "winRate": 0.9966666666666667,
+    "totalWins": 299,
+    "totalRuns": 300,
+    "path": "by-sha/646133c46ad3be6b681db18c2ce96c2263d8a30a.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.9966666666666667,
+        "totalWins": 299,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04666666666666667,
+        "totalWins": 7,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.03,
+      "gatePass": false,
+      "path": "by-sha/646133c46ad3be6b681db18c2ce96c2263d8a30a.fun-report.json"
+    }
+  },
+  {
     "commit": "48a515cd183b7988d2b66235e1a6ee876221793d",
     "commitDate": "2026-08-15T12:17:56Z",
     "commitSubject": "fix(engine): render the game between fixed simulation steps to remove movement judder (#2964)",
