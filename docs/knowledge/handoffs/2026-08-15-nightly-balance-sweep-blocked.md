@@ -35,14 +35,17 @@ run.
 | UTC timestamp    | 2026-08-13T21:14:21Z                                                         |
 | Head SHA         | `5ea6cb36f0253d362abc7ba47a5ea6d0a1594d4a` (branch `main`)                   |
 | Seed range/count | seeds 1–30, **30 seeds/weapon** (4 shards/weapon, from the job matrix names) |
+| Max frames       | `23760`                                                                      |
 | Weapons          | sword, bow, baseball-bat, pistol, throwing-knife, fireball                   |
+| Behavior flags   | `weapon_personas=true`                                                       |
 | FINAL aggregates | all six present, unexpired                                                   |
 
 1. **Seed count.** The issue admits 100 seeds/weapon only. This run is 30
    seeds/weapon, evidenced by the sharded job names
    (`weapon-sweep (sword, 0, 1,5,9,13,17,21,25,29, 0)` … seeds stop at 30).
-2. **Staleness.** `5ea6cb36` is 32 commits behind current main (`38c1e873`).
-   Gameplay-affecting commits landed after it and change headless-sim behavior:
+2. **Staleness.** At investigation time, `5ea6cb36` was 32 commits behind main
+   tip `38c1e873`. Gameplay-affecting commits landed after it and change
+   headless-sim behavior:
    `cbafb339` (retreat-threat recovery, `src/game/ai/bt-ai-provider.ts`),
    `2b241008` (boss-arena add targeting, same file), `4f35270a` (optional
    purchases defaulted on, `src/game/ai/headless-runner.ts` +
@@ -81,10 +84,10 @@ lookback was performed or invented.
 
 ## Durable ledger
 
-| #   | Name                                      | Measured symptom                                                  | Causal evidence                                                                                         | Production path | Enabling config/flag | Hypothesis | Exact change | Baseline metrics                                              | Post metrics | Run/artifact URLs                                                                                                          | Verdict                 | Rationale                                                                                         |
-| --- | ----------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------- | -------------------- | ---------- | ------------ | ------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------- |
-| 0   | Baseline intake (prerequisite, not a fix) | Latest current-main sweep is 30 seeds/weapon and 32 commits stale | Job matrix seeds 1–30; gameplay commits `cbafb339`, `2b241008`, `4f35270a`, `8f25e170` after `5ea6cb36` | n/a             | n/a                  | n/a        | none         | run 31744723997, `5ea6cb36`, seeds 1–30, six FINAL aggregates | none         | `project:sweep-results-viewer runId=31744723997` (secondary: <https://github.com/nalfeo/Crawler/actions/runs/31744723997>) | Blocked                 | Fails 100-seeds/weapon, fails current-main freshness, already consumed by the 2026-08-13 analysis |
-| 1   | (no candidate)                            | —                                                                 | —                                                                                                       | —               | —                    | —          | —            | —                                                             | —            | —                                                                                                                          | Rejected before ranking | No eligible baseline SHA exists, so no candidate can carry telemetry-backed attribution           |
+| #   | Name                                      | Measured symptom                                                                     | Causal evidence                                                                                         | Production path | Enabling config/flag                       | Hypothesis | Exact change | Baseline metrics                                                                | Post metrics | Run/artifact URLs                                                                                                          | Verdict                 | Rationale                                                                                                    |
+| --- | ----------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------ | ---------- | ------------ | ------------------------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 0   | Baseline intake (prerequisite, not a fix) | Latest investigation-time current-main sweep is 30 seeds/weapon and 32 commits stale | Job matrix seeds 1–30; gameplay commits `cbafb339`, `2b241008`, `4f35270a`, `8f25e170` after `5ea6cb36` | n/a             | `max_frames=23760`; `weapon_personas=true` | n/a        | none         | run 31744723997, `5ea6cb36`, seeds 1–30, max frames 23760, six FINAL aggregates | none         | `project:sweep-results-viewer runId=31744723997` (secondary: <https://github.com/nalfeo/Crawler/actions/runs/31744723997>) | Blocked                 | Fails 100-seeds/weapon, fails investigation-time main freshness, already consumed by the 2026-08-13 analysis |
+| 1   | (no candidate)                            | —                                                                                    | —                                                                                                       | —               | —                                          | —          | —            | —                                                                               | —            | —                                                                                                                          | Rejected before ranking | No eligible baseline SHA exists, so no candidate can carry telemetry-backed attribution                      |
 
 ## Key Decisions Made
 
