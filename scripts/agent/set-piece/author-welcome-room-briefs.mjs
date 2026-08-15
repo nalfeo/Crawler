@@ -13,7 +13,7 @@ const CONTRACT =
 const COHESION =
   'This prop must sit beside the already-approved welcome-room art without clashing: ' +
   'welcome-room-desk, welcome-room-bookcase, welcome-room-shop-table, welcome-room-rug, ' +
-  'welcome-room-velvet-rope, welcome-sign-left-v1 and prop-wall-sconce-v1 — deep maroon and ' +
+  'welcome-room-velvet-rope, welcome-sign-left and prop-wall-sconce — deep maroon and ' +
   'dark walnut wood, tarnished brass hardware, hard dark outline, muted and dusty, never bright ' +
   'or saturated.';
 

@@ -1,0 +1,42 @@
+{
+  "briefId": "moonbloom-flower",
+  "spriteName": "moonbloom-flower-var-0",
+  "assetPath": "generated/moonbloom-flower-var-0.png",
+  "approvedAt": "2026-07-08T07:38:29.423Z",
+  "sourceRun": "generated/runs/moonbloom-flower-v1/2026-07-08T07-20-58-040c45b3",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 30,
+    "y": 60,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 60,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 28,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "type": "item",
+  "contentHash": "b32542221790394eb3a471419f7c17d1709654505eabf2c310505905536f69fb",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\moonbloom-flower-v1\\2026-07-08T07-20-58-040c45b3\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 8,
+    "y": 3,
+    "width": 48,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

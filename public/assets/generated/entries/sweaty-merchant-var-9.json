@@ -1,0 +1,118 @@
+{
+  "briefId": "sweaty-merchant",
+  "spriteName": "sweaty-merchant-var-9",
+  "assetPath": "generated/sweaty-merchant-var-9.png",
+  "approvedAt": "2026-07-27T16:37:12.722Z",
+  "sourceRun": "generated/runs/sweaty-merchant-v2/2026-07-27T16-17-03-50ce3d77",
+  "variantIndex": 9,
+  "anchor": {
+    "x": 32,
+    "y": 33,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 33,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 32,
+        "y": 33
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 9,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T16:19:41.987Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept aligns well with the Crawler design language. The character is a tall, sweaty, and slightly unsettling merchant with a clear identity. The teal bottles provide a strong focal point, and the overall design is darkly humorous and fits the tone of the game."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a hard one-pixel outline, appropriate shading, and a consistent palette. However, the sweat highlights could be slightly more refined to better match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a hard one-pixel outline, appropriate shading, and a consistent palette. However, the sweat highlights could be slightly more refined to better match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite captures the essence of the brief, including the tall proportions, narrow tray, teal bottles, and overall merchant identity. However, the head might be slightly larger than the specified one-seventh of the total height, which detracts from the proportions."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and balanced, with no floating elements or transparency issues. The teal bottles and tray are immediately recognizable, and the character stands out well against the dark floor tile."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite meets the majority of the brief's requirements, with some minor issues that can be improved.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 5073,
+      "completionTokens": 336,
+      "totalTokens": 5409
+    }
+  },
+  "type": "character",
+  "contentHash": "18546fa1eea902e950b9bcfbc7f44c62523efd69f8a10e1029659796ca112545",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 16,
+    "y": 3,
+    "width": 32,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

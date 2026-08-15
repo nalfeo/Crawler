@@ -287,7 +287,7 @@ const ASSETS_ROOT = 'public/assets';
  * Orphan shards tolerated by this corpus test.
  *
  * Intentionally EMPTY. The one historical entry
- * (`rhea-vale-v1-var-0-walk`) was deleted rather than tolerated: its PNG was
+ * (`rhea-vale-var-0-walk`) was deleted rather than tolerated: its PNG was
  * removed by PR #2322 when gender-matched walk-cycle sheets replaced it, and
  * the shard was silently resurrected by a later chore commit (#2663) — exactly
  * the silent-revert class this check exists to catch.

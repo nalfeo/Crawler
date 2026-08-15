@@ -60,7 +60,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { canonicalItemBriefId, itemArtIdentitySet } from '../../src/shared/item-sprites.js';
+import { bareConcept } from './sprite-name-taxonomy.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { formatJsonFilesSync } from './catalog-io.js';
 import { shardPathForKey } from './generated-shards.js';
@@ -394,12 +394,15 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
   }
-  // Recurrence guard (ADR 0051): art for a gameplay item ships BARE. If the brief
-  // is `<item>-vN` and `<item>` is a known item identity (an ItemDef.id or a
-  // weaponId alias), strip the `-vN` so the manifest key / spriteName / assetPath
-  // / briefId are all the bare item id and the icon resolves by item id. Genuine
-  // non-item briefs (enemies, tiles, props) keep their `-vN` lineage untouched.
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  // Recurrence guard: ALL generated art ships BARE. If the brief carries a
+  // generation-time `-vN` lineage tag, strip it so the manifest key /
+  // spriteName / assetPath / briefId are all the bare concept. This is what
+  // keeps `loadGeneratedManifest` grouping every variant of a concept into ONE
+  // bucket — a versioned brief creates a second bucket that
+  // `pickGeneratedVariant` can never draw from, stranding approved art.
+  // Design names that merely look versioned (`angry-roomba-v2`) are remapped,
+  // not stripped, by `DESIGN_NAME_REMAP`.
+  const briefId = bareConcept(rawBriefId);
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === options.variantIndex);
   if (!candidate) {
@@ -651,7 +654,7 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
   }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = bareConcept(rawBriefId);
 
   const frameSequence = summary.frameSequence;
   const frameCount = frameSequence?.frameCount;
@@ -822,7 +825,7 @@ export function resolveVariantIdentity(
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
   }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = bareConcept(rawBriefId);
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === variantIndex);
   if (!candidate) {
@@ -902,7 +905,7 @@ export function loadApprovedFrameSequenceEntry(options: {
   if (!rawBriefId) {
     throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
   }
-  const briefId = canonicalItemBriefId(rawBriefId, itemArtIdentitySet());
+  const briefId = bareConcept(rawBriefId);
   return readManifestEntry(fs, options.manifestPath, briefId);
 }
 

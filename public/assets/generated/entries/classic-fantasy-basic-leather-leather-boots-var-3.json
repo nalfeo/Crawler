@@ -1,0 +1,122 @@
+{
+  "briefId": "classic-fantasy-basic-leather-leather-boots",
+  "spriteName": "classic-fantasy-basic-leather-leather-boots-var-3",
+  "assetPath": "generated/classic-fantasy-basic-leather-leather-boots-var-3.png",
+  "approvedAt": "2026-07-30T01:03:00.938Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-leather-boots-v1/2026-07-28T06-50-19-52213b20",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 24,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 24,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 34,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 24,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:58:05.059Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The boots align with Crawler's design language, featuring a practical, handmade aesthetic with visible saddle stitching and a plain iron buckle. The slightly upturned toe adds a subtle contradiction, suggesting nimbleness."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference sprites in outline weight, shading depth, and palette. The pixel dithering and material treatment are consistent with the approved style."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference sprites in outline weight, shading depth, and palette. The pixel dithering and material treatment are consistent with the approved style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts ankle-high leather boots with mid-brown boiled leather, visible stitching, a wraparound strap, and a plain iron buckle, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The boots are immediately recognizable on the dark floor tile."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is isolated and presented as a wearable icon without any extraneous elements or background distractions."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme design language, including mid-brown boiled leather, visible saddle stitching, and a plain iron buckle. The handmade aesthetic is evident."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3222,
+      "completionTokens": 374,
+      "totalTokens": 3596
+    }
+  },
+  "type": null,
+  "contentHash": "6c6accdfa43b51302dc26ea1f6fd4763d3b6c7c8b5f3ac9db28836c459c4665a",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 56,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-boots-v1/2026-07-28T06-50-19-52213b20/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-boots-v1/2026-07-28T06-50-19-52213b20/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-boots-v1/2026-07-28T06-50-19-52213b20/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

@@ -1,0 +1,126 @@
+{
+  "briefId": "snailfolk-sludge-artillery",
+  "spriteName": "snailfolk-sludge-artillery-var-3",
+  "assetPath": "generated/snailfolk-sludge-artillery-var-3.png",
+  "approvedAt": "2026-08-01T05:50:26.223Z",
+  "sourceRun": "generated/runs/snailfolk-sludge-artillery-v1/2026-08-01T05-46-44-a5ed7a82",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 148,
+    "y": 132,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 148,
+      "y": 132,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 148,
+      "y": 132,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 148,
+        "y": 132
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:48:37.840Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a burly snailfolk with a sludge cannon fits well within the darkly humorous and strange aesthetic of Crawler. The contradiction between the slow, ponderous snail and the destructive artillery is clear and engaging. However, the design could push the contradiction further for a perfect score."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, palette depth, shading stops, and production finish. The crisp outlines and shading are consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, palette depth, shading stops, and production finish. The crisp outlines and shading are consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts the burly snailfolk with a slimy shell, cracked visor, tattered apron, and a cobbled-together sludge cannon as described in the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is mostly clear at game scale, with the shell and cannon nozzle being distinct. However, the apron and cannon tube blend slightly into the body, reducing clarity."
+    },
+    "poseOrientation": {
+      "score": 4,
+      "rationale": "The character is slightly more side-profile than ideal, but the head and body are still angled enough to provide a readable pose."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all visible anatomy and equipment included within the sprite boundaries."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from both the floor and theme design language, including the earth-toned shell, cracked visor, tattered apron, cobbled-together sludge cannon, and dripping slime. These elements strongly align with the Slowlane Syndicate theme and the Family Matters floor."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4130,
+      "completionTokens": 477,
+      "totalTokens": 4607
+    }
+  },
+  "type": "enemy",
+  "contentHash": "56217ca902b19b76c5281aca081c4647dcd79ff209471b757a36a38747d62f33",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 247,
+    "height": 226,
+    "canvasWidth": 277,
+    "canvasHeight": 256
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/snailfolk-sludge-artillery-v1/2026-08-01T05-46-44-a5ed7a82/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/snailfolk-sludge-artillery-v1/2026-08-01T05-46-44-a5ed7a82/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/snailfolk-sludge-artillery-v1/2026-08-01T05-46-44-a5ed7a82/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

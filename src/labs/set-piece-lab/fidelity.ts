@@ -27,8 +27,8 @@ import { TerrainType } from '../../shared/map-types.js';
  * bounds to SAFE_ROOM_FLOOR (`floorScenario.ts:1034-1040`).
  *
  * That is not a tint difference. STONE_FLOOR resolves to the cool blue-grey
- * `tile-stone-floor-v2-var-2`; SAFE_ROOM_FLOOR resolves to the warm orange
- * `tile-safe-room-floor-v1-var-0` (`tile-visuals.ts:244` / `:414`). Reviewing a
+ * `tile-stone-floor-var-2`; SAFE_ROOM_FLOOR resolves to the warm orange
+ * `tile-safe-room-floor-var-0` (`tile-visuals.ts:244` / `:414`). Reviewing a
  * prop against the wrong one inverts every value and hue judgement made about it,
  * and any brief written from that review inherits the error.
  *

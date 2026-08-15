@@ -242,23 +242,23 @@ test('parseApprovedSprites skips placeholder entries and records existence', () 
 
 test('listManifestApprovals keeps EVERY entry, even when several share a briefId (unlike parseApprovedSprites)', () => {
   // Regression fixture: a real repo observation showed a briefId with TWO
-  // manifest entries (e.g. "iron-cleaver-v1-var-0" and "-var-5", both
-  // briefId "iron-cleaver-v1") — parseApprovedSprites collapses these to the
+  // manifest entries (e.g. "iron-cleaver-var-0" and "-var-5", both
+  // briefId "iron-cleaver") — parseApprovedSprites collapses these to the
   // LAST one (Map keyed by briefId), silently losing the other. The Workflow
   // canvas's per-variant lifecycle needs to match against BOTH.
   const manifest = {
     version: 1,
     entries: {
-      'iron-cleaver-v1-var-0': {
-        briefId: 'iron-cleaver-v1',
-        assetPath: 'generated/iron-cleaver-v1-var-0.png',
-        sourceRun: 'iron-cleaver-v1/run-1',
+      'iron-cleaver-var-0': {
+        briefId: 'iron-cleaver',
+        assetPath: 'generated/iron-cleaver-var-0.png',
+        sourceRun: 'iron-cleaver/run-1',
         variantIndex: 0,
       },
-      'iron-cleaver-v1-var-5': {
-        briefId: 'iron-cleaver-v1',
-        assetPath: 'generated/iron-cleaver-v1-var-5.png',
-        sourceRun: 'iron-cleaver-v1/run-1',
+      'iron-cleaver-var-5': {
+        briefId: 'iron-cleaver',
+        assetPath: 'generated/iron-cleaver-var-5.png',
+        sourceRun: 'iron-cleaver/run-1',
         variantIndex: 5,
       },
       'weapon::sword': {
@@ -270,21 +270,21 @@ test('listManifestApprovals keeps EVERY entry, even when several share a briefId
     },
   };
   const approvals = listManifestApprovals(manifest, {
-    existingAssets: new Set(['generated/iron-cleaver-v1-var-0.png']),
+    existingAssets: new Set(['generated/iron-cleaver-var-0.png']),
   });
   assert.equal(approvals.length, 2, 'placeholder entry excluded; both real entries kept');
   const var0 = approvals.find((a) => a.variantIndex === 0);
   const var5 = approvals.find((a) => a.variantIndex === 5);
-  assert.equal(var0.briefId, 'iron-cleaver-v1');
+  assert.equal(var0.briefId, 'iron-cleaver');
   assert.equal(var0.exists, true);
-  assert.equal(var5.briefId, 'iron-cleaver-v1');
+  assert.equal(var5.briefId, 'iron-cleaver');
   assert.equal(var5.exists, false);
 
   // Cross-check against the collapsing behavior this regression fixture is
   // documenting, so a future refactor that "fixes" parseApprovedSprites
   // doesn't silently make this comparison meaningless.
   const collapsed = parseApprovedSprites(manifest, {
-    existingAssets: new Set(['generated/iron-cleaver-v1-var-0.png']),
+    existingAssets: new Set(['generated/iron-cleaver-var-0.png']),
   });
   assert.equal(collapsed.size, 1, 'parseApprovedSprites is keyed by briefId and only keeps one');
 });

@@ -1,0 +1,42 @@
+{
+  "briefId": "cactusfolk-boss",
+  "spriteName": "cactusfolk-boss-var-3",
+  "assetPath": "generated/cactusfolk-boss-var-3.png",
+  "approvedAt": "2026-07-20T04:47:46.136Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-rVmQ8L/cactusfolk-boss-v1/2026-07-17T17-53-08-5c0e8bce",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 65,
+    "y": 68,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 65,
+      "y": 68,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 65,
+      "y": 68,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "5",
+  "type": "enemy",
+  "contentHash": "60e81e4205dcd18b95360466ef7b5be8d8fc0f31afaa124475c990082bc2febb",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-boss-v1/2026-07-17T17-53-08-5c0e8bce/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-boss-v1/2026-07-17T17-53-08-5c0e8bce/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-boss-v1/2026-07-17T17-53-08-5c0e8bce/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 120,
+    "height": 114,
+    "canvasWidth": 134,
+    "canvasHeight": 128
+  }
+}

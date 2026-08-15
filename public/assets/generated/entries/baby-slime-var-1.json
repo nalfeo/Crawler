@@ -1,0 +1,39 @@
+{
+  "briefId": "baby-slime",
+  "spriteName": "baby-slime-var-1",
+  "assetPath": "generated/baby-slime-var-1.png",
+  "approvedAt": "2026-06-29T06:22:40.421Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-B8vUPA/baby-slime-v1/2026-06-29T06-16-01-73e9b0d1",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 32,
+    "y": 33,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 33,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 33,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "4",
+  "type": "enemy",
+  "contentHash": "e921c1df2ef7dc32c3865ec9ed92568a294bd6717a6151926bd2a7e0e1d2d252",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 9,
+    "width": 57,
+    "height": 46,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

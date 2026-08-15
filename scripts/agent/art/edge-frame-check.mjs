@@ -5,7 +5,7 @@
  * frame (dark keyline, pale rim, vignette, matte residue) around its canvas.
  *
  * A framed plate laid edge-to-edge on a grid composites into a continuous
- * lattice across the whole floor — the `tile-stone-floor-v1-var-2` magenta-ring
+ * lattice across the whole floor — the `tile-stone-floor-var-2` magenta-ring
  * failure class. `check-tile-seams.ts` only catches *magenta* mattes and
  * explicitly puts border continuity out of scope; this closes that gap for the
  * welcome-room floor-plate family, colour-agnostically, on luma.
@@ -107,7 +107,7 @@ function parseArgs(argv) {
  * offending samples. What the corpus measurement establishes is PRECISION: of
  * the 86 files scoring below a floor of 5, exactly 85 are `*-placeholder.png` /
  * `temp_*` scaffolding and exactly ONE is real shipped art —
- * `welcome-room-floor-plate-clean-v2-var-0` (2.5). Zero false positives on
+ * `welcome-room-floor-plate-clean-var-0` (2.5). Zero false positives on
  * legitimate art.
  *
  * It establishes NOTHING about recall, and this check is NOT a placeholder

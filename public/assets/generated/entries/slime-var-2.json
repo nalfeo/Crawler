@@ -1,0 +1,37 @@
+{
+  "briefId": "slime",
+  "spriteName": "slime-var-2",
+  "assetPath": "generated/slime-var-2.png",
+  "approvedAt": "2026-06-30T04:52:37.779Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-G7VXZb/slime-v1/2026-06-29T06-55-41-19312380",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 31,
+    "y": 34,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 34,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "2",
+  "type": "enemy",
+  "contentHash": "7c0f09d9305b1a9ebcfe3796eaa9f49d9e15c3ff5327762b763dfc5b3b8c6e2e",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 10,
+    "width": 56,
+    "height": 44,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

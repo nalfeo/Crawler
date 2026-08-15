@@ -98,7 +98,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'torch',
       name: 'Torch',
-      spriteId: 'prop-torch-v1-var-10',
+      spriteId: 'prop-torch-var-10',
       biomeTag: 'dungeon',
       category: 'light-source',
       placementZone: 'wall-adjacent',
@@ -403,7 +403,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'junk-pile',
       name: 'Junk Pile',
-      spriteId: 'prop-junk-pile-v1-var-0',
+      spriteId: 'prop-junk-pile-var-0',
       biomeTag: 'dungeon',
       category: 'rubbish',
       placementZone: 'anywhere',
@@ -418,7 +418,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'wall-sconce',
       name: 'Wall Sconce',
-      spriteId: 'prop-wall-sconce-v1-var-1',
+      spriteId: 'prop-wall-sconce-var-1',
       biomeTag: 'dungeon',
       category: 'light-source',
       placementZone: 'wall-adjacent',

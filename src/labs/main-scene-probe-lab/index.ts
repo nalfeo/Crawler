@@ -91,7 +91,7 @@ const PROBE_SEED = 4242;
 
 /**
  * Generated-sprite brief ids the render layer maps the Floor-1 harvestable node
- * types to (e.g. `crimson-mushroom-v1`). A harvestable node's on-floor Image is
+ * types to (e.g. `crimson-mushroom`). A harvestable node's on-floor Image is
  * created with one of these as the texture-key prefix, so the probe counts live
  * display-list Images by matching this set — the deterministic real-scene signal
  * that a node rendered its generated sprite instead of the procedural circle.

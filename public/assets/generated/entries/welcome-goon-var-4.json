@@ -1,0 +1,118 @@
+{
+  "briefId": "welcome-goon",
+  "spriteName": "welcome-goon-var-4",
+  "assetPath": "generated/welcome-goon-var-4.png",
+  "approvedAt": "2026-07-27T16:34:15.471Z",
+  "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 32,
+    "y": 31,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 32,
+        "y": 31
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T16:28:35.532Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The character's weary posture, headset, and clipboard convey the intended identity of a tired production staff greeter. The design feels grounded in the Crawler universe, though the contradiction could be pushed further for memorability."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading, and palette depth. The sprite integrates well with the approved style."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading, and palette depth. The sprite integrates well with the approved style."
+    },
+    "briefMatch": {
+      "score": 3,
+      "rationale": "The proportions are close but not perfect: the head appears slightly larger than one-seventh of the total height, and the legs could be lengthened to better emphasize his tall, lanky build. The lanyard, badge, and clipboard are present but could be more prominent."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette reads clearly at game scale, and the light shirt contrasts well with the dark floor. However, the badge could be brighter to better serve as the focal accent."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to most of the brief's requirements, though there are areas for improvement.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4917,
+      "completionTokens": 320,
+      "totalTokens": 5237
+    }
+  },
+  "type": "character",
+  "contentHash": "c3a0ef180700990f73998095b80db5f29ce039e27c98679df1ae20960222af63",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-goon-v2\\2026-07-27T16-27-00-90c3c66e\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 18,
+    "y": 3,
+    "width": 29,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

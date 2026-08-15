@@ -1,0 +1,193 @@
+{
+  "briefId": "crabfolk-claw-gunner",
+  "spriteName": "crabfolk-claw-gunner-var-1",
+  "assetPath": "generated/crabfolk-claw-gunner-var-1.png",
+  "approvedAt": "2026-08-01T05:42:55.663Z",
+  "sourceRun": "generated/runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 126,
+    "y": 132,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 126,
+      "y": 132,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 126,
+      "y": 132,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 243 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 64,
+          "y": 42
+        },
+        {
+          "x": 65,
+          "y": 42
+        },
+        {
+          "x": 66,
+          "y": 42
+        },
+        {
+          "x": 67,
+          "y": 42
+        },
+        {
+          "x": 68,
+          "y": 42
+        },
+        {
+          "x": 69,
+          "y": 42
+        },
+        {
+          "x": 70,
+          "y": 42
+        },
+        {
+          "x": 71,
+          "y": 42
+        },
+        {
+          "x": 72,
+          "y": 42
+        },
+        {
+          "x": 73,
+          "y": 42
+        },
+        {
+          "x": 74,
+          "y": 42
+        },
+        {
+          "x": 75,
+          "y": 42
+        },
+        {
+          "x": 64,
+          "y": 43
+        },
+        {
+          "x": 65,
+          "y": 43
+        },
+        {
+          "x": 66,
+          "y": 43
+        },
+        {
+          "x": 67,
+          "y": 43
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 126,
+        "y": 132
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:40:34.331Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a crabfolk soldier with a pincer-cannon is well-executed and fits the Crawler aesthetic. The combination of a functional weapon and a crustacean body is both strange and darkly humorous, aligning with the theme. However, the design could benefit from slightly more exaggerated features to enhance its distinctiveness."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. However, the shading on the shell could be slightly more refined to better match the references' level of detail."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. However, the shading on the shell could be slightly more refined to better match the references' level of detail."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a crabfolk soldier with a pincer-cannon resembling a spiny seashell, a blue-gray carapace, and a defensive posture with the free claw raised. The decorative scrap plating is also present."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the pincer-cannon is easily identifiable. However, the raised claw could be slightly more distinct to improve clarity at game scale."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at an appropriate angle, facing the camera at a one-third-to-two-thirds turn, which is consistent with the references."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all body parts visible and well-positioned within the sprite."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the floor and theme design language, including the spiny seashell cannon, blue-gray carapace, scuffed and bolted scrap plating, and a defensive posture. The red-orange shell and overall aesthetic evoke the Tidewrack Mob's identity effectively."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4120,
+      "completionTokens": 504,
+      "totalTokens": 4624
+    }
+  },
+  "type": "enemy",
+  "contentHash": "b7d589839c0ea37b5bc976cb8d6a05f980522466d1ec72684f291129d1fbd95b",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 14,
+    "width": 241,
+    "height": 228,
+    "canvasWidth": 269,
+    "canvasHeight": 256
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/crabfolk-claw-gunner-v1/2026-08-01T05-38-23-b83030f3/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

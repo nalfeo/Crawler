@@ -1,0 +1,37 @@
+{
+  "briefId": "azure-mushroom",
+  "spriteName": "azure-mushroom-var-8",
+  "assetPath": "generated/azure-mushroom-var-8.png",
+  "approvedAt": "2026-07-02T20:53:09.089Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-MrWInM/azure-mushroom-v1/2026-07-02T20-23-57-0f662917",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 30,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 29,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "type": "character",
+  "contentHash": "9e5643540dbcf1002c2cf338361cc70e6db49e78103931929de8758d4ede3638",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 3,
+    "width": 52,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

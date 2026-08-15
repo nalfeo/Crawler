@@ -1,0 +1,41 @@
+{
+  "briefId": "welcome-sign-left",
+  "spriteName": "welcome-sign-left-var-2",
+  "assetPath": "generated/welcome-sign-left-var-2.png",
+  "approvedAt": "2026-07-06T17:35:26.168Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-bJ161L/welcome-sign-left-v2/2026-07-03T03-35-02-df64992f",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 28,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "3",
+  "type": null,
+  "contentHash": "eaa5408259d17ac59672c6b3538a3a0ada5b5df5fc2a598f8e2a0f3b996b1420",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "brief",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 57,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

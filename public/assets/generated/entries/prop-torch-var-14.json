@@ -1,0 +1,37 @@
+{
+  "briefId": "prop-torch",
+  "spriteName": "prop-torch-var-14",
+  "assetPath": "generated/prop-torch-var-14.png",
+  "approvedAt": "2026-07-03T01:36:28.115Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-fjSEQU/prop-torch-v1/2026-07-03T00-17-15-c9137bd4",
+  "variantIndex": 14,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "5/8",
+  "judgeScore": "4",
+  "type": "prop",
+  "contentHash": "e7a3c699d372b21c1ab82c27b7980316aae5ea02c4c91f883539a55fb2d43833",
+  "opaqueBounds": {
+    "x": 13,
+    "y": 3,
+    "width": 38,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

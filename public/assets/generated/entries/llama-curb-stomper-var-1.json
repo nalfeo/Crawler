@@ -1,0 +1,189 @@
+{
+  "briefId": "llama-curb-stomper",
+  "spriteName": "llama-curb-stomper-var-1",
+  "assetPath": "generated/llama-curb-stomper-var-1.png",
+  "approvedAt": "2026-08-01T00:11:14.651Z",
+  "sourceRun": "generated/runs/llama-curb-stomper-v1/2026-08-01T00-08-28-1b668e97",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 117,
+    "y": 175,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 117,
+      "y": 175,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 117,
+      "y": 175,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 950 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 103,
+          "y": 233
+        },
+        {
+          "x": 104,
+          "y": 233
+        },
+        {
+          "x": 105,
+          "y": 233
+        },
+        {
+          "x": 106,
+          "y": 233
+        },
+        {
+          "x": 107,
+          "y": 233
+        },
+        {
+          "x": 108,
+          "y": 233
+        },
+        {
+          "x": 109,
+          "y": 233
+        },
+        {
+          "x": 110,
+          "y": 233
+        },
+        {
+          "x": 111,
+          "y": 233
+        },
+        {
+          "x": 112,
+          "y": 233
+        },
+        {
+          "x": 113,
+          "y": 233
+        },
+        {
+          "x": 114,
+          "y": 233
+        },
+        {
+          "x": 115,
+          "y": 233
+        },
+        {
+          "x": 116,
+          "y": 233
+        },
+        {
+          "x": 117,
+          "y": 233
+        },
+        {
+          "x": 118,
+          "y": 233
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 117,
+        "y": 175
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:09:43.677Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept is clear and fits the Crawler design language with a humorous contradiction: a stocky llama with an oversized boot. The dull expression contrasts well with the exaggerated footwear, adding dark humor and a unique identity."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading stops, and palette depth. The sprite uses crisp outlines and appropriate color contrast, though the boots could use slightly more texture detail to match the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading stops, and palette depth. The sprite uses crisp outlines and appropriate color contrast, though the boots could use slightly more texture detail to match the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite accurately depicts the brief, including the llama's stocky build, sleeveless undershirt, brown suspenders, raised leg, and oversized boots with steel studs. The dull expression is also well-captured."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and instantly recognizable at game scale. The raised leg and oversized boot dominate the figure, ensuring the stomp action is visually obvious."
+    },
+    "poseOrientation": {
+      "score": 4,
+      "rationale": "The character faces the camera at a slight angle, which is consistent with the pose orientation of the references. The raised leg adds dynamism, though the body could be slightly more turned for better alignment with the references."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple theme-specific details: the llama, sleeveless undershirt, suspenders, and polished boots with steel studs. These elements align well with the Spit Syndicate's aesthetic and the Family Matters floor theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3960,
+      "completionTokens": 435,
+      "totalTokens": 4395
+    }
+  },
+  "type": "enemy",
+  "contentHash": "db600c6f814d9b1fab7975a29d73165d512558ffb61dd0ba1e8309830c629c85",
+  "opaqueBounds": {
+    "x": 17,
+    "y": 17,
+    "width": 222,
+    "height": 275,
+    "canvasWidth": 256,
+    "canvasHeight": 309
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-curb-stomper-v1/2026-08-01T00-08-28-1b668e97/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-curb-stomper-v1/2026-08-01T00-08-28-1b668e97/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-curb-stomper-v1/2026-08-01T00-08-28-1b668e97/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

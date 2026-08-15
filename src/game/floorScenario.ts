@@ -1600,7 +1600,7 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
         arenaRadiusFt: archetype.arenaRadiusFt,
       });
       // Preserve stable visual identity so generated-art lookups can select
-      // spawner-specific briefs (e.g. slime-pool-v1, rats-nest-v1) when present.
+      // spawner-specific briefs (e.g. slime-pool, rats-nest-v1) when present.
       setEnemyAppearanceKey(world, spawnerEid, archetypeId);
     }
   }

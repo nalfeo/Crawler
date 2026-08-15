@@ -1,0 +1,189 @@
+{
+  "briefId": "faerie-elite-fae-driveby",
+  "spriteName": "faerie-elite-fae-driveby-var-4",
+  "assetPath": "generated/faerie-elite-fae-driveby-var-4.png",
+  "approvedAt": "2026-08-01T00:28:46.176Z",
+  "sourceRun": "generated/runs/faerie-elite-fae-driveby-v1/2026-08-01T00-22-57-9d36b541",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 124,
+    "y": 119,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 124,
+      "y": 119,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 124,
+      "y": 119,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 695 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 22,
+          "y": 26
+        },
+        {
+          "x": 23,
+          "y": 26
+        },
+        {
+          "x": 24,
+          "y": 26
+        },
+        {
+          "x": 25,
+          "y": 26
+        },
+        {
+          "x": 26,
+          "y": 26
+        },
+        {
+          "x": 27,
+          "y": 26
+        },
+        {
+          "x": 28,
+          "y": 26
+        },
+        {
+          "x": 29,
+          "y": 26
+        },
+        {
+          "x": 30,
+          "y": 26
+        },
+        {
+          "x": 31,
+          "y": 26
+        },
+        {
+          "x": 32,
+          "y": 26
+        },
+        {
+          "x": 33,
+          "y": 26
+        },
+        {
+          "x": 34,
+          "y": 26
+        },
+        {
+          "x": 35,
+          "y": 26
+        },
+        {
+          "x": 36,
+          "y": 26
+        },
+        {
+          "x": 37,
+          "y": 26
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 124,
+        "y": 119
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:26:20.520Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The sprite effectively combines the faerie archetype with a modern, edgy twist through the use of pistols and a dynamic pose. The shimmering wings and tiara add a whimsical, faerie-like quality, while the pistols and cropped jacket provide a contrasting, gritty element. However, the design could be pushed further to emphasize the contradiction."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite adheres well to the reference style in terms of outline, shading, and palette. However, the wings' gradient could be slightly more refined to match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite adheres well to the reference style in terms of outline, shading, and palette. However, the wings' gradient could be slightly more refined to match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite captures most elements of the brief, including the emerald-green jacket, tiara, and pistols. However, the gem-encrusted belt is not clearly visible, and the pose could be more dynamic to fully match the description."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the sprite is distinguishable at game scale. However, the pistols could be more prominent to enhance the readability of the character's role as an armed enemy."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The sprite faces the camera at an appropriate angle, with a dynamic, forward-swept pose that aligns with the brief."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates several elements from the theme, such as the tiara, shimmering wings, and emerald-green jacket. However, the magenta gang colors and corrupted court finery are not strongly represented, which slightly detracts from the theme adherence."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.85,
+    "usage": {
+      "promptTokens": 4000,
+      "completionTokens": 453,
+      "totalTokens": 4453
+    }
+  },
+  "type": "enemy",
+  "contentHash": "be19db2ade2602f887a9419529e85c3bd6176e1a91cfd3c55abc475e2cc66e4a",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 252,
+    "height": 226,
+    "canvasWidth": 282,
+    "canvasHeight": 256
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/faerie-elite-fae-driveby-v1/2026-08-01T00-22-57-9d36b541/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/faerie-elite-fae-driveby-v1/2026-08-01T00-22-57-9d36b541/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/faerie-elite-fae-driveby-v1/2026-08-01T00-22-57-9d36b541/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

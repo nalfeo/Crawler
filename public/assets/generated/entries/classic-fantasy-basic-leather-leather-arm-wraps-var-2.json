@@ -1,0 +1,122 @@
+{
+  "briefId": "classic-fantasy-basic-leather-leather-arm-wraps",
+  "spriteName": "classic-fantasy-basic-leather-leather-arm-wraps-var-2",
+  "assetPath": "generated/classic-fantasy-basic-leather-leather-arm-wraps-var-2.png",
+  "approvedAt": "2026-07-30T00:43:43.172Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-leather-arm-wraps-v1/2026-07-28T06-46-50-9f6a327e",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 32,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 32,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 2,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:48:09.514Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design is consistent with Crawler's aesthetic, with a clear identity as leather arm wraps. The plainness aligns with the grounded baseline, but it lacks a strong authored contradiction to elevate it further."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, shading, and palette depth. The sprite feels cohesive with the approved style."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in outline weight, shading, and palette depth. The sprite feels cohesive with the approved style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts plain, mid-brown leather wraps with visible saddle stitching and iron buckles, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity issues or blending into the background."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is a standalone depiction of the item without any extraneous elements or context."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates the specified materials (plain mid-brown leather, iron buckles) and stitching details, but the tapering toward the wrist could be more pronounced for better adherence to the brief."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3199,
+      "completionTokens": 354,
+      "totalTokens": 3553
+    }
+  },
+  "type": null,
+  "contentHash": "d746d550058cbb9ba06512fd44b1db7e80c82f59c1d2752ac05b23271244e1cf",
+  "opaqueBounds": {
+    "x": 12,
+    "y": 3,
+    "width": 39,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-arm-wraps-v1/2026-07-28T06-46-50-9f6a327e/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-arm-wraps-v1/2026-07-28T06-46-50-9f6a327e/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-arm-wraps-v1/2026-07-28T06-46-50-9f6a327e/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

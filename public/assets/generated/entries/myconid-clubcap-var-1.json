@@ -1,0 +1,42 @@
+{
+  "briefId": "myconid-clubcap",
+  "spriteName": "myconid-clubcap-var-1",
+  "assetPath": "generated/myconid-clubcap-var-1.png",
+  "approvedAt": "2026-07-09T07:39:40.797Z",
+  "sourceRun": "generated/runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 31,
+    "y": 33,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 33,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "c32f1a31c77b7d2db7c266d792e97b0fa7e6ebe775014d5249e32c2cea7770a9",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 55,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

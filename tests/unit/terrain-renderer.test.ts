@@ -223,7 +223,7 @@ describe('buildTerrainLayer — generated tile wiring (w2)', () => {
     // single-PNG (var-10) via the same textureKey seam, so the generated branch
     // must win over the RPG cobblestone frame when the texture is loaded.
     const corridor = getTileVisual(TerrainType.CORRIDOR)!;
-    expect(corridor.textureKey).toBe('tile-corridor-v1-var-10');
+    expect(corridor.textureKey).toBe('tile-corridor-var-10');
     const { scene, rt } = createTerrainScene({
       loadedTextures: new Set([corridor.textureKey!, corridor.sheetKey]),
     });

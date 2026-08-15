@@ -1,0 +1,118 @@
+{
+  "briefId": "warding-bell",
+  "spriteName": "warding-bell-var-3",
+  "assetPath": "generated/warding-bell-var-3.png",
+  "approvedAt": "2026-07-25T05:24:47.256Z",
+  "sourceRun": "generated/runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 36,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 31,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:23:40.518Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a rusted, cracked bell with an eerie glow fits the dark-fantasy aesthetic and the floor's grounded baseline. The frayed rope adds a salvage-like touch, but the contradiction could be slightly more pronounced."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in terms of outline weight, palette depth, shading, and edge treatment. The glow effect is consistent with the style of the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in terms of outline weight, palette depth, shading, and edge treatment. The glow effect is consistent with the style of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a rusted iron bell with a jagged crack and an eerie glow, suspended from a frayed rope, as described in the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear at game scale, but the frayed rope loop could be slightly more distinct to enhance readability further."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is an isolated item with no extraneous elements, adhering to the presentation requirements."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 2604,
+      "completionTokens": 337,
+      "totalTokens": 2941
+    }
+  },
+  "type": "item",
+  "contentHash": "f796743dd0740833821796b43f19ce31cf8df0416c0e8d1096b2beb7759214c5",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/warding-bell-v1/2026-07-25T05-21-49-1a239e22/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 13,
+    "y": 3,
+    "width": 38,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

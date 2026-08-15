@@ -1,0 +1,118 @@
+{
+  "briefId": "blood-lance",
+  "spriteName": "blood-lance-var-4",
+  "assetPath": "generated/blood-lance-var-4.png",
+  "approvedAt": "2026-07-25T05:49:54.122Z",
+  "sourceRun": "generated/runs/blood-lance-v1/2026-07-25T05-47-28-6fcdb8b2",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 30,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 30,
+        "y": 60
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:49:07.238Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a jagged lance with a blood-like spiral tip and rivulets is clear and fits the dark-fantasy theme of Crawler. The design is unique and has a strong identity, though the spiral effect could be more pronounced for better visual impact."
+    },
+    "referenceStyleMatch": {
+      "score": 3,
+      "rationale": "The sprite generally matches the reference style in terms of outline, shading, and palette, but the shading on the crimson tip is slightly inconsistent with the references, and the rivulets on the shaft could be more defined."
+    },
+    "styleMatch": {
+      "score": 3,
+      "rationale": "The sprite generally matches the reference style in terms of outline, shading, and palette, but the shading on the crimson tip is slightly inconsistent with the references, and the rivulets on the shaft could be more defined."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a jagged lance with a crimson spiral tip and blackened steel shaft with rivulets, as described in the brief."
+    },
+    "readability": {
+      "score": 3,
+      "rationale": "The silhouette is mostly clear, but the spiral tip could be more distinct at game scale. The rivulets on the shaft are not immediately apparent, which slightly impacts readability."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, but has minor issues with style and readability that can be improved.",
+    "confidence": 0.9,
+    "usage": {
+      "promptTokens": 2531,
+      "completionTokens": 325,
+      "totalTokens": 2856
+    }
+  },
+  "type": "weapon",
+  "contentHash": "c4eb4f22106a68cc7631287d2af26e3172d87344e21bdb1a5280d9e3b8260493",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/blood-lance-v1/2026-07-25T05-47-28-6fcdb8b2/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/blood-lance-v1/2026-07-25T05-47-28-6fcdb8b2/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/blood-lance-v1/2026-07-25T05-47-28-6fcdb8b2/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 24,
+    "y": 3,
+    "width": 15,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "briefId": "rat",
+  "spriteName": "rat-var-0",
+  "assetPath": "generated/rat-var-0.png",
+  "approvedAt": "2026-08-01T16:34:44.779Z",
+  "sourceRun": "generated/runs/rat/2026-08-01T16-30-48-09bad4c6",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 156,
+    "y": 133,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 156,
+      "y": 133,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 156,
+      "y": 133,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 156,
+        "y": 133
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 9,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T16:32:23.181Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design effectively conveys a feral, mangy dungeon rat with a hunched posture and a menacing demeanor. The gnarly yellow incisors and red eyes add to the dark fantasy tone. However, the design could push the 'authored contradiction' further to align more closely with Crawler's unique style."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the references in terms of outline weight, shading, and palette depth. The fur texture and color palette are consistent with the grimy, dark aesthetic of the references. However, the shading could be slightly more refined to match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the references in terms of outline weight, shading, and palette depth. The fur texture and color palette are consistent with the grimy, dark aesthetic of the references. However, the shading could be slightly more refined to match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite perfectly matches the brief, depicting a scuttling, feral dungeon rat with a hunched posture, patchy fur, a scaly tail, and a menacing expression. The silhouette and details align with the description provided."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and instantly recognizable as a rat at game scale. The tail and hunched body create a distinct and readable shape against the dark floor tile."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The rat is depicted in a three-quarter view, with its head and body turned slightly toward the camera, meeting the brief's requirements."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the body, including the tail, visible within the sprite boundaries."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3889,
+      "completionTokens": 436,
+      "totalTokens": 4325
+    }
+  },
+  "type": "enemy",
+  "contentHash": "7f2d982755bf2e13c033fda10b1fd608de789378a8f6a6f674bcee529591b424",
+  "opaqueBounds": {
+    "x": 17,
+    "y": 17,
+    "width": 285,
+    "height": 222,
+    "canvasWidth": 319,
+    "canvasHeight": 256
+  },
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\rat\\2026-08-01T16-30-48-09bad4c6\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\rat\\2026-08-01T16-30-48-09bad4c6\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\rat\\2026-08-01T16-30-48-09bad4c6\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "enemy",
+      "small",
+      "dark",
+      "dungeon",
+      "cave",
+      "horror",
+      "nature",
+      "asymmetric",
+      "rat",
+      "creature"
+    ]
+  }
+}

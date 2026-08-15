@@ -1,0 +1,119 @@
+{
+  "briefId": "war-pick",
+  "spriteName": "war-pick-var-4",
+  "assetPath": "generated/war-pick-var-4.png",
+  "approvedAt": "2026-07-25T05:21:39.343Z",
+  "sourceRun": "generated/runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b",
+  "variantIndex": 4,
+  "anchor": {
+    "x": 35,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 35,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 23,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/8",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 35,
+        "y": 60
+      }
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis 72.84° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 4,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:20:48.376Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a brutal war pick with a rusted, curved iron head and a pointed spike is well-executed. The frayed cloth and leather wrapping add a practical, rugged feel, aligning with the dark-fantasy salvage aesthetic of Crawler. However, the contradiction element is somewhat understated."
+    },
+    "referenceStyleMatch": {
+      "score": 3,
+      "rationale": "The rendering is close to the reference style, with appropriate outline weight and shading stops. However, the texture of the rusted iron head is slightly less refined compared to the references, and the palette could use more contrast for better material definition."
+    },
+    "styleMatch": {
+      "score": 3,
+      "rationale": "The rendering is close to the reference style, with appropriate outline weight and shading stops. However, the texture of the rusted iron head is slightly less refined compared to the references, and the palette could use more contrast for better material definition."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts the requested war pick with all specified elements: rusted curved head, pointed spike, wooden haft, and frayed cloth/leather wrapping."
+    },
+    "readability": {
+      "score": 3,
+      "rationale": "The silhouette is mostly clear at game scale, but the spike side of the pick blends slightly into the background, reducing its sharpness. The overall shape is identifiable, but minor adjustments to contrast or outline could improve clarity."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, but has minor issues with style consistency and readability.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2549,
+      "completionTokens": 337,
+      "totalTokens": 2886
+    }
+  },
+  "type": "weapon",
+  "contentHash": "4a6c8b60fef3b794fff932f9468a49b63f177bc703bff4d6fb8676f8ad3e71bd",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/war-pick-v1/2026-07-25T05-19-03-1b309b4b/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 3,
+    "width": 53,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

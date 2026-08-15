@@ -1,0 +1,112 @@
+{
+  "briefId": "classic-fantasy-basic-leather-wooden-club",
+  "spriteName": "classic-fantasy-basic-leather-wooden-club-var-0",
+  "assetPath": "generated/classic-fantasy-basic-leather-wooden-club-var-0.png",
+  "approvedAt": "2026-07-30T00:33:06.757Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-wooden-club-v1/2026-07-28T04-11-03-1e96914a",
+  "variantIndex": 0,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 32,
+      "y": 29,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=19 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -65.03° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:41:44.883Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept aligns with Crawler's grounded dark-fantasy aesthetic. The club is simple and utilitarian, with a clear contradiction between its primitive design and its practical iron band. It avoids generic fantasy tropes and feels authored."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading depth, and palette. The wood texture is consistent with the style, though the iron band could use slightly more shading to match the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the references in terms of outline weight, shading depth, and palette. The wood texture is consistent with the style, though the iron band could use slightly more shading to match the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts the described short oiled oak club with a leather-wrapped handle and iron band. All elements from the brief are present and clearly rendered."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette reads clearly at game scale, with no visual integrity defects. The tapered cylindrical shape and handle are immediately recognizable."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates specific materials and details from the theme design language, such as the oiled oak texture, plain iron band, and coarse leather stitching. However, the stitching detail could be slightly more pronounced for better adherence."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3148,
+      "completionTokens": 352,
+      "totalTokens": 3500
+    }
+  },
+  "type": null,
+  "contentHash": "a5a69c2e1401c6fb565e964023fc406bf94fb5629e38214c4927507242ade4a1",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 4,
+    "width": 35,
+    "height": 57,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-wooden-club-v1/2026-07-28T04-11-03-1e96914a/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-wooden-club-v1/2026-07-28T04-11-03-1e96914a/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-wooden-club-v1/2026-07-28T04-11-03-1e96914a/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right"
+}

@@ -1,0 +1,118 @@
+{
+  "briefId": "sweaty-merchant",
+  "spriteName": "sweaty-merchant-var-7",
+  "assetPath": "generated/sweaty-merchant-var-7.png",
+  "approvedAt": "2026-07-27T16:24:58.510Z",
+  "sourceRun": "generated/runs/sweaty-merchant-v2/2026-07-27T16-17-03-50ce3d77",
+  "variantIndex": 7,
+  "anchor": {
+    "x": 32,
+    "y": 32,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 32,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 32,
+        "y": 32
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 7,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T16:19:24.052Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept aligns well with the Crawler design language. The character is a tall, sweaty, and slightly unsettling merchant with a clear identity and a strong contradiction. The teal bottles provide a striking focal point, and the overall design feels authored and appropriate for Floor 1."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the approved references in terms of outline weight, shading, and palette. The sprite uses a hard one-pixel outline and adheres to the 3-5 tonal stop rule. The materials are distinct and well-rendered, though the sweat highlights could be slightly more pronounced for better readability."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the approved references in terms of outline weight, shading, and palette. The sprite uses a hard one-pixel outline and adheres to the 3-5 tonal stop rule. The materials are distinct and well-rendered, though the sweat highlights could be slightly more pronounced for better readability."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite closely follows the brief. The proportions are correct, with the head being approximately one-seventh of the total height and the legs occupying the bottom half. The tray, bottles, apron, and coin pouch are all present and correctly placed. However, the sweat highlights could be more prominent to emphasize the 'sweaty' aspect of the character."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and balanced, with no floating or disconnected elements. The teal bottles stand out as the focal point, and the figure separates well from the dark floor tile in the readability composite."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite meets the majority of the brief's requirements and is not fundamentally broken or unusable.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 5073,
+      "completionTokens": 367,
+      "totalTokens": 5440
+    }
+  },
+  "type": "character",
+  "contentHash": "5040f98a70651ef1e724538da1716daf44e8ce25fc017bf4994b98974b1503fb",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\sweaty-merchant-v2\\2026-07-27T16-17-03-50ce3d77\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 4,
+    "width": 33,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

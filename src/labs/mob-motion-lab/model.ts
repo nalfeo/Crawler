@@ -59,7 +59,7 @@ export interface DeathPreviewSample {
 
 // These enemy-typed manifest entries are structures, so movement transforms
 // would misrepresent them as mobile mobs.
-const STATIONARY_ENEMY_BRIEFS = new Set(['rat-nest-v2', 'rats-nest-v1', 'slime-pool-v1']);
+const STATIONARY_ENEMY_BRIEFS = new Set(['rat-nest', 'rats-nest-v1', 'slime-pool']);
 const TAU = Math.PI * 2;
 const SPAWN_CYCLE_MS = 1_300;
 const MELEE_ATTACK_CYCLE_MS = 900;

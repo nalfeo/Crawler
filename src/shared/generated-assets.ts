@@ -628,11 +628,11 @@ export function computeNormalizedWeaponAnchor(
  * projectile-origin helpers to resolve briefs without a Phaser scene reference.
  */
 const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
-  enemy_rat: 'rat-v1',
-  enemy_slime: 'slime-v1',
-  enemy_spawner_rats_nest: 'rat-nest-v2',
-  enemy_spawner_slime_pool: 'slime-pool-v1',
-  enemy_boss_ratslime: 'rat-slime-v1',
+  enemy_rat: 'rat',
+  enemy_slime: 'slime',
+  enemy_spawner_rats_nest: 'rat-nest',
+  enemy_spawner_slime_pool: 'slime-pool',
+  enemy_boss_ratslime: 'rat-slime',
   enemy_boss_slimerat: 'slime-rat-boss',
   enemy_family_boss: 'goblin-boss',
 };
@@ -643,15 +643,15 @@ const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
  * priority over {@link GENERATED_BRIEF_BY_TYPE}.
  */
 const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
-  rat: 'rat-v1',
-  'rat-brute': 'rat-v1',
-  'rat-king': 'rat-king-v1',
-  'rat-queen': 'rat-queen-v1',
+  rat: 'rat',
+  'rat-brute': 'rat',
+  'rat-king': 'rat-king',
+  'rat-queen': 'rat-queen',
   'rats-nest': 'rats-nest-v1',
-  slime: 'slime-v1',
-  'slime-pool': 'slime-pool-v1',
-  'slime-mini': 'baby-slime-v1',
-  'rat-slime': 'rat-slime-v1',
+  slime: 'slime',
+  'slime-pool': 'slime-pool',
+  'slime-mini': 'baby-slime',
+  'rat-slime': 'rat-slime',
   'goblin-boss': 'goblin-boss',
   'goblin-grunt': 'goblin-grunt',
   'goblin-elite-joyrider': 'goblin-grunt',
@@ -710,7 +710,7 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   'molefolk-gravel-slinger': 'molefolk-burrower',
   'raccoon-boss': 'raccoons-boss',
   'raccoon-thief': 'raccoon-thief',
-  'raccoon-elite-heist-capo': 'raccoon-elite-heist-capo-v1',
+  'raccoon-elite-heist-capo': 'raccoon-elite-heist-capo',
   'raccoon-bottle-rocketeer': 'raccoon-thief',
   'geese-boss': 'geese-boss',
   'geese-honker': 'geese-honker',

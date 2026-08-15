@@ -191,7 +191,7 @@ function heightBandIndexFor(id: string): number {
  *    `crate-bottom-right` drawing `...-crate-stack-var-3` must be judged as a
  *    stack, not as a single crate;
  *  - but a generic sprite can be *less* specific than the prop id. A wall bracket
- *    torch drawing the shared `prop-torch-v1-var-8` is still a wall torch, and
+ *    torch drawing the shared `prop-torch-var-8` is still a wall torch, and
  *    judging it against the standing-brazier band reports a false failure.
  * Taking the most specific match over the union satisfies both.
  */

@@ -1,0 +1,108 @@
+{
+  "briefId": "brass-knuckles",
+  "spriteName": "brass-knuckles-var-2",
+  "assetPath": "generated/brass-knuckles-var-2.png",
+  "approvedAt": "2026-07-25T05:38:28.475Z",
+  "sourceRun": "generated/runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1",
+  "variantIndex": 2,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 32,
+      "y": 30,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "no opaque pixel in bottom 4 rows (first opaque row y=55)"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -6.03° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 2,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:37:26.805Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of improvised brass knuckles made from copper and brass pipes with screws and duct tape is clear and fits the Crawler design language. The combination of mundane materials and a weapon is consistent with the dark-fantasy salvage theme. However, the design could be slightly more exaggerated or grotesque to enhance its uniqueness."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of highlights and shadows is consistent with the references, but the duct tape could use slightly more texture to match the level of detail in the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of highlights and shadows is consistent with the references, but the duct tape could use slightly more texture to match the level of detail in the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a pair of brass knuckles made of mismatched copper and brass pipes, with visible screws and duct tape wrapping the grip. The design aligns well with the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, and the key elements of the design (knuckle holes, screws, and duct tape) are easily identifiable. There are no visual integrity defects."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief and style guidelines, with no major issues that would prevent its use in-game.",
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 2538,
+      "completionTokens": 355,
+      "totalTokens": 2893
+    }
+  },
+  "type": "weapon",
+  "contentHash": "5946787f4fa8d66c4a748b8807ef2f2671a6a21010a5c43070ce9b103e7f9c0a",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 7,
+    "width": 58,
+    "height": 49,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "briefId": "rune-axe",
+  "spriteName": "rune-axe-var-1",
+  "assetPath": "generated/rune-axe-var-1.png",
+  "approvedAt": "2026-07-25T05:42:08.351Z",
+  "sourceRun": "generated/runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa",
+  "variantIndex": 1,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 34,
+      "y": 23,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=36 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis 76.58° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:41:10.554Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The glowing runes and cobalt-blue crystal pommel provide a strong authored contradiction, combining primitive and magical elements. The design feels appropriately grounded for Floor 1 while still being distinct and memorable."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The outline weight, shading stops, and palette depth align well with the references. The sprite uses crisp edges and appropriate color contrast, though the glow effect could be slightly more refined to match the references' polish."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The outline weight, shading stops, and palette depth align well with the references. The sprite uses crisp edges and appropriate color contrast, though the glow effect could be slightly more refined to match the references' polish."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a heavy, single-bladed battle axe with glowing runes, a tattered leather-wrapped handle, and a cobalt-blue crystal pommel, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and instantly recognizable at game scale. The axe blade, handle, and pommel are distinct, and the glowing runes enhance visibility without compromising the overall readability."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major defects or off-style elements.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2542,
+      "completionTokens": 314,
+      "totalTokens": 2856
+    }
+  },
+  "type": "weapon",
+  "contentHash": "ce2258e1530d07d1a2edcde0ff4637461f049874e97034539bccb885e4bb3d11",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rune-axe-v1/2026-07-25T05-38-53-2c5d6ffa/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 13,
+    "y": 3,
+    "width": 38,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

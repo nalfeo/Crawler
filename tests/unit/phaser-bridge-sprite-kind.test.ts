@@ -250,10 +250,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
   const registry = buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
-      'slime-v1-var-2': {
-        briefId: 'slime-v1',
-        spriteName: 'slime-v1-var-2',
-        assetPath: 'generated/slime-v1-var-2.png',
+      'slime-var-2': {
+        briefId: 'slime',
+        spriteName: 'slime-var-2',
+        assetPath: 'generated/slime-var-2.png',
         approvedAt: '2026-06-30T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 2,
@@ -261,10 +261,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'slime-v1-var-9': {
-        briefId: 'slime-v1',
-        spriteName: 'slime-v1-var-9',
-        assetPath: 'generated/slime-v1-var-9.png',
+      'slime-var-9': {
+        briefId: 'slime',
+        spriteName: 'slime-var-9',
+        assetPath: 'generated/slime-var-9.png',
         approvedAt: '2026-06-30T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 9,
@@ -272,10 +272,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'baby-slime-v1-var-1': {
-        briefId: 'baby-slime-v1',
-        spriteName: 'baby-slime-v1-var-1',
-        assetPath: 'generated/baby-slime-v1-var-1.png',
+      'baby-slime-var-1': {
+        briefId: 'baby-slime',
+        spriteName: 'baby-slime-var-1',
+        assetPath: 'generated/baby-slime-var-1.png',
         approvedAt: '2026-06-30T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 1,
@@ -283,10 +283,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'baby-slime-v1-var-8': {
-        briefId: 'baby-slime-v1',
-        spriteName: 'baby-slime-v1-var-8',
-        assetPath: 'generated/baby-slime-v1-var-8.png',
+      'baby-slime-var-8': {
+        briefId: 'baby-slime',
+        spriteName: 'baby-slime-var-8',
+        assetPath: 'generated/baby-slime-var-8.png',
         approvedAt: '2026-06-30T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 8,
@@ -294,10 +294,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-nest-v2-var-0': {
-        briefId: 'rat-nest-v2',
-        spriteName: 'rat-nest-v2-var-0',
-        assetPath: 'generated/rat-nest-v2-var-0.png',
+      'rat-nest-var-0': {
+        briefId: 'rat-nest',
+        spriteName: 'rat-nest-var-0',
+        assetPath: 'generated/rat-nest-var-0.png',
         approvedAt: '2026-07-06T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 0,
@@ -305,10 +305,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-king-v1-var-7': {
-        briefId: 'rat-king-v1',
-        spriteName: 'rat-king-v1-var-7',
-        assetPath: 'generated/rat-king-v1-var-7.png',
+      'rat-king-var-7': {
+        briefId: 'rat-king',
+        spriteName: 'rat-king-var-7',
+        assetPath: 'generated/rat-king-var-7.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 7,
@@ -316,10 +316,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-queen-v1-var-7': {
-        briefId: 'rat-queen-v1',
-        spriteName: 'rat-queen-v1-var-7',
-        assetPath: 'generated/rat-queen-v1-var-7.png',
+      'rat-queen-var-7': {
+        briefId: 'rat-queen',
+        spriteName: 'rat-queen-var-7',
+        assetPath: 'generated/rat-queen-var-7.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 7,
@@ -327,10 +327,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-nest-v2-var-3': {
-        briefId: 'rat-nest-v2',
-        spriteName: 'rat-nest-v2-var-3',
-        assetPath: 'generated/rat-nest-v2-var-3.png',
+      'rat-nest-var-3': {
+        briefId: 'rat-nest',
+        spriteName: 'rat-nest-var-3',
+        assetPath: 'generated/rat-nest-var-3.png',
         approvedAt: '2026-07-06T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 3,
@@ -338,10 +338,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'slime-pool-v1-var-0': {
-        briefId: 'slime-pool-v1',
-        spriteName: 'slime-pool-v1-var-0',
-        assetPath: 'generated/slime-pool-v1-var-0.png',
+      'slime-pool-var-0': {
+        briefId: 'slime-pool',
+        spriteName: 'slime-pool-var-0',
+        assetPath: 'generated/slime-pool-var-0.png',
         approvedAt: '2026-07-06T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 0,
@@ -349,10 +349,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'slime-pool-v1-var-3': {
-        briefId: 'slime-pool-v1',
-        spriteName: 'slime-pool-v1-var-3',
-        assetPath: 'generated/slime-pool-v1-var-3.png',
+      'slime-pool-var-3': {
+        briefId: 'slime-pool',
+        spriteName: 'slime-pool-var-3',
+        assetPath: 'generated/slime-pool-var-3.png',
         approvedAt: '2026-07-06T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 3,
@@ -364,16 +364,16 @@ describe('pickGeneratedEnemyTextureKey', () => {
   });
 
   it('uses the stored roll to pick among multiple variants for a broad enemy family', () => {
-    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.1)).toBe('slime-v1-var-2');
-    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-v1-var-9');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.1)).toBe('slime-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-var-9');
   });
 
   it('lets a specific appearance key override the broad enemy family', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.1, 'slime-mini')).toBe(
-      'baby-slime-v1-var-1',
+      'baby-slime-var-1',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95, 'slime-mini')).toBe(
-      'baby-slime-v1-var-8',
+      'baby-slime-var-8',
     );
   });
 
@@ -384,40 +384,40 @@ describe('pickGeneratedEnemyTextureKey', () => {
 
   it('resolves rat monarch and slime-pool appearance keys to their generated briefs', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-king')).toBe(
-      'rat-king-v1-var-7',
+      'rat-king-var-7',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-queen')).toBe(
-      'rat-queen-v1-var-7',
+      'rat-queen-var-7',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.5, 'slime-pool')).toBe(
-      'slime-pool-v1-var-3',
+      'slime-pool-var-3',
     );
   });
 
   it('supports dedicated spawner generated families', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_rats_nest', 0.1)).toBe(
-      'rat-nest-v2-var-0',
+      'rat-nest-var-0',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_rats_nest', 0.95)).toBe(
-      'rat-nest-v2-var-3',
+      'rat-nest-var-3',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_slime_pool', 0.1)).toBe(
-      'slime-pool-v1-var-0',
+      'slime-pool-var-0',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_slime_pool', 0.95)).toBe(
-      'slime-pool-v1-var-3',
+      'slime-pool-var-3',
     );
   });
 });
 
 describe('generatedBriefIdForEnemy', () => {
   it('maps rat monarch and spawner appearance keys to explicit briefs', () => {
-    expect(generatedBriefIdForEnemy('enemy_rat', 'rat-king')).toBe('rat-king-v1');
-    expect(generatedBriefIdForEnemy('enemy_rat', 'rat-queen')).toBe('rat-queen-v1');
-    expect(generatedBriefIdForEnemy('enemy_slime', 'slime-pool')).toBe('slime-pool-v1');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'rat-king')).toBe('rat-king');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'rat-queen')).toBe('rat-queen');
+    expect(generatedBriefIdForEnemy('enemy_slime', 'slime-pool')).toBe('slime-pool');
     expect(generatedBriefIdForEnemy('enemy_rat', 'rats-nest')).toBe('rats-nest-v1');
-    expect(generatedBriefIdForEnemy('enemy_spawner_rats_nest')).toBe('rat-nest-v2');
-    expect(generatedBriefIdForEnemy('enemy_spawner_slime_pool')).toBe('slime-pool-v1');
+    expect(generatedBriefIdForEnemy('enemy_spawner_rats_nest')).toBe('rat-nest');
+    expect(generatedBriefIdForEnemy('enemy_spawner_slime_pool')).toBe('slime-pool');
   });
 
   it('resolves Floor-2 family bosses and grunts by identity appearance key', () => {
@@ -491,8 +491,8 @@ describe('generatedBriefIdForEnemy', () => {
 describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => {
   it('pins each welcome-room NPC to its distinct generated texture key', () => {
     // Three DISTINCT keys — the whole point of the feature (no shared villager).
-    expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('welcome-goon-v3-var-1');
-    expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('sweaty-merchant-v3-var-3');
+    expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('welcome-goon-var-1');
+    expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('sweaty-merchant-var-3');
     expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
     const keys = [
       pickGeneratedNpcTextureKey('tutorial-goon'),
@@ -538,12 +538,12 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
 
 describe('generatedBriefIdForHarvestable', () => {
   it('maps every Floor-1 harvestable def id to its versioned brief', () => {
-    expect(generatedBriefIdForHarvestable('crimson-mushroom')).toBe('crimson-mushroom-v1');
-    expect(generatedBriefIdForHarvestable('azure-mushroom')).toBe('azure-mushroom-v1');
-    expect(generatedBriefIdForHarvestable('sunpetal-flower')).toBe('sunpetal-flower-v1');
-    expect(generatedBriefIdForHarvestable('moonbloom-flower')).toBe('moonbloom-flower-v1');
-    expect(generatedBriefIdForHarvestable('frost-lichen')).toBe('frost-lichen-v1');
-    expect(generatedBriefIdForHarvestable('shadow-lichen')).toBe('shadow-lichen-v1');
+    expect(generatedBriefIdForHarvestable('crimson-mushroom')).toBe('crimson-mushroom');
+    expect(generatedBriefIdForHarvestable('azure-mushroom')).toBe('azure-mushroom');
+    expect(generatedBriefIdForHarvestable('sunpetal-flower')).toBe('sunpetal-flower');
+    expect(generatedBriefIdForHarvestable('moonbloom-flower')).toBe('moonbloom-flower');
+    expect(generatedBriefIdForHarvestable('frost-lichen')).toBe('frost-lichen');
+    expect(generatedBriefIdForHarvestable('shadow-lichen')).toBe('shadow-lichen');
   });
 
   it('resolves a briefId for EVERY registered harvestable def (no node left on a circle)', () => {
@@ -552,7 +552,8 @@ describe('generatedBriefIdForHarvestable', () => {
     for (const def of HARVESTABLE_DEFS) {
       const briefId = generatedBriefIdForHarvestable(def.id);
       expect(briefId, `harvestable "${def.id}" has no wired briefId`).toBeDefined();
-      expect(briefId).toBe(`${def.id}-v1`);
+      // Bare concept id, no `-vN` lineage tag (ADR 0086).
+      expect(briefId).toBe(def.id);
     }
   });
 
@@ -566,10 +567,10 @@ describe('pickGeneratedHarvestableTextureKey', () => {
   const registry = buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
-      'crimson-mushroom-v1-var-0': {
-        briefId: 'crimson-mushroom-v1',
-        spriteName: 'crimson-mushroom-v1-var-0',
-        assetPath: 'generated/crimson-mushroom-v1-var-0.png',
+      'crimson-mushroom-var-0': {
+        briefId: 'crimson-mushroom',
+        spriteName: 'crimson-mushroom-var-0',
+        assetPath: 'generated/crimson-mushroom-var-0.png',
         approvedAt: '2026-07-08T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 0,
@@ -577,10 +578,10 @@ describe('pickGeneratedHarvestableTextureKey', () => {
         sensorScore: '7/7',
         judgeScore: '4',
       },
-      'crimson-mushroom-v1-var-3': {
-        briefId: 'crimson-mushroom-v1',
-        spriteName: 'crimson-mushroom-v1-var-3',
-        assetPath: 'generated/crimson-mushroom-v1-var-3.png',
+      'crimson-mushroom-var-3': {
+        briefId: 'crimson-mushroom',
+        spriteName: 'crimson-mushroom-var-3',
+        assetPath: 'generated/crimson-mushroom-var-3.png',
         approvedAt: '2026-07-08T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 3,
@@ -588,10 +589,10 @@ describe('pickGeneratedHarvestableTextureKey', () => {
         sensorScore: '7/7',
         judgeScore: '4',
       },
-      'frost-lichen-v1-var-12': {
-        briefId: 'frost-lichen-v1',
-        spriteName: 'frost-lichen-v1-var-12',
-        assetPath: 'generated/frost-lichen-v1-var-12.png',
+      'frost-lichen-var-12': {
+        briefId: 'frost-lichen',
+        spriteName: 'frost-lichen-var-12',
+        assetPath: 'generated/frost-lichen-var-12.png',
         approvedAt: '2026-07-08T00:00:00.000Z',
         sourceRun: 'test',
         variantIndex: 12,
@@ -604,16 +605,16 @@ describe('pickGeneratedHarvestableTextureKey', () => {
 
   it('resolves a node def id to the texture key of its single wired variant', () => {
     expect(pickGeneratedHarvestableTextureKey(registry, 'frost-lichen', 0)).toBe(
-      'frost-lichen-v1-var-12',
+      'frost-lichen-var-12',
     );
   });
 
   it('uses the stored roll deterministically across multiple variants', () => {
     expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 0.1)).toBe(
-      'crimson-mushroom-v1-var-0',
+      'crimson-mushroom-var-0',
     );
     expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 0.95)).toBe(
-      'crimson-mushroom-v1-var-3',
+      'crimson-mushroom-var-3',
     );
   });
 

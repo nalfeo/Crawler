@@ -1,0 +1,165 @@
+{
+  "briefId": "ratfolk-elite-underboss",
+  "spriteName": "ratfolk-elite-underboss-var-0",
+  "assetPath": "generated/ratfolk-elite-underboss-var-0.png",
+  "approvedAt": "2026-08-01T05:07:31.488Z",
+  "sourceRun": "generated/runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 264,
+    "y": 297,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 264,
+      "y": 297,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 264,
+      "y": 297,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 9 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 99,
+          "y": 496
+        },
+        {
+          "x": 100,
+          "y": 496
+        },
+        {
+          "x": 99,
+          "y": 497
+        },
+        {
+          "x": 100,
+          "y": 497
+        },
+        {
+          "x": 313,
+          "y": 520
+        },
+        {
+          "x": 314,
+          "y": 520
+        },
+        {
+          "x": 315,
+          "y": 520
+        },
+        {
+          "x": 313,
+          "y": 521
+        },
+        {
+          "x": 314,
+          "y": 521
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 264,
+        "y": 297
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T04:52:56.430Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a ratfolk underboss in a pinstripe suit with a gold watch-chain and a menacing demeanor is both clear and well-executed. The combination of a traditionally formal outfit with the ratfolk's animalistic features creates a strong and memorable contradiction, fitting the Crawler aesthetic."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The use of 3-5 color stops and the crisp pixel art style are consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette depth. The use of 3-5 color stops and the crisp pixel art style are consistent with the references."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite captures the essence of the brief with the pinstripe suit, gold watch-chain, and menacing ratfolk features. However, the cane with the rat skull is missing, which is a key detail from the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The ratfolk's broad shoulders and suit are immediately recognizable."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a one-third turn, facing the camera in a way that is consistent with the references and allows for clear readability."
+    },
+    "bossPresence": {
+      "score": 3,
+      "rationale": "The sprite has a slightly larger and more imposing build than a standard mob, but it does not fully convey the presence of a boss. The lack of the cane also diminishes its potential as a distinctive boss character."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates the floor's theme with the pinstripe suit, gold watch-chain, and menacing demeanor, which align with the crime family aesthetic. However, the absence of the cane with the rat skull means it does not fully represent the theme's specific details."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4054,
+      "completionTokens": 508,
+      "totalTokens": 4562
+    }
+  },
+  "type": "enemy",
+  "contentHash": "19051e3e845cea5e5d5da6e403cf709b6b92370318e032887d6e64cd38fe0906",
+  "opaqueBounds": {
+    "x": 31,
+    "y": 30,
+    "width": 450,
+    "height": 507,
+    "canvasWidth": 512,
+    "canvasHeight": 567
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

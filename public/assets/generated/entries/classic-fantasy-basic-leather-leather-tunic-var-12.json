@@ -1,0 +1,122 @@
+{
+  "briefId": "classic-fantasy-basic-leather-leather-tunic",
+  "spriteName": "classic-fantasy-basic-leather-leather-tunic-var-12",
+  "assetPath": "generated/classic-fantasy-basic-leather-leather-tunic-var-12.png",
+  "approvedAt": "2026-07-30T00:49:20.325Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-leather-tunic-v1/2026-07-28T04-18-16-1cb7b9e1",
+  "variantIndex": 12,
+  "anchor": {
+    "x": 31,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 31,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 31,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 12,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:51:15.657Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The tunic design is simple and functional, fitting the grounded baseline of Floor 1. The visible stitching and worn texture add subtle character without overcomplicating the design."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The outline weight, shading depth, and palette are consistent with the references. The sprite uses clean edges and appropriate color stops, though the belt buckle could use slightly more definition to match the references' sharpness."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The outline weight, shading depth, and palette are consistent with the references. The sprite uses clean edges and appropriate color stops, though the belt buckle could use slightly more definition to match the references' sharpness."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a sleeveless, mid-thigh-length leather tunic with a V-neckline, stitched panels, and a belted waist as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The tunic reads immediately as wearable equipment."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is isolated and free of extraneous elements, adhering to the requirement for a standalone wearable icon."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates specific details from the theme design language, including plain oiled leather, visible saddle stitching, and a simple iron buckle. The materials and construction are unornamented and utilitarian, as required."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3233,
+      "completionTokens": 388,
+      "totalTokens": 3621
+    }
+  },
+  "type": null,
+  "contentHash": "866d060bb235d1dc771cf25df6c2e2d5025506d8b77c8664071bdf796a732b89",
+  "opaqueBounds": {
+    "x": 10,
+    "y": 3,
+    "width": 44,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-tunic-v1/2026-07-28T04-18-16-1cb7b9e1/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-tunic-v1/2026-07-28T04-18-16-1cb7b9e1/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-tunic-v1/2026-07-28T04-18-16-1cb7b9e1/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

@@ -1,0 +1,114 @@
+{
+  "briefId": "welcome-room-floor-plate-scuffed",
+  "spriteName": "welcome-room-floor-plate-scuffed-var-0",
+  "assetPath": "generated/welcome-room-floor-plate-scuffed-var-0.png",
+  "approvedAt": "2026-07-27T19:11:17.748Z",
+  "sourceRun": "generated/runs/welcome-room-floor-plate-scuffed-v2/2026-07-27T18-58-24-b893bd24",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 127,
+        "y": 127
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-27T18:59:39.601Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The candidate successfully conveys a scuffed, worn floor with drag marks and boot scuffs, consistent with the dark-fantasy dungeon setting. The wear details are subtle and believable, and the overall design feels authored and intentional."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, and shading. However, the grain texture could be slightly more consistent with the references' level of detail."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, and shading. However, the grain texture could be slightly more consistent with the references' level of detail."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The candidate fully meets the brief, including the full-bleed requirement, flat lighting, and the presence of severed details at the edges. The scuffs and drag marks are appropriately placed and rendered."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette and surface details are clear and readable at game scale. The scuffs and drag marks are distinct without overwhelming the base material, and the crop edges are seamless."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The candidate adheres to the brief and style requirements, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 5537,
+      "completionTokens": 318,
+      "totalTokens": 5855
+    }
+  },
+  "type": "tile",
+  "contentHash": "2dd91c695874392615024b4f5b09ffe6cb8e7cc6e7979108df7d40bdee42e7a4",
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed-v2\\2026-07-27T18-58-24-b893bd24\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed-v2\\2026-07-27T18-58-24-b893bd24\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-floor-plate-scuffed-v2\\2026-07-27T18-58-24-b893bd24\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

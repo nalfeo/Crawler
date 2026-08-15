@@ -1,0 +1,42 @@
+{
+  "briefId": "myconid-elite-don-agaric",
+  "spriteName": "myconid-elite-don-agaric-var-0",
+  "assetPath": "generated/myconid-elite-don-agaric-var-0.png",
+  "approvedAt": "2026-07-09T07:39:43.198Z",
+  "sourceRun": "generated/runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 30,
+    "y": 33,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 33,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "9b116c70f9f3c7e06bf7797369105224e52fe5ee84d55e58cac072a8b4b781c7",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 3,
+    "width": 52,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

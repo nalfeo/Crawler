@@ -1,0 +1,193 @@
+{
+  "briefId": "geese-gatling-gander",
+  "spriteName": "geese-gatling-gander-var-1",
+  "assetPath": "generated/geese-gatling-gander-var-1.png",
+  "approvedAt": "2026-08-01T05:52:59.897Z",
+  "sourceRun": "generated/runs/geese-gatling-gander-v1/2026-08-01T05-50-27-62c5941b",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 127,
+    "y": 271,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 271,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 271,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 40 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 144,
+          "y": 331
+        },
+        {
+          "x": 145,
+          "y": 331
+        },
+        {
+          "x": 146,
+          "y": 331
+        },
+        {
+          "x": 147,
+          "y": 331
+        },
+        {
+          "x": 148,
+          "y": 331
+        },
+        {
+          "x": 149,
+          "y": 331
+        },
+        {
+          "x": 150,
+          "y": 331
+        },
+        {
+          "x": 144,
+          "y": 332
+        },
+        {
+          "x": 145,
+          "y": 332
+        },
+        {
+          "x": 146,
+          "y": 332
+        },
+        {
+          "x": 147,
+          "y": 332
+        },
+        {
+          "x": 148,
+          "y": 332
+        },
+        {
+          "x": 149,
+          "y": 332
+        },
+        {
+          "x": 150,
+          "y": 332
+        },
+        {
+          "x": 144,
+          "y": 333
+        },
+        {
+          "x": 145,
+          "y": 333
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 127,
+        "y": 271
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:51:57.631Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a goose with a gatling gun is both absurd and threatening, fitting perfectly into the dark humor and offbeat style of Crawler. The combination of a menacing goose and heavy weaponry is a strong collision of the mundane and the monstrous."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of 3-5 color stops and the crisp pixel art style are consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The use of 3-5 color stops and the crisp pixel art style are consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a goose with a gatling gun under its left wing, with the wing supporting the gun and the other wing flared. The aggressive posture and smoking barrels match the brief perfectly."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and readable at game scale. The spread wings, arched neck, and gatling gun are immediately identifiable, and there are no visual integrity issues."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The goose is oriented at a three-quarters angle, with its body and head turned slightly toward the viewer, which is consistent with the desired pose orientation."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the goose and the gatling gun visible within the sprite boundaries."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific elements from the theme and floor design language, including the white feathers, orange accents, black machinery, and the menacing posture. The smoking barrels and glowing casings add to the improvised machinery aesthetic, while the goose's aggressive stance and open beak convey the Honk Mob's imperial and threatening nature."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4706,
+      "completionTokens": 501,
+      "totalTokens": 5207
+    }
+  },
+  "type": "enemy",
+  "contentHash": "239db68c443bb7c83585731d465445d032f0488237a3f72e8d480af8c38a4833",
+  "opaqueBounds": {
+    "x": 27,
+    "y": 27,
+    "width": 202,
+    "height": 440,
+    "canvasWidth": 256,
+    "canvasHeight": 494
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/geese-gatling-gander-v1/2026-08-01T05-50-27-62c5941b/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/geese-gatling-gander-v1/2026-08-01T05-50-27-62c5941b/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/geese-gatling-gander-v1/2026-08-01T05-50-27-62c5941b/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

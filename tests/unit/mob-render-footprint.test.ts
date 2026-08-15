@@ -62,7 +62,7 @@ function loadShard(spriteName: string): Shard {
 }
 
 /** Small Floor 1 rat art (original 64×64 canvas). */
-const RAT = loadShard('rat-v1-var-9');
+const RAT = loadShard('rat-var-9');
 /** Oversized Floor 2 boss art (512-class canvas) — the "HUGE mob" case. */
 const BOSS = loadShard('goblin-boss-var-0');
 

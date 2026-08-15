@@ -1,0 +1,142 @@
+{
+  "briefId": "gnome-wheelman",
+  "spriteName": "gnome-wheelman-var-3",
+  "assetPath": "generated/gnome-wheelman-var-3.png",
+  "approvedAt": "2026-08-01T17:33:25.310Z",
+  "sourceRun": "generated/runs/gnome-wheelman/2026-08-01T17-28-32-f656819c",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 135,
+    "y": 152,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 135,
+      "y": 152,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 135,
+      "y": 152,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 135,
+        "y": 152
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T17:29:55.517Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a gnome on a one-wheeled contraption with a large wrench is well-aligned with the Crawler design language. The combination of a whimsical vehicle and a serious weapon creates a humorous yet threatening contradiction. However, the design could push the 'improvised' aspect of the machine further to enhance the dark-fantasy industrial vibe."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. However, the shading on the wheel could be slightly more detailed to match the mechanical intricacy seen in the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. However, the shading on the wheel could be slightly more detailed to match the mechanical intricacy seen in the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a gnome on a one-wheeled contraption with a large wrench, as described in the brief. The gnome's attire and posture align with the prompt, and the wheel is prominent and mechanically detailed."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and immediately recognizable as a gnome on a one-wheeled vehicle. The oversized wrench is distinct and easily identifiable as the primary weapon."
+    },
+    "poseOrientation": {
+      "score": 4,
+      "rationale": "The gnome is leaning forward in an aggressive pose, which effectively conveys motion and intent. However, the pose is slightly more side-profile than the ideal three-quarter view."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure, including the gnome and the wheel, is fully framed and visible within the sprite. The composition is complete and well-contained."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates several elements from the Cog Combine theme, such as the brass/blue accents, goggles, and mechanical wheel. However, the wheel's design could be more detailed to emphasize the salvaged and improvised nature of the machine."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 4414,
+      "completionTokens": 518,
+      "totalTokens": 4932
+    }
+  },
+  "type": "enemy",
+  "contentHash": "8f78931702448657ab8eef3752c6f5e136481ec1833a2547aefd3c95b3d45d05",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 226,
+    "height": 254,
+    "canvasWidth": 256,
+    "canvasHeight": 284
+  },
+  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\gnome-wheelman\\2026-08-01T17-28-32-f656819c\\postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\gnome-wheelman\\2026-08-01T17-28-32-f656819c\\postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\gnome-wheelman\\2026-08-01T17-28-32-f656819c\\postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "enemy",
+      "fantasy",
+      "medieval",
+      "industrial",
+      "dungeon",
+      "small",
+      "asymmetric",
+      "arcane",
+      "cave",
+      "dark",
+      "tool",
+      "mechanical"
+    ]
+  }
+}

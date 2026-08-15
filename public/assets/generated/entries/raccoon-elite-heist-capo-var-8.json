@@ -1,0 +1,126 @@
+{
+  "briefId": "raccoon-elite-heist-capo",
+  "spriteName": "raccoon-elite-heist-capo-var-8",
+  "assetPath": "generated/raccoon-elite-heist-capo-var-8.png",
+  "approvedAt": "2026-08-01T05:57:30.342Z",
+  "sourceRun": "generated/runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 121,
+    "y": 161,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 121,
+      "y": 161,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 121,
+      "y": 161,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 121,
+        "y": 161
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 8,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:56:20.849Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a raccoon in a tailored outfit with a beret and blueprint tube fits well within the Crawler's darkly humorous and offbeat design language. The combination of a sleek, professional appearance with the mischievous raccoon identity is a strong contradiction. However, the criminal sophistication could be pushed further with more exaggerated details or accessories."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite's outline, shading, and color palette are consistent with the references. However, the shading could be slightly more refined to match the depth and texture of the approved sprites."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite's outline, shading, and color palette are consistent with the references. However, the shading could be slightly more refined to match the depth and texture of the approved sprites."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite captures the key elements of the brief, including the raccoon in a turtleneck, beret, and gloves, holding a blueprint tube. However, the silver watch and sharp white face paint stripes are not clearly visible, which slightly detracts from the match."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and recognizable as a raccoon in a sleek outfit. However, the blueprint tube could be more distinct, as it blends slightly with the background in the readability composite."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a three-quarters turn, which is consistent with the references and provides a dynamic and readable pose."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the body visible and well-contained within the sprite boundaries."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates elements from the Trash Panda Family theme, such as the raccoon mask, sleek streetwear, and the blueprint tube. However, the silver watch and sharp white face paint stripes are not clearly visible, which slightly weakens the adherence to the theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.85,
+    "usage": {
+      "promptTokens": 4121,
+      "completionTokens": 488,
+      "totalTokens": 4609
+    }
+  },
+  "type": "enemy",
+  "contentHash": "649daab672dd6a1588b8736cb97316605690f32b2468a2e6a6ce3a7d39f0777f",
+  "opaqueBounds": {
+    "x": 17,
+    "y": 17,
+    "width": 222,
+    "height": 286,
+    "canvasWidth": 256,
+    "canvasHeight": 320
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/raccoon-elite-heist-capo-v1/2026-08-01T05-53-10-9e2487cb/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

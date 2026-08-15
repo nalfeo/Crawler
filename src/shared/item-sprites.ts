@@ -28,10 +28,8 @@
  * Layer: pure `src/shared` — no Phaser, no world mutation, randomness only via
  * `SeededRandom`.
  */
-import { getEquipmentDefForItem, getEquippableItemIds } from './equipmentDefs.js';
+import { getEquipmentDefForItem } from './equipmentDefs.js';
 import type { GeneratedSpriteEntry, GeneratedSpriteRegistry } from './generated-assets.js';
-import { HARVESTABLE_DEFS } from './harvestableDefs.js';
-import { ITEM_CATALOG } from './items.js';
 import { SeededRandom } from './random.js';
 import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from './data/floor2-equipment-art.js';
 import { themedArtConceptsFor } from './data/equipment-theme-sets.js';
@@ -191,7 +189,7 @@ function itemSpriteConceptPlan(itemId: string): ItemSpriteConceptPlan {
     const runtimeKey = f2.get(concept);
     if (runtimeKey !== undefined) {
       // Also push the bare slug (last path segment of runtimeKey) so legacy
-      // versioned entries are still found (e.g. `chain-hauberk` for `chain-hauberk-v3`).
+      // versioned entries are still found (e.g. `chain-hauberk` for `chain-hauberk`).
       const slug = runtimeKey.slice(runtimeKey.lastIndexOf('/') + 1);
       if (!seen.has(slug)) {
         extra.push(slug);
@@ -225,73 +223,6 @@ function itemSpriteConceptPlan(itemId: string): ItemSpriteConceptPlan {
     concepts: [...base, ...extra, ...themed],
     themedFromIndex: base.length + extra.length,
   };
-}
-
-/**
- * The set of names that identify a **gameplay item** for art-naming purposes:
- * every `ItemDef.id` plus every equipment `weaponId` alias (e.g. `baseball-bat`,
- * which backs the `bone-club` item). Art approved for any of these concepts must
- * be keyed BARE (`<name>-var-N`), never versioned (`<name>-vN-var-N`) — the
- * `-vN` lineage tag is a generation-time concern that must not leak into an
- * item's consumer-facing key (items resolve by item id; ADR 0051).
- *
- * This is keyed on gameplay identity, NOT sprite `type`: the item set spans
- * `material`/`weapon`/`consumable`/… `type`s and even `character`-typed art
- * (`classified-dossier`), so a `type === 'item'` gate would miss exactly the
- * concepts being normalized.
- */
-let cachedItemArtIdentitySet: ReadonlySet<string> | null = null;
-
-export function itemArtIdentitySet(): ReadonlySet<string> {
-  if (cachedItemArtIdentitySet !== null) {
-    return cachedItemArtIdentitySet;
-  }
-  const identity = new Set<string>();
-  for (const item of ITEM_CATALOG) {
-    identity.add(item.id);
-  }
-  for (const itemId of getEquippableItemIds()) {
-    const weaponId = getEquipmentDefForItem(itemId)?.weaponId;
-    if (weaponId !== undefined) {
-      identity.add(weaponId);
-    }
-  }
-  // Harvestable world-node ids (e.g. `azure-mushroom`) also register as Materials
-  // ItemDefs, but their generated art ships as a VERSIONED world-node key
-  // (`<id>-vN`) owned by the harvestable render path — the same pinned-key
-  // contract enemies use, NOT the bare item-icon contract (ADR 0051). Excluding
-  // them here keeps the approve-time recurrence guard from bare-keying (and thus
-  // colliding with / breaking) that live world-node art. The inventory Materials
-  // icon still resolves fine: `resolveItemSprite` is version-tolerant and matches
-  // the versioned key at runtime regardless of this set.
-  //
-  // Only exclude the itemId when it equals the harvestable node id (e.g.
-  // `azure-mushroom` → `azure-mushroom`). When they differ (e.g. `iron-vein` →
-  // `iron-ore`), the item ships its own separate icon art and must stay in the
-  // identity set so it is bare-keyed normally.
-  for (const harvestable of HARVESTABLE_DEFS) {
-    if (harvestable.itemId === harvestable.id) {
-      identity.delete(harvestable.itemId);
-    }
-  }
-  cachedItemArtIdentitySet = identity;
-  return identity;
-}
-
-/**
- * Canonicalize a brief/sprite name for an item concept: when `briefId` is
- * `<base>-vN` and `<base>` is a known item identity (see `itemArtIdentitySet`),
- * strip the trailing `-vN` and return the bare `<base>`; otherwise return
- * `briefId` unchanged. This is what keeps approve-time item art bare so it
- * resolves by item id, while genuinely non-item concepts (enemies, tiles,
- * props) keep their `-vN` lineage. Only a single trailing `-vN` is stripped.
- */
-export function canonicalItemBriefId(briefId: string, identity: ReadonlySet<string>): string {
-  const match = /^(.+)-v\d+$/.exec(briefId);
-  if (match !== null && identity.has(match[1]!)) {
-    return match[1]!;
-  }
-  return briefId;
 }
 
 /**

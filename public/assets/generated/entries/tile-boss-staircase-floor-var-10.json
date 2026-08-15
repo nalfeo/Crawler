@@ -1,0 +1,42 @@
+{
+  "briefId": "tile-boss-staircase-floor",
+  "spriteName": "tile-boss-staircase-floor-var-10",
+  "assetPath": "generated/tile-boss-staircase-floor-var-10.png",
+  "approvedAt": "2026-07-08T00:10:12.387Z",
+  "sourceRun": "generated/runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229",
+  "variantIndex": 10,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "type": null,
+  "contentHash": "0e9c5b4dbbdedb56c7af31355f7847f3fe977e1e5de0293d1fdd460c0a5ec50c",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/tile-boss-staircase-floor-v2/2026-07-07T22-12-08-94a50229/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 7,
+    "y": 7,
+    "width": 114,
+    "height": 50,
+    "canvasWidth": 128,
+    "canvasHeight": 64
+  }
+}

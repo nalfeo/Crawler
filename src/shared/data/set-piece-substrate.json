@@ -16,12 +16,12 @@
     "silently drift from what the game actually stamps."
   ],
   "default": {
-    "floorSpriteId": "tile-stone-floor-v2-var-2",
-    "wallSpriteId": "tile-stone-wall-v1-var-5"
+    "floorSpriteId": "tile-stone-floor-var-2",
+    "wallSpriteId": "tile-stone-wall-var-5"
   },
   "bySetPiece": {
     "welcome-room": {
-      "floorSpriteId": "tile-safe-room-floor-v1-var-0",
+      "floorSpriteId": "tile-safe-room-floor-var-0",
       "note": "Carved STONE_FLOOR then repainted to SAFE_ROOM_FLOOR by tagRoomAsSafe."
     }
   }

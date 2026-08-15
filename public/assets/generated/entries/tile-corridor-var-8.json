@@ -1,0 +1,41 @@
+{
+  "briefId": "tile-corridor",
+  "spriteName": "tile-corridor-var-8",
+  "assetPath": "generated/tile-corridor-var-8.png",
+  "approvedAt": "2026-07-06T17:30:41.207Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-9NqpaX/tile-corridor-v1/2026-07-03T22-55-56-f7c13af2",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "2",
+  "type": null,
+  "contentHash": "caa759188686b98e34ba87a8fbaa9cce1f23dca7add2a3525d34385075e7fb07",
+  "postprocessOverrideProfilePath": null,
+  "effectivePipelineSnapshotPath": null,
+  "effectivePipelineSnapshotYamlPath": null,
+  "effectiveAnchorSource": "derived",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

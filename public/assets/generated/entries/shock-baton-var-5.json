@@ -1,0 +1,118 @@
+{
+  "briefId": "shock-baton",
+  "spriteName": "shock-baton-var-5",
+  "assetPath": "generated/shock-baton-var-5.png",
+  "approvedAt": "2026-07-25T05:38:38.141Z",
+  "sourceRun": "generated/runs/shock-baton-v1/2026-07-25T05-35-46-52328315",
+  "variantIndex": 5,
+  "anchor": {
+    "x": 29,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 29,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 30,
+      "y": 28,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 29,
+        "y": 60
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 5,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:38:04.206Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a shock baton made from a twisted wrench with crude welding and crackling electricity fits the Crawler design language well. The contradiction between the brutish, improvised construction and the high-tech electricity is clear and effective. However, the electricity arcs could be more integrated into the design to enhance the visual impact."
+    },
+    "referenceStyleMatch": {
+      "score": 3,
+      "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the electricity effect feels slightly out of place compared to the references, as it lacks the same level of polish and integration."
+    },
+    "styleMatch": {
+      "score": 3,
+      "rationale": "The rendering is close to the reference style, with appropriate outline weight, shading, and palette depth. However, the electricity effect feels slightly out of place compared to the references, as it lacks the same level of polish and integration."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a shock baton made from a twisted wrench with a rubberized grip and visible electricity arcs, matching the brief perfectly."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and recognizable at game scale, and the electricity effect adds a dynamic element. However, the electricity could be refined to avoid blending too much with the background in the readability composite."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, but has minor issues in design language and style match that could be improved.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2525,
+      "completionTokens": 341,
+      "totalTokens": 2866
+    }
+  },
+  "type": "weapon",
+  "contentHash": "d6253f334aae51a7e0e49105ef99ca64a1c5fb2c4b887ff617c83186dcb32bda",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/shock-baton-v1/2026-07-25T05-35-46-52328315/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/shock-baton-v1/2026-07-25T05-35-46-52328315/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/shock-baton-v1/2026-07-25T05-35-46-52328315/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 3,
+    "width": 33,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

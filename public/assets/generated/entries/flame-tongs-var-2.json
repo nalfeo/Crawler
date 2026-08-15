@@ -1,0 +1,108 @@
+{
+  "briefId": "flame-tongs",
+  "spriteName": "flame-tongs-var-2",
+  "assetPath": "generated/flame-tongs-var-2.png",
+  "approvedAt": "2026-07-25T05:34:53.405Z",
+  "sourceRun": "generated/runs/flame-tongs-v1/2026-07-25T05-31-20-45a06703",
+  "variantIndex": 2,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 30,
+      "y": 33,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=24 is outside ±3 of center 32"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -72.64° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:33:07.825Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of industrial tongs with glowing molten tips is clear and fits the dark-fantasy salvage theme of Crawler. The rusted handle and scorched leather wrapping add to the industrial aesthetic, and the glowing tips provide a striking visual contradiction."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a hard 1-pixel outline, appropriate shading stops, and a consistent palette. The rendering style aligns well with the references, though the glow effect could be slightly more refined to match the polish of the references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a hard 1-pixel outline, appropriate shading stops, and a consistent palette. The rendering style aligns well with the references, though the glow effect could be slightly more refined to match the polish of the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a pair of industrial tongs with glowing orange tips, rusted metal, and scorched leather wrappings, as described in the brief. The tongs are slightly open, indicating readiness to grab or ignite targets."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and distinct at game scale, with the open tongs and glowing tips being immediately recognizable. However, the glow effect could be slightly more pronounced to enhance visibility on darker backgrounds."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2542,
+      "completionTokens": 344,
+      "totalTokens": 2886
+    }
+  },
+  "type": "weapon",
+  "contentHash": "1fe7be83bc8d37df5b574792d9b9be9a4adf55112399e094a4826eac18d21147",
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/flame-tongs-v1/2026-07-25T05-31-20-45a06703/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/flame-tongs-v1/2026-07-25T05-31-20-45a06703/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/flame-tongs-v1/2026-07-25T05-31-20-45a06703/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 17,
+    "y": 3,
+    "width": 30,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

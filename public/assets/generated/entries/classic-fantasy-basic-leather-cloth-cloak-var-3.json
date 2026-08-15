@@ -1,0 +1,122 @@
+{
+  "briefId": "classic-fantasy-basic-leather-cloth-cloak",
+  "spriteName": "classic-fantasy-basic-leather-cloth-cloak-var-3",
+  "assetPath": "generated/classic-fantasy-basic-leather-cloth-cloak-var-3.png",
+  "approvedAt": "2026-07-30T00:38:34.379Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-cloth-cloak-v2/2026-07-28T04-14-02-ce3b72f2",
+  "variantIndex": 3,
+  "anchor": {
+    "x": 30,
+    "y": 60,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 30,
+      "y": 60,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 34,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 30,
+        "y": 60
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 3,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:45:12.517Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The sprite captures the utilitarian and durable aesthetic described in the brief, with a heavy, protective silhouette and plain materials. The reinforced hood and toggle closure are visible, but the design lacks a strong authored contradiction or dark humor element."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, shading depth, and palette treatment. The crisp edges and consistent pixel art style align perfectly with the reference sprites."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, shading depth, and palette treatment. The crisp edges and consistent pixel art style align perfectly with the reference sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts the described cloak, including the reinforced hood, visible stitching, and toggle closure. The silhouette emphasizes weight and durability as intended."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and instantly recognizable at game scale, with no visual integrity defects or blending issues on the dark floor tile."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is isolated and presented as a wearable icon without any extraneous elements or context."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates plain brown leather, visible saddle stitching, and a utilitarian iron toggle closure, adhering closely to the theme design language. However, the absence of additional thematic details like coarse linen backing or reinforced hem slightly limits adherence."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3232,
+      "completionTokens": 385,
+      "totalTokens": 3617
+    }
+  },
+  "type": null,
+  "contentHash": "84c6f15b3d4405085c07e9de703dd172900a60e9757f0799c31f4e8c73a3ccae",
+  "opaqueBounds": {
+    "x": 6,
+    "y": 3,
+    "width": 51,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-cloth-cloak-v2/2026-07-28T04-14-02-ce3b72f2/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-cloth-cloak-v2/2026-07-28T04-14-02-ce3b72f2/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-cloth-cloak-v2/2026-07-28T04-14-02-ce3b72f2/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

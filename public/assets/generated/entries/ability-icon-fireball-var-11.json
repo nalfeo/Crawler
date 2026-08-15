@@ -1,0 +1,39 @@
+{
+  "briefId": "ability-icon-fireball",
+  "spriteName": "ability-icon-fireball-var-11",
+  "assetPath": "generated/ability-icon-fireball-var-11.png",
+  "approvedAt": "2026-07-03T01:46:26.152Z",
+  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-npDHaX/ability-icon-fireball-v1/2026-07-02T22-58-35-6a096c6b",
+  "variantIndex": 11,
+  "anchor": {
+    "x": 27,
+    "y": 60,
+    "source": "manual"
+  },
+  "anchors": {
+    "hold": {
+      "x": 27,
+      "y": 60,
+      "source": "manual"
+    },
+    "centerOfGravity": {
+      "x": 31,
+      "y": 34,
+      "source": "manual"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "type": "item",
+  "contentHash": "ea2aeec0448968851516b42820bae27f0ec0665257b7d05d55d33445ee6ffed6",
+  "effectiveAnchorSource": "manual",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 5,
+    "y": 3,
+    "width": 54,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

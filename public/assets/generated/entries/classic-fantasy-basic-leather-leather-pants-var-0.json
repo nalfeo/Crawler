@@ -1,0 +1,111 @@
+{
+  "briefId": "classic-fantasy-basic-leather-leather-pants",
+  "spriteName": "classic-fantasy-basic-leather-leather-pants-var-0",
+  "assetPath": "generated/classic-fantasy-basic-leather-leather-pants-var-0.png",
+  "approvedAt": "2026-07-30T00:59:13.724Z",
+  "sourceRun": "generated/runs/classic-fantasy-basic-leather-leather-pants-v1/2026-07-28T06-49-28-56d2aab0",
+  "variantIndex": 0,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 31,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=46 is outside ±8 of center 32"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-29T16:56:15.223Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept aligns well with Crawler's grounded dark-fantasy aesthetic. The leather pants are practical and unornamented, with visible stitching and a plain iron buckle, fitting the theme's utilitarian vibe. However, the design lacks a strong authored contradiction."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, shading depth, and palette treatment. The crisp edges and consistent pixel art style integrate seamlessly with the reference sprites."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, shading depth, and palette treatment. The crisp edges and consistent pixel art style integrate seamlessly with the reference sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts slim, tapered leather pants with panel stitching, a plain iron buckle, and slightly flared cuffs, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette reads clearly at game scale on a dark floor tile. The shape and details are immediately recognizable as leather pants."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is presented as an isolated wearable icon without any extraneous elements, adhering to the brief's requirements."
+    },
+    "themeAdherence": {
+      "score": 4,
+      "rationale": "The sprite incorporates mid-brown oiled leather, visible stitching, and a plain iron buckle, which are specific details from the theme design language. However, the absence of additional distinguishing features slightly limits adherence."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 3211,
+      "completionTokens": 389,
+      "totalTokens": 3600
+    }
+  },
+  "type": null,
+  "contentHash": "d58b8034e9bff6619ec1b38385dac006e02a575cee1a90cab680524f16b4eb01",
+  "opaqueBounds": {
+    "x": 9,
+    "y": 3,
+    "width": 46,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-pants-v1/2026-07-28T06-49-28-56d2aab0/postprocess.overrides.json",
+  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-pants-v1/2026-07-28T06-49-28-56d2aab0/postprocess.pipeline.effective.json",
+  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/classic-fantasy-basic-leather-leather-pants-v1/2026-07-28T06-49-28-56d2aab0/postprocess.pipeline.effective.yaml",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right"
+}
