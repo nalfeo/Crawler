@@ -429,9 +429,9 @@ export const RETREAT_REPICK_ARRIVE_FT = 10;
 // bleeding 120 HP). Adding a subordinate progress term makes the kite run
 // ALONG the route: the player is ~2.4x faster than a rat, so fleeing toward the
 // objective both breaks contact and banks progress instead of undoing it.
-// Weight is deliberately well under 1 so open space still decides the direction —
-// this is a tiebreak among comparably safe lanes, never a licence to kite into
-// the swarm.
+// Weight is an explicit one-for-one trade: one foot of objective progress can
+// offset one foot of enemy spacing, so retreat banks route progress while the
+// open-space term still rejects lanes that run into the swarm.
 export const RETREAT_OBJECTIVE_BIAS_WEIGHT = 1;
 // The remembered progression objective is only used while it is this fresh
 // (frames). Retreat and progression interleave within ~1 s, so a short memory is

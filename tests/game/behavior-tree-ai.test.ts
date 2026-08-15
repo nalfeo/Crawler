@@ -605,7 +605,7 @@ describe('BehaviorTreeAI', () => {
 
     // Sustained lethal chip across the damage window, holding HP well above the
     // 10% remaining-HP retreatThreshold the whole time.
-    const frames = RETREAT_DAMAGE_WINDOW_FRAMES - 1;
+    const frames = RETREAT_DAMAGE_WINDOW_FRAMES;
     for (let frame = 1; frame <= frames; frame += 1) {
       world.frameCount += 1;
       world.stores.health.current[player] = 60 - (40 * frame) / frames;
