@@ -27,6 +27,8 @@ import {
   findSilentReverts,
   findUnusedAcks,
   parseAckTrailers,
+  parseDiffLineChanges,
+  sideAdditionsSubsumedByOther,
 } from './silent-reverts-lib.js';
 
 const BASE_REF = process.env.SILENT_REVERT_BASE_REF ?? 'origin/main';
@@ -180,6 +182,31 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
           const sideBlob = blob(side, path, cwd);
           const otherBlob = blob(other, path, cwd);
           const resultBlob = blob(sha, path, cwd);
+          const mergeTreeSubsumed =
+            mergedTreeRev !== null &&
+            resultBlob === otherBlob &&
+            blob(mergedTreeRev, path, cwd) === otherBlob;
+          // The merge-tree check only fires when the two sides' edits do not
+          // textually conflict. When they DO conflict (e.g. both append a row
+          // to the same table) but the chosen resolution still carries every
+          // line the incoming side added, fall back to a line-level check —
+          // see `sideAdditionsSubsumedByOther` for why this is conservative.
+          const lineLevelSubsumed =
+            !mergeTreeSubsumed &&
+            resultBlob === otherBlob &&
+            (() => {
+              const sideDiff = parseDiffLineChanges(
+                gitOrNull(['diff', '--no-color', base, side, '--', path], cwd) ?? '',
+              );
+              const otherDiff = parseDiffLineChanges(
+                gitOrNull(['diff', '--no-color', base, other, '--', path], cwd) ?? '',
+              );
+              return sideAdditionsSubsumedByOther(
+                sideDiff.added,
+                sideDiff.removed,
+                otherDiff.added,
+              );
+            })();
           return {
             path,
             base: baseBlob,
@@ -187,10 +214,7 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
             other: otherBlob,
             result: resultBlob,
             head: blob(headRef, path, cwd),
-            sideAlreadyPresentInOther:
-              mergedTreeRev !== null &&
-              resultBlob === otherBlob &&
-              blob(mergedTreeRev, path, cwd) === otherBlob,
+            sideAlreadyPresentInOther: mergeTreeSubsumed || lineLevelSubsumed,
             // Content-based mainline grading: does main STILL hold what this
             // discard threw away? Catches the older-main-tip shape that no
             // ancestry test can see (see gradeSeverity).

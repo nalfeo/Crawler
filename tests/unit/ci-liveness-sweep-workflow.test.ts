@@ -25,7 +25,10 @@ function loadWorkflow(): { doc: WorkflowDoc; raw: string } {
 describe('CI liveness sweep workflow', () => {
   it('runs on a periodic cadence and manual dispatch', () => {
     const { doc } = loadWorkflow();
-    expect(doc.on?.schedule?.[0]?.cron).toBe('*/10 * * * *');
+    expect(doc.on?.schedule).toEqual([
+      { cron: '*/10 * * * *' },
+      { cron: '5,15,25,35,45,55 * * * *' },
+    ]);
     expect(doc.on?.workflow_dispatch).toBeDefined();
   });
 

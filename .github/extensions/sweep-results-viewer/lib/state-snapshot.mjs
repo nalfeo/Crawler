@@ -26,6 +26,25 @@ function safeLocalRun(run) {
   };
 }
 
+function safeRepositoryBranch(branch) {
+  if (!branch) return null;
+  return { name: branch.name, ref: branch.ref, local: branch.local };
+}
+
+function safeRepositoryArtifact(artifact) {
+  if (!artifact) return null;
+  return {
+    path: artifact.path,
+    name: artifact.name,
+    kind: artifact.kind,
+    generatedAt: artifact.generatedAt,
+    commit: artifact.commit ?? null,
+    winRate: artifact.winRate ?? null,
+    totalWins: artifact.totalWins ?? null,
+    totalRuns: artifact.totalRuns ?? null,
+  };
+}
+
 function stateSnapshot(state, pollIntervalMs) {
   return {
     source: state.source,
@@ -34,13 +53,18 @@ function stateSnapshot(state, pollIntervalMs) {
     localRuns: state.localRuns.map(safeLocalRun),
     localErrors: state.localErrors,
     selectedLocalPath: state.selectedLocalPath,
+    repositoryBranches: (state.repositoryBranches ?? []).map(safeRepositoryBranch),
+    selectedRepositoryBranch: safeRepositoryBranch(state.selectedRepositoryBranch),
+    repositoryArtifacts: (state.repositoryArtifacts ?? []).map(safeRepositoryArtifact),
+    repositoryErrors: state.repositoryErrors ?? [],
+    selectedRepositoryPath: state.selectedRepositoryPath ?? null,
     repository: state.context?.repository ?? null,
     branch: state.context?.branch ?? null,
     sessionId: state.sessionId,
     runs: state.runs.map(safeRun),
     selectedRun: safeRun(state.selectedRun),
     selectionReason: state.selectionReason,
-    workflowType: state.selectedRun?.workflowType ?? null,
+    workflowType: state.repositoryArtifactKind ?? state.selectedRun?.workflowType ?? null,
     expectedWeapons: state.expectedWeapons,
     availableWeapons: state.availableWeapons,
     expiredArtifactCount: state.expiredArtifactCount,
@@ -56,4 +80,4 @@ function stateSnapshot(state, pollIntervalMs) {
   };
 }
 
-export { safeLocalRun, safeRun, stateSnapshot };
+export { safeLocalRun, safeRepositoryArtifact, safeRepositoryBranch, safeRun, stateSnapshot };

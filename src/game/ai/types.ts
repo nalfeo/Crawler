@@ -510,6 +510,57 @@ export interface LootEfficiencyMetrics {
   combinedRatio: number;
 }
 
+export type RewardEventKind = 'level_up' | 'quest_complete' | 'boss_kill' | 'rare_loot';
+
+/** Timestamped reward milestone observed during a run. */
+export interface RewardEvent {
+  readonly kind: RewardEventKind;
+  readonly sourceId: string;
+  readonly gameTimeMs: number;
+  readonly activeTimeMs: number;
+}
+
+/** Ordered reward milestones and the safe-room-adjusted duration they cover. */
+export interface RewardEventSummary {
+  readonly activeDurationMs: number;
+  readonly events: readonly RewardEvent[];
+}
+
+export type ItemInteractionKind = 'starter_weapon' | 'spell' | 'generated_equipment';
+
+/** Per-run opportunity, choice, and contribution evidence for one stable catalog item. */
+export interface ItemInteractionEntry {
+  /** Cross-run stable identity. Generated entries exclude rolled values and run IDs. */
+  readonly catalogKey: string;
+  readonly kind: ItemInteractionKind;
+  readonly offeredCount: number;
+  readonly selectableExposureCount: number;
+  readonly selectionCount: number;
+  readonly activationCount: number;
+  readonly activeTimeMs: number;
+}
+
+/** Per-run item opportunities, choices, active time, and unique activations. */
+export interface ItemInteractionSummary {
+  readonly items: readonly ItemInteractionEntry[];
+  readonly uniqueActivationCount: number;
+  readonly dominantActivationCount: number;
+}
+
+/** Raw per-run performance rates suitable for population-level analysis. */
+export interface RunPerformanceMetrics {
+  readonly activeClearTimeMs: number;
+  readonly damagePerActiveMinute: number;
+  readonly killsPerActiveMinute: number;
+  readonly dominantItemUsageShare: number;
+}
+
+/** Future hook for a permanent-upgrade system; absent until that system exists. */
+export interface MetaProgressionMetrics {
+  readonly permanentPowerBefore: number;
+  readonly permanentPowerAfter: number;
+}
+
 /**
  * Run statistics for performance tracking.
  */
@@ -532,7 +583,7 @@ export interface RunStats {
   /** Final score */
   finalScore: number;
   /** Run outcome */
-  outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'error';
+  outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'error' | 'quit';
   /** Error message if outcome is 'error' */
   error?: string;
   /**
@@ -607,4 +658,12 @@ export interface RunStats {
   lootEfficiency?: LootEfficiencyMetrics;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
+  /** Timestamped reward milestones captured by the deterministic headless runner. */
+  rewardEvents?: RewardEventSummary;
+  /** Offer, selection, activation, and active-time evidence by stable item identity. */
+  itemInteractions?: ItemInteractionSummary;
+  /** Raw run-level rates for population-based performance analysis. */
+  runPerformance?: RunPerformanceMetrics;
+  /** Future permanent-power hook; omitted while meta-progression remains deferred. */
+  metaProgression?: MetaProgressionMetrics;
 }

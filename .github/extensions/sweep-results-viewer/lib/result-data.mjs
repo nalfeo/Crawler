@@ -1,4 +1,4 @@
-const VALID_RUN_OUTCOMES = new Set(['victory', 'death', 'timeout', 'stalled', 'error']);
+const VALID_RUN_OUTCOMES = new Set(['victory', 'death', 'timeout', 'stalled', 'error', 'quit']);
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

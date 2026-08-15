@@ -370,40 +370,59 @@ test('reports every matched exception in the success diagnostic', (t) => {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'npm-audit-test-'));
   t.after(() => rmSync(tempDir, { recursive: true, force: true }));
   const fakeNpmCli = path.join(tempDir, 'fake-npm-cli.cjs');
+  // The live AUDIT_EXCEPTIONS list churns as advisories get fixed/expire (and is
+  // empty whenever nothing is excepted), so this end-to-end diagnostic test
+  // injects its own synthetic, far-future exception into a copy of the script
+  // rather than depending on any specific package's current state.
+  const cliException = {
+    packageName: 'gamma-pkg',
+    source: 5003,
+    url: 'https://github.com/advisories/GHSA-gamma-0003',
+    expiresOn: '2099-12-31',
+    reason: 'Synthetic fixture: CLI success-diagnostic coverage only.',
+  };
+  const scriptCopy = path.join(tempDir, 'npm-audit.mjs');
+  const injectedSource = readFileSync(SCRIPT, 'utf8').replace(
+    /export const AUDIT_EXCEPTIONS = (\[\]|\[[\s\S]*?\n\]);/,
+    () => `export const AUDIT_EXCEPTIONS = ${JSON.stringify([cliException], null, 2)};`,
+  );
+  // Fail fast if the declaration shape drifts: a silent no-op replace would run
+  // this test against the real list and reintroduce the coupling it removes.
+  assert.deepEqual(extractAuditExceptionsFromSource(injectedSource), [cliException]);
+  writeFileSync(scriptCopy, injectedSource);
   writeFileSync(
     fakeNpmCli,
     `process.stdout.write(JSON.stringify(${JSON.stringify(
       report({
-        'brace-expansion': {
-          name: 'brace-expansion',
+        'gamma-pkg': {
+          name: 'gamma-pkg',
           severity: 'high',
           via: [
             {
-              source: 1130591,
-              url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+              source: cliException.source,
+              url: cliException.url,
               severity: 'high',
             },
           ],
         },
-        minimatch: { name: 'minimatch', severity: 'high', via: ['brace-expansion'] },
+        'gamma-downstream': { name: 'gamma-downstream', severity: 'high', via: ['gamma-pkg'] },
       }),
     )}));`,
   );
-
-  const result = spawnSync(process.execPath, [SCRIPT, '--audit-level=high'], {
+  const env = { ...process.env, npm_execpath: fakeNpmCli };
+  delete env.GITHUB_BASE_SHA;
+  const result = spawnSync(process.execPath, [scriptCopy, '--audit-level=high'], {
+    cwd: tempDir,
     encoding: 'utf8',
-    env: {
-      ...process.env,
-      npm_execpath: fakeNpmCli,
-    },
+    env,
   });
 
   assert.equal(result.status, 0);
   assert.match(
     result.stderr,
-    /Temporary audit exception through 2026-08-13: https:\/\/github\.com\/advisories\/GHSA-mh99-v99m-4gvg/,
+    /Temporary audit exception through 2099-12-31: https:\/\/github\.com\/advisories\/GHSA-gamma-0003/,
   );
-  assert.match(result.stderr, /Suppressed derived findings: brace-expansion, minimatch/);
+  assert.match(result.stderr, /Suppressed derived findings: gamma-downstream, gamma-pkg/);
 });
 
 test('suppresses the exact advisory and findings derived solely from it', () => {
@@ -653,7 +672,6 @@ test('rejects temporary dependency exceptions with impossible expiresOn date', (
     /is not a real calendar date/,
   );
 });
-
 
 // Properties of the real, live AUDIT_EXCEPTIONS list. Keep these small and
 // generic so they don't churn every time an advisory is fixed or expires.

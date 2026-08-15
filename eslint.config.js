@@ -24,6 +24,7 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      'functions/**/dist/**',
       'node_modules/**',
       'coverage/**',
       'src/engine/sprites/*.js',
@@ -71,7 +72,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['.github/scripts/*.mjs', '.github/scripts/**/*.mjs'],
+    files: ['.github/scripts/*.mjs', '.github/scripts/**/*.mjs', 'scripts/agent/perf/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

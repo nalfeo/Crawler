@@ -140,6 +140,18 @@ describe('headless runner AI telemetry', () => {
     expect(provider.planningDeadlineMs).toBeNull();
   });
 
+  it('does not report configured starting levels as in-run level-ups', async () => {
+    const stats = await runHeadless(new ScriptedDecisionProvider(), {
+      seed: 42,
+      maxFrames: 1,
+      maxWallTimeMs: 30_000,
+      startPlayerLevel: 3,
+      forceWeaponId: 'sword',
+    });
+
+    expect(stats.rewardEvents?.events.some((event) => event.kind === 'level_up')).toBe(false);
+  });
+
   it('level 1 (default) applies no boost', async () => {
     const stats = await runHeadless(new ScriptedDecisionProvider(), {
       seed: 42,
@@ -209,6 +221,51 @@ describe('headless runner AI telemetry', () => {
     expect(stats.lootEfficiency?.xpSpawned).toBeGreaterThanOrEqual(17);
     expect(stats.lootEfficiency?.xpCollected).toBe(0);
     expect(stats.lootEfficiency?.xpRatio).toBe(0);
+    expect(stats.rewardEvents).toBeDefined();
+    expect(stats.itemInteractions).toBeDefined();
+    expect(stats.runPerformance).toBeDefined();
+  });
+
+  it('emits deterministic run data from the real headless pipeline', async () => {
+    const run = () =>
+      runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+        seed: 42,
+        maxFrames: 3_000,
+        maxWallTimeMs: 60_000,
+        forceWeaponId: 'sword',
+      });
+
+    const stats = await run();
+    const rewards = stats.rewardEvents;
+    const items = stats.itemInteractions;
+    expect(rewards).toBeDefined();
+    expect(items).toBeDefined();
+    expect(stats.runPerformance).toBeDefined();
+    expect(rewards?.activeDurationMs).toBe(stats.gameTimeMs - stats.safeRoomMs);
+    expect(rewards?.events.map((event) => event.activeTimeMs)).toEqual(
+      [...(rewards?.events ?? [])]
+        .map((event) => event.activeTimeMs)
+        .sort((left, right) => left - right),
+    );
+    expect(rewards?.events.every((event) => event.activeTimeMs <= rewards.activeDurationMs)).toBe(
+      true,
+    );
+    const sword = items?.items.find((item) => item.catalogKey === 'weapon:sword');
+    expect(
+      items?.items.filter((item) => item.kind === 'starter_weapon').map((item) => item.catalogKey),
+    ).toEqual(['weapon:sword']);
+    expect(sword?.selectableExposureCount).toBe(1);
+    expect(sword?.selectionCount).toBe(1);
+    expect(sword?.activationCount).toBeGreaterThan(0);
+    expect(items?.uniqueActivationCount).toBeGreaterThan(0);
+    expect(stats.runPerformance?.dominantItemUsageShare).toBeGreaterThan(0);
+    expect(rewards?.events.some((event) => event.kind === 'level_up')).toBe(true);
+    expect(stats.metaProgression).toBeUndefined();
+
+    const again = await run();
+    expect(again.rewardEvents).toEqual(rewards);
+    expect(again.itemInteractions).toEqual(items);
+    expect(again.runPerformance).toEqual(stats.runPerformance);
   });
 
   it('counts real Floor 2 enemy deaths without treating director pruning as kills', async () => {

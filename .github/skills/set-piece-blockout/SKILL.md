@@ -21,6 +21,13 @@ short written plan, not JSON.
 
 ## Output contract
 
+Before producing the ten blockout fields, read
+`docs/knowledge/game-design/lore-bible.md` and trace the room premise to the
+relevant source references. If the premise conflicts with a source, stop and
+write a provenance record in
+`docs/knowledge/game-design/lore-contradictions.md` with `Status: unresolved`;
+do not continue by choosing a side.
+
 Produce all ten, in session chat, before touching `set-pieces.json`. The first
 four are design thinking; the rest flow from them.
 

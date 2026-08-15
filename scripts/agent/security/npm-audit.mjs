@@ -9,11 +9,6 @@ const SEVERITY_ORDER = ['info', 'low', 'moderate', 'high', 'critical'];
 
 // fast-uri (GHSA-v2hh-gcrm-f6hx) is intentionally absent: fast-uri was upgraded
 // to 3.1.4 in this repo, which patches the advisory. No exception is needed.
-//
-// brace-expansion (GHSA-mh99-v99m-4gvg) is intentionally absent: the installed
-// brace-expansion@5.0.9 (via minimatch@10.2.6, overridden) already patches the
-// advisory, so the temporary registry-mirroring exception below is obsolete
-// and has been removed.
 export const AUDIT_EXCEPTIONS = [];
 
 export const TEMP_DEPENDENCY_EXCEPTIONS = [];

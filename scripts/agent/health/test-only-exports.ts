@@ -200,10 +200,16 @@ function main(): void {
 
   const srcRoot = fromRepo('src');
   const testsRoot = fromRepo('tests');
+  const scriptsRoot = fromRepo('scripts');
 
   const srcFiles = walkTsFiles(srcRoot)
     .map(readSourceFile)
     .filter((file) => isProductionSrcPath(file.path));
+  // Repository automation under scripts/ is production code for the purposes of
+  // this guard (see `isProductionConsumerPath` in test-only-exports-lib.ts): a
+  // sweep runner or CI script is a real caller, so an export it consumes is not
+  // test-only. Scanned for CONSUMERS only — exports still come from src/.
+  const scriptFiles = walkTsFiles(scriptsRoot).map(readSourceFile);
   const testFiles = walkTsFiles(testsRoot).map(readSourceFile);
   const baseRef = resolveBaseRef();
   const changedSrcPaths = new Set(listChangedSrcPaths(baseRef));
@@ -223,7 +229,7 @@ function main(): void {
   const changedSrcFiles = srcFiles.filter((file) => changedSrcPaths.has(file.path));
   const allExports = collectNamedExports(srcFiles);
   const branchIntroducedExports = collectBranchIntroducedExports(changedSrcFiles, baseRef);
-  const srcImports = collectNamedImports(srcFiles);
+  const productionImports = collectNamedImports([...srcFiles, ...scriptFiles]);
   const testImports = collectNamedImports(testFiles);
 
   // Warn about duplicate export names in changed files; they can cause false negatives.
@@ -254,9 +260,9 @@ function main(): void {
     if (exp.name.startsWith('_')) return []; // explicit test scaffolding by convention
     if (isTestScaffoldAllowlisted(exp)) return []; // documented test scaffold
 
-    const srcConsumers = srcImports.get(exp.name) ?? new Set<string>();
-    const outsideSrcConsumers = [...srcConsumers].filter((file) => file !== exp.file);
-    if (outsideSrcConsumers.length > 0) return [];
+    const consumers = productionImports.get(exp.name) ?? new Set<string>();
+    const outsideConsumers = [...consumers].filter((file) => file !== exp.file);
+    if (outsideConsumers.length > 0) return [];
 
     const testConsumers = [...(testImports.get(exp.name) ?? new Set<string>())];
     if (testConsumers.length === 0) return [];

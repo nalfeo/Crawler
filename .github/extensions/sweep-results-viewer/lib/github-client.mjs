@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   aggregateArtifactWeapon,
   expectedWeaponsFromJobs,
+  isBaselineArtifact,
   isLeaderboardArtifact,
   normalizeRun,
   parseAiSweepJobPhases,
@@ -40,6 +41,20 @@ export function createLruCache(maxSize) {
 }
 
 const lruArtifactCache = createLruCache(MAX_ARTIFACT_CACHE);
+
+/**
+ * Thrown by `getBaselineSweepRun` when the given run id either does not exist
+ * (HTTP 404) or resolves to a different workflow (wrong-workflow). Callers
+ * that want to silently convert "not a baseline run" into an unresolved state
+ * can catch only this type and let operational errors (auth/network/rate-limit)
+ * propagate normally.
+ */
+export class BaselineRunNotFoundError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'BaselineRunNotFoundError';
+  }
+}
 
 export function parseGitHubRepository(remoteUrl) {
   const remote = String(remoteUrl ?? '')
@@ -236,10 +251,33 @@ export function _createListClient(runGhJsonFn) {
     return sortRunsNewestFirst([...weaponRuns, ...aiRuns]);
   }
 
+  async function clientGetBaselineSweepRun(repository, runId, signal) {
+    let raw;
+    try {
+      raw = await runGhJsonFn(
+        ['api', '--method', 'GET', `repos/${repository}/actions/runs/${runId}`],
+        { signal },
+      );
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      if (/HTTP 404/i.test(error?.message ?? '')) {
+        throw new BaselineRunNotFoundError(`Run ${runId} not found in ${repository}.`);
+      }
+      throw error;
+    }
+    if (raw?.path !== DEPLOY_WORKFLOW_PATH) {
+      throw new BaselineRunNotFoundError(
+        `Run ${runId} is not a "Deploy to GitHub Pages" workflow run in ${repository}.`,
+      );
+    }
+    return { ...normalizeRun(raw), workflowType: 'baseline-sweep' };
+  }
+
   return {
     listWeaponSweepRuns: clientListWeaponSweepRuns,
     listAiSweepRuns: clientListAiSweepRuns,
     listAllSweepRuns: clientListAllSweepRuns,
+    getBaselineSweepRun: clientGetBaselineSweepRun,
   };
 }
 
@@ -249,6 +287,39 @@ async function getRun(repository, runId, signal) {
       signal,
     }),
   );
+}
+
+const DEPLOY_WORKFLOW_PATH = '.github/workflows/deploy.yml';
+
+/**
+ * Fetches a single `deploy.yml` workflow run by id, tagged
+ * `workflowType: 'baseline-sweep'`. Unlike weapon-sweep/AI Sweep Eval,
+ * `deploy.yml` runs continuously (every push to main) and is deliberately
+ * NOT enumerated in `listAllSweepRuns` -- that would make an automatic,
+ * mostly-non-sweep workflow dominate the manually-dispatched sweep picker.
+ * A specific run id (e.g. from a release-baseline PR comment's sweep-run
+ * link, or `meta.runId` in a published baseline) is still directly
+ * selectable through this lookup.
+ */
+export async function getBaselineSweepRun(repository, runId, signal) {
+  let raw;
+  try {
+    raw = await runGhJson(['api', '--method', 'GET', `repos/${repository}/actions/runs/${runId}`], {
+      signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    if (/HTTP 404/i.test(error?.message ?? '')) {
+      throw new BaselineRunNotFoundError(`Run ${runId} not found in ${repository}.`);
+    }
+    throw error;
+  }
+  if (raw?.path !== DEPLOY_WORKFLOW_PATH) {
+    throw new BaselineRunNotFoundError(
+      `Run ${runId} is not a "Deploy to GitHub Pages" workflow run in ${repository}.`,
+    );
+  }
+  return { ...normalizeRun(raw), workflowType: 'baseline-sweep' };
 }
 
 async function listArtifacts(repository, runId, signal) {
@@ -310,6 +381,53 @@ async function downloadArtifactJson(repository, runId, artifact, signal) {
   }
 }
 
+/**
+ * Downloads an artifact that may contain several named JSON files (the
+ * baseline-sweep artifact carries both `baseline.json` and an optional
+ * sibling `fun-report.json`) and returns a map keyed by requested file name.
+ * A requested file that is absent from the artifact resolves to `null`
+ * rather than throwing, so a legacy or scoring-failed release still renders
+ * its baseline without its (optional) fun-eval report.
+ */
+async function downloadArtifactJsonMap(repository, runId, artifact, fileNames, signal) {
+  const signature = `${artifact.id}:${artifact.size_in_bytes}:${artifact.updated_at}`;
+  const cacheKey = `map:${artifact.id}`;
+  const cached = lruArtifactCache.get(cacheKey);
+  if (cached?.signature === signature) {
+    return cached.data;
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), 'crawler-sweep-artifact-'));
+  try {
+    await runCommand(
+      'gh',
+      [
+        'run',
+        'download',
+        String(runId),
+        '--repo',
+        repository,
+        '--name',
+        artifact.name,
+        '--dir',
+        directory,
+      ],
+      { signal },
+    );
+    const jsonFiles = await findJsonFiles(directory);
+    const byBaseName = new Map(jsonFiles.map((filePath) => [basename(filePath), filePath]));
+    const data = {};
+    for (const fileName of fileNames) {
+      const filePath = byBaseName.get(fileName);
+      data[fileName] = filePath ? JSON.parse(await readFile(filePath, 'utf8')) : null;
+    }
+    lruArtifactCache.set(cacheKey, { signature, data });
+    return data;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 export async function loadCloudRun(repository, runId, signal) {
   const [run, artifacts, jobs] = await Promise.all([
     getRun(repository, runId, signal),
@@ -365,6 +483,48 @@ export async function loadAiSweepRun(repository, runId, signal) {
     run,
     jobPhases: parseAiSweepJobPhases(jobs),
     leaderboardData,
+    expiredArtifactCount,
+  };
+}
+
+/**
+ * Loads the post-release baseline-sweep artifact (`baseline.json` and its
+ * optional sibling `fun-report.json`) for a `deploy.yml` run. There is at
+ * most one relevant artifact per run and no job-phase breakdown, so this is
+ * intentionally simpler than `loadCloudRun`/`loadAiSweepRun`.
+ *
+ * @param {string} repository  e.g. "nalfeo/Crawler"
+ * @param {number} runId
+ * @param {AbortSignal} signal
+ * @returns {Promise<{ run: object, hasArtifact: boolean, baseline: object | null, funReport: object | null, expiredArtifactCount: number }>}
+ */
+export async function loadBaselineSweepRun(repository, runId, signal) {
+  const [run, artifacts] = await Promise.all([
+    getRun(repository, runId, signal),
+    listArtifacts(repository, runId, signal),
+  ]);
+
+  const artifact = artifacts.find(isBaselineArtifact) ?? null;
+  const files = artifact
+    ? await downloadArtifactJsonMap(
+        repository,
+        runId,
+        artifact,
+        ['baseline.json', 'fun-report.json'],
+        signal,
+      )
+    : null;
+
+  const expiredArtifactCount = artifacts.filter(
+    (candidate) =>
+      candidate.expired === true && isBaselineArtifact({ ...candidate, expired: false }),
+  ).length;
+
+  return {
+    run,
+    hasArtifact: artifact !== null,
+    baseline: files?.['baseline.json'] ?? null,
+    funReport: files?.['fun-report.json'] ?? null,
     expiredArtifactCount,
   };
 }

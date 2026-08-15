@@ -1,4 +1,6 @@
 import type { RunStats } from '../../../src/game/ai/types.js';
+import { isOfficialWin } from '../../../src/game/ai/scoring.js';
+import { FLOOR1_ACTIVE_TIME_BUDGET_MS } from '../../../src/game/ai/floor1-run-budget.js';
 
 export interface PlaytestSurvey {
   readonly enjoyment?: number;
@@ -130,6 +132,7 @@ const VALID_OUTCOMES = new Set<RunStats['outcome']>([
   'timeout',
   'stalled',
   'error',
+  'quit',
 ]);
 
 const DEFAULT_CONFIG: FunScoreConfig = {
@@ -160,9 +163,6 @@ const DIMENSION_WEIGHTS: Readonly<Record<keyof FunDimensionScores, number>> = {
 const FLOOR_1_STARTER_WEAPON_CHOICES = 3;
 const SUBJECTIVE_BLEND_WEIGHT = 0.4;
 
-// Dying on Floor 1 or 2 is an "un-fun" tutorial-phase death: the player never
-// got past onboarding. Non-death outcomes (timeout/stalled/error) are excluded
-// here because they are already penalized elsewhere and are not "died early".
 const EARLY_DEATH_MAX_FLOOR = 2;
 const EARLY_DEATH_TARGET_RATE = 0.1;
 
@@ -405,9 +405,6 @@ function challengeBalanceForRun(run: RunStats): number {
     (run.outcome === 'timeout' ? 20 : 0) +
     (run.outcome === 'stalled' ? 25 : 0) +
     (run.outcome === 'error' ? 50 : 0) +
-    // Dying in the tutorial-phase floors (1-2) is un-fun regardless of how
-    // "balanced" the fight felt in the moment: the player never got past
-    // onboarding, so it is penalized on top of a plain death.
     (isEarlyDeath(run) ? 35 : 0);
 
   const base =
@@ -483,6 +480,264 @@ function stdDev(values: ReadonlyArray<number>): number {
   const avg = mean(values);
   const variance = values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length;
   return Math.sqrt(variance);
+}
+
+interface CriterionMeasurement {
+  readonly observed: number | null;
+  readonly target: number;
+  readonly healthy: boolean;
+  readonly reason: string;
+}
+
+const DOPAMINE_GAP_TARGET_MS = 90_000;
+const SNOWBALL_MINIMUM_WINS = 10;
+const ROBUST_Z_THRESHOLD = 3.5;
+const ROBUST_Z_SCALE = 0.6745;
+const ITEM_RARE_SELECTION_MIN_EXPOSURES = 5;
+const ITEM_RARE_SELECTION_RATE = 0.1;
+const META_PROGRESSION_MAX_FRACTION = 0.05;
+
+function finiteNonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function measureDopamineCadence(sessions: readonly FunSession[]): CriterionMeasurement {
+  const measured = sessions.map((session) => session.run.rewardEvents);
+  if (
+    measured.some(
+      (telemetry) =>
+        !telemetry ||
+        !finiteNonNegative(telemetry.activeDurationMs) ||
+        !Array.isArray(telemetry.events) ||
+        telemetry.events.some(
+          (event) =>
+            !finiteNonNegative(event.activeTimeMs) ||
+            event.activeTimeMs > telemetry.activeDurationMs ||
+            typeof event.kind !== 'string' ||
+            typeof event.sourceId !== 'string',
+        ),
+    )
+  ) {
+    return {
+      observed: null,
+      target: 90,
+      healthy: false,
+      reason:
+        'Timestamped reward events are absent or malformed in at least one run (legacy/mixed input).',
+    };
+  }
+
+  let worstGapMs = 0;
+  let coveredMs = 0;
+  let totalActiveMs = 0;
+  for (const telemetry of measured) {
+    const deduplicated = [
+      ...new Map(
+        telemetry!.events.map((event) => [
+          `${event.kind}\u0000${event.sourceId}\u0000${event.activeTimeMs}`,
+          event,
+        ]),
+      ).values(),
+    ].sort((left, right) => left.activeTimeMs - right.activeTimeMs);
+    const boundaries = [
+      0,
+      ...deduplicated.map((event) => event.activeTimeMs),
+      telemetry!.activeDurationMs,
+    ];
+    for (let index = 1; index < boundaries.length; index += 1) {
+      const gapMs = boundaries[index]! - boundaries[index - 1]!;
+      worstGapMs = Math.max(worstGapMs, gapMs);
+      if (gapMs <= DOPAMINE_GAP_TARGET_MS) coveredMs += gapMs;
+    }
+    totalActiveMs += telemetry!.activeDurationMs;
+  }
+  const coverage = totalActiveMs > 0 ? coveredMs / totalActiveMs : 1;
+  return {
+    observed: round2(worstGapMs / 1000),
+    target: 90,
+    healthy: worstGapMs <= DOPAMINE_GAP_TARGET_MS,
+    reason: `Worst active-play gap is ${round2(worstGapMs / 1000)}s; ${round2(
+      coverage * 100,
+    )}% of active time is in gaps at or below 90s.`,
+  };
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle]!;
+}
+
+function measureSnowballFrequency(sessions: readonly FunSession[]): CriterionMeasurement {
+  const wins = sessions.filter((session) =>
+    isOfficialWin(session.run, FLOOR1_ACTIVE_TIME_BUDGET_MS),
+  );
+  const signals = wins.map((session) => session.run.runPerformance);
+  if (
+    signals.some(
+      (signal) =>
+        !signal ||
+        !finiteNonNegative(signal.activeClearTimeMs) ||
+        !finiteNonNegative(signal.damagePerActiveMinute) ||
+        !finiteNonNegative(signal.killsPerActiveMinute) ||
+        !finiteNonNegative(signal.dominantItemUsageShare) ||
+        signal.dominantItemUsageShare > 1,
+    )
+  ) {
+    return {
+      observed: null,
+      target: 0.1,
+      healthy: false,
+      reason:
+        'Run performance data is absent or malformed in at least one official victory (legacy/mixed input).',
+    };
+  }
+  if (signals.length < SNOWBALL_MINIMUM_WINS) {
+    return {
+      observed: null,
+      target: 0.1,
+      healthy: false,
+      reason: `Need at least ${SNOWBALL_MINIMUM_WINS} official victories with complete run performance data; found ${signals.length}.`,
+    };
+  }
+
+  const rows = signals.map((signal) => [
+    signal!.activeClearTimeMs,
+    signal!.damagePerActiveMinute,
+    signal!.killsPerActiveMinute,
+    signal!.dominantItemUsageShare,
+  ]);
+  const columns = rows[0]!.map((_, column) => rows.map((row) => row[column]!));
+  const medians = columns.map(median);
+  const mads = columns.map((column, index) =>
+    median(column.map((value) => Math.abs(value - medians[index]!))),
+  );
+  const classified = rows.filter((row) => {
+    let outlierFeatures = 0;
+    for (let index = 0; index < row.length; index += 1) {
+      const mad = mads[index]!;
+      if (mad === 0) continue;
+      const direction = index === 0 ? -1 : 1;
+      const robustZ = (ROBUST_Z_SCALE * direction * (row[index]! - medians[index]!)) / mad;
+      if (robustZ >= ROBUST_Z_THRESHOLD) outlierFeatures += 1;
+    }
+    return outlierFeatures >= 2;
+  }).length;
+  const frequency = classified / signals.length;
+  return {
+    observed: round2(frequency),
+    target: 0.1,
+    healthy: frequency <= 0.1,
+    reason: `${classified}/${signals.length} official victories crossed robust z >= ${ROBUST_Z_THRESHOLD} on at least two non-zero-MAD features.`,
+  };
+}
+
+function measureItemViability(sessions: readonly FunSession[]): CriterionMeasurement {
+  const telemetry = sessions.map((session) => session.run.itemInteractions);
+  if (
+    telemetry.some(
+      (run) =>
+        !run ||
+        !Array.isArray(run.items) ||
+        run.items.some(
+          (item) =>
+            typeof item.catalogKey !== 'string' ||
+            !finiteNonNegative(item.offeredCount) ||
+            !finiteNonNegative(item.selectableExposureCount) ||
+            !finiteNonNegative(item.selectionCount) ||
+            !finiteNonNegative(item.activationCount) ||
+            !finiteNonNegative(item.activeTimeMs),
+        ),
+    )
+  ) {
+    return {
+      observed: null,
+      target: 0,
+      healthy: false,
+      reason:
+        'Item interaction data is absent or malformed in at least one run (legacy/mixed input).',
+    };
+  }
+
+  const catalog = new Map<
+    string,
+    { exposures: number; selections: number; activations: number; activeTimeMs: number }
+  >();
+  for (const run of telemetry) {
+    for (const item of run!.items) {
+      const aggregate = catalog.get(item.catalogKey) ?? {
+        exposures: 0,
+        selections: 0,
+        activations: 0,
+        activeTimeMs: 0,
+      };
+      aggregate.exposures += item.selectableExposureCount;
+      aggregate.selections += item.selectionCount;
+      aggregate.activations += item.activationCount;
+      aggregate.activeTimeMs += item.activeTimeMs;
+      catalog.set(item.catalogKey, aggregate);
+    }
+  }
+  const evaluable = [...catalog.entries()].filter(([, item]) => item.exposures > 0);
+  if (evaluable.length === 0) {
+    return {
+      observed: null,
+      target: 0,
+      healthy: false,
+      reason: 'No selectable item exposures were recorded.',
+    };
+  }
+  const flagged = evaluable.filter(([, item]) => {
+    const avoided = item.selections === 0;
+    const rarelySelected =
+      item.exposures >= ITEM_RARE_SELECTION_MIN_EXPOSURES &&
+      item.selections / item.exposures < ITEM_RARE_SELECTION_RATE;
+    const inert = item.selections > 0 && item.activations === 0 && item.activeTimeMs === 0;
+    return avoided || rarelySelected || inert;
+  });
+  const failureRate = flagged.length / evaluable.length;
+  return {
+    observed: round2(failureRate),
+    target: 0,
+    healthy: flagged.length === 0,
+    reason: `${flagged.length}/${evaluable.length} exposed catalog items were avoided, selected below 10% after 5+ exposures, or selected but inert.`,
+  };
+}
+
+function measureMetaProgression(sessions: readonly FunSession[]): CriterionMeasurement {
+  const hooks = sessions.map((session) => session.run.metaProgression);
+  if (
+    hooks.some(
+      (hook) =>
+        !hook ||
+        !finiteNonNegative(hook.permanentPowerBefore) ||
+        !finiteNonNegative(hook.permanentPowerAfter) ||
+        hook.permanentPowerBefore === 0,
+    )
+  ) {
+    return {
+      observed: null,
+      target: META_PROGRESSION_MAX_FRACTION,
+      healthy: false,
+      reason:
+        'Permanent-power run data is absent because the Production Office/full meta-progression system is deferred.',
+    };
+  }
+  const averageIncrease = mean(
+    hooks.map(
+      (hook) =>
+        (hook!.permanentPowerAfter - hook!.permanentPowerBefore) / hook!.permanentPowerBefore,
+    ),
+  );
+  return {
+    observed: round2(averageIncrease),
+    target: META_PROGRESSION_MAX_FRACTION,
+    healthy: averageIncrease > 0 && averageIncrease <= META_PROGRESSION_MAX_FRACTION,
+    reason: `Average permanent-power increase is ${round2(
+      averageIncrease * 100,
+    )}%; the planned slow-positive band is >0% to 5% per run.`,
+  };
 }
 
 function weightedObjectiveScore(dimensions: FunDimensionScores): number {
@@ -594,7 +849,7 @@ export function scoreFunSessions(
   if (sessions.length === 0) {
     return {
       runs: 0,
-      outcomes: { victory: 0, death: 0, timeout: 0, stalled: 0, error: 0 },
+      outcomes: { victory: 0, death: 0, timeout: 0, stalled: 0, error: 0, quit: 0 },
       survey_coverage: 0,
       overall_fun_score: 0,
       dimensions: {
@@ -684,6 +939,7 @@ export function scoreFunSessions(
     timeout: 0,
     stalled: 0,
     error: 0,
+    quit: 0,
   };
 
   const engagementScores: number[] = [];
@@ -735,6 +991,10 @@ export function scoreFunSessions(
 
   const survivabilityValues = sessions.map((session) => normalizedOutcome(session.run));
   const survivabilityVariance = stdDev(survivabilityValues);
+  const dopamineCadence = measureDopamineCadence(sessions);
+  const snowballFrequency = measureSnowballFrequency(sessions);
+  const metaProgression = measureMetaProgression(sessions);
+  const itemViability = measureItemViability(sessions);
   const criterion = (
     observed: number | null,
     target: number | null,
@@ -773,28 +1033,28 @@ export function scoreFunSessions(
       'Run variety reuses the existing distinctness score.',
     ),
     dopamine_cadence: criterion(
-      null,
-      90,
-      false,
-      'Needs timestamped dopamine-event telemetry; end-of-run RunStats cannot measure cadence.',
+      dopamineCadence.observed,
+      dopamineCadence.target,
+      dopamineCadence.healthy,
+      dopamineCadence.reason,
     ),
     snowball_frequency: criterion(
-      null,
-      0.1,
-      false,
-      'Needs a deterministic snowball/exploit signal and tail classification.',
+      snowballFrequency.observed,
+      snowballFrequency.target,
+      snowballFrequency.healthy,
+      snowballFrequency.reason,
     ),
     meta_progression: criterion(
-      null,
-      0,
-      false,
-      'Needs permanent-power-before/after telemetry once meta progression exists.',
+      metaProgression.observed,
+      metaProgression.target,
+      metaProgression.healthy,
+      metaProgression.reason,
     ),
     item_viability: criterion(
-      null,
-      0,
-      false,
-      'Needs item offer, selection, and contribution telemetry with exposure counts.',
+      itemViability.observed,
+      itemViability.target,
+      itemViability.healthy,
+      itemViability.reason,
     ),
     early_death_rate: criterion(
       round2(sessions.filter((session) => isEarlyDeath(session.run)).length / sessions.length),
@@ -1023,7 +1283,7 @@ export function compareFunReports(
     dopamine_cadence: false,
     snowball_frequency: false,
     meta_progression: true,
-    item_viability: true,
+    item_viability: false,
     early_death_rate: false,
   };
   for (const key of criterionKeys) {

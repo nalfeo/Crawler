@@ -56,7 +56,8 @@ param(
     [string]$StorageResourceGroup = 'crawler-sprites-rg',
     [string]$StorageAccountName = 'crawlersprites',
     [string]$StorageQueueName = 'asset-requests',
-    [string]$StorageRunsContainer = 'generated-runs'
+    [string]$StorageRunsContainer = 'generated-runs',
+    [string]$StoragePlaytestRunsContainer = 'playtest-runs'
 )
 
 Set-StrictMode -Version Latest
@@ -189,6 +190,7 @@ AZURE_STORAGE_ACCOUNT=$StorageAccountName
 AZURE_STORAGE_KEY=$storageKey
 AZURE_STORAGE_QUEUE_NAME=$StorageQueueName
 AZURE_STORAGE_RUNS_CONTAINER=$StorageRunsContainer
+AZURE_STORAGE_PLAYTEST_RUNS_CONTAINER=$StoragePlaytestRunsContainer
 SPRITES_ASSET_QUEUE=azure-queue
 SPRITES_RUN_STORE=azure-blob
 "@
@@ -237,6 +239,7 @@ if ($SyncGitHubSecrets) {
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_CONNECTION_STRING' -Value $connectionString
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_QUEUE_NAME' -Value $StorageQueueName
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_RUNS_CONTAINER' -Value $StorageRunsContainer
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_PLAYTEST_RUNS_CONTAINER' -Value $StoragePlaytestRunsContainer
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'SPRITES_ASSET_QUEUE' -Value 'azure-queue'
     Set-GitHubSecretValue -Repo $GitHubRepo -Name 'SPRITES_RUN_STORE' -Value 'azure-blob'
 

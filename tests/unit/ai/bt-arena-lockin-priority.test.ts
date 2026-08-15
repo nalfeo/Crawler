@@ -25,9 +25,38 @@ import {
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { AIState } from '../../../src/game/ai/types.js';
 import { activateHostileEncounter } from '../../../src/game/hostile-encounter-lifecycle.js';
+import { FloorMap } from '../../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../../src/core/map/TileMap.js';
+import { BiomeType, TilePresets, type MapConfig } from '../../../src/shared/map-types.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
+
+function makeAdjacentRooms(): FloorMap {
+  const width = 10;
+  const height = 6;
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.FLOOR);
+  const roomGraph = new RoomGraph();
+  roomGraph.add({ x: 0, y: 0, width: 6, height: 6 });
+  roomGraph.add({ x: 5, y: 0, width: 5, height: 6 });
+  const config: MapConfig = {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizeFt: 4,
+    biome: BiomeType.ARENA,
+    seed: 42,
+    roomWidthRange: [4, 4],
+    roomHeightRange: [4, 4],
+    maxRooms: 2,
+    floorDensity: 1,
+  };
+  return new FloorMap(config, tileMap, roomGraph, new Uint8Array(width * height), {
+    x: 4,
+    y: 2,
+  });
+}
 
 function makeLockedSpawnerNearPlayer(
   world: ReturnType<typeof createTestWorld>,
@@ -292,6 +321,39 @@ describe('BT — arena lock-in priority (1.5)', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.ENGAGE);
     expect(decision.targetEid).toBe(bossEid);
+    expect(decision.reason).toContain('boss');
+  });
+
+  it('boss lock-in: ignores closer enemies outside the locked boss room', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.floorMap = makeAdjacentRooms();
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 30;
+
+    const playerPos = world.floorMap.tileToWorld(4, 2);
+    const bossPos = world.floorMap.tileToWorld(2, 2);
+    const outsidePos = world.floorMap.tileToWorld(6, 2);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
+    const bossEid = startStaircaseBossLockin(
+      world,
+      playerPos.x,
+      playerPos.y,
+      bossPos.x - playerPos.x,
+      bossPos.y - playerPos.y,
+    );
+    const outsideEnemyEid = spawnEnemy(world, outsidePos.x, outsidePos.y, 40);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.targetEid).not.toBe(outsideEnemyEid);
     expect(decision.reason).toContain('boss');
   });
 

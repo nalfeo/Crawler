@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "dev-build-ingest-function",
+  "task_title": "Azure dev-build ingest and issue proxy",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 11,
+      "resolved_count": 11,
+      "plan_divergence": "convergent",
+      "notes": "Reviewed the implemented plan; addressed request caps, exact configurable CORS, PNG validation, scoped PAT documentation, retry-safe issue claim markers, lifecycle cleanup, AzureWebJobsStorage, and function workspace verification. APIM/queue alternatives were considered but rejected as unnecessary for this single-hop low-volume endpoint."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.3-codex",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "30baa6a0e60c6ad31c1e96a7f15df1eef7ef7b43",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 3,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff is tightly scoped to the dev-build ingest Function plus required infra/env wiring, and the completed 3-apple review ledger is present and internally consistent (plan review, two code-review rounds, independent grade). Request validation, CORS allowlisting, blob persistence, idempotent issue-link reuse, and pending-marker issue filing controls are coherent with no high-confidence blocker in the changed code. Coverage is adequate but limited to validation/error-path behavior (including malformed screenshots) rather than full storage/issue happy paths, so test_coverage is good enough to pass but not maximal."
+    }
+  }
+}

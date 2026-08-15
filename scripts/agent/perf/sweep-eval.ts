@@ -65,6 +65,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
@@ -106,6 +107,7 @@ import {
   type WorkerPoolTaskPayload,
   type WorkerTaskFailure,
   type WorkerTaskSuccess,
+  workerOptionsForModule,
 } from './worker-pool.js';
 import { parseNonNegativeInt, parsePositiveInt, parseSeeds } from './winrate-sweep-args.js';
 
@@ -180,15 +182,7 @@ async function runTasks(tasks: EvalTask[], shared: EvalShared, workers: number):
     tasks,
     shared,
     maxWorkers: workers,
-    workerOptions: {
-      // Same synchronous-hook bootstrap winrate-sweep uses: tsx's async import
-      // hooks don't remap .js→.ts inside worker threads.
-      execArgv: [
-        ...process.execArgv,
-        '--import',
-        new URL('./tsx-worker-hooks.mjs', import.meta.url).href,
-      ],
-    },
+    workerOptions: workerOptionsForModule(import.meta.url),
   });
 }
 
@@ -575,8 +569,9 @@ async function searchCombo(
 
 function packageLockHash(): string {
   try {
-    const url = new URL('../../../package-lock.json', import.meta.url);
-    return createHash('sha256').update(readFileSync(url)).digest('hex');
+    return createHash('sha256')
+      .update(readFileSync(path.resolve(process.cwd(), 'package-lock.json')))
+      .digest('hex');
   } catch {
     return 'unknown';
   }
@@ -768,11 +763,14 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
     throw new Error('--stage search-eval requires --config-id <id> --config-json <json>');
   }
+  // This evaluator still uses Floor-1-specific budget and frame-cap constants
+  // throughout its search and validation stages. Keep the guard strict until
+  // those internals are parameterized; the general win-rate sweep is the
+  // multi-floor entry point.
   if (args.floorId !== 'floor1') {
     throw new Error(
-      `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
-        `(the 6-minute budget and safe-room active-time credit are Floor-1-specific). ` +
-        `Non-Floor-1 win semantics are undefined here.`,
+      `--floor '${args.floorId}' is not supported: sweep-eval remains calibrated to ` +
+        'floor1 until its budget and frame-cap semantics are generalized.',
     );
   }
   return args;
@@ -1004,8 +1002,10 @@ if (!isMainThread && workerData != null) {
     });
 } else if (
   isMainThread &&
-  process.argv[1] != null &&
-  fileURLToPath(import.meta.url) === process.argv[1]
+  (process.env.CRAWLER_PREBUNDLED_ENTRY === 'sweep-eval' ||
+    (process.env.CRAWLER_PREBUNDLED_ENTRY === undefined &&
+      process.argv[1] != null &&
+      fileURLToPath(import.meta.url) === process.argv[1]))
 ) {
   main(process.argv).catch((err) => {
     console.error('Fatal:', err instanceof Error ? err.stack : err);

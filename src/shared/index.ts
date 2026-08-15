@@ -97,6 +97,14 @@ export type {
 } from './generated-equipment-types.js';
 export { CanonicalJsonError, canonicalJson, sha256Hex, deepFreeze } from './canonical-json.js';
 export {
+  createRunBundle,
+  type RunBundle,
+  type RunBundleInput,
+  type RunBundleMeta,
+  type RunEndReason,
+} from './run-bundle.js';
+export { assembleRunStats } from './run-stats-collector.js';
+export {
   ENCUMBRANCE_THRESHOLD_BASE_LB,
   ENCUMBRANCE_STR_THRESHOLD_BONUS_LB_PER_POINT,
   ENCUMBRANCE_BAND_MULTIPLIER,

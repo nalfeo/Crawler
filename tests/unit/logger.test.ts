@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createLogCursor,
   createLogger,
+  _DEFAULT_LOG_BUFFER_SIZE,
   getGlobalLogLevel,
+  readLogsSince,
+  _setLogBufferLimit,
   setGlobalLogLevel,
   type LogLevel,
 } from '../../src/shared/logger';
@@ -13,6 +17,7 @@ describe('logger', () => {
     vi.unstubAllGlobals();
     // Restore a predictable level for any later tests in the suite.
     setGlobalLogLevel('warn');
+    _setLogBufferLimit(_DEFAULT_LOG_BUFFER_SIZE);
   });
 
   it('createLogger returns a logger with the expected methods', () => {
@@ -102,5 +107,47 @@ describe('logger', () => {
     const mod = await import('../../src/shared/logger');
     // No query param / readable storage → quiet-env fallback (VITEST=true) → warn.
     expect(LEVELS).toContain(mod.getGlobalLogLevel());
+  });
+
+  it('readLogsSince excludes logs recorded before the cursor', () => {
+    setGlobalLogLevel('trace');
+    const logger = createLogger('cursor');
+    logger.info('before-cursor');
+    const cursor = createLogCursor();
+    logger.warn('after-cursor');
+    const logs = readLogsSince(cursor);
+    expect(logs.some((line) => line.includes('after-cursor'))).toBe(true);
+    expect(logs.some((line) => line.includes('before-cursor'))).toBe(false);
+  });
+
+  it('evicts older entries immediately after lowering the log buffer limit', () => {
+    setGlobalLogLevel('trace');
+    const logger = createLogger('evict');
+    const cursor = createLogCursor();
+    logger.info('evict-a');
+    logger.info('evict-b');
+    logger.info('evict-c');
+    _setLogBufferLimit(2);
+    const logs = readLogsSince(cursor);
+    expect(logs.some((line) => line.includes('evict-a'))).toBe(false);
+    expect(logs.some((line) => line.includes('evict-b'))).toBe(true);
+    expect(logs.some((line) => line.includes('evict-c'))).toBe(true);
+  });
+
+  it('captures only enabled levels in the bounded log buffer', () => {
+    setGlobalLogLevel('warn');
+    const logger = createLogger('levels');
+    const cursor = createLogCursor();
+    logger.info('filtered-out');
+    logger.warn('captured');
+    const logs = readLogsSince(cursor);
+    expect(logs.some((line) => line.includes('filtered-out'))).toBe(false);
+    expect(logs.some((line) => line.includes('captured'))).toBe(true);
+  });
+
+  it('rejects invalid log buffer limits', () => {
+    expect(() => _setLogBufferLimit(0)).toThrow(/positive integer/);
+    expect(() => _setLogBufferLimit(1.5)).toThrow(/positive integer/);
+    expect(() => _setLogBufferLimit(Number.NaN)).toThrow(/positive integer/);
   });
 });

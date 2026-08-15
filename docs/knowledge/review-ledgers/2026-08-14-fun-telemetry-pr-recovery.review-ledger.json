@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-14",
+  "session_slug": "fun-telemetry-pr-recovery",
+  "task_title": "Recover deterministic run-data PR",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Added metrics-only projection for baseline index, explicit boot/earned-level reward coverage, dual-capture de-duplication coverage, and public-output catalog normalization coverage. No architectural rewrite warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "1e1e142f18b10f2385656fc7427ef5313dd448e4",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation is robust and precise. It introduces deterministic run data collection for fun evaluation while cleanly separating neutral event capture from policy evaluation. Run events decouple runtime simulation from timestamp tracking, preserving deterministic behavior and RNG streams. It gracefully handles mixed and legacy datasets. Test coverage validates headless runner behaviors, item catalog mappings, and viewer graceful degradation. Repository policies and architectural rules are followed."
+    }
+  }
+}
