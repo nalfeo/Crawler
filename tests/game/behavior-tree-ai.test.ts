@@ -72,6 +72,7 @@ import {
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   RETREAT_DAMAGE_WINDOW_FRAMES,
   RETREAT_DAMAGE_WINDOW_MIN_DAMAGE,
+  RETREAT_HYSTERESIS_MULT,
   RETREAT_OBJECTIVE_MEMORY_FRAMES,
   PROJECTILE_DODGE_AOE_BUFFER_FT,
   PROJECTILE_DODGE_CLEARANCE_FT,
@@ -538,6 +539,7 @@ describe('BehaviorTreeAI', () => {
       retreatObjectiveY: number | null;
       retreatObjectiveFrame: number;
       retreatObjectiveMap: unknown;
+      config: { retreatDangerRadius: number };
       rememberRetreatObjective(world: GameWorld, x: number, y: number): void;
       getRetreatObjective(world: GameWorld): { x: number; y: number } | null;
       pickRetreatTarget(
@@ -556,6 +558,15 @@ describe('BehaviorTreeAI', () => {
     const distTo = (p: { x: number; y: number }) =>
       Math.hypot(objective.x - p.x, objective.y - p.y);
     expect(distTo(biased)).toBeLessThan(distTo(unbiased));
+
+    // A remote objective in the opposite direction must not overwhelm the
+    // primary enemy-clearance score. Route bias can trade at most the existing
+    // retreat hysteresis band of safety.
+    harness.rememberRetreatObjective(world, 20, 80);
+    const opposed = harness.pickRetreatTarget(world, 80, 80, threat);
+    const safety = (p: { x: number; y: number }) => Math.hypot(threat.x - p.x, threat.y - p.y);
+    const maxSafetyTradeoff = harness.config.retreatDangerRadius * (RETREAT_HYSTERESIS_MULT - 1);
+    expect(safety(opposed)).toBeGreaterThanOrEqual(safety(unbiased) - maxSafetyTradeoff);
 
     // The objective memory is dropped once stale so a retreat never chases an
     // objective the AI has since abandoned.
