@@ -1,5 +1,39 @@
 [
   {
+    "commit": "187bc7d62b513409497439fc64401ef9b5951703",
+    "commitDate": "2026-08-15T06:42:09Z",
+    "commitSubject": "fix(ci): never auto-close brand-new empty PRs as duplicates (#2950)",
+    "capturedAt": "2026-08-15T07:55:04.485Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31870894085",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/187bc7d62b513409497439fc64401ef9b5951703.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.03333333333333333,
+        "totalWins": 5,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.04,
+      "gatePass": false,
+      "path": "by-sha/187bc7d62b513409497439fc64401ef9b5951703.fun-report.json"
+    }
+  },
+  {
     "commit": "4e817bfdae25af87e871078ad78caaca114df14f",
     "commitDate": "2026-08-15T01:28:36Z",
     "commitSubject": "feat: add in-game issue reporting (#2928)",
