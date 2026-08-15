@@ -867,12 +867,20 @@ export class BehaviorTreeAI implements AIInputProvider {
    * churns constantly inside a swarm.
    */
   private contactRetreatMap: FloorMap | null = null;
-  private contactRetreatStartFrame: number = 0;
   /** Frame the carve-out last fired, or null when no episode is being tracked. */
   private contactRetreatLastFrame: number | null = null;
   private contactRetreatStartX: number = 0;
   private contactRetreatStartY: number = 0;
   private contactRetreatPinned: boolean = false;
+  /**
+   * Count of carve-out polls actually taken since the window started — NOT a
+   * wall-clock frame span. A short out-of-contact interruption (Engage kites
+   * out, contact breaks, then re-closes) keeps the episode alive across the
+   * {@link CONTACT_RETREAT_EPISODE_GAP_FRAMES} gap, but those in-between
+   * frames must not count as time Retreat had to move the player, or a single
+   * poll right before re-contact could be declared "pinned" immediately.
+   */
+  private contactRetreatActivePolls: number = 0;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -1432,6 +1440,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.startContactRetreatWindow(ctx);
       return false;
     }
+    // Count this poll toward the progress window. Frames where the carve-out
+    // did not fire (a gap under the episode threshold) are never counted here,
+    // so a brief out-of-contact interruption cannot masquerade as elapsed
+    // retreat time and declare the player pinned after a single fresh poll.
+    this.contactRetreatActivePolls += 1;
     const moved = Math.hypot(
       ctx.playerX - this.contactRetreatStartX,
       ctx.playerY - this.contactRetreatStartY,
@@ -1445,7 +1458,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
       return true;
     }
-    if (frame - this.contactRetreatStartFrame < CONTACT_RETREAT_PROGRESS_FRAMES) return false;
+    if (this.contactRetreatActivePolls < CONTACT_RETREAT_PROGRESS_FRAMES) return false;
     if (moved >= CONTACT_RETREAT_PROGRESS_FT) {
       // The kite is working — measure the next window from here.
       this.startContactRetreatWindow(ctx);
