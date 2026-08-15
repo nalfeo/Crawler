@@ -73,6 +73,7 @@ jobs:
         env:
           DEPLOY_ENV: dev
           BUILD_OUTDIR: staging/dev
+          VITE_RUNS_INGEST_URL: https://crawler-dev-ingest.azurewebsites.net/runs
 
       - name: Guard - dev must NOT include devtools.html
         run: |

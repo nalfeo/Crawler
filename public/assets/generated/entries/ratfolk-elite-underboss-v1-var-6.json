@@ -185,9 +185,6 @@
     "canvasWidth": 512,
     "canvasHeight": 550
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

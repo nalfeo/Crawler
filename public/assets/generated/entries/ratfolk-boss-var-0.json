@@ -26,9 +26,6 @@
   "judgeScore": "5",
   "type": "enemy",
   "contentHash": "dc18da6a547b0e4a535cda9eb9f140c49805bd806c47f0d2290fc3866f97a019",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\ratfolk-boss\\2026-07-08T02-11-30-a6991641\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

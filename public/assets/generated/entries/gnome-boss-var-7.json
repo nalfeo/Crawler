@@ -26,9 +26,6 @@
   "judgeScore": "5",
   "type": "enemy",
   "contentHash": "dabdda47d7568c1c3c8d1fd257dbc519d7b0c71275f465f48013bccb4730825d",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\gnome-boss\\2026-07-08T02-04-07-24c663e7\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "manual",
   "facingDirection": "right",
   "opaqueBounds": {

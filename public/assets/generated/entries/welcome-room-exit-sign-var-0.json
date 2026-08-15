@@ -102,9 +102,6 @@
   },
   "type": "prop",
   "contentHash": "9e71bdbe9885f8e6c9f0669ea7e90016c0bbf32373b5e753813da114f82cae14",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign\\2026-07-25T21-44-51-40a11370\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign\\2026-07-25T21-44-51-40a11370\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-exit-sign\\2026-07-25T21-44-51-40a11370\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

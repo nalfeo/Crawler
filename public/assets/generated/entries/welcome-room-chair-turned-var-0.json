@@ -102,9 +102,6 @@
   },
   "type": "prop",
   "contentHash": "419a348c508465a62b434d9b3ccf3d16d0a0e1e56f7a0f03c8df4dd2ce1f090a",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-chair-turned\\2026-07-25T21-48-38-a32205d8\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

@@ -102,9 +102,6 @@
   },
   "type": "prop",
   "contentHash": "7339026f484d71307835785ae1689285e16f8958d47f569f20d98368e0f0b7d9",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-mini-fridge\\2026-07-27T00-02-09-a00b6bd3\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-mini-fridge\\2026-07-27T00-02-09-a00b6bd3\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-mini-fridge\\2026-07-27T00-02-09-a00b6bd3\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

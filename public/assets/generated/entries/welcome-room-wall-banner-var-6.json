@@ -102,9 +102,6 @@
   },
   "type": "prop",
   "contentHash": "5275a49ff02d4eefaa000a026e60b1799c6c30a84ccc75190ac0df02316489e1",
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-wall-banner\\2026-07-25T20-46-58-fdfa6db3\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-wall-banner\\2026-07-25T20-46-58-fdfa6db3\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-jubilant-tribble\\generated\\runs\\welcome-room-wall-banner\\2026-07-25T20-46-58-fdfa6db3\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

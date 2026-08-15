@@ -114,9 +114,6 @@
     "canvasWidth": 256,
     "canvasHeight": 355
   },
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-elite-backlot-capo-v1/2026-08-01T00-08-30-e63c8050/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-elite-backlot-capo-v1/2026-08-01T00-08-30-e63c8050/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/llama-elite-backlot-capo-v1/2026-08-01T00-08-30-e63c8050/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right"
 }

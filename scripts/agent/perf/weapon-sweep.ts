@@ -15,7 +15,7 @@
  * Output
  * ------
  * A per-weapon summary table (win rate, mean game time, mean level, kills)
- * and a raw JSON file written under artifacts/weapon-sweeps by default.
+ * and a raw JSON file written under artifacts/experiments by default.
  */
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
