@@ -1,5 +1,39 @@
 [
   {
+    "commit": "55c87d91b3a751d2b59e501288e6709ace48c361",
+    "commitDate": "2026-08-14T23:16:21Z",
+    "commitSubject": "feat: add dev-build run ingest and issue proxy (#2922)",
+    "capturedAt": "2026-08-15T00:25:17.025Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31850900165",
+    "winRate": 0.99,
+    "totalWins": 297,
+    "totalRuns": 300,
+    "path": "by-sha/55c87d91b3a751d2b59e501288e6709ace48c361.json",
+    "legs": {
+      "floor1": {
+        "winRate": 0.99,
+        "totalWins": 297,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04,
+        "totalWins": 6,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.06,
+      "gatePass": false,
+      "path": "by-sha/55c87d91b3a751d2b59e501288e6709ace48c361.fun-report.json"
+    }
+  },
+  {
     "commit": "1cc74dfb1057b90fbc59259a48421096a937dd51",
     "commitDate": "2026-08-14T22:34:57Z",
     "commitSubject": "feat: centralize provenance-backed lore canon workflow (#2921)",
