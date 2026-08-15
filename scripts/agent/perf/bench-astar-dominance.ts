@@ -66,10 +66,8 @@
  *   npx tsx scripts/agent/perf/bench-astar-dominance.ts [rounds]
  */
 
-import { query } from 'bitecs';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
-import { Player, Position } from '../../../src/core/components.js';
 import type { GameWorld } from '../../../src/core/world.js';
 import { FloorMap } from '../../../src/core/map/FloorMap.js';
 import {
@@ -428,13 +426,6 @@ async function buildFloorOneMap(seed: number): Promise<FloorMap> {
     questStallFrames: 0,
     onFinish: (w) => {
       captured = w;
-    },
-    simulationOptions: {
-      preSystems: [
-        (w: GameWorld) => {
-          query(w.ecs, [Player, Position]);
-        },
-      ],
     },
   });
   if (!captured?.floorMap) {
