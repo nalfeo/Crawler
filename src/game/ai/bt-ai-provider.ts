@@ -192,6 +192,11 @@ import {
   RETREAT_MAX_PATH_VERIFICATIONS,
   RETREAT_REPICK_INTERVAL_FRAMES,
   RETREAT_REPICK_ARRIVE_FT,
+  RETREAT_OBJECTIVE_BIAS_WEIGHT,
+  RETREAT_OBJECTIVE_MEMORY_FRAMES,
+  RETREAT_DAMAGE_WINDOW_FRAMES,
+  RETREAT_TIME_TO_DEATH_FRAMES,
+  RETREAT_DAMAGE_WINDOW_MIN_DAMAGE,
   GOLD_FARM_ENEMY_SCAN_RADIUS_FT,
   GOLD_FARM_GOLD_SCAN_RADIUS_FT,
   GOLD_FARM_COLLECT_RADIUS_FT,
@@ -820,6 +825,29 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
   private retreatThreatEid: number | null = null;
+  /**
+   * Last positional progression objective the Progress behavior travelled to,
+   * with the frame and floor it was recorded on. Read by
+   * {@link pickRetreatTarget} so a kite that is otherwise equally safe runs
+   * ALONG the route instead of back down it. Only positional objectives are
+   * remembered (an enemy objective is fought, not travelled to), and the memo is
+   * ignored once it is older than {@link RETREAT_OBJECTIVE_MEMORY_FRAMES} or the
+   * floor map changed.
+   */
+  private retreatObjectiveX: number | null = null;
+  private retreatObjectiveY: number | null = null;
+  private retreatObjectiveFrame: number = 0;
+  private retreatObjectiveMap: FloorMap | null = null;
+  /**
+   * Rolling health history used by the sustained-damage retreat trigger. Frames
+   * are stored alongside the samples so a skipped poll (or a fresh floor) can
+   * never be read as a stale-but-valid slope. Ring length is one entry per frame
+   * of {@link RETREAT_DAMAGE_WINDOW_FRAMES}.
+   */
+  private healthHistory = new Float64Array(RETREAT_DAMAGE_WINDOW_FRAMES);
+  private healthHistoryFrames = new Int32Array(RETREAT_DAMAGE_WINDOW_FRAMES).fill(-1);
+  /** True while recent incoming damage predicts death inside the survival horizon. */
+  private bleedingOut: boolean = false;
   private localThreatRecoveryEid: number | null = null;
   private localThreatRecoveryMap: FloorMap | null = null;
   private localThreatRecoveryStartFrame: number | null = null;
@@ -1205,7 +1233,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
         const activeWeapon = getActiveWeapon(ctx.world);
-        const criticallyLow = ctx.healthPercent < this.config.retreatThreshold;
+        // Critically low = the fixed HP floor OR a measured incoming-damage rate
+        // that kills before the runner could plausibly disengage. Rate matters as
+        // much as remaining HP when nothing on the floor heals: without it a
+        // pinned melee runner tanks a whole pack from full health down to the
+        // floor before it ever starts kiting.
+        const criticallyLow = ctx.healthPercent < this.config.retreatThreshold || this.bleedingOut;
         const rangedEmergency =
           activeWeapon !== undefined &&
           isProjectileWeaponType(activeWeapon.weaponType) &&
@@ -1323,6 +1356,69 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.localThreatRecoveryMap = null;
     this.localThreatRecoveryStartFrame = null;
     this.localThreatRecoveryBestHealth = null;
+  }
+
+  /**
+   * Remember the positional progression objective the AI is currently travelling to.
+   */
+  private rememberRetreatObjective(world: GameWorld, x: number, y: number): void {
+    this.retreatObjectiveX = x;
+    this.retreatObjectiveY = y;
+    this.retreatObjectiveFrame = world.frameCount;
+    this.retreatObjectiveMap = world.floorMap;
+  }
+
+  /**
+   * The remembered progression objective, or null when there is none, it is
+   * stale, or it belongs to a different floor.
+   */
+  private getRetreatObjective(world: GameWorld): { x: number; y: number } | null {
+    if (this.retreatObjectiveX === null || this.retreatObjectiveY === null) return null;
+    if (this.retreatObjectiveMap !== world.floorMap) return null;
+    if (world.frameCount - this.retreatObjectiveFrame > RETREAT_OBJECTIVE_MEMORY_FRAMES) {
+      return null;
+    }
+    return { x: this.retreatObjectiveX, y: this.retreatObjectiveY };
+  }
+
+  /**
+   * Record this poll's health and re-evaluate whether sustained incoming damage
+   * would kill the player inside {@link RETREAT_TIME_TO_DEATH_FRAMES}.
+   *
+   * Uses the oldest sample still inside {@link RETREAT_DAMAGE_WINDOW_FRAMES} as
+   * the slope baseline, so the estimate reflects a sustained exchange rather
+   * than one hit. Health gains (a Constitution level-up) simply produce no
+   * damage and clear the flag.
+   */
+  private updateBleedOutRisk(frame: number, health: number): void {
+    const slot =
+      ((frame % RETREAT_DAMAGE_WINDOW_FRAMES) + RETREAT_DAMAGE_WINDOW_FRAMES) %
+      RETREAT_DAMAGE_WINDOW_FRAMES;
+    // The slot about to be overwritten holds the oldest in-window sample.
+    const oldestFrame = this.healthHistoryFrames[slot] ?? -1;
+    const oldestHealth = this.healthHistory[slot] ?? 0;
+    this.healthHistoryFrames[slot] = frame;
+    this.healthHistory[slot] = health;
+
+    const elapsed = frame - oldestFrame;
+    if (oldestFrame < 0 || elapsed <= 0 || elapsed > RETREAT_DAMAGE_WINDOW_FRAMES) {
+      this.bleedingOut = false;
+      return;
+    }
+    const damage = oldestHealth - health;
+    if (damage < RETREAT_DAMAGE_WINDOW_MIN_DAMAGE || health <= 0) {
+      this.bleedingOut = false;
+      return;
+    }
+    const framesToDeath = (health * elapsed) / damage;
+    this.bleedingOut = framesToDeath < RETREAT_TIME_TO_DEATH_FRAMES;
+  }
+
+  /** Reset the health history, e.g. when the AI is re-seeded onto a new floor. */
+  private resetBleedOutRisk(): void {
+    this.healthHistoryFrames.fill(-1);
+    this.healthHistory.fill(0);
+    this.bleedingOut = false;
   }
 
   private buildLocalThreatRecoveryBehavior(): BTNode {
@@ -1457,6 +1553,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const startTile = floorMap.worldToTile(playerX, playerY);
+    const objective = this.getRetreatObjective(world);
+    const objectiveDistance = objective
+      ? Math.hypot(objective.x - playerX, objective.y - playerY)
+      : 0;
     const candidates: Array<{ x: number; y: number; score: number }> = [];
     for (const offset of RETREAT_ARC_OFFSETS_RAD) {
       const angle = baseAngle + offset;
@@ -1477,7 +1577,18 @@ export class BehaviorTreeAI implements AIInputProvider {
           const d = Math.hypot(enemy.x - wx, enemy.y - wy);
           if (d < minEnemyDist) minEnemyDist = d;
         }
-        candidates.push({ x: wx, y: wy, score: minEnemyDist });
+        // Subordinate objective bias: reward candidates that also close the gap
+        // to the remembered progression objective, so the escape lane doubles as
+        // route progress instead of ground the next progression poll has to
+        // re-walk through the same pursuers.
+        const objectiveGain = objective
+          ? objectiveDistance - Math.hypot(objective.x - wx, objective.y - wy)
+          : 0;
+        candidates.push({
+          x: wx,
+          y: wy,
+          score: minEnemyDist + RETREAT_OBJECTIVE_BIAS_WEIGHT * objectiveGain,
+        });
       }
     }
 
@@ -1770,6 +1881,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetY = target.y;
         this.decision.reason = target.reason;
         this.decision.npcInteraction = target.npcInteraction ? { ...target.npcInteraction } : null;
+        this.rememberRetreatObjective(ctx.world, target.x, target.y);
         return BTStatus.SUCCESS;
       }),
     );
@@ -3505,6 +3617,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
     const healthPercent = playerHealth / playerMaxHealth;
+    this.updateBleedOutRisk(world.frameCount, playerHealth);
     this.updateSafeRoomEgressWaypointLatch(world, playerX, playerY);
 
     // Update stuck detection. Standing on a harvestable to gather it nets ~zero
@@ -8913,6 +9026,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.engageNoProgressFrames = 0;
     this.engageBaselinesByEid.clear();
     this.rangedDefensiveSpacing = false;
+    this.retreatObjectiveX = null;
+    this.retreatObjectiveY = null;
+    this.retreatObjectiveFrame = 0;
+    this.retreatObjectiveMap = null;
+    this.resetBleedOutRisk();
     this.collectDwellActive = false;
     this.collectDwellAnchorX = 0;
     this.collectDwellAnchorY = 0;
