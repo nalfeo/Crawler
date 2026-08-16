@@ -1,5 +1,34 @@
 [
   {
+    "commit": "0c763cee1905b309221c73be3657a218109f101b",
+    "commitDate": "2026-08-16T21:06:33Z",
+    "commitSubject": "feat(velocity): measure abandoned-PR waste in the bottleneck scan (#2974)",
+    "capturedAt": "2026-08-16T22:17:27.391Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31973214909",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0c763cee1905b309221c73be3657a218109f101b.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor1-chain": {
+        "winRate": 0.21333333333333335,
+        "totalWins": 32,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 37.82,
+      "gatePass": false,
+      "path": "by-sha/0c763cee1905b309221c73be3657a218109f101b.fun-report.json"
+    }
+  },
+  {
     "commit": "0ec050c0a41cb0fb59b136a7622baabe9534e10d",
     "commitDate": "2026-08-16T19:28:16Z",
     "commitSubject": "perf: drop dominated duplicate open-list pushes in grid A* (#2976)",
