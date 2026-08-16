@@ -40,7 +40,7 @@ jobs:
         run: mkdir -p "$AUTOMATION_REPORT_DIR"
 
       - name: Evaluate Copilot review instructions
-        run: npx tsx scripts/agent/docs/review-process-check.ts
+        run: npx tsx scripts/agent/shared/wrap-step.ts --name review-process-check-execution -- npx tsx scripts/agent/docs/review-process-check.ts
         continue-on-error: true
 
       - name: Aggregate report

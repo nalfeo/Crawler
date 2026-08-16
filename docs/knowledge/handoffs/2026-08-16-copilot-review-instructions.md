@@ -36,6 +36,11 @@ ci-policy, docs-tooling, agent-personas
 - Added `.github/workflows/nightly-code-review-process.yml`, a nightly/manual
   workflow that runs the checker, aggregates automation reports, and files a
   superseded tracking issue only when the review-process anchors drift.
+- Repaired the checker after review: its evaluator is now unit-tested against
+  every required anchor, recognizes the canonical recurring-pattern heading,
+  scopes runtime-wiring evidence to that checklist bullet, and requires a real
+  Markdown contract link. The workflow wraps execution so crashes also produce
+  an aggregateable failure report.
 
 ## Validation
 
@@ -43,6 +48,7 @@ ci-policy, docs-tooling, agent-personas
 - `npx tsx scripts/agent/docs/review-process-check.ts`
 - `npm run typecheck`
 - `npm run verify:fast`
+- `npx vitest run tests/unit/review-process-check.test.ts`
 
 ## Notes
 
