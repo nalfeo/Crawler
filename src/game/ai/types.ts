@@ -417,7 +417,18 @@ export interface Floor2FamilyProgressMetrics {
   encounterDefeatedMs: number | null;
 }
 
-/** Hunt-only activity evidence for production Floor 2 progression. */
+/**
+ * Hunt-only activity evidence for production Floor 2 progression.
+ *
+ * Every field here is scoped to ACTIVE HUNT FRAMES — frames where the AI is
+ * committed to a specific still-locked family den. A run that never commits to
+ * a hunt reports zeroes across this block even when it killed family trash all
+ * run, so these counters are NOT floor-wide totals and must not be read as
+ * such. For floor-wide totals use `RunStats.familyTrashKills` (per family) and
+ * `RunStats.combat.killsByType` (`floor2-family-trash-player`,
+ * `floor2-neutral-trash`). `huntTimeMs === 0` means this block has no coverage
+ * for the run rather than "no kills happened".
+ */
 export interface Floor2HuntMetrics {
   /** Simulated time spent pursuing a still-locked family den. */
   huntTimeMs: number;
@@ -429,10 +440,16 @@ export interface Floor2HuntMetrics {
   activeCombatTimeMs: number;
   /** Active-combat share of hunt time, from 0 to 1. */
   activeCombatRatio: number;
-  /** Player-attributed family trash deaths during active hunt frames. */
-  familyTrashKills: number;
-  /** Neutral trash deaths during active hunt frames. */
-  neutralTrashKills: number;
+  /**
+   * Player-attributed family trash deaths during active hunt frames only.
+   * See the interface docstring for the floor-wide total.
+   */
+  huntFamilyTrashKills: number;
+  /**
+   * Neutral trash deaths during active hunt frames only.
+   * See the interface docstring for the floor-wide total.
+   */
+  huntNeutralTrashKills: number;
   /** Mean live enemies inside the production director's engagement radius. */
   averageNearbyEnemies: number;
   /** Peak live enemies inside the production director's engagement radius. */
