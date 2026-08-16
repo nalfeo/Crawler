@@ -10,6 +10,7 @@
  * stable `speciesId`.
  */
 import { z } from 'zod';
+import { deepFreeze } from '../../canonical-json.js';
 import { AFFINITY_RING, type Affinity } from './affinity.js';
 import { FIGHTING_STYLES, type FightingStyle } from './styles.js';
 import speciesJson from './species.json';
@@ -131,7 +132,7 @@ export function loadPetSpecies(): readonly PetSpeciesDef[] {
     }
   }
 
-  cachedSpecies = Object.freeze(parsed.slice());
+  cachedSpecies = deepFreeze(parsed.slice());
   return cachedSpecies;
 }
 

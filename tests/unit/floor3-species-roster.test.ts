@@ -96,12 +96,12 @@ describe('Floor 3 species roster', () => {
     expect(names.size).toBe(52 * 3);
   });
 
-  it('gives every species a unique ability id at every milestone level', () => {
+  it('gives every species a unique, structurally-named ability id at every milestone level', () => {
     const abilityIds = new Set<string>();
     for (const species of loadPetSpecies()) {
       for (const level of ABILITY_MILESTONE_LEVELS) {
         const id = species.abilityIdsByLevel[String(level) as '1' | '8' | '16' | '25' | '34'];
-        expect(id).toBeTruthy();
+        expect(id).toBe(`f3.${species.speciesId}.l${level}`);
         abilityIds.add(id);
       }
     }
