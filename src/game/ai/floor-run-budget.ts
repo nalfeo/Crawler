@@ -14,6 +14,24 @@ import { GAME } from '../../shared/constants.js';
 import { getFloorWinBudgetMs } from '../../shared/floor-registry.js';
 
 /**
+ * Floor-agnostic simulation frame cap (~27 min at 60 fps) used when a floor
+ * declares no `implemented.winBudgetMs`.
+ *
+ * A budget-less floor has no validated time bound, so it must NOT inherit
+ * another floor's cap: doing so silently truncates every run long before that
+ * floor's own clear is reachable and reports a win rate that is a measurement
+ * artifact rather than a balance signal. Floor 2's release leg reported 0/150
+ * wins for exactly this reason — it ran on Floor 1's 21_600-frame (6 min) cap
+ * while chained progression runs, which resolve this default per leg, did
+ * produce clears. Their reported frame totals include both the Floor 1 and
+ * Floor 2 legs.
+ *
+ * This is the headless runner's own default cap, so an unbudgeted floor run
+ * through the sweep sees the same bound as one run through the runner directly.
+ */
+export const FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES = 100_000;
+
+/**
  * The ACTIVE-time budget (simulated game ms) an official win on `floorId` must
  * land under, or `null` when the floor declares no validated budget — in which
  * case a win is raw victory with no time bound.
