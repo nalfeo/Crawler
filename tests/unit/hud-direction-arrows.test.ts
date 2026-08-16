@@ -176,7 +176,7 @@ describe('resolveDirectionArrowStates', () => {
     }
   });
 
-  it('keeps an up-right edge arrow in the upper half when it points strongly up', () => {
+  it('keeps a right-edge arrow pointing up in the upper half of the screen', () => {
     const states = resolveDirectionArrowStates(
       Array.from({ length: 6 }, (_, index) => waypoint(`ne-${index}`, 100, -60 - index)),
       0,
