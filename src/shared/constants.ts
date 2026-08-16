@@ -135,6 +135,21 @@ export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
 /** Floor 1 Spell Broker price, in gold. */
 export const FLOOR1_SPELL_BROKER_COST: number = tuning.shopPricing.floor1.spellBrokerCost;
 
+/**
+ * Price escalation applied to each additional spell on the broker's rack: the
+ * n-th cheapest offer costs `spellBrokerCost * multiplier^n`.
+ *
+ * The broker is Floor 1's deep-pocket sink. One spell is the headline purchase
+ * every run aims at; a *second* one is deliberately priced as a luxury so it
+ * only lands in a run that both skipped a cheaper purchase and farmed well.
+ */
+export const FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER: number =
+  tuning.shopPricing.floor1.spellBrokerRepeatCostMultiplier;
+
+/** Maximum spells one run may buy from the Floor 1 broker. */
+export const FLOOR1_SPELL_BROKER_MAX_PURCHASES: number =
+  tuning.shopPricing.floor1.spellBrokerMaxPurchases;
+
 /** Floor 1 merchant's charm price, in gold. */
 export const FLOOR1_MERCHANTS_CHARM_COST: number = tuning.shopPricing.floor1.merchantsCharm;
 

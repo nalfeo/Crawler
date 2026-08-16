@@ -1,4 +1,5 @@
 import type { GameWorld } from '../../core/world.js';
+import { FLOOR1_SPELL_BROKER_MAX_PURCHASES } from '../../shared/constants.js';
 import { generateFloor1SpellBrokerOffers } from '../../shared/spell-skills.js';
 import type { Floor1RunPlan } from './run-planner.js';
 
@@ -26,6 +27,8 @@ export interface SpellBrokerIntent {
   readonly cost: number;
   /** Runtime status of the optional post-spellbook broker purchase. */
   readonly purchaseStatus: SpellBrokerIntentPurchaseStatus;
+  /** Spells already bought from the broker this run. */
+  readonly purchaseCount: number;
 }
 
 const intents = new WeakMap<GameWorld, SpellBrokerIntent>();
@@ -38,6 +41,7 @@ function initialIntent(enabled: boolean): SpellBrokerIntent {
     spellId: null,
     cost: 0,
     purchaseStatus: 'idle',
+    purchaseCount: 0,
   };
 }
 
@@ -91,15 +95,54 @@ export function ensureSpellBrokerDecision(world: GameWorld): SpellBrokerIntent {
 }
 
 /**
- * Mark the broker purchase as completed (called from auto-progression after
- * {@link purchaseSpellBrokerSpell} returns true). Transitions `purchaseStatus`
- * to `'purchased'` so the goal-graph and snapshot builder stop emitting the
- * optional bundle.
+ * Mark a broker purchase as completed (called from auto-progression after
+ * {@link purchaseSpellBrokerSpell} returns true).
+ *
+ * The broker is Floor 1's **deep-pocket sink**, so a run may come back for a
+ * second spell off the escalating rack (see `floor1SpellBrokerOfferCost`)
+ * instead of banking the gold it would otherwise carry to Floor 2 — a run that
+ * declines the merchant's weapon-class switch has nowhere else to spend. The
+ * re-arm is a plain re-entry into the normal lifecycle: the intent points at
+ * the next unpurchased offer at its higher price, and the run-planner decides
+ * as usual whether the deficit is farmable inside the deadline. Once
+ * {@link FLOOR1_SPELL_BROKER_MAX_PURCHASES} spells are bought, or the rack is
+ * empty, the intent goes terminal and the optional bundle stops being emitted.
  */
 export function markSpellBrokerPurchased(world: GameWorld): void {
   const current = getSpellBrokerIntent(world);
   if (current.purchaseStatus === 'purchased') return;
-  intents.set(world, { ...current, purchaseStatus: 'purchased' });
+  const purchaseCount = current.purchaseCount + 1;
+  const next = nextBrokerOffer(world, current.spellId);
+  if (purchaseCount >= FLOOR1_SPELL_BROKER_MAX_PURCHASES || !next) {
+    intents.set(world, { ...current, purchaseStatus: 'purchased', purchaseCount });
+    return;
+  }
+  intents.set(world, {
+    ...current,
+    purchaseCount,
+    spellId: next.spellId,
+    cost: next.cost,
+    purchaseStatus: 'idle',
+  });
+}
+
+/**
+ * Cheapest offer the run has not bought yet, excluding the one just purchased.
+ *
+ * Reads the durable per-run scenario rack when present (its `purchased` flags
+ * are the authority) and falls back to the seed-derived rack otherwise, so the
+ * lookup consumes no gameplay RNG either way.
+ */
+function nextBrokerOffer(
+  world: GameWorld,
+  justPurchasedSpellId: string | null,
+): { spellId: string; cost: number } | null {
+  const offers =
+    world.floorScenario?.spellBrokerOffers ?? generateFloor1SpellBrokerOffers(world.seed);
+  const candidate = [...offers]
+    .filter((offer) => !offer.purchased && offer.spellId !== justPurchasedSpellId)
+    .sort((a, b) => a.cost - b.cost || a.spellId.localeCompare(b.spellId))[0];
+  return candidate ? { spellId: candidate.spellId, cost: candidate.cost } : null;
 }
 
 /**

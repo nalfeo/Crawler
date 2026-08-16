@@ -68,7 +68,14 @@ export function getMerchantWeaponIntent(world: GameWorld): MerchantWeaponIntent 
  */
 export function spellPurchaseReserve(world: GameWorld): number {
   const spellIntent = ensureSpellBrokerDecision(world);
-  return isSpellBrokerPurchaseActive(spellIntent) ? spellIntent.cost : 0;
+  if (!isSpellBrokerPurchaseActive(spellIntent) || spellIntent.purchaseCount > 0) {
+    // Only the run's *first* spell outranks the weapon. A repeat purchase off
+    // the broker's escalating rack is a luxury sink for gold the run has no
+    // other use for, so reserving for it would let an unaffordable second
+    // spell block an affordable weapon and bank the gold instead.
+    return 0;
+  }
+  return spellIntent.cost;
 }
 
 /**
@@ -92,7 +99,7 @@ export function spellPurchaseReserve(world: GameWorld): number {
  * (standing proposal: a second broker spell at an escalating price), never a
  * looser economy ceiling.
  */
-export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.75;
+export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
 
 /**
  * Deterministic per-run willingness roll, drawn from a dedicated

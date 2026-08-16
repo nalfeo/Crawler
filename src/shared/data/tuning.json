@@ -98,6 +98,8 @@
       "_note": "Floor 1 gold sinks, tuned against measured Floor 1 income (~800g earned per completed run: enemy/chest drops plus achievement loot boxes). The sum of everything buyable on Floor 1 (charm + up to two post-quest weapons + one spell) is deliberately close to that income so a run must choose rather than buy the whole board and still bank a fortune for Floor 2. Gate: median unspent gold at Floor 1 exit <= 35% of gold earned, at >= 90% Floor 1 win rate.",
       "merchantsCharm": 100,
       "spellBrokerCost": 350,
+      "spellBrokerRepeatCostMultiplier": 1.4,
+      "spellBrokerMaxPurchases": 2,
       "postQuestWeaponDefaultCost": 180,
       "postQuestWeaponCosts": {
         "throwing-knife": 140,
