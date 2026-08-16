@@ -686,14 +686,16 @@ function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
     }
     bundleIds.add(bundle.achievementId);
     // Semantic guard (fail-closed): a persisted bundle may only exist for a
-    // real Floor 1 `floor1-materials` lootBox-reward achievement that is
+    // real `floor1-materials` lootBox-reward achievement (Floor 1's whole
+    // catalog plus the Floor 2 achievements that pay materials instead of
+    // equipment) that is
     // currently unlocked but not yet claimed — mirrors the equipment
     // reward-bundle guard. Two-step guard clause (rather than one combined
     // `||`) so TypeScript narrows `bundleAchievement.reward` down to the
     // `floor1-materials` shape (with its `LootBoxTier` `tier`) for every
-    // check below, the same way a tampered/stale Floor 2
+    // check below, the same way a tampered/stale
     // `floor2-generated-equipment` lootBox achievement id must never be
-    // allowed to smuggle a bundle into this Floor-1-only collection.
+    // allowed to smuggle a bundle into this materials-only collection.
     const bundleAchievement = getAchievementById(bundle.achievementId);
     if (!bundleAchievement || bundleAchievement.reward.type !== 'lootBox') {
       throw new PlayerCarryoverSnapshotError(
@@ -766,12 +768,12 @@ function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
       );
     }
   }
-  // Reverse guard (fail-closed): every unlocked-but-unclaimed Floor 1
+  // Reverse guard (fail-closed): every unlocked-but-unclaimed
   // `floor1-materials` lootBox achievement in the snapshot MUST have a
   // corresponding bundle. Without this, a snapshot with a bundle stripped out
   // (accidentally or via tampering) would restore "successfully" but leave
   // that achievement permanently unclaimable (`grantFailed` forever, since
-  // bundles are only ever resolved once, at unlock). Floor 2's
+  // bundles are only ever resolved once, at unlock).
   // `floor2-generated-equipment` lootBox achievements are excluded here —
   // their bundles live in `generatedEquipmentRewardBundles`, checked
   // separately by `validateEquipmentBundlePresence`.
