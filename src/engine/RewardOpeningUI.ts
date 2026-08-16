@@ -552,10 +552,13 @@ export function createRewardOpeningUI(
     if (!sequenceState) return;
     switch (event.code) {
       case 'KeyN':
-        // Only meaningful on the summary screen with a chain action wired;
-        // `handleOpenNext` guards both, so a stray [N] elsewhere is a no-op.
-        event.preventDefault();
-        handleOpenNext();
+        // Only meaningful on the summary screen with a chain action wired —
+        // outside that, leave the key entirely alone (no preventDefault) so a
+        // stray [N] is not silently swallowed by this overlay.
+        if (sequenceState.phase === 'summary' && nextReward !== null) {
+          event.preventDefault();
+          handleOpenNext();
+        }
         break;
       case 'Enter':
       case 'Space':
