@@ -4185,6 +4185,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/reviews`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -6480,6 +6481,7 @@ test('task body includes human-approval note when pendingHumanApproval is true',
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/reviews`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -6603,6 +6605,7 @@ test('balance-sweep branch prefix alone (no label) triggers human-approval gate'
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/reviews`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },

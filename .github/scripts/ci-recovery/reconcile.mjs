@@ -46,7 +46,7 @@ import {
 import {
   HUMAN_APPROVAL_LABEL,
   closingIssuesPropagatingHumanApproval,
-  humanApprovalRejection,
+  resolveHumanApprovalRejection,
   requiresHumanApproval,
   stripClosingKeywordsForIssues,
 } from '../merge-train/human-approval.mjs';
@@ -1270,11 +1270,12 @@ const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
 }
 
 const humanApprovalRequired = requiresHumanApproval(pr, closingIssues);
-approvalRejection = humanApprovalRejection({
+approvalRejection = await resolveHumanApprovalRejection({
   pullRequest: pr,
   closingIssues,
   comments,
   ownerLogin: owner,
+  fetchReviews: () => paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/reviews`),
 });
 pendingHumanApproval = Boolean(approvalRejection);
 
