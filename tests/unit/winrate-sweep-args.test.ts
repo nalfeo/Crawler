@@ -10,6 +10,7 @@ import {
   parseSeeds,
   parseSweepArgs,
 } from '../../scripts/agent/perf/winrate-sweep-args.js';
+import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from '../../src/game/ai/floor-run-budget.js';
 
 /** Build a process-style argv (`[node, script, ...flags]`) for the parser. */
 function argv(...flags: string[]): string[] {
@@ -152,15 +153,19 @@ describe('parseSweepArgs — defaults and flags', () => {
     expect(() => parseSweepArgs(argv('--floor', 'floor3'), 1)).toThrow(/not an implemented floor/);
   });
 
-  it('scopes the DEFAULT_MAX_FRAMES slack cap to floor1 only (regression: floor2 must keep its prior default)', () => {
+  it('scopes the DEFAULT_MAX_FRAMES slack cap to floor1 and gives an unbudgeted floor the runner default', () => {
     // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack, so it must NOT leak
-    // into other floors. A floor that declares no manifest win budget retains the
-    // prior BUDGET_FRAMES default — this Floor-1-scoped fix cannot be allowed to
-    // silently inflate a floor2 sweep's frame budget (which could turn
-    // formerly-truncated floor2 runs into victories).
+    // into other floors. A floor that declares no manifest win budget must also
+    // NOT inherit Floor 1's 6-min cap: doing so truncated every Floor-2 release
+    // run ~3x short of an achievable clear and reported 0/150 wins as a pure
+    // measurement artifact. It falls back to the floor-agnostic runner default
+    // instead, which is the same bound the chained sweep leg already resolves.
     expect(parseSweepArgs(argv(), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES); // floor1 (default)
     expect(parseSweepArgs(argv('--floor', 'floor1'), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES);
-    expect(parseSweepArgs(argv('--floor', 'floor2'), 1).maxFrames).toBe(BUDGET_FRAMES);
+    const floor2Frames = parseSweepArgs(argv('--floor', 'floor2'), 1).maxFrames;
+    expect(floor2Frames).toBe(FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES);
+    expect(floor2Frames).not.toBe(BUDGET_FRAMES);
+    expect(floor2Frames).not.toBe(DEFAULT_MAX_FRAMES);
   });
 
   it('lets an explicit --max-frames override the floor-aware default for any floor', () => {
