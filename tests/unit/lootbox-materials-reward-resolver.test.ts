@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
-} from '../../src/game/floor1-lootbox-reward-resolver.js';
+} from '../../src/game/lootbox-materials-reward-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import {
   FLOOR1_COMMON_CRAFTING_MATERIALS,

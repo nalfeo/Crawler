@@ -155,16 +155,121 @@ export const FLOOR1_COMMON_CRAFTING_MATERIALS: readonly string[] = Object.freeze
   ).map((item) => item.id),
 );
 
+/**
+ * Floor 2 crafting-material pool — the Floor 1 common pool PLUS the catalog's
+ * Uncommon Materials (`gold-nugget`, `hardite-plank`, `ectoplasm-glob`,
+ * `lava-glass`, …), derived DATA-DRIVEN from the item catalog exactly like
+ * {@link FLOOR1_COMMON_CRAFTING_MATERIALS} so it can never silently drift to a
+ * non-Materials item. Floor 2 is a strictly richer floor than Floor 1, so its
+ * loot boxes may roll the better components Floor 1's never can — but still
+ * NEVER equipment (the `lootBox` bundle shape structurally carries none) and
+ * never above Uncommon.
+ */
+export const FLOOR2_CRAFTING_MATERIALS: readonly string[] = Object.freeze(
+  ITEM_CATALOG.filter(
+    (item) =>
+      (item.rarity === ItemRarity.Common || item.rarity === ItemRarity.Uncommon) &&
+      item.tags.includes('Materials'),
+  ).map((item) => item.id),
+);
+
+/**
+ * Floor 2 loot-box gold grant per achievement tier — deliberately ABOVE
+ * {@link LOOT_BOX_GOLD_BY_TIER}'s Floor 1 amounts for the same tier name
+ * (3× — 75/150/300 vs 25/50/100), because Floor 2's economy (equipment,
+ * settlement shops, the Broker) prices everything higher and a Floor 2
+ * consolation payout must stay meaningful next to a generated-equipment
+ * drop. Explicit design assumption, mirroring the Floor 1 table's own
+ * roughly-doubling-per-tier shape.
+ */
+export const FLOOR2_LOOT_BOX_GOLD_BY_TIER: Readonly<Record<Floor2AchievementLootTier, number>> =
+  Object.freeze({
+    common: 75,
+    uncommon: 150,
+    rare: 300,
+  });
+
+/**
+ * Per-tier probability that a Floor 2 achievement's loot box actually contains
+ * a generated-equipment instance rather than the Floor 2 gold+materials
+ * payout. Lower tiers roll a coin flip — HALF the old always-equipment rate —
+ * so equipment stays a real possibility on every achievement without every
+ * unlock handing out gear; `rare` (the floor's genuine milestones) still pays
+ * equipment every time. The roll is deterministic per run key + achievement
+ * (see `rollFloor2AchievementEquipmentDrop`), never a live RNG draw.
+ */
+export const FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER: Readonly<
+  Record<Floor2AchievementLootTier, number>
+> = Object.freeze({
+  common: 0.5,
+  uncommon: 0.5,
+  rare: 1,
+});
+
+/**
+ * Floor 2 achievements whose equipment drop is guaranteed regardless of their
+ * tier's {@link FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER} roll. Only the one-time
+ * starter kit qualifies: its entire premise (and its `details` copy) is "here
+ * is your first Floor 2 equipment piece", and a player who rolled materials
+ * there would start the floor with no gear path at all.
+ */
+export const FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS: ReadonlySet<string> = new Set([
+  'floor2-field-kit',
+]);
+
+/**
+ * The materials payout table a `lootBox` achievement falls back to. Floor 1
+ * achievements always pay `floor1-materials`; a Floor 2
+ * `floor2-generated-equipment` achievement pays `floor2-materials` on a missed
+ * equipment roll. Floor 2 NEVER reuses Floor 1's table — its gold and material
+ * pool are its own (see {@link FLOOR2_LOOT_BOX_GOLD_BY_TIER} /
+ * {@link FLOOR2_CRAFTING_MATERIALS}).
+ */
+export const ACHIEVEMENT_MATERIALS_TABLES = ['floor1-materials', 'floor2-materials'] as const;
+export type AchievementMaterialsTable = (typeof ACHIEVEMENT_MATERIALS_TABLES)[number];
+
+/** The exact gold a `table`/`tier` materials bundle must carry. */
+export function materialsTableGoldForTier(
+  table: AchievementMaterialsTable,
+  tier: LootBoxTier,
+): number {
+  if (table === 'floor2-materials' && isFloor2AchievementLootTier(tier)) {
+    return FLOOR2_LOOT_BOX_GOLD_BY_TIER[tier];
+  }
+  return LOOT_BOX_GOLD_BY_TIER[tier];
+}
+
+/** The exact material pool a `table` materials bundle may draw from. */
+export function materialsTablePool(table: AchievementMaterialsTable): readonly string[] {
+  return table === 'floor2-materials'
+    ? FLOOR2_CRAFTING_MATERIALS
+    : FLOOR1_COMMON_CRAFTING_MATERIALS;
+}
+
+/**
+ * The materials table a given `lootBox` reward's bundle belongs to. Non-lootBox
+ * rewards never resolve a materials bundle at all; they report the Floor 1
+ * table so callers have a total function without a nullable branch.
+ */
+export function materialsTableForReward(reward: AchievementReward): AchievementMaterialsTable {
+  return reward.type === 'lootBox' && reward.lootTable === 'floor2-generated-equipment'
+    ? 'floor2-materials'
+    : 'floor1-materials';
+}
+
 /** Schema version for {@link LootBoxRewardBundleV1}. */
 export const LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION = 'lootbox-reward-bundle/v1' as const;
 
 /**
- * A Floor 1 `lootBox` achievement reward's content, resolved ONCE at unlock
- * time and persisted until claimed (mirrors the Floor 2
+ * A `lootBox` achievement reward's gold+materials content, resolved ONCE at
+ * unlock time and persisted until claimed (mirrors the Floor 2
  * `GeneratedEquipmentRewardBundleV1` pattern: generation happens only at
  * resolution — unlock — never at claim, load, or presentation). `gold` and
  * `materials` are the exact grant a later claim will apply verbatim, with no
- * further RNG involved.
+ * further RNG involved. Which table's gold/pool contract the bundle must
+ * satisfy is derived from its achievement's own reward (see
+ * {@link materialsTableForReward}) rather than stored on the bundle, so the
+ * persisted v1 shape is unchanged.
  */
 export interface LootBoxRewardBundleV1 {
   readonly schemaVersion: typeof LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION;
@@ -600,17 +705,20 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * systems (see `collectCurrentFloorAchievementFacts` in
  * `src/game/systems/achievementSystem.ts`).
  *
- * Every achievement's reward is a `lootBox`, but only a MINORITY of them drop
- * generated equipment: the 11 `rare`-tier achievements plus the one-time
- * `floor2-field-kit` starter kit (12 of 36) carry `lootTable:
- * 'floor2-generated-equipment'`; the other 24 carry Floor 1's
- * `'floor1-materials'` gold + crafting-materials table. Equipment is the
- * scarce, milestone-gated payout — it is deliberately NOT granted by every
- * unlock, so routine Floor 2 progress pays in materials instead of a constant
- * stream of gear.
+ * Every achievement's reward is `{ type: 'lootBox', lootTable:
+ * 'floor2-generated-equipment', tier }` (ADR 0069 amendment) — Floor 2 always
+ * uses its OWN table and never Floor 1's. What a box CONTAINS is decided once,
+ * at unlock, by a deterministic drop roll: `rare` boxes (and the one-time
+ * `floor2-field-kit` starter kit, see
+ * {@link FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS}) always hold a generated
+ * equipment instance, while `common`/`uncommon` boxes hold one only half the
+ * time (see {@link FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER} — half the old
+ * always-equipment rate) and otherwise pay Floor 2's own richer gold +
+ * crafting materials ({@link FLOOR2_LOOT_BOX_GOLD_BY_TIER} /
+ * {@link FLOOR2_CRAFTING_MATERIALS}). Lower-tier achievements therefore still
+ * have a real shot at gear without every unlock handing some out.
  *
- * For the 12 equipment achievements the reward is `{ type: 'lootBox',
- * lootTable: 'floor2-generated-equipment', tier }` (ADR 0069 amendment) — a
+ * When the roll grants equipment, it is a
  * single generated-equipment instance drawn, at claim time, from the one
  * central, catalog-derived `FLOOR2_REWARD_POOL_STABLE_IDS` pool (see
  * `src/shared/data/floor2-reward-pool.ts`), never a per-achievement `bases`

@@ -13,7 +13,16 @@ import {
   FLOOR2_ACHIEVEMENTS,
   FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
   FLOOR2_ACHIEVEMENT_LOOT_TIERS,
+  FLOOR2_CRAFTING_MATERIALS,
+  FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER,
+  FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS,
+  FLOOR2_LOOT_BOX_GOLD_BY_TIER,
   FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
+  FLOOR1_COMMON_CRAFTING_MATERIALS,
+  LOOT_BOX_GOLD_BY_TIER,
+  materialsTableForReward,
+  materialsTableGoldForTier,
+  materialsTablePool,
   getCurrentRunGlobalAchievements,
   LOOT_BOX_TIERS,
   getAchievementCatalogForFloor,
@@ -24,6 +33,7 @@ import {
   EQUIPMENT_REWARD_TIER_RARITIES,
 } from '../../src/shared/generated-equipment-types.js';
 import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
+import { ITEM_CATALOG, ItemRarity } from '../../src/shared/items.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -226,41 +236,57 @@ describe('floor2 achievements catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('grants generated equipment from only a minority of Floor 2 achievements — the rest pay out materials', () => {
-    const equipmentIds = FLOOR2_ACHIEVEMENTS.filter(
-      (achievement) =>
-        achievement.reward.type === 'lootBox' &&
-        achievement.reward.lootTable === 'floor2-generated-equipment',
-    ).map((achievement) => achievement.id);
-    // Equipment is milestone-gated: the 11 `rare`-tier achievements plus the
-    // one-time `floor2-field-kit` starter kit. Everything else pays gold +
-    // crafting materials, so routine Floor 2 progress no longer showers the
-    // player with gear.
-    expect(equipmentIds).toHaveLength(12);
-    expect(equipmentIds).toContain('floor2-field-kit');
-    expect(equipmentIds.length).toBeLessThan(FLOOR2_ACHIEVEMENTS.length / 2);
+  it('halves the equipment drop rate on lower Floor 2 tiers while keeping rare (and the starter kit) guaranteed', () => {
+    // Every Floor 2 achievement still draws from Floor 2's OWN table — Floor 1's
+    // materials table is never reused here. What changed is that a lower-tier
+    // box only CONTAINS equipment half the time; the other half pays Floor 2
+    // gold + Floor 2 crafting materials.
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
-      if (
-        achievement.reward.type !== 'lootBox' ||
-        achievement.reward.lootTable === 'floor2-generated-equipment'
-      ) {
-        continue;
-      }
-      expect(achievement.reward.lootTable).toBe('floor1-materials');
-      expect(LOOT_BOX_TIERS).toContain(achievement.reward.tier);
+      expect(achievement.reward.type).toBe('lootBox');
+      if (achievement.reward.type !== 'lootBox') continue;
+      expect(achievement.reward.lootTable).toBe('floor2-generated-equipment');
+    }
+    expect(FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER).toEqual({
+      common: 0.5,
+      uncommon: 0.5,
+      rare: 1,
+    });
+    expect([...FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS]).toEqual(['floor2-field-kit']);
+  });
+
+  it('pays Floor 2 loot boxes more gold than Floor 1 for the same tier', () => {
+    for (const tier of FLOOR2_ACHIEVEMENT_LOOT_TIERS) {
+      expect(FLOOR2_LOOT_BOX_GOLD_BY_TIER[tier]).toBeGreaterThan(LOOT_BOX_GOLD_BY_TIER[tier]);
+      expect(materialsTableGoldForTier('floor2-materials', tier)).toBe(
+        FLOOR2_LOOT_BOX_GOLD_BY_TIER[tier],
+      );
+      expect(materialsTableGoldForTier('floor1-materials', tier)).toBe(LOOT_BOX_GOLD_BY_TIER[tier]);
     }
   });
 
-  it('gives every Floor 2 equipment achievement besides the starter kit a rare tier', () => {
+  it('adds Floor 2 crafting materials on top of the Floor 1 common pool, and never equipment', () => {
+    for (const itemId of FLOOR1_COMMON_CRAFTING_MATERIALS) {
+      expect(FLOOR2_CRAFTING_MATERIALS).toContain(itemId);
+    }
+    expect(FLOOR2_CRAFTING_MATERIALS.length).toBeGreaterThan(
+      FLOOR1_COMMON_CRAFTING_MATERIALS.length,
+    );
+    for (const itemId of FLOOR2_CRAFTING_MATERIALS) {
+      const item = ITEM_CATALOG.find((candidate) => candidate.id === itemId);
+      expect(item).toBeDefined();
+      expect(item?.tags).toContain('Materials');
+      expect([ItemRarity.Common, ItemRarity.Uncommon]).toContain(item?.rarity);
+    }
+    expect(materialsTablePool('floor2-materials')).toEqual(FLOOR2_CRAFTING_MATERIALS);
+    expect(materialsTablePool('floor1-materials')).toEqual(FLOOR1_COMMON_CRAFTING_MATERIALS);
+  });
+
+  it('routes each reward to its own materials table — Floor 2 never falls back to Floor 1s', () => {
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
-      if (
-        achievement.reward.type !== 'lootBox' ||
-        achievement.reward.lootTable !== 'floor2-generated-equipment' ||
-        achievement.id === 'floor2-field-kit'
-      ) {
-        continue;
-      }
-      expect(achievement.reward.tier).toBe('rare');
+      expect(materialsTableForReward(achievement.reward)).toBe('floor2-materials');
+    }
+    for (const achievement of FLOOR1_ACHIEVEMENTS) {
+      expect(materialsTableForReward(achievement.reward)).toBe('floor1-materials');
     }
   });
 

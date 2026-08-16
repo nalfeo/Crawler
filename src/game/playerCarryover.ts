@@ -27,9 +27,10 @@ import {
   getAchievementById,
   mergeAchievementFactSnapshots,
   isLootBoxTier,
-  FLOOR1_COMMON_CRAFTING_MATERIALS,
+  materialsTableForReward,
+  materialsTableGoldForTier,
+  materialsTablePool,
   LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
-  LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
   LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION,
   FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
@@ -660,7 +661,10 @@ interface ValidatedGeneratedCarryover {
 }
 
 /**
- * Validates Floor 1 `lootBox` reward bundles in a carryover snapshot.
+ * Validates gold+materials `lootBox` reward bundles in a carryover snapshot —
+ * Floor 1's `floor1-materials` rewards and the Floor 2 achievements whose
+ * unlock-time equipment roll missed and resolved Floor 2's own materials
+ * payout instead.
  * Independent of the generated-equipment registry machinery — lootBox
  * bundles reference no generated-equipment instances, just gold + catalog
  * material ids — so this runs unconditionally, regardless of whether a
@@ -686,27 +690,23 @@ function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
     }
     bundleIds.add(bundle.achievementId);
     // Semantic guard (fail-closed): a persisted bundle may only exist for a
-    // real `floor1-materials` lootBox-reward achievement (Floor 1's whole
-    // catalog plus the Floor 2 achievements that pay materials instead of
-    // equipment) that is
-    // currently unlocked but not yet claimed — mirrors the equipment
-    // reward-bundle guard. Two-step guard clause (rather than one combined
-    // `||`) so TypeScript narrows `bundleAchievement.reward` down to the
-    // `floor1-materials` shape (with its `LootBoxTier` `tier`) for every
-    // check below, the same way a tampered/stale
-    // `floor2-generated-equipment` lootBox achievement id must never be
-    // allowed to smuggle a bundle into this materials-only collection.
+    // real `lootBox`-reward achievement — Floor 1's whole catalog, or a Floor 2
+    // achievement whose unlock-time equipment roll missed — that is currently
+    // unlocked but not yet claimed; mirrors the equipment reward-bundle guard.
+    // The guard clause also narrows `bundleAchievement.reward` to the `lootBox`
+    // variants (whose `tier` is a `LootBoxTier`) for every check below, so a
+    // tampered/stale non-lootBox achievement id can never smuggle a bundle into
+    // this materials-only collection.
     const bundleAchievement = getAchievementById(bundle.achievementId);
     if (!bundleAchievement || bundleAchievement.reward.type !== 'lootBox') {
       throw new PlayerCarryoverSnapshotError(
         `Loot box reward bundle for non-lootBox achievement: ${bundle.achievementId}`,
       );
     }
-    if (bundleAchievement.reward.lootTable !== 'floor1-materials') {
-      throw new PlayerCarryoverSnapshotError(
-        `Loot box reward bundle for non-floor1-materials achievement: ${bundle.achievementId}`,
-      );
-    }
+    // Which materials table's canonical gold/pool contract this bundle must
+    // satisfy is derived from the achievement's own reward — Floor 2's amounts
+    // and pool are strictly its own and are never validated against Floor 1's.
+    const materialsTable = materialsTableForReward(bundleAchievement.reward);
     if (!unlockedIds.has(bundle.achievementId)) {
       throw new PlayerCarryoverSnapshotError(
         `Loot box reward bundle for locked achievement: ${bundle.achievementId}`,
@@ -740,18 +740,20 @@ function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
     // number" — so a tampered snapshot can never inflate the gold a bundle
     // will grant on claim (e.g. forging a `trash`-tier bundle with
     // `gold: 999999`).
-    if (bundle.gold !== LOOT_BOX_GOLD_BY_TIER[bundle.tier]) {
+    const expectedGold = materialsTableGoldForTier(materialsTable, bundle.tier);
+    if (bundle.gold !== expectedGold) {
       throw new PlayerCarryoverSnapshotError(
-        `Loot box reward bundle ${bundle.achievementId} has gold ${bundle.gold}, expected ${LOOT_BOX_GOLD_BY_TIER[bundle.tier]} for tier ${bundle.tier}`,
+        `Loot box reward bundle ${bundle.achievementId} has gold ${bundle.gold}, expected ${expectedGold} for tier ${bundle.tier}`,
       );
     }
     // Content guard (fail-closed, structural hard gate): every material must
-    // be a real Floor 1 common-crafting-material item — NEVER equipment,
-    // NEVER above Common rarity — so a tampered/stale snapshot can never
-    // smuggle an illegal item id into a restored bundle.
+    // be a real crafting-material item from THIS bundle's own table pool —
+    // NEVER equipment, and never a Floor 2-only material inside a Floor 1
+    // bundle — so a tampered/stale snapshot can never smuggle an illegal (or
+    // out-of-floor) item id into a restored bundle.
     assertArray(bundle.materials, `lootBoxRewardBundles.${bundle.achievementId}.materials`);
     for (const itemId of bundle.materials) {
-      if (typeof itemId !== 'string' || !FLOOR1_COMMON_CRAFTING_MATERIALS.includes(itemId)) {
+      if (typeof itemId !== 'string' || !materialsTablePool(materialsTable).includes(itemId)) {
         throw new PlayerCarryoverSnapshotError(
           `Loot box reward bundle ${bundle.achievementId} has an invalid material item id: ${String(itemId)}`,
         );
@@ -802,15 +804,19 @@ function validateLootBoxRewardBundles(snapshot: PlayerCarryoverSnapshot): void {
  * `'lootBox' | 'equipment'` vocabulary (shared with boss chests, see
  * `reward-presentation.ts`) is intentionally decoupled from
  * `AchievementReward.type`/`lootTable` (ADR 0069 amendment) — both of
- * `AchievementReward`'s `lootBox` variants share `type: 'lootBox'`, but only
- * `floor1-materials` presents as `'lootBox'`; `floor2-generated-equipment`
- * presents as `'equipment'` (an actual generated-equipment instance).
+ * `AchievementReward`'s `lootBox` variants share `type: 'lootBox'`, but
+ * `floor1-materials` only ever presents as `'lootBox'`, while
+ * `floor2-generated-equipment` presents as `'equipment'` when its unlock-time
+ * drop roll hit and as `'lootBox'` (Floor 2's own gold+materials payout) when
+ * it missed — so that reward accepts BOTH kinds.
  */
-function expectedPendingPresentationKind(reward: AchievementDef['reward']): string {
+function expectedPendingPresentationKinds(reward: AchievementDef['reward']): readonly string[] {
   if (reward.type === 'lootBox') {
-    return reward.lootTable === 'floor2-generated-equipment' ? 'equipment' : 'lootBox';
+    return reward.lootTable === 'floor2-generated-equipment'
+      ? ['equipment', 'lootBox']
+      : ['lootBox'];
   }
-  return reward.type;
+  return [reward.type];
 }
 
 /**
@@ -848,17 +854,13 @@ function validatePendingAchievementRewardPresentations(snapshot: PlayerCarryover
         `Pending reward presentation for unknown achievement: ${achievementId}`,
       );
     }
-    const expectedKind = expectedPendingPresentationKind(achievement.reward);
-    if (expectedKind !== presentation.kind) {
+    const expectedKinds = expectedPendingPresentationKinds(achievement.reward);
+    if (!expectedKinds.includes(presentation.kind)) {
       throw new PlayerCarryoverSnapshotError(
-        `Pending reward presentation for ${achievementId} has kind "${presentation.kind}", expected "${expectedKind}"`,
+        `Pending reward presentation for ${achievementId} has kind "${presentation.kind}", expected "${expectedKinds.join('" or "')}"`,
       );
     }
-    if (
-      presentation.kind === 'lootBox' &&
-      achievement.reward.type === 'lootBox' &&
-      achievement.reward.lootTable === 'floor1-materials'
-    ) {
+    if (presentation.kind === 'lootBox' && achievement.reward.type === 'lootBox') {
       if (achievement.reward.tier !== presentation.tier) {
         throw new PlayerCarryoverSnapshotError(
           `Pending reward presentation for ${achievementId} has tier "${presentation.tier}", expected "${achievement.reward.tier}"`,
@@ -884,7 +886,9 @@ function validatePendingAchievementRewardPresentations(snapshot: PlayerCarryover
 /**
  * Reverse guard (fail-closed): every unlocked-but-unclaimed Floor 2
  * `floor2-generated-equipment` lootBox achievement in the snapshot MUST have
- * a corresponding persisted reward bundle. Only needs the achievements/
+ * a corresponding persisted reward bundle — an equipment bundle when its
+ * unlock-time drop roll hit, or a Floor 2 materials bundle when it missed.
+ * Only needs the achievements/
  * bundle-id fields of the snapshot — NOT the generated-equipment registry —
  * so, like {@link validateLootBoxRewardBundles}, it must run
  * unconditionally, regardless of whether a registry snapshot is present.
@@ -907,16 +911,27 @@ function validateEquipmentBundlePresence(snapshot: PlayerCarryoverSnapshot): voi
       return bundle.achievementId;
     }),
   );
+  // A Floor 2 achievement whose equipment roll missed carries its payout in
+  // the materials-bundle collection instead; either one satisfies this guard.
+  const materialsBundleIds = new Set(
+    snapshot.lootBoxRewardBundles.map((bundle) => {
+      if (bundle === null || typeof bundle !== 'object') {
+        throw new PlayerCarryoverSnapshotError('Loot box reward bundle entry must be an object');
+      }
+      return bundle.achievementId;
+    }),
+  );
   for (const achievement of ALL_ACHIEVEMENTS) {
     if (
       achievement.reward.type === 'lootBox' &&
       achievement.reward.lootTable === 'floor2-generated-equipment' &&
       unlockedIds.has(achievement.id) &&
       !claimedIds.has(achievement.id) &&
-      !bundleIds.has(achievement.id)
+      !bundleIds.has(achievement.id) &&
+      !materialsBundleIds.has(achievement.id)
     ) {
       throw new PlayerCarryoverSnapshotError(
-        `Missing generated equipment reward bundle for unlocked, unclaimed achievement: ${achievement.id}`,
+        `Missing reward bundle for unlocked, unclaimed achievement: ${achievement.id}`,
       );
     }
   }
