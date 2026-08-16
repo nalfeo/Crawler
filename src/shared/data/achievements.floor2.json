@@ -29,8 +29,8 @@
     "title": "Floor 2 Second Wind",
     "popupText": "New achievement: Floor 2 Second Wind!",
     "unlockCriteria": "Defeat 10 enemies on Floor 2.",
-    "details": "Unlock by defeating 10 enemies on Floor 2 to receive a Common-or-Uncommon equipment piece.",
-    "directorFlavor": "The audience is warming up, and so, apparently, is the prop budget. Ten kills in and the discount-bin phase is officially behind you — this one might actually roll Uncommon. The Quartermaster's ledger notes the uptick with visible enthusiasm, which is more than it's shown you all season. Sponsors love a contestant with momentum; it's cheaper to advertise than a comeback story. Keep this pace and wardrobe might finally admit they've had better stock in the back the whole time.",
+    "details": "Unlock by defeating 10 enemies on Floor 2 for a coin-flip chance at a Common-or-Uncommon equipment piece — the loot box pays gold and Floor 2 crafting materials when the roll misses.",
+    "directorFlavor": "The audience is warming up, and so, apparently, is the prop budget — though wardrobe now flips a coin before opening the cage. Ten kills in and the discount-bin phase is behind you; half the time that box holds an actual piece, and the other half it holds gold and whatever salvage crew scraped off this floor. The Quartermaster's ledger notes the uptick with visible enthusiasm, which is more than it's shown you all season. Sponsors love a contestant with momentum; it's cheaper to advertise than a comeback story. Keep this pace and the coin will land your way eventually — it always does, for someone.",
     "iconId": "achv-floor2-second-wind-placeholder",
     "difficulty": "standard",
     "reward": {

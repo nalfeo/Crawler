@@ -177,7 +177,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function rectEdgePt(angle: number): { edge: RectEdge; x: number; y: number } {
+interface EdgePoint {
+  readonly edge: RectEdge;
+  readonly x: number;
+  readonly y: number;
+  readonly cos: number;
+  readonly sin: number;
+}
+
+function rectEdgePt(angle: number): EdgePoint {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const tH = cos !== 0 ? RX / Math.abs(cos) : Infinity;
@@ -187,26 +195,49 @@ function rectEdgePt(angle: number): { edge: RectEdge; x: number; y: number } {
     edge: tH <= tV ? (cos >= 0 ? 'right' : 'left') : sin >= 0 ? 'bottom' : 'top',
     x: CX + cos * t,
     y: CY + sin * t,
+    cos,
+    sin,
   };
 }
 
-function slideAlongEdge(
-  edgePoint: { edge: RectEdge; x: number; y: number },
-  offset: number,
-): { x: number; y: number } {
+/**
+ * Restrict the fan slide to the half of the edge the arrow actually points
+ * toward. Without this, a strongly right-pointing arrow parked on the top or
+ * bottom edge could be fanned all the way past screen centre and end up on the
+ * left of the player while still pointing right (and vice versa).
+ *
+ * The lock only engages once the direction component along the slide axis is
+ * meaningful; a near-perpendicular arrow (e.g. pointing straight down on the
+ * bottom edge) has no "side" to honour, so it keeps the full edge for fanning.
+ */
+const SIDE_LOCK_THRESHOLD = Math.sin(Math.PI / 12); // 15°
+
+function slideRange(
+  component: number,
+  center: number,
+  halfExtent: number,
+): { min: number; max: number } {
+  if (component >= SIDE_LOCK_THRESHOLD) {
+    return { min: center, max: center + halfExtent };
+  }
+  if (component <= -SIDE_LOCK_THRESHOLD) {
+    return { min: center - halfExtent, max: center };
+  }
+  return { min: center - halfExtent, max: center + halfExtent };
+}
+
+function slideAlongEdge(edgePoint: EdgePoint, offset: number): { x: number; y: number } {
   switch (edgePoint.edge) {
     case 'left':
-    case 'right':
-      return {
-        x: edgePoint.x,
-        y: clamp(edgePoint.y + offset, CY - RY, CY + RY),
-      };
+    case 'right': {
+      const { min, max } = slideRange(edgePoint.sin, CY, RY);
+      return { x: edgePoint.x, y: clamp(edgePoint.y + offset, min, max) };
+    }
     case 'top':
-    case 'bottom':
-      return {
-        x: clamp(edgePoint.x + offset, CX - RX, CX + RX),
-        y: edgePoint.y,
-      };
+    case 'bottom': {
+      const { min, max } = slideRange(edgePoint.cos, CX, RX);
+      return { x: clamp(edgePoint.x + offset, min, max), y: edgePoint.y };
+    }
   }
 }
 
@@ -239,9 +270,14 @@ export function resolveDirectionArrowStates(
     const distanceFt = Math.hypot(dx, dy);
     const labelText = wrapWaypointText(`${waypoint.label}  ${formatWaypointDistance(distanceFt)}`);
     const edgePoint = rectEdgePt(targetAngle);
-    let { x: screenX, y: screenY } = edgePoint;
-    let label = labelLayout(screenX, screenY, labelText);
     const maxAttempts = Math.max(48, waypoints.length * 12);
+    let placement:
+      | {
+          readonly screenX: number;
+          readonly screenY: number;
+          readonly label: ReturnType<typeof labelLayout>;
+        }
+      | undefined;
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       const { x: candidateX, y: candidateY } = slideAlongEdge(edgePoint, fanDistance(attempt));
       const candidateLabel = labelLayout(candidateX, candidateY, labelText);
@@ -262,27 +298,29 @@ export function resolveDirectionArrowStates(
               height: state.labelHeight,
             }),
         ) && avoidsHud;
-      screenX = candidateX;
-      screenY = candidateY;
-      label = candidateLabel;
       if (clear) {
+        placement = { screenX: candidateX, screenY: candidateY, label: candidateLabel };
         break;
       }
+    }
+
+    if (!placement) {
+      continue;
     }
 
     states.push({
       questId: waypoint.questId,
       label: waypoint.label,
       kind: waypoint.kind,
-      screenX,
-      screenY,
+      screenX: placement.screenX,
+      screenY: placement.screenY,
       rotation: targetAngle + Math.PI / 2,
       distanceFt,
       labelText,
-      labelScreenX: label.x,
-      labelScreenY: label.y,
-      labelWidth: label.width,
-      labelHeight: label.height,
+      labelScreenX: placement.label.x,
+      labelScreenY: placement.label.y,
+      labelWidth: placement.label.width,
+      labelHeight: placement.label.height,
     });
   }
 

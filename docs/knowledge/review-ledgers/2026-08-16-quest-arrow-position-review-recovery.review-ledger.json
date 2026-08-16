@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-16",
+  "session_slug": "quest-arrow-position-review-recovery",
+  "task_title": "Recover quest arrow placement review findings",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "gpt-5.4 surfaced fallback ordering, omission priority, and renderer identity coverage. The implementation omits every candidate that is not fully clear, eliminating both HUD collision and crowding overlap; the rendered guard now asserts all three target identities and their rotations. Quest-log insertion order is explicitly documented in getQuestWaypoints and changing it to tracked-first is unrelated product behavior, so it was resolved as intentionally out of scope. gpt-5.6-sol independently corroborated the renderer identity concern."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "3c9ed29b4493d0f1aa6a696a4b3eb5b454f15618",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The implementation correctly enforces the sliding range limits to avoid projecting arrows onto the opposite side of the screen when resolving collisions or crowding. The fallback for completely blocked paths correctly omits the arrow, matching the described PR objective. The unit tests, E2E tests, probe additions, handoff, ledger, and apples metrics are all correctly updated and comply with project policies."
+    }
+  }
+}

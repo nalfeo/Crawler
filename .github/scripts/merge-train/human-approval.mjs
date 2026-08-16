@@ -98,9 +98,78 @@ export function hasOwnerApproval(comments, ownerLogin) {
   );
 }
 
-export function humanApprovalRejection({ pullRequest, closingIssues, comments, ownerLogin }) {
+/**
+ * Returns true when the repository owner has submitted a real GitHub pull-request
+ * review whose latest decision is `APPROVED`.
+ *
+ * Only the owner's most recent *decisive* review counts: `COMMENTED` and
+ * `PENDING` reviews carry no verdict and are ignored, while a later
+ * `CHANGES_REQUESTED` or `DISMISSED` review revokes an earlier approval.
+ * Reviews are ordered by `submitted_at` when available, falling back to the
+ * API's chronological array order (and `id` as a final tiebreak) so the helper
+ * works with either shape.
+ *
+ * @param {Array<{user?:{login?:string}, state?:string, submitted_at?:string, id?:number}>} reviews
+ * @param {string} ownerLogin
+ */
+export function hasOwnerApprovalReview(reviews, ownerLogin) {
+  const owner = String(ownerLogin || '').toLowerCase();
+  const decisive = (reviews || [])
+    .map((review, index) => ({ review, index }))
+    .filter(({ review }) => String(review?.user?.login || '').toLowerCase() === owner)
+    .filter(({ review }) => {
+      const state = String(review?.state || '').toUpperCase();
+      return state === 'APPROVED' || state === 'CHANGES_REQUESTED' || state === 'DISMISSED';
+    });
+  if (decisive.length === 0) return false;
+  const latest = decisive.reduce((best, candidate) => {
+    const bestTime = Date.parse(best.review?.submitted_at || '');
+    const candidateTime = Date.parse(candidate.review?.submitted_at || '');
+    if (Number.isFinite(bestTime) && Number.isFinite(candidateTime) && bestTime !== candidateTime) {
+      return candidateTime > bestTime ? candidate : best;
+    }
+    return candidate.index > best.index ? candidate : best;
+  });
+  return String(latest.review?.state || '').toUpperCase() === 'APPROVED';
+}
+
+/**
+ * True when the repository owner granted approval either by submitting a real
+ * `APPROVED` pull-request review or by posting the exact approval comment.
+ */
+export function hasHumanApproval({ comments, reviews, ownerLogin }) {
+  return hasOwnerApprovalReview(reviews, ownerLogin) || hasOwnerApproval(comments, ownerLogin);
+}
+
+/**
+ * Async wrapper around {@link humanApprovalRejection} that fetches the PR's
+ * reviews only when the gate actually applies.  Gated PRs are rare, so callers
+ * avoid an extra `/pulls/{n}/reviews` request on every ungated PR.
+ *
+ * @param {() => Promise<Array>} fetchReviews - lazily loads the PR's reviews
+ */
+export async function resolveHumanApprovalRejection({
+  pullRequest,
+  closingIssues,
+  comments,
+  ownerLogin,
+  fetchReviews,
+}) {
   if (!requiresHumanApproval(pullRequest, closingIssues)) return null;
-  return hasOwnerApproval(comments, ownerLogin)
+  if (hasOwnerApproval(comments, ownerLogin)) return null;
+  const reviews = await fetchReviews();
+  return humanApprovalRejection({ pullRequest, closingIssues, comments, reviews, ownerLogin });
+}
+
+export function humanApprovalRejection({
+  pullRequest,
+  closingIssues,
+  comments,
+  reviews = [],
+  ownerLogin,
+}) {
+  if (!requiresHumanApproval(pullRequest, closingIssues)) return null;
+  return hasHumanApproval({ comments, reviews, ownerLogin })
     ? null
-    : `waiting for ${ownerLogin} to comment exactly: ${HUMAN_APPROVAL_PHRASE}`;
+    : `waiting for ${ownerLogin} to approve this PR in review, or comment exactly: ${HUMAN_APPROVAL_PHRASE}`;
 }

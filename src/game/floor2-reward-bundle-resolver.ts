@@ -12,6 +12,11 @@ import {
   type GeneratedEquipmentRewardBundleV1,
 } from '../shared/generated-equipment-types.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
+import {
+  FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER,
+  FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS,
+  type Floor2AchievementLootTier,
+} from '../shared/achievements.js';
 import { WeaponType } from '../shared/constants.js';
 import type { GameWorld } from '../core/world.js';
 import { createGeneratedEquipmentRegistryTransaction } from '../core/generated-equipment-registry.js';
@@ -463,6 +468,45 @@ function substreamRng(
       `reward-bundle:${REWARD_BUNDLE_RESOLVER_VERSION}:${runKey}:${achievementId}:${rarity}:${decision}`,
     ),
   );
+}
+
+/**
+ * Version tag for the equipment-drop coin flip's RNG substream, kept separate
+ * from {@link REWARD_BUNDLE_RESOLVER_VERSION} so re-tuning the drop rate can
+ * never perturb the instance-generation streams (and vice versa).
+ */
+export const FLOOR2_EQUIPMENT_DROP_ROLL_VERSION = 'v1';
+
+/**
+ * Decide, deterministically, whether a Floor 2 achievement's loot box contains
+ * a generated-equipment instance at all.
+ *
+ * Lower tiers pass {@link FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER}'s coin flip —
+ * half the old always-equipment rate — and pay the Floor 2 gold+materials
+ * table when the roll misses; `rare` (chance 1) and the
+ * {@link FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS} starter kit always drop
+ * equipment and never consume a roll.
+ *
+ * Determinism & isolation: the draw uses its own {@link SeededRandom}
+ * substream derived from the run key + achievement id (never `world.rng`), so
+ * replaying a run key yields the same drops and the gameplay stream is not
+ * contaminated. Called ONCE, at unlock, before any bundle is resolved.
+ */
+export function rollFloor2AchievementEquipmentDrop(
+  runKey: string,
+  achievementId: string,
+  tier: Floor2AchievementLootTier,
+): boolean {
+  if (FLOOR2_GUARANTEED_EQUIPMENT_ACHIEVEMENT_IDS.has(achievementId)) return true;
+  const chance = FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER[tier];
+  if (chance >= 1) return true;
+  if (chance <= 0) return false;
+  const rng = new SeededRandom(
+    hashStringToSeed(
+      `floor2-equipment-drop:${FLOOR2_EQUIPMENT_DROP_ROLL_VERSION}:${runKey}:${achievementId}`,
+    ),
+  );
+  return rng.next() < chance;
 }
 
 /**

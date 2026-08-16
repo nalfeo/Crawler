@@ -1,0 +1,45 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-16",
+  "session_slug": "floor2-achievement-equipment-drop-rate",
+  "task_title": "Halve Floor 2 achievement equipment drop rate with a Floor 2 materials fallback",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Retrospective validator review confirmed three valid gaps to close: add exclusivity tamper test coverage, fix Floor 2 catalog timing wording, and add the required 3-apple review ledger artifact."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["github-copilot-code-review", "claude-sonnet-5"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "3908c0da8d9cf5ab1fb54f6ec0bce6f9199a4a31",
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "Independent validator checks found only the three tracked issues already resolved in this patch set; no residual correctness or policy defects remained in touched areas."
+    }
+  }
+}
