@@ -144,7 +144,14 @@ describe('real reward-opening UX (achievement path)', () => {
       const closed = await waitForRewardOpeningState(page, (s) => !s.open, {
         label: 'overlay to close after acknowledge',
       });
-      expect(closed).toEqual({ open: false, phase: null, bucket: null, revealed: 0, total: 0 });
+      expect(closed).toEqual({
+        open: false,
+        phase: null,
+        bucket: null,
+        revealed: 0,
+        total: 0,
+        nextLabel: null,
+      });
       await mainSceneProbe.acknowledgeRewardOpening(page);
       await mainSceneProbe.skipRewardOpening(page);
       expect(await mainSceneProbe.getRewardOpeningState(page)).toEqual({
@@ -153,6 +160,7 @@ describe('real reward-opening UX (achievement path)', () => {
         bucket: null,
         revealed: 0,
         total: 0,
+        nextLabel: null,
       });
     } finally {
       await context.close();
@@ -347,6 +355,49 @@ describe('real reward-opening UX (achievement path)', () => {
     }
   });
 
+  it('opens the next achievement box back to back from the summary screen', async () => {
+    const { context, page } = await newPage(browser);
+    try {
+      // A second unlocked-but-unclaimed loot-box achievement is what makes the
+      // chain affordance appear at all.
+      await mainSceneProbe.unlockAchievement(page, RARE_TIER_ACHIEVEMENT_ID);
+      await mainSceneProbe.claimAchievementReward(page, TRASH_TIER_ACHIEVEMENT_ID);
+      await waitForRewardOpeningState(page, (s) => s.open, { label: 'first overlay open' });
+      await mainSceneProbe.skipRewardOpening(page);
+
+      const summary = await waitForRewardOpeningState(page, (s) => s.phase === 'summary', {
+        label: 'first summary',
+      });
+      expect(summary.nextLabel).toBe('rare box');
+
+      // Driven through REAL keyboard input, not the probe, so the `[N]`
+      // keydown wiring in RewardOpeningUI is itself covered end to end.
+      await page.keyboard.press('n');
+      // The overlay never returns to the panel: it re-opens directly on the
+      // next box's anticipation phase.
+      const chained = await waitForRewardOpeningState(page, (s) => s.phase === 'anticipation', {
+        label: 'chained next box open',
+      });
+      expect(chained.open).toBe(true);
+      // `room-sweeper` is the `rare` tier -> 1 gold entry + 3 material entries,
+      // a different reveal shape than the trash box that preceded it, proving
+      // this really is the NEXT box and not a redisplay of the first.
+      expect(chained.total).toBeGreaterThan(summary.total);
+
+      await mainSceneProbe.skipRewardOpening(page);
+      const lastSummary = await waitForRewardOpeningState(page, (s) => s.phase === 'summary', {
+        label: 'chained summary',
+      });
+      // Nothing else unlocked is unclaimed, so no chain is offered.
+      expect(lastSummary.nextLabel).toBeNull();
+
+      await mainSceneProbe.acknowledgeRewardOpening(page);
+      await waitForRewardOpeningState(page, (s) => !s.open, { label: 'overlay closed' });
+    } finally {
+      await context.close();
+    }
+  });
+
   it('drains achievement resumes before auto-resuming a revealed boss chest', async () => {
     const { context, page } = await newPage(browser);
     try {
@@ -396,6 +447,7 @@ describe('real reward-opening UX (achievement path)', () => {
         bucket: null,
         revealed: 0,
         total: 0,
+        nextLabel: null,
       });
 
       await mainSceneProbe.setPlayerFeet(page, 18, 10);
