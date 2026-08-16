@@ -1,5 +1,39 @@
 [
   {
+    "commit": "2deee6c8f0a0a316ec2e04795959182f9167eb40",
+    "commitDate": "2026-08-16T01:01:20Z",
+    "commitSubject": "Release a cornered contact-range retreat that cannot move the player (#2996)",
+    "capturedAt": "2026-08-16T02:07:54.728Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31919245413",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/2deee6c8f0a0a316ec2e04795959182f9167eb40.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.02,
+        "totalWins": 3,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 33.93,
+      "gatePass": false,
+      "path": "by-sha/2deee6c8f0a0a316ec2e04795959182f9167eb40.fun-report.json"
+    }
+  },
+  {
     "commit": "b4aac0efc50923a98a738f4347d187b99fd91d44",
     "commitDate": "2026-08-16T00:01:35Z",
     "commitSubject": "Fix cornered-retreat wedge deadlock causing Floor 1 seed-25 loss (#2997)",
