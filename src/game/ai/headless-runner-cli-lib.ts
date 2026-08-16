@@ -9,6 +9,7 @@ import { AIDecisionMode, AIPathingMode } from './types.js';
 import type { AIDecisionModeValue, AIPathingModeValue, PlayerPersona } from './types.js';
 import { ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { DEFAULT_CONFIG } from './bt-ai-tuning.js';
+import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { PLAYER_PERSONAS } from './personas.js';
 
 export interface CLIArgs {
@@ -51,7 +52,7 @@ export function defaultCLIArgs(
   const optionalPurchasesEnv = env.AI_OPTIONAL_PURCHASES ?? env.AI_MERCHANT_WEAPON_PURCHASE;
   return {
     seed: 12345,
-    maxFrames: 100_000,
+    maxFrames: FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES,
     maxTimeMs: 5 * 60 * 1000,
     progress: 3600, // Report every minute of game time
     aggression: null,

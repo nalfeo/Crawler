@@ -233,12 +233,12 @@ async function main(): Promise<void> {
       `  Exit:       ${stats.floor2Progression.exitCompleted ? 'completed' : 'incomplete'}`,
     );
     const hunt = stats.floor2Progression.hunt;
-    const huntKills = hunt.familyTrashKills + hunt.neutralTrashKills;
-    const familyKillRatio = huntKills > 0 ? hunt.familyTrashKills / huntKills : 0;
+    const huntKills = hunt.huntFamilyTrashKills + hunt.huntNeutralTrashKills;
+    const familyKillRatio = huntKills > 0 ? hunt.huntFamilyTrashKills / huntKills : 0;
     console.log(
       `  Hunt:       ${(hunt.huntTimeMs / 1000).toFixed(1)}s · COMBAT ${(hunt.activeCombatRatio * 100).toFixed(1)}% ` +
         `(ENGAGE ${(hunt.engageRatio * 100).toFixed(1)}%) · ` +
-        `kills ${hunt.familyTrashKills} family/${hunt.neutralTrashKills} neutral ` +
+        `kills ${hunt.huntFamilyTrashKills} family/${hunt.huntNeutralTrashKills} neutral ` +
         `(${(familyKillRatio * 100).toFixed(1)}% family) · ` +
         `nearby ${hunt.averageNearbyEnemies.toFixed(1)} avg/${hunt.peakNearbyEnemies} peak`,
     );
