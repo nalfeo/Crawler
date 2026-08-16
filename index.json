@@ -1,5 +1,39 @@
 [
   {
+    "commit": "073595777d66bea5835ec69044746ae2f1e6501d",
+    "commitDate": "2026-08-16T16:48:12Z",
+    "commitSubject": "Add Copilot PR review guidance and nightly drift check (#3009)",
+    "capturedAt": "2026-08-16T18:19:47.428Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31960520713",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/073595777d66bea5835ec69044746ae2f1e6501d.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.07333333333333333,
+        "totalWins": 11,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04666666666666667,
+        "totalWins": 7,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.34,
+      "gatePass": false,
+      "path": "by-sha/073595777d66bea5835ec69044746ae2f1e6501d.fun-report.json"
+    }
+  },
+  {
     "commit": "1cd80041f0efb3f6ba186141c63946679adfd37f",
     "commitDate": "2026-08-16T08:48:04Z",
     "commitSubject": "fix(sweep): stop Floor 2 inheriting Floor 1's frame cap; disambiguate hunt-scoped kill telemetry (#3003)",
