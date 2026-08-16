@@ -14,9 +14,12 @@ import {
 } from '../../src/core/generated-equipment-registry.js';
 import { getItemCount, hasGeneratedEquipmentReference } from '../../src/shared/inventory.js';
 import {
-  FLOOR1_COMMON_CRAFTING_MATERIALS,
+  _FLOOR1_COMMON_CRAFTING_MATERIALS as FLOOR1_COMMON_CRAFTING_MATERIALS,
+  _FLOOR2_CRAFTING_MATERIALS as FLOOR2_CRAFTING_MATERIALS,
+  getAchievementById,
   LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
-  LOOT_BOX_GOLD_BY_TIER,
+  _FLOOR2_LOOT_BOX_GOLD_BY_TIER as FLOOR2_LOOT_BOX_GOLD_BY_TIER,
+  _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
 } from '../../src/shared/achievements.js';
 import { GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
@@ -86,9 +89,21 @@ describe('Floor 2 reward bundle — real unlock/claim pipeline (observe real art
     expect(bundle!.tier).toBe('tier1');
     expect(bundle!.instanceKeys).toHaveLength(1);
     const instanceCountAfterUnlock = listGeneratedEquipmentInstances(world).length;
-    // Two tier1 achievements fire with the first kill: floor2-field-kit (totalKills >= 1)
-    // and floor2-made-an-enemy (familiesEngagedInCombatCount >= 1), one instance each.
-    expect(instanceCountAfterUnlock).toBe(2);
+    // Two achievements fire with the first kill: floor2-field-kit
+    // (totalKills >= 1, guaranteed equipment) and floor2-made-an-enemy
+    // (familiesEngagedInCombatCount >= 1, a `common` box that only holds
+    // equipment on a successful 50% drop roll). Each unlocked achievement
+    // resolves EXACTLY ONE payout — equipment or Floor 2 materials, never
+    // both — and exactly one instance is generated per equipment payout.
+    let equipmentPayouts = 0;
+    for (const unlockedId of world.achievements.unlockedIds) {
+      const equipmentBundle = world.generatedEquipmentRewardBundles.get(unlockedId);
+      const materialsBundle = world.lootBoxRewardBundles.get(unlockedId);
+      expect(Boolean(equipmentBundle) !== Boolean(materialsBundle)).toBe(true);
+      if (equipmentBundle) equipmentPayouts += 1;
+    }
+    expect(equipmentPayouts).toBeGreaterThanOrEqual(1);
+    expect(instanceCountAfterUnlock).toBe(equipmentPayouts);
     const bundleKeys = [...bundle!.instanceKeys];
 
     // Claim transfers the bundle to the player's bag WITHOUT invoking the
@@ -524,7 +539,7 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
     // unclaimed, but has no way to ever be claimed under this snapshot.
     tampered.generatedEquipmentRewardBundles = [];
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
-      /Missing generated equipment reward bundle for unlocked, unclaimed achievement/,
+      /Missing reward bundle for unlocked, unclaimed achievement/,
     );
   });
 
@@ -541,7 +556,7 @@ describe('Floor 2 reward bundle — stale/malformed carryover fails closed', () 
     tampered.generatedEquippedInstanceKeys = [];
     tampered.generatedEquipmentRegistry = undefined;
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
-      /Missing generated equipment reward bundle for unlocked, unclaimed achievement/,
+      /Missing reward bundle for unlocked, unclaimed achievement/,
     );
   });
 });
@@ -725,20 +740,24 @@ describe('Floor 1 lootBox reward bundle — stale/malformed carryover fails clos
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(/already-claimed/);
   });
 
-  it('rejects a lootBox bundle for a non-floor1-materials (Floor 2 generated-equipment) achievement', () => {
+  it('rejects a Floor 1-shaped materials bundle re-pointed at a Floor 2 achievement', () => {
     const { dest, destPlayer, snapshot } = baseLootBoxSnapshot();
     const tampered = mutableClone(snapshot);
-    // Re-point the bundle at a real `lootBox` achievement that uses the Floor
-    // 2 `floor2-generated-equipment` table rather than `floor1-materials` —
-    // this is the discriminator-aware failure mode now that both Floor 1 and
-    // Floor 2 rewards share the `lootBox` reward type.
+    // A Floor 2 achievement MAY hold a materials bundle now (a missed
+    // equipment drop roll), but only one that satisfies Floor 2's OWN
+    // contract. Re-pointing a Floor 1 bundle at it — Floor 1 gold, Floor 1
+    // tier — must still fail closed rather than smuggling Floor 1's cheaper
+    // payout onto a Floor 2 achievement.
     tampered.lootBoxRewardBundles[0]!.achievementId = TIER1_ACHIEVEMENT_ID;
+    tampered.lootBoxRewardBundles[0]!.tier = 'common';
     tampered.achievements.unlockedIds = [
       ...tampered.achievements.unlockedIds,
       TIER1_ACHIEVEMENT_ID,
     ];
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
-      /non-floor1-materials/,
+      new RegExp(
+        `has gold ${LOOT_BOX_GOLD_BY_TIER.trash}, expected ${FLOOR2_LOOT_BOX_GOLD_BY_TIER.common}`,
+      ),
     );
   });
 
@@ -844,6 +863,84 @@ describe('Floor 1 lootBox reward bundle — stale/malformed carryover fails clos
     tampered.lootBoxRewardBundles = [];
     expect(() => restorePlayerCarryover(dest, destPlayer, tampered)).toThrow(
       /Missing loot box reward bundle for unlocked, unclaimed achievement/,
+    );
+  });
+});
+
+describe('Floor 2 missed equipment roll — Floor 2 materials payout (observe real artifact)', () => {
+  /**
+   * Find a run key whose real `achievementSystem` tick resolves a Floor 2
+   * MATERIALS payout for a lower-tier achievement (a missed 50% drop roll).
+   * Searching keys — rather than hand-forging a bundle — keeps this on the real
+   * unlock pipeline; with a coin flip per unlock a key is found immediately.
+   */
+  function findMissedRollWorld(): {
+    world: GameWorld;
+    playerEid: number;
+    achievementId: string;
+    runKey: string;
+  } {
+    for (let i = 0; i < 50; i += 1) {
+      const runKey = `${RUN_KEY}-miss-${i}`;
+      const { world, playerEid } = makeFloor2World(runKey);
+      seedFloor2Kill(world);
+      achievementSystem(world);
+      const missed = [...world.achievements.unlockedIds].find((id) =>
+        world.lootBoxRewardBundles.has(id),
+      );
+      if (missed !== undefined) return { world, playerEid, achievementId: missed, runKey };
+    }
+    throw new Error('no run key produced a missed Floor 2 equipment roll');
+  }
+
+  it('resolves Floor 2 gold + Floor 2 materials at unlock and grants them on claim', () => {
+    const { world, playerEid, achievementId } = findMissedRollWorld();
+    const achievement = getAchievementById(achievementId);
+    expect(achievement?.reward.type).toBe('lootBox');
+    if (achievement?.reward.type !== 'lootBox') return;
+    // Still Floor 2's own table — Floor 1's is never reused for Floor 2 content.
+    expect(achievement.reward.lootTable).toBe('floor2-generated-equipment');
+    const tier = achievement.reward.tier as 'common' | 'uncommon' | 'rare';
+    // `rare` boxes always drop equipment, so a missed roll can only be lower-tier.
+    expect(tier).not.toBe('rare');
+
+    const bundle = world.lootBoxRewardBundles.get(achievementId);
+    expect(bundle).toBeDefined();
+    expect(bundle!.gold).toBe(FLOOR2_LOOT_BOX_GOLD_BY_TIER[tier]);
+    expect(bundle!.gold).toBeGreaterThan(LOOT_BOX_GOLD_BY_TIER[tier]);
+    expect(bundle!.materials).toHaveLength(LOOT_BOX_MATERIAL_COUNT_BY_TIER[tier]);
+    for (const materialId of bundle!.materials) {
+      expect(FLOOR2_CRAFTING_MATERIALS).toContain(materialId);
+    }
+    // No equipment instance was generated for this achievement at all.
+    expect(world.generatedEquipmentRewardBundles.has(achievementId)).toBe(false);
+
+    const goldBefore = world.playerGold;
+    const result = claimAchievementReward(world, achievementId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.grantedEquipment).toBeUndefined();
+    expect(result.grantedLootBox?.gold).toBe(FLOOR2_LOOT_BOX_GOLD_BY_TIER[tier]);
+    expect(world.playerGold).toBe(goldBefore + FLOOR2_LOOT_BOX_GOLD_BY_TIER[tier]);
+    const bag = world.inventories.get(playerEid);
+    expect(bag).toBeDefined();
+    for (const materialId of result.grantedLootBox!.materials) {
+      expect(getItemCount(bag!, materialId)).toBeGreaterThan(0);
+    }
+    // Bundle consumed exactly once; a second claim is a no-op.
+    expect(world.lootBoxRewardBundles.has(achievementId)).toBe(false);
+    expect(claimAchievementReward(world, achievementId).ok).toBe(false);
+  });
+
+  it('round-trips a missed-roll materials bundle through carryover capture/restore', () => {
+    const { world, playerEid, achievementId, runKey } = findMissedRollWorld();
+    const snapshot = capturePlayerCarryover(world, playerEid);
+    const dest = createTestWorld({ seed: 5, floor: 2, generatedEquipmentRunKey: runKey });
+    enableFloor2Rewards(dest);
+    const destPlayer = spawnPlayer(dest, 0, 0);
+    restorePlayerCarryover(dest, destPlayer, snapshot);
+    expect(dest.lootBoxRewardBundles.get(achievementId)).toEqual(
+      world.lootBoxRewardBundles.get(achievementId),
     );
   });
 });

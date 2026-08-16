@@ -72,6 +72,7 @@ import {
   FLOOR1_DEFAULT_MAX_FRAMES,
   planningDeadlineMsFromFrameBudget,
 } from './floor1-run-budget.js';
+import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
@@ -352,7 +353,7 @@ const DEFAULT_CONFIG: Required<
   >
 > = {
   seed: 12345,
-  maxFrames: 100_000, // ~27 min at 60 FPS
+  maxFrames: FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES, // ~27 min at 60 FPS
   maxWallTimeMs: 5 * 60 * 1000, // 5 minutes wall time
   progressInterval: 0,
   debug: false,
@@ -839,8 +840,8 @@ export async function runHeadless(
     engageRatio: floor2HuntTimeMs > 0 ? floor2HuntEngageTimeMs / floor2HuntTimeMs : 0,
     activeCombatTimeMs: floor2HuntActiveCombatTimeMs,
     activeCombatRatio: floor2HuntTimeMs > 0 ? floor2HuntActiveCombatTimeMs / floor2HuntTimeMs : 0,
-    familyTrashKills: floor2HuntFamilyTrashKills,
-    neutralTrashKills: floor2HuntNeutralTrashKills,
+    huntFamilyTrashKills: floor2HuntFamilyTrashKills,
+    huntNeutralTrashKills: floor2HuntNeutralTrashKills,
     averageNearbyEnemies:
       floor2HuntNearbyEnemySamples > 0
         ? floor2HuntNearbyEnemyTotal / floor2HuntNearbyEnemySamples

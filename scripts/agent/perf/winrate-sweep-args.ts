@@ -11,7 +11,10 @@ import {
   FLOOR1_ACTIVE_TIME_BUDGET_MS,
   FLOOR1_DEFAULT_MAX_FRAMES,
 } from '../../../src/game/ai/floor1-run-budget.js';
-import { getDefaultMaxFrames } from '../../../src/game/ai/floor-run-budget.js';
+import {
+  FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES,
+  getDefaultMaxFrames,
+} from '../../../src/game/ai/floor-run-budget.js';
 import { getFloorManifest, isFloorImplemented } from '../../../src/shared/floor-registry.js';
 
 export const FLOOR1_WEAPONS = [
@@ -45,8 +48,9 @@ export const BUDGET_FRAMES = FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS;
  *
  * This slack cap is derived from the Floor-1 budget + the Floor-1 safe-room-credited
  * win definition, so it is applied ONLY when `--floor floor1` (the default). Any
- * other floor retains the prior `BUDGET_FRAMES` default (see `parseSweepArgs`); an
- * explicit `--max-frames` still overrides for every floor. This keeps the Floor-1
+ * other floor resolves its own manifest-derived cap, or the floor-agnostic runner
+ * default when it declares no budget (see `parseSweepArgs`); an explicit
+ * `--max-frames` still overrides for every floor. This keeps the Floor-1
  * safe-room fix from silently changing another floor's truncation behavior.
  */
 export const DEFAULT_MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
@@ -269,12 +273,14 @@ export function parseSweepArgs(
     args.weapons = [SEED_SELECTED_WEAPON];
   }
   // DEFAULT_MAX_FRAMES carries the Floor-1 safe-room slack (see its docstring).
-  // Any other floor resolves its own budget-derived cap from the manifest; a
-  // floor that declares no budget keeps the prior BUDGET_FRAMES default so this
-  // never silently alters its truncation behavior. An explicit --max-frames
+  // Any other floor resolves its own budget-derived cap from the manifest. A
+  // floor that declares no budget falls back to the floor-agnostic runner
+  // default rather than Floor 1's cap: inheriting the 6-min Floor-1 bound
+  // truncated every Floor-2 release run ~3x short of an achievable clear and
+  // reported 0/150 wins as a measurement artifact. An explicit --max-frames
   // overrides for every floor.
   if (!args.maxFramesExplicit && args.floorId !== 'floor1') {
-    args.maxFrames = getDefaultMaxFrames(args.floorId) ?? BUDGET_FRAMES;
+    args.maxFrames = getDefaultMaxFrames(args.floorId) ?? FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES;
   }
   if (!workersProvided) {
     args.workers = Math.max(1, Math.min(parallelism, args.seeds.length * args.weapons.length));
