@@ -142,6 +142,54 @@ describe('resolveDirectionArrowStates', () => {
     }
   });
 
+  it('never fans an arrow onto the opposite side of the screen from where it points', () => {
+    // Regression: a strongly right-pointing target parked on the top/bottom
+    // edge used to be fanned past screen centre by crowding/HUD avoidance and
+    // ended up left of the player while still pointing right.
+    const reserved = [{ x: 640, y: 560, width: 640, height: 160 }];
+    const states = resolveDirectionArrowStates(
+      Array.from({ length: 6 }, (_, index) => waypoint(`se-${index}`, 60 + index, 100)),
+      0,
+      0,
+      1,
+      reserved,
+    );
+
+    expect(states).toHaveLength(6);
+    for (const state of states) {
+      // All targets are down-and-right: the arrow must stay right of centre.
+      expect(state.screenX).toBeGreaterThanOrEqual(640);
+    }
+  });
+
+  it('keeps a down-left arrow on the left half of the screen', () => {
+    const states = resolveDirectionArrowStates(
+      Array.from({ length: 6 }, (_, index) => waypoint(`sw-${index}`, -60 - index, 100)),
+      0,
+      0,
+      1,
+    );
+
+    expect(states).toHaveLength(6);
+    for (const state of states) {
+      expect(state.screenX).toBeLessThanOrEqual(640);
+    }
+  });
+
+  it('keeps an up-right edge arrow in the upper half when it points strongly up', () => {
+    const states = resolveDirectionArrowStates(
+      Array.from({ length: 6 }, (_, index) => waypoint(`ne-${index}`, 100, -60 - index)),
+      0,
+      0,
+      1,
+    );
+
+    expect(states).toHaveLength(6);
+    for (const state of states) {
+      expect(state.screenY).toBeLessThanOrEqual(360);
+    }
+  });
+
   it('compacts long distances and wraps labels into two bounded lines', () => {
     const [state] = resolveDirectionArrowStates(
       [
