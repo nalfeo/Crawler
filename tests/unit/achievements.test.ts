@@ -264,7 +264,7 @@ describe('floor2 achievements catalog', () => {
     }
   });
 
-  it('sources every Floor 2 equipment reward from the central Floor 2 generated-equipment table', () => {
+  it('keeps every Floor 2 reward a lootBox and sources equipment rewards from the central Floor 2 generated-equipment table', () => {
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
       expect(achievement.reward.type).toBe('lootBox');
       if (achievement.reward.type === 'lootBox') {

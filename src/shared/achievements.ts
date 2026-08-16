@@ -616,7 +616,8 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * `src/shared/data/floor2-reward-pool.ts`), never a per-achievement `bases`
  * array. `tier` is the player-facing {@link Floor2AchievementLootTier}
  * (`common`/`uncommon`/`rare`; 13/12/11 respectively across the 36
- * achievements, counting both loot tables) — translated to the resolver's internal `tier1`-`tier3`
+ * achievements, across both loot tables) — translated to the resolver's
+ * internal `tier1`-`tier3`
  * {@link EquipmentRewardTier} via {@link FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER}
  * at the claim/unlock call sites. `rare` never resolves above Rare rarity
  * (Common/Uncommon/Rare per {@link EQUIPMENT_REWARD_TIER_RARITIES}'s
