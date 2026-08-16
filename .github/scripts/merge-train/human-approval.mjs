@@ -1,5 +1,6 @@
 export const HUMAN_APPROVAL_LABEL = 'human-approval-required';
 export const HUMAN_APPROVAL_PHRASE = 'APPROVED FOR CHECK-IN';
+export const HUMAN_APPROVAL_PHRASE_VARIANT = 'APPROVED FOR CHECKIN';
 
 // Broad prefix intentionally covers both legacy naming
 // ('copilot/balance-telemetry-driven-improvement-sweep') and the current
@@ -80,8 +81,7 @@ export function stripClosingKeywordsForIssues(body, targets, currentRepo = '') {
       return !targets.some((t) => {
         if (typeof t === 'number') return t === lineNumber;
         return (
-          Number(t.number) === lineNumber &&
-          String(t.repository || '').toLowerCase() === lineRepo
+          Number(t.number) === lineNumber && String(t.repository || '').toLowerCase() === lineRepo
         );
       });
     })
@@ -90,10 +90,11 @@ export function stripClosingKeywordsForIssues(body, targets, currentRepo = '') {
 
 export function hasOwnerApproval(comments, ownerLogin) {
   const owner = String(ownerLogin || '').toLowerCase();
+  const acceptedPhrases = new Set([HUMAN_APPROVAL_PHRASE, HUMAN_APPROVAL_PHRASE_VARIANT]);
   return (comments || []).some(
     (comment) =>
       String(comment?.user?.login || '').toLowerCase() === owner &&
-      String(comment?.body || '').trim() === HUMAN_APPROVAL_PHRASE,
+      acceptedPhrases.has(String(comment?.body || '').trim()),
   );
 }
 

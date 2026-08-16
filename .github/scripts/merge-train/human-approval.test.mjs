@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   HUMAN_APPROVAL_LABEL,
   HUMAN_APPROVAL_PHRASE,
+  HUMAN_APPROVAL_PHRASE_VARIANT,
   closingIssuesPropagatingHumanApproval,
   hasOwnerApproval,
   humanApprovalRejection,
@@ -36,10 +37,17 @@ test('detects the durable PR label, source-issue label, and nightly Copilot bran
   assert.equal(requiresHumanApproval({ head: { ref: 'copilot/unrelated-fix' } }), false);
 });
 
-test('accepts only the exact repository-owner approval comment', () => {
+test('accepts only exact repository-owner approval comment variants', () => {
   assert.equal(
     hasOwnerApproval(
       [{ user: { login: 'nalfeo' }, body: `  ${HUMAN_APPROVAL_PHRASE}\n` }],
+      'nalfeo',
+    ),
+    true,
+  );
+  assert.equal(
+    hasOwnerApproval(
+      [{ user: { login: 'nalfeo' }, body: HUMAN_APPROVAL_PHRASE_VARIANT }],
       'nalfeo',
     ),
     true,
@@ -90,10 +98,9 @@ test('closingIssuesPropagatingHumanApproval returns propagating issues when PR h
   // PR carries the label directly (automation-derived from a previous reconciler
   // run) — should still return propagating issues so the strip can proceed.
   assert.deepEqual(
-    closingIssuesPropagatingHumanApproval(
-      { labels: [{ name: HUMAN_APPROVAL_LABEL }] },
-      [gatedIssue],
-    ),
+    closingIssuesPropagatingHumanApproval({ labels: [{ name: HUMAN_APPROVAL_LABEL }] }, [
+      gatedIssue,
+    ]),
     [gatedIssue],
   );
 
@@ -115,10 +122,7 @@ test('closingIssuesPropagatingHumanApproval returns propagating issues when PR h
 
   // PR has label directly AND no closing issues — label is intentional, nothing to propagate
   assert.deepEqual(
-    closingIssuesPropagatingHumanApproval(
-      { labels: [{ name: HUMAN_APPROVAL_LABEL }] },
-      [],
-    ),
+    closingIssuesPropagatingHumanApproval({ labels: [{ name: HUMAN_APPROVAL_LABEL }] }, []),
     [],
   );
 });
@@ -165,10 +169,7 @@ test('stripClosingKeywordsForIssues removes closing-keyword lines for targeted i
   );
 
   // owner/repo#N form is stripped when using plain-number target (legacy: any repo)
-  assert.equal(
-    stripClosingKeywordsForIssues('Fixes nalfeo/Crawler#2686', [2686]),
-    '',
-  );
+  assert.equal(stripClosingKeywordsForIssues('Fixes nalfeo/Crawler#2686', [2686]), '');
 
   // Empty issue list — body unchanged
   const original = 'Fixes #42\nOther line';

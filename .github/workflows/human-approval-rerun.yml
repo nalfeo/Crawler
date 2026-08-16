@@ -29,6 +29,7 @@ jobs:
           script: |
             const HUMAN_APPROVAL_LABEL = 'human-approval-required';
             const HUMAN_APPROVAL_PHRASE = 'APPROVED FOR CHECK-IN';
+            const HUMAN_APPROVAL_PHRASE_VARIANT = 'APPROVED FOR CHECKIN';
             // Broad prefix covers legacy ('copilot/balance-telemetry-driven-improvement-sweep')
             // and current ('copilot/balance-telemetry-improvement-sweep') naming conventions.
             const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry';
@@ -82,10 +83,14 @@ jobs:
 
             function hasOwnerApproval(comments) {
               const owner = String(context.repo.owner || '').toLowerCase();
+              const acceptedPhrases = new Set([
+                HUMAN_APPROVAL_PHRASE,
+                HUMAN_APPROVAL_PHRASE_VARIANT,
+              ]);
               return (comments || []).some(
                 (comment) =>
                   String(comment.user?.login || '').toLowerCase() === owner &&
-                  String(comment.body || '').trim() === HUMAN_APPROVAL_PHRASE,
+                  acceptedPhrases.has(String(comment.body || '').trim()),
               );
             }
 
