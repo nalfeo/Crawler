@@ -201,6 +201,8 @@ interface MainSceneInternals {
     tick(deltaMs: number): void;
     skip(): void;
     acknowledge(): void;
+    openNext(): void;
+    getNextRewardLabel(): string | null;
     getPhase(): string | null;
     getBucket(): string | null;
     getRevealProgress(): { readonly revealed: number; readonly total: number } | null;
@@ -323,6 +325,12 @@ export interface RewardOpeningProbeState {
   readonly bucket: string | null;
   readonly revealed: number;
   readonly total: number;
+  /**
+   * Label of the chained "open next box" action offered on the summary
+   * screen, or `null` when no next box is available (or the sequence is not
+   * at `summary`).
+   */
+  readonly nextLabel: string | null;
 }
 
 /**
@@ -745,6 +753,11 @@ export interface MainSceneProbeApi {
    * no-op unlock if the achievement is already unlocked/claimed (idempotent).
    */
   claimAchievementReward(achievementId: string): readonly GeneratedEquipmentInstanceKey[];
+  /**
+   * Unlock an achievement through the REAL unlock path (resolving its reward
+   * bundle) without claiming it — arranges a "next box is available" state.
+   */
+  unlockAchievement(achievementId: string): void;
   /** Seed one pending achievement reward plus one revealed boss chest reward. */
   seedPendingRewardResumeScenario(): void;
   /** Seed an available boss chest so touch/UI affordances can be observed. */
@@ -1497,6 +1510,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    unlockAchievement: (achievementId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return;
+      unlockAchievement(world, achievementId);
+      scene?.achievementsUI?.refresh(world);
+    },
+
     claimAchievementReward: (achievementId: string) => {
       const scene = getScene();
       const world = scene?.world;
@@ -1593,7 +1614,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const ui = getScene()?.rewardOpeningUI;
       const open = ui?.isOpen() ?? false;
       if (!ui || !open) {
-        return { open: false, phase: null, bucket: null, revealed: 0, total: 0 };
+        return { open: false, phase: null, bucket: null, revealed: 0, total: 0, nextLabel: null };
       }
       const progress = ui.getRevealProgress();
       return {
@@ -1602,6 +1623,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         bucket: ui.getBucket(),
         revealed: progress?.revealed ?? 0,
         total: progress?.total ?? 0,
+        nextLabel: ui.getNextRewardLabel?.() ?? null,
       };
     },
 
