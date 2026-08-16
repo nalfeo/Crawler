@@ -1,5 +1,39 @@
 [
   {
+    "commit": "b4aac0efc50923a98a738f4347d187b99fd91d44",
+    "commitDate": "2026-08-16T00:01:35Z",
+    "commitSubject": "Fix cornered-retreat wedge deadlock causing Floor 1 seed-25 loss (#2997)",
+    "capturedAt": "2026-08-16T01:12:18.532Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31916846335",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b4aac0efc50923a98a738f4347d187b99fd91d44.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.013333333333333334,
+        "totalWins": 2,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 33.92,
+      "gatePass": false,
+      "path": "by-sha/b4aac0efc50923a98a738f4347d187b99fd91d44.fun-report.json"
+    }
+  },
+  {
     "commit": "3f7332181ef53170229a709b20960855fe8685c3",
     "commitDate": "2026-08-15T20:07:05Z",
     "commitSubject": "Fix Floor 1 seed-39 boss-contact retreat regression (#2992)",
