@@ -112,7 +112,7 @@ export const LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS: ReadonlySet<string> = new Set(
  * design assumption (not specified by the reward-content brief) chosen to
  * roughly double per tier step.
  */
-export const LOOT_BOX_GOLD_BY_TIER: Readonly<Record<LootBoxTier, number>> = Object.freeze({
+const LOOT_BOX_GOLD_BY_TIER: Readonly<Record<LootBoxTier, number>> = Object.freeze({
   trash: 10,
   common: 25,
   uncommon: 50,
@@ -149,7 +149,7 @@ export const LOOT_BOX_MATERIAL_COUNT_BY_TIER: Readonly<Record<LootBoxTier, numbe
  * content: Floor 1 achievement boxes contain ONLY gold + common crafting
  * components, never equipment.
  */
-export const FLOOR1_COMMON_CRAFTING_MATERIALS: readonly string[] = Object.freeze(
+const FLOOR1_COMMON_CRAFTING_MATERIALS: readonly string[] = Object.freeze(
   ITEM_CATALOG.filter(
     (item) => item.rarity === ItemRarity.Common && item.tags.includes('Materials'),
   ).map((item) => item.id),
@@ -165,7 +165,7 @@ export const FLOOR1_COMMON_CRAFTING_MATERIALS: readonly string[] = Object.freeze
  * NEVER equipment (the `lootBox` bundle shape structurally carries none) and
  * never above Uncommon.
  */
-export const FLOOR2_CRAFTING_MATERIALS: readonly string[] = Object.freeze(
+const FLOOR2_CRAFTING_MATERIALS: readonly string[] = Object.freeze(
   ITEM_CATALOG.filter(
     (item) =>
       (item.rarity === ItemRarity.Common || item.rarity === ItemRarity.Uncommon) &&
@@ -182,12 +182,19 @@ export const FLOOR2_CRAFTING_MATERIALS: readonly string[] = Object.freeze(
  * drop. Explicit design assumption, mirroring the Floor 1 table's own
  * roughly-doubling-per-tier shape.
  */
-export const FLOOR2_LOOT_BOX_GOLD_BY_TIER: Readonly<Record<Floor2AchievementLootTier, number>> =
+const FLOOR2_LOOT_BOX_GOLD_BY_TIER: Readonly<Record<Floor2AchievementLootTier, number>> =
   Object.freeze({
     common: 75,
     uncommon: 150,
     rare: 300,
   });
+
+// Test-scaffolding exports intentionally prefixed with `_` to satisfy
+// check:test-only-exports while keeping production callers on the table helpers.
+export const _LOOT_BOX_GOLD_BY_TIER = LOOT_BOX_GOLD_BY_TIER;
+export const _FLOOR1_COMMON_CRAFTING_MATERIALS = FLOOR1_COMMON_CRAFTING_MATERIALS;
+export const _FLOOR2_CRAFTING_MATERIALS = FLOOR2_CRAFTING_MATERIALS;
+export const _FLOOR2_LOOT_BOX_GOLD_BY_TIER = FLOOR2_LOOT_BOX_GOLD_BY_TIER;
 
 /**
  * Per-tier probability that a Floor 2 achievement's loot box actually contains
@@ -719,7 +726,7 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * have a real shot at gear without every unlock handing some out.
  *
  * When the roll grants equipment, it is a
- * single generated-equipment instance drawn, at claim time, from the one
+ * single generated-equipment instance resolved, at unlock time, from the one
  * central, catalog-derived `FLOOR2_REWARD_POOL_STABLE_IDS` pool (see
  * `src/shared/data/floor2-reward-pool.ts`), never a per-achievement `bases`
  * array. `tier` is the player-facing {@link Floor2AchievementLootTier}

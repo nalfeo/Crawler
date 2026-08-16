@@ -14,12 +14,12 @@ import {
 } from '../../src/core/generated-equipment-registry.js';
 import { getItemCount, hasGeneratedEquipmentReference } from '../../src/shared/inventory.js';
 import {
-  FLOOR1_COMMON_CRAFTING_MATERIALS,
-  FLOOR2_CRAFTING_MATERIALS,
+  _FLOOR1_COMMON_CRAFTING_MATERIALS as FLOOR1_COMMON_CRAFTING_MATERIALS,
+  _FLOOR2_CRAFTING_MATERIALS as FLOOR2_CRAFTING_MATERIALS,
   getAchievementById,
   LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS,
-  FLOOR2_LOOT_BOX_GOLD_BY_TIER,
-  LOOT_BOX_GOLD_BY_TIER,
+  _FLOOR2_LOOT_BOX_GOLD_BY_TIER as FLOOR2_LOOT_BOX_GOLD_BY_TIER,
+  _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
 } from '../../src/shared/achievements.js';
 import { GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
