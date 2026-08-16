@@ -111,7 +111,9 @@ async function main(): Promise<void> {
 
     const headingLine = lineOf(reviewInstructions, /^## Recurring Crawler failure patterns$/m);
     if (headingLine) {
-      report.info(`Review process checklist includes recurring Crawler failure patterns.`, {
+      report.finding({
+        severity: 'info',
+        message: 'Review process checklist includes recurring Crawler failure patterns.',
         file: REVIEW_INSTRUCTIONS_PATH,
         line: headingLine,
       });
