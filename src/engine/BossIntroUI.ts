@@ -216,8 +216,13 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     } else {
       portrait.setTexture(resolved.key, resolved.frame);
     }
-    const width = portrait.width || 1;
-    const height = portrait.height || 1;
+    const width = portrait.width;
+    const height = portrait.height;
+    if (width <= 0 || height <= 0) {
+      // A degenerate texture would otherwise scale up into a giant blurry tile.
+      portrait.setVisible(false);
+      return;
+    }
     const inner = PORTRAIT_BOX - 24;
     portrait.setScale(Math.min(inner / width, inner / height));
     portrait.setVisible(true);
