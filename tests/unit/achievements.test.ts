@@ -226,11 +226,48 @@ describe('floor2 achievements catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('gives every Floor 2 achievement a lootBox reward sourced from the central Floor 2 generated-equipment table', () => {
+  it('grants generated equipment from only a minority of Floor 2 achievements — the rest pay out materials', () => {
+    const equipmentIds = FLOOR2_ACHIEVEMENTS.filter(
+      (achievement) =>
+        achievement.reward.type === 'lootBox' &&
+        achievement.reward.lootTable === 'floor2-generated-equipment',
+    ).map((achievement) => achievement.id);
+    // Equipment is milestone-gated: the 11 `rare`-tier achievements plus the
+    // one-time `floor2-field-kit` starter kit. Everything else pays gold +
+    // crafting materials, so routine Floor 2 progress no longer showers the
+    // player with gear.
+    expect(equipmentIds).toHaveLength(12);
+    expect(equipmentIds).toContain('floor2-field-kit');
+    expect(equipmentIds.length).toBeLessThan(FLOOR2_ACHIEVEMENTS.length / 2);
+    for (const achievement of FLOOR2_ACHIEVEMENTS) {
+      if (
+        achievement.reward.type !== 'lootBox' ||
+        achievement.reward.lootTable === 'floor2-generated-equipment'
+      ) {
+        continue;
+      }
+      expect(achievement.reward.lootTable).toBe('floor1-materials');
+      expect(LOOT_BOX_TIERS).toContain(achievement.reward.tier);
+    }
+  });
+
+  it('gives every Floor 2 equipment achievement besides the starter kit a rare tier', () => {
+    for (const achievement of FLOOR2_ACHIEVEMENTS) {
+      if (
+        achievement.reward.type !== 'lootBox' ||
+        achievement.reward.lootTable !== 'floor2-generated-equipment' ||
+        achievement.id === 'floor2-field-kit'
+      ) {
+        continue;
+      }
+      expect(achievement.reward.tier).toBe('rare');
+    }
+  });
+
+  it('sources every Floor 2 equipment reward from the central Floor 2 generated-equipment table', () => {
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
       expect(achievement.reward.type).toBe('lootBox');
       if (achievement.reward.type === 'lootBox') {
-        expect(achievement.reward.lootTable).toBe('floor2-generated-equipment');
         if (achievement.reward.lootTable === 'floor2-generated-equipment') {
           const tier = achievement.reward.tier;
           expect(FLOOR2_ACHIEVEMENT_LOOT_TIERS).toContain(tier);
@@ -268,11 +305,8 @@ describe('floor2 achievements catalog', () => {
   it('has an exact common/uncommon/rare tier distribution of 13/12/11 across all 36 Floor 2 achievements', () => {
     const counts = { common: 0, uncommon: 0, rare: 0 };
     for (const achievement of FLOOR2_ACHIEVEMENTS) {
-      if (
-        achievement.reward.type === 'lootBox' &&
-        achievement.reward.lootTable === 'floor2-generated-equipment'
-      ) {
-        counts[achievement.reward.tier]++;
+      if (achievement.reward.type === 'lootBox') {
+        counts[achievement.reward.tier as 'common' | 'uncommon' | 'rare']++;
       }
     }
     expect(counts).toEqual({ common: 13, uncommon: 12, rare: 11 });

@@ -86,9 +86,11 @@ describe('Floor 2 reward bundle — real unlock/claim pipeline (observe real art
     expect(bundle!.tier).toBe('tier1');
     expect(bundle!.instanceKeys).toHaveLength(1);
     const instanceCountAfterUnlock = listGeneratedEquipmentInstances(world).length;
-    // Two tier1 achievements fire with the first kill: floor2-field-kit (totalKills >= 1)
-    // and floor2-made-an-enemy (familiesEngagedInCombatCount >= 1), one instance each.
-    expect(instanceCountAfterUnlock).toBe(2);
+    // Only one equipment-granting achievement fires with the first kill:
+    // floor2-field-kit (totalKills >= 1). floor2-made-an-enemy also unlocks
+    // (familiesEngagedInCombatCount >= 1) but now pays out the
+    // `floor1-materials` table, so it generates no equipment instance.
+    expect(instanceCountAfterUnlock).toBe(1);
     const bundleKeys = [...bundle!.instanceKeys];
 
     // Claim transfers the bundle to the player's bag WITHOUT invoking the

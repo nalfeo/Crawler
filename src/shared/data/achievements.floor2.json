@@ -29,13 +29,13 @@
     "title": "Floor 2 Second Wind",
     "popupText": "New achievement: Floor 2 Second Wind!",
     "unlockCriteria": "Defeat 10 enemies on Floor 2.",
-    "details": "Unlock by defeating 10 enemies on Floor 2 to receive a Common-or-Uncommon equipment piece.",
-    "directorFlavor": "The audience is warming up, and so, apparently, is the prop budget. Ten kills in and the discount-bin phase is officially behind you — this one might actually roll Uncommon. The Quartermaster's ledger notes the uptick with visible enthusiasm, which is more than it's shown you all season. Sponsors love a contestant with momentum; it's cheaper to advertise than a comeback story. Keep this pace and wardrobe might finally admit they've had better stock in the back the whole time.",
+    "details": "Unlock by defeating 10 enemies on Floor 2 to receive a supply crate of gold and crafting materials.",
+    "directorFlavor": "The audience is warming up, and so, apparently, is the supply budget. Ten kills in and salvage crew has scraped enough off the floor to justify a crate — gold, scrap, nothing that comes on a hanger. The Quartermaster's ledger notes the uptick with visible enthusiasm, which is more than it's shown you all season. Sponsors love a contestant with momentum; it's cheaper to advertise than a comeback story. Wardrobe still isn't opening the back room for a ten-kill streak, so spend the materials and earn the good rack the hard way.",
     "iconId": "achv-floor2-second-wind-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -83,7 +83,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -107,7 +107,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -154,7 +154,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -202,7 +202,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -225,7 +225,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -249,7 +249,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -273,7 +273,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -321,7 +321,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -343,7 +343,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -366,7 +366,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -418,7 +418,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -442,7 +442,7 @@
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -512,7 +512,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -535,7 +535,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -559,7 +559,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -582,7 +582,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -605,7 +605,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -629,7 +629,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -700,7 +700,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -725,7 +725,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -750,7 +750,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
@@ -826,7 +826,7 @@
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "common"
     },
     "unlockRules": [
@@ -850,7 +850,7 @@
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
-      "lootTable": "floor2-generated-equipment",
+      "lootTable": "floor1-materials",
       "tier": "uncommon"
     },
     "unlockRules": [
