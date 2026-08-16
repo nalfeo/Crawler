@@ -677,8 +677,17 @@ export interface MainSceneProbeApi {
   primeNpcInteractionTarget(): ProbePoint | null;
   /** Seed three off-screen quests through the real scene's live world. */
   primeQuestWaypointArrows(): void;
+  /** Seed crowded down-right quests through the real scene's live world. */
+  primeCrowdedDownRightQuestWaypointArrows(): void;
   /** Visible quest arrow ids on the real MainGameScene display list. */
   getVisibleQuestArrowIds(): string[];
+  /** Rendered quest arrow positions and rotations from the real display list. */
+  getVisibleQuestArrowStates(): ReadonlyArray<{
+    readonly questId: string;
+    readonly x: number;
+    readonly y: number;
+    readonly rotation: number;
+  }>;
   /** Queue the Achievements toggle through the real MainGameScene request path. */
   requestAchievementsToggle(): void;
   /** Queue Inventory ([I]) and Equipment ([G]) toggles through scene request paths. */
@@ -1260,6 +1269,42 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       objective.slimeRatRoomPos.y = py - 1;
     },
 
+    primeCrowdedDownRightQuestWaypointArrows: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective || eid < 0) {
+        return;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+      acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+      acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+      acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+      const px = world.stores.position.x[eid] ?? 0;
+      const py = world.stores.position.y[eid] ?? 0;
+      objective.welcomeOfficePos.x = px + 100;
+      objective.welcomeOfficePos.y = py + 30;
+      objective.shopRoomPos.x = px + 101;
+      objective.shopRoomPos.y = py + 30;
+      objective.slimeRatRoomPos.x = px + 102;
+      objective.slimeRatRoomPos.y = py + 30;
+      const guideEid = world.floorScenario?.guideNpcEid;
+      const shopkeeperEid = world.floorScenario?.shopkeeperNpcEid;
+      if (guideEid !== null && guideEid !== undefined) {
+        world.stores.position.x[guideEid] = px + 100;
+        world.stores.position.y[guideEid] = py + 30;
+      }
+      if (shopkeeperEid !== null && shopkeeperEid !== undefined) {
+        world.stores.position.x[shopkeeperEid] = px + 101;
+        world.stores.position.y[shopkeeperEid] = py + 30;
+      }
+    },
+
     getVisibleQuestArrowIds: (): string[] => {
       const phaserScene = getPhaserScene();
       if (!phaserScene) {
@@ -1273,6 +1318,30 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
             child.name.startsWith('quest-direction-arrow:'),
         )
         .map((arrow) => arrow.name.slice('quest-direction-arrow:'.length));
+    },
+
+    getVisibleQuestArrowStates: () => {
+      const phaserScene = getPhaserScene();
+      if (!phaserScene) {
+        return [];
+      }
+      return phaserScene.children.list.flatMap((child) => {
+        if (
+          !(child instanceof Phaser.GameObjects.Triangle) ||
+          !child.visible ||
+          !child.name.startsWith('quest-direction-arrow:')
+        ) {
+          return [];
+        }
+        return [
+          {
+            questId: child.name.slice('quest-direction-arrow:'.length),
+            x: child.x,
+            y: child.y,
+            rotation: child.rotation,
+          },
+        ];
+      });
     },
 
     requestAchievementsToggle: () => {
