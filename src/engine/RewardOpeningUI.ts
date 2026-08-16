@@ -47,6 +47,7 @@ import {
 import {
   acknowledge as acknowledgeSequence,
   createRewardOpeningState,
+  isRewardOpeningComplete,
   skip as skipSequence,
   tick as tickSequence,
   type RewardOpeningPhase,
@@ -539,7 +540,7 @@ export function createRewardOpeningUI(
     if (!sequenceState) return;
     if (sequenceState.phase === 'summary') {
       handleAcknowledge();
-    } else if (sequenceState.phase !== 'claimed') {
+    } else if (!isRewardOpeningComplete(sequenceState)) {
       handleSkip();
     }
   }
