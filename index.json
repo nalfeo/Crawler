@@ -1,5 +1,39 @@
 [
   {
+    "commit": "bff0a76d1c58dd8483498fe9059fed673e9e38d1",
+    "commitDate": "2026-08-16T17:41:58Z",
+    "commitSubject": "Add \"Open next box\" chain to the reward-opening summary (#3005)",
+    "capturedAt": "2026-08-16T19:13:33.731Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31963362144",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/bff0a76d1c58dd8483498fe9059fed673e9e38d1.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.04,
+        "totalWins": 6,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.03333333333333333,
+        "totalWins": 5,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.21,
+      "gatePass": false,
+      "path": "by-sha/bff0a76d1c58dd8483498fe9059fed673e9e38d1.fun-report.json"
+    }
+  },
+  {
     "commit": "073595777d66bea5835ec69044746ae2f1e6501d",
     "commitDate": "2026-08-16T16:48:12Z",
     "commitSubject": "Add Copilot PR review guidance and nightly drift check (#3009)",
