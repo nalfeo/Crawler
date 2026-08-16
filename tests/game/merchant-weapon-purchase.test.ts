@@ -154,8 +154,11 @@ describe('merchant weapon purchase intent', () => {
     expect(getMerchantWeaponIntent(droppedWorld).status).toBe('abandoned');
   });
 
-  it('buys once affordable and force-equips the selected weapon over the starter', () => {
+  it('buys once affordable and equips the selected weapon over the starter', () => {
     const world = completedMerchantWorld(1);
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel; the shopkeeper stands in the safe welcome room.
+    world.playerInSafeRoom = true;
     const playerEid = spawnPlayer(world, 0, 0);
     const starter = getEquipmentDefForStarterWeapon('baseball-bat')!;
     expect(equip(world, playerEid, starter, { force: true }).ok).toBe(true);
@@ -174,6 +177,38 @@ describe('merchant weapon purchase intent', () => {
     expect(getActiveWeaponDef(world)?.id).toBe(selectedWeaponId);
     expect(world.playerGold).toBe(goldBefore - intent.cost);
     expect(executeMerchantWeaponPurchase(world, playerEid)).toBe(false);
+  });
+
+  it('latches a bought-but-unequippable weapon and completes it on the next safe-room entry', () => {
+    // Parity regression: equipping is safe-context gated, so a purchase
+    // completed outside a safe room cannot equip on the spot. It must NOT be
+    // abandoned — the gold is already spent and the weapon is in the bag.
+    const world = completedMerchantWorld(1);
+    world.playerInSafeRoom = false;
+    const playerEid = spawnPlayer(world, 0, 0);
+    configureMerchantWeaponPurchase(world, true);
+    world.playerGold = 1_000;
+    updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS);
+    const intent = getMerchantWeaponIntent(world);
+    expect(intent.status).toBe('returning');
+    const selectedWeaponId = getEquipmentDefForItem(intent.itemId!)?.weaponId;
+    const goldBefore = world.playerGold;
+
+    expect(executeMerchantWeaponPurchase(world, playerEid)).toBe(false);
+    expect(getMerchantWeaponIntent(world).status).toBe('awaiting-equip');
+    // Paid for, and not re-decided or abandoned.
+    expect(world.playerGold).toBe(goldBefore - intent.cost);
+
+    // A re-evaluation while awaiting the equip must not re-farm or abandon it.
+    updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS);
+    expect(getMerchantWeaponIntent(world).status).toBe('awaiting-equip');
+
+    // Walk into a safe room: the deferred equip completes without buying twice.
+    world.playerInSafeRoom = true;
+    expect(executeMerchantWeaponPurchase(world, playerEid)).toBe(true);
+    expect(getMerchantWeaponIntent(world).status).toBe('purchased');
+    expect(getActiveWeaponDef(world)?.id).toBe(selectedWeaponId);
+    expect(world.playerGold).toBe(goldBefore - intent.cost);
   });
 
   it('uses the world seed stock and returns immediately when already affordable', () => {

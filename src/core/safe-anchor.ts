@@ -66,10 +66,13 @@ export function resolveNearestSafeAnchor(
   let bestTileX = Number.POSITIVE_INFINITY;
   let bestTileY = Number.POSITIVE_INFINITY;
   for (const room of rooms) {
-    const cell = pickRoomAnchorCell(room);
-    if (!cell) {
-      continue;
-    }
+    // Generated rooms carry `interiorCells` (irregular shapes); simple
+    // rectangular rooms may not, and falling back to the bounds center keeps
+    // them routable instead of silently unroutable.
+    const cell = pickRoomAnchorCell(room) ?? {
+      x: Math.floor(room.bounds.x + (room.bounds.width - 1) / 2),
+      y: Math.floor(room.bounds.y + (room.bounds.height - 1) / 2),
+    };
     const anchor = floorMap.tileToWorld(cell.x, cell.y);
     const distanceSq =
       (anchor.x - playerX) * (anchor.x - playerX) + (anchor.y - playerY) * (anchor.y - playerY);

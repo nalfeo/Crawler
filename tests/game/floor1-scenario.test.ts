@@ -1377,7 +1377,10 @@ describe('floor1Scenario', () => {
       expect(world.featureUnlocks.equipment).toBe(true);
       expect(getShopkeeperStage(world)).toBe('awaiting-equip');
 
-      // Equip the charm → quest completes.
+      // Equip the charm → quest completes. Equipping is safe-context gated
+      // (the human opens the equipment panel), and the merchant stands in the
+      // safe welcome room, so the player is in a safe context at this point.
+      world.playerInSafeRoom = true;
       expect(equipPurchasedGear(world, player)).toBe(true);
       questSystem(world);
       expect(getShopkeeperStage(world)).toBe('complete');
