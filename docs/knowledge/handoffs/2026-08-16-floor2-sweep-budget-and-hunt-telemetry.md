@@ -27,10 +27,11 @@ asked for.
 `scripts/agent/perf/winrate-sweep-args.ts` resolved `getDefaultMaxFrames(floorId) ?? BUDGET_FRAMES`.
 `floor2.manifest.json` declares no `implemented.winBudgetMs`, so `getDefaultMaxFrames('floor2')`
 returns `null` and every standalone Floor-2 run was truncated at Floor 1's 21,600 frames
-(6 min) — while the observed chained Floor-2 clears need 73,109–77,152 frames. The reported
-0/150 Floor-2 win rate was therefore an artifact, not a gameplay result; the chained leg
-(which falls through to the runner default of 100,000 frames) does produce clears, which is
-the proof of the asymmetry. Fix: added an exported `FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES = 100_000`
+(6 min). The reported 0/150 Floor-2 win rate was therefore an artifact, not a gameplay
+result; chained progression runs (whose reported frame totals include both Floor 1 and
+Floor 2) fall through to the runner default of 100,000 frames and do produce clears, which
+is the proof of the asymmetry. Fix: added an exported
+`FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES = 100_000`
 to `src/game/ai/floor-run-budget.ts`, made `headless-runner.ts`'s `DEFAULT_CONFIG.maxFrames`
 reference it instead of a bare literal, and changed the sweep-args fallback to use it. No
 `winBudgetMs` was invented for Floor 2 — that would be an unvalidated balance number, and

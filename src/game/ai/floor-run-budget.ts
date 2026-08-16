@@ -22,8 +22,9 @@ import { getFloorWinBudgetMs } from '../../shared/floor-registry.js';
  * floor's own clear is reachable and reports a win rate that is a measurement
  * artifact rather than a balance signal. Floor 2's release leg reported 0/150
  * wins for exactly this reason — it ran on Floor 1's 21_600-frame (6 min) cap
- * while the chained leg, which resolves this default per leg, produced clears
- * at 73_109-77_152 frames.
+ * while chained progression runs, which resolve this default per leg, did
+ * produce clears. Their reported frame totals include both the Floor 1 and
+ * Floor 2 legs.
  *
  * This is the headless runner's own default cap, so an unbudgeted floor run
  * through the sweep sees the same bound as one run through the runner directly.
