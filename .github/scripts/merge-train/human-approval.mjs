@@ -154,7 +154,8 @@ export async function resolveHumanApprovalRejection({
   fetchReviews,
 }) {
   if (!requiresHumanApproval(pullRequest, closingIssues)) return null;
-  const reviews = hasOwnerApproval(comments, ownerLogin) ? [] : await fetchReviews();
+  if (hasOwnerApproval(comments, ownerLogin)) return null;
+  const reviews = await fetchReviews();
   return humanApprovalRejection({ pullRequest, closingIssues, comments, reviews, ownerLogin });
 }
 

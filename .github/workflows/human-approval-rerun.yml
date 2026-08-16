@@ -105,7 +105,20 @@ jobs:
                 return state === 'APPROVED' || state === 'CHANGES_REQUESTED' || state === 'DISMISSED';
               });
               if (decisive.length === 0) return false;
-              const latest = decisive[decisive.length - 1];
+              const latest = decisive
+                .map((review, index) => ({ review, index }))
+                .reduce((best, candidate) => {
+                  const bestTime = Date.parse(best.review.submitted_at || '');
+                  const candidateTime = Date.parse(candidate.review.submitted_at || '');
+                  if (
+                    Number.isFinite(bestTime) &&
+                    Number.isFinite(candidateTime) &&
+                    bestTime !== candidateTime
+                  ) {
+                    return candidateTime > bestTime ? candidate : best;
+                  }
+                  return candidate.index > best.index ? candidate : best;
+                }).review;
               return String(latest.state || '').toUpperCase() === 'APPROVED';
             }
 
