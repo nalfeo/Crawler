@@ -20,21 +20,27 @@ import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js
 import {
   configureSpellBrokerPurchase,
   ensureSpellBrokerDecision,
+  getSpellBrokerIntent,
   markSpellBrokerPurchased,
   updateSpellBrokerIntent,
 } from '../../src/game/ai/spell-broker-intent.js';
 import type { Floor1RunPlan } from '../../src/game/ai/run-planner.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
 import { MERCHANTS_CHARM_COST } from '../../src/shared/equipmentDefs.js';
-import { FLOOR1_POST_QUEST_WEAPON_COSTS } from '../../src/shared/constants.js';
+import {
+  FLOOR1_POST_QUEST_WEAPON_COSTS,
+  FLOOR1_SPELL_BROKER_MAX_PURCHASES,
+} from '../../src/shared/constants.js';
 import {
   FLOOR1_SPELL_BROKER_COST,
   SPELL_SKILL_ID_BY_SPELL_ID,
+  floor1SpellBrokerOfferCost,
   generateFloor1SpellBrokerOffers,
 } from '../../src/shared/index.js';
 import {
   configureMerchantWeaponPurchase,
   getMerchantWeaponIntent,
+  merchantWeaponReserve,
   spellPurchaseReserve,
   updateMerchantWeaponIntent,
 } from '../../src/game/ai/merchant-weapon-intent.js';
@@ -45,7 +51,15 @@ describe('Floor 1 Spell Broker', () => {
     expect(first).toEqual(generateFloor1SpellBrokerOffers(42));
     expect(first).toHaveLength(3);
     expect(new Set(first.map((offer) => offer.spellId)).size).toBe(3);
-    expect(first.every((offer) => offer.cost === FLOOR1_SPELL_BROKER_COST)).toBe(true);
+    // Rung 0 is the headline price; each further rung steps down by the repeat
+    // multiplier, so a repeat purchase is affordable out of banked gold.
+    expect(first.map((offer) => offer.cost)).toEqual([
+      FLOOR1_SPELL_BROKER_COST,
+      floor1SpellBrokerOfferCost(1),
+      floor1SpellBrokerOfferCost(2),
+    ]);
+    expect(floor1SpellBrokerOfferCost(1)).toBeLessThan(FLOOR1_SPELL_BROKER_COST);
+    expect(floor1SpellBrokerOfferCost(2)).toBeLessThan(floor1SpellBrokerOfferCost(1));
     expect(first.map((offer) => offer.spellId)).not.toEqual(
       generateFloor1SpellBrokerOffers(43).map((offer) => offer.spellId),
     );
@@ -248,21 +262,64 @@ describe('spell skills', () => {
       expect(getMerchantWeaponIntent(world).status).toBe('returning');
     });
 
-    it('markSpellBrokerPurchased sets purchaseStatus to purchased and is idempotent', () => {
+    it('markSpellBrokerPurchased re-arms for the next rung, then goes terminal', () => {
       const world = createTestWorld({ seed: 1 });
       configureSpellBrokerPurchase(world, true);
-      ensureSpellBrokerDecision(world);
+      const first = ensureSpellBrokerDecision(world);
       world.featureUnlocks.spells = true;
       updateSpellBrokerIntent(world, null, 3_000);
 
+      // First purchase: the run may come back for one cheaper rung, so the
+      // intent re-arms instead of going terminal.
       markSpellBrokerPurchased(world);
-      const afterMark = updateSpellBrokerIntent(world, null, 3_000);
-      expect(afterMark.purchaseStatus).toBe('purchased');
+      const afterFirst = getSpellBrokerIntent(world);
+      expect(afterFirst.purchaseCount).toBe(1);
+      expect(afterFirst.spellId).not.toBe(first.spellId);
+      expect(afterFirst.cost).toBeLessThan(first.cost);
+      expect(afterFirst.purchaseStatus).not.toBe('purchased');
+
+      // The per-run purchase cap ends the sink.
+      for (let i = 1; i < FLOOR1_SPELL_BROKER_MAX_PURCHASES; i += 1) {
+        markSpellBrokerPurchased(world);
+      }
+      const afterCap = updateSpellBrokerIntent(world, null, 3_000);
+      expect(afterCap.purchaseCount).toBe(FLOOR1_SPELL_BROKER_MAX_PURCHASES);
+      expect(afterCap.purchaseStatus).toBe('purchased');
 
       // Idempotent.
       markSpellBrokerPurchased(world);
       const afterSecond = updateSpellBrokerIntent(world, null, 3_000);
       expect(afterSecond.purchaseStatus).toBe('purchased');
+      expect(afterSecond.purchaseCount).toBe(FLOOR1_SPELL_BROKER_MAX_PURCHASES);
+    });
+
+    it('a repeat spell never spends gold a pending weapon switch still needs', () => {
+      const world = createTestWorld({ seed: 1 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeBaseStats(world, player);
+      initializeFloor1Scenario(world, player);
+      configureSpellBrokerPurchase(world, true);
+      const first = ensureSpellBrokerDecision(world);
+      world.featureUnlocks.spells = true;
+
+      // The headline spell outranks the weapon, so it reserves nothing...
+      expect(merchantWeaponReserve(world)).toBeGreaterThanOrEqual(0);
+      // ...but once it is bought, the weapon's price is held back from the
+      // repeat purchase.
+      configureMerchantWeaponPurchase(world, true);
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      world.playerGold = 10_000;
+      updateMerchantWeaponIntent(world, plan(1_000_000), 3_000);
+      const weapon = getMerchantWeaponIntent(world);
+      markSpellBrokerPurchased(world);
+      if (weapon.status === 'declined') {
+        expect(merchantWeaponReserve(world)).toBe(0);
+      } else {
+        expect(merchantWeaponReserve(world)).toBe(weapon.cost);
+        // A repeat spell never outranks the weapon.
+        expect(spellPurchaseReserve(world)).toBe(0);
+      }
+      expect(first.cost).toBeGreaterThan(getSpellBrokerIntent(world).cost);
     });
   });
 

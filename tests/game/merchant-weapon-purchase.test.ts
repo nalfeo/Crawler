@@ -121,9 +121,11 @@ describe('merchant weapon purchase intent', () => {
     const willing = seeds.filter((seed) => rollsMerchantWeaponSwitch(seed));
     const rate = willing.length / seeds.length;
     expect(Math.abs(rate - MERCHANT_WEAPON_SWITCH_CHANCE)).toBeLessThanOrEqual(0.05);
-    // The switch must stay a choice, never a certainty.
+    // The switch must stay a choice, never a certainty, and the designer set a
+    // hard ceiling of 50%: at most half the runs may be willing to re-class.
+    // Raising this is a design decision, not a tuning fix for a failing gate.
     expect(MERCHANT_WEAPON_SWITCH_CHANCE).toBeGreaterThan(0);
-    expect(MERCHANT_WEAPON_SWITCH_CHANCE).toBeLessThan(1);
+    expect(MERCHANT_WEAPON_SWITCH_CHANCE).toBeLessThanOrEqual(0.5);
     // Both outcomes must be reachable on the contiguous low-seed prefix the
     // headless gates sample, not only far out in the seed space.
     const prefix = seeds.slice(0, 25).filter((seed) => rollsMerchantWeaponSwitch(seed));

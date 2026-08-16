@@ -70,7 +70,7 @@ export function spellPurchaseReserve(world: GameWorld): number {
   const spellIntent = ensureSpellBrokerDecision(world);
   if (!isSpellBrokerPurchaseActive(spellIntent) || spellIntent.purchaseCount > 0) {
     // Only the run's *first* spell outranks the weapon. A repeat purchase off
-    // the broker's escalating rack is a luxury sink for gold the run has no
+    // the broker's stepped-down rack is a sink for gold the run has no
     // other use for, so reserving for it would let an unaffordable second
     // spell block an affordable weapon and bank the gold instead.
     return 0;
@@ -89,15 +89,19 @@ export function spellPurchaseReserve(world: GameWorld): number {
  * *willingness*; affordability and the run deadline still decide whether a
  * willing run actually completes the switch.
  *
- * **Calibrated against the Floor 1 economy gate**, not picked freely. Measured
- * over the 25-seed `GATE_SEEDS` panel: always-willing (the previous policy)
- * buys a weapon in 8/25 runs at a 33.4% median unspent-spendable share; at 0.75
- * it is 7/25 runs at 33.3%; at 0.5 it falls to 4/25 runs and 37.2%, which
- * breaks the gate's 35% ceiling. Floor 1's whole purchasable board already sits
- * at the top of its agreed price bands, so there is no pricing headroom to pay
- * for a rarer switch — lowering this further needs a **new gold sink** first
- * (standing proposal: a second broker spell at an escalating price), never a
- * looser economy ceiling.
+ * **0.5 is a designer-set ceiling, not a free tuning knob.** Half the runs is
+ * the most willingness the switch may carry; a lower value is allowed only when
+ * the Floor 1 economy gate still passes, and the gate ceiling itself must never
+ * be raised to buy headroom (rule #11).
+ *
+ * Measured over the 25-seed `GATE_SEEDS` panel: always-willing (the original
+ * policy) bought a weapon in 8/25 runs at a 33.4% median unspent-spendable
+ * share; 0.75 gave 7/25 and 33.3%. At 0.5 the weapon buy-rate falls to 4/25 and
+ * the banked gold pushed the median to **37.2%**, over the gate's 35% ceiling —
+ * so 0.5 ships together with the broker's repeat-purchase sink (see
+ * `floor1SpellBrokerOfferCost` and `FLOOR1_SPELL_BROKER_MAX_PURCHASES`), which
+ * gives a declining run somewhere to put the gold: 4/25 weapons, 10/25 second
+ * spells, **29.1%** median unspent, 25/25 wins.
  */
 export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
 
@@ -115,6 +119,40 @@ export function rollsMerchantWeaponSwitch(seed: number): boolean {
   // 1..25 prefix reads 24% on the first draw and 48% on the second.
   rng.next();
   return rng.next() < MERCHANT_WEAPON_SWITCH_CHANCE;
+}
+
+/**
+ * Gold held back for a still-pending weapon-class switch.
+ *
+ * The mirror of {@link spellPurchaseReserve}: the *first* broker spell outranks
+ * the weapon, but a **repeat** spell is a luxury sink and must not eat the gold
+ * a run is actively farming toward its one class switch — otherwise the switch,
+ * which the willingness roll already makes an occasional event, could never
+ * complete once a run owned a spell.
+ */
+export function merchantWeaponReserve(world: GameWorld): number {
+  const intent = getMerchantWeaponIntent(world);
+  if (!intent.enabled) {
+    return 0;
+  }
+  if (intent.itemId === null) {
+    // The weapon decision is made only after the shop quest completes, which
+    // can land *after* the broker is first reachable. Until then, reserve the
+    // cheapest thing the rack could sell — but only for a run whose willingness
+    // roll will actually want the switch, so a declining run's gold stays free
+    // for the repeat spell. The roll is a pure function of the seed, so reading
+    // it early consumes no RNG and cannot change the decision made later.
+    if (intent.decisionMade || !rollsMerchantWeaponSwitch(world.seed)) {
+      return 0;
+    }
+    const stock = getShopkeeperPostQuestStock(world);
+    return stock.length === 0 ? 0 : Math.min(...stock.map((entry) => entry.cost));
+  }
+  // `abandoned` counts too: it means "couldn't farm the deficit in time", and
+  // the lifecycle above explicitly recovers such an intent once the run holds
+  // the price outright. Letting a repeat spell spend that gold first would
+  // permanently cancel a switch the run still wants.
+  return intent.status === 'declined' || intent.status === 'purchased' ? 0 : intent.cost;
 }
 
 export function selectMerchantWeapon(

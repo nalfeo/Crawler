@@ -99,12 +99,12 @@ export function ensureSpellBrokerDecision(world: GameWorld): SpellBrokerIntent {
  * {@link purchaseSpellBrokerSpell} returns true).
  *
  * The broker is Floor 1's **deep-pocket sink**, so a run may come back for a
- * second spell off the escalating rack (see `floor1SpellBrokerOfferCost`)
- * instead of banking the gold it would otherwise carry to Floor 2 — a run that
- * declines the merchant's weapon-class switch has nowhere else to spend. The
- * re-arm is a plain re-entry into the normal lifecycle: the intent points at
- * the next unpurchased offer at its higher price, and the run-planner decides
- * as usual whether the deficit is farmable inside the deadline. Once
+ * second spell off the stepped rack (see `floor1SpellBrokerOfferCost`) instead of
+ * banking the gold it would otherwise carry to Floor 2 — a run that declines
+ * the merchant's weapon-class switch has nowhere else to spend. The re-arm is a
+ * plain re-entry into the normal lifecycle: the intent points at the cheapest
+ * unpurchased offer, and the run-planner decides as usual whether the deficit
+ * is farmable inside the deadline. Once
  * {@link FLOOR1_SPELL_BROKER_MAX_PURCHASES} spells are bought, or the rack is
  * empty, the intent goes terminal and the optional bundle stops being emitted.
  */

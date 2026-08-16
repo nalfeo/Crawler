@@ -27,18 +27,19 @@ export function getSpellSkillId(spellId: string): string | undefined {
 export const FLOOR1_SPELL_BROKER_OFFER_COUNT = 3;
 
 /**
- * Price of the n-th (0-based) cheapest offer on the broker's rack.
+ * Price of the n-th (0-based) offer on the broker's rack.
  *
- * The rack escalates: the first spell is the headline Floor 1 purchase, every
- * further spell is a luxury sink priced above it, so a run that skips a cheaper
- * purchase still has somewhere to put its gold without the second spell ever
- * becoming routine.
+ * Rung 0 is the headline Floor 1 purchase at the full broker price; every
+ * further rung steps down by
+ * {@link FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER}, so a run that banks gold
+ * (typically one that declined the merchant's weapon-class switch) has
+ * somewhere to spend it without the repeat ever outranking the headline pick.
  */
 export function floor1SpellBrokerOfferCost(index: number): number {
   return Math.round(FLOOR1_SPELL_BROKER_COST * FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER ** index);
 }
 
-/** Generate the broker's escalating-price stock without consuming gameplay RNG. */
+/** Generate the broker's stepped-price stock without consuming gameplay RNG. */
 export function generateFloor1SpellBrokerOffers(seed: number): Floor1SpellBrokerOffer[] {
   const rng = new SeededRandom(hashStringToSeed(`${seed}:floor1-spell-broker`));
   const pool = [...FLOOR1_BOSS_REWARD_SPELL_IDS];

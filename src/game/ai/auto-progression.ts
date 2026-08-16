@@ -23,6 +23,7 @@ import {
 import {
   executeMerchantWeaponPurchase,
   getMerchantWeaponIntent,
+  merchantWeaponReserve,
 } from './merchant-weapon-intent.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
@@ -311,8 +312,17 @@ export function autoFloor1ProgressionSystem(
         spellIntent.spellId,
         ...getSpellBrokerOffers(world).map((offer) => offer.spellId),
       ].filter((spellId): spellId is string => spellId !== null);
-      const spellId = candidateSpellIds.find((id) =>
-        canPurchaseSpellBrokerSpell(world, playerEid, id),
+      // A repeat spell is the run's lowest-priority purchase: it exists to
+      // absorb gold that has nowhere else to go, so it must leave a pending
+      // weapon-class switch fully funded (see `merchantWeaponReserve`). The
+      // headline first spell keeps its priority and ignores the reserve.
+      const reserve = spellIntent.purchaseCount > 0 ? merchantWeaponReserve(world) : 0;
+      const offerCost = (id: string): number =>
+        getSpellBrokerOffers(world).find((offer) => offer.spellId === id)?.cost ?? 0;
+      const spellId = candidateSpellIds.find(
+        (id) =>
+          canPurchaseSpellBrokerSpell(world, playerEid, id) &&
+          world.playerGold - offerCost(id) >= reserve,
       );
       if (spellId !== undefined && purchaseSpellBrokerSpell(world, playerEid, spellId)) {
         markSpellBrokerPurchased(world);
