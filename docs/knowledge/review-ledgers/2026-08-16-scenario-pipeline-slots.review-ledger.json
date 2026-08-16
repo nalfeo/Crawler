@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-16",
+  "session_slug": "scenario-pipeline-slots",
+  "task_title": "Move floor-specific systems into scenario pipeline slots",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Alt A: bootstrap-owned floor registry — rejected because it creates a second per-floor registry and keeps executable ownership outside the existing scenario seam. Alt B: generic ordered contributor descriptors — rejected as unnecessary extensibility and weaker named ordering contracts for three known seams. Resolutions: add scenarioDefinitions.ts as an orphan-system wiring site plus guard coverage; define exactly-once as canonical preSystems membership and retain floor2ObjectiveTick victory evaluation; import getScenarioDefinition directly; table-test shared anchors and all configured entries exactly once with foreign entries absent; scope the ADR to pipeline imports only."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
