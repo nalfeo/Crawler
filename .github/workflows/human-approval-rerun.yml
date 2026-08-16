@@ -21,7 +21,7 @@ jobs:
         && github.event.issue.pull_request
         && github.actor == github.repository_owner)
       || (github.event_name == 'pull_request_review'
-        && github.actor == github.repository_owner)
+        && github.event.review.user.login == github.repository_owner)
       || (github.event_name == 'workflow_run'
         && github.event.workflow_run.event == 'pull_request')
     runs-on: ubuntu-latest
