@@ -81,8 +81,18 @@ export function spellPurchaseReserve(world: GameWorld): number {
  * than something every contestant does on the way past. The roll gates the
  * *willingness*; affordability and the run deadline still decide whether a
  * willing run actually completes the switch.
+ *
+ * **Calibrated against the Floor 1 economy gate**, not picked freely. Measured
+ * over the 25-seed `GATE_SEEDS` panel: always-willing (the previous policy)
+ * buys a weapon in 8/25 runs at a 33.4% median unspent-spendable share; at 0.75
+ * it is 7/25 runs at 33.3%; at 0.5 it falls to 4/25 runs and 37.2%, which
+ * breaks the gate's 35% ceiling. Floor 1's whole purchasable board already sits
+ * at the top of its agreed price bands, so there is no pricing headroom to pay
+ * for a rarer switch — lowering this further needs a **new gold sink** first
+ * (standing proposal: a second broker spell at an escalating price), never a
+ * looser economy ceiling.
  */
-export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
+export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.75;
 
 /**
  * Deterministic per-run willingness roll, drawn from a dedicated
@@ -92,6 +102,11 @@ export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
  */
 export function rollsMerchantWeaponSwitch(seed: number): boolean {
   const rng = new SeededRandom(hashStringToSeed(`${seed}:floor1-merchant-weapon-switch`));
+  // Discard the first draw: xorshift32's opening output stays correlated with
+  // its seed, so consecutive small seeds (exactly the contiguous gate panel)
+  // decide alike. Measured over seeds 1..1000 both draws sit at ~50%, but the
+  // 1..25 prefix reads 24% on the first draw and 48% on the second.
+  rng.next();
   return rng.next() < MERCHANT_WEAPON_SWITCH_CHANCE;
 }
 
