@@ -16,19 +16,35 @@
  * The portrait resolves through `resolveRenderKindPortraitTexture`, i.e. the
  * SAME art precedence the live renderer uses, so the sheet can never show a
  * different sprite than the boss the player is about to fight.
+ *
+ * Layout is measured rather than hardcoded: the sheet grows to fit its copy and
+ * the flavour text steps down a font size when a very long Director monologue
+ * would still overflow. The first draft used a fixed 520x300 sheet and clipped
+ * its last paragraph through the footer. `getLayout()` exposes the measured
+ * boxes so `tests/e2e/boss-intro-observation.test.ts` can assert containment
+ * deterministically instead of relying on someone eyeballing a screenshot.
  */
 import Phaser from 'phaser';
 import { GAME } from '../shared/constants.js';
 import type { BossIntroContent } from '../shared/boss-intro.js';
 import { getRenderScale } from './render-scale.js';
+import type { ScreenBounds } from './ui-scale.js';
 import { resolveRenderKindPortraitTexture } from './PhaserBridge.js';
 
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 
 /** Sheet geometry, in the fixed GAME.WIDTH/HEIGHT design space. */
-const SHEET_WIDTH = 520;
-const SHEET_HEIGHT = 300;
-const PORTRAIT_BOX = 132;
+const SHEET_WIDTH = 680;
+const PORTRAIT_BOX = 192;
+const PADDING = 26;
+/** Gap between the portrait column and the text column. */
+const COLUMN_GAP = 22;
+const MIN_SHEET_HEIGHT = 300;
+const MAX_SHEET_HEIGHT = GAME.HEIGHT - 96;
+/** Vertical band reserved for the dismiss prompt at the bottom of the sheet. */
+const FOOTER_BAND = 34;
+/** Flavour-text sizes tried largest-first until the copy fits the sheet. */
+const FLAVOR_FONT_SIZES = [14, 13, 12, 11, 10] as const;
 const DEPTH = 6100;
 
 export interface OpenBossIntroParams {
@@ -40,6 +56,17 @@ export interface OpenBossIntroParams {
   readonly onDismiss: () => void;
 }
 
+/** Measured boxes of every rendered part of the sheet (design space). */
+export interface BossIntroLayoutSnapshot {
+  readonly panel: ScreenBounds;
+  readonly portrait: ScreenBounds;
+  readonly header: ScreenBounds;
+  readonly name: ScreenBounds;
+  readonly subtitle: ScreenBounds;
+  readonly flavor: ScreenBounds;
+  readonly footer: ScreenBounds;
+}
+
 export interface BossIntroUI {
   open(params: OpenBossIntroParams): void;
   isOpen(): boolean;
@@ -47,6 +74,8 @@ export interface BossIntroUI {
   dismiss(): void;
   /** Test/automation affordance: intro id currently shown, or null. */
   getIntroId(): string | null;
+  /** Test/automation affordance: measured layout, or null while closed. */
+  getLayout(): BossIntroLayoutSnapshot | null;
   destroy(): void;
 }
 
@@ -55,11 +84,33 @@ function cssColor(color: number): string {
   return `#${(color & 0xffffff).toString(16).padStart(6, '0')}`;
 }
 
+interface MeasurableObject {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly originX?: number;
+  readonly originY?: number;
+}
+
+function boundsOf(object: MeasurableObject): ScreenBounds {
+  const originX = object.originX ?? 0;
+  const originY = object.originY ?? 0;
+  return {
+    x: object.x - object.width * originX,
+    y: object.y - object.height * originY,
+    width: object.width,
+    height: object.height,
+  };
+}
+
 export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   const baseResolution = getRenderScale(scene);
   const centerX = GAME.WIDTH / 2;
   const centerY = GAME.HEIGHT / 2;
   const sheetLeft = centerX - SHEET_WIDTH / 2;
+  const textLeft = sheetLeft + PADDING + PORTRAIT_BOX + COLUMN_GAP;
+  const textWidth = SHEET_WIDTH - PADDING * 2 - PORTRAIT_BOX - COLUMN_GAP;
 
   const crispText = (
     x: number,
@@ -75,13 +126,20 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   backdrop.setInteractive();
   container.add(backdrop);
 
-  const sheet = scene.add.rectangle(centerX, centerY, SHEET_WIDTH, SHEET_HEIGHT, 0x11131f, 0.98);
+  const sheet = scene.add.rectangle(
+    centerX,
+    centerY,
+    SHEET_WIDTH,
+    MIN_SHEET_HEIGHT,
+    0x11131f,
+    0.98,
+  );
   sheet.setStrokeStyle(2, 0xffc65c, 0.9);
   container.add(sheet);
 
   const portraitFrame = scene.add.rectangle(
-    sheetLeft + 24 + PORTRAIT_BOX / 2,
-    centerY - 12,
+    sheetLeft + PADDING + PORTRAIT_BOX / 2,
+    centerY,
     PORTRAIT_BOX,
     PORTRAIT_BOX,
     0x05070f,
@@ -94,20 +152,18 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   portrait.setVisible(false);
   container.add(portrait);
 
-  const textLeft = sheetLeft + 24 + PORTRAIT_BOX + 20;
-  const textWidth = SHEET_WIDTH - (textLeft - sheetLeft) - 24;
-
-  const header = crispText(textLeft, centerY - SHEET_HEIGHT / 2 + 26, '', {
+  const header = crispText(textLeft, 0, '', {
     fontFamily: FONT_FAMILY,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#ffc65c',
+    wordWrap: { width: textWidth },
   });
   header.setOrigin(0, 0);
   container.add(header);
 
-  const name = crispText(textLeft, centerY - SHEET_HEIGHT / 2 + 44, '', {
+  const name = crispText(textLeft, 0, '', {
     fontFamily: FONT_FAMILY,
-    fontSize: '24px',
+    fontSize: '26px',
     fontStyle: 'bold',
     color: '#f8fafc',
     wordWrap: { width: textWidth },
@@ -117,7 +173,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
   const subtitle = crispText(textLeft, 0, '', {
     fontFamily: FONT_FAMILY,
-    fontSize: '12px',
+    fontSize: '13px',
     color: '#9ca3af',
     wordWrap: { width: textWidth },
   });
@@ -129,7 +185,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
   const flavor = crispText(textLeft, 0, '', {
     fontFamily: FONT_FAMILY,
-    fontSize: '12px',
+    fontSize: '14px',
     color: '#d6d9f1',
     lineSpacing: 4,
     wordWrap: { width: textWidth },
@@ -137,7 +193,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   flavor.setOrigin(0, 0);
   container.add(flavor);
 
-  const footer = crispText(centerX, centerY + SHEET_HEIGHT / 2 - 22, '', {
+  const footer = crispText(centerX, 0, '', {
     fontFamily: FONT_FAMILY,
     fontSize: '12px',
     color: '#9ca3af',
@@ -162,9 +218,14 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     }
     const width = portrait.width || 1;
     const height = portrait.height || 1;
-    const inner = PORTRAIT_BOX - 16;
+    const inner = PORTRAIT_BOX - 24;
     portrait.setScale(Math.min(inner / width, inner / height));
     portrait.setVisible(true);
+  }
+
+  /** Height of the text column for the currently-set copy. */
+  function textColumnHeight(): number {
+    return header.height + 6 + name.height + 6 + subtitle.height + 12 + 12 + flavor.height;
   }
 
   function render(content: BossIntroContent): void {
@@ -175,11 +236,41 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     header.setText(content.title.toUpperCase()).setColor(cssColor(content.accentColor));
     name.setText(content.name);
     subtitle.setText(content.subtitle);
-    subtitle.setY(Math.round(name.y + name.height + 6));
-    rule.setY(Math.round(subtitle.y + subtitle.height + 10));
-    flavor.setText(content.flavorLines.join('\n\n'));
-    flavor.setY(Math.round(rule.y + 10));
     footer.setText('Click or press [Space] to begin the fight');
+
+    // Step the flavour size down until the whole column fits the tallest sheet
+    // we allow, so a long Director monologue can never spill past the frame.
+    const maxColumnHeight = MAX_SHEET_HEIGHT - PADDING * 2 - FOOTER_BAND;
+    const flavorText = content.flavorLines.join('\n\n');
+    const smallestSize = FLAVOR_FONT_SIZES[FLAVOR_FONT_SIZES.length - 1];
+    for (const size of FLAVOR_FONT_SIZES) {
+      flavor.setFontSize(size);
+      flavor.setText(flavorText);
+      if (textColumnHeight() <= maxColumnHeight || size === smallestSize) {
+        break;
+      }
+    }
+
+    const contentHeight = Math.max(textColumnHeight(), PORTRAIT_BOX);
+    const sheetHeight = Math.min(
+      MAX_SHEET_HEIGHT,
+      Math.max(MIN_SHEET_HEIGHT, contentHeight + PADDING * 2 + FOOTER_BAND),
+    );
+    sheet.setSize(SHEET_WIDTH, sheetHeight);
+
+    const top = centerY - sheetHeight / 2;
+    const contentTop = top + PADDING;
+
+    header.setY(Math.round(contentTop));
+    name.setY(Math.round(header.y + header.height + 6));
+    subtitle.setY(Math.round(name.y + name.height + 6));
+    rule.setY(Math.round(subtitle.y + subtitle.height + 12));
+    flavor.setY(Math.round(rule.y + 12));
+
+    portraitFrame.setY(Math.round(contentTop + Math.min(contentHeight, PORTRAIT_BOX * 2) / 2));
+    portrait.setY(portraitFrame.y);
+
+    footer.setY(Math.round(top + sheetHeight - FOOTER_BAND / 2 - 4));
 
     layoutPortrait(content);
   }
@@ -240,6 +331,20 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     dismiss: handleDismiss,
     getIntroId(): string | null {
       return openContent?.introId ?? null;
+    },
+    getLayout(): BossIntroLayoutSnapshot | null {
+      if (!openContent) {
+        return null;
+      }
+      return {
+        panel: boundsOf(sheet),
+        portrait: boundsOf(portraitFrame),
+        header: boundsOf(header),
+        name: boundsOf(name),
+        subtitle: boundsOf(subtitle),
+        flavor: boundsOf(flavor),
+        footer: boundsOf(footer),
+      };
     },
     destroy(): void {
       backdrop.off('pointerdown', handleDismiss);
