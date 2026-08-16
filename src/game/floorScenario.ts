@@ -122,6 +122,7 @@ import {
   setQuestCounter,
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
+import { isInSafeContext } from '../core/safe-space.js';
 import { getOrCreateAbilityState, memorizeSpell } from './systems/abilitySystem.js';
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import { getAllSkillDefinitions } from './skills/registry.js';
@@ -4242,9 +4243,19 @@ export function purchaseShopkeeperPostQuestItem(
  * never reach the charm. Removes each equipped item from the bag and returns
  * true when at least one item was equipped this call.
  */
+/**
+ * Equip every statically-equippable item currently in the bag.
+ *
+ * Safe-context gated, exactly like the human Equipment panel: outside a safe
+ * room this is a no-op and the items stay in the bag. The AI driver calls this
+ * every tick, so a deferred equip lands on the next safe-room entry.
+ */
 export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean {
   const bag = world.inventories.get(playerEid);
   if (!bag) {
+    return false;
+  }
+  if (!isInSafeContext(world)) {
     return false;
   }
   let equippedAny = false;
@@ -4256,7 +4267,7 @@ export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean
   for (const itemId of equippableItemIds) {
     const def = getEquipmentDefForItem(itemId);
     if (!def) continue;
-    const result = equip(world, playerEid, def, { force: true });
+    const result = equip(world, playerEid, def);
     if (result.ok) {
       removeItem(bag, itemId, 1);
       equippedAny = true;

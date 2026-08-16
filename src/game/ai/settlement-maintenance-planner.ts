@@ -38,6 +38,7 @@ import {
   purchaseQuartermasterOffer,
 } from '../../core/quartermaster-purchase.js';
 import { equipFromBag, getEquipmentState } from '../../core/systems/equipmentSystem.js';
+import { isInSafeContext } from '../../core/safe-space.js';
 import { getGeneratedEquipmentInstance } from '../../core/generated-equipment-registry.js';
 import { getEntityEncumbranceSnapshot } from '../../core/encumbrance.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityGrantSourceId } from '../../shared/abilities.js';
@@ -569,12 +570,6 @@ interface EquipmentLoopRunOptions {
    */
   readonly inventoryOnly?: boolean;
   /**
-   * When `true`, passes `{ force: true }` to `equipFromBag` to bypass the
-   * safe-room context gate.  Required outside settlement visits (same pattern
-   * as `auto-progression.ts`).
-   */
-  readonly force?: boolean;
-  /**
    * When `true`, exits immediately — before building candidates — if the
    * player's bag contains no generated-equipment items.  Prevents the
    * relatively-expensive `buildEquipmentCandidates` / `getQuartermasterOfferViews`
@@ -608,10 +603,11 @@ interface EquipmentLoopRunOptions {
  * regardless of how many candidates fail.
  *
  * Behaviour is controlled by the optional {@link EquipmentLoopRunOptions}
- * argument, which lets callers restrict to inventory-only candidates, bypass
- * the safe-room context gate, short-circuit on an empty bag, and prefix
- * telemetry labels — so the eager-tick and settlement-visit paths share one
- * implementation instead of maintaining parallel copies.
+ * argument, which lets callers restrict to inventory-only candidates,
+ * short-circuit on an empty bag, and prefix telemetry labels — so the
+ * eager-tick and settlement-visit paths share one implementation instead of
+ * maintaining parallel copies. There is deliberately NO safe-context bypass:
+ * `equipFromBag` enforces the same gate the human Equipment panel does.
  */
 function runEquipmentLoop(
   world: GameWorld,
@@ -637,7 +633,6 @@ function runEquipmentLoop(
   }
 
   const detailPrefix = options?.detailPrefix ?? '';
-  const forceEquip = options?.force ?? false;
   const blacklistedInstanceIds = new Set<string>();
   const loggedSkipKeys = new Set<string>();
   const protectedSlots = getStaticProtectedSlots(world, playerEid);
@@ -707,12 +702,7 @@ function runEquipmentLoop(
       kind: 'generated-instance',
       instanceKey: instance.instanceId,
     };
-    const equipResult = equipFromBag(
-      world,
-      playerEid,
-      bagEntry,
-      forceEquip ? { force: true } : undefined,
-    );
+    const equipResult = equipFromBag(world, playerEid, bagEntry);
     if (!equipResult.ok) {
       decisions.push({
         kind: 'skip',
@@ -785,11 +775,19 @@ export interface EagerMaintenanceTickOptions {
 
 /**
  * Eager per-tick maintenance: claims all unlocked-but-unclaimed achievement
- * rewards and equips any generated-equipment bag items that improve the
- * current loadout — with NO settlement-room restriction.
+ * rewards, equips any generated-equipment bag items that improve the current
+ * loadout, and fills open active-ability slots — all of which the human player
+ * performs through the Achievements / Equipment / Abilities panels.
  *
- * Called unconditionally every tick so rewards never sit idle between
- * settlement visits. Boss chests are intentionally left to
+ * **Parity contract:** every step here is gated on {@link isInSafeContext},
+ * exactly as `MainGameScene.updateFeatureUnlocks` gates those three panels for
+ * a human. The AI driver has hands, not privileges: it may only do what a
+ * player standing in the same spot could do. Outside a safe context this is a
+ * cheap no-op and the pending work is simply carried until the player next
+ * reaches a safe room (see `settlement-return-router.ts`, which exists to make
+ * that trip happen).
+ *
+ * Called unconditionally every tick. Boss chests are intentionally left to
  * {@link runSettlementMaintenancePlanner}: they require physical presence at
  * the settlement to keep the lifecycle test (chest → available → claimed) clean
  * and the UX review flow (chest opened in context) intact.
@@ -801,9 +799,6 @@ export interface EagerMaintenanceTickOptions {
  * the equipment loop exits immediately when the bag is empty or no candidate
  * beats the current loadout.
  *
- * Also fills any open active-ability slots with already-owned abilities,
- * matching the settlement planner's post-equipment step.
- *
  * @param options.skipAchievementClaims — Set to `true` when
  *   settlement-return routing is active so the router's unclaimed-achievement
  *   signal is not consumed before the player reaches the settlement.
@@ -813,6 +808,15 @@ export function runEagerMaintenanceTick(
   playerEid: number,
   options?: EagerMaintenanceTickOptions,
 ): void {
+  // Parity gate: the Achievements, Equipment and Abilities panels are all
+  // safe-context-only for a human, so the AI's equivalent of pressing those
+  // buttons is too. Reset the equipment latch on the way out so the next
+  // safe-room entry is treated as a fresh visit.
+  if (!isInSafeContext(world)) {
+    eagerEquipmentLatches.delete(world);
+    return;
+  }
+
   const decisions: SettlementMaintenanceDecision[] = [];
 
   // 1. Claim achievement rewards — skipped when the settlement-return router
@@ -825,8 +829,8 @@ export function runEagerMaintenanceTick(
   }
 
   // 2. Equip bag candidates using the evaluator (inventory-only, no shop
-  //    purchases). Gates on `floor2EquipmentAiMaintenance`; on Floor 1 or
-  //    when the flag is off it is a cheap no-op.
+  //    purchases). Gates on `floor2EquipmentAiMaintenance`; when the flag is
+  //    off it is a cheap no-op.
   runBagOnlyEquipmentLoop(world, playerEid, decisions);
 
   // 3. Retry bag-full deferred claims now that equipping may have freed space.
@@ -839,14 +843,54 @@ export function runEagerMaintenanceTick(
 }
 
 /**
+ * Per-world latch for the eager equipment loop. `signature` is the bag's
+ * generated-equipment content at the moment the loop last ran to completion;
+ * `null` means "no completed run in the current safe-context dwell".
+ */
+interface EagerEquipmentLatch {
+  signature: string | null;
+}
+
+/**
+ * Per-world "have we already run the eager equipment loop for this bag state"
+ * latch. Deleted whenever the player leaves the safe context so the next entry
+ * always re-evaluates. Keyed by `GameWorld` reference so each world/run tracks
+ * its own state and stale entries are garbage-collected with the world.
+ */
+const eagerEquipmentLatches = new WeakMap<GameWorld, EagerEquipmentLatch>();
+
+/**
+ * Deterministic content signature of the player's generated-equipment bag
+ * entries. Order-independent (sorted) so an inventory reshuffle that changes
+ * nothing meaningful does not re-trigger the loop.
+ */
+function bagGeneratedSignature(world: GameWorld, playerEid: number): string {
+  const bag = world.inventories.get(playerEid);
+  if (!bag) return '';
+  return listGeneratedEquipmentReferences(bag)
+    .map((entry) => entry.instanceKey)
+    .sort()
+    .join('|');
+}
+
+/**
  * Bag-only wrapper around {@link runEquipmentLoop}: restricts to inventory
- * candidates (no shop purchases), bypasses the safe-room context gate via
- * `force: true`, and short-circuits when the bag is empty to avoid the
- * relatively-expensive `buildEquipmentCandidates` call every tick.
+ * candidates (no shop purchases) and short-circuits when the bag is empty to
+ * avoid the relatively-expensive `buildEquipmentCandidates` call every tick.
+ *
+ * Callers must already have confirmed {@link isInSafeContext}; the underlying
+ * `equipFromBag` enforces that gate itself with no bypass, so this is
+ * defence-in-depth rather than the only check.
+ *
+ * Runs the full candidate build only when there is genuinely something new to
+ * consider — the first tick of a safe-context dwell, or any later tick where
+ * the bag's generated-equipment contents changed (e.g. a chest opened while
+ * standing in the newly-safe boss room). Every other tick costs one sorted
+ * string build and an equality test.
  *
  * Inventory-only restriction: shop candidates require a Quartermaster purchase
  * (a location-gated operation) and are intentionally excluded so this function
- * is safe to call from anywhere.
+ * is safe to call from anywhere a safe context exists.
  */
 function runBagOnlyEquipmentLoop(
   world: GameWorld,
@@ -856,12 +900,20 @@ function runBagOnlyEquipmentLoop(
   if (!world.floor2EquipmentFlags.floor2EquipmentAiMaintenance) {
     return 'exhausted';
   }
-  return runEquipmentLoop(world, playerEid, decisions, {
+  const signature = bagGeneratedSignature(world, playerEid);
+  const latch = eagerEquipmentLatches.get(world);
+  if (latch && latch.signature === signature) {
+    return 'exhausted';
+  }
+  const reason = runEquipmentLoop(world, playerEid, decisions, {
     inventoryOnly: true,
-    force: true,
     bagEmptyShortCircuit: true,
     detailPrefix: 'Eager-',
   });
+  eagerEquipmentLatches.set(world, {
+    signature: bagGeneratedSignature(world, playerEid),
+  });
+  return reason;
 }
 
 /**
