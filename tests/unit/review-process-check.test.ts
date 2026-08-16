@@ -49,8 +49,13 @@ describe('review-process-check', () => {
   });
 
   it.each(REQUIRED_REVIEW_TOPICS)('detects a missing $label topic', (topic) => {
+    const topicLine = TOPIC_LINES[topic.label];
+    if (!topicLine) {
+      throw new Error(`Missing test fixture for required topic: ${topic.label}`);
+    }
+
     const evaluation = evaluateReviewProcess(
-      VALID_REVIEW_INSTRUCTIONS.replace(TOPIC_LINES[topic.label]!, ''),
+      VALID_REVIEW_INSTRUCTIONS.replace(topicLine, ''),
       COPILOT_INSTRUCTIONS,
     );
 

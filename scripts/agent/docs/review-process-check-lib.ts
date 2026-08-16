@@ -17,7 +17,8 @@ export const REQUIRED_REVIEW_TOPICS: readonly RequiredTopic[] = [
   },
   {
     label: 'determinism',
-    pattern: /Determinism:[\s\S]*Math\.random\(\)[\s\S]*Date\.now\(\)/i,
+    pattern:
+      /\*\*Determinism:\*\*(?:(?!\n- \*\*|\n##)[\s\S])*Math\.random\(\)(?:(?!\n- \*\*|\n##)[\s\S])*Date\.now\(\)/i,
     remediation:
       'Call out deterministic simulation hazards, including Math.random() and Date.now().',
   },
@@ -29,18 +30,20 @@ export const REQUIRED_REVIEW_TOPICS: readonly RequiredTopic[] = [
   },
   {
     label: 'layer boundaries',
-    pattern: /Layer boundaries:[\s\S]*core ECS[\s\S]*engine/i,
+    pattern:
+      /\*\*Layer boundaries:\*\*(?:(?!\n- \*\*|\n##)[\s\S])*core ECS(?:(?!\n- \*\*|\n##)[\s\S])*engine/i,
     remediation: 'Keep ECS/Phaser/lab import boundaries in the review checklist.',
   },
   {
     label: 'performance',
-    pattern: /Performance:[\s\S]*hot loops|per-frame allocation|large data scans/i,
+    pattern:
+      /\*\*Performance:\*\*(?:(?!\n- \*\*|\n##)[\s\S])*(?:hot loops|per-frame allocation|large data scans)/i,
     remediation:
       'Retain explicit performance prompts for hot loops, allocation, and scaling hazards.',
   },
   {
     label: 'regression coverage',
-    pattern: /Regression coverage:[\s\S]*deterministic/i,
+    pattern: /\*\*Regression coverage:\*\*(?:(?!\n- \*\*|\n##)[\s\S])*deterministic/i,
     remediation: 'Require deterministic regression coverage for confirmed bugs.',
   },
   {
@@ -50,12 +53,14 @@ export const REQUIRED_REVIEW_TOPICS: readonly RequiredTopic[] = [
   },
   {
     label: 'automation deadlocks',
-    pattern: /Automation deadlocks[\s\S]*throw out of an item loop|skip remaining work/i,
+    pattern:
+      /\*\*Automation deadlocks:\*\*(?:(?!\n- \*\*|\n##)[\s\S])*(?:throw out of an item loop|skip remaining work)/i,
     remediation: 'Keep CI/docs/merge-train loop failure patterns visible to reviewers.',
   },
   {
     label: 'sweep and benchmark misuse',
-    pattern: /Sweep and benchmark misuse[\s\S]*Sweep Results Viewer|cherry-picked seeds/i,
+    pattern:
+      /\*\*Sweep and benchmark misuse:\*\*(?:(?!\n- \*\*|\n##)[\s\S])*(?:Sweep Results Viewer|cherry-picked seeds)/i,
     remediation: 'Keep sweep-result and seed-evidence review prompts explicit.',
   },
 ];
