@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   HUMAN_APPROVAL_LABEL,
   HUMAN_APPROVAL_PHRASE,
+  HUMAN_APPROVAL_PHRASE_VARIANT,
   closingIssuesPropagatingHumanApproval,
   hasHumanApproval,
   hasOwnerApproval,
@@ -41,10 +42,17 @@ test('detects the durable PR label, source-issue label, and nightly Copilot bran
   assert.equal(requiresHumanApproval({ head: { ref: 'copilot/unrelated-fix' } }), false);
 });
 
-test('accepts only the exact repository-owner approval comment', () => {
+test('accepts only exact repository-owner approval comment variants', () => {
   assert.equal(
     hasOwnerApproval(
       [{ user: { login: 'nalfeo' }, body: `  ${HUMAN_APPROVAL_PHRASE}\n` }],
+      'nalfeo',
+    ),
+    true,
+  );
+  assert.equal(
+    hasOwnerApproval(
+      [{ user: { login: 'nalfeo' }, body: HUMAN_APPROVAL_PHRASE_VARIANT }],
       'nalfeo',
     ),
     true,
