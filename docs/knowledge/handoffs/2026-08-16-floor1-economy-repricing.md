@@ -1,0 +1,91 @@
+# 2026-08-16 — Floor 1 economy repricing + gold telemetry
+
+## Systems touched
+
+floor-scenario, ai-runner, economy, shop, telemetry
+
+## Ask
+
+"I can end floor 1 with about 1k gold fairly easily considering loot boxes. Item
+prices must be tuned to this, especially spells. The ai runner is probably not
+doing so well."
+
+Bounded to: **median unspent gold at Floor 1 exit ≤ 35% of income, at ≥90%
+Floor 1 win rate** (option (b) — buy 1–2 of 3–4 desirable things, keep a stake
+for Floor 2). Prices-only; no new sinks. 3🍎.
+
+## Baseline (before)
+
+8 seeded headless runs: 8/8 victory, **743–886 gold unspent** (mean ≈803). The
+entire Floor 1 purchasable board cost ~110 gold: charm 15, one post-quest weapon
+18–30, one broker spell 35 — about 13% of income. ~90% of Floor 1 income flowed
+into Floor 2 untouched.
+
+## What changed
+
+1. **Telemetry first.** `GoldLedger` on `GameWorld` counts income by source
+   (drops vs loot boxes) and spend by vendor, `markGoldLedgerFloorExit` latches
+   income earned _before_ the exit, and `RunStats.goldEconomy` exposes it.
+   Surfaced in the headless CLI and in the optional-purchases sweep worker +
+   shard merger.
+2. **Prices into data.** `MERCHANTS_CHARM_COST`, the post-quest weapon cost map
+   (was hardcoded in `floorScenario.ts`) and the spell cost now all read
+   `tuning.json → shopPricing.floor1`. Every export kept in place; no call site
+   moved.
+3. **Repriced** to the top of the agreed bands: charm 100, post-quest weapons
+   140/160/185/205/225/250 (default 180), spell 350.
+4. **AI runner fixes** (this was the "not doing so well" part):
+   - `RUN_PLANNER_GOLD_FARM_MS` was **3000** — the planner assumed 3 s to earn
+     one gold, against a measured ~330 ms/gold, ~9× pessimistic. Invisible at
+     35 g prices; at 350 g it abandoned every optional purchase. Now **500**.
+   - The two optional purchases were **mutually exclusive** _and_ gated by blind
+     coin flips (spell 25%, weapon 50%), so a run made well under one purchase
+     on average. Now: always intend to buy, deterministic value-ranked weapon
+     selection (no RNG draws at all), both purchases concurrent, and a
+     `spellPurchaseReserve` so a weapon can never price out the headline spell.
+   - `abandoned` recovers to `returning` once the player simply holds the price.
+
+## After (25-seed `GATE_SEEDS` panel)
+
+- Win rate **25/25 = 100%**
+- Median unspent / **spendable** income **33.4%** (gate ≤35% ✓)
+- Median unspent / total income 43.8% (see escalation)
+- Spell bought in **24/25** winning runs; median **2** distinct vendors
+
+## Gates added
+
+- `tests/headless/floor1-economy-gate.test.ts` — win rate, median unspent
+  spendable share, spell-purchase rate, median distinct vendors. Deterministic,
+  no LLM judging.
+- `tests/unit/generate-shop-inventory.test.ts` — Floor 2 knock-on: the measured
+  200–450 carry band must still afford a median-priced Floor 2 item, and must
+  never afford the whole settlement. `floor2TierMultiplier` left at 2.5;
+  opening buying power moves from ~5 median items to ~2, which is the intended
+  direction (Floor 1 gold should buy Floor 1 power), not a nerf to fix.
+- `tests/unit/gold-economy-summary.test.ts` — sweep aggregation.
+
+## Open escalation (needs a human answer)
+
+Roughly **125 gold per run** is granted by floor-clear achievement loot boxes
+that resolve _after_ the last vendor window, so it is Floor 2 seed money by
+construction and can never be spent on Floor 1 at any price. The literal gate
+"≤35% of gold **earned**" is therefore partly unreachable — it measures 43.8%.
+On the spendable basis it is 33.4% and passes. Options: (i) accept the spendable
+basis (what the gate currently asserts, documented in the test header), (ii)
+move floor-clear grants before the exit, or (iii) treat the residual as
+intentional Floor 2 seed money. Not resolved unilaterally.
+
+Margin on the gate is thin (33.4% vs 35%) because the board, priced at the top
+of its bands, is close to a run's spendable income by design. If it drifts over,
+the fix is a **new sink** (standing proposal: a second broker spell at an
+escalating price), not a looser ceiling.
+
+## Notes for the next session
+
+- A fingerprint delta is **expected**: prices changed and merchant selection no
+  longer draws from `world.rng`, so the gameplay RNG stream shifted. This is a
+  balance change, not a neutral refactor.
+- Seed 11 buys only the charm. Suspected cause: the objective route planner
+  drops the vendor detour late in the run. Not diagnosed.
+- `npm run test:guards` has 41 pre-existing failures in the sprite-editor /
+  OpenCV canvas suites, unrelated to this work; `npm run verify` exits 0.
