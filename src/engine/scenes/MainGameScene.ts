@@ -327,6 +327,18 @@ export interface MainGameSceneOptions {
     available: number,
   ) => Partial<Record<PrimaryStatId, number>> | null;
   /**
+   * Optional predicate reporting whether an AI — not a human — is currently
+   * driving the run. Surfaces that would otherwise wait forever for a keypress
+   * (the boss-intro lore sheet) auto-advance only while this returns true.
+   *
+   * Distinct from {@link autoLevelUpAllocator} on purpose: the AI Runner Lab
+   * always supplies an allocator but hands control back to a human in
+   * manual-control mode, so allocator presence is NOT a reliable "AI is
+   * driving" signal. When omitted, allocator presence is used as the fallback
+   * for harnesses that only wire the allocator.
+   */
+  isAutoDriven?: () => boolean;
+  /**
    * Optional factory for a human player session recorder (dev/debug only).
    *
    * Called once after the world and player entity are created. The factory
@@ -4479,6 +4491,7 @@ export class MainGameScene extends Phaser.Scene {
     this.clearPendingInteractionInput();
     bossIntroUI.open({
       content: pending.content,
+      ...(pending.appearanceKey === undefined ? {} : { appearanceKey: pending.appearanceKey }),
       reducedMotion: prefersReducedMotion(),
       onDismiss: () => {
         this.bossIntroAutoHoldFrames = 0;
@@ -4488,14 +4501,17 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   /**
-   * AI boss-intro driver. When an `autoLevelUpAllocator` is wired (AI Runner
-   * Lab / in-browser AI playthroughs) there is no human to press a key, so hold
-   * the sheet for {@link BOSS_INTRO_AUTO_HOLD_FRAMES} render frames — enough
-   * for a viewer to read it — then dismiss it and resume the run. No-op for
-   * human play, where the sheet waits for input.
+   * AI boss-intro driver. When the run is AI-driven (see
+   * {@link MainGameSceneOptions.isAutoDriven}) there is no human to press a
+   * key, so hold the sheet for {@link BOSS_INTRO_AUTO_HOLD_FRAMES} render
+   * frames — enough for a viewer to read it — then dismiss it and resume the
+   * run. No-op for human play (including the AI Runner Lab's manual-control
+   * mode), where the sheet waits for input.
    */
   private driveAutoBossIntro(): void {
-    if (!this.options.autoLevelUpAllocator || !this.bossIntroUI?.isOpen()) {
+    const autoDriven =
+      this.options.isAutoDriven?.() ?? this.options.autoLevelUpAllocator !== undefined;
+    if (!autoDriven || !this.bossIntroUI?.isOpen()) {
       this.bossIntroAutoHoldFrames = 0;
       return;
     }

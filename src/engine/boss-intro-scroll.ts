@@ -26,7 +26,7 @@ export interface ScrollThumb {
 }
 
 /** Smallest thumb we ever draw, so it stays grabbable on huge documents. */
-export const MIN_THUMB_HEIGHT = 18;
+const MIN_THUMB_HEIGHT = 18;
 
 /**
  * Clamp a requested first-line index against the copy and the viewport.

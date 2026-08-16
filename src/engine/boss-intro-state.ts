@@ -26,6 +26,13 @@ export interface PendingBossIntro {
   readonly content: BossIntroContent;
   /** Boss entity the intro is about (used for portrait framing/logging). */
   readonly bossEid: number;
+  /**
+   * The boss entity's own appearance key, when it has one. Floor 2 family
+   * bosses all share the `enemy_family_boss` render kind and are told apart
+   * only by this key, so the portrait must resolve with it to match the sprite
+   * the live renderer draws.
+   */
+  readonly appearanceKey?: string;
 }
 
 /**
@@ -42,6 +49,16 @@ function isLiveEncounter(encounter: FloorBossEncounterState, ecs: GameWorld['ecs
     encounter.bossEid !== null &&
     entityExists(ecs, encounter.bossEid)
   );
+}
+
+/** Attach the boss entity's appearance key (when it has one) to the intro. */
+function pendingFor(
+  world: GameWorld,
+  content: BossIntroContent,
+  bossEid: number,
+): PendingBossIntro {
+  const appearanceKey = world.enemyAppearanceKeys.get(bossEid);
+  return appearanceKey === undefined ? { content, bossEid } : { content, bossEid, appearanceKey };
 }
 
 /**
@@ -68,7 +85,7 @@ export function resolvePendingBossIntro(
       const content =
         floor1BossIntro(bossKey) ?? fallbackBossIntro(`boss:${bossKey}`, encounter.displayName);
       if (!shownIntroIds.has(content.introId)) {
-        return { content, bossEid: encounter.bossEid as number };
+        return pendingFor(world, content, encounter.bossEid as number);
       }
     }
   }
@@ -83,7 +100,7 @@ export function resolvePendingBossIntro(
         familyBossIntroFor(familyId) ??
         fallbackBossIntro(`floor2:${familyId}`, encounter.displayName);
       if (!shownIntroIds.has(content.introId)) {
-        return { content, bossEid: encounter.bossEid as number };
+        return pendingFor(world, content, encounter.bossEid as number);
       }
     }
   }

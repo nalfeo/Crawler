@@ -7,11 +7,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import {
-  MIN_THUMB_HEIGHT,
-  computeScrollThumb,
-  computeScrollWindow,
-} from '../../src/engine/boss-intro-scroll.js';
+import { computeScrollThumb, computeScrollWindow } from '../../src/engine/boss-intro-scroll.js';
+
+/**
+ * Mirrors the module-private `MIN_THUMB_HEIGHT` in `boss-intro-scroll.ts`.
+ * Duplicated deliberately: exporting it purely for this assertion would make it
+ * a test-only export (blocked by `check:test-only-exports`).
+ */
+const MIN_THUMB_HEIGHT = 18;
 
 describe('computeScrollWindow', () => {
   it('reports copy that fits as not scrollable', () => {

@@ -128,6 +128,29 @@ describe('resolvePendingBossIntro', () => {
     expect(pending?.content.name).toBe(family.boss.name);
   });
 
+  it('carries the boss entity appearance key so the portrait matches its art', () => {
+    // Every Floor 2 family boss renders as `enemy_family_boss`; only the
+    // appearance key tells them apart, so the sheet must forward it.
+    const world = createTestWorld({ floor: 2 });
+    const family = loadFamilies()[0]!;
+    const eid = spawnEnemy(world, 0, 0, 100);
+    world.enemyAppearanceKeys.set(eid, `${family.id}-boss`);
+    withFamilyEncounters(
+      world,
+      new Map([[family.id, battle({ bossEid: eid, displayName: family.boss.name })]]),
+    );
+
+    expect(resolvePendingBossIntro(world, new Set())?.appearanceKey).toBe(`${family.id}-boss`);
+  });
+
+  it('omits the appearance key for a boss that has none', () => {
+    const world = createTestWorld();
+    const eid = spawnEnemy(world, 0, 0, 100);
+    withFloor1Battles(world, new Map([['staircase', battle({ bossEid: eid })]]));
+
+    expect(resolvePendingBossIntro(world, new Set())?.appearanceKey).toBeUndefined();
+  });
+
   it('falls back to a named sheet for an unrecognised boss key', () => {
     const world = createTestWorld();
     const eid = spawnEnemy(world, 0, 0, 100);

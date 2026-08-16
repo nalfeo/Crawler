@@ -544,13 +544,24 @@ function getProceduralTextureForType(type: string): string {
  * procedural placeholder). Exported for portrait surfaces such as the boss
  * intro lore sheet, which must show the same art the player is about to fight
  * rather than maintaining a second, drift-prone mapping.
+ *
+ * `appearanceKey` is the entity's own appearance key (`world.enemyAppearanceKeys`).
+ * It matters for render kinds shared by many entities — every Floor 2 family
+ * boss renders as `enemy_family_boss` and is told apart only by its appearance
+ * key — so omitting it would fall back to the kind's default art.
  */
 export function resolveRenderKindPortraitTexture(
   scene: Phaser.Scene,
   kind: string,
+  appearanceKey?: string,
 ): { key: string; frame?: number } {
   const config = RENDER_KIND_CONFIGS[kind];
-  const generated = resolveGeneratedTexture(scene, kind, config?.generated);
+  const generated = resolveGeneratedTexture(
+    scene,
+    kind,
+    config?.generated,
+    appearanceKey === undefined ? undefined : { appearanceKey },
+  );
   if (generated !== null) {
     return { key: generated.key };
   }

@@ -11,7 +11,9 @@
  *
  * Input lock: a full-screen interactive backdrop swallows pointer events so
  * clicks never reach the world underneath, and `Space`/`Enter`/`Escape`
- * dismiss the sheet.
+ * dismiss the sheet. A pointer only dismisses on release and only when it did
+ * not travel — a vertical drag/swipe scrolls the copy instead, so touch-only
+ * players can reach overflow lore that has no wheel or keyboard to scroll it.
  *
  * The portrait resolves through `resolveRenderKindPortraitTexture`, i.e. the
  * SAME art precedence the live renderer uses, so the sheet can never show a
@@ -51,11 +53,23 @@ const FLAVOR_LINE_SPACING = 4;
 /** Column reserved at the right of the text block for the scrollbar. */
 const SCROLLBAR_GUTTER = 14;
 const SCROLLBAR_WIDTH = 4;
+/**
+ * Pointer travel (design px) still treated as a tap rather than a swipe. Below
+ * this a click/tap dismisses; above it the gesture only scrolls.
+ */
+const TAP_SLOP = 8;
 const DEPTH = 6100;
 
 export interface OpenBossIntroParams {
   /** Lore-sheet content for the boss being introduced. */
   readonly content: BossIntroContent;
+  /**
+   * The boss entity's appearance key, when it has one. Render kinds shared by
+   * several bosses (every Floor 2 family boss is `enemy_family_boss`) resolve
+   * their art through this key, so the portrait matches the sprite in the
+   * arena instead of the render kind's default.
+   */
+  readonly appearanceKey?: string;
   /** Skip the entrance tween when the player prefers reduced motion. */
   readonly reducedMotion?: boolean;
   /** Fired exactly once per `open()`, when the sheet is dismissed. */
@@ -237,10 +251,16 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   let flavorViewport: ScreenBounds = { x: textLeft, y: 0, width: flavorWidth, height: 0 };
   let visibleFlavorLines = 1;
   let scrollIndex = 0;
+  /** Y of the last pointer sample while a pointer is down, else null. */
+  let dragLastY: number | null = null;
+  /** Total absolute pointer travel of the current gesture (design px). */
+  let dragTravel = 0;
+  /** Drag distance not yet converted into whole scrolled lines. */
+  let dragRemainder = 0;
 
   /** Fit the boss art inside the portrait frame without distorting it. */
-  function layoutPortrait(content: BossIntroContent): void {
-    const resolved = resolveRenderKindPortraitTexture(scene, content.renderKind);
+  function layoutPortrait(content: BossIntroContent, appearanceKey: string | undefined): void {
+    const resolved = resolveRenderKindPortraitTexture(scene, content.renderKind, appearanceKey);
     if (scene.textures?.exists(resolved.key) !== true) {
       portrait.setVisible(false);
       return;
@@ -314,11 +334,11 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
   function footerText(): string {
     return computeScrollWindow(flavorLines.length, visibleFlavorLines, scrollIndex).scrollable
-      ? 'Scroll for more · Click or press [Space] to begin the fight'
+      ? 'Scroll or swipe for more · Click or press [Space] to begin the fight'
       : 'Click or press [Space] to begin the fight';
   }
 
-  function render(content: BossIntroContent): void {
+  function render(content: BossIntroContent, appearanceKey: string | undefined): void {
     sheet.setStrokeStyle(2, content.accentColor, 0.9);
     portraitFrame.setStrokeStyle(1, content.accentColor, 0.6);
     rule.setFillStyle(content.accentColor, 0.55);
@@ -357,7 +377,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
     footer.setY(Math.round(sheetTop + SHEET_HEIGHT - FOOTER_BAND / 2 - 4));
 
-    layoutPortrait(content);
+    layoutPortrait(content, appearanceKey);
   }
 
   function close(): void {
@@ -365,6 +385,9 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     onDismissCallback = null;
     flavorLines = [];
     scrollIndex = 0;
+    dragLastY = null;
+    dragTravel = 0;
+    dragRemainder = 0;
     scrollbarTrack.setVisible(false);
     scrollbarThumb.setVisible(false);
     container.setVisible(false);
@@ -379,7 +402,53 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     callback?.();
   }
 
-  backdrop.on('pointerdown', handleDismiss);
+  /** Height of one flavour line, used to convert drag distance into lines. */
+  function flavorLineHeight(): number {
+    return Math.max(1, flavorViewport.height / Math.max(1, visibleFlavorLines));
+  }
+
+  const pointerDownListener = (pointer: Phaser.Input.Pointer): void => {
+    if (!openContent) return;
+    dragLastY = pointer.y;
+    dragTravel = 0;
+    dragRemainder = 0;
+  };
+  backdrop.on('pointerdown', pointerDownListener);
+
+  /**
+   * Drag/swipe scrolling. Dragging UP pulls the copy up, i.e. moves the window
+   * further down, matching the direction of every touch scroll surface.
+   */
+  const pointerMoveListener = (pointer: Phaser.Input.Pointer): void => {
+    if (!openContent || dragLastY === null) return;
+    const dy = pointer.y - dragLastY;
+    dragLastY = pointer.y;
+    dragTravel += Math.abs(dy);
+    dragRemainder -= dy;
+    const lineHeight = flavorLineHeight();
+    while (dragRemainder >= lineHeight) {
+      dragRemainder -= lineHeight;
+      scrollBy(1);
+    }
+    while (dragRemainder <= -lineHeight) {
+      dragRemainder += lineHeight;
+      scrollBy(-1);
+    }
+  };
+  scene.input.on('pointermove', pointerMoveListener);
+
+  /** A release that never travelled is a tap/click, so it dismisses. */
+  const pointerUpListener = (): void => {
+    if (!openContent || dragLastY === null) return;
+    const wasTap = dragTravel <= TAP_SLOP;
+    dragLastY = null;
+    dragRemainder = 0;
+    if (wasTap) {
+      handleDismiss();
+    }
+  };
+  scene.input.on('pointerup', pointerUpListener);
+  scene.input.on('pointerupoutside', pointerUpListener);
 
   const wheelListener = (
     _pointer: Phaser.Input.Pointer,
@@ -427,7 +496,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     open(params: OpenBossIntroParams): void {
       openContent = params.content;
       onDismissCallback = params.onDismiss;
-      render(params.content);
+      render(params.content, params.appearanceKey);
       container.setVisible(true);
       if (params.reducedMotion === true) {
         container.setAlpha(1);
@@ -477,7 +546,10 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     },
     scrollBy,
     destroy(): void {
-      backdrop.off('pointerdown', handleDismiss);
+      backdrop.off('pointerdown', pointerDownListener);
+      scene.input.off('pointermove', pointerMoveListener);
+      scene.input.off('pointerup', pointerUpListener);
+      scene.input.off('pointerupoutside', pointerUpListener);
       scene.input.off('wheel', wheelListener);
       scene.input.keyboard?.off('keydown', keyListener);
       close();
