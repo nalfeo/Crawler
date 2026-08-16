@@ -1,8 +1,9 @@
 /**
  * familyFeudSystem — Floor 2 Slice 3 band-driven AI prepass.
  *
- * Sits BEFORE `enemyAISystem` in every real pipeline (headless mirror, visual
- * scene preSystems). For every mob with `FamilyMembership` it:
+ * Registered in Floor 2's scenario definition immediately before
+ * `enemyAISystem`; the bootstrap supplies that ordering to both real pipelines.
+ * For every mob with `FamilyMembership` it:
  *
  *   1. Reads the mob's family band via `bandFor(getRelation(world, familyId))`.
  *   2. Chooses a "virtual target" that `enemyAISystem` will pursue instead of

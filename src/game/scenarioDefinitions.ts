@@ -1,4 +1,5 @@
 import type { GameWorld } from '../core/world.js';
+import type { CoreSimulationSystem } from '../core/simulation-core-step.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import type { NpcQuestIndicatorState, ShopkeeperStage } from '../shared/quest-types.js';
@@ -21,12 +22,17 @@ import {
   returnShopkeeperPrize,
   selectFloor1StarterWeapon,
   SHOPKEEPER_EQUIPMENT_COST,
+  floor1EnemyDirectorSystem,
+  floor1PlayerStatSystem,
 } from './floorScenario.js';
 import {
   confirmFloor2StairDescend,
+  floor2VictorySystem,
   initializeFloor2Scenario,
   meetBroker,
 } from './floor2Scenario.js';
+import { emergentEventSystem } from './systems/emergentEventSystem.js';
+import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
 
@@ -80,6 +86,9 @@ export interface ScenarioNpcCallbacks {
 
 export interface ScenarioDefinition {
   readonly floorId: string;
+  readonly beforeWeaponSystems?: ReadonlyArray<CoreSimulationSystem>;
+  readonly beforeEnemyAISystems?: ReadonlyArray<CoreSimulationSystem>;
+  readonly afterSpawnerSystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly configureWorld: (
     world: GameWorld,
     playerEid: number,
@@ -157,6 +166,8 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       onStairDescend: confirmFloor1StairDescend,
       nextFloorId: 'floor2',
       npcs: FLOOR_1_NPCS,
+      beforeWeaponSystems: [floor1PlayerStatSystem],
+      afterSpawnerSystems: [floor1EnemyDirectorSystem],
       director: FLOOR_1_DIRECTOR,
     },
   ],
@@ -167,6 +178,8 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       configureWorld: initializeFloor2Scenario,
       onStairDescend: confirmFloor2StairDescend,
       npcs: FLOOR_2_NPCS,
+      beforeWeaponSystems: [floor2VictorySystem, emergentEventSystem],
+      beforeEnemyAISystems: [familyFeudSystem],
       director: FLOOR_2_DIRECTOR,
     },
   ],
