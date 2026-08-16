@@ -78,7 +78,8 @@ const REQUIRED_REVIEW_TOPICS: readonly RequiredTopic[] = [
 
 function lineOf(text: string, pattern: RegExp): number | undefined {
   const match = pattern.exec(text);
-  if (!match?.index) return match ? 1 : undefined;
+  if (!match) return undefined;
+  if (match.index === 0) return 1;
   return text.slice(0, match.index).split('\n').length;
 }
 
