@@ -37,6 +37,26 @@ export const BLOCKING_LABELS = [
 
 export type BlockingLabel = (typeof BLOCKING_LABELS)[number];
 
+/**
+ * Labels applied by CI when a PR is closed without ever merging. These mark the
+ * repo's abandoned-work stream: a session burned agent time and CI minutes and
+ * produced nothing that landed.
+ */
+export const WASTE_LABELS = ['ci-lifecycle-abandoned', 'copilot-empty-draft-repaired'] as const;
+
+/** Bucket used when a closed-unmerged PR carries none of {@link WASTE_LABELS}. */
+export const UNLABELED_WASTE_BUCKET = '(no lifecycle label)';
+
+/**
+ * Waste rate at which the scan raises a finding. Below this, closed-unmerged PRs
+ * are ordinary churn (superseded work, duplicates); above it, abandonment is a
+ * delivery bottleneck in its own right.
+ */
+export const WASTE_RATE_ALERT = 0.15;
+
+/** Minimum closed-PR sample before the waste rate is trustworthy enough to act on. */
+export const WASTE_MIN_SAMPLE = 20;
+
 interface PrRecord {
   number: number;
   title: string;
@@ -57,6 +77,36 @@ export interface OpenPrRecord {
   /** Timestamp of the most recent event on the PR (GitHub `updatedAt`). */
   updatedAt: string;
   labels: string[];
+}
+
+/** A closed PR (merged or abandoned) as returned from GitHub GraphQL. */
+export interface ClosedPrRecord {
+  number: number;
+  title: string;
+  closedAt: string;
+  /** True when the PR actually landed; false when it was closed unmerged. */
+  merged: boolean;
+  labels: string[];
+}
+
+export interface AbandonedPrEntry {
+  prNumber: number;
+  title: string;
+  closedAt: string;
+  labels: string[];
+}
+
+export interface AbandonedWastePanel {
+  /** Closed PRs in the sampled window (merged + abandoned). */
+  closedPrs: number;
+  merged: number;
+  abandoned: number;
+  /** `abandoned / closedPrs`, or 0 for an empty window. */
+  wasteRate: number;
+  /** Per-lifecycle-label breakdown of abandoned PRs, ordered by count descending. */
+  labelBreakdown: { label: string; count: number }[];
+  /** The 5 most recently closed abandoned PRs. */
+  recent: AbandonedPrEntry[];
 }
 
 export interface StageTiming {
@@ -116,6 +166,8 @@ export interface BottleneckReport {
   guardFriction: { guard: string; allow: number; deny: number }[];
   /** Open-PR aging panel. null when the caller does not supply open-PR data. */
   openPrAging: OpenPrAgingPanel | null;
+  /** Abandoned-PR waste panel. null when the caller does not supply closed-PR data. */
+  abandonedWaste: AbandonedWastePanel | null;
   findings: string[];
 }
 
@@ -196,6 +248,57 @@ export function computeOpenPrAging(prs: readonly OpenPrRecord[], now: string): O
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count),
     oldest,
+  };
+}
+
+/**
+ * Compute the abandoned-PR waste panel from a window of closed PRs.
+ *
+ * Merged-PR stage timings only measure work that *landed*; a PR that is closed
+ * without merging costs the same agent session and CI minutes but contributes
+ * nothing, so it never appears in lead time. This panel makes that waste stream
+ * visible.
+ *
+ * @param prs Closed PR records (both merged and abandoned) for the sampled window.
+ */
+export function computeAbandonedWaste(prs: readonly ClosedPrRecord[]): AbandonedWastePanel {
+  const abandoned = prs.filter((pr) => !pr.merged);
+  const labelCounts = new Map<string, number>();
+
+  for (const pr of abandoned) {
+    const wasteLabels = pr.labels.filter((l) => (WASTE_LABELS as readonly string[]).includes(l));
+    if (wasteLabels.length === 0) {
+      labelCounts.set(UNLABELED_WASTE_BUCKET, (labelCounts.get(UNLABELED_WASTE_BUCKET) ?? 0) + 1);
+      continue;
+    }
+    for (const label of wasteLabels) {
+      labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+    }
+  }
+
+  return {
+    closedPrs: prs.length,
+    merged: prs.length - abandoned.length,
+    abandoned: abandoned.length,
+    wasteRate: prs.length === 0 ? 0 : abandoned.length / prs.length,
+    labelBreakdown: [...labelCounts.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        // On a tie, real lifecycle labels rank above the catch-all bucket.
+        if (a.label === UNLABELED_WASTE_BUCKET) return 1;
+        if (b.label === UNLABELED_WASTE_BUCKET) return -1;
+        return a.label.localeCompare(b.label);
+      }),
+    recent: [...abandoned]
+      .sort((a, b) => Date.parse(b.closedAt) - Date.parse(a.closedAt))
+      .slice(0, 5)
+      .map((pr) => ({
+        prNumber: pr.number,
+        title: pr.title,
+        closedAt: pr.closedAt,
+        labels: pr.labels.filter((l) => (WASTE_LABELS as readonly string[]).includes(l)),
+      })),
   };
 }
 
@@ -377,6 +480,21 @@ export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): stri
           `blocking them. Investigate the label's owner to unblock.`,
       );
     }
+  }
+
+  // Abandoned-PR waste — work that consumed a session but never landed.
+  const waste = report.abandonedWaste;
+  if (waste && waste.closedPrs >= WASTE_MIN_SAMPLE && waste.wasteRate >= WASTE_RATE_ALERT) {
+    const top = waste.labelBreakdown[0];
+    const cause = top
+      ? ` Dominant class: "${top.label}" (${top.count} of ${waste.abandoned}).`
+      : '';
+    findings.push(
+      `${waste.abandoned} of ${waste.closedPrs} closed PRs (${(waste.wasteRate * 100).toFixed(0)}%) ` +
+        `never merged — that work consumed agent sessions and CI minutes and shipped nothing, and ` +
+        `it is invisible in merged-PR lead time.${cause} Validate whether the dominant class reflects ` +
+        `a fixable automation pattern before acting on this finding.`,
+    );
   }
 
   const ranked = [...report.stages].sort((a, b) => b.medianHours - a.medianHours);
@@ -676,11 +794,108 @@ export function fetchOpenPrs(root: string): OpenPrRecord[] {
   return collected;
 }
 
+/**
+ * Fetch the most recently closed PRs (merged and unmerged) with their labels.
+ *
+ * Deliberately lighter than {@link fetchMergedPrs}: no commits or reviews, so a
+ * single page covers the whole window without risking GraphQL's node ceiling.
+ */
+export function fetchClosedPrs(root: string, limit: number): ClosedPrRecord[] {
+  const repository = fetchRepositorySlug(root);
+  const query = `
+    query($owner: String!, $repo: String!, $pageSize: Int!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequests(
+          states: [MERGED, CLOSED]
+          first: $pageSize
+          after: $cursor
+          orderBy: { field: CREATED_AT, direction: DESC }
+        ) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            number
+            title
+            closedAt
+            merged
+            labels(first: 100) {
+              nodes { name }
+            }
+          }
+        }
+      }
+    }`;
+
+  const collected: ClosedPrRecord[] = [];
+  const seen = new Set<number>();
+  let cursor: string | null = null;
+
+  while (collected.length < limit) {
+    const args = [
+      'api',
+      'graphql',
+      '-f',
+      `query=${query}`,
+      '-F',
+      `owner=${repository.owner}`,
+      '-F',
+      `repo=${repository.repo}`,
+      '-F',
+      `pageSize=${Math.min(100, limit - collected.length)}`,
+    ];
+    if (cursor) {
+      args.push('-F', `cursor=${cursor}`);
+    }
+    const raw = execFileSync('gh', args, {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    const parsed = JSON.parse(raw) as {
+      data?: {
+        repository?: {
+          pullRequests?: {
+            pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+            nodes?: Array<{
+              number: number;
+              title: string;
+              closedAt: string | null;
+              merged: boolean;
+              labels?: { nodes?: Array<{ name: string }> };
+            }>;
+          };
+        };
+      };
+    };
+    const connection = parsed.data?.repository?.pullRequests;
+    const nodes = connection?.nodes ?? [];
+    if (nodes.length === 0) break;
+
+    let added = 0;
+    for (const pr of nodes) {
+      if (seen.has(pr.number) || pr.closedAt == null) continue;
+      seen.add(pr.number);
+      collected.push({
+        number: pr.number,
+        title: pr.title,
+        closedAt: pr.closedAt,
+        merged: pr.merged,
+        labels: (pr.labels?.nodes ?? []).map((l) => l.name),
+      });
+      added += 1;
+    }
+    if (added === 0 || !connection?.pageInfo?.hasNextPage || !connection.pageInfo.endCursor) break;
+    cursor = connection.pageInfo.endCursor;
+  }
+
+  return collected.slice(0, limit);
+}
+
 export function buildReport(
   root: string,
   prs: readonly PrRecord[],
   openPrRecords?: readonly OpenPrRecord[],
   now: string = new Date().toISOString(),
+  closedPrRecords?: readonly ClosedPrRecord[],
 ): BottleneckReport {
   const timings = computeStageTimings(prs);
   const medianLeadTimeH = timings.length === 0 ? 0 : median(timings.map((t) => t.leadTimeH));
@@ -718,11 +933,12 @@ export function buildReport(
     estimationAccuracy: readEstimationAccuracy(root),
     guardFriction: readGuardFriction(root),
     openPrAging: openPrRecords ? computeOpenPrAging(openPrRecords, now) : null,
+    abandonedWaste: closedPrRecords ? computeAbandonedWaste(closedPrRecords) : null,
   };
   return { ...partial, findings: deriveFindings(partial) };
 }
 
-function render(report: BottleneckReport): string {
+export function render(report: BottleneckReport): string {
   const lines: string[] = [];
   lines.push(`\n═══ Crawler delivery bottleneck scan ═══`);
   lines.push(
@@ -783,6 +999,32 @@ function render(report: BottleneckReport): string {
     }
   }
 
+  const waste = report.abandonedWaste;
+  if (waste) {
+    const alarm =
+      waste.closedPrs >= WASTE_MIN_SAMPLE && waste.wasteRate >= WASTE_RATE_ALERT
+        ? ' ← ⚠ WASTE ALARM'
+        : '';
+    lines.push(`\n─── Abandoned PR waste ───`);
+    lines.push(
+      `${waste.abandoned} of ${waste.closedPrs} closed PRs never merged ` +
+        `(${(waste.wasteRate * 100).toFixed(0)}%)${alarm}`,
+    );
+    if (waste.labelBreakdown.length > 0) {
+      lines.push('Lifecycle labels:');
+      for (const entry of waste.labelBreakdown) {
+        lines.push(`  ${String(entry.count).padStart(3)}  ${entry.label}`);
+      }
+    }
+    if (waste.recent.length > 0) {
+      lines.push('Most recently abandoned:');
+      for (const pr of waste.recent) {
+        const labelStr = pr.labels.length > 0 ? `  [${pr.labels.join(', ')}]` : '';
+        lines.push(`  #${String(pr.prNumber).padEnd(6)} ${pr.closedAt}${labelStr}  ${pr.title}`);
+      }
+    }
+  }
+
   lines.push('\nFindings:');
   for (const finding of report.findings) lines.push(`  • ${finding}`);
   lines.push('');
@@ -800,7 +1042,13 @@ function main(): void {
   const now = new Date().toISOString();
 
   const openPrs = fetchOpenPrs(root);
-  const report = buildReport(root, fetchMergedPrs(root, limit), openPrs, now);
+  const report = buildReport(
+    root,
+    fetchMergedPrs(root, limit),
+    openPrs,
+    now,
+    fetchClosedPrs(root, limit),
+  );
   const out = resolve(root, flag('out', 'files/velocity-bottlenecks.json'));
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
