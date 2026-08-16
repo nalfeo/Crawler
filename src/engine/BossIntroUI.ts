@@ -251,6 +251,8 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   let flavorViewport: ScreenBounds = { x: textLeft, y: 0, width: flavorWidth, height: 0 };
   let visibleFlavorLines = 1;
   let scrollIndex = 0;
+  /** Id of the pointer that started the current gesture, else null. */
+  let dragPointerId: number | null = null;
   /** Y of the last pointer sample while a pointer is down, else null. */
   let dragLastY: number | null = null;
   /** Total absolute pointer travel of the current gesture (design px). */
@@ -385,6 +387,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     onDismissCallback = null;
     flavorLines = [];
     scrollIndex = 0;
+    dragPointerId = null;
     dragLastY = null;
     dragTravel = 0;
     dragRemainder = 0;
@@ -409,6 +412,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
   const pointerDownListener = (pointer: Phaser.Input.Pointer): void => {
     if (!openContent) return;
+    dragPointerId = pointer.id;
     dragLastY = pointer.y;
     dragTravel = 0;
     dragRemainder = 0;
@@ -420,7 +424,8 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
    * further down, matching the direction of every touch scroll surface.
    */
   const pointerMoveListener = (pointer: Phaser.Input.Pointer): void => {
-    if (!openContent || dragLastY === null) return;
+    // Ignore other fingers: a second pointer must not hijack the gesture.
+    if (!openContent || dragLastY === null || pointer.id !== dragPointerId) return;
     const dy = pointer.y - dragLastY;
     dragLastY = pointer.y;
     dragTravel += Math.abs(dy);
@@ -438,9 +443,10 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   scene.input.on('pointermove', pointerMoveListener);
 
   /** A release that never travelled is a tap/click, so it dismisses. */
-  const pointerUpListener = (): void => {
-    if (!openContent || dragLastY === null) return;
+  const pointerUpListener = (pointer: Phaser.Input.Pointer): void => {
+    if (!openContent || dragLastY === null || pointer.id !== dragPointerId) return;
     const wasTap = dragTravel <= TAP_SLOP;
+    dragPointerId = null;
     dragLastY = null;
     dragRemainder = 0;
     if (wasTap) {

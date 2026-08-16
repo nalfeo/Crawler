@@ -67,7 +67,9 @@ describe('computeScrollThumb', () => {
   it('keeps the thumb grabbable on very long copy', () => {
     const window = computeScrollWindow(4000, 8, 0);
     const thumb = computeScrollThumb(0, 120, window, 4000);
-    expect(thumb.height).toBeGreaterThanOrEqual(MIN_THUMB_HEIGHT);
+    // Exact, not `>=`: this pins the module's private minimum, so the mirrored
+    // constant above cannot silently drift away from it.
+    expect(thumb.height).toBe(MIN_THUMB_HEIGHT);
   });
 
   it('stays inside the track for every scroll position', () => {
