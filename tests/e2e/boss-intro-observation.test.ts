@@ -11,10 +11,11 @@
  *      from its own update loop — the test never opens any UI.
  *   3. The simulation is FROZEN while the sheet is up (world clock does not
  *      advance), i.e. the game is genuinely paused, not merely covered.
- *   4. Every text/portrait box stays inside the sheet frame, and the flavour
- *      copy never overlaps the dismiss prompt (the first draft's fixed-height
- *      sheet clipped its last paragraph through the footer — this promotes that
- *      visual-bug class into a deterministic check).
+ *   4. Every text/portrait box stays inside the FIXED-size sheet frame, and the
+ *      flavour viewport never overlaps the dismiss prompt (an early draft
+ *      clipped its last paragraph through the footer — this promotes that
+ *      visual-bug class into a deterministic check). Copy too long for the
+ *      viewport scrolls inside it instead of resizing the sheet.
  *   5. Dismissing resumes the run, and the intro does not fire a second time
  *      for the same boss.
  *
@@ -91,6 +92,30 @@ describe('boss battle introduction in the real game scene', () => {
       ).toBe(true);
     }
     expect(layout!.flavor.y + layout!.flavor.height).toBeLessThanOrEqual(layout!.footer.y);
+
+    // 4b. FIXED SIZE — the sheet is the same box for every boss, and long copy
+    // scrolls in place rather than growing the frame.
+    expect(panel.width).toBe(680);
+    expect(panel.height).toBe(340);
+
+    const scroll = stillShown.scroll;
+    expect(scroll).not.toBeNull();
+    expect(scroll!.visibleLines).toBeGreaterThanOrEqual(1);
+    expect(scroll!.index).toBe(0);
+    if (scroll!.scrollable) {
+      await mainSceneProbe.scrollBossIntro(page, 1);
+      const scrolled = await mainSceneProbe.getBossIntroState(page);
+      expect(scrolled.scroll!.index).toBe(1);
+      expect(scrolled.layout!.panel.height).toBe(panel.height);
+      await mainSceneProbe.scrollBossIntro(page, 9999);
+      const bottomed = await mainSceneProbe.getBossIntroState(page);
+      expect(bottomed.scroll!.index).toBe(bottomed.scroll!.maxIndex);
+      await mainSceneProbe.scrollBossIntro(page, -9999);
+      expect((await mainSceneProbe.getBossIntroState(page)).scroll!.index).toBe(0);
+    } else {
+      await mainSceneProbe.scrollBossIntro(page, 1);
+      expect((await mainSceneProbe.getBossIntroState(page)).scroll!.index).toBe(0);
+    }
 
     // 5. RESUME — dismissing closes the sheet and the sim runs again.
     await mainSceneProbe.dismissBossIntro(page);

@@ -30,15 +30,18 @@ untouched, so determinism is unaffected.
 
 - `src/shared/boss-intro.ts` (new) — content catalog + resolvers.
 - `src/engine/boss-intro-state.ts` (new) — pure `resolvePendingBossIntro`.
-- `src/engine/BossIntroUI.ts` (new) — the lore sheet (measured layout).
+- `src/engine/BossIntroUI.ts` (new) — the lore sheet (fixed 680x340 frame with a
+  scrollable flavour viewport).
+- `src/engine/boss-intro-scroll.ts` (new) — pure scroll-window/thumb math.
 - `src/engine/PhaserBridge.ts` — exported `resolveRenderKindPortraitTexture`.
 - `src/engine/scenes/MainGameScene.ts` — create/shutdown, freeze branch,
   blocking-surface lists, `showBossIntroIfNeeded`, `driveAutoBossIntro`.
 - `src/labs/boss-intro-lab/index.ts` (new) + `src/lab-main.ts`.
 - `src/labs/main-scene-probe-lab/index.ts`, `tests/e2e/helpers/main-scene-probe.ts`
-  — probe seams (`startStaircaseBossBattle`, `getBossIntroState`, `dismissBossIntro`).
+  — probe seams (`startStaircaseBossBattle`, `getBossIntroState`,
+  `scrollBossIntro`, `dismissBossIntro`).
 - `tests/unit/boss-intro.test.ts`, `tests/unit/boss-intro-state.test.ts`,
-  `tests/e2e/boss-intro-observation.test.ts`.
+  `tests/unit/boss-intro-scroll.test.ts`, `tests/e2e/boss-intro-observation.test.ts`.
 
 ## Verification (observe before done, rule #9)
 
@@ -54,11 +57,22 @@ boss-intro lab:
 - Screenshot of the running scene confirmed the real Rat Slime sprite in the
   portrait frame.
 
-The first screenshot exposed a layout bug: the fixed 520x300 sheet clipped its
-last flavour paragraph through the footer. The sheet now measures its copy and
-grows (stepping the flavour font down for very long entries), and that
-visual-bug class is promoted to a deterministic e2e assertion — every measured
-box must stay inside the panel and the flavour block must end above the footer.
+The first screenshot exposed a layout bug: the original fixed 520x300 sheet
+clipped its last flavour paragraph through the footer. An interim fix grew the
+sheet to fit its copy (and stepped the font down), which made the frame jump
+between bosses. The final design is a **fixed 680x340 sheet with a scrollable
+flavour viewport**: copy longer than the viewport scrolls a line at a time
+(mouse wheel, arrow keys, page keys) behind a scrollbar whose thumb is sized by
+the visible fraction. That visual-bug class stays a deterministic e2e assertion
+— every measured box must stay inside the panel, the flavour viewport must end
+above the footer, and the panel must measure exactly 680x340 regardless of copy.
+
+Re-observed in the real scene after the change (`main-scene-probe-lab`
+screenshot + probe state): `floor1:staircase` reports
+`{scrollable: true, index: 0, maxIndex: 1, visibleLines: 8, totalLines: 9}` with
+panel `680x340`; scrolling down moves `index` to 1 with the panel height
+unchanged, and the footer reads "Scroll for more · Click or press [Space] to
+begin the fight".
 
 - `npm run typecheck`, `npm run lint`, `npm run format`
 - `tests/unit/boss-intro*.test.ts` (18 tests)

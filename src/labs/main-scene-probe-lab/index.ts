@@ -78,7 +78,7 @@ import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
-import type { BossIntroLayoutSnapshot } from '../../engine/BossIntroUI.js';
+import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
@@ -244,6 +244,8 @@ interface MainSceneInternals {
     dismiss(): void;
     getIntroId(): string | null;
     getLayout(): BossIntroLayoutSnapshot | null;
+    getScrollState(): BossIntroScrollState | null;
+    scrollBy(delta: number): void;
   };
   openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
@@ -638,6 +640,8 @@ export interface BossIntroProbeState {
   readonly worldElapsedMs: number;
   /** Measured sheet layout while open, else null. */
   readonly layout: BossIntroLayoutSnapshot | null;
+  /** Flavour-viewport scroll state while open, else null. */
+  readonly scroll: BossIntroScrollState | null;
 }
 
 /**
@@ -669,6 +673,8 @@ export interface MainSceneProbeApi {
   startStaircaseBossBattle(): number;
   /** Live boss-intro sheet state plus the world clock (frozen while open). */
   getBossIntroState(): BossIntroProbeState;
+  /** Scroll the boss-intro flavour copy by `delta` lines. */
+  scrollBossIntro(delta: number): void;
   /** Dismiss the boss-intro sheet through its real dismiss path. */
   dismissBossIntro(): void;
   /** Measured layout for the currently open real modal picker. */
@@ -1089,7 +1095,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         introId: scene?.bossIntroUI?.getIntroId() ?? null,
         worldElapsedMs: scene?.world?.elapsedMs ?? 0,
         layout: scene?.bossIntroUI?.getLayout() ?? null,
+        scroll: scene?.bossIntroUI?.getScrollState() ?? null,
       };
+    },
+
+    scrollBossIntro: (delta: number) => {
+      getScene()?.bossIntroUI?.scrollBy(delta);
     },
 
     dismissBossIntro: () => {

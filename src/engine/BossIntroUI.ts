@@ -17,10 +17,12 @@
  * SAME art precedence the live renderer uses, so the sheet can never show a
  * different sprite than the boss the player is about to fight.
  *
- * Layout is measured rather than hardcoded: the sheet grows to fit its copy and
- * the flavour text steps down a font size when a very long Director monologue
- * would still overflow. The first draft used a fixed 520x300 sheet and clipped
- * its last paragraph through the footer. `getLayout()` exposes the measured
+ * The sheet is a FIXED size (`SHEET_WIDTH` x `SHEET_HEIGHT`): it never grows or
+ * shrinks with the copy, so the frame does not jump between bosses. A Director
+ * monologue longer than the flavour viewport scrolls a line at a time (mouse
+ * wheel, arrow keys, page keys) behind a scrollbar instead of overflowing the
+ * frame or shrinking the font until it is unreadable. An earlier draft clipped
+ * its last paragraph through the footer; `getLayout()` exposes the measured
  * boxes so `tests/e2e/boss-intro-observation.test.ts` can assert containment
  * deterministically instead of relying on someone eyeballing a screenshot.
  */
@@ -30,6 +32,7 @@ import type { BossIntroContent } from '../shared/boss-intro.js';
 import { getRenderScale } from './render-scale.js';
 import type { ScreenBounds } from './ui-scale.js';
 import { resolveRenderKindPortraitTexture } from './PhaserBridge.js';
+import { computeScrollThumb, computeScrollWindow } from './boss-intro-scroll.js';
 
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 
@@ -39,12 +42,15 @@ const PORTRAIT_BOX = 192;
 const PADDING = 26;
 /** Gap between the portrait column and the text column. */
 const COLUMN_GAP = 22;
-const MIN_SHEET_HEIGHT = 300;
-const MAX_SHEET_HEIGHT = GAME.HEIGHT - 96;
+/** Fixed sheet height — the frame never resizes with the copy. */
+const SHEET_HEIGHT = 340;
 /** Vertical band reserved for the dismiss prompt at the bottom of the sheet. */
 const FOOTER_BAND = 34;
-/** Flavour-text sizes tried largest-first until the copy fits the sheet. */
-const FLAVOR_FONT_SIZES = [14, 13, 12, 11, 10] as const;
+const FLAVOR_FONT_SIZE = 14;
+const FLAVOR_LINE_SPACING = 4;
+/** Column reserved at the right of the text block for the scrollbar. */
+const SCROLLBAR_GUTTER = 14;
+const SCROLLBAR_WIDTH = 4;
 const DEPTH = 6100;
 
 export interface OpenBossIntroParams {
@@ -63,8 +69,18 @@ export interface BossIntroLayoutSnapshot {
   readonly header: ScreenBounds;
   readonly name: ScreenBounds;
   readonly subtitle: ScreenBounds;
+  /** The flavour VIEWPORT (fixed), not the full copy — long copy scrolls in it. */
   readonly flavor: ScreenBounds;
   readonly footer: ScreenBounds;
+}
+
+/** Scroll state of the flavour viewport, for labs/tests. */
+export interface BossIntroScrollState {
+  readonly scrollable: boolean;
+  readonly index: number;
+  readonly maxIndex: number;
+  readonly visibleLines: number;
+  readonly totalLines: number;
 }
 
 export interface BossIntroUI {
@@ -76,6 +92,10 @@ export interface BossIntroUI {
   getIntroId(): string | null;
   /** Test/automation affordance: measured layout, or null while closed. */
   getLayout(): BossIntroLayoutSnapshot | null;
+  /** Test/automation affordance: flavour scroll state, or null while closed. */
+  getScrollState(): BossIntroScrollState | null;
+  /** Scroll the flavour copy by `delta` lines. No-op while closed. */
+  scrollBy(delta: number): void;
   destroy(): void;
 }
 
@@ -111,6 +131,9 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   const sheetLeft = centerX - SHEET_WIDTH / 2;
   const textLeft = sheetLeft + PADDING + PORTRAIT_BOX + COLUMN_GAP;
   const textWidth = SHEET_WIDTH - PADDING * 2 - PORTRAIT_BOX - COLUMN_GAP;
+  /** Flavour copy wraps narrower than the column so the scrollbar has room. */
+  const flavorWidth = textWidth - SCROLLBAR_GUTTER;
+  const sheetTop = centerY - SHEET_HEIGHT / 2;
 
   const crispText = (
     x: number,
@@ -126,14 +149,7 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   backdrop.setInteractive();
   container.add(backdrop);
 
-  const sheet = scene.add.rectangle(
-    centerX,
-    centerY,
-    SHEET_WIDTH,
-    MIN_SHEET_HEIGHT,
-    0x11131f,
-    0.98,
-  );
+  const sheet = scene.add.rectangle(centerX, centerY, SHEET_WIDTH, SHEET_HEIGHT, 0x11131f, 0.98);
   sheet.setStrokeStyle(2, 0xffc65c, 0.9);
   container.add(sheet);
 
@@ -185,13 +201,26 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
   const flavor = crispText(textLeft, 0, '', {
     fontFamily: FONT_FAMILY,
-    fontSize: '14px',
+    fontSize: `${FLAVOR_FONT_SIZE}px`,
     color: '#d6d9f1',
-    lineSpacing: 4,
-    wordWrap: { width: textWidth },
+    lineSpacing: FLAVOR_LINE_SPACING,
+    wordWrap: { width: flavorWidth },
   });
   flavor.setOrigin(0, 0);
   container.add(flavor);
+
+  const scrollbarX = textLeft + textWidth - SCROLLBAR_WIDTH / 2;
+  const scrollbarTrack = scene.add
+    .rectangle(scrollbarX, 0, SCROLLBAR_WIDTH, 0, 0xffffff, 0.12)
+    .setOrigin(0.5, 0);
+  scrollbarTrack.setVisible(false);
+  container.add(scrollbarTrack);
+
+  const scrollbarThumb = scene.add
+    .rectangle(scrollbarX, 0, SCROLLBAR_WIDTH, 0, 0xffc65c, 0.85)
+    .setOrigin(0.5, 0);
+  scrollbarThumb.setVisible(false);
+  container.add(scrollbarThumb);
 
   const footer = crispText(centerX, 0, '', {
     fontFamily: FONT_FAMILY,
@@ -203,6 +232,11 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
   let openContent: BossIntroContent | null = null;
   let onDismissCallback: (() => void) | null = null;
+  /** Wrapped flavour lines for the open sheet. */
+  let flavorLines: readonly string[] = [];
+  let flavorViewport: ScreenBounds = { x: textLeft, y: 0, width: flavorWidth, height: 0 };
+  let visibleFlavorLines = 1;
+  let scrollIndex = 0;
 
   /** Fit the boss art inside the portrait frame without distorting it. */
   function layoutPortrait(content: BossIntroContent): void {
@@ -228,9 +262,60 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     portrait.setVisible(true);
   }
 
-  /** Height of the text column for the currently-set copy. */
-  function textColumnHeight(): number {
-    return header.height + 6 + name.height + 6 + subtitle.height + 12 + 12 + flavor.height;
+  /**
+   * Largest number of leading lines that fit `viewportHeight`.
+   *
+   * Measured with the real Text object rather than derived from font metrics,
+   * because line height depends on the resolved font and `lineSpacing`.
+   */
+  function measureVisibleLines(lines: readonly string[], viewportHeight: number): number {
+    if (lines.length === 0) return 1;
+    let fitting = 0;
+    for (let count = 1; count <= lines.length; count++) {
+      flavor.setText(lines.slice(0, count).join('\n'));
+      if (flavor.height > viewportHeight) break;
+      fitting = count;
+    }
+    return Math.max(1, fitting);
+  }
+
+  /** Re-render the visible line window and the scrollbar for `scrollIndex`. */
+  function renderScrollWindow(): void {
+    const window = computeScrollWindow(flavorLines.length, visibleFlavorLines, scrollIndex);
+    scrollIndex = window.index;
+    flavor.setText(flavorLines.slice(window.index, window.index + window.visibleLines).join('\n'));
+    flavor.setY(Math.round(flavorViewport.y));
+
+    scrollbarTrack.setVisible(window.scrollable);
+    scrollbarThumb.setVisible(window.scrollable);
+    if (!window.scrollable) return;
+
+    scrollbarTrack.setPosition(scrollbarX, Math.round(flavorViewport.y));
+    scrollbarTrack.setSize(SCROLLBAR_WIDTH, Math.round(flavorViewport.height));
+    const thumb = computeScrollThumb(
+      flavorViewport.y,
+      flavorViewport.height,
+      window,
+      flavorLines.length,
+    );
+    scrollbarThumb.setPosition(scrollbarX, Math.round(thumb.y));
+    scrollbarThumb.setSize(SCROLLBAR_WIDTH, Math.round(thumb.height));
+  }
+
+  function scrollBy(delta: number): void {
+    if (!openContent || delta === 0) return;
+    const before = scrollIndex;
+    scrollIndex += delta;
+    renderScrollWindow();
+    if (scrollIndex !== before) {
+      footer.setText(footerText());
+    }
+  }
+
+  function footerText(): string {
+    return computeScrollWindow(flavorLines.length, visibleFlavorLines, scrollIndex).scrollable
+      ? 'Scroll for more · Click or press [Space] to begin the fight'
+      : 'Click or press [Space] to begin the fight';
   }
 
   function render(content: BossIntroContent): void {
@@ -241,41 +326,36 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
     header.setText(content.title.toUpperCase()).setColor(cssColor(content.accentColor));
     name.setText(content.name);
     subtitle.setText(content.subtitle);
-    footer.setText('Click or press [Space] to begin the fight');
 
-    // Step the flavour size down until the whole column fits the tallest sheet
-    // we allow, so a long Director monologue can never spill past the frame.
-    const maxColumnHeight = MAX_SHEET_HEIGHT - PADDING * 2 - FOOTER_BAND;
-    const flavorText = content.flavorLines.join('\n\n');
-    const smallestSize = FLAVOR_FONT_SIZES[FLAVOR_FONT_SIZES.length - 1];
-    for (const size of FLAVOR_FONT_SIZES) {
-      flavor.setFontSize(size);
-      flavor.setText(flavorText);
-      if (textColumnHeight() <= maxColumnHeight || size === smallestSize) {
-        break;
-      }
-    }
-
-    const contentHeight = Math.max(textColumnHeight(), PORTRAIT_BOX);
-    const sheetHeight = Math.min(
-      MAX_SHEET_HEIGHT,
-      Math.max(MIN_SHEET_HEIGHT, contentHeight + PADDING * 2 + FOOTER_BAND),
-    );
-    sheet.setSize(SHEET_WIDTH, sheetHeight);
-
-    const top = centerY - sheetHeight / 2;
-    const contentTop = top + PADDING;
-
+    const contentTop = sheetTop + PADDING;
     header.setY(Math.round(contentTop));
     name.setY(Math.round(header.y + header.height + 6));
     subtitle.setY(Math.round(name.y + name.height + 6));
     rule.setY(Math.round(subtitle.y + subtitle.height + 12));
-    flavor.setY(Math.round(rule.y + 12));
 
-    portraitFrame.setY(Math.round(contentTop + Math.min(contentHeight, PORTRAIT_BOX * 2) / 2));
+    // The viewport is whatever vertical room is left between the rule and the
+    // footer band of the FIXED sheet; copy longer than that scrolls.
+    const viewportTop = rule.y + 12;
+    const viewportBottom = sheetTop + SHEET_HEIGHT - PADDING - FOOTER_BAND;
+    const viewportHeight = Math.max(0, viewportBottom - viewportTop);
+    flavorViewport = {
+      x: textLeft,
+      y: viewportTop,
+      width: flavorWidth,
+      height: viewportHeight,
+    };
+
+    flavor.setText(content.flavorLines.join('\n\n'));
+    flavorLines = flavor.getWrappedText();
+    visibleFlavorLines = measureVisibleLines(flavorLines, viewportHeight);
+    scrollIndex = 0;
+    renderScrollWindow();
+    footer.setText(footerText());
+
+    portraitFrame.setY(Math.round(contentTop + PORTRAIT_BOX / 2));
     portrait.setY(portraitFrame.y);
 
-    footer.setY(Math.round(top + sheetHeight - FOOTER_BAND / 2 - 4));
+    footer.setY(Math.round(sheetTop + SHEET_HEIGHT - FOOTER_BAND / 2 - 4));
 
     layoutPortrait(content);
   }
@@ -283,6 +363,10 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
   function close(): void {
     openContent = null;
     onDismissCallback = null;
+    flavorLines = [];
+    scrollIndex = 0;
+    scrollbarTrack.setVisible(false);
+    scrollbarThumb.setVisible(false);
     container.setVisible(false);
     scene.tweens.killTweensOf(container);
     container.setAlpha(1);
@@ -297,6 +381,17 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
 
   backdrop.on('pointerdown', handleDismiss);
 
+  const wheelListener = (
+    _pointer: Phaser.Input.Pointer,
+    _objects: unknown,
+    _dx: number,
+    dy: number,
+  ): void => {
+    if (!openContent || dy === 0) return;
+    scrollBy(dy > 0 ? 1 : -1);
+  };
+  scene.input.on('wheel', wheelListener);
+
   const keyListener = (event: KeyboardEvent): void => {
     if (!openContent) return;
     switch (event.code) {
@@ -305,6 +400,22 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
       case 'Escape':
         event.preventDefault();
         handleDismiss();
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        scrollBy(1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        scrollBy(-1);
+        break;
+      case 'PageDown':
+        event.preventDefault();
+        scrollBy(visibleFlavorLines);
+        break;
+      case 'PageUp':
+        event.preventDefault();
+        scrollBy(-visibleFlavorLines);
         break;
       default:
         break;
@@ -347,12 +458,27 @@ export function createBossIntroUI(scene: Phaser.Scene): BossIntroUI {
         header: boundsOf(header),
         name: boundsOf(name),
         subtitle: boundsOf(subtitle),
-        flavor: boundsOf(flavor),
+        flavor: { ...flavorViewport },
         footer: boundsOf(footer),
       };
     },
+    getScrollState(): BossIntroScrollState | null {
+      if (!openContent) {
+        return null;
+      }
+      const window = computeScrollWindow(flavorLines.length, visibleFlavorLines, scrollIndex);
+      return {
+        scrollable: window.scrollable,
+        index: window.index,
+        maxIndex: window.maxIndex,
+        visibleLines: window.visibleLines,
+        totalLines: flavorLines.length,
+      };
+    },
+    scrollBy,
     destroy(): void {
       backdrop.off('pointerdown', handleDismiss);
+      scene.input.off('wheel', wheelListener);
       scene.input.keyboard?.off('keydown', keyListener);
       close();
       container.destroy(true);
