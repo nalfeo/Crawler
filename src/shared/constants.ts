@@ -133,7 +133,21 @@ export const FLOOR = {
 export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
 
 /** Floor 1 Spell Broker price, in gold. */
-export const FLOOR1_SPELL_BROKER_COST: number = tuning.spellBroker.cost;
+export const FLOOR1_SPELL_BROKER_COST: number = tuning.shopPricing.floor1.spellBrokerCost;
+
+/** Floor 1 merchant's charm price, in gold. */
+export const FLOOR1_MERCHANTS_CHARM_COST: number = tuning.shopPricing.floor1.merchantsCharm;
+
+/**
+ * Floor 1 post-quest merchant weapon prices, keyed by item id. Items missing
+ * from the table fall back to {@link FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST}.
+ */
+export const FLOOR1_POST_QUEST_WEAPON_COSTS: Readonly<Record<string, number>> =
+  tuning.shopPricing.floor1.postQuestWeaponCosts;
+
+/** Fallback price for a post-quest merchant weapon with no explicit entry. */
+export const FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST: number =
+  tuning.shopPricing.floor1.postQuestWeaponDefaultCost;
 
 export const SAFE_ROOM = {
   MIN_DURATION_S: tuning.safeRoom.minDurationS,

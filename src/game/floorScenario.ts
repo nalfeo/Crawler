@@ -53,6 +53,7 @@ import {
   Npc,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
+import { markGoldLedgerFloorExit } from '../core/world.js';
 import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   getFloor1StarterWeaponPool,
@@ -80,7 +81,13 @@ import { AI_TYPE } from './enemyAISystem.js';
 import { activateHostileEncounter } from './hostile-encounter-lifecycle.js';
 import { roomHopDistances } from './room-hops.js';
 import { getItemById, getItemIndex } from '../shared/items.js';
-import { FLOOR1_SPELL_BROKER_COST, GAME, PLAYER_SPEED } from '../shared/constants.js';
+import {
+  FLOOR1_POST_QUEST_WEAPON_COSTS,
+  FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST,
+  FLOOR1_SPELL_BROKER_COST,
+  GAME,
+  PLAYER_SPEED,
+} from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, listStaticInventorySlots, removeItem } from '../shared/inventory.js';
 import { FLOOR2_HARVESTABLE_START_INDEX, HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
@@ -3922,6 +3929,7 @@ export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): 
   // game loop breaks on victory.
   questSystem(world);
   world.state = 'safe_room';
+  markGoldLedgerFloorExit(world);
   finalizeRunSummary(world, 'cleared_floor');
   evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
   return true;
@@ -3935,15 +3943,6 @@ export interface ShopkeeperStockItem {
   readonly itemId: string;
   readonly cost: number;
 }
-
-const SHOPKEEPER_POST_QUEST_ITEM_COSTS: Readonly<Record<string, number>> = {
-  'throwing-knife': 18,
-  'iron-sword': 24,
-  'bone-club': 20,
-  'frost-bow': 26,
-  'plasma-pistol': 30,
-  fireball: 28,
-};
 
 function findPlayerEid(world: GameWorld): number | undefined {
   return query(world.ecs, [Player])[0];
@@ -4020,7 +4019,7 @@ export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockIt
     .slice(0, 2)
     .map((itemId) => ({
       itemId,
-      cost: SHOPKEEPER_POST_QUEST_ITEM_COSTS[itemId] ?? 20,
+      cost: FLOOR1_POST_QUEST_WEAPON_COSTS[itemId] ?? FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST,
     }));
 }
 
@@ -4202,6 +4201,8 @@ export function purchaseShopkeeperEquipment(world: GameWorld, playerEid: number)
     return false;
   }
   world.playerGold -= SHOPKEEPER_EQUIPMENT_COST;
+  world.goldLedger.spentOnCharm += SHOPKEEPER_EQUIPMENT_COST;
+  world.goldLedger.charmPurchases += 1;
   addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
   return true;
 }
@@ -4230,6 +4231,8 @@ export function purchaseShopkeeperPostQuestItem(
     return false;
   }
   world.playerGold -= stockEntry.cost;
+  world.goldLedger.spentOnMerchantWeapon += stockEntry.cost;
+  world.goldLedger.merchantWeaponPurchases += 1;
   addItem(bag, itemId, 1);
   return true;
 }
@@ -4402,6 +4405,8 @@ export function purchaseSpellBrokerSpell(
   if (!offer) return false;
   memorizeSpell(world, playerEid, spellId);
   world.playerGold -= offer.cost;
+  world.goldLedger.spentOnSpell += offer.cost;
+  world.goldLedger.spellPurchases += 1;
   offer.purchased = true;
   return true;
 }

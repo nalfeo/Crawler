@@ -158,6 +158,26 @@ async function main(): Promise<void> {
       `  Enemies Hit:  ${wt.totalEnemyHits} (${wt.avgEnemiesPerConnectingSwing.toFixed(2)}/connecting swing)`,
     );
   }
+  if (stats.goldEconomy) {
+    const ge = stats.goldEconomy;
+    console.log('');
+    console.log('💰 Gold Economy');
+    console.log(
+      `  Earned:       ${ge.earnedTotal} (drops ${ge.earnedFromDrops}, loot boxes ${ge.earnedFromLootBoxes})`,
+    );
+    console.log(
+      `  Spent:        ${ge.spentTotal} (charm ${ge.spentOnCharm}, weapon ${ge.spentOnMerchantWeapon}, spell ${ge.spentOnSpell})`,
+    );
+    console.log(
+      `  Unspent:      ${ge.unspentAtExit} (${(ge.unspentFraction * 100).toFixed(1)}% of earned)`,
+    );
+    console.log(
+      `  Spendable:    ${ge.spendableEarned} earned before exit — unspent ${ge.unspentSpendable} (${(ge.unspentSpendableFraction * 100).toFixed(1)}%)`,
+    );
+    console.log(
+      `  Purchases:    ${ge.distinctPurchases} vendors (charm ${ge.charmPurchases}, weapon ${ge.merchantWeaponPurchases}, spell ${ge.spellPurchases})`,
+    );
+  }
   console.log('');
   console.log('❤️  Health Metrics');
   console.log(`  Min HP:       ${(stats.health.minHealthPercent * 100).toFixed(1)}%`);

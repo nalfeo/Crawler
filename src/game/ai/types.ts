@@ -462,6 +462,56 @@ export interface EquipmentPlayabilityMetrics {
 }
 
 /**
+ * Deterministic gold economy evidence for a run: where gold came from, where
+ * it went, and how much was still unspent when the floor ended.
+ *
+ * `unspentFraction` is the Floor 1 pricing gate's metric — the share of gold
+ * earned this floor that the player never converted into power. It is derived
+ * from the ledger (not `totalGold`) so carryover gold from a previous floor
+ * cannot distort it.
+ */
+export interface GoldEconomyMetrics {
+  /** Gold picked up off the floor (drops, chests, piles). */
+  earnedFromDrops: number;
+  /** Gold granted by claimed achievement loot boxes. */
+  earnedFromLootBoxes: number;
+  /** `earnedFromDrops + earnedFromLootBoxes`. */
+  earnedTotal: number;
+  /** Gold spent on the Floor 1 merchant's charm. */
+  spentOnCharm: number;
+  /** Gold spent on post-quest merchant weapons. */
+  spentOnMerchantWeapon: number;
+  /** Gold spent at the Floor 1 Spell Broker. */
+  spentOnSpell: number;
+  /** Total gold spent across every vendor. */
+  spentTotal: number;
+  /** `earnedTotal - spentTotal`, clamped at 0. */
+  unspentAtExit: number;
+  /** `unspentAtExit / earnedTotal`, or 0 when nothing was earned. */
+  unspentFraction: number;
+  /**
+   * Gold earned by the time the floor exit was confirmed — the income the run
+   * could actually still spend at a Floor 1 vendor. Floor-clear achievement
+   * loot boxes resolve after this point, so `earnedTotal - spendableEarned` is
+   * income that is Floor 2 seed money by construction.
+   */
+  spendableEarned: number;
+  /** `max(0, spendableEarned - spentTotal)`. */
+  unspentSpendable: number;
+  /**
+   * `unspentSpendable / spendableEarned`, or 0 when nothing was spendable.
+   * This is the actionable spend-through metric for Floor 1 pricing.
+   */
+  unspentSpendableFraction: number;
+  /** Purchase counts by vendor. */
+  charmPurchases: number;
+  merchantWeaponPurchases: number;
+  spellPurchases: number;
+  /** Distinct vendors bought from this run (0-3). */
+  distinctPurchases: number;
+}
+
+/**
  * Skill and ability progression observed during a run.
  * Populated from `world.milestoneGrantLog` at run end.
  */
@@ -656,6 +706,12 @@ export interface RunStats {
    * `runHeadless` always sets it.
    */
   lootEfficiency?: LootEfficiencyMetrics;
+  /**
+   * Deterministic gold economy accounting for the run (earned by source, spent
+   * by vendor, unspent share). Optional because pre-existing test fixtures
+   * construct RunStats manually; `runHeadless` always sets it.
+   */
+  goldEconomy?: GoldEconomyMetrics;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
   /** Timestamped reward milestones captured by the deterministic headless runner. */

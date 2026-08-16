@@ -288,7 +288,10 @@ export function autoFloor1ProgressionSystem(
       break;
     }
 
-    if (!spellBrokerPurchaseActive && getMerchantWeaponIntent(world).status === 'returning') {
+    // Both optional purchases may now run in the same visit; the weapon
+    // executor holds back `spellPurchaseReserve` so buying a weapon can never
+    // price the higher-value broker spell out of the run.
+    if (getMerchantWeaponIntent(world).status === 'returning') {
       executeMerchantWeaponPurchase(world, playerEid);
       break;
     }

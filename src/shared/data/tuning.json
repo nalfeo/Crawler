@@ -93,11 +93,21 @@
     }
   },
   "shopPricing": {
-    "_note": "Floor 2 shop pricing (Issue #2367). Runtime price = basePrice * archetype.priceMultiplier * floor2TierMultiplier. Quartermaster generated stock uses the same tier multiplier so all Floor 2 shop surfaces stay in the same economy curve.",
+    "_note": "Floor 1 + Floor 2 shop pricing. Floor 1 prices are absolute gold values; Floor 2 runtime price = basePrice * archetype.priceMultiplier * floor2TierMultiplier. Quartermaster generated stock uses the same tier multiplier so all Floor 2 shop surfaces stay in the same economy curve.",
+    "floor1": {
+      "_note": "Floor 1 gold sinks, tuned against measured Floor 1 income (~800g earned per completed run: enemy/chest drops plus achievement loot boxes). The sum of everything buyable on Floor 1 (charm + up to two post-quest weapons + one spell) is deliberately close to that income so a run must choose rather than buy the whole board and still bank a fortune for Floor 2. Gate: median unspent gold at Floor 1 exit <= 35% of gold earned, at >= 90% Floor 1 win rate.",
+      "merchantsCharm": 100,
+      "spellBrokerCost": 350,
+      "postQuestWeaponDefaultCost": 180,
+      "postQuestWeaponCosts": {
+        "throwing-knife": 140,
+        "bone-club": 160,
+        "iron-sword": 185,
+        "frost-bow": 205,
+        "fireball": 225,
+        "plasma-pistol": 250
+      }
+    },
     "floor2TierMultiplier": 2.5
-  },
-  "spellBroker": {
-    "_note": "Floor 1 Spell Broker price. Tuned above the 15g charm so a normal run can usually afford one spell, but not two.",
-    "cost": 35
   }
 }

@@ -152,6 +152,73 @@ export function createLootLedger(): LootLedger {
   return { xpSpawned: 0, xpCollected: 0, goldSpawned: 0, goldCollected: 0 };
 }
 
+/**
+ * Deterministic gold economy accounting: where the run's gold came from and
+ * where it went. Purely additive counters (never decremented) so
+ * `spentTotal / earnedTotal` is a stable spend-through metric and
+ * `earnedTotal - spentTotal` reconstructs the unspent balance independently
+ * of `playerGold` (which is also mutated by carryover).
+ *
+ * Deliberately **not** part of the player carryover snapshot: it measures a
+ * single floor session's economy, which is exactly the quantity the Floor 1
+ * pricing gate is written against.
+ */
+export interface GoldLedger {
+  /** Gold picked up off the floor (drops, chests, piles). */
+  earnedFromDrops: number;
+  /** Gold granted by claimed achievement loot boxes. */
+  earnedFromLootBoxes: number;
+  /** Gold spent on the Floor 1 merchant's charm. */
+  spentOnCharm: number;
+  /** Gold spent on post-quest merchant weapons. */
+  spentOnMerchantWeapon: number;
+  /** Gold spent at the Floor 1 Spell Broker. */
+  spentOnSpell: number;
+  /** Number of charm purchases (0 or 1 per run). */
+  charmPurchases: number;
+  /** Number of post-quest merchant weapon purchases. */
+  merchantWeaponPurchases: number;
+  /** Number of Spell Broker spell purchases. */
+  spellPurchases: number;
+  /**
+   * Gold earned at the moment the floor exit was confirmed, i.e. the income the
+   * run could still convert into power at a Floor 1 vendor. `null` until the
+   * floor completes.
+   *
+   * This exists because Floor 1 grants a large share of its income through
+   * floor-clear achievement loot boxes that resolve *after* the last vendor
+   * window; that gold is Floor 2 seed money by construction and can never
+   * appear as Floor 1 spend.
+   */
+  earnedBeforeExit: number | null;
+}
+
+/** Create a zeroed gold ledger. */
+export function createGoldLedger(): GoldLedger {
+  return {
+    earnedFromDrops: 0,
+    earnedFromLootBoxes: 0,
+    spentOnCharm: 0,
+    spentOnMerchantWeapon: 0,
+    spentOnSpell: 0,
+    charmPurchases: 0,
+    merchantWeaponPurchases: 0,
+    spellPurchases: 0,
+    earnedBeforeExit: null,
+  };
+}
+
+/**
+ * Latch {@link GoldLedger.earnedBeforeExit} at floor completion, before the
+ * run-end achievement phase grants its loot boxes. Idempotent — the first call
+ * wins, so a re-entered completion path cannot inflate the spendable income.
+ */
+export function markGoldLedgerFloorExit(world: GameWorld): void {
+  if (world.goldLedger.earnedBeforeExit !== null) return;
+  world.goldLedger.earnedBeforeExit =
+    world.goldLedger.earnedFromDrops + world.goldLedger.earnedFromLootBoxes;
+}
+
 export interface GameWorld {
   /** The bitecs ECS world instance */
   ecs: ReturnType<typeof createBitecsWorld>;
@@ -384,6 +451,13 @@ export interface GameWorld {
    * so `collected / spawned` is a stable collection-efficiency metric.
    */
   lootLedger: LootLedger;
+  /**
+   * Deterministic per-floor gold economy accounting (earned split by source,
+   * spent split by vendor). Incremented by `itemPickupSystem` (drops),
+   * `achievementRewards` (loot boxes) and the Floor 1 purchase functions in
+   * `floorScenario`. Drives the Floor 1 pricing gate.
+   */
+  goldLedger: GoldLedger;
   /**
    * Running maximum gold balance seen this floor session. Updated by `achievementSystem`
    * each tick so the "Hoarder's Ledger" run-global achievement can fire even after the
@@ -735,6 +809,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     spawnerArenaEverArmed: new Set(),
     playerGold: 0,
     lootLedger: createLootLedger(),
+    goldLedger: createGoldLedger(),
     peakGold: 0,
     floorMap: null,
     floorId: '',

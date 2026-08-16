@@ -1,9 +1,6 @@
 import type { GameWorld } from '../../core/world.js';
 import { generateFloor1SpellBrokerOffers } from '../../shared/spell-skills.js';
-import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import type { Floor1RunPlan } from './run-planner.js';
-
-const SPELL_BROKER_AI_PURCHASE_CHANCE = 0.25;
 
 /**
  * Lifecycle of the optional post-spellbook broker purchase.
@@ -64,15 +61,24 @@ export function isSpellBrokerPurchaseActive(intent: SpellBrokerIntent): boolean 
 }
 
 /**
- * Make one seed-derived decision. A per-key seed keeps the 25% choice stable
- * without consuming the combat RNG stream or changing equipment behavior.
+ * Make the one-shot broker decision.
+ *
+ * Budget-aware policy: a spell is the run's highest-value Floor 1 purchase, so
+ * the AI always intends to buy one and the affordability question is answered
+ * by the lifecycle below (`farming` while short, `abandoned` when the planner
+ * can't fund the deficit inside the run deadline) rather than by a blind coin
+ * flip. The previous 25% seeded roll meant a typical run made zero purchases
+ * and banked its whole Floor 1 income, which is exactly the hoarding the
+ * Floor 1 economy gate measures.
+ *
+ * The offer itself is still seed-derived (see
+ * {@link generateFloor1SpellBrokerOffers}) and consumes no gameplay RNG.
  */
 export function ensureSpellBrokerDecision(world: GameWorld): SpellBrokerIntent {
   const current = getSpellBrokerIntent(world);
   if (!current.enabled || current.decisionMade) return current;
-  const roll = new SeededRandom(hashStringToSeed(`${world.seed}:spell-broker-ai-intent`)).next();
-  const shouldBuy = roll < SPELL_BROKER_AI_PURCHASE_CHANCE;
   const offer = generateFloor1SpellBrokerOffers(world.seed)[0];
+  const shouldBuy = offer !== undefined;
   const next: SpellBrokerIntent = {
     ...current,
     decisionMade: true,
@@ -111,13 +117,22 @@ export function updateSpellBrokerIntent(
 ): SpellBrokerIntent {
   let intent = getSpellBrokerIntent(world);
 
-  // Nothing to do when disabled, already terminal, or decision says no-buy.
-  if (
-    !intent.enabled ||
-    !intent.shouldBuy ||
-    intent.purchaseStatus === 'purchased' ||
-    intent.purchaseStatus === 'abandoned'
-  ) {
+  // Nothing to do when disabled, already bought, or decision says no-buy.
+  if (!intent.enabled || !intent.shouldBuy || intent.purchaseStatus === 'purchased') {
+    return intent;
+  }
+
+  // `abandoned` means "the deficit can't be farmed inside the run's slack",
+  // not "never buy". Once the player is holding the full price outright there
+  // is no deficit left to farm, so the purchase becomes viable again — without
+  // this recovery a run that abandoned early banks its whole income and buys
+  // nothing, even while sitting on several times the asking price.
+  if (intent.purchaseStatus === 'abandoned') {
+    if (!world.featureUnlocks.spells || world.playerGold < intent.cost) {
+      return intent;
+    }
+    intent = { ...intent, purchaseStatus: 'returning' };
+    intents.set(world, intent);
     return intent;
   }
 

@@ -46,6 +46,28 @@ export function getMerchantWeaponIntent(world: GameWorld): MerchantWeaponIntent 
   return intents.get(world) ?? initialIntent(false);
 }
 
+/**
+ * Pick which post-quest weapon to intend to buy.
+ *
+ * Budget-aware and deterministic: prefer the most expensive item the player can
+ * already afford (cost is the merchant's own value ranking — the pricier the
+ * weapon, the stronger it is), and fall back to the cheapest item in stock when
+ * nothing is affordable yet, so the run farms toward the smallest deficit
+ * instead of an arbitrary one. Ties break on item id so the choice is stable
+ * regardless of stock ordering. Consumes no RNG.
+ */
+/**
+ * Gold the AI holds back for the higher-value optional purchase (a broker
+ * spell) while that purchase is still pending. The two optional purchases used
+ * to be mutually exclusive, so a run made at most one of them; they now run
+ * concurrently and the spell — the strictly more valuable pickup — keeps
+ * priority through this reserve.
+ */
+export function spellPurchaseReserve(world: GameWorld): number {
+  const spellIntent = ensureSpellBrokerDecision(world);
+  return isSpellBrokerPurchaseActive(spellIntent) ? spellIntent.cost : 0;
+}
+
 export function selectMerchantWeapon(
   world: GameWorld,
   stock: readonly ShopkeeperStockItem[],
@@ -53,7 +75,12 @@ export function selectMerchantWeapon(
   if (stock.length === 0) {
     return null;
   }
-  return stock[world.rng.nextInt(0, stock.length - 1)] ?? null;
+  const byValueDesc = [...stock].sort(
+    (a, b) => b.cost - a.cost || a.itemId.localeCompare(b.itemId),
+  );
+  const budget = world.playerGold - spellPurchaseReserve(world);
+  const affordable = byValueDesc.find((entry) => entry.cost <= budget);
+  return affordable ?? byValueDesc[byValueDesc.length - 1] ?? null;
 }
 
 export function updateMerchantWeaponIntent(
@@ -65,11 +92,15 @@ export function updateMerchantWeaponIntent(
   if (!intent.enabled || intent.status === 'declined' || intent.status === 'purchased') {
     return intent;
   }
+  // `abandoned` means the deficit couldn't be farmed inside the run's slack,
+  // not "never buy". Recover once the player holds the full price outright
+  // (over and above the spell reserve) — there is no farming left to fund.
   if (intent.status === 'abandoned') {
-    return intent;
-  }
-  const spellBrokerIntent = ensureSpellBrokerDecision(world);
-  if (isSpellBrokerPurchaseActive(spellBrokerIntent)) {
+    if (!intent.itemId || world.playerGold - spellPurchaseReserve(world) < intent.cost) {
+      return intent;
+    }
+    intent = { ...intent, status: 'returning' };
+    intents.set(world, intent);
     return intent;
   }
   if (world.goalFlags.get('floor1-shop-quest-complete') !== true) {
@@ -77,11 +108,11 @@ export function updateMerchantWeaponIntent(
   }
 
   if (!intent.decisionMade) {
-    if (world.rng.next() >= 0.5) {
-      intent = { ...intent, decisionMade: true, status: 'declined' };
-      intents.set(world, intent);
-      return intent;
-    }
+    // Budget-aware policy: always intend to convert leftover gold into power.
+    // Affordability is resolved by the farming/abandon lifecycle below, not by
+    // a coin flip. Because this poll returns early while a broker purchase is
+    // still active, the weapon decision is naturally made against gold that
+    // remains *after* the higher-value spell purchase — the spell reserve.
     const selected = selectMerchantWeapon(world, getShopkeeperPostQuestStock(world));
     if (!selected) {
       intent = { ...intent, decisionMade: true, status: 'abandoned' };
@@ -97,7 +128,7 @@ export function updateMerchantWeaponIntent(
     };
   }
 
-  const deficit = Math.max(0, intent.cost - world.playerGold);
+  const deficit = Math.max(0, intent.cost + spellPurchaseReserve(world) - world.playerGold);
   if (deficit === 0) {
     intent = { ...intent, status: 'returning' };
   } else if (runPlan?.droppedOptionalBundleIds.includes('merchant-weapon-purchase')) {
@@ -129,6 +160,14 @@ export function executeMerchantWeaponPurchase(world: GameWorld, playerEid: numbe
   const bag = world.inventories.get(playerEid);
   if (!bag) {
     return abandon();
+  }
+  // Not affordable *yet* once the spell reserve is honoured — stay pending
+  // rather than abandoning, so the run can come back after farming.
+  if (
+    !hasItem(bag, intent.itemId) &&
+    world.playerGold - intent.cost < spellPurchaseReserve(world)
+  ) {
+    return false;
   }
   if (
     !hasItem(bag, intent.itemId) &&

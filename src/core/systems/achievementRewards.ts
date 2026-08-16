@@ -190,6 +190,7 @@ export function claimAchievementReward(
     // no other code can observe a partially-granted state.
     world.lootBoxRewardBundles.delete(achievementId);
     world.playerGold += bundle.gold;
+    world.goldLedger.earnedFromLootBoxes += bundle.gold;
     for (const itemId of bundle.materials) {
       addItem(bag, itemId, 1);
     }
