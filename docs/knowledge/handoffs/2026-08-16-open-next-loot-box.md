@@ -14,7 +14,10 @@ quests, hud-ux, inventory
 
 ## Apples
 
-2🍎 exact
+Estimated 2🍎 → actual 3🍎 (📉 Under). The declared 2🍎 assumed a summary-screen
+button on one UI; the change ended up spanning two UIs, the probe lab, and unit +
+integration + e2e coverage (9 files), which is the 3🍎 `3–10 files` tier. Recorded
+in `docs/knowledge/metrics/apples/2026-08-16-open-next-loot-box.json`.
 
 ## What Was Done
 
@@ -30,7 +33,7 @@ without reopening the achievements panel.
 Observed in the REAL `MainGameScene` (not just a lab) via the
 `main-scene-probe-lab`-driven e2e suite — before: after acknowledging a box the
 overlay closed and the player had to reopen the panel to claim another; after:
-the summary reports `nextLabel: 'rare box'` and `openNextRewardBox()` reopens
+the summary reports `nextLabel: 'rare box'` and a real `[N]` key press reopens
 straight into the next box's `anticipation` phase with a different reveal shape
 (4 items vs 2). Full `tests/e2e/reward-opening-ux.test.ts`: 15/15 pass.
 

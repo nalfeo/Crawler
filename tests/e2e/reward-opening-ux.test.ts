@@ -370,7 +370,9 @@ describe('real reward-opening UX (achievement path)', () => {
       });
       expect(summary.nextLabel).toBe('rare box');
 
-      await mainSceneProbe.openNextRewardBox(page);
+      // Driven through REAL keyboard input, not the probe, so the `[N]`
+      // keydown wiring in RewardOpeningUI is itself covered end to end.
+      await page.keyboard.press('n');
       // The overlay never returns to the panel: it re-opens directly on the
       // next box's anticipation phase.
       const chained = await waitForRewardOpeningState(page, (s) => s.phase === 'anticipation', {

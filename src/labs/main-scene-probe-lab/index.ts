@@ -772,8 +772,6 @@ export interface MainSceneProbeApi {
   skipRewardOpening(): void;
   /** Confirm the summary (the real acknowledge/claim-once path). */
   acknowledgeRewardOpening(): void;
-  /** Acknowledge and immediately open the next achievement box, if any. */
-  openNextRewardBox(): void;
   /** Live `world.elapsedMs` — used to prove the sim is frozen while a reward presents. */
   getWorldElapsedMs(): number | null;
   /** Current player gold — for asserting purchase outcomes. */
@@ -1639,10 +1637,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     acknowledgeRewardOpening: () => {
       getScene()?.rewardOpeningUI?.acknowledge();
-    },
-
-    openNextRewardBox: () => {
-      getScene()?.rewardOpeningUI?.openNext();
     },
 
     getWorldElapsedMs: (): number | null => {

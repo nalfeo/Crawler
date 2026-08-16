@@ -47,7 +47,6 @@ import {
 import {
   acknowledge as acknowledgeSequence,
   createRewardOpeningState,
-  isRewardOpeningComplete,
   skip as skipSequence,
   tick as tickSequence,
   type RewardOpeningPhase,
@@ -700,6 +699,3 @@ export function createRewardOpeningUI(
     },
   };
 }
-
-/** Re-exported for callers that only need the completion predicate. */
-export { isRewardOpeningComplete };
