@@ -42,6 +42,7 @@ ci-policy, docs-tooling, agent-personas
 - `bash scripts/agent/preflight.sh`
 - `npx tsx scripts/agent/docs/review-process-check.ts`
 - `npm run typecheck`
+- `npm run verify:fast`
 
 ## Notes
 
