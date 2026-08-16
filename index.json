@@ -1,5 +1,39 @@
 [
   {
+    "commit": "1cd80041f0efb3f6ba186141c63946679adfd37f",
+    "commitDate": "2026-08-16T08:48:04Z",
+    "commitSubject": "fix(sweep): stop Floor 2 inheriting Floor 1's frame cap; disambiguate hunt-scoped kill telemetry (#3003)",
+    "capturedAt": "2026-08-16T10:01:16.308Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31938190797",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/1cd80041f0efb3f6ba186141c63946679adfd37f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.04666666666666667,
+        "totalWins": 7,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.04,
+        "totalWins": 6,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.22,
+      "gatePass": false,
+      "path": "by-sha/1cd80041f0efb3f6ba186141c63946679adfd37f.fun-report.json"
+    }
+  },
+  {
     "commit": "a9ec7f2e3846f58aab236c576b113bcd92a240d5",
     "commitDate": "2026-08-16T07:36:09Z",
     "commitSubject": "Accept a real owner PR review at the human approval gate (#3002)",
