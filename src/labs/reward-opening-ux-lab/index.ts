@@ -85,7 +85,8 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
   const hint = document.createElement('p');
   hint.textContent =
     'Unlock a reward below, then use [V] Achievements / [C] Boss Chests to browse and ' +
-    'open it. Reduced motion follows your OS "prefers-reduced-motion" setting — this lab ' +
+    "open it. Unlock two or more loot-box achievements to see the summary screen's " +
+    '"Open next" chain button ([N]), which opens boxes back to back. Reduced motion follows your OS "prefers-reduced-motion" setting — this lab ' +
     'has no separate in-game toggle by design (see reduced-motion.ts).';
   hint.style.cssText = 'margin-top:8px;color:#9ca3af;line-height:1.5;font-size:11px;';
   controls.append(hint);
@@ -110,6 +111,7 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
       `boss chests: ${world.bossChests.size}`,
       `rewardOpeningUI: open=${rewardOpeningUI?.isOpen() ?? false} phase=${phase ?? '—'} bucket=${bucket ?? '—'}` +
         (progress ? ` reveal=${progress.revealed}/${progress.total}` : ''),
+      `next box on summary: ${rewardOpeningUI?.getNextRewardLabel() ?? '—'}`,
     ];
     status.textContent = lines.join('\n');
   }
@@ -231,6 +233,7 @@ function createRewardOpeningUxLab(canvasHost: HTMLElement, controls: HTMLElement
   sequenceFolder
     .add({ ack: () => rewardOpeningUI?.acknowledge() }, 'ack')
     .name('Acknowledge / close');
+  sequenceFolder.add({ next: () => rewardOpeningUI?.openNext() }, 'next').name('Open next box [N]');
 
   gui
     .add(
