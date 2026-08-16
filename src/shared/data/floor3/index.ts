@@ -5,4 +5,16 @@
  */
 export * from './affinity.js';
 export * from './styles.js';
-export * from './species.js';
+export {
+  ABILITY_MILESTONE_LEVELS,
+  FORM_MIN_LEVELS,
+  formForLevel,
+  getPetSpecies,
+  learnedAbilityIds,
+  loadPetSpecies,
+  petSpeciesByAffinity,
+  petSpeciesByStyle,
+  petSpeciesDefSchema,
+  type PetFormDef,
+  type PetSpeciesDef,
+} from './species.js';

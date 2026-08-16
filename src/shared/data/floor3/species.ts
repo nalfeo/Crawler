@@ -95,7 +95,7 @@ export const petSpeciesDefSchema = z
 
 export type PetSpeciesDef = z.infer<typeof petSpeciesDefSchema>;
 
-const rosterSchema = z.array(petSpeciesDefSchema).min(52);
+const rosterSchema = z.array(petSpeciesDefSchema).length(52);
 
 let cachedSpecies: readonly PetSpeciesDef[] | null = null;
 
