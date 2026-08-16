@@ -69,7 +69,7 @@ import {
   trainCheckState,
   VALIDATION_FAILED_LABEL,
 } from './state.mjs';
-import { humanApprovalRejection } from './human-approval.mjs';
+import { resolveHumanApprovalRejection } from './human-approval.mjs';
 import { countOutstandingRecoveryRuns, resolveGlobalDispatchCaps } from '../ci-recovery/router.mjs';
 import { LIFECYCLE_MARKER, parseLifecycleComment } from '../ci-recovery/pr-lifecycle.mjs';
 
@@ -299,11 +299,12 @@ async function eligible(pr) {
     String(pr.head?.ref || '').trim() === 'assets/promote'
       ? await paginate(token, `/repos/${owner}/${repo}/pulls/${pr.number}/files`)
       : [];
-  const approvalRejection = humanApprovalRejection({
+  const approvalRejection = await resolveHumanApprovalRejection({
     pullRequest: pr,
     closingIssues,
     comments,
     ownerLogin: owner,
+    fetchReviews: () => paginate(token, `/repos/${owner}/${repo}/pulls/${pr.number}/reviews`),
   });
 
   // D11 fix (Issue #1851): read the authoritative lifecycle phase so quarantined/abandoned
@@ -1032,6 +1033,8 @@ async function promotePrefix(prefixLength, validationIndex) {
               paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
             fetchCheckRuns: async (sha) => checkRuns(sha),
             fetchClosingIssues: async (number) => listClosingIssues(token, owner, repo, number),
+            fetchReviews: async (number) =>
+              paginate(token, `/repos/${owner}/${repo}/pulls/${number}/reviews`),
           })
       : undefined,
   });

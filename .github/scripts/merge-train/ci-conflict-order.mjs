@@ -18,7 +18,7 @@ import {
   isHealthyRecoveryOwner,
   parseStateComment,
 } from '../ci-recovery/state.mjs';
-import { humanApprovalRejection } from './human-approval.mjs';
+import { resolveHumanApprovalRejection } from './human-approval.mjs';
 import { successfulChecks } from './state.mjs';
 
 function labelsOf(pull) {
@@ -170,6 +170,7 @@ export async function ciConflictOrderReasonForPromotion({
   fetchComments,
   fetchCheckRuns,
   fetchClosingIssues = (number) => listClosingIssues(null, owner, repo, number),
+  fetchReviews = async () => [],
 }) {
   const [currentFiles, currentComments] = await Promise.all([
     fetchPullFiles(pullRequest.number),
@@ -275,7 +276,7 @@ export async function ciConflictOrderReasonForPromotion({
   const humanApprovalByNumber = new Map(
     await mapLimit(group.pulls, 4, async (pull) => [
       pull.number,
-      humanApprovalRejection({
+      await resolveHumanApprovalRejection({
         pullRequest: {
           ...pull.raw,
           labels: [...pull.labelNames].map((name) => ({ name })),
@@ -284,6 +285,7 @@ export async function ciConflictOrderReasonForPromotion({
         closingIssues: await fetchClosingIssues(pull.number),
         comments: commentsByNumber.get(pull.number) || [],
         ownerLogin: owner,
+        fetchReviews: () => fetchReviews(pull.number),
       }),
     ]),
   );
