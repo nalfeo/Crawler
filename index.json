@@ -1,5 +1,39 @@
 [
   {
+    "commit": "0ec050c0a41cb0fb59b136a7622baabe9534e10d",
+    "commitDate": "2026-08-16T19:28:16Z",
+    "commitSubject": "perf: drop dominated duplicate open-list pushes in grid A* (#2976)",
+    "capturedAt": "2026-08-16T20:41:03.433Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31968462592",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0ec050c0a41cb0fb59b136a7622baabe9534e10d.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.16666666666666666,
+        "totalWins": 25,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.20666666666666667,
+        "totalWins": 31,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.73,
+      "gatePass": false,
+      "path": "by-sha/0ec050c0a41cb0fb59b136a7622baabe9534e10d.fun-report.json"
+    }
+  },
+  {
     "commit": "93b95a65eb69a6c2f899ef6d51c6adec2596ed9e",
     "commitDate": "2026-08-16T18:47:41Z",
     "commitSubject": "Halve Floor 2 achievement equipment drop rate with a Floor 2 materials fallback (#3010)",
