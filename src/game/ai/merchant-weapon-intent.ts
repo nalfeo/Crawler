@@ -110,9 +110,9 @@ export function updateMerchantWeaponIntent(
   if (!intent.decisionMade) {
     // Budget-aware policy: always intend to convert leftover gold into power.
     // Affordability is resolved by the farming/abandon lifecycle below, not by
-    // a coin flip. Because this poll returns early while a broker purchase is
-    // still active, the weapon decision is naturally made against gold that
-    // remains *after* the higher-value spell purchase — the spell reserve.
+    // a coin flip. The selection is made against gold that remains *after* the
+    // higher-value spell purchase, because `selectMerchantWeapon` subtracts the
+    // spell reserve from its budget.
     const selected = selectMerchantWeapon(world, getShopkeeperPostQuestStock(world));
     if (!selected) {
       intent = { ...intent, decisionMade: true, status: 'abandoned' };

@@ -58,55 +58,48 @@ describe('merchant weapon purchase intent', () => {
     expect(world.rng.next()).toBe(untouched.next());
   });
 
-  it('makes one seeded decision per world and consumes selection RNG only on buy', () => {
-    const buyWorld = completedMerchantWorld(1);
-    configureMerchantWeaponPurchase(buyWorld, true);
-    updateMerchantWeaponIntent(buyWorld, plan(1_000_000), GOLD_FARM_MS);
-    const firstIntent = getMerchantWeaponIntent(buyWorld);
-    updateMerchantWeaponIntent(buyWorld, plan(1_000_000), GOLD_FARM_MS);
-    expect(getMerchantWeaponIntent(buyWorld)).toEqual(firstIntent);
-    const buyControl = new SeededRandom(1);
-    buyControl.next();
-    buyControl.next();
-    expect(buyWorld.rng.next()).toBe(buyControl.next());
+  it('makes one stable decision per world and consumes no RNG', () => {
+    // The old policy flipped a 50% coin and then drew again to pick a random
+    // weapon, so the shopping decision perturbed the gameplay RNG stream and
+    // half of all runs declined a purchase they could easily afford. Both draws
+    // are gone: the intent is now deterministic and budget-ranked.
+    const world = completedMerchantWorld(1);
+    configureMerchantWeaponPurchase(world, true);
+    updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS);
+    const firstIntent = getMerchantWeaponIntent(world);
+    expect(firstIntent.decisionMade).toBe(true);
+    expect(firstIntent.status).not.toBe('declined');
+    updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS);
+    expect(getMerchantWeaponIntent(world)).toEqual(firstIntent);
 
-    const declineWorld = completedMerchantWorld(2);
-    configureMerchantWeaponPurchase(declineWorld, true);
-    updateMerchantWeaponIntent(declineWorld, plan(1_000_000), GOLD_FARM_MS);
-    updateMerchantWeaponIntent(declineWorld, plan(1_000_000), GOLD_FARM_MS);
-    expect(getMerchantWeaponIntent(declineWorld).status).toBe('declined');
-    const declineControl = new SeededRandom(2);
-    declineControl.next();
-    expect(declineWorld.rng.next()).toBe(declineControl.next());
+    expect(world.rng.next()).toBe(new SeededRandom(1).next());
   });
 
-  it('implements a deterministic 50% branch and uniform seeded stock selection', () => {
-    let buys = 0;
-    const selectedCounts = [0, 0];
+  it('ranks stock by value within budget and never picks above it', () => {
     const stock = [
-      { itemId: 'iron-sword', cost: 20 },
-      { itemId: 'frost-bow', cost: 20 },
+      { itemId: 'throwing-knife', cost: 140 },
+      { itemId: 'plasma-pistol', cost: 250 },
+      { itemId: 'iron-sword', cost: 185 },
     ] as const;
 
-    for (let seed = 1; seed <= 1_000; seed += 1) {
-      const rng = new SeededRandom(seed);
-      if (rng.next() >= 0.5) continue;
-      buys += 1;
-      const world = createTestWorld({ seed });
-      world.rng.next();
-      const selected = selectMerchantWeapon(world, stock);
-      if (selected?.itemId === stock[0].itemId) {
-        selectedCounts[0]! += 1;
-      } else if (selected?.itemId === stock[1].itemId) {
-        selectedCounts[1]! += 1;
-      }
-    }
+    const rich = completedMerchantWorld(1);
+    rich.playerGold = 1_000;
+    expect(selectMerchantWeapon(rich, stock)?.itemId).toBe('plasma-pistol');
 
-    expect(buys / 1_000).toBeGreaterThanOrEqual(0.49);
-    expect(buys / 1_000).toBeLessThanOrEqual(0.51);
-    expect(selectedCounts[0]! / buys).toBeGreaterThanOrEqual(0.45);
-    expect(selectedCounts[0]! / buys).toBeLessThanOrEqual(0.55);
-    expect(selectedCounts.reduce((sum, count) => sum + count, 0)).toBe(buys);
+    // Budget between two tiers: takes the best it can actually afford.
+    const midway = completedMerchantWorld(1);
+    midway.playerGold = 200;
+    expect(selectMerchantWeapon(midway, stock)?.itemId).toBe('iron-sword');
+
+    // Broke: targets the cheapest item, i.e. the smallest deficit to farm.
+    const broke = completedMerchantWorld(1);
+    broke.playerGold = 0;
+    expect(selectMerchantWeapon(broke, stock)?.itemId).toBe('throwing-knife');
+
+    // Stock order must not matter.
+    const reversed = [...stock].reverse();
+    expect(selectMerchantWeapon(midway, reversed)?.itemId).toBe('iron-sword');
+    expect(selectMerchantWeapon(rich, [])).toBeNull();
   });
 
   it('farms only while canonical planner slack covers the selected deficit', () => {
@@ -190,7 +183,7 @@ describe('merchant weapon purchase intent', () => {
     );
   });
 
-  it('abandons the purchase intent after a hard purchase failure so it cannot loop forever', () => {
+  it('abandons on a hard purchase failure but stays retryable when merely short on gold', () => {
     const world = completedMerchantWorld(1);
     const playerEid = spawnPlayer(world, 0, 0);
     configureMerchantWeaponPurchase(world, true);
@@ -198,15 +191,21 @@ describe('merchant weapon purchase intent', () => {
     updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS);
     expect(getMerchantWeaponIntent(world).status).toBe('returning');
 
-    // Simulate spending gold after intent latches returning so purchase can fail.
+    // Being short on gold is a *temporary* condition — gold only ever grows
+    // during a run, so the intent must stay live and buy once it can afford the
+    // weapon on top of any reserve held for the higher-value spell.
     world.playerGold = 0;
     expect(executeMerchantWeaponPurchase(world, playerEid)).toBe(false);
+    expect(getMerchantWeaponIntent(world).status).toBe('returning');
+
+    // A hard failure (no inventory to receive the item) cannot resolve by
+    // waiting, so it abandons instead of retrying forever.
+    world.playerGold = 1_000;
+    expect(executeMerchantWeaponPurchase(world, playerEid + 999)).toBe(false);
     expect(getMerchantWeaponIntent(world).status).toBe('abandoned');
-    expect(executeMerchantWeaponPurchase(world, playerEid)).toBe(false);
   });
 
   it('configure off preserves latched decision, does not consume RNG or execute purchase, and re-enable resumes without a second decision', () => {
-    // Seed 1 → buys (rng.next() < 0.5) and selects a weapon (one more rng step).
     const world = completedMerchantWorld(1);
     configureMerchantWeaponPurchase(world, true);
     updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS);
@@ -227,14 +226,10 @@ describe('merchant weapon purchase intent', () => {
       status,
     });
 
-    // updateMerchantWeaponIntent while disabled must not consume RNG.
-    // Seed 1 consumed exactly 2 RNG steps so far (buy/decline + stock selection).
-    // Build a control that mirrors that and verify the next step matches.
-    const control = new SeededRandom(1);
-    control.next(); // buy/decline (seed 1 → buy)
-    control.next(); // stock selection
+    // The intent consumes no RNG at all, enabled or not: the stream position is
+    // still exactly where a fresh seeded stream would be.
     updateMerchantWeaponIntent(world, plan(1_000_000), GOLD_FARM_MS); // must be inert
-    expect(world.rng.next()).toBe(control.next()); // positions are in sync → no extra steps consumed
+    expect(world.rng.next()).toBe(new SeededRandom(1).next());
 
     // executeMerchantWeaponPurchase must return false while disabled.
     const playerEid = spawnPlayer(world, 0, 0);

@@ -10,7 +10,6 @@ import {
   getSpellBrokerOffers,
   initializeFloor1Scenario,
   purchaseSpellBrokerSpell,
-  SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import {
   forceActivateAbility,
@@ -26,15 +25,17 @@ import {
 } from '../../src/game/ai/spell-broker-intent.js';
 import type { Floor1RunPlan } from '../../src/game/ai/run-planner.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
+import { MERCHANTS_CHARM_COST } from '../../src/shared/equipmentDefs.js';
+import { FLOOR1_POST_QUEST_WEAPON_COSTS } from '../../src/shared/constants.js';
 import {
   FLOOR1_SPELL_BROKER_COST,
   SPELL_SKILL_ID_BY_SPELL_ID,
   generateFloor1SpellBrokerOffers,
 } from '../../src/shared/index.js';
-import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
 import {
   configureMerchantWeaponPurchase,
   getMerchantWeaponIntent,
+  spellPurchaseReserve,
   updateMerchantWeaponIntent,
 } from '../../src/game/ai/merchant-weapon-intent.js';
 
@@ -82,12 +83,46 @@ describe('Floor 1 Spell Broker', () => {
     expect(purchaseSpellBrokerSpell(world, player, offer!.spellId)).toBe(false);
   });
 
-  it('prices a broker spell against the existing Floor 1 shopkeeper gold budget', () => {
-    const normalFloor1Budget = SHOPKEEPER_EQUIPMENT_COST + LOOT_BOX_GOLD_BY_TIER.common;
-    expect(normalFloor1Budget).toBeGreaterThanOrEqual(FLOOR1_SPELL_BROKER_COST);
-    expect(normalFloor1Budget).toBeLessThan(FLOOR1_SPELL_BROKER_COST * 2);
+  it('prices a broker spell as the headline Floor 1 purchase', () => {
+    // The spell used to cost 35 gold against roughly 800 gold of Floor 1 income,
+    // so it was a rounding error rather than a decision. It is now the most
+    // expensive thing on the floor: strictly above every post-quest weapon,
+    // which are in turn strictly above the charm.
+    const weaponCosts = Object.values(FLOOR1_POST_QUEST_WEAPON_COSTS);
+    expect(weaponCosts.length).toBeGreaterThan(0);
+    expect(FLOOR1_SPELL_BROKER_COST).toBeGreaterThan(Math.max(...weaponCosts));
+    expect(Math.min(...weaponCosts)).toBeGreaterThan(MERCHANTS_CHARM_COST);
+
+    // Bands agreed with the designer for the Floor 1 curve. The economy gate in
+    // tests/headless/floor1-economy-gate.test.ts measures the outcome; these are
+    // the inputs, pinned so a later tweak cannot silently leave the band.
+    expect(FLOOR1_SPELL_BROKER_COST).toBeGreaterThanOrEqual(200);
+    expect(FLOOR1_SPELL_BROKER_COST).toBeLessThanOrEqual(350);
+    expect(Math.min(...weaponCosts)).toBeGreaterThanOrEqual(120);
+    expect(Math.max(...weaponCosts)).toBeLessThanOrEqual(250);
+    expect(MERCHANTS_CHARM_COST).toBeGreaterThanOrEqual(60);
+    expect(MERCHANTS_CHARM_COST).toBeLessThanOrEqual(100);
+    // The weapons must span a real spread, so picking one is a decision.
+    expect(Math.max(...weaponCosts) - Math.min(...weaponCosts)).toBeGreaterThanOrEqual(80);
   });
 });
+
+function plan(slackMs: number): Floor1RunPlan {
+  return {
+    criticalPathObjective: 'Floor clear',
+    remainingMs: 600_000,
+    estimatedRequiredMs: 600_000 - slackMs,
+    estimatedTravelMs: 0,
+    safetyBufferMs: 20_000,
+    slackMs,
+    urgency: 0,
+    segments: [],
+    routeHeadId: null,
+    nextActionableGoalId: null,
+    includedOptionalBundleIds: [],
+    droppedOptionalBundleIds: [],
+  };
+}
 
 describe('spell skills', () => {
   it('defines one usage skill and four real breakpoints for every spell', () => {
@@ -106,18 +141,34 @@ describe('spell skills', () => {
   });
 
   describe('spell broker AI intent', () => {
-    it('makes one stable seeded decision with the configured 25% chance', () => {
-      const outcomes = Array.from({ length: 1000 }, (_, index) => {
+    it('always intends to buy, stably, once the purchase is enabled', () => {
+      // The broker purchase used to be a blind 25% coin flip made before the
+      // player had any gold, so three out of four runs skipped the headline
+      // Floor 1 purchase regardless of how rich they got. The policy is now
+      // budget-aware: always intend to buy, and let the farming/abandon
+      // lifecycle decide whether the run can actually afford it.
+      const decisions = Array.from({ length: 64 }, (_, index) => {
         const world = createTestWorld({ seed: index + 1 });
         configureSpellBrokerPurchase(world, true);
         const first = ensureSpellBrokerDecision(world);
         const second = ensureSpellBrokerDecision(world);
         expect(second).toEqual(first);
-        return first.shouldBuy;
+        return first;
       });
-      const bought = outcomes.filter(Boolean).length;
-      expect(bought).toBeGreaterThanOrEqual(200);
-      expect(bought).toBeLessThanOrEqual(300);
+      expect(decisions.every((decision) => decision.shouldBuy)).toBe(true);
+      expect(decisions.every((decision) => decision.cost === FLOOR1_SPELL_BROKER_COST)).toBe(true);
+    });
+
+    it('consumes no RNG when making the decision', () => {
+      // A decision that draws from world.rng would shift the gameplay RNG
+      // stream for every downstream system depending on whether the AI shops.
+      const world = createTestWorld({ seed: 7 });
+      configureSpellBrokerPurchase(world, true);
+      const before = world.rng.next();
+      const replay = createTestWorld({ seed: 7 });
+      configureSpellBrokerPurchase(replay, true);
+      ensureSpellBrokerDecision(replay);
+      expect(replay.rng.next()).toBe(before);
     });
 
     it('stays idle until spells are unlocked then transitions to farming/returning', () => {
@@ -168,33 +219,33 @@ describe('spell skills', () => {
       expect(dropped.purchaseStatus).toBe('abandoned');
     });
 
-    it('keeps merchant fallback pending while broker is active, then resumes after broker abandonment', () => {
+    it('runs the merchant weapon purchase alongside the broker, behind a gold reserve', () => {
+      // These two purchases used to be mutually exclusive, capping a run at one
+      // optional pickup no matter how much gold it had. They now run
+      // concurrently; the spell keeps priority through a reserve so a weapon
+      // can never price the headline purchase out.
       const world = createTestWorld({ seed: 5 });
       world.goalFlags.set('floor1-shop-quest-complete', true);
+      world.featureUnlocks.spells = true;
       configureSpellBrokerPurchase(world, true);
       configureMerchantWeaponPurchase(world, true);
       const spellDecision = ensureSpellBrokerDecision(world);
       expect(spellDecision.shouldBuy).toBe(true);
 
-      updateMerchantWeaponIntent(world, null, 3_000);
-      expect(getMerchantWeaponIntent(world).status).toBe('pending');
-
-      world.featureUnlocks.spells = true;
+      // Enough for the spell but not for both: the weapon intent stays live
+      // (farming) instead of being declined, and does not eat the reserve.
+      world.playerGold = spellDecision.cost;
       updateSpellBrokerIntent(world, null, 3_000);
-      updateSpellBrokerIntent(
-        world,
-        {
-          slackMs: 0,
-          droppedOptionalBundleIds: ['spell-broker-purchase'],
-          includedOptionalBundleIds: [],
-        } as unknown as Floor1RunPlan,
-        3_000,
-      );
-      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('abandoned');
+      expect(updateSpellBrokerIntent(world, null, 3_000).purchaseStatus).toBe('returning');
+      updateMerchantWeaponIntent(world, plan(1_000_000), 3_000);
+      const reserved = getMerchantWeaponIntent(world);
+      expect(reserved.status).toBe('farming');
+      expect(spellPurchaseReserve(world)).toBe(spellDecision.cost);
 
-      updateMerchantWeaponIntent(world, null, 3_000);
-      expect(getMerchantWeaponIntent(world).status).not.toBe('pending');
-      expect(getMerchantWeaponIntent(world).status).not.toBe('declined');
+      // Enough for both: the weapon is ready to buy in the same shop visit.
+      world.playerGold = spellDecision.cost + reserved.cost;
+      updateMerchantWeaponIntent(world, plan(1_000_000), 3_000);
+      expect(getMerchantWeaponIntent(world).status).toBe('returning');
     });
 
     it('markSpellBrokerPurchased sets purchaseStatus to purchased and is idempotent', () => {
