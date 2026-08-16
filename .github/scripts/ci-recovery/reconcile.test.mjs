@@ -3791,6 +3791,70 @@ test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+// Regression (PR #2952 recovery-loop incident): the CI Recovery Router's own
+// `route` job publishes a check run on the PR head SHA. When that infrastructure
+// job fails it must NOT become a `ci-failure route` PR blocker — nothing on the
+// branch can clear it, so recovery re-dispatches until the retry budget is gone.
+test('a failed CI Recovery Router check on the head SHA is not a PR blocker', async (t) => {
+  const routerRunId = 31878782271;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'ci', status: 'completed', conclusion: 'success' },
+          { id: 2, name: 'Security checks', status: 'completed', conclusion: 'success' },
+          {
+            id: 3,
+            name: 'route',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${routerRunId}/job/94998297902`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({
+      body: {
+        workflow_runs: [
+          {
+            id: routerRunId,
+            name: 'CI Recovery Router',
+            path: '.github/workflows/ci-recovery-router.yml',
+            event: 'pull_request_target',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/${routerRunId}`,
+          },
+        ],
+      },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /dry-run would-arm-auto-merge pr=#42/);
+  assert.doesNotMatch(
+    stdout,
+    /would-assign copilot/,
+    'the router job failure must not dispatch a recovery agent',
+  );
+  assert.doesNotMatch(stdout, /route/, 'the router job must not appear as a blocker');
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
 test('live reconcile calls update-branch for a clean-BEHIND PR at ARM_AUTO_MERGE', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({

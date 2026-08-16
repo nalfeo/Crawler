@@ -1,0 +1,59 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "floor1-wounded-npc-threat-clear",
+  "task_title": "Clear threats before wounded Floor 1 NPC approaches",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Retrospective separate-model plan review approved the surgical wounded-projectile NPC threat-clear design but required additional validation/process proof. Resolutions: (1) ran/recording exact Floor 1 release-leg sweep locally because no workflow_dispatch tool is available in-session; (2) kept the generic NPC branch behavior but added focused unit coverage and will rely on verify:fast/pr-prereqs for cross-floor regressions; (3) completed the 3-apple ledger stages before PR; (4) added a direct wounded projectile NPC-approach unit assertion."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["github-copilot-code-review"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["github-copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-sonnet-5",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "32b3c3b6f27fea397fe92165b5199eaaafa3a262",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/handoffs/2026-08-15-floor1-wounded-npc-threat-clear.md",
+          "detail": "The 'Files touched' section describes wounded-projectile threat clearing as if this PR introduced it. Diffing against base fb667f16 shows the woundedProjectile/RANGED_DEFENSIVE_HP_FRACTION check was already present (inherited unchanged from the separately-merged #2971); this diff only hoists that pre-existing computation earlier in the function and adds the genuinely new shouldExpandMeleeThreatClear branch. Remedy: reword the handoff to state the projectile behavior is pre-existing/inherited and that this PR's only functional addition is the wounded-melee radius expansion."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "Empirically verified all three claims: (1) ran the exact acceptance command and confirmed bow seed 35, baseball-bat seed 34, and throwing-knife seed 44 pass as real full headless-runner simulations, non-mocked; (2) temporarily reverted only the new shouldExpandMeleeThreatClear branch and confirmed the new it.each 'expands when wounded' unit test fails and the baseball-bat seed 34 headless regression fails ('death' instead of 'victory'), then restored the file and re-ran related NPC-approach/kite unit tests to confirm the hoisting refactor introduces no regression to the pre-existing projectile path; (3) confirmed via git diff against the stated base commit that the only functional change is the hoist plus the new melee-expansion branch, reusing an existing FARM_MIN_HEALTH_FRACTION constant already used elsewhere in the file. This is a surgical, minimal, correct diff for the stated task. The only legitimate residual issue is that the handoff doc's prose slightly overstates the projectile behavior as something this PR does, which is a documentation-accuracy nit, not a code defect, and does not block."
+    }
+  }
+}

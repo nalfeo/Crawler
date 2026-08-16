@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "floor1-pistol33-contact-retreat-pin",
+  "task_title": "Fix Floor 1 seed-33 pistol contact-retreat pin regression",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Separate-model plan review (gpt-5.4) found no blockers. Three minor deferred concerns, all documented as accepted trade-offs: (1) the 60-active-poll window could release the carve-out sooner in a true pin, deferred because 60 polls bounds worst-case bleed and the headless regression + 50-seed pistol sweep show no resulting deaths; (2) displacement measures movement not escape quality, deferred because it strictly improves on the prior freeze-in-place failure and a stronger heuristic (repeated pickRetreatTarget fallback signal) is called out as a documented follow-up in the PR description; (3) the per-floor latch could couple across two different long-range contact threats on the same floor, deferred as unobserved in practice and narrower scoping (per-threat) was already rejected in the plan for reintroducing eid churn noise in an 18-enemy swarm. No fundamentally better alternative was identified (plan_divergence: minor)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "b50cf1bc208ae86b6491de302185b8a169b2a6e5",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly fixes the regression by adding robust futility tracking for the contact-retreat carve-out, preventing the AI from freezing when cornered. The implementation elegantly handles edge cases such as brief out-of-contact gaps and positional escapes without relying on wall-clock frame spans. Test coverage is exceptional, introducing both exhaustive unit tests for every behavioral edge case and a deterministic headless test to lock in the seed-33 fix. The code is highly maintainable, thoroughly documented, and strictly follows determinism and scoping rules."
+    }
+  }
+}

@@ -6,7 +6,7 @@
  * These are data-only (no Phaser imports) so `src/core` stays portable under the
  * bridge pattern — exactly like `combat-events.ts`.
  *
- * Combat-derived juice (hit sparks, crit bursts, death pops, player-hurt flash)
+ * Combat-derived juice (hit sparks, crit bursts, death pops, player-hurt pulse)
  * is synthesised by `EffectsVfx` directly from `world.combatEvents`, so those
  * kinds do NOT need to be pushed here — they exist in the union purely so the
  * renderer can share one preset switch. Non-combat signals (pickups, level-ups,
