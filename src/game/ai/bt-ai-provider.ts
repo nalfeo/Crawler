@@ -190,6 +190,8 @@ import {
   NAVIGATION_ANGLE_OFFSETS,
   RETREAT_HYSTERESIS_MULT,
   RETREAT_ARC_OFFSETS_RAD,
+  RETREAT_BREAKOUT_ARC_OFFSETS_RAD,
+  RETREAT_WEDGE_PROGRESS_FT,
   RETREAT_DISTANCE_MULTS,
   RETREAT_THREAT_SCAN_FT,
   RETREAT_MAX_PATH_VERIFICATIONS,
@@ -828,6 +830,15 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetX: number | null = null;
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
+  /**
+   * Player position at the last kite-target re-pick, used to detect a WEDGED
+   * retreat: a runner pressed into geometry moves ~0 ft between re-picks even
+   * though it is pushing at full throttle. Only a wedged retreat widens the
+   * escape scan to {@link RETREAT_BREAKOUT_ARC_OFFSETS_RAD}, so every retreat
+   * that is actually travelling keeps its existing lane selection.
+   */
+  private retreatRepickX: number | null = null;
+  private retreatRepickY: number | null = null;
   private retreatThreatEid: number | null = null;
   /**
    * Last positional progression objective the Progress behavior travelled to,
@@ -1241,6 +1252,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.rangedEmergencyRetreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
+    this.retreatRepickX = null;
+    this.retreatRepickY = null;
     this.retreatThreatEid = null;
   }
 
@@ -1396,10 +1409,27 @@ export class BehaviorTreeAI implements AIInputProvider {
         const stale =
           ctx.world.frameCount - this.retreatRepickFrame >= RETREAT_REPICK_INTERVAL_FRAMES;
         if (this.retreatTargetX === null || this.retreatTargetY === null || arrived || stale) {
-          const target = this.pickRetreatTarget(ctx.world, ctx.playerX, ctx.playerY, threat);
+          // Wedged = a full re-pick interval elapsed and the runner covered
+          // essentially no ground. That only happens when movement is being
+          // cancelled by geometry (a room corner), never while it is kiting.
+          const wedged =
+            stale &&
+            this.retreatRepickX !== null &&
+            this.retreatRepickY !== null &&
+            Math.hypot(this.retreatRepickX - ctx.playerX, this.retreatRepickY - ctx.playerY) <
+              RETREAT_WEDGE_PROGRESS_FT;
+          const target = this.pickRetreatTarget(
+            ctx.world,
+            ctx.playerX,
+            ctx.playerY,
+            threat,
+            wedged,
+          );
           this.retreatTargetX = target.x;
           this.retreatTargetY = target.y;
           this.retreatRepickFrame = ctx.world.frameCount;
+          this.retreatRepickX = ctx.playerX;
+          this.retreatRepickY = ctx.playerY;
         }
         this.decision.targetX = this.retreatTargetX;
         this.decision.targetY = this.retreatTargetY;
@@ -1644,6 +1674,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     threat: WorldTarget,
+    wedged: boolean,
   ): { x: number; y: number } {
     const awayFallback = (): { x: number; y: number } => {
       const awayX = playerX - threat.x;
@@ -1694,60 +1725,86 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.config.retreatDangerRadius *
       (RETREAT_HYSTERESIS_MULT - 1) *
       RETREAT_OBJECTIVE_BIAS_BAND_FRACTION;
-    const candidates: Array<{ x: number; y: number; score: number }> = [];
-    for (const offset of RETREAT_ARC_OFFSETS_RAD) {
-      const angle = baseAngle + offset;
-      const dirX = Math.cos(angle);
-      const dirY = Math.sin(angle);
-      for (const mult of RETREAT_DISTANCE_MULTS) {
-        const dist = this.config.scanRadius * mult;
-        const wx = playerX + dirX * dist;
-        const wy = playerY + dirY * dist;
-        const tile = floorMap.worldToTile(wx, wy);
-        if (tile.x === startTile.x && tile.y === startTile.y) continue;
-        const passable = this.doorAwarePassable
-          ? this.doorAwarePassable(tile.x, tile.y)
-          : floorMap.tileMap.isPassable(tile.x, tile.y);
-        if (!passable) continue;
-        let minEnemyDist = Number.POSITIVE_INFINITY;
-        for (const enemy of enemyPositions) {
-          const d = Math.hypot(enemy.x - wx, enemy.y - wy);
-          if (d < minEnemyDist) minEnemyDist = d;
+    const collectCandidates = (
+      offsets: readonly number[],
+    ): Array<{ x: number; y: number; score: number }> => {
+      const candidates: Array<{ x: number; y: number; score: number }> = [];
+      for (const offset of offsets) {
+        const angle = baseAngle + offset;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        for (const mult of RETREAT_DISTANCE_MULTS) {
+          const dist = this.config.scanRadius * mult;
+          const wx = playerX + dirX * dist;
+          const wy = playerY + dirY * dist;
+          const tile = floorMap.worldToTile(wx, wy);
+          if (tile.x === startTile.x && tile.y === startTile.y) continue;
+          const passable = this.doorAwarePassable
+            ? this.doorAwarePassable(tile.x, tile.y)
+            : floorMap.tileMap.isPassable(tile.x, tile.y);
+          if (!passable) continue;
+          let minEnemyDist = Number.POSITIVE_INFINITY;
+          for (const enemy of enemyPositions) {
+            const d = Math.hypot(enemy.x - wx, enemy.y - wy);
+            if (d < minEnemyDist) minEnemyDist = d;
+          }
+          // Subordinate objective bias: reward candidates that also close the gap
+          // to the remembered progression objective, so the escape lane doubles as
+          // route progress instead of ground the next progression poll has to
+          // re-walk through the same pursuers.
+          const objectiveGain = objective
+            ? objectiveDistance - Math.hypot(objective.x - wx, objective.y - wy)
+            : 0;
+          // Normalize route progress to the fraction of candidate travel that closes
+          // the objective gap. The reverse triangle inequality bounds this to [-1, 1];
+          // using half the hysteresis band keeps the full signed bias range to one
+          // band, so opposing objectives cannot outweigh materially safer lanes.
+          const objectiveProgressFraction = objectiveGain / dist;
+          const boundedObjectiveGain = maxObjectiveBias * objectiveProgressFraction;
+          candidates.push({
+            x: wx,
+            y: wy,
+            score: minEnemyDist + RETREAT_OBJECTIVE_BIAS_WEIGHT * boundedObjectiveGain,
+          });
         }
-        // Subordinate objective bias: reward candidates that also close the gap
-        // to the remembered progression objective, so the escape lane doubles as
-        // route progress instead of ground the next progression poll has to
-        // re-walk through the same pursuers.
-        const objectiveGain = objective
-          ? objectiveDistance - Math.hypot(objective.x - wx, objective.y - wy)
-          : 0;
-        // Normalize route progress to the fraction of candidate travel that closes
-        // the objective gap. The reverse triangle inequality bounds this to [-1, 1];
-        // using half the hysteresis band keeps the full signed bias range to one
-        // band, so opposing objectives cannot outweigh materially safer lanes.
-        const objectiveProgressFraction = objectiveGain / dist;
-        const boundedObjectiveGain = maxObjectiveBias * objectiveProgressFraction;
-        candidates.push({
-          x: wx,
-          y: wy,
-          score: minEnemyDist + RETREAT_OBJECTIVE_BIAS_WEIGHT * boundedObjectiveGain,
-        });
       }
-    }
+      return candidates;
+    };
 
     // Most open candidates first; A*-verify in score order and take the first
     // that is genuinely reachable. The verification budget keeps the scan cheap.
-    candidates.sort((a, b) => b.score - a.score);
-    let verifications = 0;
-    for (const candidate of candidates) {
-      if (verifications >= RETREAT_MAX_PATH_VERIFICATIONS) break;
-      const goalTile = floorMap.worldToTile(candidate.x, candidate.y);
-      verifications += 1;
-      const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
-      if (path.length > 1) {
-        const center = floorMap.tileToWorld(goalTile.x, goalTile.y);
-        return { x: center.x, y: center.y };
+    const firstReachable = (
+      candidates: Array<{ x: number; y: number; score: number }>,
+    ): { x: number; y: number } | null => {
+      candidates.sort((a, b) => b.score - a.score);
+      let verifications = 0;
+      for (const candidate of candidates) {
+        if (verifications >= RETREAT_MAX_PATH_VERIFICATIONS) break;
+        const goalTile = floorMap.worldToTile(candidate.x, candidate.y);
+        verifications += 1;
+        const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
+        if (path.length > 1) {
+          const center = floorMap.tileToWorld(goalTile.x, goalTile.y);
+          return { x: center.x, y: center.y };
+        }
       }
+      return null;
+    };
+
+    const arcTarget = firstReachable(collectCandidates(RETREAT_ARC_OFFSETS_RAD));
+    if (arcTarget) return arcTarget;
+
+    // Cornered breakout: the ±120° away-from-the-swarm arc above is entirely
+    // wall when the player is wedged in a room corner with the pack in the only
+    // open quadrant. Returning the naive away-vector there aims the runner
+    // straight into the corner it is already pressed against: collision zeroes
+    // both axes, so it stands still at full throttle while contact damage kills
+    // it (release-sweep seed 25, #2993). Widening the scan to the remaining
+    // rearward directions gives the runner a reachable lane — running past the
+    // pack beats dying wedged in stone.
+    if (wedged) {
+      const breakoutTarget = firstReachable(collectCandidates(RETREAT_BREAKOUT_ARC_OFFSETS_RAD));
+      if (breakoutTarget) return breakoutTarget;
     }
 
     return awayFallback();
@@ -3707,6 +3764,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.rangedDefensiveSpacing = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
+    this.retreatRepickX = null;
+    this.retreatRepickY = null;
     this.retreatThreatEid = null;
     this.resetContactRetreatTracking();
     this.clearLocalThreatRecovery();
@@ -9226,6 +9285,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
+    this.retreatRepickX = null;
+    this.retreatRepickY = null;
     this.retreatThreatEid = null;
     this.resetContactRetreatTracking();
     this.clearLocalThreatRecovery();
