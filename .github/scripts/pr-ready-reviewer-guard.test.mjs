@@ -163,13 +163,11 @@ function createHarness({
         pull.draft = false;
       }
     },
-    removeRequestedReviewer: async (pullNumber, reviewerLogin) => {
-      calls.push(['removeRequestedReviewer', pullNumber, reviewerLogin]);
+    requestReviewer: async (pullNumber, reviewerLogin) => {
+      calls.push(['requestReviewer', pullNumber, reviewerLogin]);
       const pull = state.pulls.find((entry) => entry.number === pullNumber);
       if (pull) {
-        pull.requested_reviewers = (pull.requested_reviewers || []).filter(
-          (reviewer) => reviewer.login !== reviewerLogin,
-        );
+        pull.requested_reviewers = [...(pull.requested_reviewers || []), { login: reviewerLogin }];
       }
     },
     listClosingIssues: async (pullNumber) => {
@@ -787,7 +785,7 @@ test('a successful repair is not repeated on the next scan because the PR is clo
   );
 });
 
-test('a successful repair preserves requested-reviewer cleanup', async () => {
+test('a successful repair does not remove a requested human reviewer', async () => {
   const harness = createHarness({
     pulls: [
       makePr({
@@ -814,13 +812,16 @@ test('a successful repair preserves requested-reviewer cleanup', async () => {
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 1,
-    reviewerRemovals: 1,
+    reviewerRemovals: 0,
   });
-  assert.deepEqual(
-    harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
-    [['removeRequestedReviewer', 42, 'NalFeO']],
+  assert.equal(
+    harness.calls.some(([name]) => name === 'requestReviewer'),
+    false,
   );
-  assert.deepEqual(harness.state.pulls[0].requested_reviewers, [{ login: 'helper' }]);
+  assert.deepEqual(harness.state.pulls[0].requested_reviewers, [
+    { login: 'helper' },
+    { login: 'NalFeO' },
+  ]);
 });
 
 test('head drift after initial eligibility skips before any write', async () => {
@@ -1291,12 +1292,13 @@ test('changed-file draft publication stays unchanged', async () => {
   );
 });
 
-test('requested-reviewer cleanup stays unchanged for non-draft pull requests', async () => {
+test('a human-gated PR preserves an existing nalfeo review request', async () => {
   const harness = createHarness({
     pulls: [
       makePr({
         draft: false,
         requested_reviewers: [{ login: 'nalfeo' }],
+        labels: [{ name: 'human-approval-required' }],
       }),
     ],
   });
@@ -1319,39 +1321,67 @@ test('requested-reviewer cleanup stays unchanged for non-draft pull requests', a
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 1,
+    reviewerRemovals: 0,
   });
-  assert.deepEqual(
-    harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
-    [['removeRequestedReviewer', 42, 'nalfeo']],
+  assert.equal(
+    harness.calls.some(([name]) => name === 'requestReviewer'),
+    false,
   );
+  assert.deepEqual(harness.state.pulls[0].requested_reviewers, [{ login: 'nalfeo' }]);
 });
 
-test('reviewer-removal failures fall back to warn-capable loggers', async () => {
+test('requests nalfeo only for every canonical human-approval gate', async () => {
+  const branchGated = makePr({
+    number: 43,
+    node_id: 'PR_43',
+    draft: false,
+    head: {
+      sha: 'b'.repeat(40),
+      ref: 'copilot/balance-telemetry-smoke',
+      repo: { full_name: REPOSITORY },
+    },
+  });
+  const closingIssueGated = makePr({
+    number: 44,
+    node_id: 'PR_44',
+    draft: false,
+    head: {
+      sha: 'c'.repeat(40),
+      ref: 'copilot/closing-issue-gate',
+      repo: { full_name: REPOSITORY },
+    },
+  });
+  const ungated = makePr({
+    number: 45,
+    node_id: 'PR_45',
+    draft: false,
+    head: {
+      sha: 'd'.repeat(40),
+      ref: 'copilot/ungated',
+      repo: { full_name: REPOSITORY },
+    },
+  });
   const harness = createHarness({
     pulls: [
-      makePr({
-        draft: false,
-        requested_reviewers: [{ login: 'nalfeo' }],
-      }),
+      makePr({ draft: false, labels: [{ name: 'human-approval-required' }] }),
+      branchGated,
+      closingIssueGated,
+      ungated,
     ],
+    linkedIssuesByPull: new Map([
+      [42, []],
+      [43, []],
+      [44, [makeLinkedIssue({ labels: [{ name: 'human-approval-required' }] })]],
+      [45, []],
+    ]),
   });
-  harness.api.removeRequestedReviewer = async () => {
-    throw new Error('remove failed');
-  };
-  const warnings = [];
+
   const summary = await runPrReadyReviewerGuard({
     repository: REPOSITORY,
     reviewerLoginRaw: 'nalfeo',
-    eventName: 'pull_request_target',
-    payloadAction: 'review_requested',
-    triggeringPullNumber: 42,
+    eventName: 'schedule',
     api: harness.api,
-    log: {
-      info: () => {},
-      warn: (message) => warnings.push(message),
-      error: () => {},
-    },
+    log: harness.log,
     now: NOW,
   });
 
@@ -1360,11 +1390,46 @@ test('reviewer-removal failures fall back to warn-capable loggers', async () => 
     emptyDraftRepairs: 0,
     reviewerRemovals: 0,
   });
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /Could not process reviewers for PR #42/);
+  assert.deepEqual(
+    harness.calls.filter(([name]) => name === 'requestReviewer'),
+    [
+      ['requestReviewer', 42, 'nalfeo'],
+      ['requestReviewer', 43, 'nalfeo'],
+      ['requestReviewer', 44, 'nalfeo'],
+    ],
+  );
+  assert.deepEqual(harness.state.pulls[3].requested_reviewers, []);
 });
 
-test('a repair failure does not suppress unchanged publication and reviewer cleanup for other PRs', async () => {
+test('human-reviewer request failures fail the guard without removing reviewers', async () => {
+  const harness = createHarness({
+    pulls: [
+      makePr({
+        draft: false,
+        labels: [{ name: 'human-approval-required' }],
+      }),
+    ],
+  });
+  harness.api.requestReviewer = async () => {
+    throw new Error('request failed');
+  };
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'pull_request_target',
+      payloadAction: 'review_requested',
+      triggeringPullNumber: 42,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    /Failed to request a human reviewer for 1 PR\(s\)/,
+  );
+  assert.deepEqual(harness.state.pulls[0].requested_reviewers, []);
+});
+
+test('a repair failure does not suppress unchanged publication for other PRs', async () => {
   const failingPr = makePr();
   const publishPr = makePr({
     number: 43,
@@ -1374,7 +1439,6 @@ test('a repair failure does not suppress unchanged publication and reviewer clea
       ref: 'copilot/fix-real-work',
       repo: { full_name: REPOSITORY },
     },
-    requested_reviewers: [{ login: 'nalfeo' }],
   });
   const harness = createHarness({
     pulls: [failingPr, publishPr],
@@ -1418,16 +1482,9 @@ test('a repair failure does not suppress unchanged publication and reviewer clea
     harness.calls.some(([name, value]) => name === 'markReadyForReview' && value === 'PR_43'),
     true,
   );
-  assert.equal(
-    harness.calls.some(
-      ([name, pullNumber, reviewer]) =>
-        name === 'removeRequestedReviewer' && pullNumber === 43 && reviewer === 'nalfeo',
-    ),
-    true,
-  );
 });
 
-test('a repair failure still attempts requested-reviewer cleanup for the repaired draft first', async () => {
+test('a repair failure does not remove the requested human reviewer', async () => {
   const harness = createHarness({
     pulls: [
       makePr({
@@ -1455,9 +1512,9 @@ test('a repair failure still attempts requested-reviewer cleanup for the repaire
     /Failed to repair 1 empty Copilot draft PR shell\(s\)/,
   );
 
-  assert.deepEqual(
-    harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
-    [['removeRequestedReviewer', 42, 'nalfeo']],
+  assert.equal(
+    harness.calls.some(([name]) => name === 'requestReviewer'),
+    false,
   );
 });
 
@@ -1884,7 +1941,7 @@ test('event-scoped run uses getPull and skips listOpenPulls', async () => {
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 1,
+    reviewerRemovals: 0,
   });
   // Must use getPull (single-PR fetch), not listOpenPulls
   assert.ok(
@@ -1898,14 +1955,13 @@ test('event-scoped run uses getPull and skips listOpenPulls', async () => {
   );
   // Only PR #42 was processed; PR #99 must not be touched
   assert.equal(
-    harness.calls.some(([name, num]) => name === 'removeRequestedReviewer' && num === 99),
+    harness.calls.some(([name, num]) => name === 'requestReviewer' && num === 99),
     false,
     'PR #99 must not be processed in event-scoped run',
   );
-  // PR #42 reviewer was cleaned up
-  assert.deepEqual(
-    harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
-    [['removeRequestedReviewer', 42, 'nalfeo']],
+  assert.equal(
+    harness.calls.some(([name]) => name === 'requestReviewer'),
+    false,
   );
 });
 
@@ -1989,7 +2045,7 @@ test('event-scoped run skips immediately when triggering PR is not open', async 
     false,
   );
   assert.equal(
-    harness.calls.some(([name]) => name === 'removeRequestedReviewer'),
+    harness.calls.some(([name]) => name === 'requestReviewer'),
     false,
   );
   assert.ok(harness.logs.some(([, msg]) => msg.includes('No open PRs found')));
