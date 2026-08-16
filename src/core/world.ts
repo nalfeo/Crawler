@@ -219,6 +219,144 @@ export function markGoldLedgerFloorExit(world: GameWorld): void {
     world.goldLedger.earnedFromDrops + world.goldLedger.earnedFromLootBoxes;
 }
 
+/** One item a vendor had on offer at the moment it was visited. */
+export interface VendorStockEntry {
+  readonly itemId: string;
+  readonly cost: number;
+}
+
+/** A single interaction with a vendor, with the inventory it was offering. */
+export interface VendorVisitRecord {
+  /** Stable vendor identity (e.g. `floor1-merchant`, `floor1-spell-broker`). */
+  readonly vendorId: string;
+  /** Simulated game time (ms) of the visit. */
+  readonly gameTimeMs: number;
+  /** Simulation frame of the visit; also dedupes same-frame re-entry. */
+  readonly frame: number;
+  /** Gold the player held on arrival — the budget the decision was made against. */
+  readonly playerGold: number;
+  /** Inventory the vendor was offering at that moment. */
+  readonly stock: readonly VendorStockEntry[];
+}
+
+/**
+ * What the shopper decided at a vendor.
+ *
+ * `wanted` — intended to buy a specific item (the intent was formed).
+ * `purchased` — the intent completed and gold changed hands.
+ * `unaffordable` — wanted the item but could not pay for it yet.
+ * `declined` — chose not to buy (e.g. no weapon-class switch this run).
+ * `abandoned` — gave the intent up (deficit unfarmable inside the run budget).
+ */
+export type VendorDecisionOutcome =
+  | 'wanted'
+  | 'purchased'
+  | 'unaffordable'
+  | 'declined'
+  | 'abandoned';
+
+/** A decision made at a vendor, and the budget it was made against. */
+export interface VendorDecisionRecord {
+  readonly vendorId: string;
+  /** Item the decision was about; `null` when no item could be chosen. */
+  readonly itemId: string | null;
+  /** Asking price of `itemId` (0 when unknown). */
+  readonly cost: number;
+  readonly outcome: VendorDecisionOutcome;
+  /** Gold held when the decision was made. */
+  readonly playerGold: number;
+  readonly gameTimeMs: number;
+  readonly frame: number;
+  /** Short machine-stable reason tag, e.g. `insufficient-gold`. */
+  readonly reason: string;
+}
+
+/**
+ * Deterministic per-run vendor telemetry: every merchant visit (with the
+ * inventory on offer) and every shopping decision, including the ones that
+ * *wanted* to buy but could not pay. Purely observational — nothing in the
+ * simulation reads it back, so recording can never change gameplay.
+ */
+export interface VendorLedger {
+  visits: VendorVisitRecord[];
+  decisions: VendorDecisionRecord[];
+  /** Visits/decisions beyond {@link VENDOR_LEDGER_MAX_ENTRIES}, counted only. */
+  droppedVisits: number;
+  droppedDecisions: number;
+}
+
+/**
+ * Cap on retained visit/decision records. A run interacts with a vendor many
+ * times (the AI re-targets on a cooldown), so the tail is bounded and the
+ * overflow is counted instead of retained — RunStats must stay a small,
+ * serializable object.
+ */
+export const VENDOR_LEDGER_MAX_ENTRIES = 64;
+
+/** Create an empty vendor ledger. */
+export function createVendorLedger(): VendorLedger {
+  return { visits: [], decisions: [], droppedVisits: 0, droppedDecisions: 0 };
+}
+
+/**
+ * Record a vendor visit. Same-vendor re-entry inside one frame collapses into
+ * a single visit so a meet + purchase in the same tick is not double counted.
+ */
+export function recordVendorVisit(
+  world: GameWorld,
+  vendorId: string,
+  stock: readonly VendorStockEntry[],
+): void {
+  const ledger = world.vendorLedger;
+  const last = ledger.visits[ledger.visits.length - 1];
+  if (last && last.vendorId === vendorId && last.frame === world.frameCount) {
+    return;
+  }
+  if (ledger.visits.length >= VENDOR_LEDGER_MAX_ENTRIES) {
+    ledger.droppedVisits += 1;
+    return;
+  }
+  ledger.visits.push({
+    vendorId,
+    gameTimeMs: world.elapsedMs,
+    frame: world.frameCount,
+    playerGold: world.playerGold,
+    stock: stock.map((entry) => ({ itemId: entry.itemId, cost: entry.cost })),
+  });
+}
+
+/**
+ * Record a vendor decision. Consecutive identical decisions (same vendor, item,
+ * outcome and reason) collapse, because the AI re-polls a pending intent every
+ * tick — the ledger records state *changes*, not poll counts.
+ */
+export function recordVendorDecision(
+  world: GameWorld,
+  decision: Omit<VendorDecisionRecord, 'gameTimeMs' | 'frame' | 'playerGold'>,
+): void {
+  const ledger = world.vendorLedger;
+  const last = ledger.decisions[ledger.decisions.length - 1];
+  if (
+    last &&
+    last.vendorId === decision.vendorId &&
+    last.itemId === decision.itemId &&
+    last.outcome === decision.outcome &&
+    last.reason === decision.reason
+  ) {
+    return;
+  }
+  if (ledger.decisions.length >= VENDOR_LEDGER_MAX_ENTRIES) {
+    ledger.droppedDecisions += 1;
+    return;
+  }
+  ledger.decisions.push({
+    ...decision,
+    playerGold: world.playerGold,
+    gameTimeMs: world.elapsedMs,
+    frame: world.frameCount,
+  });
+}
+
 export interface GameWorld {
   /** The bitecs ECS world instance */
   ecs: ReturnType<typeof createBitecsWorld>;
@@ -458,6 +596,13 @@ export interface GameWorld {
    * `floorScenario`. Drives the Floor 1 pricing gate.
    */
   goldLedger: GoldLedger;
+  /**
+   * Deterministic per-run vendor telemetry: merchant visits (with the stock on
+   * offer) and shopping decisions, including intents that could not be paid
+   * for. Written by the Floor 1 vendor entry points and the AI purchase
+   * intents; read only by run-stats assembly.
+   */
+  vendorLedger: VendorLedger;
   /**
    * Running maximum gold balance seen this floor session. Updated by `achievementSystem`
    * each tick so the "Hoarder's Ledger" run-global achievement can fire even after the
@@ -810,6 +955,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerGold: 0,
     lootLedger: createLootLedger(),
     goldLedger: createGoldLedger(),
+    vendorLedger: createVendorLedger(),
     peakGold: 0,
     floorMap: null,
     floorId: '',

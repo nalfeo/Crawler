@@ -75,6 +75,7 @@ import {
 } from './floor1-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
+import { computeVendorInteractions } from './vendor-interactions.js';
 import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
 import {
   configureSettlementReturnRouting,
@@ -1559,6 +1560,7 @@ export async function runHeadless(
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
       goldEconomy: computeGoldEconomy(world),
+      vendors: computeVendorInteractions(world),
       ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
     });
     if (mergedConfig.onFinish) {
@@ -1663,6 +1665,7 @@ export async function runHeadless(
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),
     goldEconomy: computeGoldEconomy(world),
+    vendors: computeVendorInteractions(world),
     ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
   });
 

@@ -1,7 +1,10 @@
 import type { GameWorld } from '../../core/world.js';
+import { recordVendorDecision } from '../../core/world.js';
 import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { hasItem } from '../../shared/inventory.js';
+import { SeededRandom, hashStringToSeed } from '../../shared/random.js';
 import {
+  FLOOR1_MERCHANT_VENDOR_ID,
   getShopkeeperPostQuestStock,
   purchaseShopkeeperPostQuestItem,
   type ShopkeeperStockItem,
@@ -68,6 +71,30 @@ export function spellPurchaseReserve(world: GameWorld): number {
   return isSpellBrokerPurchaseActive(spellIntent) ? spellIntent.cost : 0;
 }
 
+/**
+ * Probability that a run is willing to switch its main weapon class at the
+ * merchant at all.
+ *
+ * Buying the merchant's rack is not a routine gold sink: it re-classes the run
+ * (combat behavior, stat allocation, and every later equipment decision follow
+ * the main weapon), so it must read as an occasional, deliberate pivot rather
+ * than something every contestant does on the way past. The roll gates the
+ * *willingness*; affordability and the run deadline still decide whether a
+ * willing run actually completes the switch.
+ */
+export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
+
+/**
+ * Deterministic per-run willingness roll, drawn from a dedicated
+ * seed-derived stream so it consumes **no** gameplay RNG (rule #3/#4): the same
+ * seed always makes the same shopping choice, and enabling the intent cannot
+ * shift the simulation's RNG sequence.
+ */
+export function rollsMerchantWeaponSwitch(seed: number): boolean {
+  const rng = new SeededRandom(hashStringToSeed(`${seed}:floor1-merchant-weapon-switch`));
+  return rng.next() < MERCHANT_WEAPON_SWITCH_CHANCE;
+}
+
 export function selectMerchantWeapon(
   world: GameWorld,
   stock: readonly ShopkeeperStockItem[],
@@ -108,15 +135,37 @@ export function updateMerchantWeaponIntent(
   }
 
   if (!intent.decisionMade) {
-    // Budget-aware policy: always intend to convert leftover gold into power.
-    // Affordability is resolved by the farming/abandon lifecycle below, not by
-    // a coin flip. The selection is made against gold that remains *after* the
-    // higher-value spell purchase, because `selectMerchantWeapon` subtracts the
-    // spell reserve from its budget.
+    // Switching main weapon class is a run-defining pivot, not a routine
+    // purchase, so a run first rolls whether it wants one at all (see
+    // MERCHANT_WEAPON_SWITCH_CHANCE). A declined run keeps its starter and its
+    // gold; a willing run's affordability is then resolved by the
+    // farming/abandon lifecycle below, not by a second coin flip. The
+    // selection is made against gold that remains *after* the higher-value
+    // spell purchase, because `selectMerchantWeapon` subtracts the spell
+    // reserve from its budget.
+    if (!rollsMerchantWeaponSwitch(world.seed)) {
+      intent = { ...intent, decisionMade: true, status: 'declined' };
+      intents.set(world, intent);
+      recordVendorDecision(world, {
+        vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+        itemId: null,
+        cost: 0,
+        outcome: 'declined',
+        reason: 'no-weapon-class-switch-this-run',
+      });
+      return intent;
+    }
     const selected = selectMerchantWeapon(world, getShopkeeperPostQuestStock(world));
     if (!selected) {
       intent = { ...intent, decisionMade: true, status: 'abandoned' };
       intents.set(world, intent);
+      recordVendorDecision(world, {
+        vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+        itemId: null,
+        cost: 0,
+        outcome: 'abandoned',
+        reason: 'no-stock',
+      });
       return intent;
     }
     intent = {
@@ -126,8 +175,16 @@ export function updateMerchantWeaponIntent(
       itemId: selected.itemId,
       cost: selected.cost,
     };
+    recordVendorDecision(world, {
+      vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+      itemId: selected.itemId,
+      cost: selected.cost,
+      outcome: 'wanted',
+      reason: 'weapon-class-switch',
+    });
   }
 
+  const previousStatus = intent.status;
   const deficit = Math.max(0, intent.cost + spellPurchaseReserve(world) - world.playerGold);
   if (deficit === 0) {
     intent = { ...intent, status: 'returning' };
@@ -143,6 +200,15 @@ export function updateMerchantWeaponIntent(
     intent = { ...intent, status: 'abandoned' };
   } else {
     intent = { ...intent, status: 'farming' };
+  }
+  if (intent.status === 'abandoned' && previousStatus !== 'abandoned') {
+    recordVendorDecision(world, {
+      vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+      itemId: intent.itemId,
+      cost: intent.cost,
+      outcome: 'abandoned',
+      reason: 'deficit-unfarmable-in-budget',
+    });
   }
   intents.set(world, intent);
   return intent;
@@ -167,6 +233,13 @@ export function executeMerchantWeaponPurchase(world: GameWorld, playerEid: numbe
     !hasItem(bag, intent.itemId) &&
     world.playerGold - intent.cost < spellPurchaseReserve(world)
   ) {
+    recordVendorDecision(world, {
+      vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+      itemId: intent.itemId,
+      cost: intent.cost,
+      outcome: 'unaffordable',
+      reason: 'reserved-for-spell',
+    });
     return false;
   }
   if (

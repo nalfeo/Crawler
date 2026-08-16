@@ -52,8 +52,8 @@ import {
   DeathTimer,
   Npc,
 } from '../core/components.js';
-import type { GameWorld } from '../core/world.js';
-import { markGoldLedgerFloorExit } from '../core/world.js';
+import type { GameWorld, VendorStockEntry } from '../core/world.js';
+import { markGoldLedgerFloorExit, recordVendorDecision, recordVendorVisit } from '../core/world.js';
 import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   getFloor1StarterWeaponPool,
@@ -4119,6 +4119,7 @@ export function getNpcQuestIndicatorState(world: GameWorld, npcId: string): NpcQ
  * before then the merchant just sends them back to the Goon.
  */
 export function meetShopkeeper(world: GameWorld): void {
+  recordVendorVisit(world, FLOOR1_MERCHANT_VENDOR_ID, getFloor1MerchantStock(world));
   if (!hasCompletedWelcomeGoonQuest(world)) {
     return;
   }
@@ -4136,6 +4137,7 @@ export function meetShopkeeper(world: GameWorld): void {
  * the Tutorial Goon's opening quest.
  */
 export function meetSpellQuestGiver(world: GameWorld): void {
+  recordVendorVisit(world, FLOOR1_SPELL_BROKER_VENDOR_ID, getFloor1SpellBrokerStock(world));
   if (!hasCompletedWelcomeGoonQuest(world)) {
     return;
   }
@@ -4179,6 +4181,35 @@ export function returnShopkeeperPrize(world: GameWorld, playerEid: number): bool
 export const SHOPKEEPER_EQUIPMENT_COST = MERCHANTS_CHARM_COST;
 export const SPELL_BROKER_SPELL_COST = FLOOR1_SPELL_BROKER_COST;
 
+/** Stable vendor identities used by the run-stats vendor ledger. */
+export const FLOOR1_MERCHANT_VENDOR_ID = 'floor1-merchant';
+export const FLOOR1_SPELL_BROKER_VENDOR_ID = 'floor1-spell-broker';
+
+/**
+ * Inventory the Floor 1 merchant is offering right now: the charm before his
+ * errand is finished, his post-quest weapon rack afterwards. Observational
+ * only — used to snapshot vendor stock into run stats.
+ */
+export function getFloor1MerchantStock(world: GameWorld): VendorStockEntry[] {
+  if (world.goalFlags.get('floor1-shop-quest-complete') === true) {
+    return getShopkeeperPostQuestStock(world).map((entry) => ({
+      itemId: entry.itemId,
+      cost: entry.cost,
+    }));
+  }
+  if (world.goalFlags.get('floor1-shop-prize-returned') === true) {
+    return [{ itemId: SHOPKEEPER_EQUIPMENT_ITEM_ID, cost: SHOPKEEPER_EQUIPMENT_COST }];
+  }
+  return [];
+}
+
+/** Spells the Floor 1 broker still has on offer (purchased offers excluded). */
+export function getFloor1SpellBrokerStock(world: GameWorld): VendorStockEntry[] {
+  return getSpellBrokerOffers(world)
+    .filter((offer) => !offer.purchased)
+    .map((offer) => ({ itemId: offer.spellId, cost: offer.cost }));
+}
+
 /**
  * Buy the merchant's charm with gold. Adds the (equippable) item to the bag.
  * Returns true on a successful purchase.
@@ -4197,12 +4228,27 @@ export function purchaseShopkeeperEquipment(world: GameWorld, playerEid: number)
   if (hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
     return false;
   }
+  recordVendorVisit(world, FLOOR1_MERCHANT_VENDOR_ID, getFloor1MerchantStock(world));
   if (world.playerGold < SHOPKEEPER_EQUIPMENT_COST) {
+    recordVendorDecision(world, {
+      vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+      itemId: SHOPKEEPER_EQUIPMENT_ITEM_ID,
+      cost: SHOPKEEPER_EQUIPMENT_COST,
+      outcome: 'unaffordable',
+      reason: 'insufficient-gold',
+    });
     return false;
   }
   world.playerGold -= SHOPKEEPER_EQUIPMENT_COST;
   world.goldLedger.spentOnCharm += SHOPKEEPER_EQUIPMENT_COST;
   world.goldLedger.charmPurchases += 1;
+  recordVendorDecision(world, {
+    vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+    itemId: SHOPKEEPER_EQUIPMENT_ITEM_ID,
+    cost: SHOPKEEPER_EQUIPMENT_COST,
+    outcome: 'purchased',
+    reason: 'charm',
+  });
   addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
   return true;
 }
@@ -4227,12 +4273,27 @@ export function purchaseShopkeeperPostQuestItem(
   if (!stockEntry || !getItemById(itemId)) {
     return false;
   }
+  recordVendorVisit(world, FLOOR1_MERCHANT_VENDOR_ID, getFloor1MerchantStock(world));
   if (world.playerGold < stockEntry.cost) {
+    recordVendorDecision(world, {
+      vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+      itemId,
+      cost: stockEntry.cost,
+      outcome: 'unaffordable',
+      reason: 'insufficient-gold',
+    });
     return false;
   }
   world.playerGold -= stockEntry.cost;
   world.goldLedger.spentOnMerchantWeapon += stockEntry.cost;
   world.goldLedger.merchantWeaponPurchases += 1;
+  recordVendorDecision(world, {
+    vendorId: FLOOR1_MERCHANT_VENDOR_ID,
+    itemId,
+    cost: stockEntry.cost,
+    outcome: 'purchased',
+    reason: 'weapon-switch',
+  });
   addItem(bag, itemId, 1);
   return true;
 }
@@ -4400,13 +4461,34 @@ export function purchaseSpellBrokerSpell(
   // for the lifetime of this run.  A missing scenario means the floor was
   // never initialized — reject cleanly rather than mutating a discarded array.
   if (!world.floorScenario?.spellBrokerOffers) return false;
-  if (!canPurchaseSpellBrokerSpell(world, playerEid, spellId)) return false;
+  if (!canPurchaseSpellBrokerSpell(world, playerEid, spellId)) {
+    const wanted = getSpellBrokerOffers(world).find((entry) => entry.spellId === spellId);
+    if (wanted && !wanted.purchased && world.playerGold < wanted.cost) {
+      recordVendorVisit(world, FLOOR1_SPELL_BROKER_VENDOR_ID, getFloor1SpellBrokerStock(world));
+      recordVendorDecision(world, {
+        vendorId: FLOOR1_SPELL_BROKER_VENDOR_ID,
+        itemId: spellId,
+        cost: wanted.cost,
+        outcome: 'unaffordable',
+        reason: 'insufficient-gold',
+      });
+    }
+    return false;
+  }
   const offer = world.floorScenario.spellBrokerOffers.find((entry) => entry.spellId === spellId);
   if (!offer) return false;
+  recordVendorVisit(world, FLOOR1_SPELL_BROKER_VENDOR_ID, getFloor1SpellBrokerStock(world));
   memorizeSpell(world, playerEid, spellId);
   world.playerGold -= offer.cost;
   world.goldLedger.spentOnSpell += offer.cost;
   world.goldLedger.spellPurchases += 1;
+  recordVendorDecision(world, {
+    vendorId: FLOOR1_SPELL_BROKER_VENDOR_ID,
+    itemId: spellId,
+    cost: offer.cost,
+    outcome: 'purchased',
+    reason: 'spell',
+  });
   offer.purchased = true;
   return true;
 }

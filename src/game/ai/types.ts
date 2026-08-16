@@ -612,6 +612,60 @@ export interface MetaProgressionMetrics {
 }
 
 /**
+ * Per-run merchant evidence: every vendor visit with the inventory on offer,
+ * and every shopping decision — including intents that wanted an item but could
+ * not pay for it. Structurally mirrors the core `VendorLedger` records so the
+ * simulation layer can copy them straight through.
+ */
+export interface VendorInteractionSummary {
+  /** Retained visits, oldest first (capped; see `visitCount`). */
+  readonly visits: readonly VendorVisitEntry[];
+  /** Retained decisions, oldest first (capped; see `decisionCount`). */
+  readonly decisions: readonly VendorDecisionEntry[];
+  /** Total visits observed, including any dropped past the retention cap. */
+  readonly visitCount: number;
+  /** Total decisions observed, including any dropped past the retention cap. */
+  readonly decisionCount: number;
+  /** Visits per vendor id, including dropped-record vendors' retained share. */
+  readonly visitsByVendor: Record<string, number>;
+  /** Decision outcomes by kind across the retained decisions. */
+  readonly outcomeCounts: Record<VendorDecisionOutcome, number>;
+}
+
+/** One item a vendor was offering when it was visited. */
+export interface VendorStockEntry {
+  readonly itemId: string;
+  readonly cost: number;
+}
+
+/** A single vendor visit with the stock and budget it was made against. */
+export interface VendorVisitEntry {
+  readonly vendorId: string;
+  readonly gameTimeMs: number;
+  readonly playerGold: number;
+  readonly stock: readonly VendorStockEntry[];
+}
+
+/** Outcome of one shopping decision at a vendor. */
+export type VendorDecisionOutcome =
+  | 'wanted'
+  | 'purchased'
+  | 'unaffordable'
+  | 'declined'
+  | 'abandoned';
+
+/** A single shopping decision, and the gold it was decided against. */
+export interface VendorDecisionEntry {
+  readonly vendorId: string;
+  readonly itemId: string | null;
+  readonly cost: number;
+  readonly outcome: VendorDecisionOutcome;
+  readonly playerGold: number;
+  readonly gameTimeMs: number;
+  readonly reason: string;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -712,6 +766,12 @@ export interface RunStats {
    * construct RunStats manually; `runHeadless` always sets it.
    */
   goldEconomy?: GoldEconomyMetrics;
+  /**
+   * Vendor inventory, visits, and shopping decisions observed this run
+   * (including wanted-but-unaffordable intents). Optional because pre-existing
+   * test fixtures construct RunStats manually; `runHeadless` always sets it.
+   */
+  vendors?: VendorInteractionSummary;
   /** Skill milestone ability grants observed during this run. */
   skills?: SkillRunMetrics;
   /** Timestamped reward milestones captured by the deterministic headless runner. */

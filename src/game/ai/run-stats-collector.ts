@@ -2,6 +2,7 @@ import type { GameWorld } from '../../core/world.js';
 import { assembleRunStats } from '../../shared/run-stats-collector.js';
 import type { SessionRecorderStats } from '../../shared/session-recorder-types.js';
 import type { RunStats } from './types.js';
+import { computeVendorInteractions } from './vendor-interactions.js';
 
 /**
  * Builds the common RunStats shape for a human run. World-specific harvesters
@@ -58,6 +59,7 @@ export function collectHumanRunStats(
     totalGold: world.playerGold,
     startingWeapon:
       world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0] ?? 'unknown',
+    vendors: computeVendorInteractions(world),
   };
   return assembleRunStats(stats);
 }
