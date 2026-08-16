@@ -1,5 +1,39 @@
 [
   {
+    "commit": "a9ec7f2e3846f58aab236c576b113bcd92a240d5",
+    "commitDate": "2026-08-16T07:36:09Z",
+    "commitSubject": "Accept a real owner PR review at the human approval gate (#3002)",
+    "capturedAt": "2026-08-16T08:44:05.110Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31935008432",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/a9ec7f2e3846f58aab236c576b113bcd92a240d5.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0,
+        "totalWins": 0,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.013333333333333334,
+        "totalWins": 2,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 33.95,
+      "gatePass": false,
+      "path": "by-sha/a9ec7f2e3846f58aab236c576b113bcd92a240d5.fun-report.json"
+    }
+  },
+  {
     "commit": "2deee6c8f0a0a316ec2e04795959182f9167eb40",
     "commitDate": "2026-08-16T01:01:20Z",
     "commitSubject": "Release a cornered contact-range retreat that cannot move the player (#2996)",
