@@ -1,0 +1,1773 @@
+[
+  {
+    "speciesId": "ember-charger",
+    "affinity": "ember",
+    "fightingStyle": "charger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Emberkit",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Cinderdash",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Pyrocourser",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.ember-charger.l1",
+      "8": "f3.ember-charger.l8",
+      "16": "f3.ember-charger.l16",
+      "25": "f3.ember-charger.l25",
+      "34": "f3.ember-charger.l34"
+    },
+    "innateAbilityName": "Ember Dash",
+    "adultSignatureAbilityName": "Cinder Blitz"
+  },
+  {
+    "speciesId": "ember-bruiser",
+    "affinity": "ember",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Coalcub",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Slagmaul",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Magmabrute",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.ember-bruiser.l1",
+      "8": "f3.ember-bruiser.l8",
+      "16": "f3.ember-bruiser.l16",
+      "25": "f3.ember-bruiser.l25",
+      "34": "f3.ember-bruiser.l34"
+    },
+    "innateAbilityName": "Slag Slam",
+    "adultSignatureAbilityName": "Magma Crush"
+  },
+  {
+    "speciesId": "ember-slinger",
+    "affinity": "ember",
+    "fightingStyle": "slinger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Sparktick",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Cinderflinger",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Ashmarksman",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.ember-slinger.l1",
+      "8": "f3.ember-slinger.l8",
+      "16": "f3.ember-slinger.l16",
+      "25": "f3.ember-slinger.l25",
+      "34": "f3.ember-slinger.l34"
+    },
+    "innateAbilityName": "Spark Shot",
+    "adultSignatureAbilityName": "Cinder Volley"
+  },
+  {
+    "speciesId": "ember-burster",
+    "affinity": "ember",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Fizzlepop",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Emberbloomer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Pyronova",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.ember-burster.l1",
+      "8": "f3.ember-burster.l8",
+      "16": "f3.ember-burster.l16",
+      "25": "f3.ember-burster.l25",
+      "34": "f3.ember-burster.l34"
+    },
+    "innateAbilityName": "Ember Burst",
+    "adultSignatureAbilityName": "Pyre Nova"
+  },
+  {
+    "speciesId": "ember-pouncer",
+    "affinity": "ember",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Flarenib",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Blazepouncer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Infernostalker",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.ember-pouncer.l1",
+      "8": "f3.ember-pouncer.l8",
+      "16": "f3.ember-pouncer.l16",
+      "25": "f3.ember-pouncer.l25",
+      "34": "f3.ember-pouncer.l34"
+    },
+    "innateAbilityName": "Flare Pounce",
+    "adultSignatureAbilityName": "Inferno Ambush"
+  },
+  {
+    "speciesId": "ember-warden",
+    "affinity": "ember",
+    "fightingStyle": "warden",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Slagshell",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Forgeguard",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Emberbastion",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.ember-warden.l1",
+      "8": "f3.ember-warden.l8",
+      "16": "f3.ember-warden.l16",
+      "25": "f3.ember-warden.l25",
+      "34": "f3.ember-warden.l34"
+    },
+    "innateAbilityName": "Cinder Guard",
+    "adultSignatureAbilityName": "Forge Wall"
+  },
+  {
+    "speciesId": "ember-kindler",
+    "affinity": "ember",
+    "fightingStyle": "kindler",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Warmwisp",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Hearthtender",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Solacemender",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.ember-kindler.l1",
+      "8": "f3.ember-kindler.l8",
+      "16": "f3.ember-kindler.l16",
+      "25": "f3.ember-kindler.l25",
+      "34": "f3.ember-kindler.l34"
+    },
+    "innateAbilityName": "Warm Mend",
+    "adultSignatureAbilityName": "Hearthsong"
+  },
+  {
+    "speciesId": "bloom-charger",
+    "affinity": "bloom",
+    "fightingStyle": "charger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Sproutkit",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Vinedash",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Thorncourser",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.bloom-charger.l1",
+      "8": "f3.bloom-charger.l8",
+      "16": "f3.bloom-charger.l16",
+      "25": "f3.bloom-charger.l25",
+      "34": "f3.bloom-charger.l34"
+    },
+    "innateAbilityName": "Vine Dash",
+    "adultSignatureAbilityName": "Thorn Rush"
+  },
+  {
+    "speciesId": "bloom-bruiser",
+    "affinity": "bloom",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Budcub",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Bramblemaul",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Timberbrute",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.bloom-bruiser.l1",
+      "8": "f3.bloom-bruiser.l8",
+      "16": "f3.bloom-bruiser.l16",
+      "25": "f3.bloom-bruiser.l25",
+      "34": "f3.bloom-bruiser.l34"
+    },
+    "innateAbilityName": "Bramble Slam",
+    "adultSignatureAbilityName": "Timber Crush"
+  },
+  {
+    "speciesId": "bloom-slinger",
+    "affinity": "bloom",
+    "fightingStyle": "slinger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Seedtick",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Thornflinger",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Sporemarksman",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.bloom-slinger.l1",
+      "8": "f3.bloom-slinger.l8",
+      "16": "f3.bloom-slinger.l16",
+      "25": "f3.bloom-slinger.l25",
+      "34": "f3.bloom-slinger.l34"
+    },
+    "innateAbilityName": "Seed Shot",
+    "adultSignatureAbilityName": "Spore Volley"
+  },
+  {
+    "speciesId": "bloom-burster",
+    "affinity": "bloom",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Sporepop",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Petalbloomer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Bloomnova",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.bloom-burster.l1",
+      "8": "f3.bloom-burster.l8",
+      "16": "f3.bloom-burster.l16",
+      "25": "f3.bloom-burster.l25",
+      "34": "f3.bloom-burster.l34"
+    },
+    "innateAbilityName": "Petal Burst",
+    "adultSignatureAbilityName": "Bloom Nova"
+  },
+  {
+    "speciesId": "bloom-pouncer",
+    "affinity": "bloom",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Fernnib",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Vinepouncer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Bramblestalker",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.bloom-pouncer.l1",
+      "8": "f3.bloom-pouncer.l8",
+      "16": "f3.bloom-pouncer.l16",
+      "25": "f3.bloom-pouncer.l25",
+      "34": "f3.bloom-pouncer.l34"
+    },
+    "innateAbilityName": "Vine Pounce",
+    "adultSignatureAbilityName": "Bramble Ambush"
+  },
+  {
+    "speciesId": "bloom-warden",
+    "affinity": "bloom",
+    "fightingStyle": "warden",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Barkshell",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Thicketguard",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Grovebastion",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.bloom-warden.l1",
+      "8": "f3.bloom-warden.l8",
+      "16": "f3.bloom-warden.l16",
+      "25": "f3.bloom-warden.l25",
+      "34": "f3.bloom-warden.l34"
+    },
+    "innateAbilityName": "Bark Guard",
+    "adultSignatureAbilityName": "Grove Wall"
+  },
+  {
+    "speciesId": "bloom-kindler",
+    "affinity": "bloom",
+    "fightingStyle": "kindler",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Dewwisp",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Petaltender",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Verdanmender",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.bloom-kindler.l1",
+      "8": "f3.bloom-kindler.l8",
+      "16": "f3.bloom-kindler.l16",
+      "25": "f3.bloom-kindler.l25",
+      "34": "f3.bloom-kindler.l34"
+    },
+    "innateAbilityName": "Dew Mend",
+    "adultSignatureAbilityName": "Verdant Bloom"
+  },
+  {
+    "speciesId": "stone-charger",
+    "affinity": "stone",
+    "fightingStyle": "charger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Pebblekit",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Gritdash",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Slatecourser",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.stone-charger.l1",
+      "8": "f3.stone-charger.l8",
+      "16": "f3.stone-charger.l16",
+      "25": "f3.stone-charger.l25",
+      "34": "f3.stone-charger.l34"
+    },
+    "innateAbilityName": "Grit Dash",
+    "adultSignatureAbilityName": "Slate Rush"
+  },
+  {
+    "speciesId": "stone-bruiser",
+    "affinity": "stone",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Cobblecub",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Rubblemaul",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Bouldbrute",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.stone-bruiser.l1",
+      "8": "f3.stone-bruiser.l8",
+      "16": "f3.stone-bruiser.l16",
+      "25": "f3.stone-bruiser.l25",
+      "34": "f3.stone-bruiser.l34"
+    },
+    "innateAbilityName": "Rubble Slam",
+    "adultSignatureAbilityName": "Boulder Crush"
+  },
+  {
+    "speciesId": "stone-slinger",
+    "affinity": "stone",
+    "fightingStyle": "slinger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Shardtick",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Cobbleflinger",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Cragmarksman",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.stone-slinger.l1",
+      "8": "f3.stone-slinger.l8",
+      "16": "f3.stone-slinger.l16",
+      "25": "f3.stone-slinger.l25",
+      "34": "f3.stone-slinger.l34"
+    },
+    "innateAbilityName": "Shard Shot",
+    "adultSignatureAbilityName": "Crag Volley"
+  },
+  {
+    "speciesId": "stone-burster",
+    "affinity": "stone",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Gravelpop",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Geodebloomer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Quakenova",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.stone-burster.l1",
+      "8": "f3.stone-burster.l8",
+      "16": "f3.stone-burster.l16",
+      "25": "f3.stone-burster.l25",
+      "34": "f3.stone-burster.l34"
+    },
+    "innateAbilityName": "Gravel Burst",
+    "adultSignatureAbilityName": "Quake Nova"
+  },
+  {
+    "speciesId": "stone-pouncer",
+    "affinity": "stone",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Chipnib",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Boulderpouncer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Cragstalker",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.stone-pouncer.l1",
+      "8": "f3.stone-pouncer.l8",
+      "16": "f3.stone-pouncer.l16",
+      "25": "f3.stone-pouncer.l25",
+      "34": "f3.stone-pouncer.l34"
+    },
+    "innateAbilityName": "Chip Pounce",
+    "adultSignatureAbilityName": "Crag Ambush"
+  },
+  {
+    "speciesId": "stone-warden",
+    "affinity": "stone",
+    "fightingStyle": "warden",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Slateshell",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Bulwarkguard",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Granibastion",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.stone-warden.l1",
+      "8": "f3.stone-warden.l8",
+      "16": "f3.stone-warden.l16",
+      "25": "f3.stone-warden.l25",
+      "34": "f3.stone-warden.l34"
+    },
+    "innateAbilityName": "Slate Guard",
+    "adultSignatureAbilityName": "Bedrock Wall"
+  },
+  {
+    "speciesId": "stone-kindler",
+    "affinity": "stone",
+    "fightingStyle": "kindler",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Mosswisp",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Cairntender",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Bedrockmender",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.stone-kindler.l1",
+      "8": "f3.stone-kindler.l8",
+      "16": "f3.stone-kindler.l16",
+      "25": "f3.stone-kindler.l25",
+      "34": "f3.stone-kindler.l34"
+    },
+    "innateAbilityName": "Moss Mend",
+    "adultSignatureAbilityName": "Cairn Ward"
+  },
+  {
+    "speciesId": "gale-charger",
+    "affinity": "gale",
+    "fightingStyle": "charger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Gustkit",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Zephyrdash",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Squallcourser",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gale-charger.l1",
+      "8": "f3.gale-charger.l8",
+      "16": "f3.gale-charger.l16",
+      "25": "f3.gale-charger.l25",
+      "34": "f3.gale-charger.l34"
+    },
+    "innateAbilityName": "Gust Dash",
+    "adultSignatureAbilityName": "Squall Rush"
+  },
+  {
+    "speciesId": "gale-bruiser",
+    "affinity": "gale",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Draftcub",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Blustermaul",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Cyclobrute",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gale-bruiser.l1",
+      "8": "f3.gale-bruiser.l8",
+      "16": "f3.gale-bruiser.l16",
+      "25": "f3.gale-bruiser.l25",
+      "34": "f3.gale-bruiser.l34"
+    },
+    "innateAbilityName": "Bluster Slam",
+    "adultSignatureAbilityName": "Cyclone Crush"
+  },
+  {
+    "speciesId": "gale-slinger",
+    "affinity": "gale",
+    "fightingStyle": "slinger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Breezetick",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Gustflinger",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Windmarksman",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gale-slinger.l1",
+      "8": "f3.gale-slinger.l8",
+      "16": "f3.gale-slinger.l16",
+      "25": "f3.gale-slinger.l25",
+      "34": "f3.gale-slinger.l34"
+    },
+    "innateAbilityName": "Breeze Shot",
+    "adultSignatureAbilityName": "Gale Volley"
+  },
+  {
+    "speciesId": "gale-burster",
+    "affinity": "gale",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Puffpop",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Squallbloomer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Tempestnova",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gale-burster.l1",
+      "8": "f3.gale-burster.l8",
+      "16": "f3.gale-burster.l16",
+      "25": "f3.gale-burster.l25",
+      "34": "f3.gale-burster.l34"
+    },
+    "innateAbilityName": "Puff Burst",
+    "adultSignatureAbilityName": "Tempest Nova"
+  },
+  {
+    "speciesId": "gale-pouncer",
+    "affinity": "gale",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Wispnib",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Galepouncer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Stormstalker",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gale-pouncer.l1",
+      "8": "f3.gale-pouncer.l8",
+      "16": "f3.gale-pouncer.l16",
+      "25": "f3.gale-pouncer.l25",
+      "34": "f3.gale-pouncer.l34"
+    },
+    "innateAbilityName": "Wisp Pounce",
+    "adultSignatureAbilityName": "Storm Ambush"
+  },
+  {
+    "speciesId": "gale-warden",
+    "affinity": "gale",
+    "fightingStyle": "warden",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Gustshell",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Windguard",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Aeribastion",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gale-warden.l1",
+      "8": "f3.gale-warden.l8",
+      "16": "f3.gale-warden.l16",
+      "25": "f3.gale-warden.l25",
+      "34": "f3.gale-warden.l34"
+    },
+    "innateAbilityName": "Gust Guard",
+    "adultSignatureAbilityName": "Aegis Wind"
+  },
+  {
+    "speciesId": "gale-kindler",
+    "affinity": "gale",
+    "fightingStyle": "kindler",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Zephwisp",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Breezetender",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Skymender",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gale-kindler.l1",
+      "8": "f3.gale-kindler.l8",
+      "16": "f3.gale-kindler.l16",
+      "25": "f3.gale-kindler.l25",
+      "34": "f3.gale-kindler.l34"
+    },
+    "innateAbilityName": "Zeph Mend",
+    "adultSignatureAbilityName": "Sky Chorus"
+  },
+  {
+    "speciesId": "tide-charger",
+    "affinity": "tide",
+    "fightingStyle": "charger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Dripkit",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Rippledash",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Surgecourser",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.tide-charger.l1",
+      "8": "f3.tide-charger.l8",
+      "16": "f3.tide-charger.l16",
+      "25": "f3.tide-charger.l25",
+      "34": "f3.tide-charger.l34"
+    },
+    "innateAbilityName": "Ripple Dash",
+    "adultSignatureAbilityName": "Surge Rush"
+  },
+  {
+    "speciesId": "tide-bruiser",
+    "affinity": "tide",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Brinecub",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Wavemaul",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Torrentbrute",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.tide-bruiser.l1",
+      "8": "f3.tide-bruiser.l8",
+      "16": "f3.tide-bruiser.l16",
+      "25": "f3.tide-bruiser.l25",
+      "34": "f3.tide-bruiser.l34"
+    },
+    "innateAbilityName": "Wave Slam",
+    "adultSignatureAbilityName": "Torrent Crush"
+  },
+  {
+    "speciesId": "tide-slinger",
+    "affinity": "tide",
+    "fightingStyle": "slinger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Splashtick",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Brineflinger",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Tidemarksman",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.tide-slinger.l1",
+      "8": "f3.tide-slinger.l8",
+      "16": "f3.tide-slinger.l16",
+      "25": "f3.tide-slinger.l25",
+      "34": "f3.tide-slinger.l34"
+    },
+    "innateAbilityName": "Splash Shot",
+    "adultSignatureAbilityName": "Tide Volley"
+  },
+  {
+    "speciesId": "tide-burster",
+    "affinity": "tide",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Bubblepop",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Surgebloomer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Maelnova",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.tide-burster.l1",
+      "8": "f3.tide-burster.l8",
+      "16": "f3.tide-burster.l16",
+      "25": "f3.tide-burster.l25",
+      "34": "f3.tide-burster.l34"
+    },
+    "innateAbilityName": "Bubble Burst",
+    "adultSignatureAbilityName": "Maelstrom Nova"
+  },
+  {
+    "speciesId": "tide-pouncer",
+    "affinity": "tide",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Minnownib",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Tidepouncer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Deepstalker",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.tide-pouncer.l1",
+      "8": "f3.tide-pouncer.l8",
+      "16": "f3.tide-pouncer.l16",
+      "25": "f3.tide-pouncer.l25",
+      "34": "f3.tide-pouncer.l34"
+    },
+    "innateAbilityName": "Minnow Pounce",
+    "adultSignatureAbilityName": "Deep Ambush"
+  },
+  {
+    "speciesId": "tide-warden",
+    "affinity": "tide",
+    "fightingStyle": "warden",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Clamshell",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Reefguard",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Tidalbastion",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.tide-warden.l1",
+      "8": "f3.tide-warden.l8",
+      "16": "f3.tide-warden.l16",
+      "25": "f3.tide-warden.l25",
+      "34": "f3.tide-warden.l34"
+    },
+    "innateAbilityName": "Clam Guard",
+    "adultSignatureAbilityName": "Reef Wall"
+  },
+  {
+    "speciesId": "tide-kindler",
+    "affinity": "tide",
+    "fightingStyle": "kindler",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Mistwisp",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Springtender",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Brinemender",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.tide-kindler.l1",
+      "8": "f3.tide-kindler.l8",
+      "16": "f3.tide-kindler.l16",
+      "25": "f3.tide-kindler.l25",
+      "34": "f3.tide-kindler.l34"
+    },
+    "innateAbilityName": "Mist Mend",
+    "adultSignatureAbilityName": "Springtide"
+  },
+  {
+    "speciesId": "gloom-charger",
+    "affinity": "gloom",
+    "fightingStyle": "charger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Murkkit",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Shadedash",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Duskcourser",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gloom-charger.l1",
+      "8": "f3.gloom-charger.l8",
+      "16": "f3.gloom-charger.l16",
+      "25": "f3.gloom-charger.l25",
+      "34": "f3.gloom-charger.l34"
+    },
+    "innateAbilityName": "Shade Dash",
+    "adultSignatureAbilityName": "Dusk Rush"
+  },
+  {
+    "speciesId": "gloom-bruiser",
+    "affinity": "gloom",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Motecub",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Grimmaul",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Umbrabrute",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gloom-bruiser.l1",
+      "8": "f3.gloom-bruiser.l8",
+      "16": "f3.gloom-bruiser.l16",
+      "25": "f3.gloom-bruiser.l25",
+      "34": "f3.gloom-bruiser.l34"
+    },
+    "innateAbilityName": "Grim Slam",
+    "adultSignatureAbilityName": "Umbral Crush"
+  },
+  {
+    "speciesId": "gloom-slinger",
+    "affinity": "gloom",
+    "fightingStyle": "slinger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Hushtick",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Shadeflinger",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Nightmarksman",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gloom-slinger.l1",
+      "8": "f3.gloom-slinger.l8",
+      "16": "f3.gloom-slinger.l16",
+      "25": "f3.gloom-slinger.l25",
+      "34": "f3.gloom-slinger.l34"
+    },
+    "innateAbilityName": "Hush Shot",
+    "adultSignatureAbilityName": "Night Volley"
+  },
+  {
+    "speciesId": "gloom-burster",
+    "affinity": "gloom",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Blightpop",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Murkbloomer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Voidnova",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gloom-burster.l1",
+      "8": "f3.gloom-burster.l8",
+      "16": "f3.gloom-burster.l16",
+      "25": "f3.gloom-burster.l25",
+      "34": "f3.gloom-burster.l34"
+    },
+    "innateAbilityName": "Blight Burst",
+    "adultSignatureAbilityName": "Void Nova"
+  },
+  {
+    "speciesId": "gloom-pouncer",
+    "affinity": "gloom",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Shadownib",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Gloompouncer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Duskstalker",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gloom-pouncer.l1",
+      "8": "f3.gloom-pouncer.l8",
+      "16": "f3.gloom-pouncer.l16",
+      "25": "f3.gloom-pouncer.l25",
+      "34": "f3.gloom-pouncer.l34"
+    },
+    "innateAbilityName": "Shadow Pounce",
+    "adultSignatureAbilityName": "Dusk Ambush"
+  },
+  {
+    "speciesId": "gloom-warden",
+    "affinity": "gloom",
+    "fightingStyle": "warden",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Cryptshell",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Hushguard",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Umbrabastion",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gloom-warden.l1",
+      "8": "f3.gloom-warden.l8",
+      "16": "f3.gloom-warden.l16",
+      "25": "f3.gloom-warden.l25",
+      "34": "f3.gloom-warden.l34"
+    },
+    "innateAbilityName": "Crypt Guard",
+    "adultSignatureAbilityName": "Umbra Wall"
+  },
+  {
+    "speciesId": "gloom-kindler",
+    "affinity": "gloom",
+    "fightingStyle": "kindler",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Dimwisp",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Vigiltender",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Wanemender",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.gloom-kindler.l1",
+      "8": "f3.gloom-kindler.l8",
+      "16": "f3.gloom-kindler.l16",
+      "25": "f3.gloom-kindler.l25",
+      "34": "f3.gloom-kindler.l34"
+    },
+    "innateAbilityName": "Dim Mend",
+    "adultSignatureAbilityName": "Waning Ward"
+  },
+  {
+    "speciesId": "lumen-charger",
+    "affinity": "lumen",
+    "fightingStyle": "charger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Glimkit",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Gleamdash",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Flarecourser",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.lumen-charger.l1",
+      "8": "f3.lumen-charger.l8",
+      "16": "f3.lumen-charger.l16",
+      "25": "f3.lumen-charger.l25",
+      "34": "f3.lumen-charger.l34"
+    },
+    "innateAbilityName": "Gleam Dash",
+    "adultSignatureAbilityName": "Flare Rush"
+  },
+  {
+    "speciesId": "lumen-bruiser",
+    "affinity": "lumen",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Glowcub",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Radimaul",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Solarbrute",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.lumen-bruiser.l1",
+      "8": "f3.lumen-bruiser.l8",
+      "16": "f3.lumen-bruiser.l16",
+      "25": "f3.lumen-bruiser.l25",
+      "34": "f3.lumen-bruiser.l34"
+    },
+    "innateAbilityName": "Radi Slam",
+    "adultSignatureAbilityName": "Solar Crush"
+  },
+  {
+    "speciesId": "lumen-slinger",
+    "affinity": "lumen",
+    "fightingStyle": "slinger",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Beamtick",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Glimflinger",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Prismmarksman",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.lumen-slinger.l1",
+      "8": "f3.lumen-slinger.l8",
+      "16": "f3.lumen-slinger.l16",
+      "25": "f3.lumen-slinger.l25",
+      "34": "f3.lumen-slinger.l34"
+    },
+    "innateAbilityName": "Beam Shot",
+    "adultSignatureAbilityName": "Prism Volley"
+  },
+  {
+    "speciesId": "lumen-burster",
+    "affinity": "lumen",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Glintpop",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Flarebloomer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Solnova",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.lumen-burster.l1",
+      "8": "f3.lumen-burster.l8",
+      "16": "f3.lumen-burster.l16",
+      "25": "f3.lumen-burster.l25",
+      "34": "f3.lumen-burster.l34"
+    },
+    "innateAbilityName": "Glint Burst",
+    "adultSignatureAbilityName": "Solar Nova"
+  },
+  {
+    "speciesId": "lumen-pouncer",
+    "affinity": "lumen",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Flashnib",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Gleampouncer",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Dawnstalker",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.lumen-pouncer.l1",
+      "8": "f3.lumen-pouncer.l8",
+      "16": "f3.lumen-pouncer.l16",
+      "25": "f3.lumen-pouncer.l25",
+      "34": "f3.lumen-pouncer.l34"
+    },
+    "innateAbilityName": "Flash Pounce",
+    "adultSignatureAbilityName": "Dawn Ambush"
+  },
+  {
+    "speciesId": "lumen-warden",
+    "affinity": "lumen",
+    "fightingStyle": "warden",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Prismshell",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Lightguard",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Aurabastion",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.lumen-warden.l1",
+      "8": "f3.lumen-warden.l8",
+      "16": "f3.lumen-warden.l16",
+      "25": "f3.lumen-warden.l25",
+      "34": "f3.lumen-warden.l34"
+    },
+    "innateAbilityName": "Prism Guard",
+    "adultSignatureAbilityName": "Aura Wall"
+  },
+  {
+    "speciesId": "lumen-kindler",
+    "affinity": "lumen",
+    "fightingStyle": "kindler",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Dawnwisp",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Halotender",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Radimender",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.lumen-kindler.l1",
+      "8": "f3.lumen-kindler.l8",
+      "16": "f3.lumen-kindler.l16",
+      "25": "f3.lumen-kindler.l25",
+      "34": "f3.lumen-kindler.l34"
+    },
+    "innateAbilityName": "Dawn Mend",
+    "adultSignatureAbilityName": "Radiant Hymn"
+  },
+  {
+    "speciesId": "signature-eclipsewyrm",
+    "affinity": "gloom",
+    "fightingStyle": "pouncer",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Glimmurk",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Duskglow",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Eclipsewyrm",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.signature-eclipsewyrm.l1",
+      "8": "f3.signature-eclipsewyrm.l8",
+      "16": "f3.signature-eclipsewyrm.l16",
+      "25": "f3.signature-eclipsewyrm.l25",
+      "34": "f3.signature-eclipsewyrm.l34"
+    },
+    "innateAbilityName": "Eclipse Pounce",
+    "adultSignatureAbilityName": "Eclipse Ambush",
+    "signature": true
+  },
+  {
+    "speciesId": "signature-tempestryn",
+    "affinity": "gale",
+    "fightingStyle": "burster",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Windripple",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Squallsurge",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Tempestryn",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.signature-tempestryn.l1",
+      "8": "f3.signature-tempestryn.l8",
+      "16": "f3.signature-tempestryn.l16",
+      "25": "f3.signature-tempestryn.l25",
+      "34": "f3.signature-tempestryn.l34"
+    },
+    "innateAbilityName": "Squall Burst",
+    "adultSignatureAbilityName": "Tempest Front",
+    "signature": true
+  },
+  {
+    "speciesId": "signature-volcanix",
+    "affinity": "ember",
+    "fightingStyle": "bruiser",
+    "forms": [
+      {
+        "form": 0,
+        "name": "Emberpebble",
+        "minLevel": 1,
+        "statScale": 1
+      },
+      {
+        "form": 1,
+        "name": "Magmacrag",
+        "minLevel": 10,
+        "statScale": 1.6
+      },
+      {
+        "form": 2,
+        "name": "Volcanix",
+        "minLevel": 25,
+        "statScale": 2.4
+      }
+    ],
+    "abilityIdsByLevel": {
+      "1": "f3.signature-volcanix.l1",
+      "8": "f3.signature-volcanix.l8",
+      "16": "f3.signature-volcanix.l16",
+      "25": "f3.signature-volcanix.l25",
+      "34": "f3.signature-volcanix.l34"
+    },
+    "innateAbilityName": "Magma Slam",
+    "adultSignatureAbilityName": "Volcanic Crush",
+    "signature": true
+  }
+]
