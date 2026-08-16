@@ -759,6 +759,49 @@ describe('BehaviorTreeAI', () => {
     expect(CONTACT_RETREAT_EPISODE_GAP_FRAMES).toBeGreaterThan(CONTACT_RETREAT_PROGRESS_FRAMES);
   });
 
+  it('does not declare the player pinned after a brief out-of-contact interruption', () => {
+    // The futility window must only accumulate carve-out polls that actually
+    // ran. If a short gap where the threat backs out of contact (so the
+    // carve-out does not fire) were counted as elapsed progress time, a single
+    // fresh poll right after re-contact could be declared "pinned" immediately
+    // even though Retreat only had one real frame to try to move the player.
+    const world = createTestWorld({ seed: 33 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
+    const boss = spawnBehaviorEnemy(world, 3, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 33, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+
+    // One pinned (no-displacement) poll in contact starts the futility window.
+    world.frameCount += 1;
+    world.stores.position.x[boss] = 3;
+    world.stores.position.y[boss] = 0;
+    ai.poll(createInputState(), world);
+
+    // A brief gap, well under CONTACT_RETREAT_EPISODE_GAP_FRAMES, where the
+    // threat backs out of melee contact so the carve-out itself does not fire.
+    const gapFrames = CONTACT_RETREAT_PROGRESS_FRAMES - 1;
+    expect(gapFrames).toBeLessThan(CONTACT_RETREAT_EPISODE_GAP_FRAMES);
+    for (let frame = 0; frame < gapFrames; frame += 1) {
+      world.frameCount += 1;
+      world.stores.position.x[boss] = CONTACT_SAFE_ORBIT_FT + 5;
+      world.stores.position.y[boss] = 0;
+      ai.poll(createInputState(), world);
+    }
+
+    // Re-contact: the episode continues (gap under the threshold), but only
+    // one active carve-out poll has actually elapsed, so this must not
+    // immediately declare the player pinned.
+    world.frameCount += 1;
+    world.stores.position.x[boss] = 3;
+    world.stores.position.y[boss] = 0;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+  });
+
   it('re-opens the pinned verdict once the player is moved off the pinned spot', () => {
     // The pin is positional, so the latch must not outlive the position that
     // produced it: if Engage drags the player off that spot while the fight

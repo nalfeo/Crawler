@@ -1469,19 +1469,19 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private startContactRetreatWindow(ctx: BTContext): void {
-    this.contactRetreatStartFrame = ctx.world.frameCount;
     this.contactRetreatStartX = ctx.playerX;
     this.contactRetreatStartY = ctx.playerY;
     this.contactRetreatPinned = false;
+    this.contactRetreatActivePolls = 0;
   }
 
   private resetContactRetreatTracking(): void {
     this.contactRetreatMap = null;
-    this.contactRetreatStartFrame = 0;
     this.contactRetreatLastFrame = null;
     this.contactRetreatStartX = 0;
     this.contactRetreatStartY = 0;
     this.contactRetreatPinned = false;
+    this.contactRetreatActivePolls = 0;
   }
 
   private clearLocalThreatRecovery(): void {
