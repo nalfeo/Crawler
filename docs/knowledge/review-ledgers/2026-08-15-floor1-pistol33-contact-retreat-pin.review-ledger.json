@@ -26,13 +26,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-4.6",
+      "head_sha": "b50cf1bc208ae86b6491de302185b8a169b2a6e5",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly fixes the regression by adding robust futility tracking for the contact-retreat carve-out, preventing the AI from freezing when cornered. The implementation elegantly handles edge cases such as brief out-of-contact gaps and positional escapes without relying on wall-clock frame spans. Test coverage is exceptional, introducing both exhaustive unit tests for every behavioral edge case and a deterministic headless test to lock in the seed-33 fix. The code is highly maintainable, thoroughly documented, and strictly follows determinism and scoping rules."
     }
   }
 }
