@@ -6,6 +6,8 @@ on:
     types: [completed]
   issue_comment:
     types: [created, edited, deleted]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
 
 permissions:
   actions: write
@@ -17,6 +19,8 @@ jobs:
     if: >-
       (github.event_name == 'issue_comment'
         && github.event.issue.pull_request
+        && github.actor == github.repository_owner)
+      || (github.event_name == 'pull_request_review'
         && github.actor == github.repository_owner)
       || (github.event_name == 'workflow_run'
         && github.event.workflow_run.event == 'pull_request')
@@ -80,13 +84,33 @@ jobs:
               );
             }
 
-            function hasOwnerApproval(comments) {
+            function hasOwnerApprovalComment(comments) {
               const owner = String(context.repo.owner || '').toLowerCase();
               return (comments || []).some(
                 (comment) =>
                   String(comment.user?.login || '').toLowerCase() === owner &&
                   String(comment.body || '').trim() === HUMAN_APPROVAL_PHRASE,
               );
+            }
+
+            // Mirrors hasOwnerApprovalReview() in
+            // .github/scripts/merge-train/human-approval.mjs: only the owner's
+            // latest decisive review counts, so a later CHANGES_REQUESTED or
+            // DISMISSED review revokes an earlier approval.
+            function hasOwnerApprovalReview(reviews) {
+              const owner = String(context.repo.owner || '').toLowerCase();
+              const decisive = (reviews || []).filter((review) => {
+                if (String(review.user?.login || '').toLowerCase() !== owner) return false;
+                const state = String(review.state || '').toUpperCase();
+                return state === 'APPROVED' || state === 'CHANGES_REQUESTED' || state === 'DISMISSED';
+              });
+              if (decisive.length === 0) return false;
+              const latest = decisive[decisive.length - 1];
+              return String(latest.state || '').toUpperCase() === 'APPROVED';
+            }
+
+            function hasOwnerApproval(comments, reviews) {
+              return hasOwnerApprovalReview(reviews) || hasOwnerApprovalComment(comments);
             }
 
             async function latestCiRunForHead(headSha) {
@@ -149,11 +173,17 @@ jobs:
                 return;
               }
 
-              const [comments, closingIssues] = await Promise.all([
+              const [comments, reviews, closingIssues] = await Promise.all([
                 github.paginate(github.rest.issues.listComments, {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: prNumber,
+                  per_page: 100,
+                }),
+                github.paginate(github.rest.pulls.listReviews, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
                   per_page: 100,
                 }),
                 listClosingIssues(prNumber),
@@ -162,7 +192,7 @@ jobs:
                 core.info(`PR #${prNumber} does not require human approval`);
                 return;
               }
-              const approvalPresent = hasOwnerApproval(comments);
+              const approvalPresent = hasOwnerApproval(comments, reviews);
 
               const latestCi =
                 workflowRun &&
@@ -201,6 +231,11 @@ jobs:
 
             if (context.eventName === 'issue_comment') {
               await maybeRerunForPr(context.issue.number);
+              return;
+            }
+
+            if (context.eventName === 'pull_request_review') {
+              await maybeRerunForPr(context.payload.pull_request.number);
               return;
             }
 
