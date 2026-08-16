@@ -84,3 +84,4 @@ jobs:
               keepIssueNumber: issue.number,
               titlePatterns: [/^code-review-process: \d{4}-\d{2}-\d{2} findings$/]
             });
+            core.info(`Filed code review process tracking issue #${issue.number}`);
