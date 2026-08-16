@@ -13,6 +13,7 @@ import { E2E_LAB_BASE_URL } from '../e2e-constants.js';
 // Type-only import (erased at runtime — does NOT execute the lab's registerLab).
 import type {
   BloodSurfaceProbeSummary,
+  BossIntroProbeState,
   HarvestableRenderSummary,
   FamilyHudProbeState,
   FloatingTextProbe,
@@ -89,6 +90,14 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
   openBossRewardPicker: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.openBossRewardPicker()),
+  startStaircaseBossBattle: (page: Page): Promise<number> =>
+    page.evaluate(() => window.__mainSceneProbe!.startStaircaseBossBattle()),
+  getBossIntroState: (page: Page): Promise<BossIntroProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getBossIntroState()),
+  scrollBossIntro: (page: Page, delta: number): Promise<void> =>
+    page.evaluate((lines) => window.__mainSceneProbe!.scrollBossIntro(lines), delta),
+  dismissBossIntro: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.dismissBossIntro()),
   getModalPickerLayout: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
   getSafeAreaLayout: (page: Page): Promise<SafeAreaLayoutProbe> =>

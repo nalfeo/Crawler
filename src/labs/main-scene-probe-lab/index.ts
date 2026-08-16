@@ -36,6 +36,7 @@ import { Harvestable } from '../../core/components.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
+import { spawnEnemy } from '../../core/spawners/combatants.js';
 import {
   acknowledgeBossChestReveal,
   createBossChestRecord,
@@ -77,6 +78,7 @@ import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInventoryBag, listGeneratedEquipmentReferences } from '../../shared/inventory.js';
 import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
+import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
@@ -238,6 +240,14 @@ interface MainSceneInternals {
     isOpen(): boolean;
     close(): void;
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+  };
+  bossIntroUI?: {
+    isOpen(): boolean;
+    dismiss(): void;
+    getIntroId(): string | null;
+    getLayout(): BossIntroLayoutSnapshot | null;
+    getScrollState(): BossIntroScrollState | null;
+    scrollBy(delta: number): void;
   };
   openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
@@ -628,6 +638,20 @@ export interface BloodSurfaceProbeSummary {
   readonly footprintColors: number[];
 }
 
+/** Live boss-intro lore-sheet state as rendered by the real MainGameScene. */
+export interface BossIntroProbeState {
+  /** True while the lore sheet owns the screen. */
+  readonly open: boolean;
+  /** `BossIntroContent.introId` currently shown, or null. */
+  readonly introId: string | null;
+  /** Simulation clock (ms). Frozen while the sheet is open. */
+  readonly worldElapsedMs: number;
+  /** Measured sheet layout while open, else null. */
+  readonly layout: BossIntroLayoutSnapshot | null;
+  /** Flavour-viewport scroll state while open, else null. */
+  readonly scroll: BossIntroScrollState | null;
+}
+
 /**
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
@@ -649,6 +673,18 @@ export interface MainSceneProbeApi {
   getFamilyHudState(): FamilyHudProbeState;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
+  /**
+   * Start the real Floor-1 staircase boss battle on the live world (spawns a
+   * boss entity and latches the encounter), so the scene's own boss-intro
+   * trigger fires on its next update — no UI is opened directly here.
+   */
+  startStaircaseBossBattle(): number;
+  /** Live boss-intro sheet state plus the world clock (frozen while open). */
+  getBossIntroState(): BossIntroProbeState;
+  /** Scroll the boss-intro flavour copy by `delta` lines. */
+  scrollBossIntro(delta: number): void;
+  /** Dismiss the boss-intro sheet through its real dismiss path. */
+  dismissBossIntro(): void;
   /** Measured layout for the currently open real modal picker. */
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /**
@@ -1047,6 +1083,50 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!scene.modalPicker?.isOpen()) {
         throw new Error('real boss reward picker did not open');
       }
+    },
+
+    startStaircaseBossBattle: (): number => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) {
+        throw new Error('MainGameScene is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      const battle = world.floorScenario?.objective.bossBattles.get('staircase');
+      if (!battle) {
+        throw new Error('Floor 1 staircase boss battle is unavailable');
+      }
+      const playerEid = scene.playerEid ?? -1;
+      const bossX = (world.stores.position.x[playerEid] ?? 0) + 4;
+      const bossY = world.stores.position.y[playerEid] ?? 0;
+      const bossEid = spawnEnemy(world, bossX, bossY, 200);
+      battle.started = true;
+      battle.defeated = false;
+      battle.bossEid = bossEid;
+      return bossEid;
+    },
+
+    getBossIntroState: (): BossIntroProbeState => {
+      const scene = getScene();
+      return {
+        open: scene?.bossIntroUI?.isOpen() ?? false,
+        introId: scene?.bossIntroUI?.getIntroId() ?? null,
+        worldElapsedMs: scene?.world?.elapsedMs ?? 0,
+        layout: scene?.bossIntroUI?.getLayout() ?? null,
+        scroll: scene?.bossIntroUI?.getScrollState() ?? null,
+      };
+    },
+
+    scrollBossIntro: (delta: number) => {
+      getScene()?.bossIntroUI?.scrollBy(delta);
+    },
+
+    dismissBossIntro: () => {
+      getScene()?.bossIntroUI?.dismiss();
     },
 
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,

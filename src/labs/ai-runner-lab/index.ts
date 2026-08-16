@@ -870,6 +870,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       manualControl
         ? null
         : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
+    // Manual control hands the run back to a human, so surfaces that wait for
+    // input (the boss-intro sheet) must NOT auto-advance in that mode.
+    isAutoDriven: () => !manualControl,
     sessionRecorderFactory: recorderControls.factory,
     recomposeFloorTransitionOptions: (nextFloorOptions) => {
       // Synchronize lab state with the destination floor before composing.
