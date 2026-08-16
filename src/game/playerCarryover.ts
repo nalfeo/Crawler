@@ -923,8 +923,20 @@ function validateEquipmentBundlePresence(snapshot: PlayerCarryoverSnapshot): voi
   );
   for (const achievement of ALL_ACHIEVEMENTS) {
     if (
-      achievement.reward.type === 'lootBox' &&
-      achievement.reward.lootTable === 'floor2-generated-equipment' &&
+      achievement.reward.type !== 'lootBox' ||
+      achievement.reward.lootTable !== 'floor2-generated-equipment'
+    ) {
+      continue;
+    }
+    // Exclusivity guard (fail-closed): the unlock-time drop roll resolves
+    // EXACTLY ONE payout per achievement, so a snapshot carrying both an
+    // equipment and a materials bundle for the same id is tampered/stale.
+    if (bundleIds.has(achievement.id) && materialsBundleIds.has(achievement.id)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Achievement ${achievement.id} carries both an equipment and a materials reward bundle`,
+      );
+    }
+    if (
       unlockedIds.has(achievement.id) &&
       !claimedIds.has(achievement.id) &&
       !bundleIds.has(achievement.id) &&
