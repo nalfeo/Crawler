@@ -61,11 +61,13 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
   areLightingRectsEqual,
+  extrapolateRenderPosition,
   findNearestNearbyNpc,
   formatAbilityTrigger,
   getFloorCompletionPresentation,
   getFloorRunOutcome,
   getLightingViewRect,
+  renderInterpolationAlpha,
   resolveDialogueLines,
   resolveNpcQuestIndicatorState,
 } from './main-game-scene-helpers.js';
@@ -78,6 +80,9 @@ import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
 import { createQuartermasterUI } from '../QuartermasterUI.js';
+import { createRunSurveyUI } from '../RunSurveyUI.js';
+import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
+import { submitRunSurvey } from '../run-bundle-upload.js';
 import {
   createAudioCueEngine,
   type AudioCueEngine,
@@ -460,6 +465,20 @@ export class MainGameScene extends Phaser.Scene {
 
   private accumulatorClampCount = 0;
 
+  /**
+   * Render-side interpolation factor for the current frame (`0..1`): how far
+   * into the next fixed simulation step the rendered frame sits. Zero on frozen
+   * frames (pause, modals, dialogue) where no step is in flight. Consumed by
+   * `bridge.sync` and `updateCamera` so both extrapolate identically.
+   */
+  private renderInterpAlpha = 0;
+  private playerRenderSampleFrame = -1;
+  private playerRenderSampleEid = -1;
+  private playerRenderPrevX = 0;
+  private playerRenderPrevY = 0;
+  private playerRenderCurrX = 0;
+  private playerRenderCurrY = 0;
+
   private simulationPaused = false;
 
   private simulationSpeed = 1;
@@ -490,6 +509,10 @@ export class MainGameScene extends Phaser.Scene {
   private runStartXp = 0;
   private runLogCursor!: LogCursor;
   private runBundleEmitted = false;
+  private lastRunBundle?: RunBundle;
+  private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
+  private runSurveyShown = false;
+  private runSurveySubmitted = false;
 
   /** Enemy count from the previous simulation step — used to detect kills. */
   private prevEnemyCount = 0;
@@ -851,6 +874,9 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runLogCursor = createLogCursor();
     this.runBundleEmitted = false;
+    this.lastRunBundle = undefined;
+    this.runSurveyShown = false;
+    this.runSurveySubmitted = false;
 
     // Apply player identity selected in IntroScene BEFORE configureWorld, so
     // scenario initializers (e.g. initializeFloor1Scenario) see the chosen name.
@@ -1223,6 +1249,8 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementToast = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
+      this.runSurveyUI?.destroy();
+      this.runSurveyUI = undefined;
       this.levelUpUI?.destroy();
       this.levelUpUI = undefined;
       if (this.uiCamera) {
@@ -1746,6 +1774,10 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    // Frozen frames (modals, dialogue, pause, level-up) render the world exactly
+    // as the last completed step left it; only the fixed-step path below has a
+    // partially-elapsed step to interpolate.
+    this.renderInterpAlpha = 0;
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionScreenIfNeeded();
     this.showDeathScreenIfNeeded();
@@ -1986,7 +2018,18 @@ export class MainGameScene extends Phaser.Scene {
 
     this.updateDoorOverlay();
     this.updateLightingOverlay();
-    this.bridge.sync(this.world);
+    // Render between fixed steps: the accumulator holds the fraction of the next
+    // step already elapsed in wall-clock time. Feeding it to the bridge (and to
+    // the camera below, via the same alpha) removes the judder caused by rAF
+    // frames not lining up with the 60Hz sim step — most visible on high-refresh
+    // displays, where sprites would otherwise only move on every other frame.
+    // This is render-side only: no world state is read or written differently.
+    this.renderInterpAlpha = renderInterpolationAlpha(this.accumulator, GAME.DELTA_MS);
+    this.bridge.sync(
+      this.world,
+      this.world.elapsedMs + this.renderInterpAlpha * GAME.DELTA_MS,
+      this.renderInterpAlpha,
+    );
     this.resumePendingRewardPresentations();
     if (this.rewardOpeningUI?.isOpen()) {
       this.updateCamera();
@@ -3566,9 +3609,39 @@ export class MainGameScene extends Phaser.Scene {
     }
     const px = this.world.stores.position.x[this.playerEid];
     const py = this.world.stores.position.y[this.playerEid];
+    const playerX = px ?? 0;
+    const playerY = py ?? 0;
+    if (this.playerRenderSampleEid !== this.playerEid) {
+      this.playerRenderSampleEid = this.playerEid;
+      this.playerRenderSampleFrame = this.world.frameCount;
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    } else if (this.playerRenderSampleFrame !== this.world.frameCount) {
+      this.playerRenderPrevX = this.playerRenderCurrX;
+      this.playerRenderPrevY = this.playerRenderCurrY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+      this.playerRenderSampleFrame = this.world.frameCount;
+    } else if (this.playerRenderCurrX !== playerX || this.playerRenderCurrY !== playerY) {
+      this.playerRenderPrevX = playerX;
+      this.playerRenderPrevY = playerY;
+      this.playerRenderCurrX = playerX;
+      this.playerRenderCurrY = playerY;
+    }
+    // Follow the SAME extrapolated position the bridge renders the player sprite
+    // at (`position + acceptedStepDisplacement * interpAlpha`).
+    const alpha = this.renderInterpAlpha;
+    const stepDx = this.playerRenderCurrX - this.playerRenderPrevX;
+    const stepDy = this.playerRenderCurrY - this.playerRenderPrevY;
     this.cameras.main.centerOn(
-      px !== undefined ? ftToPx(px) : GAME.WIDTH * 0.5,
-      py !== undefined ? ftToPx(py) : GAME.HEIGHT * 0.5,
+      px !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrX, stepDx, alpha))
+        : GAME.WIDTH * 0.5,
+      py !== undefined
+        ? ftToPx(extrapolateRenderPosition(this.playerRenderCurrY, stepDy, alpha))
+        : GAME.HEIGHT * 0.5,
     );
     this.updateSafeRoomZoom();
   }
@@ -3928,6 +4001,9 @@ export class MainGameScene extends Phaser.Scene {
       );
     }
 
+    if (completionPresentation === 'terminal_victory') {
+      this.showRunSurveyIfNeeded('victory');
+    }
     this.floorCompletionMessagePending = false;
     this.floorCompletionMessageShown = true;
     this.floorCompletionScreen?.setVisible(true);
@@ -4014,7 +4090,56 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.deathScreenShown = true;
     this.emitRunBundle('death');
+    this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show();
+  }
+
+  private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
+    if (this.runSurveyShown || this.runSurveySubmitted || !this.lastRunBundle) {
+      return;
+    }
+    if (endReason !== 'death' && endReason !== 'victory') {
+      return;
+    }
+    this.runSurveyShown = true;
+    this.runSurveyUI = createRunSurveyUI({
+      onSubmit: async (survey) => {
+        const validSurvey = validatePlaytestSurvey(survey);
+        if (!validSurvey || !this.lastRunBundle) {
+          return false;
+        }
+        const result = await submitRunSurvey(this.lastRunBundle, validSurvey).catch(
+          (error: unknown) => {
+            if (typeof console !== 'undefined') {
+              console.warn('Run survey submission failed', error);
+            }
+            return { ok: false, used: 'fetch' as const, reason: 'run survey submission failed' };
+          },
+        );
+        if (result.ok) {
+          this.runSurveySubmitted = true;
+        }
+        return result.ok;
+      },
+      onSkip: () => {
+        this.runSurveySubmitted = true;
+        // No survey was submitted: emitRunBundle deliberately deferred the
+        // single upload for this run until skip/submit resolved (see
+        // emitRunBundle), so perform that one silent upload now.
+        if (this.lastRunBundle) {
+          this.options.onRunBundle?.(this.lastRunBundle);
+        }
+      },
+    });
+    this.runSurveyUI.show();
+  }
+
+  private nextRunBundleId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    if (randomUuid) {
+      return randomUuid;
+    }
+    return `run-${this.world.seed}-${this.world.frameCount}`;
   }
 
   private emitRunBundle(endReason: RunEndReason): void {
@@ -4043,9 +4168,18 @@ export class MainGameScene extends Phaser.Scene {
         endReason,
         floorId: this.options.floorId,
         seed: this.world.seed,
+        runId: this.nextRunBundleId(),
       },
     });
     this.runBundleEmitted = true;
+    this.lastRunBundle = bundle;
+    if (endReason === 'death' || endReason === 'victory') {
+      // A post-run survey may follow (see showRunSurveyIfNeeded). Uploading
+      // here too would resend this run under an unrelated stored ID once the
+      // survey is submitted, creating a duplicate; instead defer the single
+      // upload for this run to whichever of skip/submit resolves the survey.
+      return;
+    }
     this.options.onRunBundle?.(bundle);
   }
 

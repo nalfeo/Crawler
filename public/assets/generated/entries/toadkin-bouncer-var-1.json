@@ -114,9 +114,6 @@
     "canvasWidth": 269,
     "canvasHeight": 256
   },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\toadkin-bouncer\\2026-08-01T17-02-32-88367d6a\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\toadkin-bouncer\\2026-08-01T17-02-32-88367d6a\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\toadkin-bouncer\\2026-08-01T17-02-32-88367d6a\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "catalog": {

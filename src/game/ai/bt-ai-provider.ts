@@ -133,6 +133,9 @@ import {
   MELEE_DEFENSIVE_HP_FRACTION,
   ATTACK_GATE_MULTIPLIER,
   CONTACT_SAFE_ORBIT_FT,
+  CONTACT_RETREAT_PROGRESS_FRAMES,
+  CONTACT_RETREAT_PROGRESS_FT,
+  CONTACT_RETREAT_EPISODE_GAP_FRAMES,
   MELEE_DODGE_AMPLITUDE_FT,
   KITE_DODGE_BUFFER_FT,
   KITE_STEP_FT,
@@ -187,11 +190,19 @@ import {
   NAVIGATION_ANGLE_OFFSETS,
   RETREAT_HYSTERESIS_MULT,
   RETREAT_ARC_OFFSETS_RAD,
+  RETREAT_BREAKOUT_ARC_OFFSETS_RAD,
+  RETREAT_WEDGE_PROGRESS_FT,
   RETREAT_DISTANCE_MULTS,
   RETREAT_THREAT_SCAN_FT,
   RETREAT_MAX_PATH_VERIFICATIONS,
   RETREAT_REPICK_INTERVAL_FRAMES,
   RETREAT_REPICK_ARRIVE_FT,
+  RETREAT_OBJECTIVE_BIAS_BAND_FRACTION,
+  RETREAT_OBJECTIVE_BIAS_WEIGHT,
+  RETREAT_OBJECTIVE_MEMORY_FRAMES,
+  RETREAT_DAMAGE_WINDOW_FRAMES,
+  RETREAT_TIME_TO_DEATH_FRAMES,
+  RETREAT_DAMAGE_WINDOW_MIN_DAMAGE,
   GOLD_FARM_ENEMY_SCAN_RADIUS_FT,
   GOLD_FARM_GOLD_SCAN_RADIUS_FT,
   GOLD_FARM_COLLECT_RADIUS_FT,
@@ -819,12 +830,68 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetX: number | null = null;
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
+  /**
+   * Player position at the last kite-target re-pick, used to detect a WEDGED
+   * retreat: a runner pressed into geometry moves ~0 ft between re-picks even
+   * though it is pushing at full throttle. Only a wedged retreat widens the
+   * escape scan to {@link RETREAT_BREAKOUT_ARC_OFFSETS_RAD}, so every retreat
+   * that is actually travelling keeps its existing lane selection.
+   */
+  private retreatRepickX: number | null = null;
+  private retreatRepickY: number | null = null;
   private retreatThreatEid: number | null = null;
+  /**
+   * Last positional progression objective the Progress behavior travelled to,
+   * with the frame and floor it was recorded on. Read by
+   * {@link pickRetreatTarget} so a kite that is otherwise equally safe runs
+   * ALONG the route instead of back down it. Only positional objectives are
+   * remembered (an enemy objective is fought, not travelled to), and the memo is
+   * ignored once it is older than {@link RETREAT_OBJECTIVE_MEMORY_FRAMES} or the
+   * floor map changed.
+   */
+  private retreatObjectiveX: number | null = null;
+  private retreatObjectiveY: number | null = null;
+  private retreatObjectiveFrame: number = 0;
+  private retreatObjectiveMap: FloorMap | null = null;
+  /**
+   * Rolling health history used by the sustained-damage retreat trigger. Frames
+   * are stored alongside the samples so a skipped poll (or a fresh floor) can
+   * never be read as a stale-but-valid slope. Ring length is one entry per frame
+   * of {@link RETREAT_DAMAGE_WINDOW_FRAMES}.
+   */
+  private healthHistory = new Float64Array(RETREAT_DAMAGE_WINDOW_FRAMES);
+  private healthHistoryFrames = new Int32Array(RETREAT_DAMAGE_WINDOW_FRAMES).fill(-1);
+  /** True while recent incoming damage predicts death inside the survival horizon. */
+  private bleedingOut: boolean = false;
   private localThreatRecoveryEid: number | null = null;
   private localThreatRecoveryMap: FloorMap | null = null;
   private localThreatRecoveryStartFrame: number | null = null;
   private localThreatRecoveryBestHealth: number | null = null;
   private rangedEmergencyRetreating: boolean = false;
+  /**
+   * Contact-retreat futility tracking. Set while the contact carve-out in
+   * {@link buildRetreatBehavior} is the only reason Retreat is still running
+   * against a long-`attackRange` threat, so a retreat that provably cannot move
+   * the player (cornered, no reachable escape tile) can hand the fight back to
+   * Engage instead of standing still in body contact. Keyed on the floor rather
+   * than the threat eid because the pin is positional and the nearest enemy
+   * churns constantly inside a swarm.
+   */
+  private contactRetreatMap: FloorMap | null = null;
+  /** Frame the carve-out last fired, or null when no episode is being tracked. */
+  private contactRetreatLastFrame: number | null = null;
+  private contactRetreatStartX: number = 0;
+  private contactRetreatStartY: number = 0;
+  private contactRetreatPinned: boolean = false;
+  /**
+   * Count of carve-out polls actually taken since the window started — NOT a
+   * wall-clock frame span. A short out-of-contact interruption (Engage kites
+   * out, contact breaks, then re-closes) keeps the episode alive across the
+   * {@link CONTACT_RETREAT_EPISODE_GAP_FRAMES} gap, but those in-between
+   * frames must not count as time Retreat had to move the player, or a single
+   * poll right before re-contact could be declared "pinned" immediately.
+   */
+  private contactRetreatActivePolls: number = 0;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -1185,6 +1252,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.rangedEmergencyRetreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
+    this.retreatRepickX = null;
+    this.retreatRepickY = null;
     this.retreatThreatEid = null;
   }
 
@@ -1205,7 +1274,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
         const activeWeapon = getActiveWeapon(ctx.world);
-        const criticallyLow = ctx.healthPercent < this.config.retreatThreshold;
+        // Critically low = the fixed HP floor OR a measured incoming-damage rate
+        // that kills before the runner could plausibly disengage. Rate matters as
+        // much as remaining HP when nothing on the floor heals: without it a
+        // pinned melee runner tanks a whole pack from full health down to the
+        // floor before it ever starts kiting.
+        const criticallyLow = ctx.healthPercent < this.config.retreatThreshold || this.bleedingOut;
         const rangedEmergency =
           activeWeapon !== undefined &&
           isProjectileWeaponType(activeWeapon.weaponType) &&
@@ -1227,13 +1301,42 @@ export class BehaviorTreeAI implements AIInputProvider {
           true,
         );
         if (threat) {
+          // LocalThreatRecovery is the bounded follow-up for this same threat.
+          // Let melee close/attack instead of re-entering RETREAT at the outer
+          // danger radius forever; projectile users still need defensive spacing.
+          if (
+            !this.retreating &&
+            activeWeapon?.weaponType === WeaponType.MELEE &&
+            threat.eid === this.localThreatRecoveryEid &&
+            this.localThreatRecoveryMap === ctx.world.floorMap
+          ) {
+            this.endRetreat(ctx.world);
+            return false;
+          }
           const attackRange = ctx.world.stores.enemyBehavior.attackRange[threat.eid] ?? 0;
           const retreatEscapeRadius = this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT;
-          if (attackRange > retreatEscapeRadius) {
+          // Only defer to Engage's kite/strafe while the shooter is actually
+          // USING that range — i.e. still outside melee contact distance.
+          // Some bosses (e.g. the Floor 1 stair boss) combine a long-range
+          // attackRange for a projectile ability with normal melee contact
+          // damage once they close in; once `threat` has already closed to
+          // CONTACT_SAFE_ORBIT_FT, it is not "sniping from range" regardless of
+          // its nominal attackRange, and blocking Retreat here left the AI with
+          // no escape from a boss meleeing it point-blank at critical health.
+          if (attackRange > retreatEscapeRadius && threat.distance > CONTACT_SAFE_ORBIT_FT) {
             // Backing to the retreat hysteresis edge cannot disengage a shooter
             // whose real attack range extends beyond it. Radial retreat then
             // alternates with radial re-approach on the same projectile line.
             // Let engagement own the response so melee can strafe-close instead.
+            this.endRetreat(ctx.world);
+            return false;
+          }
+          // ...and the contact carve-out above only earns its keep while the
+          // retreat is actually creating separation. Cornered against geometry
+          // it degenerates into standing still in body contact, which is
+          // strictly worse than Engage's kite; hand the fight back once the
+          // retreat has provably failed to move the player.
+          if (attackRange > retreatEscapeRadius && this.isContactRetreatPinned(ctx)) {
             this.endRetreat(ctx.world);
             return false;
           }
@@ -1306,10 +1409,27 @@ export class BehaviorTreeAI implements AIInputProvider {
         const stale =
           ctx.world.frameCount - this.retreatRepickFrame >= RETREAT_REPICK_INTERVAL_FRAMES;
         if (this.retreatTargetX === null || this.retreatTargetY === null || arrived || stale) {
-          const target = this.pickRetreatTarget(ctx.world, ctx.playerX, ctx.playerY, threat);
+          // Wedged = a full re-pick interval elapsed and the runner covered
+          // essentially no ground. That only happens when movement is being
+          // cancelled by geometry (a room corner), never while it is kiting.
+          const wedged =
+            stale &&
+            this.retreatRepickX !== null &&
+            this.retreatRepickY !== null &&
+            Math.hypot(this.retreatRepickX - ctx.playerX, this.retreatRepickY - ctx.playerY) <
+              RETREAT_WEDGE_PROGRESS_FT;
+          const target = this.pickRetreatTarget(
+            ctx.world,
+            ctx.playerX,
+            ctx.playerY,
+            threat,
+            wedged,
+          );
           this.retreatTargetX = target.x;
           this.retreatTargetY = target.y;
           this.retreatRepickFrame = ctx.world.frameCount;
+          this.retreatRepickX = ctx.playerX;
+          this.retreatRepickY = ctx.playerY;
         }
         this.decision.targetX = this.retreatTargetX;
         this.decision.targetY = this.retreatTargetY;
@@ -1318,11 +1438,150 @@ export class BehaviorTreeAI implements AIInputProvider {
     );
   }
 
+  /**
+   * True once the contact-range retreat carve-out has provably failed to move
+   * the player, i.e. Retreat is pinned rather than kiting.
+   *
+   * Called only on polls where the carve-out is what keeps Retreat running (a
+   * long-`attackRange` threat already inside {@link CONTACT_SAFE_ORBIT_FT}).
+   * Displacement — not distance to the threat — is the signal, because the
+   * failure mode is positional: `pickRetreatTarget` runs out of A*-reachable
+   * escape tiles, returns a raw away-vector into geometry, and the player stops
+   * moving entirely while contact damage keeps landing.
+   *
+   * Once latched the verdict holds until the carve-out stops firing for
+   * {@link CONTACT_RETREAT_EPISODE_GAP_FRAMES} (Engage kited back out of
+   * contact, or the threat died), so releasing Retreat cannot immediately
+   * re-arm it into a RETREAT/ENGAGE thrash on the very next poll. It also
+   * releases as soon as the player has moved a full
+   * {@link CONTACT_RETREAT_PROGRESS_FT} away from where it was pinned: the pin
+   * is positional, so leaving that spot invalidates the verdict even when
+   * Engage keeps the fight in continuous contact and the episode never gaps.
+   */
+  private isContactRetreatPinned(ctx: BTContext): boolean {
+    const frame = ctx.world.frameCount;
+    const continuing =
+      this.contactRetreatLastFrame !== null &&
+      this.contactRetreatMap === ctx.world.floorMap &&
+      frame - this.contactRetreatLastFrame <= CONTACT_RETREAT_EPISODE_GAP_FRAMES;
+    this.contactRetreatMap = ctx.world.floorMap;
+    this.contactRetreatLastFrame = frame;
+    if (!continuing) {
+      this.startContactRetreatWindow(ctx);
+      return false;
+    }
+    // Count this poll toward the progress window. Frames where the carve-out
+    // did not fire (a gap under the episode threshold) are never counted here,
+    // so a brief out-of-contact interruption cannot masquerade as elapsed
+    // retreat time and declare the player pinned after a single fresh poll.
+    this.contactRetreatActivePolls += 1;
+    const moved = Math.hypot(
+      ctx.playerX - this.contactRetreatStartX,
+      ctx.playerY - this.contactRetreatStartY,
+    );
+    if (this.contactRetreatPinned) {
+      // Engage moved the player off the pinned spot, so the positional verdict
+      // no longer describes the situation — re-open the question from here.
+      if (moved >= CONTACT_RETREAT_PROGRESS_FT) {
+        this.startContactRetreatWindow(ctx);
+        return false;
+      }
+      return true;
+    }
+    if (this.contactRetreatActivePolls < CONTACT_RETREAT_PROGRESS_FRAMES) return false;
+    if (moved >= CONTACT_RETREAT_PROGRESS_FT) {
+      // The kite is working — measure the next window from here.
+      this.startContactRetreatWindow(ctx);
+      return false;
+    }
+    this.contactRetreatPinned = true;
+    return true;
+  }
+
+  private startContactRetreatWindow(ctx: BTContext): void {
+    this.contactRetreatStartX = ctx.playerX;
+    this.contactRetreatStartY = ctx.playerY;
+    this.contactRetreatPinned = false;
+    this.contactRetreatActivePolls = 0;
+  }
+
+  private resetContactRetreatTracking(): void {
+    this.contactRetreatMap = null;
+    this.contactRetreatLastFrame = null;
+    this.contactRetreatStartX = 0;
+    this.contactRetreatStartY = 0;
+    this.contactRetreatPinned = false;
+    this.contactRetreatActivePolls = 0;
+  }
+
   private clearLocalThreatRecovery(): void {
     this.localThreatRecoveryEid = null;
     this.localThreatRecoveryMap = null;
     this.localThreatRecoveryStartFrame = null;
     this.localThreatRecoveryBestHealth = null;
+  }
+
+  /**
+   * Remember the positional progression objective the AI is currently travelling to.
+   */
+  private rememberRetreatObjective(world: GameWorld, x: number, y: number): void {
+    this.retreatObjectiveX = x;
+    this.retreatObjectiveY = y;
+    this.retreatObjectiveFrame = world.frameCount;
+    this.retreatObjectiveMap = world.floorMap;
+  }
+
+  /**
+   * The remembered progression objective, or null when there is none, it is
+   * stale, or it belongs to a different floor.
+   */
+  private getRetreatObjective(world: GameWorld): { x: number; y: number } | null {
+    if (this.retreatObjectiveX === null || this.retreatObjectiveY === null) return null;
+    if (this.retreatObjectiveMap !== world.floorMap) return null;
+    if (world.frameCount - this.retreatObjectiveFrame > RETREAT_OBJECTIVE_MEMORY_FRAMES) {
+      return null;
+    }
+    return { x: this.retreatObjectiveX, y: this.retreatObjectiveY };
+  }
+
+  /**
+   * Record this poll's health and re-evaluate whether sustained incoming damage
+   * would kill the player inside {@link RETREAT_TIME_TO_DEATH_FRAMES}.
+   *
+   * Uses the oldest sample still inside {@link RETREAT_DAMAGE_WINDOW_FRAMES} as
+   * the slope baseline, so the estimate reflects a sustained exchange rather
+   * than one hit. Health gains (a Constitution level-up) simply produce no
+   * damage and clear the flag.
+   */
+  private updateBleedOutRisk(frame: number, health: number): void {
+    const slot =
+      ((frame % RETREAT_DAMAGE_WINDOW_FRAMES) + RETREAT_DAMAGE_WINDOW_FRAMES) %
+      RETREAT_DAMAGE_WINDOW_FRAMES;
+    // The slot about to be overwritten holds the oldest in-window sample.
+    const oldestFrame = this.healthHistoryFrames[slot] ?? -1;
+    const oldestHealth = this.healthHistory[slot] ?? 0;
+    this.healthHistoryFrames[slot] = frame;
+    this.healthHistory[slot] = health;
+
+    const elapsed = frame - oldestFrame;
+    if (oldestFrame < 0 || elapsed <= 0 || elapsed > RETREAT_DAMAGE_WINDOW_FRAMES) {
+      this.bleedingOut = false;
+      return;
+    }
+    const damage = oldestHealth - health;
+    if (damage < RETREAT_DAMAGE_WINDOW_MIN_DAMAGE || health <= 0) {
+      this.bleedingOut = false;
+      return;
+    }
+    const framesToDeath = (health * elapsed) / damage;
+    this.bleedingOut = framesToDeath < RETREAT_TIME_TO_DEATH_FRAMES;
+  }
+
+  /** Reset the health history, e.g. when the AI is re-seeded onto a new floor. */
+  private resetBleedOutRisk(): void {
+    this.healthHistoryFrames.fill(-1);
+    this.healthHistory.fill(0);
+    this.bleedingOut = false;
   }
 
   private buildLocalThreatRecoveryBehavior(): BTNode {
@@ -1415,6 +1674,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     threat: WorldTarget,
+    wedged: boolean,
   ): { x: number; y: number } {
     const awayFallback = (): { x: number; y: number } => {
       const awayX = playerX - threat.x;
@@ -1457,43 +1717,94 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const startTile = floorMap.worldToTile(playerX, playerY);
-    const candidates: Array<{ x: number; y: number; score: number }> = [];
-    for (const offset of RETREAT_ARC_OFFSETS_RAD) {
-      const angle = baseAngle + offset;
-      const dirX = Math.cos(angle);
-      const dirY = Math.sin(angle);
-      for (const mult of RETREAT_DISTANCE_MULTS) {
-        const dist = this.config.scanRadius * mult;
-        const wx = playerX + dirX * dist;
-        const wy = playerY + dirY * dist;
-        const tile = floorMap.worldToTile(wx, wy);
-        if (tile.x === startTile.x && tile.y === startTile.y) continue;
-        const passable = this.doorAwarePassable
-          ? this.doorAwarePassable(tile.x, tile.y)
-          : floorMap.tileMap.isPassable(tile.x, tile.y);
-        if (!passable) continue;
-        let minEnemyDist = Number.POSITIVE_INFINITY;
-        for (const enemy of enemyPositions) {
-          const d = Math.hypot(enemy.x - wx, enemy.y - wy);
-          if (d < minEnemyDist) minEnemyDist = d;
+    const objective = this.getRetreatObjective(world);
+    const objectiveDistance = objective
+      ? Math.hypot(objective.x - playerX, objective.y - playerY)
+      : 0;
+    const maxObjectiveBias =
+      this.config.retreatDangerRadius *
+      (RETREAT_HYSTERESIS_MULT - 1) *
+      RETREAT_OBJECTIVE_BIAS_BAND_FRACTION;
+    const collectCandidates = (
+      offsets: readonly number[],
+    ): Array<{ x: number; y: number; score: number }> => {
+      const candidates: Array<{ x: number; y: number; score: number }> = [];
+      for (const offset of offsets) {
+        const angle = baseAngle + offset;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        for (const mult of RETREAT_DISTANCE_MULTS) {
+          const dist = this.config.scanRadius * mult;
+          const wx = playerX + dirX * dist;
+          const wy = playerY + dirY * dist;
+          const tile = floorMap.worldToTile(wx, wy);
+          if (tile.x === startTile.x && tile.y === startTile.y) continue;
+          const passable = this.doorAwarePassable
+            ? this.doorAwarePassable(tile.x, tile.y)
+            : floorMap.tileMap.isPassable(tile.x, tile.y);
+          if (!passable) continue;
+          let minEnemyDist = Number.POSITIVE_INFINITY;
+          for (const enemy of enemyPositions) {
+            const d = Math.hypot(enemy.x - wx, enemy.y - wy);
+            if (d < minEnemyDist) minEnemyDist = d;
+          }
+          // Subordinate objective bias: reward candidates that also close the gap
+          // to the remembered progression objective, so the escape lane doubles as
+          // route progress instead of ground the next progression poll has to
+          // re-walk through the same pursuers.
+          const objectiveGain = objective
+            ? objectiveDistance - Math.hypot(objective.x - wx, objective.y - wy)
+            : 0;
+          // Normalize route progress to the fraction of candidate travel that closes
+          // the objective gap. The reverse triangle inequality bounds this to [-1, 1];
+          // using half the hysteresis band keeps the full signed bias range to one
+          // band, so opposing objectives cannot outweigh materially safer lanes.
+          const objectiveProgressFraction = objectiveGain / dist;
+          const boundedObjectiveGain = maxObjectiveBias * objectiveProgressFraction;
+          candidates.push({
+            x: wx,
+            y: wy,
+            score: minEnemyDist + RETREAT_OBJECTIVE_BIAS_WEIGHT * boundedObjectiveGain,
+          });
         }
-        candidates.push({ x: wx, y: wy, score: minEnemyDist });
       }
-    }
+      return candidates;
+    };
 
     // Most open candidates first; A*-verify in score order and take the first
     // that is genuinely reachable. The verification budget keeps the scan cheap.
-    candidates.sort((a, b) => b.score - a.score);
-    let verifications = 0;
-    for (const candidate of candidates) {
-      if (verifications >= RETREAT_MAX_PATH_VERIFICATIONS) break;
-      const goalTile = floorMap.worldToTile(candidate.x, candidate.y);
-      verifications += 1;
-      const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
-      if (path.length > 1) {
-        const center = floorMap.tileToWorld(goalTile.x, goalTile.y);
-        return { x: center.x, y: center.y };
+    const firstReachable = (
+      candidates: Array<{ x: number; y: number; score: number }>,
+    ): { x: number; y: number } | null => {
+      candidates.sort((a, b) => b.score - a.score);
+      let verifications = 0;
+      for (const candidate of candidates) {
+        if (verifications >= RETREAT_MAX_PATH_VERIFICATIONS) break;
+        const goalTile = floorMap.worldToTile(candidate.x, candidate.y);
+        verifications += 1;
+        const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
+        if (path.length > 1) {
+          const center = floorMap.tileToWorld(goalTile.x, goalTile.y);
+          return { x: center.x, y: center.y };
+        }
       }
+      return null;
+    };
+
+    const arcTarget = firstReachable(collectCandidates(RETREAT_ARC_OFFSETS_RAD));
+    if (arcTarget) return arcTarget;
+
+    // Cornered breakout: the ±120° away-from-the-swarm arc above is entirely
+    // wall when the player is wedged in a room corner with the pack in the only
+    // open quadrant. Returning the naive away-vector there aims the runner
+    // straight into the corner it is already pressed against: collision zeroes
+    // both axes, so it stands still at full throttle while contact damage kills
+    // it (release-sweep seed 25, #2993). Widening the scan to the remaining
+    // rearward directions gives the runner a reachable lane — running past the
+    // pack beats dying wedged in stone.
+    if (wedged) {
+      const breakoutTarget = firstReachable(collectCandidates(RETREAT_BREAKOUT_ARC_OFFSETS_RAD));
+      if (breakoutTarget) return breakoutTarget;
     }
 
     return awayFallback();
@@ -1716,14 +2027,20 @@ export class BehaviorTreeAI implements AIInputProvider {
           target.distance > NPC_INTERACTION_RADIUS_FT
         ) {
           const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
-          const npcThreatRadius = Math.min(
-            this.getEngageRadius(ctx.world),
-            NPC_APPROACH_THREAT_RADIUS_FT,
-          );
+          const weapon = getActiveWeapon(ctx.world);
+          const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
+          const woundedProjectile =
+            projectileWeapon && ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION;
+          // Wounded melee users need the full engage radius instead of the normal
+          // 8 ft NPC-approach cap; baseball-bat seed 34 otherwise walks past a
+          // lethal threat while travelling to the quest NPC.
+          const shouldExpandMeleeThreatClear =
+            !projectileWeapon && ctx.healthPercent < FARM_MIN_HEALTH_FRACTION;
+          const npcThreatRadius = shouldExpandMeleeThreatClear
+            ? this.getEngageRadius(ctx.world)
+            : Math.min(this.getEngageRadius(ctx.world), NPC_APPROACH_THREAT_RADIUS_FT);
           if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
-            const weapon = getActiveWeapon(ctx.world);
-            const projectileWeapon = weapon ? isProjectileWeaponType(weapon.weaponType) : false;
-            if (projectileWeapon) {
+            if (projectileWeapon && !woundedProjectile) {
               // Auto-fire handles projectile weapons at range, so keep travelling
               // toward the NPC instead of re-entering ENGAGE — fall through to the
               // direct-approach path below.
@@ -1764,6 +2081,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetY = target.y;
         this.decision.reason = target.reason;
         this.decision.npcInteraction = target.npcInteraction ? { ...target.npcInteraction } : null;
+        this.rememberRetreatObjective(ctx.world, target.x, target.y);
         return BTStatus.SUCCESS;
       }),
     );
@@ -3446,7 +3764,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.rangedDefensiveSpacing = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
+    this.retreatRepickX = null;
+    this.retreatRepickY = null;
     this.retreatThreatEid = null;
+    this.resetContactRetreatTracking();
     this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
@@ -3499,6 +3820,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerHealth = world.stores.health.current[playerEid] ?? 1;
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
     const healthPercent = playerHealth / playerMaxHealth;
+    this.updateBleedOutRisk(world.frameCount, playerHealth);
     this.updateSafeRoomEgressWaypointLatch(world, playerX, playerY);
 
     // Update stuck detection. Standing on a harvestable to gather it nets ~zero
@@ -8907,6 +9229,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.engageNoProgressFrames = 0;
     this.engageBaselinesByEid.clear();
     this.rangedDefensiveSpacing = false;
+    this.retreatObjectiveX = null;
+    this.retreatObjectiveY = null;
+    this.retreatObjectiveFrame = 0;
+    this.retreatObjectiveMap = null;
+    this.resetBleedOutRisk();
     this.collectDwellActive = false;
     this.collectDwellAnchorX = 0;
     this.collectDwellAnchorY = 0;
@@ -8958,7 +9285,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
+    this.retreatRepickX = null;
+    this.retreatRepickY = null;
     this.retreatThreatEid = null;
+    this.resetContactRetreatTracking();
     this.clearLocalThreatRecovery();
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;

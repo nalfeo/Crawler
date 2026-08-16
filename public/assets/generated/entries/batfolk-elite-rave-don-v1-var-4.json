@@ -26,9 +26,6 @@
   "judgeScore": "3",
   "type": null,
   "contentHash": "703a74c4646cca5089170ba38871b3954e4021e3820eed597f9cc3e75cf77d80",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

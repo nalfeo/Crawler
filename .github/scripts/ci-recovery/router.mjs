@@ -253,6 +253,15 @@ export function isRetryableError(error) {
   return false;
 }
 
+function isRateLimitError(error) {
+  const status = Number(error?.status || 0);
+  if (status !== 403 && status !== 429) {
+    return false;
+  }
+  const message = String(error?.data?.message || error?.message || '').toLowerCase();
+  return message.includes('rate limit');
+}
+
 export function computeBackoffDelayMs(error, attempt, baseDelayMs, maxDelayMs) {
   const retryAfterMs = parseRetryAfterMilliseconds(error);
   if (retryAfterMs !== null) {
@@ -1674,29 +1683,46 @@ export async function runFromEnv(env = process.env) {
   // count (a full ai-sweep.yml run fans to ~10–19 concurrent jobs). Validation
   // runs use the full outstanding-status set so even a queued/waiting
   // validation run contributes to the reserved floor.
-  const [activeSweepRunCount, activeValidationRunCount] = await Promise.all([
-    Promise.all(
-      SWEEP_WORKFLOW_FILES.map((f) =>
-        countOutstandingWorkflowRuns(token, owner, repo, f, ['in_progress']),
-      ),
-    ).then((counts) => counts.reduce((sum, c) => sum + c, 0)),
-    countOutstandingWorkflowRuns(token, owner, repo, VALIDATION_WORKFLOW_FILE),
-  ]);
-  const activeSweepJobs = activeSweepRunCount * SWEEP_RUNNER_WEIGHT;
-  const activeValidationJobs = activeValidationRunCount * VALIDATION_RUNNER_WEIGHT;
+  let outstandingCountLabel = 'unknown';
+  let boundedDispatchBudget = 0;
+  let activeSweepRunCount = 0;
+  let activeValidationRunCount = 0;
+  let dispatchBudgetTelemetryStep = 'runner-pressure';
+  try {
+    [activeSweepRunCount, activeValidationRunCount] = await Promise.all([
+      Promise.all(
+        SWEEP_WORKFLOW_FILES.map((f) =>
+          countOutstandingWorkflowRuns(token, owner, repo, f, ['in_progress']),
+        ),
+      ).then((counts) => counts.reduce((sum, c) => sum + c, 0)),
+      countOutstandingWorkflowRuns(token, owner, repo, VALIDATION_WORKFLOW_FILE),
+    ]);
+    const activeSweepJobs = activeSweepRunCount * SWEEP_RUNNER_WEIGHT;
+    const activeValidationJobs = activeValidationRunCount * VALIDATION_RUNNER_WEIGHT;
 
-  const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
-  const dispatchBudget = computeDispatchBudget({
-    trainQueueNonEmpty,
-    outstandingCount,
-    activeSweepJobs,
-    activeValidationJobs,
-    maxBudgetTrainBusy: caps.maxBudgetTrainBusy,
-    maxBudgetTrainIdle: caps.maxBudgetTrainIdle,
-  });
-  const boundedDispatchBudget = trainQueueNonEmpty
-    ? Math.min(dispatchBudget, caps.globalTrainDispatchCap)
-    : dispatchBudget;
+    dispatchBudgetTelemetryStep = 'recovery-outstanding';
+    const outstandingCount = await countOutstandingRecoveryRuns(token, owner, repo);
+    outstandingCountLabel = String(outstandingCount);
+    const dispatchBudget = computeDispatchBudget({
+      trainQueueNonEmpty,
+      outstandingCount,
+      activeSweepJobs,
+      activeValidationJobs,
+      maxBudgetTrainBusy: caps.maxBudgetTrainBusy,
+      maxBudgetTrainIdle: caps.maxBudgetTrainIdle,
+    });
+    boundedDispatchBudget = trainQueueNonEmpty
+      ? Math.min(dispatchBudget, caps.globalTrainDispatchCap)
+      : dispatchBudget;
+  } catch (error) {
+    if (!isRateLimitError(error)) {
+      throw error;
+    }
+    boundedDispatchBudget = 0;
+    process.stdout.write(
+      `dispatch budget telemetry rate-limited; deferring normal dispatches step=${dispatchBudgetTelemetryStep} status=${error.status || 'n/a'}\n`,
+    );
+  }
   const { dispatchable, deferred } = partitionDispatchable(prNumbers, boundedDispatchBudget);
 
   // Capture pre-dispatch outstanding run IDs so waitForDispatchedRunsVisible
@@ -1744,7 +1770,7 @@ export async function runFromEnv(env = process.env) {
   if (deferred.length > 0) {
     const cap = trainQueueNonEmpty ? caps.globalTrainDispatchCap : caps.maxBudgetTrainIdle;
     process.stdout.write(
-      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCount} cap=${cap} budget=${boundedDispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `global backpressure applied deferred=${deferred.length} pr_numbers=${deferred.join(',')} outstanding=${outstandingCountLabel} cap=${cap} budget=${boundedDispatchBudget} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 
@@ -1759,7 +1785,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls.length > prNumbers.length
   ) {
     process.stdout.write(
-      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${boundedDispatchBudget} outstanding=${outstandingCount} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
+      `dispatch cap applied sent=${dispatchable.length} total_eligible=${scheduledPulls.length} cap=${maxDispatchPerRun} budget=${boundedDispatchBudget} outstanding=${outstandingCountLabel} sweep_runs=${activeSweepRunCount} validation_runs=${activeValidationRunCount}\n`,
     );
   }
 }

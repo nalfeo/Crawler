@@ -92,9 +92,6 @@
   },
   "type": "weapon",
   "contentHash": "5946787f4fa8d66c4a748b8807ef2f2671a6a21010a5c43070ce9b103e7f9c0a",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/brass-knuckles-v3/2026-07-25T05-35-07-f1e54ac1/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": null,
   "facingDirection": "right",
   "opaqueBounds": {

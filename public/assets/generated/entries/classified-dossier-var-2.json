@@ -3,7 +3,7 @@
   "spriteName": "classified-dossier-var-2",
   "assetPath": "generated/classified-dossier-var-2.png",
   "approvedAt": "2026-07-02T17:09:51.403Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-D435Fh/classified-dossier-v1/2026-07-02T06-18-39-8a4f737b",
+  "sourceRun": "generated/runs/classified-dossier/imported-614325f07343",
   "variantIndex": 2,
   "anchor": {
     "x": 32,

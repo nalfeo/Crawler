@@ -122,6 +122,7 @@ describe('normalizeFunSessions', () => {
             mastery: Number.NaN,
             control: 4,
             tension: 2,
+            comment: '  Loved the tension and pacing.  ',
           },
         },
       ],
@@ -134,6 +135,7 @@ describe('normalizeFunSessions', () => {
       immersion: 4,
       control: 4,
       tension: 2,
+      comment: 'Loved the tension and pacing.',
     });
   });
 

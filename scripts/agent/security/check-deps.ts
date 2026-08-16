@@ -71,6 +71,10 @@ const TRUSTED_PACKAGES = new Set<string>([
   // MIT-licensed, maintained under the Fastify org, and already trusted
   // transitively through the Fastify stack.
   'fast-uri',
+  // DOM implementation used only as a Vitest `@vitest-environment` for
+  // engine UI unit tests (e.g. RunSurveyUI). MIT-licensed, maintained by the
+  // jsdom org, dev-dependency only — never bundled into the shipped game.
+  'jsdom',
 ]);
 
 function isTrusted(name: string): boolean {

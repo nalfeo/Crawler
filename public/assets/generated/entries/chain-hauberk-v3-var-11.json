@@ -3,7 +3,7 @@
   "spriteName": "chain-hauberk-v3-var-11",
   "assetPath": "generated/chain-hauberk-v3-var-11.png",
   "approvedAt": "2026-07-20T04:47:06.615Z",
-  "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Rlw3hl/chain-hauberk-v3/2026-07-18T01-54-11-af8cba88",
+  "sourceRun": "generated/runs/chain-hauberk-v3/imported-6922e3daf363",
   "variantIndex": 11,
   "anchor": {
     "x": 29,
@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": "item",
   "contentHash": "6922e3daf363917c04083f43e9a2c6a4297c70c12f7550fda53fde6ad0429638",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/chain-hauberk-v3/2026-07-18T01-54-11-af8cba88/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/chain-hauberk-v3/2026-07-18T01-54-11-af8cba88/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/chain-hauberk-v3/2026-07-18T01-54-11-af8cba88/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

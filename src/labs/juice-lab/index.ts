@@ -271,6 +271,6 @@ registerLab('juice-lab', {
   category: 'Combat' as LabCategory,
   name: 'Juice Lab',
   description:
-    'Preview the EffectsVfx juice library: pickup sparkles, level-up bursts, hit sparks, crit bursts, death pops, and player-hurt flash. Buttons fire single effects; Auto-fire stress-tests density.',
+    'Preview the EffectsVfx juice library: pickup sparkles, level-up bursts, hit sparks, crit bursts, death pops, and player-hurt pulse. Buttons fire single effects; Auto-fire stress-tests density.',
   create: createJuiceLab,
 });

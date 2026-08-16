@@ -114,9 +114,6 @@
     "canvasWidth": 345,
     "canvasHeight": 256
   },
-  "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\slime\\2026-08-01T16-44-15-b10f99c7\\postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\slime\\2026-08-01T16-44-15-b10f99c7\\postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\crawler\\nalfeo-improved-lamp\\generated\\runs\\slime\\2026-08-01T16-44-15-b10f99c7\\postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "catalog": {

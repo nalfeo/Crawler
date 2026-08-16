@@ -26,9 +26,6 @@
   "judgeScore": "4",
   "type": null,
   "contentHash": "de181bda594892bfe812aaffa9623dd0fdf1628ad934a749d55454922e1e63aa",
-  "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
-  "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
-  "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
   "effectiveAnchorSource": "derived",
   "facingDirection": "right",
   "opaqueBounds": {

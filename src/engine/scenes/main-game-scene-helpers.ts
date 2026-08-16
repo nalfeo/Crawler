@@ -283,3 +283,38 @@ export function resolveDialogueLines(
   const def = getNpcDef(defId);
   return def?.dialogue.map((line) => line.text) ?? [];
 }
+
+/**
+ * Fraction of the next fixed simulation step that has already elapsed in
+ * wall-clock time, clamped to `[0, 1]`.
+ *
+ * The scene simulates on a fixed `GAME.DELTA_MS` accumulator while the browser
+ * renders on rAF, so rendered frames rarely land on a step boundary: without
+ * this factor some frames advance the world by zero steps and the next by two,
+ * which reads as judder. Rendering at `alpha` between steps smooths that out.
+ *
+ * Defensive clamping matters because the paused single-step drain can leave the
+ * accumulator negative (it is zeroed mid-step and then decremented), and a long
+ * stall can leave it above one step before the spiral-of-death clamp runs.
+ */
+export function renderInterpolationAlpha(accumulatorMs: number, stepMs: number): number {
+  if (!Number.isFinite(accumulatorMs) || !Number.isFinite(stepMs) || stepMs <= 0) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, accumulatorMs / stepMs));
+}
+
+/**
+ * Advances a fixed-step position by `alpha` of its per-step velocity, matching
+ * the render-side extrapolation `PhaserBridge.sync` applies to every entity
+ * sprite (`position + velocity * interpAlpha`). The camera must use the exact
+ * same expression for the player, otherwise the interpolated player sprite
+ * would slide against a step-quantized camera.
+ */
+export function extrapolateRenderPosition(
+  position: number,
+  velocityPerStep: number,
+  alpha: number,
+): number {
+  return position + velocityPerStep * alpha;
+}

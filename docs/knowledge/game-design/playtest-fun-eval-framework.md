@@ -109,6 +109,7 @@ The evaluator also reports criteria independently of the overall score:
 | Snowball/cheese frequency | Epic outlier runs <=10%                         | `unmeasured` below 10 complete official wins      |
 | Permanent-power slope     | Slow positive run-over-run slope                | `unmeasured` until meta progression exists        |
 | Item viability            | No exposed item is inert or permanently avoided | `unmeasured` for legacy/no selectable exposures   |
+| Early death rate          | Floor 1/2 deaths <=10%                          | Measured from run outcomes                        |
 
 These criteria are diagnostic and trendable, not PR gates. `FunScoreReport`
 emits aggregate means, persona breakdowns, sample size (`runs`), and
@@ -165,6 +166,9 @@ selected, selected below 10% after at least five selectable exposures, or select
 but has neither activations nor equipped active time. `observed` is flagged
 catalog items divided by evaluable exposed items; the target is zero. Lower is
 better in baseline comparisons.
+
+**Early death rate.** Deaths on Floor 1 or 2 count as tutorial-phase failures.
+`observed` is those deaths divided by all runs and is healthy at `<= 0.10`.
 
 **Meta progression.** `RunStats.metaProgression` reserves normalized
 `permanentPowerBefore` and `permanentPowerAfter` values. If every ordered session

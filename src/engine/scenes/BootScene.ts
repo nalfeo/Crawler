@@ -172,7 +172,7 @@ export class BootScene extends Phaser.Scene {
 
     // Title.
     this.add
-      .text(CX, TITLE_Y, 'THE CRAWLER', {
+      .text(CX, TITLE_Y, 'Crawler', {
         fontFamily: 'monospace',
         fontSize: '32px',
         fontStyle: 'bold',

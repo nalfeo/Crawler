@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-15",
+  "session_slug": "floor1-cornered-retreat-wedge",
+  "task_title": "Fix cornered-retreat wedge deadlock causing Floor 1 seed-25 loss",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "convergent",
+      "notes": "Validated reviewer concern and adopted 3🍎 reclassification plus required artifacts."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4-mini"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "3a19fe90edecaacef138c6aeb3988e27331bb511",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change elegantly and correctly addresses the cornered-retreat deadlock by introducing a measured wedge detection that expands the retreat escape arc only when the agent fails to make physical progress over a repick interval. The scope is tightly disciplined, refactoring target generation into pure helper functions to reuse logic cleanly without sprawling. Existing tests were correctly updated for the new function signature, and a targeted regression test was added to verify the breakout behavior in corners. All repository policies and maintainability standards are fully respected with excellent inline documentation."
+    }
+  }
+}
