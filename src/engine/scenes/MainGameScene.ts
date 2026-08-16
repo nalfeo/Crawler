@@ -79,6 +79,8 @@ import { createAchievementsUI } from '../AchievementsUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
+import { createBossIntroUI } from '../BossIntroUI.js';
+import { resolvePendingBossIntro } from '../boss-intro-state.js';
 import { createQuartermasterUI } from '../QuartermasterUI.js';
 import { createRunSurveyUI } from '../RunSurveyUI.js';
 import { validatePlaytestSurvey } from '../../shared/playtest-survey.js';
@@ -162,6 +164,13 @@ const MAX_STEPS_PER_FRAME = 4;
  * (the modal freeze skips the fixed-step), so it is independent of sim speed.
  */
 const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
+/**
+ * Render frames the boss-intro lore sheet is held open before an AI-driven run
+ * (`autoLevelUpAllocator` wired) auto-dismisses it. ~1s at 60fps — long enough
+ * for a viewer/recording to read the billing, short enough not to stall a
+ * headless-adjacent AI playthrough. Human play dismisses on input instead.
+ */
+const BOSS_INTRO_AUTO_HOLD_FRAMES = 60;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
@@ -683,6 +692,14 @@ export class MainGameScene extends Phaser.Scene {
 
   private levelUpUI?: ReturnType<typeof createLevelUpUI>;
 
+  private bossIntroUI?: ReturnType<typeof createBossIntroUI>;
+
+  /** `BossIntroContent.introId`s already presented this run (show-once). */
+  private readonly shownBossIntroIds = new Set<string>();
+
+  /** Frames the boss-intro sheet has been held open for an AI-driven run. */
+  private bossIntroAutoHoldFrames = 0;
+
   /** Chest ids already surfaced via a one-time "ready to open" toast. */
   private readonly notifiedBossChestIds = new Set<string>();
 
@@ -1016,6 +1033,7 @@ export class MainGameScene extends Phaser.Scene {
         this.rewardAudioController?.skipped();
       },
     });
+    this.bossIntroUI = createBossIntroUI(this);
     this.achievementsUI = createAchievementsUI(this, this.rewardOpeningUI, {
       onGrantFailed: () => {
         this.flashHint('Reward could not be granted — check your bag has room and try again.');
@@ -1253,6 +1271,10 @@ export class MainGameScene extends Phaser.Scene {
       this.runSurveyUI = undefined;
       this.levelUpUI?.destroy();
       this.levelUpUI = undefined;
+      this.bossIntroUI?.destroy();
+      this.bossIntroUI = undefined;
+      this.shownBossIntroIds.clear();
+      this.bossIntroAutoHoldFrames = 0;
       if (this.uiCamera) {
         this.cameras.remove(this.uiCamera);
         this.uiCamera = undefined;
@@ -1751,6 +1773,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.inventoryUI?.isOpen() ?? false) ||
       (this.equipmentUI?.isOpen() ?? false) ||
       (this.achievementsUI?.isOpen() ?? false) ||
@@ -1794,6 +1817,19 @@ export class MainGameScene extends Phaser.Scene {
         this.queuedAbilitiesToggle = false;
         this.closeAbilitiesModal();
       }
+      this.updateOverlayText();
+      return;
+    }
+
+    // A boss battle just started: freeze the sim behind The Director's lore
+    // sheet so the player reads who they are fighting before taking a hit.
+    // Same freeze contract as the level-up/reward branches — rendering and
+    // camera stay alive, the fixed step does not run.
+    this.showBossIntroIfNeeded();
+    if (this.bossIntroUI?.isOpen()) {
+      this.driveAutoBossIntro();
+      this.bridge.sync(this.world);
+      this.updateCamera();
       this.updateOverlayText();
       return;
     }
@@ -2059,6 +2095,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false);
 
     // Per-panel open state — used below to show each panel's own button as a
@@ -2075,6 +2112,7 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (!abilitiesOpen && (this.modalPicker?.isOpen() ?? false));
 
@@ -3811,6 +3849,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.rewardOpeningUI?.isOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
+      (this.bossIntroUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
     const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
     const quartermasterOpen2 = this.quartermasterUI?.isOpen() ?? false;
@@ -4412,6 +4451,59 @@ export class MainGameScene extends Phaser.Scene {
     if (wasPaused !== undefined) {
       this.setSimulationPaused(wasPaused);
     }
+  }
+
+  /**
+   * Open the boss-intro lore sheet when a boss encounter has just started and
+   * has not been introduced yet. No-ops while any other blocking surface owns
+   * the screen (conversation, level-up, reward reveal, ...), while the run is
+   * over, or once this boss has already been introduced — the intro plays
+   * exactly once per boss per run.
+   */
+  private showBossIntroIfNeeded(): void {
+    const bossIntroUI = this.bossIntroUI;
+    if (!bossIntroUI || bossIntroUI.isOpen() || this.isBlockingSurfaceOpen()) {
+      return;
+    }
+    if (this.world.state === 'game_over' || (this.gameOverUI?.isVisible() ?? false)) {
+      return;
+    }
+    const pending = resolvePendingBossIntro(this.world, this.shownBossIntroIds);
+    if (!pending) {
+      return;
+    }
+    // Latch BEFORE opening so a mid-sheet teardown (floor restart, death)
+    // cannot re-trigger the same intro on the next frame.
+    this.shownBossIntroIds.add(pending.content.introId);
+    this.bossIntroAutoHoldFrames = 0;
+    this.clearPendingInteractionInput();
+    bossIntroUI.open({
+      content: pending.content,
+      reducedMotion: prefersReducedMotion(),
+      onDismiss: () => {
+        this.bossIntroAutoHoldFrames = 0;
+        this.clearPendingInteractionInput();
+      },
+    });
+  }
+
+  /**
+   * AI boss-intro driver. When an `autoLevelUpAllocator` is wired (AI Runner
+   * Lab / in-browser AI playthroughs) there is no human to press a key, so hold
+   * the sheet for {@link BOSS_INTRO_AUTO_HOLD_FRAMES} render frames — enough
+   * for a viewer to read it — then dismiss it and resume the run. No-op for
+   * human play, where the sheet waits for input.
+   */
+  private driveAutoBossIntro(): void {
+    if (!this.options.autoLevelUpAllocator || !this.bossIntroUI?.isOpen()) {
+      this.bossIntroAutoHoldFrames = 0;
+      return;
+    }
+    this.bossIntroAutoHoldFrames += 1;
+    if (this.bossIntroAutoHoldFrames < BOSS_INTRO_AUTO_HOLD_FRAMES) {
+      return;
+    }
+    this.bossIntroUI.dismiss();
   }
 
   /**
