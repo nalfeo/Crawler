@@ -16,13 +16,30 @@
       "notes": "Alt A: bootstrap-owned floor registry — rejected because it creates a second per-floor registry and keeps executable ownership outside the existing scenario seam. Alt B: generic ordered contributor descriptors — rejected as unnecessary extensibility and weaker named ordering contracts for three known seams. Resolutions: add scenarioDefinitions.ts as an orphan-system wiring site plus guard coverage; define exactly-once as canonical preSystems membership and retain floor2ObjectiveTick victory evaluation; import getScenarioDefinition directly; table-test shared anchors and all configured entries exactly once with foreign entries absent; scope the ADR to pipeline imports only."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
