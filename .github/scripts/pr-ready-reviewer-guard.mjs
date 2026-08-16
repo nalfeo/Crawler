@@ -269,10 +269,17 @@ async function changedFilesForDraft({
 }
 
 async function requestHumanReviewerIfRequired({ api, pr, prNumber, reviewerLogin, log }) {
+  if (requiresHumanApproval(pr)) {
+    return requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log });
+  }
   const closingIssues = await api.listClosingIssues(prNumber);
   if (!requiresHumanApproval(pr, closingIssues)) {
     return false;
   }
+  return requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log });
+}
+
+async function requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log }) {
   const requestedReviewers = pr.requested_reviewers ?? [];
   if (
     requestedReviewers.some((reviewer) => normalize(reviewer.login) === normalize(reviewerLogin))
@@ -683,7 +690,7 @@ export async function runPrReadyReviewerGuard({
           triggeringPullNumber ?? '',
         )})`,
       );
-      return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+      return { draftsPublished: 0, emptyDraftRepairs: 0, humanReviewerRequests: 0 };
     }
     const pull = await api.getPull(prNumber);
     openPrs = String(pull?.state || '').toLowerCase() === 'open' ? [pull] : [];
@@ -692,7 +699,7 @@ export async function runPrReadyReviewerGuard({
   }
   if (openPrs.length === 0) {
     log.info('No open PRs found.');
-    return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+    return { draftsPublished: 0, emptyDraftRepairs: 0, humanReviewerRequests: 0 };
   }
   let draftsPublished = 0;
   let emptyDraftRepairs = 0;
@@ -827,7 +834,7 @@ export async function runPrReadyReviewerGuard({
     );
   }
 
-  return { draftsPublished, emptyDraftRepairs, reviewerRemovals: 0 };
+  return { draftsPublished, emptyDraftRepairs, humanReviewerRequests };
 }
 
 async function main() {

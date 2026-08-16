@@ -347,7 +347,7 @@ test('event-triggered runs inspect only the triggering pull request', async () =
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 1,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'listOpenPulls'),
@@ -388,7 +388,7 @@ test('scheduled sweeps still enumerate all open pull requests', async () => {
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.deepEqual(
     harness.calls.filter(([name]) => name === 'listOpenPulls'),
@@ -413,7 +413,7 @@ test('event-triggered runs fail closed when the triggering pull request number i
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.deepEqual(harness.calls, []);
   assert.ok(
@@ -685,7 +685,7 @@ test('skips local-ineligible empty-draft repairs before linked-issue or workflow
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'listClosingIssues' || name === 'listWorkflowRuns'),
@@ -713,7 +713,7 @@ test('repairs the exact eligible empty Copilot draft fixture', async () => {
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 1,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.filter(
@@ -775,7 +775,7 @@ test('a successful repair is not repeated on the next scan because the PR is clo
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.filter(
@@ -812,7 +812,7 @@ test('a successful repair does not remove a requested human reviewer', async () 
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 1,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'requestReviewer'),
@@ -864,7 +864,7 @@ test('head drift after initial eligibility skips before any write', async () => 
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'updatePullState'),
@@ -907,7 +907,7 @@ test('skip without writes when linked issue no longer has Copilot assigned', asy
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'updatePullState'),
@@ -950,7 +950,7 @@ test('skip without writes when linked issue closed after confirmation but before
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'updatePullState'),
@@ -1280,7 +1280,7 @@ test('changed-file draft publication stays unchanged', async () => {
   assert.deepEqual(summary, {
     draftsPublished: 1,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'markReadyForReview'),
@@ -1321,7 +1321,7 @@ test('a human-gated PR preserves an existing nalfeo review request', async () =>
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'requestReviewer'),
@@ -1388,7 +1388,7 @@ test('requests nalfeo only for every canonical human-approval gate', async () =>
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 3,
   });
   assert.deepEqual(
     harness.calls.filter(([name]) => name === 'requestReviewer'),
@@ -1544,7 +1544,7 @@ test('repair is skipped and not repeated when PR has the repair marker label aft
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(
@@ -1791,7 +1791,7 @@ test('post-close changed-files drift causes reopen and skip without issue writes
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   // close was attempted
   assert.ok(
@@ -1886,7 +1886,7 @@ test('absent changed_files in confirmation read skips without close', async () =
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   assert.equal(
     harness.calls.some(([name]) => name === 'updatePullState'),
@@ -1941,7 +1941,7 @@ test('event-scoped run uses getPull and skips listOpenPulls', async () => {
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    reviewerRemovals: 0,
+    humanReviewerRequests: 0,
   });
   // Must use getPull (single-PR fetch), not listOpenPulls
   assert.ok(
@@ -2035,7 +2035,11 @@ test('event-scoped run skips immediately when triggering PR is not open', async 
     now: NOW,
   });
 
-  assert.deepEqual(summary, { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 });
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    humanReviewerRequests: 0,
+  });
   assert.ok(
     harness.calls.some(([name, num]) => name === 'getPull' && num === 42),
     'getPull must be called to inspect the triggering PR',
