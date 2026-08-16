@@ -38,6 +38,7 @@ import {
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import { isPointInSafeSpace } from '../../core/safe-space.js';
 import { resolveFloor2SettlementAnchor } from '../../core/floor2-settlement-anchor.js';
+import { resolveNearestSafeAnchor } from '../../core/safe-anchor.js';
 import { RoomRole, type TerritoryZone } from '../../shared/map-types.js';
 import {
   type AILockedDoorMemory,
@@ -4068,7 +4069,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         playerEid,
         playerX,
         playerY,
-        resolveFloor2SettlementAnchor(world),
+        // Generalized from the Floor 2 settlement to "the nearest safe
+        // context": the AI's equipment/achievement/ability actions are
+        // safe-context gated exactly as a human's panels are, so on Floor 1 —
+        // which has no settlement — the return trip must target the nearest
+        // safe room (including a boss room that became safe after the kill)
+        // or the router would never fire and chest loot would go unequipped.
+        resolveNearestSafeAnchor(world, playerX, playerY),
         dangerNearbyForSettlementReturn,
         progressSuppressedForSettlementReturn,
       );
