@@ -31,7 +31,7 @@ import {
   SPELL_SKILL_ID_BY_SPELL_ID,
   generateFloor1SpellBrokerOffers,
 } from '../../src/shared/index.js';
-import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
+import { _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
 import {
   configureMerchantWeaponPurchase,
   getMerchantWeaponIntent,
