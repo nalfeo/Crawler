@@ -270,9 +270,14 @@ export function resolveDirectionArrowStates(
     const distanceFt = Math.hypot(dx, dy);
     const labelText = wrapWaypointText(`${waypoint.label}  ${formatWaypointDistance(distanceFt)}`);
     const edgePoint = rectEdgePt(targetAngle);
-    let { x: screenX, y: screenY } = edgePoint;
-    let label = labelLayout(screenX, screenY, labelText);
     const maxAttempts = Math.max(48, waypoints.length * 12);
+    let placement:
+      | {
+          readonly screenX: number;
+          readonly screenY: number;
+          readonly label: ReturnType<typeof labelLayout>;
+        }
+      | undefined;
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       const { x: candidateX, y: candidateY } = slideAlongEdge(edgePoint, fanDistance(attempt));
       const candidateLabel = labelLayout(candidateX, candidateY, labelText);
@@ -293,27 +298,29 @@ export function resolveDirectionArrowStates(
               height: state.labelHeight,
             }),
         ) && avoidsHud;
-      screenX = candidateX;
-      screenY = candidateY;
-      label = candidateLabel;
       if (clear) {
+        placement = { screenX: candidateX, screenY: candidateY, label: candidateLabel };
         break;
       }
+    }
+
+    if (!placement) {
+      continue;
     }
 
     states.push({
       questId: waypoint.questId,
       label: waypoint.label,
       kind: waypoint.kind,
-      screenX,
-      screenY,
+      screenX: placement.screenX,
+      screenY: placement.screenY,
       rotation: targetAngle + Math.PI / 2,
       distanceFt,
       labelText,
-      labelScreenX: label.x,
-      labelScreenY: label.y,
-      labelWidth: label.width,
-      labelHeight: label.height,
+      labelScreenX: placement.label.x,
+      labelScreenY: placement.label.y,
+      labelWidth: placement.label.width,
+      labelHeight: placement.label.height,
     });
   }
 
