@@ -65,6 +65,9 @@ import {
   type AIStateValue,
 } from '../../src/game/ai/types.js';
 import {
+  CONTACT_RETREAT_EPISODE_GAP_FRAMES,
+  CONTACT_RETREAT_PROGRESS_FRAMES,
+  CONTACT_RETREAT_PROGRESS_FT,
   CONTACT_SAFE_ORBIT_FT,
   ENGAGE_GIVEUP_FRAMES,
   FLOOR2_HUNT_ENGAGE_FRAMES,
@@ -739,6 +742,144 @@ describe('BehaviorTreeAI', () => {
     ai.poll(createInputState(), world);
 
     expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+  });
+
+  it('releases the contact-range retreat once it provably cannot move the player', () => {
+    // Regression: the release sweep at 3f733218 lost Floor 1 on pistol/33
+    // because the contact carve-out above kept RETREAT active while the player
+    // was cornered — pickRetreatTarget found no reachable escape tile, the AI
+    // stood on one spot for ~250 frames, and contact damage took it from 110 HP
+    // to 12 HP. A retreat that cannot move must hand the fight back to Engage.
+    const world = createTestWorld({ seed: 33 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
+    const boss = spawnBehaviorEnemy(world, 3, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 33, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+
+    // Pin the player: hold its position (and the boss at contact range) fixed
+    // across the whole futility window, exactly as the cornered sweep run did.
+    for (let frame = 1; frame <= CONTACT_RETREAT_PROGRESS_FRAMES; frame += 1) {
+      world.frameCount += 1;
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = 0;
+      world.stores.position.x[boss] = 3;
+      world.stores.position.y[boss] = 0;
+      ai.poll(createInputState(), world);
+    }
+
+    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+  });
+
+  it('keeps the contact-range retreat while it is actually creating separation', () => {
+    // Counterpart to the pinned case: the futility guard must only fire when
+    // the retreat produces no displacement. A kite that is genuinely moving
+    // keeps RETREAT (the throwing-knife/39 fix), so the guard cannot silently
+    // revert that regression fix.
+    const world = createTestWorld({ seed: 33 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
+    const boss = spawnBehaviorEnemy(world, 3, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 33, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+
+    // The kite moves a full progress step per window while the boss stays glued
+    // at contact range — this is a retreat that is working, not a pin.
+    const step = CONTACT_RETREAT_PROGRESS_FT / CONTACT_RETREAT_PROGRESS_FRAMES;
+    for (let frame = 1; frame <= 2 * CONTACT_RETREAT_PROGRESS_FRAMES; frame += 1) {
+      world.frameCount += 1;
+      const y = frame * step;
+      world.stores.position.x[player] = 0;
+      world.stores.position.y[player] = y;
+      world.stores.position.x[boss] = 3;
+      world.stores.position.y[boss] = y;
+      ai.poll(createInputState(), world);
+    }
+
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(CONTACT_RETREAT_EPISODE_GAP_FRAMES).toBeGreaterThan(CONTACT_RETREAT_PROGRESS_FRAMES);
+  });
+
+  it('does not declare the player pinned after a brief out-of-contact interruption', () => {
+    // The futility window must only accumulate carve-out polls that actually
+    // ran. If a short gap where the threat backs out of contact (so the
+    // carve-out does not fire) were counted as elapsed progress time, a single
+    // fresh poll right after re-contact could be declared "pinned" immediately
+    // even though Retreat only had one real frame to try to move the player.
+    const world = createTestWorld({ seed: 33 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
+    const boss = spawnBehaviorEnemy(world, 3, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 33, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+
+    // One pinned (no-displacement) poll in contact starts the futility window.
+    world.frameCount += 1;
+    world.stores.position.x[boss] = 3;
+    world.stores.position.y[boss] = 0;
+    ai.poll(createInputState(), world);
+
+    // A brief gap, well under CONTACT_RETREAT_EPISODE_GAP_FRAMES, where the
+    // threat backs out of melee contact so the carve-out itself does not fire.
+    const gapFrames = CONTACT_RETREAT_PROGRESS_FRAMES - 1;
+    expect(gapFrames).toBeLessThan(CONTACT_RETREAT_EPISODE_GAP_FRAMES);
+    for (let frame = 0; frame < gapFrames; frame += 1) {
+      world.frameCount += 1;
+      world.stores.position.x[boss] = CONTACT_SAFE_ORBIT_FT + 5;
+      world.stores.position.y[boss] = 0;
+      ai.poll(createInputState(), world);
+    }
+
+    // Re-contact: the episode continues (gap under the threshold), but only
+    // one active carve-out poll has actually elapsed, so this must not
+    // immediately declare the player pinned.
+    world.frameCount += 1;
+    world.stores.position.x[boss] = 3;
+    world.stores.position.y[boss] = 0;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+  });
+
+  it('re-opens the pinned verdict once the player is moved off the pinned spot', () => {
+    // The pin is positional, so the latch must not outlive the position that
+    // produced it: if Engage drags the player off that spot while the fight
+    // stays in continuous contact (so the episode never gaps), Retreat has to
+    // become eligible again rather than staying suppressed for the whole floor.
+    const world = createTestWorld({ seed: 33 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 8;
+    const boss = spawnBehaviorEnemy(world, 3, 0, 400, AI_TYPE.CHASE, 5, 300, 280);
+
+    const ai = new BehaviorTreeAI({ seed: 33, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const pin = (): void => {
+      for (let frame = 1; frame <= CONTACT_RETREAT_PROGRESS_FRAMES; frame += 1) {
+        world.frameCount += 1;
+        ai.poll(createInputState(), world);
+      }
+    };
+
+    ai.poll(createInputState(), world);
+    pin();
+    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+
+    // Moved a full progress step away from the pinned spot, still in contact.
+    world.frameCount += 1;
+    world.stores.position.x[player] = CONTACT_RETREAT_PROGRESS_FT;
+    world.stores.position.y[player] = 0;
+    world.stores.position.x[boss] = CONTACT_RETREAT_PROGRESS_FT + 3;
+    world.stores.position.y[boss] = 0;
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
   });
 
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {

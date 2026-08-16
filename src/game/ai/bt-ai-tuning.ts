@@ -388,6 +388,28 @@ export const NAVIGATION_ANGLE_OFFSETS = [
 // and its progression behavior every frame (observed: ~90k flips/run).
 export const RETREAT_HYSTERESIS_MULT = 1.5;
 
+// Contact-retreat futility guard. Retreat keeps running against a long-
+// `attackRange` threat that has closed to CONTACT_SAFE_ORBIT_FT (see
+// buildRetreatBehavior) instead of deferring to Engage's kite. That is only the
+// better answer while the retreat can actually create separation: in a corner
+// where pickRetreatTarget finds no reachable escape tile it falls back to a raw
+// away-vector that points into geometry, navigation resolves no path, and the
+// AI stands still bleeding contact damage (the release seed-33 pistol death:
+// ~250 frames frozen on one tile, 110 HP -> 12 HP). So the contact carve-out is
+// released once it has provably failed to move the player.
+// Window (frames) the contact carve-out gets to produce displacement before it
+// is judged futile. One second at 60 fps — long enough for the kite to clear a
+// doorway, short enough to bound the damage taken while pinned.
+export const CONTACT_RETREAT_PROGRESS_FRAMES = 60;
+// Displacement (ft) that counts as "the retreat is working" inside that window.
+// Anchored to the contact-safe orbit: moving at least one contact radius is the
+// smallest move that meaningfully breaks body contact.
+export const CONTACT_RETREAT_PROGRESS_FT = CONTACT_SAFE_ORBIT_FT;
+// Polls further apart than this (frames) start a fresh futility window rather
+// than extending the previous one, so the latch releases naturally once Engage
+// has kited back out of contact instead of persisting for the whole floor.
+export const CONTACT_RETREAT_EPISODE_GAP_FRAMES = 120;
+
 // Retreat kiting: when fleeing, the AI samples an arc of candidate flee
 // directions around the "away from the swarm centroid" base angle, at two
 // distances, and picks the most open tile it can actually A*-reach. This
