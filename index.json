@@ -1,5 +1,39 @@
 [
   {
+    "commit": "93b95a65eb69a6c2f899ef6d51c6adec2596ed9e",
+    "commitDate": "2026-08-16T18:47:41Z",
+    "commitSubject": "Halve Floor 2 achievement equipment drop rate with a Floor 2 materials fallback (#3010)",
+    "capturedAt": "2026-08-16T20:03:17.259Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31966579026",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/93b95a65eb69a6c2f899ef6d51c6adec2596ed9e.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.16666666666666666,
+        "totalWins": 25,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.2,
+        "totalWins": 30,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.69,
+      "gatePass": false,
+      "path": "by-sha/93b95a65eb69a6c2f899ef6d51c6adec2596ed9e.fun-report.json"
+    }
+  },
+  {
     "commit": "bff0a76d1c58dd8483498fe9059fed673e9e38d1",
     "commitDate": "2026-08-16T17:41:58Z",
     "commitSubject": "Add \"Open next box\" chain to the reward-opening summary (#3005)",
