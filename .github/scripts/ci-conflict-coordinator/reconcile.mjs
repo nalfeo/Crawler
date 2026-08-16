@@ -21,7 +21,7 @@ import {
   resolveAdmissionChecks,
   successfulChecks,
 } from '../merge-train/state.mjs';
-import { humanApprovalRejection } from '../merge-train/human-approval.mjs';
+import { resolveHumanApprovalRejection } from '../merge-train/human-approval.mjs';
 import {
   bindProofToLeader,
   buildSupersessionProofs,
@@ -181,6 +181,10 @@ async function disableAutoMerge(pull) {
 
 async function commentsFor(number) {
   return paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`);
+}
+
+async function reviewsFor(number) {
+  return paginate(token, `/repos/${owner}/${repo}/pulls/${number}/reviews`);
 }
 
 function isTrustedRecoveryComment(comment) {
@@ -443,18 +447,19 @@ async function targetHasHealthyOwner(number) {
 
 async function liveHumanApprovalRejection(
   number,
-  { pull = null, comments = null, closingIssues = null } = {},
+  { pull = null, comments = null, reviews = null, closingIssues = null } = {},
 ) {
   const livePull = pull || (await fetchLivePull(number));
   const [liveComments, liveClosingIssues] = await Promise.all([
     comments ? Promise.resolve(comments) : commentsFor(number),
     closingIssues ? Promise.resolve(closingIssues) : listClosingIssues(token, owner, repo, number),
   ]);
-  return humanApprovalRejection({
+  return resolveHumanApprovalRejection({
     pullRequest: livePull,
     closingIssues: liveClosingIssues,
     comments: liveComments,
     ownerLogin: owner,
+    fetchReviews: () => (reviews ? Promise.resolve(reviews) : reviewsFor(number)),
   });
 }
 
@@ -801,7 +806,7 @@ for (const group of groups) {
     const humanApprovalByNumber = new Map(
       await mapLimit(group.pulls, 4, async (pull) => [
         pull.number,
-        humanApprovalRejection({
+        await resolveHumanApprovalRejection({
           pullRequest: {
             labels: [...pull.labelNames].map((name) => ({ name })),
             head: { ref: pull.headRef },
@@ -809,6 +814,7 @@ for (const group of groups) {
           closingIssues: await listClosingIssues(token, owner, repo, pull.number),
           comments: groupComments.get(pull.number) || [],
           ownerLogin: owner,
+          fetchReviews: () => reviewsFor(pull.number),
         }),
       ]),
     );
@@ -867,7 +873,7 @@ for (const group of groups) {
   const humanApprovalByNumber = new Map(
     await mapLimit(group.pulls, 4, async (pull) => [
       pull.number,
-      humanApprovalRejection({
+      await resolveHumanApprovalRejection({
         pullRequest: {
           labels: [...pull.labelNames].map((name) => ({ name })),
           head: { ref: pull.headRef },
@@ -875,6 +881,7 @@ for (const group of groups) {
         closingIssues: await listClosingIssues(token, owner, repo, pull.number),
         comments: groupComments.get(pull.number) || [],
         ownerLogin: owner,
+        fetchReviews: () => reviewsFor(pull.number),
       }),
     ]),
   );
