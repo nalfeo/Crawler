@@ -52,7 +52,7 @@ export function normalizePullRequest(raw) {
     mergeableState: raw?.mergeable_state ?? raw?.mergeStateStatus ?? null,
     mergeable: raw?.mergeable ?? null,
     headRefName: raw?.head?.ref ?? raw?.headRefName ?? null,
-    headSha: raw?.head?.sha ?? raw?.headSha ?? null,
+    headSha: raw?.head?.sha ?? raw?.headSha ?? raw?.headRefOid ?? null,
     updatedAt: raw?.updated_at ?? raw?.updatedAt ?? null,
     labels,
     ciRecoveryOwner: labels.find((label) => label.startsWith(OWNER_LABEL_PREFIX)) ?? null,

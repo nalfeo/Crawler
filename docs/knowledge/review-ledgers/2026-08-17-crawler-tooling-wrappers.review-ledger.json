@@ -14,8 +14,30 @@
       "notes": "Plan review approved_with_changes. Addressed: exact sweep run-id correlation now only returns a viewer reference when exactly one new run is identified; sweep defaults documented as opinionated Floor-1 starter presets; PR cockpit labels now import repo merge-train/CI-recovery constants; session skill added to docs governance registry. No major architecture fork warranted."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
