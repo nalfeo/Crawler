@@ -10,7 +10,7 @@
  *   npx tsx scripts/agent/perf/optional-purchases-sweep.ts \
  *     --seeds 1,2,3,4,5 \
  *     --optional-purchases \
- *     --max-frames 23760 \
+ *     --max-frames 39600 \
  *     --out shard.json
  */
 import { DEFAULT_MAX_FRAMES, parsePositiveInt, parseSeeds } from './winrate-sweep-args.js';

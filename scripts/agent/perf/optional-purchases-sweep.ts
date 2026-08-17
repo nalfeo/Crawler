@@ -16,7 +16,7 @@
  *   npx tsx scripts/agent/perf/optional-purchases-sweep.ts \
  *     --seeds 1-25 \
  *     --optional-purchases \
- *     --max-frames 23760 \
+ *     --max-frames 39600 \
  *     --out shard-0.json
  *
  * Output shape (compatible with `fun-score.ts --input`)

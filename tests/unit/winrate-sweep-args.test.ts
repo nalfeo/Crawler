@@ -105,7 +105,7 @@ describe('parseSweepArgs — defaults and flags', () => {
     // The Floor-1 win is safe-room-credited: isOfficialWin compares
     // (gameTimeMs - safeRoomMs) against the 10-min collapse deadline, so a
     // legitimate clear can exceed 600 s of RAW game time. Capping the sim at exactly BUDGET_FRAMES
-    // (360 s raw) would force-terminate those wins before isOfficialWin sees
+    // (600 s raw) would force-terminate those wins before isOfficialWin sees
     // them, miscounting them as timeouts and biasing the win rate down. The
     // default must carry the same ~1.1x slack as the peer Floor-1 harnesses.
     expect(DEFAULT_MAX_FRAMES).toBe(39_600);

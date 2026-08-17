@@ -7,8 +7,8 @@
  * implemented floor with that floor's own budget instead of silently borrowing
  * Floor 1's.
  *
- * Floor 1's values are unchanged and must stay byte-identical: the FP-safe
- * division form below is load-bearing (see {@link getDefaultMaxFrames}).
+ * Floor 1's budget is 600_000 ms (10 min); the FP-safe division form below is
+ * load-bearing (see {@link getDefaultMaxFrames}).
  */
 import { GAME } from '../../shared/constants.js';
 import { getFloorWinBudgetMs } from '../../shared/floor-registry.js';
@@ -50,10 +50,13 @@ export function getActiveTimeBudgetMs(floorId: string): number | null {
  * those wins and miscount them as timeouts, biasing the win rate DOWN.
  *
  * The `(budget * 1.1) / DELTA_MS` division form is load-bearing and must not be
- * rewritten as `Math.ceil(frames * 1.1)`: for Floor 1 the latter rounds up to
- * 23_761 because `21_600 * 1.1 === 23760.000000000004`, whereas this form
- * yields 23_760 — the value every existing Floor-1 sweep, gate, and fingerprint
- * is calibrated on.
+ * rewritten as `Math.ceil(frames * 1.1)`: at Floor 1's original 360_000 ms
+ * budget, the latter rounded up to 23_761 because
+ * `21_600 * 1.1 === 23760.000000000004`, whereas this form yielded 23_760 —
+ * the value every Floor-1 sweep, gate, and fingerprint was calibrated on at
+ * that budget. Floor 1's current 600_000 ms budget yields 39_600 either way,
+ * but the division form stays load-bearing for any other floor whose budget
+ * hits the same FP-rounding edge.
  *
  * Returns `null` for a floor with no declared budget, so callers keep their
  * existing "no floor-derived cap" behavior rather than inheriting Floor 1's.

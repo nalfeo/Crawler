@@ -14,8 +14,17 @@
       "notes": "Accepted: use explicit experienced-player gate and 100% contiguous-panel baseline; retain slow-clear telemetry; audit budget-derived assertions; consciously derive quest stall window from the 600s collapse horizon so 360s is no longer a runner cutoff. Rejected broad release sweep in-session: no workflow-dispatch capability is exposed, while the existing deterministic 25-seed CI gate directly protects the specified expert baseline."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Recovered CI blockers: fixed the stale 360s docstring in winrate-sweep-args.test.ts, updated stale Floor-1 SSOT references (23,760 frames / 6-min) to 39,600 frames / 10-min across winrate-sweep.ts, optional-purchases-sweep*.ts, sweep-eval.ts, floor-run-budget.ts, and headless-runner.ts, and fixed the real ai-stuck-wiggle.test.ts sword regression (wigglePct baseline legitimately rose from 2.4% to 17.4% under the widened budget, still far below the 50%+ oscillation-loop alarm). Reviewer found no concerns."
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
