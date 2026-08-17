@@ -1326,8 +1326,8 @@ export class BehaviorTreeAI implements AIInputProvider {
           // dead-end: the player cannot exit and endlessly kiting in a cage only
           // delays the required objective kill. Defer to ArenaLockin so ENGAGE can
           // run its defensive spacing/add-pressure logic instead of retreat loops.
-          // Preserve the boss contact escape carve-out below: a long-range boss
-          // already body-blocking the player is no longer a ranged lock-in problem.
+          // Preserve the bossContactEscape carve-out: a long-range boss already
+          // body-blocking the player is no longer a ranged lock-in problem.
           if (!bossContactEscape) {
             this.endRetreat(ctx.world);
             return false;
