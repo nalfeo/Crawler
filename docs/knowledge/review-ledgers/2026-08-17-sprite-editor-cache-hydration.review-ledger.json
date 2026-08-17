@@ -64,7 +64,7 @@
       "completed": true,
       "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "gpt-5.6-terra",
-      "head_sha": "412f48f25a36ce4f5ade56004dcf4865267ac7f6",
+      "head_sha": "285d620c1d94283c6ee1640697f9c2cfb621e624",
       "findings": [],
       "criteria": {
         "correctness": 5,
@@ -75,7 +75,7 @@
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The change correctly implements cache hydration and snapshotting to accelerate editor switching, properly handling edge cases like stale fingerprints and concurrent writes via temp files. The false-dirty bug during sprite switching is cleanly fixed by excluding canvas bytes from the pre-load baseline check. Comprehensive tests cover both the snapshot logic and the UI switching behavior. Since this code resides in editor tooling rather than the ECS game layer, the use of Date.now() is fully compliant with path policies, resulting in a precise and highly maintainable diff."
+      "notes": "The diff properly implements the durable manifest cache with fingerprint gating and atomic writes, addressing the sprite editor startup delay. The false-dirty state on sprite switch is correctly resolved by using an input fingerprint rather than including the canvas bytes in the post-load check, and the versioned image URLs safely enable browser caching without sacrificing update responsiveness. Finally, the semantic image swap for fireball and baby-slime is precisely corrected by restoring their historical JSON shard data and PNG files. The changes are surgically scoped, rigorously tested, and fully compliant with project policies."
     }
   }
 }
