@@ -9,6 +9,7 @@ import {
   isCopilotLogin,
   removeIssueAssignees,
 } from './ci-recovery/issue-intake-lib.mjs';
+import { requiresHumanApproval } from './merge-train/human-approval.mjs';
 
 const READY_FOR_REVIEW_MUTATION = `
   mutation MarkPullRequestReadyForReview($pullRequestId: ID!) {
@@ -267,24 +268,30 @@ async function changedFilesForDraft({
   return changedFiles;
 }
 
-async function removeRequestedReviewerIfPresent({ api, pr, prNumber, reviewerLogin, log }) {
-  try {
-    const normalizedReviewerLogin = normalize(reviewerLogin);
-    const requestedReviewers = pr.requested_reviewers ?? [];
-    const reviewerToRemove = requestedReviewers.find(
-      (reviewer) => normalize(reviewer.login) === normalizedReviewerLogin,
-    );
-    if (!reviewerToRemove?.login) {
-      return false;
-    }
-    await api.removeRequestedReviewer(prNumber, reviewerToRemove.login);
-    log.info(`Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`);
-    return true;
-  } catch (error) {
-    const warn = log.warning ?? log.warn ?? log.info;
-    warn?.call(log, `Could not process reviewers for PR #${prNumber}: ${getErrorMessage(error)}`);
+async function requestHumanReviewerIfRequired({ api, pr, prNumber, reviewerLogin, log }) {
+  if (requiresHumanApproval(pr)) {
+    return requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log });
+  }
+  const closingIssues = await api.listClosingIssues(prNumber);
+  if (!requiresHumanApproval(pr, closingIssues)) {
     return false;
   }
+  return requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log });
+}
+
+async function requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log }) {
+  if (normalize(pr.user?.login) === normalize(reviewerLogin)) {
+    return false;
+  }
+  const requestedReviewers = pr.requested_reviewers ?? [];
+  if (
+    requestedReviewers.some((reviewer) => normalize(reviewer.login) === normalize(reviewerLogin))
+  ) {
+    return false;
+  }
+  await api.requestReviewer(prNumber, reviewerLogin);
+  log.info(`Requested @${reviewerLogin} to review human-gated PR #${prNumber}.`);
+  return true;
 }
 
 async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log, now, graceMs }) {
@@ -578,9 +585,9 @@ function createApi({ token, owner, repo }) {
       (await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`)).data,
     markReadyForReview: async (pullRequestId) =>
       graphql(token, READY_FOR_REVIEW_MUTATION, { pullRequestId }),
-    removeRequestedReviewer: async (pullNumber, reviewerLogin) =>
+    requestReviewer: async (pullNumber, reviewerLogin) =>
       request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}/requested_reviewers`, {
-        method: 'DELETE',
+        method: 'POST',
         body: { reviewers: [reviewerLogin] },
       }),
     listClosingIssues: (pullNumber) => listClosingIssues(token, owner, repo, pullNumber),
@@ -686,7 +693,7 @@ export async function runPrReadyReviewerGuard({
           triggeringPullNumber ?? '',
         )})`,
       );
-      return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+      return { draftsPublished: 0, emptyDraftRepairs: 0, humanReviewerRequests: 0 };
     }
     const pull = await api.getPull(prNumber);
     openPrs = String(pull?.state || '').toLowerCase() === 'open' ? [pull] : [];
@@ -695,19 +702,19 @@ export async function runPrReadyReviewerGuard({
   }
   if (openPrs.length === 0) {
     log.info('No open PRs found.');
-    return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+    return { draftsPublished: 0, emptyDraftRepairs: 0, humanReviewerRequests: 0 };
   }
   let draftsPublished = 0;
   let emptyDraftRepairs = 0;
-  let reviewerRemovals = 0;
+  let humanReviewerRequests = 0;
   const publishFailures = [];
   const repairFailures = [];
+  const reviewerRequestFailures = [];
 
   for (const pr of openPrs) {
     const prNumber = pr.number;
     let closedByRepair = false;
     let attemptedRepair = false;
-    let reviewerCleanupAttempted = false;
 
     if (pr.draft) {
       try {
@@ -719,16 +726,6 @@ export async function runPrReadyReviewerGuard({
           triggeringPullNumber,
         });
         if (changedFiles === 0) {
-          reviewerCleanupAttempted = true;
-          reviewerRemovals += Number(
-            await removeRequestedReviewerIfPresent({
-              api,
-              pr,
-              prNumber,
-              reviewerLogin,
-              log,
-            }),
-          );
           attemptedRepair = true;
           const repairResult = await repairEmptyCopilotDraft({
             api,
@@ -784,24 +781,36 @@ export async function runPrReadyReviewerGuard({
       continue;
     }
 
-    if (!reviewerCleanupAttempted) {
-      reviewerRemovals += Number(
-        await removeRequestedReviewerIfPresent({
-          api,
-          pr,
-          prNumber,
-          reviewerLogin,
-          log,
-        }),
-      );
+    if (!pr.draft) {
+      try {
+        humanReviewerRequests += Number(
+          await requestHumanReviewerIfRequired({
+            api,
+            pr,
+            prNumber,
+            reviewerLogin,
+            log,
+          }),
+        );
+      } catch (error) {
+        const prError = `PR #${prNumber}: ${getErrorMessage(error)}`;
+        reviewerRequestFailures.push(new Error(prError, { cause: error }));
+        log.error(
+          `Could not request human reviewer for PR #${prNumber}: ${getErrorMessage(error)}`,
+        );
+      }
     }
   }
 
   log.info(
-    `Done. Drafts published: ${draftsPublished}. Empty draft repairs: ${emptyDraftRepairs}. Reviewer removals: ${reviewerRemovals}.`,
+    `Done. Drafts published: ${draftsPublished}. Empty draft repairs: ${emptyDraftRepairs}. Human reviewer requests: ${humanReviewerRequests}.`,
   );
 
-  if (publishFailures.length > 0 || repairFailures.length > 0) {
+  if (
+    publishFailures.length > 0 ||
+    repairFailures.length > 0 ||
+    reviewerRequestFailures.length > 0
+  ) {
     const failureLines = [
       ...(publishFailures.length > 0
         ? [
@@ -815,11 +824,20 @@ export async function runPrReadyReviewerGuard({
             ...repairFailures.map((failure) => failure.message),
           ]
         : []),
+      ...(reviewerRequestFailures.length > 0
+        ? [
+            `Failed to request a human reviewer for ${reviewerRequestFailures.length} PR(s):`,
+            ...reviewerRequestFailures.map((failure) => failure.message),
+          ]
+        : []),
     ];
-    throw new AggregateError([...publishFailures, ...repairFailures], failureLines.join('\n'));
+    throw new AggregateError(
+      [...publishFailures, ...repairFailures, ...reviewerRequestFailures],
+      failureLines.join('\n'),
+    );
   }
 
-  return { draftsPublished, emptyDraftRepairs, reviewerRemovals };
+  return { draftsPublished, emptyDraftRepairs, humanReviewerRequests };
 }
 
 async function main() {
