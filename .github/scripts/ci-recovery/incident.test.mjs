@@ -369,6 +369,17 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: { check_runs: [trustedTrainCheck()] },
     }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs/555/jobs`]: () => ({
+      body: {
+        jobs: [
+          {
+            name: 'check-format-and-labs',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/555/job/1`,
+          },
+        ],
+      },
+    }),
     [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
     [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
       body: { number: 202, node_id: 'ISSUE_202' },
@@ -413,6 +424,56 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
     /## Merge-train promotion provenance/,
     'a genuine completed+successful trusted check must still be surfaced as provenance',
   );
+  assert.match(createCall.body.body, /Failed job: \[check-format-and-labs\]\(/);
+});
+
+test('bounds trusted merge-train promotion provenance in incident comments', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [trustedTrainCheck({ output: { summary: 'x'.repeat(5_000) } })] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs/555/jobs`]: () => ({ body: { jobs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+      body: { number: 204, node_id: 'ISSUE_204' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const doc = String(parsed?.query ?? '');
+      if (doc.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: {
+          data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(
+    port,
+    pushRun({ conclusion: 'failure', status: 'completed' }),
+  );
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const createCall = mutatingCalls.find(
+    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+  );
+  assert.ok(createCall);
+  assert.match(createCall.body.body, /promotion summary truncated/);
+  assert.ok(createCall.body.body.length < 4_500);
 });
 
 for (const [label, overrides] of [

@@ -265,6 +265,27 @@ test('coordinator state comment is parseable and semantic updates are idempotent
   assert.equal(isCoordinatorStateSemanticallyEqual(left, right), true);
 });
 
+test('renderCoordinatorComment labels unenforced coordination as advisory without ordering claims', () => {
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-advisory',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [makePull(1, ['.github/workflows/ci.yml'])],
+    proofs: [],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+
+  const body = renderCoordinatorComment(state, { enforcementEnabled: false });
+
+  assert.match(body, /Advisory CI-overlap analysis; enforcement disabled/);
+  assert.doesNotMatch(body, /Canonical leader/);
+  assert.doesNotMatch(body, /Active merge-train slot/);
+  assert.doesNotMatch(body, /Explicit merge order/);
+});
+
 test('healthy shepherd lease suppresses ordered recovery dispatch', () => {
   const active = makePull(7, ['.github/workflows/ci.yml']);
   const key = dispatchKey({

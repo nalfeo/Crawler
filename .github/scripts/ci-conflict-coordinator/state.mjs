@@ -455,7 +455,7 @@ export function validateCoordinatorState(state) {
   return state;
 }
 
-export function renderCoordinatorComment(state) {
+export function renderCoordinatorComment(state, { enforcementEnabled = true } = {}) {
   validateCoordinatorState(state);
   const encoded = Buffer.from(JSON.stringify(state), 'utf8').toString('base64url');
   const proofByNumber = new Map(state.proofs.map((proof) => [proof.number, proof]));
@@ -484,17 +484,27 @@ export function renderCoordinatorComment(state) {
           ...(hiddenCount > 0 ? [`- _…and ${hiddenCount} more_`] : []),
         ]
       : ['- No current overlap; continuing a previously observed coordination group.'];
+  const advisoryLines = enforcementEnabled
+    ? [
+        `- Canonical leader: #${state.leaderNumber}`,
+        `- Active merge-train slot: ${state.activeNumber ? `#${state.activeNumber}` : 'none (escalated)'}`,
+        `- Cluster: \`${state.groupId}\``,
+        '',
+        '### Explicit merge order',
+        ...orderLines,
+      ]
+    : [
+        '- Advisory CI-overlap analysis; enforcement disabled.',
+        `- Cluster: \`${state.groupId}\``,
+        '',
+        '_This report does not assign a leader, merge-train slot, or merge order._',
+      ];
   return [
     COORDINATOR_MARKER,
     `${COORDINATOR_DATA_PREFIX}${encoded} -->`,
     '## CI conflict coordination',
     '',
-    `- Canonical leader: #${state.leaderNumber}`,
-    `- Active merge-train slot: ${state.activeNumber ? `#${state.activeNumber}` : 'none (escalated)'}`,
-    `- Cluster: \`${state.groupId}\``,
-    '',
-    '### Explicit merge order',
-    ...orderLines,
+    ...advisoryLines,
     '',
     '### Shared CI scope',
     ...overlapLines,

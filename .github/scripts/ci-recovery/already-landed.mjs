@@ -32,6 +32,7 @@
 import { ALREADY_LANDED_COMMENT_MARKER } from './markers.mjs';
 
 export { ALREADY_LANDED_COMMENT_MARKER };
+export const MAX_COMMENT_FILE_ROWS = 20;
 
 // ---------------------------------------------------------------------------
 // File classification constants
@@ -311,13 +312,23 @@ export function renderAlreadyLandedComment(prNumber, analysis, mainSha) {
   const heading = headings[verdict] ?? `## PR #${prNumber} — already-landed analysis`;
   const summaryLines = summaries[verdict] ?? [];
 
-  // Build the evidence table.
-  const tableRows = files.map((f) => {
+  // Keep the proof readable and safely below GitHub's comment limit. Sort the
+  // sample so identical analysis input always yields identical comment text.
+  const sortedFiles = [...files].sort(
+    (left, right) =>
+      String(left.filename).localeCompare(String(right.filename)) ||
+      String(left.status).localeCompare(String(right.status)),
+  );
+  const hiddenCount = Math.max(0, sortedFiles.length - MAX_COMMENT_FILE_ROWS);
+  const tableRows = sortedFiles.slice(0, MAX_COMMENT_FILE_ROWS).map((f) => {
     const icon = fileStatusIcon(f.fileStatus);
     const label = fileStatusLabel(f.fileStatus);
     const name = f.filename.length > 80 ? `…${f.filename.slice(-77)}` : f.filename;
     return `| ${icon} | \`${name}\` | ${f.status} | ${label} |`;
   });
+  if (hiddenCount > 0) {
+    tableRows.push(`| | _…and ${hiddenCount} more_ | | |`);
+  }
 
   return [
     ALREADY_LANDED_COMMENT_MARKER,

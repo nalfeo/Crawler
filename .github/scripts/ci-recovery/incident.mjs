@@ -25,6 +25,7 @@ const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
 // parseEnabledFlag) when unset, so an unconfigured or rolled-back repository
 // never misclassifies a genuine full-CI run as a merge-train fast path.
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
+const MAX_PROMOTION_SUMMARY_LENGTH = 4_000;
 
 if (!token || !owner || !repo || !eventPath) {
   throw new Error('Missing CRAWLER_CI_PAT, repository, or event payload');
@@ -184,6 +185,38 @@ if (needsAdminIntervention) {
   }
 }
 
+async function firstFailedJob() {
+  if (!run.id) return null;
+  const jobs = [];
+  let page = 1;
+  try {
+    while (true) {
+      const response = await request(
+        token,
+        `/repos/${owner}/${repo}/actions/runs/${encodeURIComponent(run.id)}/jobs?per_page=100&page=${page}`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+      );
+      const current = response.data.jobs || [];
+      jobs.push(...current);
+      if (current.length < 100) break;
+      page += 1;
+    }
+  } catch (error) {
+    process.stdout.write(`incident-job-lookup-failed run=${run.id} error=${error.message}\n`);
+    return null;
+  }
+  return jobs.find((job) =>
+    ['failure', 'timed_out', 'startup_failure', 'action_required'].includes(job.conclusion),
+  );
+}
+
+function boundedPromotionSummary(summary) {
+  const text = String(summary || '');
+  if (text.length <= MAX_PROMOTION_SUMMARY_LENGTH) return text;
+  return `${text.slice(0, MAX_PROMOTION_SUMMARY_LENGTH)}\n\n_…promotion summary truncated._`;
+}
+
+const failedJob = await firstFailedJob();
 const body = [
   CI_INCIDENT_MARKER,
   `# ${run.name} needs recovery`,
@@ -192,6 +225,9 @@ const body = [
   `- Branch: \`${run.head_branch || 'unknown'}\``,
   `- Head SHA: \`${run.head_sha || 'unknown'}\``,
   `- Run: ${run.html_url}`,
+  ...(failedJob?.html_url
+    ? [`- Failed job: [${failedJob.name || 'unnamed job'}](${failedJob.html_url})`]
+    : []),
   `- Triggered by: @${run.actor?.login || 'unknown'}`,
   ...(() => {
     // Require the same completed+successful trust gate as
@@ -204,7 +240,12 @@ const body = [
       .filter((check) => isTrustedTrainPromotionCheck(check, trustedAppId))
       .sort((left, right) => right.id - left.id)[0];
     return promotion?.output?.summary
-      ? ['', '## Merge-train promotion provenance', '', promotion.output.summary]
+      ? [
+          '',
+          '## Merge-train promotion provenance',
+          '',
+          boundedPromotionSummary(promotion.output.summary),
+        ]
       : [];
   })(),
   '',

@@ -738,6 +738,8 @@ test('buildRetroactivePlanComment embeds required plan content and PR reference'
   assert.match(body, /\*\*Key decisions and alternatives\*\*/);
   assert.match(body, /\*\*Checklist\*\*/);
   assert.match(body, /- \[x\] Add trusted plan detection helpers\./);
+  assert.match(body, /found no qualifying trusted issue-side plan evidence/i);
+  assert.match(body, /does not retroactively satisfy a pre-PR planning requirement/i);
 });
 
 test('buildRetroactivePlanComment stays below the GitHub comment limit for oversized PR bodies', () => {

@@ -408,7 +408,7 @@ export function hasCopilotPlanComment(issueComments) {
 
 /**
  * Builds the body of a retroactive plan comment to be posted on a source
- * issue whose linked PR was opened without the required pre-PR plan comment.
+ * issue whose linked PR has no qualifying trusted issue-side plan evidence.
  *
  * Embeds `ISSUE_RECOVERY_PLAN_MARKER` so future reconciler runs skip the post
  * (idempotency) and includes the concrete design / decisions / checklist
@@ -438,7 +438,7 @@ export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl, prBody
     '',
     '**Retroactive implementation plan** _(filed by CI recovery pipeline)_',
     '',
-    `The agent that opened PR #${prNumber} did not post an implementation plan before opening the PR. The CI recovery pipeline is posting this retroactive plan to satisfy the pre-PR planning requirement so the review thread can be resolved.`,
+    `The CI recovery reconciler found no qualifying trusted issue-side plan evidence for PR #${prNumber}. This retroactive plan documents the implementation context for review; it does not retroactively satisfy a pre-PR planning requirement.`,
     '',
     `**PR:** ${prHtmlUrl || `#${prNumber}`}`,
     ...(safeTitle ? [`**Title:** ${safeTitle}`] : []),

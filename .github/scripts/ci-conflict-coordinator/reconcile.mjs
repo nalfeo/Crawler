@@ -291,7 +291,7 @@ function recoveryContext(pull, comments) {
   };
 }
 
-async function updateCoordinatorComment(pull, comments, state) {
+async function updateCoordinatorComment(pull, comments, state, enforceCoordination) {
   const managed = singleManagedComment(
     comments,
     COORDINATOR_MARKER,
@@ -299,8 +299,14 @@ async function updateCoordinatorComment(pull, comments, state) {
     pull.number,
     { requireCoordinatorApp: true },
   );
-  if (managed && isCoordinatorStateSemanticallyEqual(managed.state, state)) return;
-  const body = renderCoordinatorComment(state);
+  const body = renderCoordinatorComment(state, { enforcementEnabled: enforceCoordination });
+  if (
+    managed &&
+    isCoordinatorStateSemanticallyEqual(managed.state, state) &&
+    managed.comment.body === body
+  ) {
+    return;
+  }
   if (managed) {
     await request(token, `/repos/${owner}/${repo}/issues/comments/${managed.comment.id}`, {
       method: 'PATCH',
@@ -1052,7 +1058,12 @@ for (const group of groups) {
       lastDispatchAt,
       updatedAt: now.toISOString(),
     });
-    await updateCoordinatorComment(pull, groupComments.get(pull.number), state);
+    await updateCoordinatorComment(
+      pull,
+      groupComments.get(pull.number),
+      state,
+      enforceCoordination,
+    );
   }
 
   for (const duplicate of selection.duplicates) {

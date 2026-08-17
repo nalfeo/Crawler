@@ -567,10 +567,9 @@ test('renderLandedComment recovered variant omits the candidate/tree-proof claim
   // Must NOT claim a validated candidate or a tree proof it did not re-run.
   assert.doesNotMatch(body, /Validated candidate/);
   assert.doesNotMatch(body, /tree was proven/);
-  // Must be truthful: cite the durable proof-complete marker as the basis for
-  // the merge-time proof claim, and state recovery does not re-run the proof.
-  assert.match(body, /proof-complete\s+marker/i);
-  assert.match(body, /does not \(and cannot\) re-run/i);
+  assert.match(body, /Recovery status: durable proof revalidated/);
+  assert.match(body, /revalidated the durable proof-complete record/i);
+  assert.doesNotMatch(body, /single \(linear\) parent/i);
 });
 
 test('planPrefixPromotion validates only the maximal prefix first', () => {

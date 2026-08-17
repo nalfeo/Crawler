@@ -443,6 +443,24 @@ test('renderAlreadyLandedComment: long filenames are truncated to 80 chars with 
   assert.ok(comment.includes('…'), 'long filename should use ellipsis');
 });
 
+test('renderAlreadyLandedComment bounds and stably sorts evidence rows', () => {
+  const files = Array.from({ length: 25 }, (_, index) => ({
+    filename: `z-${String(index).padStart(2, '0')}.txt`,
+    status: 'modified',
+    fileStatus: FILE_STATUS.LANDED,
+  })).reverse();
+  const comment = renderAlreadyLandedComment(1, analyzeFiles(files), 'sha');
+
+  assert.match(comment, /\| \| _…and 5 more_ \| \| \|/);
+  assert.equal(
+    comment.split('\n').filter((line) => line.startsWith('| ✅ |')).length,
+    20,
+    'only the bounded sample should render',
+  );
+  assert.ok(comment.indexOf('z-00.txt') < comment.indexOf('z-19.txt'));
+  assert.ok(!comment.includes('z-20.txt'));
+});
+
 // ---------------------------------------------------------------------------
 // classifyFile round-trips through analyzeFiles
 // ---------------------------------------------------------------------------
