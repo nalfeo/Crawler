@@ -20,9 +20,11 @@ import {
   getEffectiveStats,
   previewEquipDelta,
 } from '../../core/systems/equipmentSystem.js';
+import { isInSafeContext } from '../../core/safe-space.js';
 import {
   executeMerchantWeaponPurchase,
   getMerchantWeaponIntent,
+  merchantWeaponReserve,
 } from './merchant-weapon-intent.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
@@ -49,6 +51,7 @@ import {
   meetSpellQuestGiver,
   meetBroker,
   canPurchaseSpellBrokerSpell,
+  isSpellBrokerSpellEligibleIgnoringGold,
   getSpellBrokerOffers,
   purchaseSpellBrokerSpell,
   spendPoints,
@@ -263,6 +266,14 @@ export function autoFloor1ProgressionSystem(
   const spellIntent = ensureSpellBrokerDecision(world);
   const spellBrokerPurchaseActive = isSpellBrokerPurchaseActive(spellIntent);
 
+  // A merchant weapon that was bought but could not be equipped on the spot
+  // (no safe context) is retried here rather than inside the shopkeeper loop
+  // below: equipping from the bag needs no NPC, and the safe room the player
+  // must reach to complete it is generally nowhere near the merchant.
+  if (getMerchantWeaponIntent(world).status === 'awaiting-equip') {
+    executeMerchantWeaponPurchase(world, playerEid);
+  }
+
   if (world.goalFlags.get('floor1-boss-battle-complete') === true && !world.featureUnlocks.spells) {
     const offeredSpellIds = getOfferedBossRewardSpellIds(world);
     const offeredSpellId =
@@ -288,7 +299,10 @@ export function autoFloor1ProgressionSystem(
       break;
     }
 
-    if (!spellBrokerPurchaseActive && getMerchantWeaponIntent(world).status === 'returning') {
+    // Both optional purchases may now run in the same visit; the weapon
+    // executor holds back `_spellPurchaseReserve` so buying a weapon can never
+    // price the higher-value broker spell out of the run.
+    if (getMerchantWeaponIntent(world).status === 'returning') {
       executeMerchantWeaponPurchase(world, playerEid);
       break;
     }
@@ -304,15 +318,34 @@ export function autoFloor1ProgressionSystem(
       ([, instance]) => instance.defId === 'spell-quest-giver',
     );
     if (broker && isTargetedNpcActionable(world, aiProvider, broker[0], broker[1].nearbyPlayer)) {
-      const candidateSpellIds = [
-        spellIntent.spellId,
-        ...getSpellBrokerOffers(world).map((offer) => offer.spellId),
-      ].filter((spellId): spellId is string => spellId !== null);
-      const spellId = candidateSpellIds.find((id) =>
-        canPurchaseSpellBrokerSpell(world, playerEid, id),
+      // Only consider a different offer when the intended spell is
+      // unavailable for a reason other than affordability (already
+      // purchased/learned, no free ability slot, or no intended spell at
+      // all). A run that is merely short on gold for its intended pick must
+      // not skip ahead in the priced rack — that would silently buy a
+      // cheaper spell while the intent still thinks it is farming the
+      // pricier headline offer.
+      const intendedSpellId = spellIntent.spellId;
+      const intendedUnavailableForOtherReason =
+        intendedSpellId === null ||
+        !isSpellBrokerSpellEligibleIgnoringGold(world, playerEid, intendedSpellId);
+      const candidateSpellIds = intendedUnavailableForOtherReason
+        ? getSpellBrokerOffers(world).map((offer) => offer.spellId)
+        : [intendedSpellId];
+      // A repeat spell is the run's lowest-priority purchase: it exists to
+      // absorb gold that has nowhere else to go, so it must leave a pending
+      // weapon-class switch fully funded (see `merchantWeaponReserve`). The
+      // headline first spell keeps its priority and ignores the reserve.
+      const reserve = spellIntent.purchaseCount > 0 ? merchantWeaponReserve(world) : 0;
+      const offerCost = (id: string): number =>
+        getSpellBrokerOffers(world).find((offer) => offer.spellId === id)?.cost ?? 0;
+      const spellId = candidateSpellIds.find(
+        (id) =>
+          canPurchaseSpellBrokerSpell(world, playerEid, id) &&
+          world.playerGold - offerCost(id) >= reserve,
       );
       if (spellId !== undefined && purchaseSpellBrokerSpell(world, playerEid, spellId)) {
-        markSpellBrokerPurchased(world);
+        markSpellBrokerPurchased(world, spellId);
         return;
       }
     }
@@ -425,15 +458,26 @@ export function autoAllocateStatPoints(
   spendPoints(world, computeAiStatAllocation(world, playerEid, pl.unspentPoints, weaponPersonas));
 }
 
+/**
+ * Equip the persona's preferred static gear from the bag.
+ *
+ * **Parity contract:** every `equipFromBag` call here goes through the same
+ * safe-context gate the human Equipment panel is bound by — there is no
+ * `force` bypass. Outside a safe room this is a no-op and the gear stays in
+ * the bag until the player next stands somewhere they could legitimately open
+ * the panel. Callers run this every tick, so a deferred equip is picked up
+ * automatically on the next safe-room entry with no extra latching.
+ */
 function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean {
   const persona = getWeaponPersonaForWorld(world);
   const bag = world.inventories.get(playerEid);
   if (!persona || !bag) return false;
+  if (!isInSafeContext(world)) return false;
   const staticSlots = listStaticInventorySlots(bag);
 
   let equippedAny = false;
   if (staticSlots.some((slot) => slot.itemId === SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
-    const questGear = equipFromBag(world, playerEid, SHOPKEEPER_EQUIPMENT_ITEM_ID, { force: true });
+    const questGear = equipFromBag(world, playerEid, SHOPKEEPER_EQUIPMENT_ITEM_ID);
     equippedAny = questGear.ok || equippedAny;
   }
   while (true) {
@@ -464,7 +508,7 @@ function equipPersonaPreferredGear(world: GameWorld, playerEid: number): boolean
     if (!bestCandidate) {
       break;
     }
-    const result = equipFromBag(world, playerEid, bestCandidate.itemId, { force: true });
+    const result = equipFromBag(world, playerEid, bestCandidate.itemId);
     if (!result.ok) {
       break;
     }

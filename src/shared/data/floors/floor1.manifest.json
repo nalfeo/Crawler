@@ -45,8 +45,8 @@
     "safeRoomWeaponImmunity": true,
     "safeRoomDoorsAutoClose": true,
     "lineOfSightAggro": false,
-    "equipmentEconomy": false,
-    "bossChests": false
+    "equipmentEconomy": true,
+    "bossChests": true
   },
   "lighting": {
     "ambient": 0.2

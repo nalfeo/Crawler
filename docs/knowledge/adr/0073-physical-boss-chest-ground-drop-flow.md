@@ -98,3 +98,20 @@ Replace the boss-chest side panel with a physical in-world chest flow.
   overlay when the boss dies.
 - **ALT-006**: **Rejection Reason**: Rejected because it removes the explicit in-world object
   the player asked for and erases the physical pickup beat the feature is meant to add.
+
+## Amendment: Floor 1 and AI parity (2026-08-17)
+
+Floor 1 uses the same physical chest lifecycle rather than a floor-specific reward path.
+Both Floor 1 boss-defeat handlers spawn a chest at the defeated boss position, and the
+floor manifest enables the shared equipment economy and boss-chest behavior.
+
+The deterministic headless player may target and walk onto these entities, but it receives
+no equipment privilege a human lacks. Chest pickup uses `bossChestPickupSystem`; equipment,
+achievement, and revealed-chest maintenance run only in a legitimate safe context. The
+settlement-return planner therefore treats a floor without Floor 2 settlement state as
+serviced when `isInSafeContext(world)` is true, allowing a Floor 1 route to advance through
+`arrived` after the revealed chest is acknowledged.
+
+This keeps one cross-floor acquisition contract and preserves human/AI parity. The cost is
+that Floor 1 now participates in the generated-equipment economy and the safe-room return
+router, so boss-defeat, maintenance, and headless integration tests must cover that wiring.
