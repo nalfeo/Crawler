@@ -27,26 +27,20 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "grok-4.5",
+      "grader_model": "gemini-3.1-pro-preview",
       "implementer_model": "claude-sonnet-5",
-      "head_sha": "df235d6c606e1f750a1248bb32c8566345ff6c02",
-      "findings": [
-        {
-          "severity": "minor",
-          "file": "src/core/systems/collisionSystem.ts",
-          "detail": "Inlined Size half-extent resolution duplicates getBodyHalfWidth/getBodyHalfHeight without a lockstep test. Existing collision tests cover common circle spawns and would pass before/after; they would not catch future helper/inline drift (e.g. box-only or zero-size shim paths). Smallest remedy: one unit test that builds box, circle, and zero-size fixtures, runs collisionSystem, and asserts inserted half-extents match the helpers (and shim stats still increment only on the zero-size path)."
-        }
-      ],
+      "head_sha": "f2428c1de998d4feaefec3171f6fa7691871a69b",
+      "findings": [],
       "criteria": {
         "correctness": 5,
         "scope_discipline": 5,
-        "test_coverage": 3,
+        "test_coverage": 5,
         "policy_compliance": 5,
-        "maintainability": 4
+        "maintainability": 5
       },
       "verdict": "pass",
-      "findings_count": 1,
-      "notes": "The production diff surgically inlines the established Size half-extent precedence (half axis, else radius, else helper/shim) inside collisionSystem’s insert loop, preserving semantics while avoiding two helper calls on the common valid-Size path. Edge cases match the helpers for practical Float32 Size values; gameplay neutrality is supported by the reported identical covered RunStats hash. Scope is tight (one hot-path file plus required 3🍎 ceremony). Policy is clean: core-only, deterministic, no new system/wiring, no Date.now/Math.random. Test coverage is adequate-but-thin: behavior is exercised by existing collision/ECS tests and external fingerprint checks, but the new inlined branches are not locked to the helpers by a failing-without-it regression test. Maintainability is good with mild duplication risk. No blocker-severity issues; verdict is pass."
+      "findings_count": 0,
+      "notes": "The optimization correctly inlines Size component lookups to bypass helper calls on the hot path, accurately recreating the fallback shim logic. The author directly addressed the independent grade's coverage concern by adding a comprehensive unit test that exercises boxes, circles, zero-size, and NaN extents to lockstep the inline logic with the fallback shim. The scope is completely disciplined, policy compliance is perfect (no non-deterministic calls, core layer boundaries respected), and the optimization is proven by the byte-identical covered RunStats."
     }
   }
 }
