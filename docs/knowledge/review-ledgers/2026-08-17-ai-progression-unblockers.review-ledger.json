@@ -14,8 +14,16 @@
       "notes": "Reviewer rejected hardcoded engine purchase policy and transition-only fallback. Revised plan: keep purchase policy/bookkeeping in game AI auto-progression; add AI-runner/browser automation for the existing Spell Broker modal instead of engine hardcoding; update lab recompose path to refresh active scene options/state during Floor 1→2 transition; add focused wiring regressions. No broader architecture needed beyond using existing lab callback seams."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
