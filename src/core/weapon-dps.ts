@@ -35,15 +35,6 @@ export function computeTheoreticalSingleTargetDps(
   options: TheoreticalWeaponDpsOptions = {},
 ): TheoreticalWeaponDps {
   const attackSpeedMultiplier = options.attackSpeedMultiplier ?? 1;
-  if (attackSpeedMultiplier <= 0) {
-    return {
-      dps: 0,
-      expectedDamagePerActivation: 0,
-      effectiveCooldownMs: Infinity,
-      hitsPerActivation: 0,
-    };
-  }
-
   const affinity = def.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
   const expectedDamagePerHit = computeExpectedCritDamage(
     computePlayerScaledDamage(def.baseDamage, stats, {
@@ -55,6 +46,15 @@ export function computeTheoreticalSingleTargetDps(
   );
   const hitCount = hitsPerActivation(def);
   const expectedDamagePerActivation = expectedDamagePerHit * hitCount;
+  if (attackSpeedMultiplier <= 0) {
+    return {
+      dps: 0,
+      expectedDamagePerActivation,
+      effectiveCooldownMs: Infinity,
+      hitsPerActivation: hitCount,
+    };
+  }
+
   const baseCooldownMs = applyAttackSpeedAndCooldownReduction(
     def.cooldownMs,
     stats.attackSpeed ?? 0,

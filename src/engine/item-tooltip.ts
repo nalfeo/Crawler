@@ -4,7 +4,8 @@ import { type ItemDef, RARITY_COLORS } from '../shared/items.js';
 const TOOLTIP_BG = 0x0a0a16;
 const TOOLTIP_BORDER = 0x444466;
 const TOOLTIP_WIDTH = 200;
-const TOOLTIP_HEIGHT = 128;
+const TOOLTIP_BASE_HEIGHT = 110;
+const TOOLTIP_STAT_HEIGHT_BONUS = 18;
 
 export interface ItemTooltipRenderParams {
   scene: Phaser.Scene;
@@ -52,6 +53,10 @@ export function renderItemTooltip(
     crispText,
   } = params;
 
+  const tooltipHeight =
+    statLine !== undefined && statLine.length > 0
+      ? TOOLTIP_BASE_HEIGHT + TOOLTIP_STAT_HEIGHT_BONUS
+      : TOOLTIP_BASE_HEIGHT;
   const snap = (value: number): number => Math.round(value);
   const panelInset = 8;
   const rightCandidateX = anchorX + anchorSize / 2 + 8;
@@ -69,25 +74,25 @@ export function renderItemTooltip(
     ),
   );
 
-  const aboveCandidateY = anchorY - anchorSize / 2 - TOOLTIP_HEIGHT - 8;
+  const aboveCandidateY = anchorY - anchorSize / 2 - tooltipHeight - 8;
   const belowCandidateY = anchorY + anchorSize / 2 + 8;
   const aboveFits = aboveCandidateY >= panelY + panelInset;
-  const belowFits = belowCandidateY <= panelY + panelHeight - TOOLTIP_HEIGHT - panelInset;
+  const belowFits = belowCandidateY <= panelY + panelHeight - tooltipHeight - panelInset;
   const ty = snap(
     Math.max(
       panelY + panelInset,
       Math.min(
         aboveFits ? aboveCandidateY : belowFits ? belowCandidateY : aboveCandidateY,
-        panelY + panelHeight - TOOLTIP_HEIGHT - panelInset,
+        panelY + panelHeight - tooltipHeight - panelInset,
       ),
     ),
   );
 
   const tooltipBg = scene.add.rectangle(
     tx + TOOLTIP_WIDTH / 2,
-    ty + TOOLTIP_HEIGHT / 2,
+    ty + tooltipHeight / 2,
     TOOLTIP_WIDTH,
-    TOOLTIP_HEIGHT,
+    tooltipHeight,
     TOOLTIP_BG,
     0.95,
   );
@@ -110,7 +115,7 @@ export function renderItemTooltip(
 
   const metaText = crispText(
     tx + 8,
-    ty + TOOLTIP_HEIGHT - 16,
+    ty + tooltipHeight - 16,
     `${def.rarity} · x${quantity} · [${def.tags.join(', ')}]`,
     {
       fontFamily,
@@ -126,7 +131,7 @@ export function renderItemTooltip(
   const objects: Phaser.GameObjects.GameObject[] = [tooltipBg, nameText, descText, metaText];
 
   if (statLine !== undefined && statLine.length > 0) {
-    const statText = crispText(tx + 8, ty + TOOLTIP_HEIGHT - (footerHint ? 48 : 34), statLine, {
+    const statText = crispText(tx + 8, ty + tooltipHeight - (footerHint ? 48 : 34), statLine, {
       fontFamily,
       fontSize: '11px',
       color: '#d9e2ef',
@@ -137,7 +142,7 @@ export function renderItemTooltip(
 
   // Optional gold action hint (e.g. equip affordance), placed just above meta.
   if (footerHint !== undefined && footerHint.length > 0) {
-    const hintText = crispText(tx + 8, ty + TOOLTIP_HEIGHT - 30, footerHint, {
+    const hintText = crispText(tx + 8, ty + tooltipHeight - 30, footerHint, {
       fontFamily,
       fontSize: '11px',
       color: '#e9c46a',

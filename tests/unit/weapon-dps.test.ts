@@ -57,4 +57,17 @@ describe('computeTheoreticalSingleTargetDps', () => {
     expect(result.expectedDamagePerActivation).toBe(12);
     expect(result.dps).toBeCloseTo(8);
   });
+
+  it('reports zero DPS but preserves activation stats when attacks are disabled', () => {
+    const result = computeTheoreticalSingleTargetDps(
+      weapon('sword'),
+      { strength: 10 },
+      { attackSpeedMultiplier: 0 },
+    );
+
+    expect(result.hitsPerActivation).toBe(1);
+    expect(result.expectedDamagePerActivation).toBeCloseTo(16.5);
+    expect(result.effectiveCooldownMs).toBe(Infinity);
+    expect(result.dps).toBe(0);
+  });
 });
