@@ -74,6 +74,7 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { selectBossSpawnPlacement } from '../../src/game/boss-spawn-placement.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
+import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 
 function roomPerimeterEntryCandidates(room: {
   bounds: { x: number; y: number; width: number; height: number };
@@ -857,6 +858,7 @@ describe('floor1Scenario', () => {
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
+    expect(world.bossChests.has(createBossChestId('floor1-slime-rat-boss'))).toBe(true);
     expect(world.hostileEncounterRevision).toBe(1);
     if (
       world.floorScenario &&
@@ -899,6 +901,7 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseLocked).toBe(false);
     expect(objective.staircaseUnlocked).toBe(true);
     expect(objective.bossBattles.get('staircase')!.defeated).toBe(true);
+    expect(world.bossChests.has(createBossChestId('floor1-rat-slime-boss'))).toBe(true);
 
     const descended = confirmFloor1StairDescend(world, player);
     expect(descended).toBe(true);

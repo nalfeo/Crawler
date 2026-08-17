@@ -23,17 +23,10 @@ function isFloor2World(world: GameWorld): boolean {
 }
 
 /**
- * Quartermaster generation and purchasing may proceed only when the economy
- * slice is explicitly enabled with its full dependency closure on Floor 2.
- * Fail closed on any other floor regardless of flag values.
+ * Shared generated-equipment economy dependency gate. Floor-specific consumers
+ * remain responsible for checking whether their floor exposes the economy.
  */
-export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
-  if (!isFloor2World(world)) {
-    return {
-      kind: 'disabled',
-      message: FLOOR2_EQUIPMENT_ECONOMY_WRONG_FLOOR_MESSAGE,
-    };
-  }
+export function getEquipmentEconomyAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
   if (!getWorldFloorBehavior(world).equipmentEconomy) {
     return {
       kind: 'disabled',
@@ -52,6 +45,21 @@ export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2Equipme
     };
   }
   return { kind: 'enabled' };
+}
+
+/**
+ * Quartermaster generation and purchasing may proceed only when the economy
+ * slice is explicitly enabled with its full dependency closure on Floor 2.
+ * Fail closed on any other floor regardless of flag values.
+ */
+export function getFloor2EquipmentEconomyAccess(world: GameWorld): Floor2EquipmentEconomyAccess {
+  if (!isFloor2World(world)) {
+    return {
+      kind: 'disabled',
+      message: FLOOR2_EQUIPMENT_ECONOMY_WRONG_FLOOR_MESSAGE,
+    };
+  }
+  return getEquipmentEconomyAccess(world);
 }
 
 /**

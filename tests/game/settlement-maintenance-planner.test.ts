@@ -15,7 +15,10 @@ import {
   createBossChestId,
 } from '../../src/game/boss-chest-resolver.js';
 import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
-import { addGeneratedEquipmentReference } from '../../src/shared/inventory.js';
+import {
+  addGeneratedEquipmentReference,
+  listGeneratedEquipmentReferences,
+} from '../../src/shared/inventory.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
@@ -32,6 +35,12 @@ import type {
   Floor2QuartermasterStockState,
   Floor2SettlementSnapshot,
 } from '../../src/shared/floor-types.js';
+import {
+  configureSettlementReturnRouting,
+  getSettlementReturnIntent,
+  updateSettlementReturnIntent,
+} from '../../src/game/ai/settlement-return-router.js';
+import { openBossChest } from '../../src/core/systems/bossChestRewards.js';
 
 // Mock ONLY `purchaseQuartermasterOffer`; every other export (including
 // `getQuartermasterOfferViews`, which the planner also calls) stays real, so
@@ -191,10 +200,37 @@ function decisionKinds(result: SettlementMaintenanceResult): string[] {
 }
 
 describe('runSettlementMaintenancePlanner', () => {
-  it('no-ops when there is no settlement/floorExtendedState opportunity', () => {
+  it('completes a safe-context maintenance visit without Floor 2 settlement state', () => {
     const { world } = createSettlementWorld({ settlement: null });
     const result = runSettlementMaintenancePlanner(world);
-    expect(result).toEqual({ ran: false, terminationReason: 'no-opportunity', decisions: [] });
+    expect(result).toEqual({ ran: true, terminationReason: 'exhausted', decisions: [] });
+  });
+
+  it('completes a Floor 1 safe-room route and acknowledges a revealed chest', () => {
+    const { world, playerEid } = createSettlementWorld({ settlement: null });
+    world.floorId = 'floor1';
+    world.floor = 1;
+    configureSettlementReturnRouting(world, true);
+    unlockAchievement(world, 'first-bonk');
+    const spawned = spawnBossChestForDefeatedBoss(world, 'floor1-test-boss');
+    expect(spawned.created).toBe(true);
+    const chestId = createBossChestId('floor1-test-boss');
+    expect(openBossChest(world, chestId, playerEid).ok).toBe(true);
+
+    const x = world.stores.position.x[playerEid] ?? 0;
+    const y = world.stores.position.y[playerEid] ?? 0;
+    expect(
+      updateSettlementReturnIntent(world, playerEid, x, y, { x, y }, false, false).status,
+    ).toBe('armed');
+
+    const result = runSettlementMaintenancePlanner(world);
+    expect(result.ran).toBe(true);
+    expect(isAchievementClaimed(world, 'first-bonk')).toBe(true);
+    expect(world.bossChests.get(chestId)?.state).toBe('claimed');
+    expect(
+      updateSettlementReturnIntent(world, playerEid, x, y, { x, y }, false, false).status,
+    ).toBe('arrived');
+    expect(getSettlementReturnIntent(world).status).toBe('arrived');
   });
 
   it('no-ops when the player is outside the settlement room', () => {
@@ -786,6 +822,33 @@ describe('runEagerMaintenanceTick', () => {
     const equippedValues = Object.values(equipped ?? {});
     expect(equippedValues).toContain(helmId);
     expect(equippedValues).toContain(bootsId);
+  });
+
+  it('continues after an action-capped equipment pass leaves candidates in the bag', () => {
+    const { world, playerEid } = createSettlementWorld();
+    const baseIds = [
+      'iron-helm',
+      'iron-visor',
+      'steel-pauldrons',
+      'iron-breastplate',
+      'bronze-vambrace',
+      'iron-armguard',
+      'iron-greaves',
+      'leather-boots',
+      'iron-sword',
+    ];
+    for (const baseId of baseIds) {
+      addBagEquipment(world, playerEid, baseId, 'uncommon');
+    }
+
+    runEagerMaintenanceTick(world, playerEid);
+    const equippedAfterFirst = { ...getEquipmentState(world, playerEid)?.equipped };
+    expect(
+      listGeneratedEquipmentReferences(world.inventories.get(playerEid)!).length,
+    ).toBeGreaterThan(0);
+
+    runEagerMaintenanceTick(world, playerEid);
+    expect(getEquipmentState(world, playerEid)?.equipped).not.toEqual(equippedAfterFirst);
   });
 
   it('retries a deferred claim once equipping frees bag capacity', () => {

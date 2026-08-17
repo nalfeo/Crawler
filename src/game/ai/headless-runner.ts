@@ -317,10 +317,9 @@ export interface HeadlessRunnerConfig {
    * evaluates whether returning to the Floor 2 settlement to run the
    * maintenance planner (open boxes, equip affinity-maximizing gear, shop,
    * configure abilities) is worth the travel/risk/opportunity cost, using
-   * `settlement-return-router.ts`'s deterministic utility scoring. Default
-   * false — when disabled the router's state machine is never armed and the
-   * AI's Floor 2 progress goal selection is byte-identical to before this
-   * feature.
+   * `settlement-return-router.ts`'s deterministic utility scoring. Defaults to
+   * true on Floor 1, where parity-gated equipment needs a legitimate safe-room
+   * return path, and false on other floors. Callers may explicitly override it.
    */
   settlementReturnRouting?: boolean;
   /**
@@ -569,6 +568,9 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
+    mergedConfig.settlementReturnRouting = true;
+  }
   aiProvider.configurePlanningDeadlineMs?.(
     planningDeadlineMsFromFrameBudget(
       config.planningMaxFrames ??

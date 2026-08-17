@@ -910,18 +910,19 @@ function runBagOnlyEquipmentLoop(
     bagEmptyShortCircuit: true,
     detailPrefix: 'Eager-',
   });
-  eagerEquipmentLatches.set(world, {
-    signature: bagGeneratedSignature(world, playerEid),
-  });
+  const postSignature = bagGeneratedSignature(world, playerEid);
+  if (reason === 'exhausted' || postSignature === signature) {
+    eagerEquipmentLatches.set(world, { signature: postSignature });
+  }
   return reason;
 }
 
 /**
  * Deterministic AI settlement-maintenance planner entry point. No-ops
- * (returns `ran: false`) unless the player is currently inside the Floor 2
- * settlement's safe-room cluster, and runs its full decision loop exactly
- * once per continuous visit (re-entering the settlement after leaving resets
- * the latch, but calling this repeatedly while still inside is a safe no-op).
+ * (returns `ran: false`) unless the player is currently inside a legitimate
+ * safe context. Floors with a settlement additionally require the player to be
+ * inside that settlement's safe-room cluster. The full decision loop runs once
+ * per continuous visit.
  *
  * Mirrors the no-op-gated call style of `autoFloor1ProgressionSystem` /
  * `autoFloor2ProgressionSystem` so it can be called unconditionally every
@@ -932,7 +933,7 @@ export function runSettlementMaintenancePlanner(world: GameWorld): SettlementMai
   const floorMap = world.floorMap;
   const latch = settlementVisitLatches.get(world) ?? { wasInSettlement: false, processed: false };
 
-  if (!settlement || !floorMap) {
+  if (settlement && !floorMap) {
     latch.wasInSettlement = false;
     latch.processed = false;
     settlementVisitLatches.set(world, latch);
@@ -955,8 +956,10 @@ export function runSettlementMaintenancePlanner(world: GameWorld): SettlementMai
     });
   }
 
-  const inSettlement = isPlayerInSettlementRoom(world, playerEid, settlement, floorMap);
-  if (!inSettlement) {
+  const inMaintenanceContext = settlement
+    ? isPlayerInSettlementRoom(world, playerEid, settlement, floorMap!)
+    : isInSafeContext(world);
+  if (!inMaintenanceContext) {
     latch.wasInSettlement = false;
     latch.processed = false;
     settlementVisitLatches.set(world, latch);

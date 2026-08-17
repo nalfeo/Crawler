@@ -51,10 +51,63 @@ describe('ai-equip-parity guard', () => {
     });
   });
 
+  it('flags a multiline forced equip call', () => {
+    withFixture(
+      {
+        'multiline.ts': ['equipFromBag(', '  world, eid, itemId,', '  { force: true },', ');'].join(
+          '\n',
+        ),
+      },
+      (root) => {
+        const { violations } = findAiForceEquipViolations(root, root);
+        expect(violations).toHaveLength(1);
+        expect(violations[0]?.line).toBe(1);
+      },
+    );
+  });
+
+  it('flags a forced options object passed by reference', () => {
+    withFixture(
+      {
+        'indirect.ts': [
+          'const options = { force: true };',
+          'equipFromBag(world, eid, itemId, options);',
+        ].join('\n'),
+      },
+      (root) => {
+        expect(findAiForceEquipViolations(root, root).violations).toHaveLength(1);
+      },
+    );
+  });
+
+  it('flags a forced options object reached through a spread', () => {
+    withFixture(
+      {
+        'spread.ts': [
+          'const privileged = { force: shouldForce };',
+          'const options = { ...privileged };',
+          'unequip(world, eid, slot, { ...options });',
+        ].join('\n'),
+      },
+      (root) => {
+        expect(findAiForceEquipViolations(root, root).violations).toHaveLength(1);
+      },
+    );
+  });
+
   it('accepts an ungated equip call', () => {
     withFixture({ 'clean.ts': 'const r = equipFromBag(world, eid, itemId);\n' }, (root) => {
       expect(findAiForceEquipViolations(root, root).violations).toEqual([]);
     });
+  });
+
+  it('accepts an explicit force false option', () => {
+    withFixture(
+      { 'clean-false.ts': 'equipFromBag(world, eid, itemId, { force: false });\n' },
+      (root) => {
+        expect(findAiForceEquipViolations(root, root).violations).toEqual([]);
+      },
+    );
   });
 
   it('ignores prose about force in comments', () => {

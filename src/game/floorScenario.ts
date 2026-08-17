@@ -139,6 +139,7 @@ import { computeMobLevelScale } from '../shared/mob-scaling.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
 import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
+import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -2036,6 +2037,10 @@ export function initializePlayerWeaponSkills(world: GameWorld, playerEid: number
 }
 
 export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
+  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
+  world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
+  world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+  world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
   const config: MapConfig = {
     widthTiles: floor1Config.map.widthTiles,
     heightTiles: floor1Config.map.heightTiles,
@@ -3768,8 +3773,15 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const slimeRatEid = slimeRatBattle.bossEid;
   const slimeRatAlive = slimeRatEid !== null && entityExists(world.ecs, slimeRatEid);
   if (slimeRatBattle.started && !slimeRatAlive && !slimeRatBattle.defeated) {
+    const chestX =
+      (slimeRatEid === null ? undefined : world.stores.position.x[slimeRatEid]) ??
+      objective.slimeRatRoomPos.x;
+    const chestY =
+      (slimeRatEid === null ? undefined : world.stores.position.y[slimeRatEid]) ??
+      objective.slimeRatRoomPos.y;
     slimeRatBattle.defeated = true;
     slimeRatBattle.bossEid = null;
+    spawnBossChestForDefeatedBoss(world, 'floor1-slime-rat-boss', chestX, chestY);
     setGoalFlag(world, 'floor1-boss-battle-active', false);
     const slimeRatRoom = roomAtPosition(world, objective.slimeRatRoomPos);
     if (slimeRatRoom) {
@@ -3802,11 +3814,18 @@ function floor1ObjectiveTick(world: GameWorld): void {
     entityExists(world.ecs, staircaseEid) &&
     !hasComponent(world.ecs, staircaseEid, DeathTimer);
   if (staircaseBattle.started && !staircaseAlive && !objective.staircaseSpawned) {
+    const chestX =
+      (staircaseEid === null ? undefined : world.stores.position.x[staircaseEid]) ??
+      objective.staircasePos.x;
+    const chestY =
+      (staircaseEid === null ? undefined : world.stores.position.y[staircaseEid]) ??
+      objective.staircasePos.y;
     objective.staircaseSpawned = true;
     objective.staircaseLocked = false;
     objective.staircaseUnlocked = true;
     staircaseBattle.defeated = true;
     staircaseBattle.bossEid = null;
+    spawnBossChestForDefeatedBoss(world, 'floor1-rat-slime-boss', chestX, chestY);
     setGoalFlag(world, 'floor1-boss-active', false);
 
     const floorMap = world.floorMap;

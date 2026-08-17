@@ -148,7 +148,7 @@ export function createInitialFloor2QuartermasterStock(
  * Advance stock by exactly one epoch. Repeating the current epoch is idempotent;
  * skipped/backward epochs fail so reloads cannot reroll stock.
  */
-export function restockFloor2Quartermaster(
+export function _restockFloor2Quartermaster(
   world: GameWorld,
   requestedEpoch: number,
 ): QuartermasterRestockResult {

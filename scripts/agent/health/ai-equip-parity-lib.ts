@@ -6,6 +6,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 
 /** Equipment mutators that accept an `{ force }` option to skip the safe-context gate. */
 export const EQUIPMENT_MUTATORS: readonly string[] = [
@@ -56,19 +57,15 @@ function listTypeScriptFiles(root: string): string[] {
  * Scan `root` (normally `src/game/ai`) for equipment mutator calls that pass a
  * `force` option.
  *
- * The scan is intentionally textual rather than AST-based: it must also reject
- * indirect spellings such as building an options object and spreading it in,
- * and a false positive here costs one comment removal while a false negative
- * costs a silently privileged AI. Detection is per-line: a mutator call and a
- * `force` option token on the same line. `repoRelativeTo` controls the reported
- * path prefix so callers can report repo-relative paths from any cwd.
+ * The scan follows complete call expressions and local option-object references
+ * so normal multiline formatting, aliases, and object spreads cannot hide a
+ * force bypass. `repoRelativeTo` controls the reported path prefix so callers
+ * can report repo-relative paths from any cwd.
  */
 export function findAiForceEquipViolations(
   root: string,
   repoRelativeTo: string = path.resolve(root, '..', '..', '..'),
 ): ForceEquipScanResult {
-  const mutatorCall = new RegExp(`\\b(?:${EQUIPMENT_MUTATORS.join('|')})\\s*\\(`);
-  const forceOption = /\bforce\s*:\s*true\b|\bforce\s*:\s*[A-Za-z_$][\w$]*/;
   const violations: ForceEquipViolation[] = [];
   const files = listTypeScriptFiles(root);
 
@@ -77,19 +74,91 @@ export function findAiForceEquipViolations(
     if (ALLOWLIST.includes(relative)) {
       continue;
     }
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
-    for (let i = 0; i < lines.length; i += 1) {
-      const raw = lines[i] ?? '';
-      const line = raw.trim();
-      // Comments describe the policy constantly in this area; only executable
-      // code can actually grant the privilege.
-      if (line.startsWith('//') || line.startsWith('*') || line.startsWith('/*')) {
-        continue;
+    const sourceText = readFileSync(file, 'utf8');
+    const lines = sourceText.split(/\r?\n/);
+    const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+    const initializers = new Map<string, ts.Expression>();
+
+    const collectInitializers = (node: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer !== undefined
+      ) {
+        initializers.set(node.name.text, node.initializer);
       }
-      if (mutatorCall.test(raw) && forceOption.test(raw)) {
-        violations.push({ file: relative, line: i + 1, snippet: line });
+      ts.forEachChild(node, collectInitializers);
+    };
+    collectInitializers(source);
+
+    const containsForceOption = (expression: ts.Expression, seen: Set<string>): boolean => {
+      if (ts.isIdentifier(expression)) {
+        if (seen.has(expression.text)) return false;
+        const initializer = initializers.get(expression.text);
+        if (!initializer) return expression.text === 'force';
+        const nextSeen = new Set(seen);
+        nextSeen.add(expression.text);
+        return containsForceOption(initializer, nextSeen);
       }
-    }
+      if (
+        ts.isParenthesizedExpression(expression) ||
+        ts.isAsExpression(expression) ||
+        ts.isTypeAssertionExpression(expression) ||
+        ts.isNonNullExpression(expression) ||
+        ts.isSatisfiesExpression(expression)
+      ) {
+        return containsForceOption(expression.expression, seen);
+      }
+      if (ts.isObjectLiteralExpression(expression)) {
+        return expression.properties.some((property) => {
+          if (ts.isSpreadAssignment(property)) {
+            return containsForceOption(property.expression, seen);
+          }
+          if (ts.isShorthandPropertyAssignment(property)) {
+            return property.name.text === 'force';
+          }
+          if (ts.isPropertyAssignment(property)) {
+            const name =
+              ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+                ? property.name.text
+                : null;
+            return name === 'force' && property.initializer.kind !== ts.SyntaxKind.FalseKeyword;
+          }
+          return false;
+        });
+      }
+      let found = false;
+      ts.forEachChild(expression, (child) => {
+        if (!found && ts.isExpression(child)) {
+          found = containsForceOption(child, seen);
+        }
+      });
+      return found;
+    };
+
+    const visitCalls = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const calleeName = ts.isIdentifier(node.expression)
+          ? node.expression.text
+          : ts.isPropertyAccessExpression(node.expression)
+            ? node.expression.name.text
+            : null;
+        if (
+          calleeName !== null &&
+          EQUIPMENT_MUTATORS.includes(calleeName) &&
+          node.arguments.some((argument) => containsForceOption(argument, new Set()))
+        ) {
+          const location = source.getLineAndCharacterOfPosition(node.getStart(source));
+          violations.push({
+            file: relative,
+            line: location.line + 1,
+            snippet: (lines[location.line] ?? '').trim(),
+          });
+        }
+      }
+      ts.forEachChild(node, visitCalls);
+    };
+    visitCalls(source);
   }
 
   return { violations, scannedFiles: files.length };

@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "floor1-boss-chest-recovery",
+  "task_title": "Recover Floor 1 boss chest PR",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Added Floor 1 equipment-maintenance enablement and dependency ordering; tied headless verification to safe-route completion; checked current main CI before addressing branch-caused export failure. Used existing TypeScript compiler API to satisfy explicit reference/spread guard requirement without a new dependency.",
+      "adversarial": false,
+      "alternatives_considered": 1
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

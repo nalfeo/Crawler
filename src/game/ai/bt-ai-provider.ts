@@ -7186,6 +7186,23 @@ export class BehaviorTreeAI implements AIInputProvider {
     // NOT affected — only fixed-position NPC/room targets get suppressed.
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
 
+    const settlementReturnIntent = getSettlementReturnIntent(world);
+    if (
+      !progressSuppressed &&
+      (settlementReturnIntent.status === 'armed' || settlementReturnIntent.status === 'traveling')
+    ) {
+      const safeAnchor = resolveNearestSafeAnchor(world, playerX, playerY);
+      if (safeAnchor) {
+        return this.createProgressTarget(
+          safeAnchor.x,
+          safeAnchor.y,
+          playerX,
+          playerY,
+          'Returning to a safe room to run maintenance (equip/claim)',
+        );
+      }
+    }
+
     if (!tutorialAccepted) {
       const tutorialGoonEid = floorScenario.guideNpcEid ?? -1;
       const reason = 'Seeking Tutorial Goon to unlock the floor quest';
