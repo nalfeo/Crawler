@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "floor1-collapse-win",
+  "task_title": "Align Floor 1 AI wins with collapse",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Accepted: use explicit experienced-player gate and 100% contiguous-panel baseline; retain slow-clear telemetry; audit budget-derived assertions; consciously derive quest stall window from the 600s collapse horizon so 360s is no longer a runner cutoff. Rejected broad release sweep in-session: no workflow-dispatch capability is exposed, while the existing deterministic 25-seed CI gate directly protects the specified expert baseline."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

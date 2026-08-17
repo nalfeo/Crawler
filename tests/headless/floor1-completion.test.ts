@@ -12,9 +12,9 @@
  *   - the behavior-tree AI navigates Floor 1's geometry and progression points,
  *   - every Floor 1 quest can be completed (tutorial, shopkeeper errand, boss
  *     unlock, boss battle),
- *   - the floor is cleared (`outcome === 'victory'`) within the stricter
- *     6-minute AI budget, in deterministic *game* time. The human-facing
- *     collapse timer is longer and remains configured in the Floor 1 manifest.
+ *   - the floor is cleared (`outcome === 'victory'`) before the Floor 1 collapse
+ *     timer expires. The manifest is the shared source for both the AI horizon
+ *     and the human-facing collapse deadline.
  *
  * ## Why a sampled win-RATE, not cherry-picked seeds
  *
@@ -54,14 +54,13 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  FLOOR1_TIME_BUDGET_MS,
   GATE_MAX_FRAMES,
   GATE_SEEDS,
   GATE_WALL_TIME_CAP_MS,
 } from '../../scripts/agent/perf/floor1-gate-sample.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
-import { isOfficialWin } from '../../src/game/ai/scoring.js';
+import { getPersonaConfig } from '../../src/game/ai/personas.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import {
   FLOOR1_TUTORIAL_QUEST_ID,
@@ -72,8 +71,7 @@ import {
 } from '../../src/shared/quest-types.js';
 
 /**
- * The sample constants ({@link GATE_SEEDS}, {@link GATE_MAX_FRAMES},
- * {@link FLOOR1_TIME_BUDGET_MS}) live in
+ * The sample constants ({@link GATE_SEEDS}, {@link GATE_MAX_FRAMES}) live in
  * `scripts/agent/perf/floor1-gate-sample.ts` rather than here, so the sweep
  * tooling and this blocking gate provably share one definition of the gated
  * sample. Editing them there changes what CI gates on.
@@ -104,7 +102,7 @@ const REQUIRED_QUEST_IDS = [
 const SAMPLE_SEEDS = GATE_SEEDS;
 
 /**
- * Minimum win-rate over the gated seed panel.
+ * Minimum experienced-player win-rate over the gated seed panel.
  *
  * **Measured, not guessed** (2026-08-13, seeds 1–25, no forced weapon, this
  * branch): 25/25 = 100%, 0 slow victories, 0 losses. The seed panel selects
@@ -112,12 +110,10 @@ const SAMPLE_SEEDS = GATE_SEEDS;
  * sword 4, bow 4, throwing-knife 3, baseball-bat 2), which is exactly why the
  * PR tier no longer needs a weapon dimension.
  *
- * The floor sits at 0.88 — three losses below measured. That tolerates ordinary
- * seed churn from unrelated content changes while still tripping decisively on
- * a real regression, and it sits at/above the 90 %-target spirit of AGENTS.md
- * r12 without being a brittle 100 % lock.
+ * The current Floor 1 experienced-player baseline is 25/25. Keep the gate at
+ * 100% so this change cannot regress the established success rate.
  */
-const MIN_WIN_RATE = 0.88;
+const MIN_WIN_RATE = 1;
 
 /**
  * Per-combo wall-clock budget for the `beforeAll` that runs the whole sample.
@@ -166,11 +162,12 @@ const HEADLESS_WALL_TIME_BUDGET_MS = 150_000;
  * relied on here.
  */
 async function clearFloor1(seed: number): Promise<RunStats> {
-  const ai = new BehaviorTreeAI({ seed });
+  const ai = new BehaviorTreeAI({ ...getPersonaConfig('experienced_player'), seed });
   return runHeadless(ai, {
     seed,
     maxFrames: MAX_FRAMES,
     maxWallTimeMs: HEADLESS_WALL_TIME_CAP_MS,
+    playerPersona: 'experienced_player',
   });
 }
 
@@ -189,7 +186,7 @@ describe('Floor 1 headless completion gate', () => {
       const fails: string[] = [];
       for (const seed of SAMPLE_SEEDS) {
         const s = runs.get(seed)!;
-        if (isOfficialWin(s, FLOOR1_TIME_BUDGET_MS)) {
+        if (s.outcome === 'victory') {
           wins.push(seed);
         } else {
           fails.push(`${seed}:${s.outcome}@${(s.gameTimeMs / 1000).toFixed(0)}s lv${s.finalLevel}`);
@@ -217,7 +214,7 @@ describe('Floor 1 headless completion gate', () => {
     it('every winning run finishes all quests and shows real progression', () => {
       for (const seed of SAMPLE_SEEDS) {
         const s = runs.get(seed)!;
-        if (!isOfficialWin(s, FLOOR1_TIME_BUDGET_MS)) continue;
+        if (s.outcome !== 'victory') continue;
         for (const questId of REQUIRED_QUEST_IDS) {
           expect(
             s.quests.questLogCompletions[questId],
