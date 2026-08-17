@@ -48,7 +48,11 @@ test('validates weapons, refs, and ranges before dispatch', () => {
   assert.deepEqual(parseWeapons('sword,bow'), ['sword', 'bow']);
   assert.throws(() => parseWeapons('sword,sword'), /Duplicate weapon/);
   assert.throws(() => parseWeapons('sword,../bad'), /Unsupported weapon/);
-  assert.throws(() => weaponSweepDispatchArgs({ ref: '../main' }), /ref must be a safe/);
+  assert.throws(() => weaponSweepDispatchArgs({ ref: '../main' }), /branch must be a safe/);
+  assert.throws(
+    () => weaponSweepDispatchArgs({ ref: '0123456789abcdef' }),
+    /not a tag or bare SHA/,
+  );
   assert.throws(() => weaponSweepDispatchArgs({ seedCount: 101 }), /seedCount/);
   assert.throws(() => aiSweepDispatchArgs({ trainSeeds: '1; rm -rf' }), /trainSeeds/);
   assert.throws(

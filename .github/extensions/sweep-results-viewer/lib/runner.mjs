@@ -16,7 +16,8 @@ const ALLOWED_WEAPONS = new Set([
   'fireball',
 ]);
 const VALID_COMBO_RE = /^[A-Za-z0-9+_.-]+$/;
-const VALID_REF_RE = /^[A-Za-z0-9._/@+-]+$/;
+const VALID_BRANCH_RE = /^[A-Za-z0-9._/@+-]+$/;
+const BARE_SHA_RE = /^[0-9a-f]{7,40}$/i;
 const VALID_RANGE_RE = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/;
 
 async function runCommand(binary, args, options = {}) {
@@ -60,10 +61,10 @@ function parsePositiveInteger(value, name, min, max) {
   return parsed;
 }
 
-function validateRef(ref) {
+function validateBranch(ref) {
   const value = String(ref ?? '').trim();
-  if (!value || !VALID_REF_RE.test(value) || value.includes('..')) {
-    throw new Error('ref must be a safe branch, tag, or SHA token.');
+  if (!value || !VALID_BRANCH_RE.test(value) || value.includes('..') || BARE_SHA_RE.test(value)) {
+    throw new Error('branch must be a safe branch name, not a tag or bare SHA.');
   }
   return value;
 }
@@ -114,7 +115,7 @@ export function selectDispatchedRun(beforeRuns = [], afterRuns = []) {
 }
 
 export function weaponSweepDispatchArgs(input = {}) {
-  const ref = validateRef(input.ref ?? input.branch ?? 'main');
+  const ref = validateBranch(input.ref ?? input.branch ?? 'main');
   const seedCount = parsePositiveInteger(input.seedCount ?? 100, 'seedCount', 1, 100);
   const weapons = parseWeapons(input.weapons ?? DEFAULT_WEAPONS);
   const maxFrames = parsePositiveInteger(input.maxFrames ?? 19_800, 'maxFrames', 1, 600_000);
@@ -137,7 +138,7 @@ export function weaponSweepDispatchArgs(input = {}) {
 }
 
 export function aiSweepDispatchArgs(input = {}) {
-  const ref = validateRef(input.ref ?? input.branch ?? 'main');
+  const ref = validateBranch(input.ref ?? input.branch ?? 'main');
   const combos = validateCombos(input.combos ?? 'all');
   const trainSeeds = validateSeedRange(input.trainSeeds ?? '1-24', 'trainSeeds');
   const validateSeeds = validateSeedRange(input.validateSeeds ?? '1-40', 'validateSeeds');
@@ -225,4 +226,10 @@ export async function dispatchSweep(input = {}, options = {}) {
   };
 }
 
-export const _private = { runCommand, runGhJson, validateRef, validateSeedRange, validateCombos };
+export const _private = {
+  runCommand,
+  runGhJson,
+  validateBranch,
+  validateSeedRange,
+  validateCombos,
+};

@@ -984,7 +984,11 @@ const session = await joinSession({
       parameters: {
         type: 'object',
         properties: {
-          ref: { type: 'string', description: 'Branch, tag, or SHA to run.' },
+          ref: {
+            type: 'string',
+            description:
+              'Branch to run. Tags and bare SHAs are rejected because run-id correlation is branch-scoped.',
+          },
           seedCount: { type: 'number', minimum: 1, maximum: 100, default: 100 },
           weapons: {
             type: 'string',
@@ -1004,7 +1008,11 @@ const session = await joinSession({
       parameters: {
         type: 'object',
         properties: {
-          ref: { type: 'string', description: 'Branch, tag, or SHA to run.' },
+          ref: {
+            type: 'string',
+            description:
+              'Branch to run. Tags and bare SHAs are rejected because run-id correlation is branch-scoped.',
+          },
           combos: { type: 'string', default: 'all' },
           trainSeeds: { type: 'string', default: '1-24' },
           validateSeeds: { type: 'string', default: '1-40' },
