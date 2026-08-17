@@ -302,12 +302,10 @@ export function createInventoryUI(
     const stats = Object.entries(instance.frozen.statBonuses)
       .filter(([, value]) => value !== 0)
       .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`);
-    const dpsLine = weaponDpsLine(instance.frozen.activeWeaponSnapshot ?? undefined);
     return {
       name: instance.frozen.displayName,
       description: [
         instance.frozen.slots.map(getSlotLabel).join(' / '),
-        dpsLine,
         stats.join(', '),
         `${instance.frozen.weightLb} lb`,
       ]
