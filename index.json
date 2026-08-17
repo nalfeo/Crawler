@@ -1,5 +1,39 @@
 [
   {
+    "commit": "b9d05c42f4f93ff43799530cd4b48a1fe47d7819",
+    "commitDate": "2026-08-17T05:40:41Z",
+    "commitSubject": "Refactor floor-specific systems into scenario pipeline slots (#3013)",
+    "capturedAt": "2026-08-17T07:16:49.979Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31999683056",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b9d05c42f4f93ff43799530cd4b48a1fe47d7819.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.13333333333333333,
+        "totalWins": 20,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.20666666666666667,
+        "totalWins": 31,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.64,
+      "gatePass": false,
+      "path": "by-sha/b9d05c42f4f93ff43799530cd4b48a1fe47d7819.fun-report.json"
+    }
+  },
+  {
     "commit": "a6ada78020e0c202f9f944ffe2603fe35a9b9268",
     "commitDate": "2026-08-17T04:38:09Z",
     "commitSubject": "Add repository-tailored `code-review` skill for context-aware PR reviews (#3016)",
