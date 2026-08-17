@@ -1,9 +1,10 @@
 # Spec: Floor 3 — Companion League
 
-> **Status:** **In progress — slice 1 landed (2026-08-16).** Slice 1 (affinity matrix +
-> species/style data) is implemented in `src/shared/data/floor3/`; no ECS systems, manifests,
-> or sprites exist yet. The remaining schemas, wiring, and slices below are the **plan** the
-> implementation sessions build against.
+> **Status:** **In progress — slices 1–2 landed (2026-08-17).** Slice 1 (affinity matrix +
+> species/style data) is implemented in `src/shared/data/floor3/`; slice 2 (the
+> `AFFINITY_MATRIX` damage-multiplier hook) is implemented in `src/core/apply-damage.ts`. No
+> ECS systems, manifests, or sprites exist yet. The remaining schemas, wiring, and slices below
+> are the **plan** the implementation sessions build against.
 > **Authored:** 2026-07-24.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive epic — spans core ECS, game systems, content,
 > and 14 UX surfaces; sliced in §Epic decomposition). _This design session was 🍎🍎🍎._
@@ -206,7 +207,7 @@ Each slice ends with its own PR + review ledger (apple-scaled) + handoff. Slices
 | #     | Slice                                                                     | 🍎          | Introduces / extends                                                                                                                                                                                                                | Deps      |
 | ----- | ------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1     | **Affinity matrix + species/style data** ✅ _landed 2026-08-16_           | 🍎🍎        | `src/shared/data/floor3/` species defs, `AFFINITY_MATRIX`, `StylePersona` registry, matrix unit tests                                                                                                                               | —         |
-| 2     | **Damage multiplier hook**                                                | 🍎🍎        | affinity multiplier in the `apply-damage` path + tests                                                                                                                                                                              | after 1   |
+| 2     | **Damage multiplier hook** ✅ _landed 2026-08-17_                         | 🍎🍎        | affinity multiplier in the `apply-damage` path + tests                                                                                                                                                                              | after 1   |
 | 3     | **Companion entity + ally AI generalization**                             | 🍎🍎🍎      | `Companion`/`PartySlot` components, team-tagged ally AI from Floor 2 follow-AI, companion lab                                                                                                                                       | after 1   |
 | 4     | **Two net-new AI personas** (`GUARDIAN`, `SUPPORT`)                       | 🍎🍎🍎      | `AI_TYPE` additions + behavior in `enemyAISystem.ts`, 2 labs, pipeline wiring                                                                                                                                                       | after 3   |
 | 5     | **Per-creature leveling + evolution + abilities**                         | 🍎🍎🍎      | combat-XP attribution, `xpMath` reuse, form transitions, ability unlocks, lab                                                                                                                                                       | after 3   |
