@@ -1,5 +1,39 @@
 [
   {
+    "commit": "56a0317fe7bddf41c74d02e63a60ee2672cf9fb1",
+    "commitDate": "2026-08-17T07:50:38Z",
+    "commitSubject": "Removing time limits for different player personas (#3020)",
+    "capturedAt": "2026-08-17T09:18:28.075Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32009273168",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/56a0317fe7bddf41c74d02e63a60ee2672cf9fb1.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.15333333333333332,
+        "totalWins": 23,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.25333333333333335,
+        "totalWins": 38,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.88,
+      "gatePass": false,
+      "path": "by-sha/56a0317fe7bddf41c74d02e63a60ee2672cf9fb1.fun-report.json"
+    }
+  },
+  {
     "commit": "ac6ec4c7a63dcbb52f9e2c46032dd9050ed2b542",
     "commitDate": "2026-08-17T06:44:30Z",
     "commitSubject": "test: raise unit coverage on mob motion sampling and weapon persona allocation (#3022)",
