@@ -61,9 +61,9 @@ export function renderItemTooltip(
       ? TOOLTIP_BASE_HEIGHT + TOOLTIP_STAT_HEIGHT_BONUS
       : TOOLTIP_BASE_HEIGHT;
   const metaY = tooltipHeight - TOOLTIP_META_OFFSET;
-  const footerY = footerHint ? metaY - TOOLTIP_FOOTER_OFFSET_FROM_META : undefined;
+  const footerY = metaY - TOOLTIP_FOOTER_OFFSET_FROM_META;
   const statY =
-    footerY !== undefined
+    footerHint !== undefined && footerHint.length > 0
       ? footerY - TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE
       : metaY - TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE;
   const snap = (value: number): number => Math.round(value);
@@ -151,7 +151,7 @@ export function renderItemTooltip(
 
   // Optional gold action hint (e.g. equip affordance), placed just above meta.
   if (footerHint !== undefined && footerHint.length > 0) {
-    const hintText = crispText(tx + 8, ty + footerY!, footerHint, {
+    const hintText = crispText(tx + 8, ty + footerY, footerHint, {
       fontFamily,
       fontSize: '11px',
       color: '#e9c46a',

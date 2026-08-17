@@ -25,10 +25,6 @@ function hitsPerActivation(def: WeaponDef): number {
     return Math.max(1, Math.floor(def.durationMs / tickMs) + 1);
   }
 
-  if (def.weaponType === WeaponType.MAGIC && def.aoeRadius > 0) {
-    return 2;
-  }
-
   return 1;
 }
 

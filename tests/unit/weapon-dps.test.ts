@@ -40,14 +40,14 @@ describe('computeTheoreticalSingleTargetDps', () => {
     expect(result.dps).toBeCloseTo(25);
   });
 
-  it('counts magic impact plus splash as single-target activation damage', () => {
+  it('counts only the direct magic hit for single-target activation damage', () => {
     const result = computeTheoreticalSingleTargetDps(weapon('fireball'), {
       intelligence: 20,
     });
 
-    expect(result.hitsPerActivation).toBe(2);
-    expect(result.expectedDamagePerActivation).toBeCloseTo(19.2);
-    expect(result.dps).toBeCloseTo(24);
+    expect(result.hitsPerActivation).toBe(1);
+    expect(result.expectedDamagePerActivation).toBeCloseTo(9.6);
+    expect(result.dps).toBeCloseTo(12);
   });
 
   it('counts beam ticks across the beam duration', () => {
