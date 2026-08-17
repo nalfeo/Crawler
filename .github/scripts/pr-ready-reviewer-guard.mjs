@@ -280,6 +280,9 @@ async function requestHumanReviewerIfRequired({ api, pr, prNumber, reviewerLogin
 }
 
 async function requestHumanReviewer({ api, pr, prNumber, reviewerLogin, log }) {
+  if (normalize(pr.user?.login) === normalize(reviewerLogin)) {
+    return false;
+  }
   const requestedReviewers = pr.requested_reviewers ?? [];
   if (
     requestedReviewers.some((reviewer) => normalize(reviewer.login) === normalize(reviewerLogin))

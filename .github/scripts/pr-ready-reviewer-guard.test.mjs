@@ -1401,6 +1401,37 @@ test('requests nalfeo only for every canonical human-approval gate', async () =>
   assert.deepEqual(harness.state.pulls[3].requested_reviewers, []);
 });
 
+test('skips a human-reviewer request when the reviewer authored the PR', async () => {
+  const harness = createHarness({
+    pulls: [
+      makePr({
+        draft: false,
+        user: { login: 'NALFEO' },
+        labels: [{ name: 'human-approval-required' }],
+      }),
+    ],
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'schedule',
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    humanReviewerRequests: 0,
+  });
+  assert.equal(
+    harness.calls.some(([name]) => name === 'requestReviewer'),
+    false,
+  );
+});
+
 test('human-reviewer request failures fail the guard without removing reviewers', async () => {
   const harness = createHarness({
     pulls: [

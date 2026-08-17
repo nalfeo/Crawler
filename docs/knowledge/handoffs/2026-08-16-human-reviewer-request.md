@@ -11,6 +11,8 @@ ci-policy
 - It never removes an existing requested reviewer.
 - Requests are idempotent and cover direct labels, balance-telemetry branches,
   and closing issues carrying `human-approval-required`.
+- Requests are skipped when the configured reviewer authored the PR, avoiding
+  GitHub's self-review rejection.
 
 ## Validation
 
