@@ -224,7 +224,12 @@ graph LR
 
 ## Floor 1 enemy director system
 
-The Floor 1 scenario (`src/game/floor1Scenario.ts`) injects `floor1EnemyDirectorSystem` into `preSystems`. It manages a wave schedule, spawning `rat` and `slime` enemy species per the Floor 1 objective targets. It replaces `enemySpawnerSystem` for Floor 1 to give precise control over enemy mix and pacing.
+The Floor 1 definition (`src/game/scenarioDefinitions.ts`) registers
+`floor1EnemyDirectorSystem` in the scenario's `afterSpawnerSystems` slot. The
+canonical bootstrap inserts it into `preSystems` immediately after
+`spawnerSystem`. It manages a wave schedule, spawning `rat` and `slime` enemy
+species per the Floor 1 objective targets. It replaces `enemySpawnerSystem` for
+Floor 1 to give precise control over enemy mix and pacing.
 
 ```mermaid
 sequenceDiagram

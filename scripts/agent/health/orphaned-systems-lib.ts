@@ -86,6 +86,8 @@ export const MIN_EXPECTED_SYSTEMS = 10;
  * - `src/bootstrap/floor-main-scene-options.ts` — canonical floor
  *   `preSystems`/`postSystems` arrays consumed by BOTH the visual scene and
  *   `headless-runner.ts`.
+ * - `src/game/scenarioDefinitions.ts` — floor-local systems registered into
+ *   named slots in the canonical bootstrap arrays.
  * - `src/core/simulation-core-step.ts` — shared deterministic core ECS step used
  *   by both visual and headless wrappers.
  * - `src/engine/sim/simulation-step.ts` — visual wrapper around the shared core
@@ -112,6 +114,7 @@ export const WIRING_SITES: ReadonlyArray<string> = [
   'src/engine/sim/simulation-step.ts',
   'src/game/ai/simulation-step.ts',
   'src/game/ai/headless-runner.ts',
+  'src/game/scenarioDefinitions.ts',
 ];
 
 /**
