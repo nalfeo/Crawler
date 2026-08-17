@@ -1497,6 +1497,17 @@ describe('approveIconBatch', () => {
     }
   });
 
+  it('rejects a malformed nested lineage brief before writing icon assets', () => {
+    const { runDir, iconBatch } = writeIconBatchRun(repoRoot, {
+      briefId: 'achv-icons-batch-v1-v2',
+    });
+
+    expect(() => approveIconBatch(makeOpts(runDir, iconBatch))).toThrow(
+      /malformed nested lineage tag/,
+    );
+    expect(readManifest(manifestPath).entries).toEqual({});
+  });
+
   it('throws icon-batch-count-mismatch when processed count is GREATER than iconBatch length', () => {
     // 3 candidates in summary but only 2 iconBatch entries → too many candidates
     const { runDir } = writeIconBatchRun(repoRoot, { cellCount: 2, candidateCount: 3 });

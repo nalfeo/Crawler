@@ -120,6 +120,15 @@ export function bareConcept(briefId: string): string {
 }
 
 /**
+ * True when stripping one lineage tag still leaves one behind. Such an id is
+ * malformed rather than a valid nested lineage, so migration must reject it
+ * instead of inventing a partial canonical name.
+ */
+export function hasResidualLineageTag(briefId: string): boolean {
+  return LINEAGE_TAG.test(bareConcept(briefId));
+}
+
+/**
  * True when a brief id still carries a generation-time lineage tag, i.e. it is
  * not yet canonical. Design-name remap targets (`angry-roomba-mk2`) are
  * canonical by construction and never report as tagged.
@@ -174,6 +183,14 @@ export function buildTaxonomyPlan(entries: Readonly<Record<string, TaxonomyEntry
   for (const key of Object.keys(entries).sort((a, b) => a.localeCompare(b))) {
     const entry = entries[key]!;
     const concept = bareConcept(entry.briefId);
+    if (hasResidualLineageTag(entry.briefId)) {
+      conflicts.push({
+        concept,
+        reason: 'brief id contains more than one trailing lineage tag',
+        keys: [key],
+      });
+      continue;
+    }
     const group = byConcept.get(concept);
     if (group) {
       group.push([key, entry] as const);

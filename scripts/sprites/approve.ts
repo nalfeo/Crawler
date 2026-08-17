@@ -60,7 +60,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { bareConcept } from './sprite-name-taxonomy.js';
+import { bareConcept, hasResidualLineageTag } from './sprite-name-taxonomy.js';
 import { toSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { formatJsonFilesSync } from './catalog-io.js';
 import { shardPathForKey } from './generated-shards.js';
@@ -246,6 +246,19 @@ export class ApproveError extends Error {
   }
 }
 
+function canonicalBriefId(rawBriefId: string | undefined, summaryPath: string): string {
+  if (!rawBriefId) {
+    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
+  }
+  if (hasResidualLineageTag(rawBriefId)) {
+    throw new ApproveError(
+      'summary-invalid',
+      `summary.json has malformed nested lineage tag in "brief": ${rawBriefId}`,
+    );
+  }
+  return bareConcept(rawBriefId);
+}
+
 interface RunSummaryShape {
   readonly brief?: string;
   readonly briefPath?: string;
@@ -391,9 +404,6 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     ? normalizeSourceRunOverride(options.sourceRunOverride)
     : toRepoRelativePosix(options.repoRoot, options.runDir);
   const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
   // Recurrence guard: ALL generated art ships BARE. If the brief carries a
   // generation-time `-vN` lineage tag, strip it so the manifest key /
   // spriteName / assetPath / briefId are all the bare concept. This is what
@@ -402,7 +412,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   // `pickGeneratedVariant` can never draw from, stranding approved art.
   // Design names that merely look versioned (`angry-roomba-v2`) are remapped,
   // not stripped, by `DESIGN_NAME_REMAP`.
-  const briefId = bareConcept(rawBriefId);
+  const briefId = canonicalBriefId(rawBriefId, summaryPath);
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === options.variantIndex);
   if (!candidate) {
@@ -650,11 +660,7 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
   const sourceRun = options.sourceRunOverride
     ? normalizeSourceRunOverride(options.sourceRunOverride)
     : toRepoRelativePosix(options.repoRoot, options.runDir);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = bareConcept(rawBriefId);
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
 
   const frameSequence = summary.frameSequence;
   const frameCount = frameSequence?.frameCount;
@@ -821,11 +827,7 @@ export function resolveVariantIdentity(
     throw new ApproveError('run-not-found', `Run directory has no summary.json: ${runDir}`);
   }
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = bareConcept(rawBriefId);
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
 
   const candidate = (summary.candidates ?? []).find((c) => c.index === variantIndex);
   if (!candidate) {
@@ -901,11 +903,7 @@ export function loadApprovedFrameSequenceEntry(options: {
     throw new ApproveError('run-not-found', `Run directory has no summary.json: ${options.runDir}`);
   }
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = bareConcept(rawBriefId);
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
   return readManifestEntry(fs, options.manifestPath, briefId);
 }
 
@@ -1233,11 +1231,7 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
 
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
   const sourceRun = toRepoRelativePosix(options.repoRoot, options.runDir);
-  const rawBriefId = summary.brief;
-  if (!rawBriefId) {
-    throw new ApproveError('summary-invalid', `summary.json has no "brief" field: ${summaryPath}`);
-  }
-  const briefId = rawBriefId;
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
 
   const type = resolveBriefType(fs, options.repoRoot, summary.briefPath);
   const generatedDir = path.join(options.publicAssetsDir, 'generated');

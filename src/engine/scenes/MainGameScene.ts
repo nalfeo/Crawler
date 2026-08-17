@@ -205,7 +205,7 @@ function resolveSetPieceLightEmission(
   if (/^prop-torch-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
-  if (/^prop-lantern-v\d+-var-\d+$/.test(spriteId)) {
+  if (/^prop-lantern-var-\d+$/.test(spriteId)) {
     return { radiusFt: SET_PIECE_LIGHT_RADIUS_FT, intensity: SET_PIECE_LIGHT_INTENSITY };
   }
   return null;

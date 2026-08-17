@@ -5,6 +5,7 @@ import {
   buildTaxonomyPlan,
   DESIGN_NAME_REMAP,
   hasLineageTag,
+  hasResidualLineageTag,
   isPlaceholder,
   splitVariantKey,
   type TaxonomyEntry,
@@ -51,6 +52,14 @@ describe('hasLineageTag', () => {
   it('reports a tagged brief as non-canonical', () => {
     expect(hasLineageTag('rat-v1')).toBe(true);
     expect(hasLineageTag('angry-roomba-v2')).toBe(true);
+  });
+
+  describe('hasResidualLineageTag', () => {
+    it('detects a malformed double tag that a single strip would leave behind', () => {
+      expect(hasResidualLineageTag('iron-ore-v1-v2')).toBe(true);
+      expect(hasResidualLineageTag('rat-v1')).toBe(false);
+      expect(hasResidualLineageTag('angry-roomba-v2-v1')).toBe(false);
+    });
   });
 
   it('reports canonical names — including remap targets — as clean', () => {
@@ -104,6 +113,19 @@ describe('buildTaxonomyPlan', () => {
       toBriefId: 'rat',
       renumbered: false,
     });
+  });
+
+  it('rejects malformed double lineage tags instead of partially renaming them', () => {
+    const plan = buildTaxonomyPlan({
+      'iron-ore-v1-v2-var-0': entry('iron-ore-v1-v2', { variantIndex: 0 }),
+    });
+    expect(plan.renames).toEqual([]);
+    expect(plan.conflicts).toEqual([
+      expect.objectContaining({
+        reason: 'brief id contains more than one trailing lineage tag',
+        keys: ['iron-ore-v1-v2-var-0'],
+      }),
+    ]);
   });
 
   it('is a no-op on an already-canonical tree (idempotency)', () => {

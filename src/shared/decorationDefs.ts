@@ -438,7 +438,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'mining-cart',
       name: 'Mining Cart',
-      spriteId: 'prop-mining-cart-v1-var-0',
+      spriteId: 'prop-mining-cart-var-0',
       biomeTag: 'cave',
       category: 'structural',
       placementZone: 'room-only',
@@ -454,7 +454,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'support-beam',
       name: 'Support Beam',
-      spriteId: 'prop-support-beam-v1-var-0',
+      spriteId: 'prop-support-beam-var-0',
       biomeTag: 'cave',
       category: 'structural',
       placementZone: 'wall-adjacent',
@@ -470,7 +470,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'cave-rubble',
       name: 'Cave Rubble',
-      spriteId: 'prop-cave-rubble-v1-var-0',
+      spriteId: 'prop-cave-rubble-var-0',
       biomeTag: 'cave',
       category: 'rubbish',
       placementZone: 'anywhere',
@@ -486,7 +486,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'pipe-section',
       name: 'Pipe Section',
-      spriteId: 'prop-pipe-section-v1-var-0',
+      spriteId: 'prop-pipe-section-var-0',
       biomeTag: 'cave',
       category: 'structural',
       placementZone: 'wall-adjacent',
@@ -502,7 +502,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'wall-lantern-cave',
       name: 'Wall Lantern',
-      spriteId: 'prop-wall-lantern-v1-var-0',
+      spriteId: 'prop-wall-lantern-var-0',
       biomeTag: 'cave',
       category: 'light-source',
       placementZone: 'wall-adjacent',
@@ -520,7 +520,7 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
     def({
       id: 'glowing-crystal-shard',
       name: 'Glowing Crystal',
-      spriteId: 'prop-glowing-crystal-v1-var-0',
+      spriteId: 'prop-glowing-crystal-var-0',
       biomeTag: 'cave',
       category: 'light-source',
       placementZone: 'cave-only',
