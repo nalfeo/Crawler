@@ -1844,9 +1844,10 @@ export function enemyAISystem(world: GameWorld): void {
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
-    // For a mob with a family-driven virtual target we measure aggro against
-    // the virtual target (distanceToPlayer already reflects that), and set
-    // `familyBypass` so player-side FOV/room checks don't cancel engagement.
+    // For a mob with a prepass-driven virtual target (Companion or Family Feud)
+    // we measure aggro against the virtual target (distanceToPlayer already
+    // reflects that), and set `familyBypass` so player-side FOV/room checks
+    // don't cancel engagement.
     const familyBypass = targetOverride !== undefined && targetOverride.bypassPlayerDetection;
     const inAggroRange =
       familyBypass || permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
