@@ -23,11 +23,12 @@ import { isInSafeContext } from '../../core/safe-space.js';
 import {
   RewardBundleResolutionError,
   resolveEquipmentRewardBundle,
+  rollFloor2AchievementEquipmentDrop,
 } from '../floor2-reward-bundle-resolver.js';
 import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
-} from '../floor1-lootbox-reward-resolver.js';
+} from '../lootbox-materials-reward-resolver.js';
 
 /**
  * Pre-computed set of Floor 2 weapon base IDs for category-weighted reward
@@ -323,23 +324,41 @@ export function unlockAchievement(
     // still have no run key, which would otherwise hit the same "uncaught
     // throw from an unconfigured registry" landmine that the lootBox branch
     // below guards against explicitly — so mirror that guard here too.
-    if (
-      getFloor2EquipmentRewardsAccess(world).kind !== 'enabled' ||
-      world.generatedEquipmentRegistry.runKey === null
-    ) {
+    const runKey = world.generatedEquipmentRegistry.runKey;
+    if (getFloor2EquipmentRewardsAccess(world).kind !== 'enabled' || runKey === null) {
       return false;
     }
-    try {
-      resolveEquipmentRewardBundle(
-        world,
-        achievementId,
-        FLOOR2_REWARD_POOL_STABLE_IDS,
-        FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier],
-        FLOOR2_REWARD_WEAPON_ID_SET,
-      );
-    } catch (err) {
-      if (err instanceof RewardBundleResolutionError) throw err;
-      return false;
+    // Not every Floor 2 unlock hands out gear: lower tiers pass a deterministic
+    // coin flip first (half the old always-equipment rate), and a missed roll
+    // resolves Floor 2's OWN gold+materials payout instead — richer gold and a
+    // wider material pool than Floor 1's table, which Floor 2 never reuses.
+    // The decision is made ONCE here, at unlock, and is implied thereafter by
+    // which bundle map holds the achievement's bundle.
+    if (rollFloor2AchievementEquipmentDrop(runKey, achievementId, achievement.reward.tier)) {
+      try {
+        resolveEquipmentRewardBundle(
+          world,
+          achievementId,
+          FLOOR2_REWARD_POOL_STABLE_IDS,
+          FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER[achievement.reward.tier],
+          FLOOR2_REWARD_WEAPON_ID_SET,
+        );
+      } catch (err) {
+        if (err instanceof RewardBundleResolutionError) throw err;
+        return false;
+      }
+    } else {
+      try {
+        resolveLootBoxRewardBundle(
+          world,
+          achievementId,
+          achievement.reward.tier,
+          'floor2-materials',
+        );
+      } catch (err) {
+        if (err instanceof LootBoxRewardResolutionError) throw err;
+        return false;
+      }
     }
   } else if (achievement.reward.type === 'lootBox') {
     // Floor 1 lootBox rewards resolve their immutable gold+materials bundle

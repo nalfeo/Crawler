@@ -40,7 +40,9 @@
  * - **Duplicate open-list entries are preserved.** rot-js has no decrease-key;
  *   a tile may be pushed many times and is deduplicated at *pop* time. Turning
  *   this into a decrease-key would change which duplicate wins and therefore
- *   the resulting path.
+ *   the resulting path. The one exception is the *provably inert* subset
+ *   described under "Dominated-duplicate filter" below, which is dropped
+ *   because it can only ever be popped as a no-op.
  * - The closed set is **first-write-wins** at pop time.
  * - Neighbours are visited in `DIRS[4]` order — **N, E, S, W** — which feeds
  *   the insertion sequence and so is load-bearing for tie-breaking.
@@ -51,6 +53,48 @@
  *   `PathfindingOptions.isTilePassable` is a caller-supplied function with no
  *   enforced purity, so skipping "redundant" probes would be observable to a
  *   stateful predicate. The redundant calls are kept deliberately.
+ *
+ * ## Dominated-duplicate filter (open-list only — provably inert)
+ *
+ * A Floor-1 headless panel (seeds 1-3 x sword) pushes **10.41 M** open-list
+ * entries and pops **9.96 M**, of which **4.14 M (41.6%)** are stale pops that
+ * do nothing but `continue`. **2.78 M (26.7%)** of those pushes are *dominated*:
+ * at push time the same tile already has an open entry that is ordered strictly
+ * earlier under `(f asc, h asc, entryId asc)`.
+ *
+ * {@link GridAStarScratch.push} drops exactly that subset. It is inert, not a
+ * heuristic:
+ *
+ * 1. Let `e_best` be the recorded open entry for tile `t` and `e_new` the push
+ *    being considered, with `f(e_best) <= f(e_new)`. Within a search `h` is a
+ *    pure function of the tile, so both entries share the same `h` and equal
+ *    `f` means an exact `(f, h)` tie. `e_best` was pushed earlier, so its entry
+ *    id is smaller and it is ordered strictly before `e_new` under the full
+ *    three-key order.
+ * 2. `e_best` is still on the heap. Any pop of *any* entry for `t` leaves
+ *    `stamp[t] === generation`, and the expansion loop already refuses to push
+ *    onto a tile with that stamp — so reaching a push for `t` proves nothing
+ *    for `t` has been popped yet.
+ * 3. Therefore `e_new` can only ever be popped **after** `e_best`, by which
+ *    time `stamp[t] === generation` and the pop body is a bare `continue`.
+ *    Either the search terminates first (and `e_new` is never observed), or
+ *    `e_new` pops as a no-op. Neither reaches `prevTile`, the visitor, or
+ *    `isPassable`.
+ * 4. Dropping a push shifts every later entry id down by one *uniformly*, so
+ *    the relative id order — the only way ids are ever compared — is preserved.
+ *
+ * The filter therefore changes neither the popped-and-expanded sequence, the
+ * closed set, `prevTile`, the emitted path, nor the ordered `isPassable` probe
+ * trace. It only removes heap work. `scripts/agent/perf/bench-astar-dominance.ts`
+ * measures the win and proves the equality differentially against a verbatim
+ * pre-change baseline.
+ *
+ * Because the filter is *inert by construction*, any edit that merely makes it
+ * prune LESS is output-identical and therefore cannot be caught by a
+ * correctness test — only by the open-list size. That is what
+ * {@link __getGridAStarLastEntryCountForTests} exists to pin. Edits that make
+ * it prune MORE are genuine gameplay changes and are caught by
+ * `tests/ecs/astar-grid-equivalence.test.ts`.
  *
  * ## Allocation strategy
  *
@@ -103,6 +147,24 @@ class GridAStarScratch {
   stamp = new Int32Array(0);
   /** Tile index this tile was closed from, or -1 for the goal seed. */
   prevTile = new Int32Array(0);
+  /**
+   * Dominance filter, part 1: generation stamp marking "at least one entry has
+   * been pushed for this tile during the current search". It is never cleared
+   * when an entry is popped, which is safe precisely because a closed tile can
+   * never be pushed again (the expansion loop checks {@link stamp} first).
+   * Separate from {@link stamp}, which marks *closed*.
+   */
+  openStamp = new Int32Array(0);
+  /**
+   * Dominance filter, part 2: the lowest `f` among open entries for the tile.
+   * Valid only while `openStamp[tile] === generation`.
+   *
+   * `h` needs no companion array: within one search `h` is
+   * `|x - startX| + |y - startY|`, a pure function of the tile, so every entry
+   * for a given tile carries the same `h` and ordering by `f` alone is
+   * identical to ordering by `(f asc, h asc)`.
+   */
+  bestF = new Int32Array(0);
   /** Monotonic search counter, so the closed set never needs clearing. */
   generation = 0;
 
@@ -124,6 +186,8 @@ class GridAStarScratch {
     if (this.tileCount === tileCount) return;
     this.stamp = new Int32Array(tileCount);
     this.prevTile = new Int32Array(tileCount);
+    this.openStamp = new Int32Array(tileCount);
+    this.bestF = new Int32Array(tileCount);
     this.tileCount = tileCount;
     // Fresh arrays are all-zero, so the next generation must not be 0.
     this.generation = 0;
@@ -133,6 +197,10 @@ class GridAStarScratch {
   beginSearch(): void {
     if (this.generation >= MAX_GENERATION) {
       this.stamp.fill(0);
+      // Both stamp arrays are generation-keyed, so both must be cleared on a
+      // wrap or a stale `openStamp` would alias generation 1 and suppress a
+      // legitimate push.
+      this.openStamp.fill(0);
       this.generation = 0;
     }
     this.generation += 1;
@@ -162,11 +230,27 @@ class GridAStarScratch {
    * The new entry always has the largest id, so the `entryId` tiebreak makes a
    * tie *stop* the sift — reproducing rot-js's "insert after everything you tie
    * with" FIFO behaviour.
+   *
+   * Dominated pushes are dropped before they reach the heap: if this tile
+   * already has an open entry whose `f` is less than or equal to this one's,
+   * that entry is ordered strictly earlier — equal `f` implies equal `h` (see
+   * {@link bestF}), and it also has a smaller id — so it closes the tile first
+   * and this entry could only ever pop as a bare `continue`. See
+   * "Dominated-duplicate filter" in the module header for the full argument; it
+   * is an exact identity, not a heuristic.
    */
   push(tile: number, g: number, h: number, prev: number): void {
+    const f = g + h;
+    const generation = this.generation;
+    if (this.openStamp[tile] === generation) {
+      if (this.bestF[tile]! <= f) return;
+    } else {
+      this.openStamp[tile] = generation;
+    }
+    this.bestF[tile] = f;
+
     if (this.entryCount >= this.entryTile.length) this.growEntries();
     const e = this.entryCount++;
-    const f = g + h;
     this.entryTile[e] = tile;
     this.entryG[e] = g;
     this.entryH[e] = h;
@@ -370,6 +454,41 @@ export function computeGridPath(
   } finally {
     releaseScratch();
   }
+}
+
+/**
+ * Test-only hook: number of open-list entries the most recent search actually
+ * pushed (`scratch.entryCount` is left in place after a search completes, so
+ * this costs nothing in the hot path).
+ *
+ * This is the **only** observable that the dominated-duplicate filter is live.
+ * The filter is output-identical by construction, so a regression that disabled
+ * it would leave every correctness assertion green and only make the game
+ * slower. Returns 0 when no search has run since the last reset.
+ */
+export function __getGridAStarLastEntryCountForTests(): number {
+  return scratchPool[0]?.entryCount ?? 0;
+}
+
+/**
+ * Test-only hook: force the depth-0 scratch generation counter, so the
+ * `MAX_GENERATION` wrap in {@link GridAStarScratch.beginSearch} can be reached
+ * in a test instead of after 2^31 searches.
+ *
+ * Without this the wrap is unreachable in practice and therefore untested — and
+ * it is load-bearing: both {@link GridAStarScratch.stamp} and
+ * {@link GridAStarScratch.openStamp} are generation-keyed, so a wrap that
+ * cleared only one of them would let a previous search's stamps alias
+ * generation 1 and silently corrupt the next search.
+ *
+ * Note that this hook and {@link __getGridAStarLastEntryCountForTests} are
+ * introspection for tests only. They are not part of the observable contract
+ * this module promises to callers — that contract is the emitted path, the
+ * ordered `isPassable` probe trace, and nothing else.
+ */
+export function __forceGridAStarGenerationForTests(generation: number): void {
+  const scratch = scratchPool[0];
+  if (scratch !== undefined) scratch.generation = generation;
 }
 
 /**

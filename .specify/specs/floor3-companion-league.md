@@ -1,8 +1,9 @@
 # Spec: Floor 3 — Companion League
 
-> **Status:** **Design — not yet implemented.** This is a forward-looking contract for the
-> Floor 3 epic; no runtime code, ECS systems, manifests, or sprites exist yet. All schemas,
-> wiring, and slices below are the **plan** the implementation sessions will build against.
+> **Status:** **In progress — slice 1 landed (2026-08-16).** Slice 1 (affinity matrix +
+> species/style data) is implemented in `src/shared/data/floor3/`; no ECS systems, manifests,
+> or sprites exist yet. The remaining schemas, wiring, and slices below are the **plan** the
+> implementation sessions build against.
 > **Authored:** 2026-07-24.
 > **Estimated complexity:** 🍎🍎🍎🍎🍎 (Massive epic — spans core ECS, game systems, content,
 > and 14 UX surfaces; sliced in §Epic decomposition). _This design session was 🍎🍎🍎._
@@ -64,7 +65,7 @@ Companion entity composes existing components plus new Floor-3 data:
 
 - Reused: `Health`, `Team` (`src/core/components.ts`), position/velocity, an `AI_TYPE` persona.
 - New component **`Companion`** (core): `{ speciesId, form: 0|1|2, level, xp, ownerTeam,
-  knockedOut: 0|1, learnedAbilityIds: number[] }`.
+knockedOut: 0|1, learnedAbilityIds: number[] }`.
 - New component **`PartySlot`** (core, on the player): the ordered party (max 6) + lock flag.
 
 `Team` tags separate the player's party, each handler's stable, and wild spawns so ally AI
@@ -76,22 +77,28 @@ targets correctly and friendly fire is impossible within a team.
 // src/shared/data/floor3/ — new data + types (schema shown; tuning is a slice)
 type Affinity = 'ember' | 'bloom' | 'stone' | 'gale' | 'tide' | 'gloom' | 'lumen';
 type FightingStyle =
-  | 'charger' | 'bruiser' | 'slinger' | 'burster' | 'pouncer' | 'warden' | 'kindler';
+  | 'charger'
+  | 'bruiser'
+  | 'slinger'
+  | 'burster'
+  | 'pouncer'
+  | 'warden'
+  | 'kindler';
 
 interface PetFormDef {
-  form: 0 | 1 | 2;              // baby | adolescent | adult
-  name: string;                // original portmanteau (roster doc)
-  minLevel: number;            // 1 | 10 | 25
-  statScale: number;           // multiplier over the style's base archetype
+  form: 0 | 1 | 2; // baby | adolescent | adult
+  name: string; // original portmanteau (roster doc)
+  minLevel: number; // 1 | 10 | 25
+  statScale: number; // multiplier over the style's base archetype
 }
 
 interface PetSpeciesDef {
-  speciesId: string;           // stable key; names are freely renameable
+  speciesId: string; // stable key; names are freely renameable
   affinity: Affinity;
-  fightingStyle: FightingStyle;// selects the reusable AI persona (R4)
+  fightingStyle: FightingStyle; // selects the reusable AI persona (R4)
   forms: [PetFormDef, PetFormDef, PetFormDef];
   abilityIdsByLevel: Record<1 | 8 | 16 | 25 | 34, string>;
-  signature?: boolean;         // off-grid rares (roster §4)
+  signature?: boolean; // off-grid rares (roster §4)
 }
 
 // Effectiveness matrix — complete, every ordered pair defined (game-design §4.1).
@@ -114,7 +121,7 @@ const AFFINITY_MATRIX: Record<Affinity, Record<Affinity, Multiplier>>; // fully 
   Pouncer→LEAPER. **2 are net-new personas: `GUARDIAN` (Warden) and `SUPPORT` (Kindler)** —
   added to `AI_TYPE` and given behavior in the AI system.
 - A `StylePersona` registry maps `FightingStyle → { aiType, rangeProfile, cadence,
-  hpProfile, dmgProfile, aoeShape? }`. Numbers scale by form; the persona is **constant across
+hpProfile, dmgProfile, aoeShape? }`. Numbers scale by form; the persona is **constant across
   a species line**.
 - Each net-new persona (`GUARDIAN`, `SUPPORT`) is a slice with **its own lab** and MUST be
   wired into the real AI pipeline (`src/game/enemyAISystem.ts` → the simulation step), per
@@ -164,14 +171,14 @@ interface KeptCompanionContract {
   speciesId: string;
   affinity: Affinity;
   fightingStyle: FightingStyle;
-  form: 2;                    // always adult / final evolution
+  form: 2; // always adult / final evolution
   levelBand: 'floor3-graduate';
   learnedAbilityIds: string[];
 }
 ```
 
-  Floor 4+ **consumes** this contract to re-host the companion; building that consumer is
-  **out of scope** for the Floor 3 epic (only the producer is defined here).
+Floor 4+ **consumes** this contract to re-host the companion; building that consumer is
+**out of scope** for the Floor 3 epic (only the producer is defined here).
 
 ### R8 — Determinism & test plan
 
@@ -196,22 +203,22 @@ interface KeptCompanionContract {
 Each slice ends with its own PR + review ledger (apple-scaled) + handoff. Slices with a new
 `*System` require a lab **and** real-pipeline wiring (ADR 0039). Dependencies noted as `after:`.
 
-| # | Slice | 🍎 | Introduces / extends | Deps |
-| - | ----- | -- | -------------------- | ---- |
-| 1 | **Affinity matrix + species/style data** | 🍎🍎 | `src/shared/data/floor3/` species defs, `AFFINITY_MATRIX`, `StylePersona` registry, matrix unit tests | — |
-| 2 | **Damage multiplier hook** | 🍎🍎 | affinity multiplier in the `apply-damage` path + tests | after 1 |
-| 3 | **Companion entity + ally AI generalization** | 🍎🍎🍎 | `Companion`/`PartySlot` components, team-tagged ally AI from Floor 2 follow-AI, companion lab | after 1 |
-| 4 | **Two net-new AI personas** (`GUARDIAN`, `SUPPORT`) | 🍎🍎🍎 | `AI_TYPE` additions + behavior in `enemyAISystem.ts`, 2 labs, pipeline wiring | after 3 |
-| 5 | **Per-creature leveling + evolution + abilities** | 🍎🍎🍎 | combat-XP attribution, `xpMath` reuse, form transitions, ability unlocks, lab | after 3 |
-| 6 | **Recruiting, party-lock, KO/recovery, lose** | 🍎🍎🍎 | starter/poach flow, `PartySlot` lock, KO state machine, Rally Points, wipe predicate, lab | after 3 |
-| 7 | **Overworld + biomes + wild spawns** | 🍎🍎🍎 | Floor-3 map generator w/ 7 biome regions, affinity-weighted wild spawns, floor3 manifest | after 1 |
-| 8 | **Studios + Final Four + seeded variety + objective tick** | 🍎🍎🍎🍎 | `TrainerDef`/`StudioDef`/`FinalFourDef`, candidate pools, `SeededRandom` selection, `floor3ObjectiveTick`, sealed dens, determinism test | after 6,7 |
-| 9 | **Set-pieces** (6 Studio dens + Final Four arena) | 🍎🍎 | `set-pieces.json` entries, set-piece-lab validation | after 7 |
-| 10 | **Persistent player track wiring** | 🍎🍎 | route gems/gold/loot → `world.playerLevel`/gold/inventory on Floor 3 | after 3 |
-| 11 | **Kept-companion persistence contract (producer)** | 🍎🍎 | `KeptCompanionContract` on the carryover channel + end-of-floor picker hook | after 5,8 |
+| #     | Slice                                                                     | 🍎          | Introduces / extends                                                                                                                                                                                                                | Deps      |
+| ----- | ------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1     | **Affinity matrix + species/style data** ✅ _landed 2026-08-16_           | 🍎🍎        | `src/shared/data/floor3/` species defs, `AFFINITY_MATRIX`, `StylePersona` registry, matrix unit tests                                                                                                                               | —         |
+| 2     | **Damage multiplier hook**                                                | 🍎🍎        | affinity multiplier in the `apply-damage` path + tests                                                                                                                                                                              | after 1   |
+| 3     | **Companion entity + ally AI generalization**                             | 🍎🍎🍎      | `Companion`/`PartySlot` components, team-tagged ally AI from Floor 2 follow-AI, companion lab                                                                                                                                       | after 1   |
+| 4     | **Two net-new AI personas** (`GUARDIAN`, `SUPPORT`)                       | 🍎🍎🍎      | `AI_TYPE` additions + behavior in `enemyAISystem.ts`, 2 labs, pipeline wiring                                                                                                                                                       | after 3   |
+| 5     | **Per-creature leveling + evolution + abilities**                         | 🍎🍎🍎      | combat-XP attribution, `xpMath` reuse, form transitions, ability unlocks, lab                                                                                                                                                       | after 3   |
+| 6     | **Recruiting, party-lock, KO/recovery, lose**                             | 🍎🍎🍎      | starter/poach flow, `PartySlot` lock, KO state machine, Rally Points, wipe predicate, lab                                                                                                                                           | after 3   |
+| 7     | **Overworld + biomes + wild spawns**                                      | 🍎🍎🍎      | Floor-3 map generator w/ 7 biome regions, affinity-weighted wild spawns, floor3 manifest                                                                                                                                            | after 1   |
+| 8     | **Studios + Final Four + seeded variety + objective tick**                | 🍎🍎🍎🍎    | `TrainerDef`/`StudioDef`/`FinalFourDef`, candidate pools, `SeededRandom` selection, `floor3ObjectiveTick`, sealed dens, determinism test                                                                                            | after 6,7 |
+| 9     | **Set-pieces** (6 Studio dens + Final Four arena)                         | 🍎🍎        | `set-pieces.json` entries, set-piece-lab validation                                                                                                                                                                                 | after 7   |
+| 10    | **Persistent player track wiring**                                        | 🍎🍎        | route gems/gold/loot → `world.playerLevel`/gold/inventory on Floor 3                                                                                                                                                                | after 3   |
+| 11    | **Kept-companion persistence contract (producer)**                        | 🍎🍎        | `KeptCompanionContract` on the carryover channel + end-of-floor picker hook                                                                                                                                                         | after 5,8 |
 | 12–14 | **UX surfaces** (see game-design §15 — 14 screens grouped into ~3 slices) | 🍎🍎🍎 each | intro, starter/poach pickers, party HUD, roster/detail, level-up/evolution, ability command, matchup indicator, versus intros, win/lose, overworld markers, keep-companion picker — each reuses an existing UI pattern + gets a lab | after 6,8 |
-| 15 | **Sprites** (156 forms) | 🍎🍎🍎🍎 | asset-pipeline generation of all species forms | after 1 |
-| 16 | **Balance + win-rate gate** | 🍎🍎🍎 | headless sweep to ≥90% win-rate, tuning without seed cherry-picking | after all |
+| 15    | **Sprites** (156 forms)                                                   | 🍎🍎🍎🍎    | asset-pipeline generation of all species forms                                                                                                                                                                                      | after 1   |
+| 16    | **Balance + win-rate gate**                                               | 🍎🍎🍎      | headless sweep to ≥90% win-rate, tuning without seed cherry-picking                                                                                                                                                                 | after all |
 
 ## Cross-references
 

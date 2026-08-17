@@ -217,11 +217,15 @@ export function createAchievementsUI(
     const presentation = getPendingAchievementRewardPresentation(world, id);
     if (!presentation) return;
     const def = ALL_ACHIEVEMENTS.find((a) => a.id === id);
+    const next = nextOpenableLootBoxDef(world, id);
     rewardOpeningUI.open({
       world,
       presentation,
       reducedMotion: prefersReducedMotion(),
       sourceLabel: def ? `Achievement: ${def.title}` : 'Achievement Reward',
+      nextReward: next
+        ? { label: rewardLabel(next.reward), open: () => claimAndPresent(world, next.id) }
+        : undefined,
       onAcknowledge: () => {
         acknowledgeAchievementRewardPresentation(world, id);
         lastSignature = null;
@@ -232,6 +236,26 @@ export function createAchievementsUI(
         }
       },
     });
+  }
+
+  /**
+   * The next unlocked-but-unclaimed achievement whose reward actually opens a
+   * box (`lootBox` — the only reward type that produces a reveal
+   * presentation), in catalog order. Drives the summary screen's "Open next"
+   * chain so several boxes can be opened back to back. `item`/
+   * `directorMessage`/`none` rewards are skipped rather than chained into:
+   * claiming one produces no presentation, so chaining would silently claim it
+   * and close the overlay with nothing shown.
+   */
+  function nextOpenableLootBoxDef(world: GameWorld, excludeId: string): AchievementDef | null {
+    for (const def of ALL_ACHIEVEMENTS) {
+      if (def.id === excludeId) continue;
+      if (def.reward.type !== 'lootBox') continue;
+      if (!world.achievements.unlockedIds.has(def.id)) continue;
+      if (world.achievements.claimedIds.has(def.id)) continue;
+      return def;
+    }
+    return null;
   }
 
   /**
@@ -253,11 +277,10 @@ export function createAchievementsUI(
     }
   }
 
-  function open(id: string): void {
-    if (!lastWorld) return;
-    const result = claimAchievementReward(lastWorld, id);
+  function claimAndPresent(world: GameWorld, id: string): void {
+    const result = claimAchievementReward(world, id);
     lastSignature = null;
-    refresh(lastWorld);
+    refresh(world);
     if (!result.ok) {
       // `alreadyClaimed`/`unknown`/`locked` are not real failures the player
       // needs to hear about (stale click, race with another claim path); only
@@ -265,7 +288,12 @@ export function createAchievementsUI(
       if (result.reason === 'grantFailed') config.onGrantFailed?.(result.reason);
       return;
     }
-    presentAchievementReward(lastWorld, id);
+    presentAchievementReward(world, id);
+  }
+
+  function open(id: string): void {
+    if (!lastWorld) return;
+    claimAndPresent(lastWorld, id);
   }
 
   function makeRow(def: AchievementDef, x: number, y: number, w: number): number {

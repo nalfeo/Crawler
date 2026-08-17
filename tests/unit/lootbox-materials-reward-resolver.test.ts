@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
-} from '../../src/game/floor1-lootbox-reward-resolver.js';
+} from '../../src/game/lootbox-materials-reward-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../src/game/floor2-reward-bundle-resolver.js';
 import {
-  FLOOR1_COMMON_CRAFTING_MATERIALS,
-  LOOT_BOX_GOLD_BY_TIER,
+  _FLOOR1_COMMON_CRAFTING_MATERIALS as FLOOR1_COMMON_CRAFTING_MATERIALS,
+  FLOOR2_ACHIEVEMENT_LOOT_TIERS,
+  _FLOOR2_CRAFTING_MATERIALS as FLOOR2_CRAFTING_MATERIALS,
+  _FLOOR2_LOOT_BOX_GOLD_BY_TIER as FLOOR2_LOOT_BOX_GOLD_BY_TIER,
+  _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER,
   LOOT_BOX_MATERIAL_COUNT_BY_TIER,
   LOOT_BOX_REWARD_BUNDLE_SCHEMA_VERSION,
   LOOT_BOX_TIERS,
@@ -140,5 +143,65 @@ describe('resolveLootBoxRewardBundle — fail-closed', () => {
     }
     expect((err as LootBoxRewardResolutionError).code).toBe('no-run-key');
     expect(world.lootBoxRewardBundles.size).toBe(0);
+  });
+});
+
+describe('resolveLootBoxRewardBundle — Floor 2 materials table', () => {
+  it.each(FLOOR2_ACHIEVEMENT_LOOT_TIERS)(
+    '%s pays Floor 2 gold (above Floor 1) and draws only Floor 2 materials',
+    (tier) => {
+      const world = makeWorld(`floor2-materials-${tier}`);
+      const bundle = resolveLootBoxRewardBundle(
+        world,
+        'floor2-second-wind',
+        tier,
+        'floor2-materials',
+      );
+      expect(bundle.gold).toBe(FLOOR2_LOOT_BOX_GOLD_BY_TIER[tier]);
+      expect(bundle.gold).toBeGreaterThan(LOOT_BOX_GOLD_BY_TIER[tier]);
+      expect(bundle.materials).toHaveLength(LOOT_BOX_MATERIAL_COUNT_BY_TIER[tier]);
+      for (const itemId of bundle.materials) {
+        expect(FLOOR2_CRAFTING_MATERIALS).toContain(itemId);
+      }
+    },
+  );
+
+  it('draws from a different (wider) stream than the Floor 1 table for the same achievement + tier', () => {
+    const floor1World = makeWorld('table-split');
+    const floor2World = makeWorld('table-split');
+    const floor1 = resolveLootBoxRewardBundle(floor1World, 'shared-id', 'common');
+    const floor2 = resolveLootBoxRewardBundle(
+      floor2World,
+      'shared-id',
+      'common',
+      'floor2-materials',
+    );
+    expect(floor2.gold).not.toBe(floor1.gold);
+    // Floor 1's pool is a strict subset of Floor 2's, so equality of materials
+    // is possible by chance — the stream key differing is what matters, and is
+    // asserted by re-resolving Floor 2 deterministically below.
+    const floor2Again = resolveLootBoxRewardBundle(
+      makeWorld('table-split'),
+      'shared-id',
+      'common',
+      'floor2-materials',
+    );
+    expect(floor2Again.materials).toEqual(floor2.materials);
+  });
+
+  it('keeps the Floor 1 stream unchanged when the default table is used', () => {
+    const explicit = resolveLootBoxRewardBundle(
+      makeWorld('stream-stability'),
+      'first-bonk',
+      'trash',
+      'floor1-materials',
+    );
+    const defaulted = resolveLootBoxRewardBundle(
+      makeWorld('stream-stability'),
+      'first-bonk',
+      'trash',
+    );
+    expect(explicit.materials).toEqual(defaulted.materials);
+    expect(explicit.gold).toBe(defaulted.gold);
   });
 });

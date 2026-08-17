@@ -52,7 +52,7 @@ One change at a time; identical seeds/weapons/flags/limits; >10 runs via GitHub 
 Max 9 rows. Per row: rank/name, measured symptom, causal evidence, production path, enabling config/flag, hypothesis, exact change, baseline/post metrics, run/artifact URLs, verdict, accepted/rejected/blocked rationale. Keep rejected/blocked visible.
 
 ## Mandatory human approval gate
-Gameplay PR contains \`Closes #${issueNumber}\`, labels \`human-approval-required\` + \`merge-train-blocked\`, ready not draft, no \`merge-train\`/auto-merge/merge. Only exact standalone trimmed owner \`nalfeo\` comment \`APPROVED FOR CHECK-IN\` unlocks. Green CI/reviews/quoted text/substrings/other authors do not count. Bad final evidence => close/abandon.
+Gameplay PR contains \`Closes #${issueNumber}\`, labels \`human-approval-required\` + \`merge-train-blocked\`, ready not draft, no \`merge-train\`/auto-merge/merge. Only an approving GitHub review from owner \`nalfeo\`, or their exact standalone trimmed comment \`APPROVED FOR CHECK-IN\`, unlocks. Green CI/quoted text/substrings/reviews or comments from other authors do not count. Bad final evidence => close/abandon.
 
 ## Acceptance evidence
 Up to 3 eligible ideas (zero allowed/no PR), <=3 attempts each, complete ledger, comparable aggregate baseline/post artifacts, final judge, explicit approval status, normal verification/review/harness/handoff/determinism.

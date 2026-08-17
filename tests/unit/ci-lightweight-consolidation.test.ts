@@ -335,6 +335,17 @@ describe('ci.yml — merge-gate uses check-lightweight', () => {
 // ── human-approval-rerun.yml ──────────────────────────────────────────────────
 
 describe('human-approval-rerun.yml — step-level approval lookup prevents rerun loops', () => {
+  it('pull_request_review trigger keys owner checks to the review author, not actor', () => {
+    const doc = loadHumanApprovalRerunWorkflow();
+    const rerunJob = doc.jobs['rerun'];
+    if (!rerunJob) throw new Error('rerun job not found');
+    const condition = String((rerunJob as { if?: string }).if ?? '');
+    expect(condition).toContain('github.event.review.user.login == github.repository_owner');
+    expect(condition).not.toContain(
+      "github.event_name == 'pull_request_review'\n        && github.actor == github.repository_owner",
+    );
+  });
+
   it('automation script references Lightweight Checks, not Human approval job', () => {
     const doc = loadHumanApprovalRerunWorkflow();
     const rerunJob = doc.jobs['rerun'];

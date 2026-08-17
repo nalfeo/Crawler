@@ -135,7 +135,7 @@ export const KNIP_SUPPRESSIONS: readonly KnipSuppression[] = [
     expiresOn: '2026-09-30',
   },
   {
-    file: 'src/game/floor1-lootbox-reward-resolver.ts',
+    file: 'src/game/lootbox-materials-reward-resolver.ts',
     issues: ['exports'],
     reason:
       'LOOT_BOX_RESOLVER_VERSION is exported but used only internally in the same file ' +

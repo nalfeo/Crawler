@@ -589,6 +589,130 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Loot-aware stair-descend deferral cap (1800 frames = 30 s); used internally by shouldDeferStairDescend; exported so integration tests can drive the cap-expiry branch without hard-coding the frame count.',
     expiresOn: '2026-11-08',
   },
+  // Floor 3 (Companion League) epic, slice 1 of 16 (`.specify/specs/floor3-companion-league.md`
+  // §Epic decomposition): pure data/lookup foundation landed ahead of its production callers by
+  // design. `affinityMultiplier` is wired into the damage-apply path by slice 2 (after 1); the
+  // species/style registries are wired by slices 3-5 (companion entity, AI personas, leveling).
+  // Until then only the roster/matrix unit tests exercise these exports.
+  {
+    file: 'src/shared/data/floor3/affinity.ts',
+    name: 'AFFINITY_MATRIX',
+    reason:
+      'Floor 3 slice 1: derived 7x7 affinity multiplier table backing affinityMultiplier(); wired into the damage-apply path by slice 2.',
+    expiresOn: '2026-09-30',
+  },
+  {
+    file: 'src/shared/data/floor3/affinity.ts',
+    name: 'affinityMultiplier',
+    reason:
+      'Floor 3 slice 1: affinity-vs-affinity damage multiplier lookup; wired into the damage-apply path by slice 2.',
+    expiresOn: '2026-09-30',
+  },
+  {
+    file: 'src/shared/data/floor3/affinity.ts',
+    name: 'strongAgainst',
+    reason:
+      'Floor 3 slice 1: lists the two affinities a given affinity is strong against; consumed by the matchup-indicator UX surface (slice 12-14).',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/affinity.ts',
+    name: 'predatorsOf',
+    reason:
+      'Floor 3 slice 1: lists the two affinities a given affinity is weak against; consumed by the matchup-indicator UX surface (slice 12-14).',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/affinity.ts',
+    name: 'isAffinity',
+    reason:
+      'Floor 3 slice 1: runtime guard for the Affinity union; consumed once Floor 3 wild-spawn and recruiting data (slice 6-7) validate untrusted content input.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'FORM_MIN_LEVELS',
+    reason:
+      'Floor 3 slice 1: evolution-stage level thresholds (1/10/25) backing formForLevel(); wired into per-creature leveling by slice 5.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'ABILITY_MILESTONE_LEVELS',
+    reason:
+      'Floor 3 slice 1: ability-unlock milestone levels (1/8/16/25/34) backing learnedAbilityIds(); wired into per-creature leveling by slice 5.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'loadPetSpecies',
+    reason:
+      'Floor 3 slice 1: cached, validated species roster loader; consumed by companion-entity spawning (slice 3) and wild-spawn generation (slice 7).',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'getPetSpecies',
+    reason:
+      'Floor 3 slice 1: single species-by-id lookup; consumed by companion-entity spawning (slice 3) and the roster/detail UX surface (slice 12-14).',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'petSpeciesByAffinity',
+    reason:
+      'Floor 3 slice 1: affinity-filtered species lookup; consumed by affinity-weighted wild spawns (slice 7).',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'petSpeciesByStyle',
+    reason:
+      'Floor 3 slice 1: fighting-style-filtered species lookup; consumed by the recruiting/starter-picker flow (slice 6).',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'formForLevel',
+    reason:
+      'Floor 3 slice 1: resolves a species evolution form for a given level; wired into per-creature leveling and the level-up/evolution UX surface by slice 5.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/species.ts',
+    name: 'learnedAbilityIds',
+    reason:
+      'Floor 3 slice 1: resolves the abilities learned by a given level; wired into per-creature leveling and the ability-command UX surface by slice 5.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/styles.ts',
+    name: 'STAT_BAND_SCALE',
+    reason:
+      'Floor 3 slice 1: stat-band multiplier table backing StylePersona; wired into companion-entity stat derivation by slice 3.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/styles.ts',
+    name: 'STYLE_PERSONAS',
+    reason:
+      'Floor 3 slice 1: fighting-style to AI-persona registry; wired into companion-entity AI assignment by slice 3 and the two net-new personas by slice 4.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/styles.ts',
+    name: 'stylePersona',
+    reason:
+      'Floor 3 slice 1: single fighting-style persona lookup; wired into companion-entity AI assignment by slice 3.',
+    expiresOn: '2026-11-15',
+  },
+  {
+    file: 'src/shared/data/floor3/styles.ts',
+    name: 'isFightingStyle',
+    reason:
+      'Floor 3 slice 1: runtime guard for the FightingStyle union; consumed once Floor 3 wild-spawn and recruiting data (slice 6-7) validate untrusted content input.',
+    expiresOn: '2026-11-15',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {
