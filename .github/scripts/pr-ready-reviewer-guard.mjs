@@ -514,16 +514,14 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
   }
 
   if (confirmedDecision.repeatRepair) {
+    // Apply the reversible mutations (triage label, Copilot removal) first and keep the
+    // irreversible issue comment as the final side effect, so any failure can be fully
+    // rolled back without leaving the triage label (which itself drives `repeatRepair`)
+    // stuck on the issue.
+    let triageLabelApplied = false;
     try {
       await api.addIssueLabel(linkedIssueNumber, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL);
-      await api.addIssueComment(
-        linkedIssueNumber,
-        [
-          `Empty Copilot draft repair has already been attempted for this issue, so PR #${pr.number} was closed without reassigning Copilot again.`,
-          '',
-          'Please clarify or triage the issue before starting another Copilot run.',
-        ].join('\n'),
-      );
+      triageLabelApplied = true;
       const removedLogins = await api.removeIssueAssignees(
         assignmentContext.issueId,
         copilotActorIds,
@@ -533,6 +531,14 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
           `Copilot removal did not persist on repeat empty-draft issue #${linkedIssueNumber}`,
         );
       }
+      await api.addIssueComment(
+        linkedIssueNumber,
+        [
+          `Empty Copilot draft repair has already been attempted for this issue, so PR #${pr.number} was closed without reassigning Copilot again.`,
+          '',
+          'Please clarify or triage the issue before starting another Copilot run.',
+        ].join('\n'),
+      );
     } catch (repairError) {
       const rollbackErrors = [];
       try {
@@ -547,6 +553,15 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
         }
       } catch (rollbackError) {
         rollbackErrors.push(new Error(`issue rollback failed: ${getErrorMessage(rollbackError)}`));
+      }
+      if (triageLabelApplied) {
+        try {
+          await api.removeIssueLabel(linkedIssueNumber, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL);
+        } catch (rollbackError) {
+          rollbackErrors.push(
+            new Error(`issue triage label cleanup failed: ${getErrorMessage(rollbackError)}`),
+          );
+        }
       }
       if (closeApplied) {
         try {
@@ -690,6 +705,20 @@ function createApi({ token, owner, repo }) {
     }
   };
 
+  const removeIssueLabel = async (issueNumber, labelName) => {
+    try {
+      await request(
+        token,
+        `/repos/${owner}/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(labelName)}`,
+        { method: 'DELETE' },
+      );
+    } catch (removeError) {
+      if (removeError?.status !== 404) {
+        throw removeError;
+      }
+    }
+  };
+
   return {
     listOpenPulls: () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open&per_page=100`),
     getPull: async (pullNumber) =>
@@ -746,19 +775,8 @@ function createApi({ token, owner, repo }) {
         method: 'POST',
         body: { body },
       }),
-    removePrLabel: async (pullNumber, labelName) => {
-      try {
-        await request(
-          token,
-          `/repos/${owner}/${repo}/issues/${pullNumber}/labels/${encodeURIComponent(labelName)}`,
-          { method: 'DELETE' },
-        );
-      } catch (removeError) {
-        if (removeError?.status !== 404) {
-          throw removeError;
-        }
-      }
-    },
+    removePrLabel: removeIssueLabel,
+    removeIssueLabel,
   };
 }
 

@@ -121,6 +121,7 @@ function createHarness({
   markReadyError = null,
   updatePullStateErrors = new Map(),
   updatePullStatePostApplyErrors = new Map(),
+  addIssueCommentErrors = new Map(),
 } = {}) {
   const calls = [];
   const logs = [];
@@ -285,6 +286,25 @@ function createHarness({
     },
     addIssueComment: async (issueNumber, body) => {
       calls.push(['addIssueComment', issueNumber, body]);
+      const error = addIssueCommentErrors.get(issueNumber);
+      if (error) {
+        throw error;
+      }
+    },
+    removeIssueLabel: async (issueNumber, labelName) => {
+      calls.push(['removeIssueLabel', issueNumber, labelName]);
+      const issue = [...linkedIssuesByPull.values()]
+        .flat()
+        .find((entry) => entry.number === issueNumber);
+      if (issue) {
+        if (Array.isArray(issue.labels)) {
+          issue.labels = issue.labels.filter((label) => label.name !== labelName);
+        } else if (Array.isArray(issue.labels?.nodes)) {
+          issue.labels = {
+            nodes: issue.labels.nodes.filter((label) => label.name !== labelName),
+          };
+        }
+      }
     },
   };
 
@@ -827,6 +847,61 @@ test('repeat empty-draft repair closes the shell and escalates without reassigni
         message.includes('Escalated repeat empty Copilot draft PR #42') &&
         message.includes('linked issue #1067'),
     ),
+  );
+});
+
+test('repeat repair failure rolls back the issue triage label, Copilot assignment, and the PR close', async () => {
+  const linkedIssue = makeLinkedIssue({
+    labels: { nodes: [{ name: EMPTY_DRAFT_REPAIR_LABEL }] },
+  });
+  const harness = createHarness({
+    linkedIssuesByPull: new Map([[42, [linkedIssue]]]),
+    addIssueCommentErrors: new Map([[1067, new Error('comment rejected')]]),
+  });
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: {
+        info: (message) => harness.logs.push(['info', message]),
+        warning: (message) => harness.logs.push(['warning', message]),
+        error: (message) => harness.logs.push(['error', message]),
+      },
+      now: NOW,
+    }),
+    /Failed to repair 1 empty Copilot draft PR shell\(s\)/,
+  );
+  assert.deepEqual(
+    harness.calls
+      .filter(
+        ([name]) =>
+          name === 'updatePullState' ||
+          name === 'removeIssueAssignees' ||
+          name === 'addIssueAssignees' ||
+          name === 'addIssueLabel' ||
+          name === 'removeIssueLabel' ||
+          name === 'addIssueComment',
+      )
+      .map(([name, a, b]) => [name, a, name === 'addIssueComment' ? undefined : b]),
+    [
+      ['updatePullState', 42, 'closed'],
+      ['addIssueLabel', 1067, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL],
+      ['removeIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueComment', 1067, undefined],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['removeIssueLabel', 1067, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL],
+      ['updatePullState', 42, 'open'],
+    ],
+  );
+  assert.equal(
+    (linkedIssue.labels.nodes || []).some(
+      (label) => label.name === EMPTY_DRAFT_REPEAT_TRIAGE_LABEL,
+    ),
+    false,
   );
 });
 
