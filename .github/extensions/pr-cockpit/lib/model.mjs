@@ -1,14 +1,21 @@
-const OWNER_LABEL_PREFIX = 'ci-recovery-owner:';
-const RECOVERY_LABELS = new Set([
-  'ci-recovery-pending',
-  'ci-recovery-waiting',
-  'ci-recovery-waiting-transition',
-]);
+import {
+  BLOCKED_LABEL,
+  CI_CONFLICT_ORDER_WAIT_LABEL,
+  QUEUE_LABEL,
+  VALIDATION_FAILED_LABEL,
+} from '../../../scripts/merge-train/state.mjs';
+import {
+  OWNER_LABEL_PREFIX,
+  WAITING_LABEL,
+  WAITING_TRANSITION_LABEL,
+} from '../../../scripts/ci-recovery/state.mjs';
+
+const RECOVERY_LABELS = new Set([WAITING_LABEL, WAITING_TRANSITION_LABEL]);
 const MERGE_TRAIN_LABELS = new Set([
-  'merge-train-queued',
-  'merge-train-blocked',
-  'ci-conflict-order-wait',
-  'merge-train-validation-failed',
+  QUEUE_LABEL,
+  BLOCKED_LABEL,
+  CI_CONFLICT_ORDER_WAIT_LABEL,
+  VALIDATION_FAILED_LABEL,
 ]);
 const FAILURE_CONCLUSIONS = new Set(['failure', 'timed_out', 'cancelled', 'action_required']);
 const REQUIRED_CHECKS = new Set(['ci', 'merge-train']);
@@ -41,7 +48,7 @@ export function normalizePullRequest(raw) {
     title: String(raw?.title ?? ''),
     url: raw?.html_url ?? raw?.url ?? null,
     state: String(raw?.state ?? 'unknown'),
-    draft: Boolean(raw?.draft),
+    draft: Boolean(raw?.draft ?? raw?.isDraft),
     mergeableState: raw?.mergeable_state ?? raw?.mergeStateStatus ?? null,
     mergeable: raw?.mergeable ?? null,
     headRefName: raw?.head?.ref ?? raw?.headRefName ?? null,

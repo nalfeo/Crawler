@@ -9,10 +9,10 @@ test('normalizes PR labels into CI recovery and merge-train state', () => {
     title: 'Test',
     isDraft: true,
     headRefName: 'feature',
-    labels: [{ name: 'ci-recovery-owner:abc' }, { name: 'ci-conflict-order-wait' }],
+    labels: [{ name: 'ci-owner-pr-42-abc' }, { name: 'ci-conflict-order-wait' }],
   });
   assert.equal(pr.number, 42);
-  assert.equal(pr.ciRecoveryOwner, 'ci-recovery-owner:abc');
+  assert.equal(pr.ciRecoveryOwner, 'ci-owner-pr-42-abc');
   assert.deepEqual(pr.mergeTrainState, ['ci-conflict-order-wait']);
 });
 

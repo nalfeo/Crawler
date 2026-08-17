@@ -107,6 +107,12 @@ export function viewerReference(runId) {
   return `project:sweep-results-viewer runId=${runId}`;
 }
 
+export function selectDispatchedRun(beforeRuns = [], afterRuns = []) {
+  const beforeIds = new Set(beforeRuns.map((run) => Number(run.id)));
+  const newRuns = afterRuns.filter((run) => !beforeIds.has(Number(run.id)));
+  return newRuns.length === 1 ? newRuns[0] : null;
+}
+
 export function weaponSweepDispatchArgs(input = {}) {
   const ref = validateRef(input.ref ?? input.branch ?? 'main');
   const seedCount = parsePositiveInteger(input.seedCount ?? 100, 'seedCount', 1, 100);
@@ -194,17 +200,19 @@ export async function dispatchSweep(input = {}, options = {}) {
   const args = type === 'ai-sweep' ? aiSweepDispatchArgs(input) : weaponSweepDispatchArgs(input);
   const workflowFile = type === 'ai-sweep' ? 'ai-sweep.yml' : 'weapon-sweep.yml';
   const ref = args[args.indexOf('--ref') + 1];
-  await runCommand('gh', args, { cwd: options.cwd, signal: options.signal });
   const repository = options.repository ?? (await resolveRepository(options.cwd, options.signal));
+  const beforeRuns = await listWorkflowRuns(repository, workflowFile, ref, options.signal);
+  await runCommand('gh', args, { cwd: options.cwd, signal: options.signal });
   const runs = await listWorkflowRuns(repository, workflowFile, ref, options.signal);
-  const run = runs[0] ?? null;
+  const run = selectDispatchedRun(beforeRuns, runs);
   if (!run) {
     return {
       workflow: workflowFile,
       ref,
+      repository,
       status: 'dispatched',
       warning:
-        'Workflow dispatch succeeded but the run id is not visible yet. Recheck the workflow runs shortly.',
+        'Workflow dispatch succeeded, but an exact new run id is not identifiable yet. Recheck workflow runs and only cite a Sweep Results Viewer runId after the run is exact.',
     };
   }
   return {

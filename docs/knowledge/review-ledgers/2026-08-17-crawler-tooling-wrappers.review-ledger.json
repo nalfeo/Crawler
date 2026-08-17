@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "crawler-tooling-wrappers",
+  "task_title": "Add Crawler PR and sweep tooling wrappers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved_with_changes. Addressed: exact sweep run-id correlation now only returns a viewer reference when exactly one new run is identified; sweep defaults documented as opinionated Floor-1 starter presets; PR cockpit labels now import repo merge-train/CI-recovery constants; session skill added to docs governance registry. No major architecture fork warranted."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

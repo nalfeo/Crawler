@@ -47,6 +47,6 @@ replace `AGENTS.md`; when there is a conflict, `AGENTS.md` and the policy docs w
 ## Related tooling
 
 - `list_pr_cockpit`, `get_pr_cockpit`, `get_pr_blockers` — read-only PR status/blocker summary.
-- `dispatch_weapon_sweep`, `dispatch_ai_sweep` — GitHub-backed sweep dispatch that returns the required Sweep Results Viewer reference.
+- `dispatch_weapon_sweep`, `dispatch_ai_sweep` — GitHub-backed sweep dispatch. These are opinionated Crawler presets, not raw workflow mirrors: the default weapon set is the three Floor-1 starters (`sword,bow,baseball-bat`). They return a concrete Sweep Results Viewer reference only when the newly dispatched run is identified exactly; otherwise recheck before citing a `runId`.
 - `.github/skills/review-harness/SKILL.md` — review ledger flow for ≥3🍎 work.
 - `.github/skills/pr-shepherd/SKILL.md` — takeover loop for already-published PRs.
