@@ -1,7 +1,11 @@
 import { WeaponType } from '../shared/constants.js';
 import { applyAttackSpeedAndCooldownReduction, type StatId } from '../shared/stats.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
-import { computeExpectedCritDamage, computePlayerScaledDamage } from './combat-math.js';
+import {
+  computeEffectiveAccuracyFromValues,
+  computeExpectedCritDamage,
+  computePlayerScaledDamage,
+} from './combat-math.js';
 
 type CombatStats = Readonly<Partial<Record<StatId, number>>>;
 
@@ -49,7 +53,12 @@ export function computeTheoreticalSingleTargetDps(
     stats.critMultiplier ?? 1,
   );
   const hitCount = hitsPerActivation(def);
-  const expectedDamagePerActivation = expectedDamagePerHit * hitCount;
+  const effectiveAccuracy = computeEffectiveAccuracyFromValues(
+    def.weaponType,
+    def.baseAccuracy,
+    stats.accuracy ?? 0,
+  );
+  const expectedDamagePerActivation = expectedDamagePerHit * hitCount * effectiveAccuracy;
   if (attackSpeedMultiplier <= 0) {
     return {
       dps: 0,

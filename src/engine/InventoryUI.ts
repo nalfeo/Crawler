@@ -233,6 +233,7 @@ export function createInventoryUI(
       intelligence: effectiveStats.intelligence[playerEid] ?? 0,
       critChance: effectiveStats.critChance[playerEid] ?? 0,
       critMultiplier: effectiveStats.critMultiplier[playerEid] ?? 1,
+      accuracy: effectiveStats.accuracy[playerEid] ?? 0,
       attackSpeed: effectiveStats.attackSpeed[playerEid] ?? 0,
       cooldownReduction: effectiveStats.cooldownReduction[playerEid] ?? 0,
     };
@@ -282,6 +283,7 @@ export function createInventoryUI(
       effectiveStats.intelligence[playerEid] ?? 0,
       effectiveStats.critChance[playerEid] ?? 0,
       effectiveStats.critMultiplier[playerEid] ?? 1,
+      effectiveStats.accuracy[playerEid] ?? 0,
       effectiveStats.attackSpeed[playerEid] ?? 0,
       effectiveStats.cooldownReduction[playerEid] ?? 0,
       attackSpeedMultiplier,

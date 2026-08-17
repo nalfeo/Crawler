@@ -22,8 +22,8 @@ describe('computeTheoreticalSingleTargetDps', () => {
 
     expect(result.hitsPerActivation).toBe(1);
     expect(result.effectiveCooldownMs).toBe(450);
-    expect(result.expectedDamagePerActivation).toBeCloseTo(25.7125);
-    expect(result.dps).toBeCloseTo(57.1389);
+    expect(result.expectedDamagePerActivation).toBeCloseTo(23.14125);
+    expect(result.dps).toBeCloseTo(51.425);
   });
 
   it('uses current attack-speed status multipliers when provided', () => {
@@ -37,7 +37,7 @@ describe('computeTheoreticalSingleTargetDps', () => {
     );
 
     expect(result.effectiveCooldownMs).toBe(600);
-    expect(result.dps).toBeCloseTo(25);
+    expect(result.dps).toBeCloseTo(22.5);
   });
 
   it('counts only the direct magic hit for single-target activation damage', () => {
@@ -46,16 +46,16 @@ describe('computeTheoreticalSingleTargetDps', () => {
     });
 
     expect(result.hitsPerActivation).toBe(1);
-    expect(result.expectedDamagePerActivation).toBeCloseTo(9.6);
-    expect(result.dps).toBeCloseTo(12);
+    expect(result.expectedDamagePerActivation).toBeCloseTo(8.16);
+    expect(result.dps).toBeCloseTo(10.2);
   });
 
   it('counts beam ticks across the beam duration', () => {
     const result = computeTheoreticalSingleTargetDps(weapon('laser'), {});
 
     expect(result.hitsPerActivation).toBe(4);
-    expect(result.expectedDamagePerActivation).toBe(12);
-    expect(result.dps).toBeCloseTo(8);
+    expect(result.expectedDamagePerActivation).toBeCloseTo(11.4);
+    expect(result.dps).toBeCloseTo(7.6);
   });
 
   it('reports zero DPS but preserves activation stats when attacks are disabled', () => {
@@ -66,8 +66,17 @@ describe('computeTheoreticalSingleTargetDps', () => {
     );
 
     expect(result.hitsPerActivation).toBe(1);
-    expect(result.expectedDamagePerActivation).toBeCloseTo(16.5);
+    expect(result.expectedDamagePerActivation).toBeCloseTo(14.85);
     expect(result.effectiveCooldownMs).toBe(Infinity);
     expect(result.dps).toBe(0);
+  });
+
+  it('includes player accuracy in expected activation damage', () => {
+    const withoutAccuracy = computeTheoreticalSingleTargetDps(weapon('sword'), {});
+    const withAccuracy = computeTheoreticalSingleTargetDps(weapon('sword'), { accuracy: 0.1 });
+
+    expect(withoutAccuracy.expectedDamagePerActivation).toBeCloseTo(13.5);
+    expect(withAccuracy.expectedDamagePerActivation).toBeCloseTo(15);
+    expect(withAccuracy.dps).toBeCloseTo(25);
   });
 });
