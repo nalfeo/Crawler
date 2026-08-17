@@ -213,6 +213,29 @@ describe('refineEnemyVisualKind — spawner art dispatch', () => {
     expect(refineEnemyVisualKind(world, eid)).toBe('enemy_spawner_rats_nest');
   });
 
+  it('prefers the bare appearance key before falling back to alias maps for NPCs', () => {
+    const registry = buildGeneratedSpriteRegistry({
+      version: 1,
+      entries: {
+        'goblin-elite-joyrider-var-0': {
+          briefId: 'goblin-elite-joyrider',
+          spriteName: 'goblin-elite-joyrider-var-0',
+          assetPath: 'generated/goblin-elite-joyrider-var-0.png',
+          approvedAt: '2026-08-12T00:00:00.000Z',
+          sourceRun: 'generated/runs/goblin-elite-joyrider/2026-08-12T00:00:00-abc',
+          variantIndex: 0,
+          anchor: { x: 8, y: 12, source: 'brief' },
+          sensorScore: '1/1',
+          judgeScore: null,
+        },
+      },
+    });
+    expect(generatedBriefIdForEnemy('enemy_rat', 'goblin-elite-joyrider', registry)).toBe(
+      'goblin-elite-joyrider',
+    );
+    expect(generatedBriefIdForEnemy('enemy_rat', 'rats-nest', registry)).toBe('rat-nest');
+  });
+
   it('returns "enemy_spawner_slime_pool" for a Spawner entity with slime texture', () => {
     const world = createTestWorld();
     const eid = addEntity(world.ecs);
@@ -415,7 +438,7 @@ describe('generatedBriefIdForEnemy', () => {
     expect(generatedBriefIdForEnemy('enemy_rat', 'rat-king')).toBe('rat-king');
     expect(generatedBriefIdForEnemy('enemy_rat', 'rat-queen')).toBe('rat-queen');
     expect(generatedBriefIdForEnemy('enemy_slime', 'slime-pool')).toBe('slime-pool');
-    expect(generatedBriefIdForEnemy('enemy_rat', 'rats-nest')).toBe('rats-nest-v1');
+    expect(generatedBriefIdForEnemy('enemy_rat', 'rats-nest')).toBe('rat-nest');
     expect(generatedBriefIdForEnemy('enemy_spawner_rats_nest')).toBe('rat-nest');
     expect(generatedBriefIdForEnemy('enemy_spawner_slime_pool')).toBe('slime-pool');
   });

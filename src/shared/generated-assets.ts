@@ -647,7 +647,7 @@ const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
   'rat-brute': 'rat',
   'rat-king': 'rat-king',
   'rat-queen': 'rat-queen',
-  'rats-nest': 'rats-nest-v1',
+  'rats-nest': 'rat-nest',
   slime: 'slime',
   'slime-pool': 'slime-pool',
   'slime-mini': 'baby-slime',

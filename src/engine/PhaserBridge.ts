@@ -358,10 +358,13 @@ function resolveNpcTexture(
   }
   if (appearanceKey !== undefined) {
     const registry = getGeneratedSpriteRegistry(scene);
-    const eliteBriefId = `${appearanceKey}-v1`;
-    const eliteTexture = registry?.variants(eliteBriefId)?.[0]?.textureKey;
-    if (eliteTexture) {
-      return { key: eliteTexture, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+    const preferredBriefId =
+      registry !== null ? generatedBriefIdForEnemy(undefined, appearanceKey, registry) : undefined;
+    if (preferredBriefId !== undefined) {
+      const preferredTexture = registry?.variants(preferredBriefId)?.[0]?.textureKey;
+      if (preferredTexture) {
+        return { key: preferredTexture, scale: GENERATED_NPC_SPRITE_SCALE, fallback: false };
+      }
     }
     if (appearanceFallbackKey !== undefined) {
       return resolveTexture(scene, 'enemy', { appearanceKey: appearanceFallbackKey });
