@@ -237,7 +237,7 @@ browser bundle:
 az functionapp config appsettings set `
   --name <function-app-name> `
   --resource-group crawler-sprites-rg `
-  --settings CRAWLER_CI_PAT=<repository-owner-PAT-with-issues-write>
+  --settings CRAWLER_FEEDBACK_PAT=<repository-owner-PAT-with-issues-write>
 ```
 
 The app setting `GITHUB_REPOSITORY` defaults to `nalfeo/Crawler` in the Bicep
@@ -256,7 +256,7 @@ after one day. The Function CORS allowlist is
   requests (confirmed via a manual smoke test returning a 400 with a clear
   validation error for a malformed body, and would return 2xx for a well-formed
   `RunBundle`).
-- `CRAWLER_CI_PAT` is **not yet set** on the Function App. Telemetry ingest
+- `CRAWLER_FEEDBACK_PAT` is **not yet set** on the Function App. Telemetry ingest
   (storing run bundles) works without it; only the **survey/explicit
   "file an issue"** path (which creates a GitHub issue) needs it. Set it with
   the command above using a PAT scoped to `repo` (issue creation) on

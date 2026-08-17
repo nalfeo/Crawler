@@ -73,14 +73,11 @@ deployment source config-zip` instead of `func azure functionapp publish`
 - App settings present: `AZURE_STORAGE_CONNECTION_STRING`, `AzureWebJobsStorage`,
   `FUNCTIONS_REQUEST_BODY_SIZE_LIMIT`, `RUNS_CONTAINER=playtest-runs`,
   `ALLOWED_ORIGINS` (`https://nalfeo.github.io`, `http://localhost:5173`),
-  `GITHUB_REPOSITORY=nalfeo/Crawler`.
-- **`CRAWLER_CI_PAT` is NOT set** — telemetry ingest works without it; the
-  survey/explicit "file an issue" path (which creates a GitHub issue) will
-  fail until it's set. This requires a PAT scoped to `repo` (issue creation)
-  on `nalfeo/Crawler`; I did not set my own CLI session token as a stopgap
-  since that's a distinct security/ownership decision, not a routine
-  engineering step — needs an explicit human-provided or newly minted
-  service credential.
+  `  GITHUB_REPOSITORY=nalfeo/Crawler`.
+- A dedicated **`CRAWLER_FEEDBACK_PAT`** app setting is now present. It is
+  intentionally separate from the repository's `CRAWLER_CI_PAT`; telemetry
+  ingest works without it, while the survey/explicit "file an issue" path
+  uses it to create GitHub issues.
 
 ## Verification run
 
@@ -90,11 +87,13 @@ deployment source config-zip` instead of `func azure functionapp publish`
   live).
 - `npm run verify:pr-prereqs` passes (2🍎 infra/config change; no review
   ledger required per the tier matrix).
+- `functions/dev-build-ingest` was rebuilt with `tsc` and redeployed with the
+  dedicated feedback-token setting.
 
 ## Unresolved issues / recommended next steps
 
-1. **Set `CRAWLER_CI_PAT`** on the Function App before relying on in-game
-   issue filing (survey + F8 dialog). Command is in `infra/README.md`.
+1. Run an in-game survey/F8 smoke test and confirm the dedicated feedback PAT
+   can create an issue in `nalfeo/Crawler`.
 2. Confirm the exact CORS/allowed-origin list still matches the live GitHub
    Pages URL (`https://nalfeo.github.io`) — not changed in this session, just
    inherited from PR2's bicep.

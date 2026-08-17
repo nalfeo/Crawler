@@ -213,7 +213,8 @@ async function fileGitHubIssue(
   validated: ValidatedBundle,
   persisted: { runId: string; blobUrl: string; screenshotUrl?: string },
 ): Promise<string> {
-  const token = requiredEnv('CRAWLER_CI_PAT');
+  const token = process.env.CRAWLER_FEEDBACK_PAT ?? process.env.crawler_feedback_pat;
+  if (!token) throw new Error('missing required configuration: CRAWLER_FEEDBACK_PAT');
   const repository = requiredEnv('GITHUB_REPOSITORY');
   const pendingBlob = container.getBlockBlobClient(`${bundleKey(persisted.runId)}/issue.pending`);
   let isRetryAfterStaleClaim = false;
