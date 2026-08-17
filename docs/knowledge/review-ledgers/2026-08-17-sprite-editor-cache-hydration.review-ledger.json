@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "sprite-editor-cache-hydration",
+  "task_title": "Make sprite editor switching instant and non-mutating",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Addressing all three review findings: a browser regression timing assertion for the <1s gate; missing catalog stat fallback; and a precise legacy image-version fallback comment. No alternate architecture warranted: the snapshot + explicit invalidation design remains correct."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}

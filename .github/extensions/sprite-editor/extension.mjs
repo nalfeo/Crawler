@@ -307,11 +307,10 @@ function computeSummary(entryKey, manifestEntry, catalogEntry, note, manifestFin
   const comment = typeof note?.comment === 'string' ? note.comment : '';
   return {
     key: entryKey,
-    // Cache key for `/img/sprite`. The bytes are immutable for a given value, so
-    // the client can let the browser cache them forever and a repeat visit to a
-    // sprite costs no refetch/redecode at all. `contentHash` is refreshed on
-    // every PNG save; entries that predate it fall back to the shard
-    // fingerprint, which changes on any shard write (correct, just less precise).
+    // Cache key for `/img/sprite`. `contentHash` makes repeat visits cache hits.
+    // Legacy entries fall back to the manifest fingerprint, which correctly
+    // invalidates on any shard write but also invalidates all legacy entries
+    // together rather than independently.
     imageVersion:
       typeof manifestEntry?.contentHash === 'string' && manifestEntry.contentHash.length > 0
         ? manifestEntry.contentHash
@@ -390,9 +389,17 @@ function composeManifestCached(fingerprint) {
   return manifest;
 }
 
+function readCatalogWithMtime() {
+  try {
+    return { catalog: readJsonFile(CATALOG_PATH), mtimeMs: statSync(CATALOG_PATH).mtimeMs };
+  } catch {
+    return { catalog: [], mtimeMs: -1 };
+  }
+}
+
 function loadData() {
   const manifestFingerprint = currentFingerprint();
-  const catalogMtimeMs = statSync(CATALOG_PATH).mtimeMs;
+  const { catalog: rawCatalog, mtimeMs: catalogMtimeMs } = readCatalogWithMtime();
   const annotationsMtimeMs = existsSync(ANNOTATIONS_PATH) ? statSync(ANNOTATIONS_PATH).mtimeMs : -1;
   if (
     cache.manifest &&
@@ -408,7 +415,7 @@ function loadData() {
   const manifest = composeManifestCached(manifestFingerprint);
   // The committed catalog no longer stores generated rows; derive them from the
   // manifest so the editor still has a full catalog view for matching/summaries.
-  const catalog = composeFullCatalog(readJsonFile(CATALOG_PATH), manifest);
+  const catalog = composeFullCatalog(rawCatalog, manifest);
   const annotations = readAnnotations();
   const catalogIndex = indexCatalogSprites(catalog);
   const summaries = Object.entries(manifest.entries ?? {})

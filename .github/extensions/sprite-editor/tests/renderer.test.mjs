@@ -1249,15 +1249,25 @@ test('switching sprites repeatedly never reports phantom unsaved edits', async (
     // dirty, prompting a save (which pushes to the asset queue branch) with no
     // user edit at all.
     for (let round = 0; round < 3; round += 1) {
+      const switchStartedAt = performance.now();
       await page.getByRole('button', { name: /Second Fixture/ }).click();
       await page.waitForFunction(
         () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
       );
+      assert.ok(
+        performance.now() - switchStartedAt < 1_000,
+        'a clean sprite switch must complete within one second',
+      );
       assert.equal(await page.locator('.dirty-badge').count(), 0);
 
+      const returnStartedAt = performance.now();
       await page.getByRole('button', { name: /Fixture Sprite/ }).click();
       await page.waitForFunction(
         () => document.querySelector('.sprite-title')?.textContent === 'Fixture Sprite',
+      );
+      assert.ok(
+        performance.now() - returnStartedAt < 1_000,
+        'a clean sprite switch must complete within one second',
       );
       assert.equal(await page.locator('.dirty-badge').count(), 0);
     }
