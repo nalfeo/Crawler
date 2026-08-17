@@ -81,7 +81,6 @@ import {
   getSettlementReturnIntent,
   isSettlementReturnRoutingEnabled,
 } from './settlement-return-router.js';
-import { restockFloor2Quartermaster } from '../quartermaster-stock.js';
 import { countEngagingEnemies } from '../floorScenario.js';
 import {
   classifyGameOverOutcome,
@@ -90,9 +89,6 @@ import {
 } from './headless-runner-invariants.js';
 
 const logger = createLogger('game:headless-runner');
-
-/** Tracks the previous-frame safe-room state per world so the restock fires only on the entry edge. */
-const quartermasterRestockLatches = new WeakMap<GameWorld, boolean>();
 
 /**
  * Reads `world.state` outside the run loop's control-flow narrowing.
@@ -321,10 +317,9 @@ export interface HeadlessRunnerConfig {
    * evaluates whether returning to the Floor 2 settlement to run the
    * maintenance planner (open boxes, equip affinity-maximizing gear, shop,
    * configure abilities) is worth the travel/risk/opportunity cost, using
-   * `settlement-return-router.ts`'s deterministic utility scoring. Default
-   * false — when disabled the router's state machine is never armed and the
-   * AI's Floor 2 progress goal selection is byte-identical to before this
-   * feature.
+   * `settlement-return-router.ts`'s deterministic utility scoring. Defaults to
+   * true on Floor 1, where parity-gated equipment needs a legitimate safe-room
+   * return path, and false on other floors. Callers may explicitly override it.
    */
   settlementReturnRouting?: boolean;
   /**
@@ -573,6 +568,9 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
+  if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
+    mergedConfig.settlementReturnRouting = true;
+  }
   aiProvider.configurePlanningDeadlineMs?.(
     planningDeadlineMsFromFrameBudget(
       config.planningMaxFrames ??
@@ -674,11 +672,6 @@ export async function runHeadless(
   }
   const runStartXp = world.playerLevel?.xp ?? 0;
   const inputState = createInputState();
-  // Scenario setup creates the initial settlement stock before the first
-  // simulation frame. Treat that initial safe-room state as already observed so
-  // the headless runner does not invent a production-only first restock.
-  quartermasterRestockLatches.set(world, world.playerInSafeRoom === true);
-
   let frameCount = 0;
   // Frames spent in a safe room, where the floor-collapse deadline is paused
   // (floorScenario extends `objective.deadlineMs` by one DELTA each frame
@@ -1033,21 +1026,11 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      // On each new safe-room entry, advance the Quartermaster restock epoch so
-      // sold items are retired and fresh offers are generated. The call is
-      // unconditional: `restockFloor2Quartermaster` guards against a disabled
-      // economy, missing settlement, and backwards/skipped epoch requests and
-      // returns a typed error result rather than throwing, so this is safe on
-      // Floor 1 runs and on every frame after the initial entry-edge.
-      const isNowInSafeRoom = world.playerInSafeRoom === true;
-      const wasInSafeRoom = quartermasterRestockLatches.get(world) ?? false;
-      if (isNowInSafeRoom && !wasInSafeRoom) {
-        const qmStock = world.floorExtendedState?.settlement?.quartermasterStock;
-        if (qmStock) {
-          restockFloor2Quartermaster(world, qmStock.restockEpoch + 1);
-        }
-      }
-      quartermasterRestockLatches.set(world, isNowInSafeRoom);
+      // NOTE: the runner deliberately does NOT restock the Quartermaster on
+      // safe-room entry. `MainGameScene` never calls
+      // `restockFloor2Quartermaster`, so a human run only ever sees the stock
+      // the scenario generated; an AI-only restock would hand the runner an
+      // item pool no player can reach and quietly inflate the balance oracle.
       captureHeadlessRunDataFrame(runData, world, playerEid, currentActiveTimeMs(), 0);
       runEagerMaintenanceTick(world, playerEid, {
         // When settlement-return routing is active, the router uses unclaimed

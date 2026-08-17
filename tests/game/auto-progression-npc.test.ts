@@ -611,6 +611,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it('equips only persona-scored gear, so different weapons keep different loadouts', () => {
     const swordWorld = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    swordWorld.playerInSafeRoom = true;
     const swordPlayer = spawnPlayer(swordWorld, 0, 0);
     swordWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(swordWorld, getWeaponDef('sword')!);
@@ -618,6 +622,7 @@ describe('autoFloor1ProgressionSystem', () => {
     addItem(swordBag, 'signet-of-focus', 1);
 
     const fireballWorld = createTestWorld();
+    fireballWorld.playerInSafeRoom = true;
     const fireballPlayer = spawnPlayer(fireballWorld, 0, 0);
     fireballWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(fireballWorld, getWeaponDef('fireball')!);
@@ -637,6 +642,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it('uses persona gear selection by default when weaponPersonas is omitted', () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('sword')!);
@@ -646,6 +655,7 @@ describe('autoFloor1ProgressionSystem', () => {
     autoFloor1ProgressionSystem(world, player);
 
     const legacyWorld = createTestWorld();
+    legacyWorld.playerInSafeRoom = true;
     const legacyPlayer = spawnPlayer(legacyWorld, 0, 0);
     legacyWorld.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(legacyWorld, getWeaponDef('sword')!);
@@ -660,6 +670,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it('preserves legacy purchased-gear flow when weaponPersonas is false', () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('sword')!);
@@ -675,6 +689,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it("still equips the Merchant's Charm even when persona scoring is zero", () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('sword')!);
@@ -694,6 +712,9 @@ describe('autoFloor1ProgressionSystem', () => {
     'does not return the merchant prize before the quest can latch it for %s',
     (weaponId) => {
       const world = createTestWorld();
+      // Equipping the merchant prize is safe-context gated for the AI exactly
+      // as it is for a human; the shopkeeper stands in the safe welcome room.
+      world.playerInSafeRoom = true;
       const player = spawnPlayer(world, 0, 0);
       world.floorScenario = makeFloor1({ staircaseUnlocked: false });
       setActiveWeaponDef(world, getWeaponDef(weaponId)!);
@@ -732,6 +753,10 @@ describe('autoFloor1ProgressionSystem', () => {
 
   it('can swap out weaker equipped gear for a better persona-scored replacement', () => {
     const world = createTestWorld();
+    // The AI equips through the same safe-context gate as the human equipment
+    // panel (no force bypass), and the Floor 1 shopkeeper sits in the safe
+    // welcome room, so the equip step is exercised from inside a safe context.
+    world.playerInSafeRoom = true;
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1({ staircaseUnlocked: false });
     setActiveWeaponDef(world, getWeaponDef('fireball')!);

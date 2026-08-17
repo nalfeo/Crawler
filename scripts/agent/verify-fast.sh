@@ -226,6 +226,12 @@ echo "🔍 Step 3/3: Data-contract + integrity + coverage checks..."
 # runs.
 npx tsx scripts/agent/health/check-physics-defs-sync.ts
 
+# AI equipment-parity guard: a pure text scan of src/game/ai (~40 files, well
+# under a second) that fails if the AI path forces past the safe-context gate a
+# human player is bound by. Cheap enough to run unconditionally, and the failure
+# it prevents — a silently privileged balance oracle — is invisible in review.
+npx tsx scripts/agent/health/check-ai-equip-parity.ts
+
 # The three integrity guards below are pure JSON/file reads (no sim, no git, no
 # subprocess) and together cost well under a second, so they always run — the
 # whole point is that a data-contract break is caught at edit time rather than by
