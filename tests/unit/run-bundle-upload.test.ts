@@ -73,6 +73,23 @@ describe('run bundle upload delivery', () => {
     }
   });
 
+  it('resolves the endpoint from VITE_RUNS_INGEST_URL used by dev deploy workflows', () => {
+    const original = process.env.VITE_RUNS_INGEST_URL;
+    process.env.VITE_RUNS_INGEST_URL = 'https://example.test/api/runs';
+    try {
+      const config = resolveRunBundleUploadConfig();
+      expect(config.enabled).toBe(true);
+      expect(config.endpoint).toBe('https://example.test/api/runs');
+      expect(config.source).toBe('env');
+    } finally {
+      if (original === undefined) {
+        delete process.env.VITE_RUNS_INGEST_URL;
+      } else {
+        process.env.VITE_RUNS_INGEST_URL = original;
+      }
+    }
+  });
+
   it('uses sendBeacon during quit/unload-safe submits', async () => {
     const beacon = vi.fn(() => true);
     Object.defineProperty(globalThis, 'window', {
