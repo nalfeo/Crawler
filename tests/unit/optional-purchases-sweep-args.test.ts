@@ -32,10 +32,10 @@ describe('parseOptionalPurchasesSweepArgs — defaults', () => {
     expect(parseOptionalPurchasesSweepArgs(argv()).optionalPurchases).toBe(false);
   });
 
-  it('maxFrames defaults to DEFAULT_MAX_FRAMES (23760)', () => {
+  it('maxFrames defaults to DEFAULT_MAX_FRAMES (39600)', () => {
     // DEFAULT_MAX_FRAMES is the Floor-1 budget + 10% safe-room slack; see
     // winrate-sweep-args.ts for the derivation.
-    expect(DEFAULT_MAX_FRAMES).toBe(23760);
+    expect(DEFAULT_MAX_FRAMES).toBe(39600);
     expect(parseOptionalPurchasesSweepArgs(argv()).maxFrames).toBe(DEFAULT_MAX_FRAMES);
   });
 

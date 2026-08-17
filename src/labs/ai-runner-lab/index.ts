@@ -35,7 +35,12 @@ import {
 } from '../../game/ai/settlement-maintenance-planner.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
-import { configureSpellBrokerPurchase } from '../../game/ai/spell-broker-intent.js';
+import {
+  configureSpellBrokerPurchase,
+  getSpellBrokerIntent,
+  isSpellBrokerPurchaseActive,
+  markSpellBrokerPurchased,
+} from '../../game/ai/spell-broker-intent.js';
 import { resolveOptionalPurchases } from '../../game/ai/optional-purchases.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
@@ -569,7 +574,7 @@ function randomRunSeed(): number {
 interface RunnerSceneInternals {
   world?: GameWorld;
   playerEid?: number;
-  modalPicker?: { isOpen(): boolean; close(): void };
+  modalPicker?: { isOpen(): boolean; getKind(): string | null; close(): void };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   requestInventoryToggle(): void;
@@ -886,7 +891,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       selectedScenarioPresetId = resolved.presetId;
       applyScenarioVisualProfile(selectedScenarioPresetId);
       persistLabState();
-      return composeSceneOptions(nextFloorOptions);
+      Object.assign(sceneOptions, composeSceneOptions(nextFloorOptions));
+      return sceneOptions;
     },
   });
 
@@ -1539,6 +1545,29 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             pendingGearPreviewTicks = INVENTORY_PREVIEW_TICKS;
             pendingGearEquipPreview = true;
           }
+        }
+        modalPicker.close();
+        return;
+      }
+      const spellBroker = sceneOptions.spellQuestGiver;
+      const spellBrokerIntent = getSpellBrokerIntent(world);
+      if (
+        modalPicker.getKind() === 'spell-broker' &&
+        spellBroker?.getSpellBrokerOffers &&
+        spellBroker.canPurchaseSpell &&
+        spellBroker.purchaseSpell &&
+        world.featureUnlocks.spells === true &&
+        (isSpellBrokerPurchaseActive(spellBrokerIntent) ||
+          spellBrokerIntent.purchaseStatus === 'purchased')
+      ) {
+        const offer = spellBroker
+          .getSpellBrokerOffers(world)
+          .find(
+            (entry) =>
+              !entry.purchased && spellBroker.canPurchaseSpell?.(world, playerEid, entry.spellId),
+          );
+        if (offer && spellBroker.purchaseSpell(world, playerEid, offer.spellId)) {
+          markSpellBrokerPurchased(world);
         }
         modalPicker.close();
         return;

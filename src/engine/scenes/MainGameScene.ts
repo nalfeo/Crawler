@@ -4935,6 +4935,7 @@ export class MainGameScene extends Phaser.Scene {
     if (this.modalPicker.isOpen()) return true;
     this.modalPicker.open(
       {
+        kind: 'spell-broker',
         title: 'The Spell Broker',
         subtitle: `Gold: ${this.world.playerGold}`,
         body: 'Choose one expensive spell from the Broker’s rotating stock.',

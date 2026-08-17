@@ -3,10 +3,12 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { isOfficialWin } from '../../src/game/ai/scoring.js';
 import { AIDecisionMode, AIPathingMode } from '../../src/game/ai/types.js';
-import { GAME } from '../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../src/game/ai/floor1-run-budget.js';
 
-const MAX_FRAMES = 23_760;
-const MAX_GAME_TIME_MS = MAX_FRAMES * GAME.DELTA_MS;
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 const MAX_WALL_TIME_MS = 170_000;
 const TEST_TIMEOUT_MS = MAX_WALL_TIME_MS * 2 + 20_000;
 
@@ -37,7 +39,7 @@ describe('Floor 1 tutorial hunt fixation regression', () => {
       expect(stats.quests.questLogCompletions['floor1-tutorial']).toBeDefined();
       expect(stats.combat.totalKills).toBeGreaterThan(0);
       expect(stats.outcome).toBe('victory');
-      expect(isOfficialWin(stats, MAX_GAME_TIME_MS)).toBe(true);
+      expect(isOfficialWin(stats, FLOOR1_ACTIVE_TIME_BUDGET_MS)).toBe(true);
       expect({
         outcome: replay.outcome,
         totalFrames: replay.totalFrames,

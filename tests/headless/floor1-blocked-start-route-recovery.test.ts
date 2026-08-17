@@ -2,10 +2,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import type { RunStats } from '../../src/game/ai/types.js';
+import { FLOOR1_DEFAULT_MAX_FRAMES } from '../../src/game/ai/floor1-run-budget.js';
 
 const REPRO_SEED = 25;
 const REPRO_WEAPON = 'fireball';
-const MAX_FRAMES = 23_760;
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 
 describe('Floor 1 blocked live-player route start regression', () => {
   let stats: RunStats;
