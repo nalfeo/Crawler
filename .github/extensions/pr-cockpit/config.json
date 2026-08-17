@@ -1,0 +1,6 @@
+{
+  "name": "pr-cockpit",
+  "description": "Read-only Crawler PR cockpit tools for summarizing pull request blockers, checks, and review-thread state.",
+  "version": "1.0.0",
+  "project": true
+}

@@ -41,6 +41,7 @@ import {
   safeRun,
   stateSnapshot,
 } from './lib/state-snapshot.mjs';
+import { dispatchSweep } from './lib/runner.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -975,6 +976,50 @@ function summaryPayload(state) {
 }
 
 const session = await joinSession({
+  tools: [
+    {
+      name: 'dispatch_weapon_sweep',
+      description:
+        'Dispatch the Crawler weapon-sweep.yml workflow and return the GitHub run plus the required app-native Sweep Results Viewer reference.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ref: { type: 'string', description: 'Branch, tag, or SHA to run.' },
+          seedCount: { type: 'number', minimum: 1, maximum: 100, default: 100 },
+          weapons: {
+            type: 'string',
+            description: 'Comma-separated weapon ids. Defaults to sword,bow,baseball-bat.',
+          },
+          maxFrames: { type: 'number', minimum: 1, maximum: 600000, default: 19800 },
+          weaponPersonas: { type: 'boolean', default: true },
+        },
+      },
+      handler: (params) =>
+        dispatchSweep({ ...params, type: 'weapon-sweep' }, { cwd: process.cwd() }),
+    },
+    {
+      name: 'dispatch_ai_sweep',
+      description:
+        'Dispatch the Crawler ai-sweep.yml workflow and return the GitHub run plus the required app-native Sweep Results Viewer reference.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ref: { type: 'string', description: 'Branch, tag, or SHA to run.' },
+          combos: { type: 'string', default: 'all' },
+          trainSeeds: { type: 'string', default: '1-24' },
+          validateSeeds: { type: 'string', default: '1-40' },
+          weapons: {
+            type: 'string',
+            description: 'Comma-separated weapon ids. Defaults to sword,bow,baseball-bat.',
+          },
+          rounds: { type: 'number', minimum: 0, maximum: 3, default: 2 },
+          secondary: { type: 'boolean', default: true },
+          resumeRunId: { type: 'number', minimum: 1 },
+        },
+      },
+      handler: (params) => dispatchSweep({ ...params, type: 'ai-sweep' }, { cwd: process.cwd() }),
+    },
+  ],
   canvases: [
     createCanvas({
       id: 'sweep-results-viewer',
