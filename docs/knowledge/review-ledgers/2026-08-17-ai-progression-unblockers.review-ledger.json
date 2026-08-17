@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "ai-progression-unblockers",
+  "task_title": "Fix AI spell purchase and floor transition lockups",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Reviewer rejected hardcoded engine purchase policy and transition-only fallback. Revised plan: keep purchase policy/bookkeeping in game AI auto-progression; add AI-runner/browser automation for the existing Spell Broker modal instead of engine hardcoding; update lab recompose path to refresh active scene options/state during Floor 1→2 transition; add focused wiring regressions. No broader architecture needed beyond using existing lab callback seams."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "claude-sonnet-5",
+      "head_sha": "0923dbb985b8e1a77066027f4219e901d5d320fe",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change surgically and correctly updates the lab recompose path to modify sceneOptions in-place, fixing the floor transition lockup. It properly adds the Spell Broker purchase logic within the AI driver's modal picker flow, maintaining deterministic progression without changing the game engine logic. The test coverage validates the added behavior using the established static string assertion pattern for lab wiring tests, preserving the codebase's conventions and policies."
+    }
+  }
+}
