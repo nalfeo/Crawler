@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  VENDOR_LEDGER_MAX_ENTRIES,
+  _VENDOR_LEDGER_MAX_ENTRIES,
   recordVendorDecision,
   recordVendorVisit,
 } from '../../src/core/world.js';
@@ -134,7 +134,7 @@ describe('vendor ledger', () => {
   it('caps retained records but keeps counting the overflow', () => {
     const world = createTestWorld({ seed: 1 });
 
-    for (let i = 0; i < VENDOR_LEDGER_MAX_ENTRIES + 10; i++) {
+    for (let i = 0; i < _VENDOR_LEDGER_MAX_ENTRIES + 10; i++) {
       world.frameCount += 1;
       recordVendorVisit(world, 'floor1-merchant', []);
       recordVendorDecision(world, {
@@ -147,10 +147,10 @@ describe('vendor ledger', () => {
     }
 
     const summary = computeVendorInteractions(world);
-    expect(summary.visits).toHaveLength(VENDOR_LEDGER_MAX_ENTRIES);
-    expect(summary.decisions).toHaveLength(VENDOR_LEDGER_MAX_ENTRIES);
-    expect(summary.visitCount).toBe(VENDOR_LEDGER_MAX_ENTRIES + 10);
-    expect(summary.decisionCount).toBe(VENDOR_LEDGER_MAX_ENTRIES + 10);
+    expect(summary.visits).toHaveLength(_VENDOR_LEDGER_MAX_ENTRIES);
+    expect(summary.decisions).toHaveLength(_VENDOR_LEDGER_MAX_ENTRIES);
+    expect(summary.visitCount).toBe(_VENDOR_LEDGER_MAX_ENTRIES + 10);
+    expect(summary.decisionCount).toBe(_VENDOR_LEDGER_MAX_ENTRIES + 10);
   });
 
   it('keeps deduping same-frame re-entry past the retention cap', () => {
@@ -158,7 +158,7 @@ describe('vendor ledger', () => {
 
     // Fill the ledger past the retention cap with distinct-frame visits and
     // decisions so the retained tail is full and stops growing.
-    for (let i = 0; i < VENDOR_LEDGER_MAX_ENTRIES + 5; i++) {
+    for (let i = 0; i < _VENDOR_LEDGER_MAX_ENTRIES + 5; i++) {
       world.frameCount += 1;
       recordVendorVisit(world, 'floor1-merchant', []);
       recordVendorDecision(world, {

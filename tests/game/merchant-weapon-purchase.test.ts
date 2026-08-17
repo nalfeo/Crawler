@@ -9,11 +9,11 @@ import {
 import { SeededRandom } from '../../src/shared/random.js';
 import { getShopkeeperPostQuestStock } from '../../src/game/floorScenario.js';
 import {
-  MERCHANT_WEAPON_SWITCH_CHANCE,
+  _MERCHANT_WEAPON_SWITCH_CHANCE,
   configureMerchantWeaponPurchase,
   executeMerchantWeaponPurchase,
   getMerchantWeaponIntent,
-  rollsMerchantWeaponSwitch,
+  _rollsMerchantWeaponSwitch,
   selectMerchantWeapon,
   updateMerchantWeaponIntent,
 } from '../../src/game/ai/merchant-weapon-intent.js';
@@ -30,8 +30,8 @@ function firstSeedWhere(predicate: (seed: number) => boolean): number {
 }
 
 /** A seed whose run is willing to switch weapon class, and one that is not. */
-const SWITCH_SEED = firstSeedWhere(rollsMerchantWeaponSwitch);
-const DECLINE_SEED = firstSeedWhere((seed) => !rollsMerchantWeaponSwitch(seed));
+const SWITCH_SEED = firstSeedWhere(_rollsMerchantWeaponSwitch);
+const DECLINE_SEED = firstSeedWhere((seed) => !_rollsMerchantWeaponSwitch(seed));
 
 function plan(slackMs: number): Floor1RunPlan {
   return {
@@ -118,21 +118,21 @@ describe('merchant weapon purchase intent', () => {
 
   it('rolls willingness deterministically at roughly the configured rate', () => {
     const seeds = Array.from({ length: 1_000 }, (_, i) => i + 1);
-    const willing = seeds.filter((seed) => rollsMerchantWeaponSwitch(seed));
+    const willing = seeds.filter((seed) => _rollsMerchantWeaponSwitch(seed));
     const rate = willing.length / seeds.length;
-    expect(Math.abs(rate - MERCHANT_WEAPON_SWITCH_CHANCE)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(rate - _MERCHANT_WEAPON_SWITCH_CHANCE)).toBeLessThanOrEqual(0.05);
     // The switch must stay a choice, never a certainty, and the designer set a
     // hard ceiling of 50%: at most half the runs may be willing to re-class.
     // Raising this is a design decision, not a tuning fix for a failing gate.
-    expect(MERCHANT_WEAPON_SWITCH_CHANCE).toBeGreaterThan(0);
-    expect(MERCHANT_WEAPON_SWITCH_CHANCE).toBeLessThanOrEqual(0.5);
+    expect(_MERCHANT_WEAPON_SWITCH_CHANCE).toBeGreaterThan(0);
+    expect(_MERCHANT_WEAPON_SWITCH_CHANCE).toBeLessThanOrEqual(0.5);
     // Both outcomes must be reachable on the contiguous low-seed prefix the
     // headless gates sample, not only far out in the seed space.
-    const prefix = seeds.slice(0, 25).filter((seed) => rollsMerchantWeaponSwitch(seed));
+    const prefix = seeds.slice(0, 25).filter((seed) => _rollsMerchantWeaponSwitch(seed));
     expect(prefix.length).toBeGreaterThan(0);
     expect(prefix.length).toBeLessThan(25);
     // Stable across calls.
-    expect(seeds.filter((seed) => rollsMerchantWeaponSwitch(seed))).toEqual(willing);
+    expect(seeds.filter((seed) => _rollsMerchantWeaponSwitch(seed))).toEqual(willing);
   });
 
   it('ranks stock by value within budget and never picks above it', () => {

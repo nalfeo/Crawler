@@ -152,7 +152,7 @@ export {
   SPELL_SKILL_ID_BY_SPELL_ID,
   getSpellSkillId,
   FLOOR1_SPELL_BROKER_OFFER_COUNT,
-  floor1SpellBrokerOfferCost,
+  _floor1SpellBrokerOfferCost,
   generateFloor1SpellBrokerOffers,
 } from './spell-skills.js';
 export * from './items.js';

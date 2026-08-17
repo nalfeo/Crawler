@@ -280,7 +280,7 @@ export interface VendorDecisionRecord {
 export interface VendorLedger {
   visits: VendorVisitRecord[];
   decisions: VendorDecisionRecord[];
-  /** Visits/decisions beyond {@link VENDOR_LEDGER_MAX_ENTRIES}, counted only. */
+  /** Visits/decisions beyond {@link _VENDOR_LEDGER_MAX_ENTRIES}, counted only. */
   droppedVisits: number;
   droppedDecisions: number;
   /**
@@ -300,7 +300,7 @@ export interface VendorLedger {
  * overflow is counted instead of retained — RunStats must stay a small,
  * serializable object.
  */
-export const VENDOR_LEDGER_MAX_ENTRIES = 64;
+export const _VENDOR_LEDGER_MAX_ENTRIES = 64;
 
 /** Create an empty vendor ledger. */
 export function createVendorLedger(): VendorLedger {
@@ -329,7 +329,7 @@ export function recordVendorVisit(
     return;
   }
   ledger.lastVisitKey = key;
-  if (ledger.visits.length >= VENDOR_LEDGER_MAX_ENTRIES) {
+  if (ledger.visits.length >= _VENDOR_LEDGER_MAX_ENTRIES) {
     ledger.droppedVisits += 1;
     return;
   }
@@ -357,7 +357,7 @@ export function recordVendorDecision(
     return;
   }
   ledger.lastDecisionKey = key;
-  if (ledger.decisions.length >= VENDOR_LEDGER_MAX_ENTRIES) {
+  if (ledger.decisions.length >= _VENDOR_LEDGER_MAX_ENTRIES) {
     ledger.droppedDecisions += 1;
     return;
   }

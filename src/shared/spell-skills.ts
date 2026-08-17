@@ -35,7 +35,7 @@ export const FLOOR1_SPELL_BROKER_OFFER_COUNT = 3;
  * (typically one that declined the merchant's weapon-class switch) has
  * somewhere to spend it without the repeat ever outranking the headline pick.
  */
-export function floor1SpellBrokerOfferCost(index: number): number {
+export function _floor1SpellBrokerOfferCost(index: number): number {
   return Math.round(FLOOR1_SPELL_BROKER_COST * FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER ** index);
 }
 
@@ -48,7 +48,7 @@ export function generateFloor1SpellBrokerOffers(seed: number): Floor1SpellBroker
     const index = rng.nextInt(0, pool.length - 1);
     const spellId = pool.splice(index, 1)[0];
     if (spellId !== undefined) {
-      offers.push({ spellId, cost: floor1SpellBrokerOfferCost(offers.length), purchased: false });
+      offers.push({ spellId, cost: _floor1SpellBrokerOfferCost(offers.length), purchased: false });
     }
   }
   return offers;

@@ -34,14 +34,14 @@ import {
 import {
   FLOOR1_SPELL_BROKER_COST,
   SPELL_SKILL_ID_BY_SPELL_ID,
-  floor1SpellBrokerOfferCost,
+  _floor1SpellBrokerOfferCost,
   generateFloor1SpellBrokerOffers,
 } from '../../src/shared/index.js';
 import {
   configureMerchantWeaponPurchase,
   getMerchantWeaponIntent,
   merchantWeaponReserve,
-  spellPurchaseReserve,
+  _spellPurchaseReserve,
   updateMerchantWeaponIntent,
 } from '../../src/game/ai/merchant-weapon-intent.js';
 import { autoFloor1ProgressionSystem } from '../../src/game/ai/auto-progression.js';
@@ -56,11 +56,11 @@ describe('Floor 1 Spell Broker', () => {
     // multiplier, so a repeat purchase is affordable out of banked gold.
     expect(first.map((offer) => offer.cost)).toEqual([
       FLOOR1_SPELL_BROKER_COST,
-      floor1SpellBrokerOfferCost(1),
-      floor1SpellBrokerOfferCost(2),
+      _floor1SpellBrokerOfferCost(1),
+      _floor1SpellBrokerOfferCost(2),
     ]);
-    expect(floor1SpellBrokerOfferCost(1)).toBeLessThan(FLOOR1_SPELL_BROKER_COST);
-    expect(floor1SpellBrokerOfferCost(2)).toBeLessThan(floor1SpellBrokerOfferCost(1));
+    expect(_floor1SpellBrokerOfferCost(1)).toBeLessThan(FLOOR1_SPELL_BROKER_COST);
+    expect(_floor1SpellBrokerOfferCost(2)).toBeLessThan(_floor1SpellBrokerOfferCost(1));
     expect(first.map((offer) => offer.spellId)).not.toEqual(
       generateFloor1SpellBrokerOffers(43).map((offer) => offer.spellId),
     );
@@ -255,7 +255,7 @@ describe('spell skills', () => {
       updateMerchantWeaponIntent(world, plan(1_000_000), 3_000);
       const reserved = getMerchantWeaponIntent(world);
       expect(reserved.status).toBe('farming');
-      expect(spellPurchaseReserve(world)).toBe(spellDecision.cost);
+      expect(_spellPurchaseReserve(world)).toBe(spellDecision.cost);
 
       // Enough for both: the weapon is ready to buy in the same shop visit.
       world.playerGold = spellDecision.cost + reserved.cost;
@@ -318,7 +318,7 @@ describe('spell skills', () => {
       } else {
         expect(merchantWeaponReserve(world)).toBe(weapon.cost);
         // A repeat spell never outranks the weapon.
-        expect(spellPurchaseReserve(world)).toBe(0);
+        expect(_spellPurchaseReserve(world)).toBe(0);
       }
       expect(first.cost).toBeGreaterThan(getSpellBrokerIntent(world).cost);
     });

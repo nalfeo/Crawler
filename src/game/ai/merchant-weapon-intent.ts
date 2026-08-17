@@ -66,7 +66,7 @@ export function getMerchantWeaponIntent(world: GameWorld): MerchantWeaponIntent 
  * concurrently and the spell — the strictly more valuable pickup — keeps
  * priority through this reserve.
  */
-export function spellPurchaseReserve(world: GameWorld): number {
+export function _spellPurchaseReserve(world: GameWorld): number {
   const spellIntent = ensureSpellBrokerDecision(world);
   if (!isSpellBrokerPurchaseActive(spellIntent) || spellIntent.purchaseCount > 0) {
     // Only the run's *first* spell outranks the weapon. A repeat purchase off
@@ -99,11 +99,11 @@ export function spellPurchaseReserve(world: GameWorld): number {
  * share; 0.75 gave 7/25 and 33.3%. At 0.5 the weapon buy-rate falls to 4/25 and
  * the banked gold pushed the median to **37.2%**, over the gate's 35% ceiling —
  * so 0.5 ships together with the broker's repeat-purchase sink (see
- * `floor1SpellBrokerOfferCost` and `FLOOR1_SPELL_BROKER_MAX_PURCHASES`), which
+ * `_floor1SpellBrokerOfferCost` and `FLOOR1_SPELL_BROKER_MAX_PURCHASES`), which
  * gives a declining run somewhere to put the gold: 4/25 weapons, 10/25 second
  * spells, **29.1%** median unspent, 25/25 wins.
  */
-export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
+export const _MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
 
 /**
  * Deterministic per-run willingness roll, drawn from a dedicated
@@ -111,20 +111,20 @@ export const MERCHANT_WEAPON_SWITCH_CHANCE = 0.5;
  * seed always makes the same shopping choice, and enabling the intent cannot
  * shift the simulation's RNG sequence.
  */
-export function rollsMerchantWeaponSwitch(seed: number): boolean {
+export function _rollsMerchantWeaponSwitch(seed: number): boolean {
   const rng = new SeededRandom(hashStringToSeed(`${seed}:floor1-merchant-weapon-switch`));
   // Discard the first draw: xorshift32's opening output stays correlated with
   // its seed, so consecutive small seeds (exactly the contiguous gate panel)
   // decide alike. Measured over seeds 1..1000 both draws sit at ~50%, but the
   // 1..25 prefix reads 24% on the first draw and 48% on the second.
   rng.next();
-  return rng.next() < MERCHANT_WEAPON_SWITCH_CHANCE;
+  return rng.next() < _MERCHANT_WEAPON_SWITCH_CHANCE;
 }
 
 /**
  * Gold held back for a still-pending weapon-class switch.
  *
- * The mirror of {@link spellPurchaseReserve}: the *first* broker spell outranks
+ * The mirror of {@link _spellPurchaseReserve}: the *first* broker spell outranks
  * the weapon, but a **repeat** spell is a luxury sink and must not eat the gold
  * a run is actively farming toward its one class switch — otherwise the switch,
  * which the willingness roll already makes an occasional event, could never
@@ -142,7 +142,7 @@ export function merchantWeaponReserve(world: GameWorld): number {
     // roll will actually want the switch, so a declining run's gold stays free
     // for the repeat spell. The roll is a pure function of the seed, so reading
     // it early consumes no RNG and cannot change the decision made later.
-    if (intent.decisionMade || !rollsMerchantWeaponSwitch(world.seed)) {
+    if (intent.decisionMade || !_rollsMerchantWeaponSwitch(world.seed)) {
       return 0;
     }
     const stock = getShopkeeperPostQuestStock(world);
@@ -165,7 +165,7 @@ export function selectMerchantWeapon(
   const byValueDesc = [...stock].sort(
     (a, b) => b.cost - a.cost || a.itemId.localeCompare(b.itemId),
   );
-  const budget = world.playerGold - spellPurchaseReserve(world);
+  const budget = world.playerGold - _spellPurchaseReserve(world);
   const affordable = byValueDesc.find((entry) => entry.cost <= budget);
   return affordable ?? byValueDesc[byValueDesc.length - 1] ?? null;
 }
@@ -183,7 +183,7 @@ export function updateMerchantWeaponIntent(
   // not "never buy". Recover once the player holds the full price outright
   // (over and above the spell reserve) — there is no farming left to fund.
   if (intent.status === 'abandoned') {
-    if (!intent.itemId || world.playerGold - spellPurchaseReserve(world) < intent.cost) {
+    if (!intent.itemId || world.playerGold - _spellPurchaseReserve(world) < intent.cost) {
       return intent;
     }
     intent = { ...intent, status: 'returning' };
@@ -197,13 +197,13 @@ export function updateMerchantWeaponIntent(
   if (!intent.decisionMade) {
     // Switching main weapon class is a run-defining pivot, not a routine
     // purchase, so a run first rolls whether it wants one at all (see
-    // MERCHANT_WEAPON_SWITCH_CHANCE). A declined run keeps its starter and its
+    // _MERCHANT_WEAPON_SWITCH_CHANCE). A declined run keeps its starter and its
     // gold; a willing run's affordability is then resolved by the
     // farming/abandon lifecycle below, not by a second coin flip. The
     // selection is made against gold that remains *after* the higher-value
     // spell purchase, because `selectMerchantWeapon` subtracts the spell
     // reserve from its budget.
-    if (!rollsMerchantWeaponSwitch(world.seed)) {
+    if (!_rollsMerchantWeaponSwitch(world.seed)) {
       intent = { ...intent, decisionMade: true, status: 'declined' };
       intents.set(world, intent);
       recordVendorDecision(world, {
@@ -245,7 +245,7 @@ export function updateMerchantWeaponIntent(
   }
 
   const previousStatus = intent.status;
-  const deficit = Math.max(0, intent.cost + spellPurchaseReserve(world) - world.playerGold);
+  const deficit = Math.max(0, intent.cost + _spellPurchaseReserve(world) - world.playerGold);
   if (deficit === 0) {
     intent = { ...intent, status: 'returning' };
   } else if (runPlan?.droppedOptionalBundleIds.includes('merchant-weapon-purchase')) {
@@ -291,7 +291,7 @@ export function executeMerchantWeaponPurchase(world: GameWorld, playerEid: numbe
   // rather than abandoning, so the run can come back after farming.
   if (
     !hasItem(bag, intent.itemId) &&
-    world.playerGold - intent.cost < spellPurchaseReserve(world)
+    world.playerGold - intent.cost < _spellPurchaseReserve(world)
   ) {
     recordVendorDecision(world, {
       vendorId: FLOOR1_MERCHANT_VENDOR_ID,
