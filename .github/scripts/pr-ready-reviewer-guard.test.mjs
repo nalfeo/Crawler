@@ -10,6 +10,7 @@ import {
   COPILOT_CLOUD_AGENT_WORKFLOW_PATH,
   EMPTY_DRAFT_REPAIR_GRACE_MS,
   EMPTY_DRAFT_REPAIR_LABEL,
+  EMPTY_DRAFT_REPEAT_TRIAGE_LABEL,
   inspectEmptyCopilotDraftRepair,
   listCopilotCloudWorkflowRuns,
   latestMatchingCopilotCloudRun,
@@ -266,6 +267,24 @@ function createHarness({
       if (pull && Array.isArray(pull.labels)) {
         pull.labels = pull.labels.filter((l) => l.name !== labelName);
       }
+    },
+    addIssueLabel: async (issueNumber, labelName) => {
+      calls.push(['addIssueLabel', issueNumber, labelName]);
+      const issue = [...linkedIssuesByPull.values()]
+        .flat()
+        .find((entry) => entry.number === issueNumber);
+      if (issue) {
+        if (Array.isArray(issue.labels)) {
+          if (!issue.labels.some((label) => label.name === labelName)) {
+            issue.labels.push({ name: labelName });
+          }
+        } else {
+          issue.labels = { nodes: [...(issue.labels?.nodes || []), { name: labelName }] };
+        }
+      }
+    },
+    addIssueComment: async (issueNumber, body) => {
+      calls.push(['addIssueComment', issueNumber, body]);
     },
   };
 
@@ -731,10 +750,81 @@ test('repairs the exact eligible empty Copilot draft fixture', async () => {
     ],
   );
   assert.ok(
+    harness.calls.some(
+      ([name, issueNumber, labelName]) =>
+        name === 'addIssueLabel' && issueNumber === 1067 && labelName === EMPTY_DRAFT_REPAIR_LABEL,
+    ),
+  );
+  assert.ok(
     harness.logs.some(
       ([level, message]) =>
         level === 'info' &&
         message.includes('Repaired empty Copilot draft PR #42') &&
+        message.includes('linked issue #1067'),
+    ),
+  );
+});
+
+test('repeat empty-draft repair closes the shell and escalates without reassigning Copilot', async () => {
+  const harness = createHarness({
+    linkedIssuesByPull: new Map([
+      [
+        42,
+        [
+          makeLinkedIssue({
+            labels: { nodes: [{ name: EMPTY_DRAFT_REPAIR_LABEL }] },
+          }),
+        ],
+      ],
+    ]),
+  });
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'pull_request_target',
+    payloadAction: 'opened',
+    triggeringPullNumber: 42,
+    api: harness.api,
+    log: {
+      info: (message) => harness.logs.push(['info', message]),
+      warning: (message) => harness.logs.push(['warning', message]),
+      error: (message) => harness.logs.push(['error', message]),
+    },
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 1,
+    humanReviewerRequests: 0,
+  });
+  assert.deepEqual(
+    harness.calls
+      .filter(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees')
+      .map(([, assignableId, actorIds]) => [assignableId, actorIds]),
+    [['ISSUE_1067', ['BOT_COPILOT']]],
+  );
+  assert.ok(
+    harness.calls.some(
+      ([name, issueNumber, labelName]) =>
+        name === 'addIssueLabel' &&
+        issueNumber === 1067 &&
+        labelName === EMPTY_DRAFT_REPEAT_TRIAGE_LABEL,
+    ),
+  );
+  assert.ok(
+    harness.calls.some(
+      ([name, issueNumber, body]) =>
+        name === 'addIssueComment' &&
+        issueNumber === 1067 &&
+        body.includes('closed without reassigning Copilot again'),
+    ),
+  );
+  assert.ok(
+    harness.logs.some(
+      ([level, message]) =>
+        level === 'info' &&
+        message.includes('Escalated repeat empty Copilot draft PR #42') &&
         message.includes('linked issue #1067'),
     ),
   );

@@ -25,6 +25,7 @@ export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = 'dynamic/copilot-swe-agent/copi
 export const COPILOT_CLOUD_AGENT_WORKFLOW_ID = 288998107;
 export const EMPTY_DRAFT_REPAIR_GRACE_MS = 5 * 60 * 1000;
 export const EMPTY_DRAFT_REPAIR_LABEL = 'copilot-empty-draft-repaired';
+export const EMPTY_DRAFT_REPEAT_TRIAGE_LABEL = 'copilot-empty-draft-repeat-triage';
 const WORKFLOW_RUNS_PAGE_SIZE = 100;
 const WORKFLOW_RUNS_MAX_PAGES = 10;
 
@@ -159,6 +160,15 @@ function localEmptyCopilotDraftRepairRejection({ pr, changedFiles, repository })
   return null;
 }
 
+function issueHasLabel(issue, labelName) {
+  const labels = Array.isArray(issue?.labels?.nodes)
+    ? issue.labels.nodes
+    : Array.isArray(issue?.labels)
+      ? issue.labels
+      : [];
+  return labels.some((label) => normalize(label?.name) === normalize(labelName));
+}
+
 export function inspectEmptyCopilotDraftRepair({
   pr,
   changedFiles,
@@ -228,7 +238,14 @@ export function inspectEmptyCopilotDraftRepair({
       reason: `copilot-cloud-run-grace=${graceMs - ageMs}`,
     };
   }
-  return { eligible: true, linkedIssue, latestRun };
+  return {
+    eligible: true,
+    linkedIssue,
+    latestRun,
+    repeatRepair:
+      issueHasLabel(linkedIssue, EMPTY_DRAFT_REPAIR_LABEL) ||
+      issueHasLabel(linkedIssue, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL),
+  };
 }
 
 async function changedFilesForDraft({
@@ -390,6 +407,7 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     copilotActorId: assignmentContext.copilot.id,
     includeCopilot: true,
   }).filter((id) => !actorIdsWithoutCopilot.includes(id));
+  const linkedIssueNumber = confirmedDecision.linkedIssue.number;
 
   // Apply a durable repair marker label before closing so any subsequent scan
   // (including after a reopen event) skips this PR without repeating the repair.
@@ -495,6 +513,76 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     return { status: 'skipped', reason: driftReason };
   }
 
+  if (confirmedDecision.repeatRepair) {
+    try {
+      await api.addIssueLabel(linkedIssueNumber, EMPTY_DRAFT_REPEAT_TRIAGE_LABEL);
+      await api.addIssueComment(
+        linkedIssueNumber,
+        [
+          `Empty Copilot draft repair has already been attempted for this issue, so PR #${pr.number} was closed without reassigning Copilot again.`,
+          '',
+          'Please clarify or triage the issue before starting another Copilot run.',
+        ].join('\n'),
+      );
+      const removedLogins = await api.removeIssueAssignees(
+        assignmentContext.issueId,
+        copilotActorIds,
+      );
+      if (removedLogins.some((login) => isCopilotLogin(login))) {
+        throw new Error(
+          `Copilot removal did not persist on repeat empty-draft issue #${linkedIssueNumber}`,
+        );
+      }
+    } catch (repairError) {
+      const rollbackErrors = [];
+      try {
+        const restoredLogins = await api.addIssueAssignees(
+          assignmentContext.issueId,
+          copilotActorIds,
+        );
+        if (!restoredLogins.some((login) => isCopilotLogin(login))) {
+          throw new Error(
+            `Copilot assignment did not persist during repeat-repair rollback on issue #${linkedIssueNumber}`,
+          );
+        }
+      } catch (rollbackError) {
+        rollbackErrors.push(new Error(`issue rollback failed: ${getErrorMessage(rollbackError)}`));
+      }
+      if (closeApplied) {
+        try {
+          await api.updatePullState(pr.number, 'open');
+        } catch (rollbackError) {
+          rollbackErrors.push(new Error(`PR reopen failed: ${getErrorMessage(rollbackError)}`));
+        }
+      }
+      if (labelApplied) {
+        try {
+          await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+        } catch (rollbackError) {
+          rollbackErrors.push(new Error(`label cleanup failed: ${getErrorMessage(rollbackError)}`));
+        }
+      }
+      if (rollbackErrors.length > 0) {
+        throw new AggregateError(
+          [repairError, ...rollbackErrors],
+          `repeat repair failed for PR #${pr.number}: ${getErrorMessage(repairError)}; rollback also failed: ${rollbackErrors.map(getErrorMessage).join('; ')}`,
+          { cause: repairError },
+        );
+      }
+      throw repairError;
+    }
+
+    log.info(
+      `Escalated repeat empty Copilot draft PR #${pr.number}: closed shell, removed Copilot from linked issue #${linkedIssueNumber}, cloud run ${confirmedDecision.latestRun.id}.`,
+    );
+    return {
+      status: 'repaired',
+      issueNumber: linkedIssueNumber,
+      runId: confirmedDecision.latestRun.id,
+      repeatRepair: true,
+    };
+  }
+
   try {
     const removedLogins = await api.removeIssueAssignees(
       assignmentContext.issueId,
@@ -515,6 +603,7 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
         `Copilot reassignment did not persist on linked issue #${confirmedDecision.linkedIssue.number}`,
       );
     }
+    await api.addIssueLabel(linkedIssueNumber, EMPTY_DRAFT_REPAIR_LABEL);
   } catch (repairError) {
     const rollbackErrors = [];
     try {
@@ -561,11 +650,11 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
   }
 
   log.info(
-    `Repaired empty Copilot draft PR #${pr.number}: closed shell, restarted linked issue #${confirmedDecision.linkedIssue.number}, cloud run ${confirmedDecision.latestRun.id}.`,
+    `Repaired empty Copilot draft PR #${pr.number}: closed shell, restarted linked issue #${linkedIssueNumber}, cloud run ${confirmedDecision.latestRun.id}.`,
   );
   return {
     status: 'repaired',
-    issueNumber: confirmedDecision.linkedIssue.number,
+    issueNumber: linkedIssueNumber,
     runId: confirmedDecision.latestRun.id,
   };
 }
@@ -579,6 +668,28 @@ function parseRepository(fullName) {
 }
 
 function createApi({ token, owner, repo }) {
+  const addIssueLabel = async (issueNumber, labelName) => {
+    try {
+      await request(token, `/repos/${owner}/${repo}/issues/${issueNumber}/labels`, {
+        method: 'POST',
+        body: { labels: [labelName] },
+      });
+    } catch (addError) {
+      if (addError?.status === 422) {
+        await request(token, `/repos/${owner}/${repo}/labels`, {
+          method: 'POST',
+          body: { name: labelName, color: 'e4e669' },
+        }).catch(() => {});
+        await request(token, `/repos/${owner}/${repo}/issues/${issueNumber}/labels`, {
+          method: 'POST',
+          body: { labels: [labelName] },
+        });
+      } else {
+        throw addError;
+      }
+    }
+  };
+
   return {
     listOpenPulls: () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open&per_page=100`),
     getPull: async (pullNumber) =>
@@ -628,27 +739,13 @@ function createApi({ token, owner, repo }) {
         assignableId,
         actorIds,
       }),
-    addPrLabel: async (pullNumber, labelName) => {
-      try {
-        await request(token, `/repos/${owner}/${repo}/issues/${pullNumber}/labels`, {
-          method: 'POST',
-          body: { labels: [labelName] },
-        });
-      } catch (addError) {
-        if (addError?.status === 422) {
-          await request(token, `/repos/${owner}/${repo}/labels`, {
-            method: 'POST',
-            body: { name: labelName, color: 'e4e669' },
-          }).catch(() => {});
-          await request(token, `/repos/${owner}/${repo}/issues/${pullNumber}/labels`, {
-            method: 'POST',
-            body: { labels: [labelName] },
-          });
-        } else {
-          throw addError;
-        }
-      }
-    },
+    addPrLabel: (pullNumber, labelName) => addIssueLabel(pullNumber, labelName),
+    addIssueLabel,
+    addIssueComment: async (issueNumber, body) =>
+      request(token, `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+        method: 'POST',
+        body: { body },
+      }),
     removePrLabel: async (pullNumber, labelName) => {
       try {
         await request(
