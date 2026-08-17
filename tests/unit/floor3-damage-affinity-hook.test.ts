@@ -1,5 +1,7 @@
+import { addComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { spawnEnemy } from '../../src/core/helpers.js';
+import { EffectiveStats } from '../../src/core/components.js';
+import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { applyDamage, type DamageOptions } from '../../src/core/apply-damage.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -72,16 +74,18 @@ describe('applyDamage — Floor 3 Temperament (affinity) multiplier hook', () =>
   it('composes with player-sourced typed-primary scaling rather than replacing it', () => {
     const world = createTestWorld();
     const target = spawnEnemy(world, 0, 0, 1000);
+    const player = spawnPlayer(world, 0, 0);
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.strength[player] = 10;
     const dealt = applyDamage(world, target, 40, 0, 0, {
       origin: 'player',
       affinity: 'physical',
-      scaleWithPrimary: false,
+      scaleWithPrimary: true,
       canCrit: false,
       attackerTemperament: 'ember',
       defenderTemperament: 'bloom',
     });
-    // Player-sourced base path (no bonus stats, no scaling): computePlayerScaledDamage
-    // returns the base amount unchanged, so the affinity x2 is the only multiplier.
-    expect(dealt).toBe(80);
+    // Base 40 * STR-physical (1 + 10 * 0.01 = 1.1) * affinity (ember>bloom = 2) = 88.
+    expect(dealt).toBe(88);
   });
 });
