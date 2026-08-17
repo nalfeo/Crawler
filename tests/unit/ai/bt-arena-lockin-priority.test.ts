@@ -5,7 +5,8 @@
  *   - When the player is locked in a spawner arena, `poll()` selects the
  *     spawner as the movement target instead of the default Progress goal
  *     (Tutorial Goon on a fresh Floor-1 world).
- *   - Retreat (Priority 1) still takes precedence over ArenaLockin.
+ *   - In lock-in scenarios, retreat yields so ArenaLockin can run defensive
+ *     engagement instead of endless cage-kiting.
  *   - When no arena lock-in fires, normal Progress behavior is selected.
  */
 
@@ -200,7 +201,7 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(ai.getDecision().reason).toBe(firstDecision.reason);
   });
 
-  it('retreat (priority 1) still wins over arena lock-in at low HP with a nearby threat', () => {
+  it('low-HP lock-in uses defensive arena engagement instead of retreat loops', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -209,19 +210,21 @@ describe('BT — arena lock-in priority (1.5)', () => {
     world.stores.health.current[player] = 5;
     world.stores.health.max[player] = 100;
 
-    // Retreat needs a nearby Enemy-tagged threat within retreatDangerRadius
-    // (20 ft). Spawn one AND set up the arena lock-in — both conditions hold
-    // simultaneously, and retreat must win.
+    // Spawn a nearby enemy and lock in the arena simultaneously. In lock-in,
+    // retreat must yield so the AI commits to the objective instead of running
+    // in circles inside a sealed space.
     const px = world.stores.position.x[player]!;
     const py = world.stores.position.y[player]!;
     spawnEnemy(world, px + 3, py, 20);
-    makeLockedSpawnerNearPlayer(world, px, py);
+    const spawnerEid = makeLockedSpawnerNearPlayer(world, px, py);
 
     const ai = new BehaviorTreeAI({ seed: 42 });
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
-    expect(decision.state).toBe(AIState.RETREAT);
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(spawnerEid);
+    expect(decision.reason.toLowerCase()).toContain('arena');
   });
 
   it('ignores loot outside the arena while locked in (arena objective wins)', () => {

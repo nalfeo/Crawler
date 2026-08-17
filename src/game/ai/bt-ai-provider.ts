@@ -1290,6 +1290,15 @@ export class BehaviorTreeAI implements AIInputProvider {
           return false;
         }
 
+        // In lock-in encounters (boss room / spawner arena), retreating is a
+        // dead-end: the player cannot exit and endlessly kiting in a cage only
+        // delays the required objective kill. Defer to ArenaLockin so ENGAGE can
+        // run its defensive spacing/add-pressure logic instead of retreat loops.
+        if (detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY) !== null) {
+          this.endRetreat(ctx.world);
+          return false;
+        }
+
         // An enemy ignored for target selection is still physically dangerous.
         // Retreat must sense it if it closes again, otherwise a low-health player
         // resumes progression while the temporarily ignored attacker lands free hits.
@@ -1818,10 +1827,10 @@ export class BehaviorTreeAI implements AIInputProvider {
    * chain-plan targets (e.g. the far-away staircase) while sealed inside a
    * room it cannot leave.
    *
-   * Retreat (Priority 1) still takes precedence: low-HP-under-threat is
-   * life-critical and drops out of arena lock-in only long enough to kite
-   * to a safe tile. Because the arena also traps the threats, the kite is
-   * bounded and returns to lock-in as soon as HP recovers.
+   * Retreat (Priority 1) intentionally yields while lock-in is active: in a
+   * sealed arena there is no meaningful "safe tile" exit route, so lock-in
+   * uses defensive ENGAGE decisions (boss/add pressure handling + spacing)
+   * instead of unbounded retreat loops.
    *
    * Detection lives in `arena-lockin.ts`; the BT node here is purely a
    * priority + blackboard/logging shim so the state machine stays inspect-

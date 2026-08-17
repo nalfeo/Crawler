@@ -49,16 +49,10 @@ function runOneArena(seed: number): {
 } {
   const world = createTestWorld({ seed });
   const playerEid = spawnPlayer(world, 0, 0);
-  // Give the player a generous HP pool: the synthetic test fixture
-  // installs a bogus fence-tile snapshot to satisfy the barrier-verified
-  // detector, but doesn't produce a real physics wall around the arena.
-  // With realistic HP the AI's Retreat priority (which outranks arena
-  // lock-in) fires as soon as adds chip damage below the retreat
-  // threshold, and the AI then walks off past the invisible fence. In a
-  // real game the physical barrier prevents that. We compensate here by
-  // giving the AI enough headroom to focus on the objective — the point
-  // of THIS test is "AI knows it is stuck and prioritizes the objective"
-  // (i.e. the priority slot works), not "AI survives at low HP".
+  // Give the player a generous HP pool because this synthetic fixture
+  // mirrors lock-in detection but does not install full gameplay/map
+  // pacing context. The test's contract is lock-in objective resolution
+  // across seeds, not balance-pressure survivability tuning.
   world.stores.health.current[playerEid] = 1000;
   world.stores.health.max[playerEid] = 1000;
   setActiveWeapon(world, getWeaponDef('sword')!);
