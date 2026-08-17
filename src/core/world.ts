@@ -81,6 +81,8 @@ import {
   PropLight,
   Harvestable,
   FamilyMembership,
+  Companion,
+  PartySlot,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -676,6 +678,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, PropLight, stores.propLight);
   wireStore(ecs, Harvestable, stores.harvestable);
   wireStore(ecs, FamilyMembership, stores.familyMembership);
+  wireStore(ecs, Companion, stores.companion);
+  wireStore(ecs, PartySlot, stores.partySlot);
 
   const world: GameWorld = {
     ecs,

@@ -126,6 +126,12 @@ export {
 export { initializeFloor2Settlement } from './floor2Settlement.js';
 export type { InitializeFloor2SettlementOptions } from './floor2Settlement.js';
 export {
+  companionAISystem,
+  getCompanionAIDecision,
+  resetCompanionAIState,
+} from './systems/companionAISystem.js';
+export type { CompanionAIDecision, CompanionTargetKind } from './systems/companionAISystem.js';
+export {
   familyFeudSystem,
   getFamilyAIDecision,
   resolveHostileFallback,

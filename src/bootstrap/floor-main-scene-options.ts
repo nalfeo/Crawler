@@ -1,5 +1,6 @@
 import { abilitySystem, levelSystem, skillSystem, spendPoints } from '../game/systems/index.js';
 import {
+  companionAISystem,
   enemyAISystem,
   floorObjectiveSystem,
   achievementSystem,
@@ -120,6 +121,7 @@ export function createFloorMainSceneOptions(
       familyRelationshipSystem,
       ...(scenario.beforeWeaponSystems ?? []),
       weaponSystem,
+      companionAISystem,
       ...(scenario.beforeEnemyAISystems ?? []),
       enemyAISystem,
       // statusEffectSystem runs AFTER enemyAISystem (and playerInputSystem, which

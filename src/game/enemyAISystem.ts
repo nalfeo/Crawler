@@ -37,6 +37,7 @@ import {
   getEntityNormalizedWeaponAnchor,
 } from '../shared/generated-assets.js';
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
+import { getCompanionAIDecision } from './systems/companionAISystem.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
@@ -1821,12 +1822,15 @@ export function enemyAISystem(world: GameWorld): void {
     // no override here — familyFeudSystem left decision.bypassPlayerDetection
     // false in that case. The hate/hostile rival-fallback is resolved lower
     // down, once canDetectPlayer has been computed.
+    const companionDecision = getCompanionAIDecision(world, eid);
     const familyDecision = getFamilyAIDecision(world, eid);
+    const targetOverride =
+      companionDecision?.bypassPlayerDetection === true ? companionDecision : familyDecision;
     let virtualPlayerX = playerX;
     let virtualPlayerY = playerY;
-    if (familyDecision !== undefined && familyDecision.bypassPlayerDetection) {
-      virtualPlayerX = familyDecision.x;
-      virtualPlayerY = familyDecision.y;
+    if (targetOverride !== undefined && targetOverride.bypassPlayerDetection) {
+      virtualPlayerX = targetOverride.x;
+      virtualPlayerY = targetOverride.y;
     }
     let playerDx = virtualPlayerX - enemyX;
     let playerDy = virtualPlayerY - enemyY;
@@ -1843,7 +1847,7 @@ export function enemyAISystem(world: GameWorld): void {
     // For a mob with a family-driven virtual target we measure aggro against
     // the virtual target (distanceToPlayer already reflects that), and set
     // `familyBypass` so player-side FOV/room checks don't cancel engagement.
-    const familyBypass = familyDecision !== undefined && familyDecision.bypassPlayerDetection;
+    const familyBypass = targetOverride !== undefined && targetOverride.bypassPlayerDetection;
     const inAggroRange =
       familyBypass || permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
     // Cave interiors can share open geometry without sharing a semantic room ID.
