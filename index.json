@@ -1,5 +1,39 @@
 [
   {
+    "commit": "a6e32b6f35f4d72c538e8176654138c0be7225d9",
+    "commitDate": "2026-08-17T22:07:57Z",
+    "commitSubject": "Fix sprite editor switching and phantom saves (#3046)",
+    "capturedAt": "2026-08-17T23:30:03.937Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32076270103",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/a6e32b6f35f4d72c538e8176654138c0be7225d9.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/a6e32b6f35f4d72c538e8176654138c0be7225d9.fun-report.json"
+    }
+  },
+  {
     "commit": "277ac018121e274d3bab4491925576063aa8765e",
     "commitDate": "2026-08-17T20:03:52Z",
     "commitSubject": "Add repeat empty-draft triage budget (#3025)",
