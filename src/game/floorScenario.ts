@@ -58,7 +58,10 @@ import {
   getFloor1StarterWeaponPool,
   isFloor1ExperimentalStarterOptionsEnabled,
 } from '../shared/floor1-starter-weapons.js';
-import { isFloorSpawnerArenaExperimentEnabled } from '../shared/spawner-feature-flags.js';
+import {
+  getCurrentLocationSearch,
+  isFloorSpawnerArenaExperimentEnabled,
+} from '../shared/spawner-feature-flags.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
@@ -139,6 +142,11 @@ import { computeMobLevelScale } from '../shared/mob-scaling.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
 import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
 import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
+import {
+  FLOOR_SPAWNER_MAX_COUNT,
+  resolvePassableRoomCenter,
+  toFloorTrashSpawnerArchetypeId,
+} from './spawners/floor-spawner-utils.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -157,9 +165,6 @@ const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
-const FLOOR_SPAWNER_MAX_COUNT = 4;
-const DEFAULT_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID = 'rats-nest';
-const SLIME_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID = 'slime-pool';
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
@@ -395,62 +400,11 @@ export function getBossRewardSpellOptions(world: GameWorld): Array<{
   });
 }
 
-function centerOfRoom(room: { bounds: { x: number; y: number; width: number; height: number } }): {
-  x: number;
-  y: number;
-} {
+function centerOfRoom(room: { bounds: RoomBounds }): { x: number; y: number } {
   return {
     x: Math.floor(room.bounds.x + room.bounds.width / 2),
     y: Math.floor(room.bounds.y + room.bounds.height / 2),
   };
-}
-
-/**
- * Resolve the world position for a room's logical centre.
- *
- * Returns the centre of the room's bounding box if that tile is passable.
- * When the center has been walled off (e.g. by an ellipse or L-shape
- * post-processing pass), spirals outward within the room's interior until a
- * passable tile is found, then returns its world position. This guarantees
- * that NPCs and items are never spawned inside walls.
- */
-function resolvePassableRoomCenter(
-  floorMap: NonNullable<GameWorld['floorMap']>,
-  room: { bounds: RoomBounds },
-): { x: number; y: number } {
-  const center = centerOfRoom(room);
-  if (floorMap.tileMap.isPassable(center.x, center.y)) {
-    return floorMap.tileToWorld(center.x, center.y);
-  }
-
-  const { x: bx, y: by, width: bw, height: bh } = room.bounds;
-  const ix = bx + 1;
-  const iy = by + 1;
-  const maxX = bx + bw - 2;
-  const maxY = by + bh - 2;
-  const maxRadius = Math.max(bw, bh);
-
-  for (let r = 1; r <= maxRadius; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
-        const tx = center.x + dx;
-        const ty = center.y + dy;
-        if (
-          tx >= ix &&
-          tx <= maxX &&
-          ty >= iy &&
-          ty <= maxY &&
-          floorMap.tileMap.isPassable(tx, ty)
-        ) {
-          return floorMap.tileToWorld(tx, ty);
-        }
-      }
-    }
-  }
-
-  // Absolute fallback: return the bounding-box center point even if it's a wall.
-  return floorMap.tileToWorld(center.x, center.y);
 }
 
 function tileKey(x: number, y: number): string {
@@ -1546,13 +1500,6 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-function toFloorTrashSpawnerArchetypeId(archetypeId: string | null | undefined): string {
-  if (archetypeId?.includes('slime')) {
-    return SLIME_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID;
-  }
-  return DEFAULT_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID;
-}
-
 function spawnFloor1StaticSpawners(world: GameWorld, featureEnabled: boolean): void {
   if (!featureEnabled) {
     return;
@@ -2623,9 +2570,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   );
   spawnFloor1StaticSpawners(
     world,
-    isFloorSpawnerArenaExperimentEnabled(
-      typeof window !== 'undefined' ? window.location.search : undefined,
-    ),
+    isFloorSpawnerArenaExperimentEnabled(getCurrentLocationSearch()),
   );
 
   // Give the player base stats so purchased equipment can be equipped.

@@ -21,5 +21,9 @@ export function isFloorSpawnerArenaExperimentEnabled(
     return false;
   }
   const raw = params.get(FLOOR_SPAWNER_ARENA_QUERY_PARAM)?.trim().toLowerCase();
-  return raw !== undefined && raw !== null && TRUTHY_QUERY_VALUES.has(raw);
+  return raw !== undefined && TRUTHY_QUERY_VALUES.has(raw);
+}
+
+export function getCurrentLocationSearch(): string | undefined {
+  return typeof window !== 'undefined' ? window.location.search : undefined;
 }
