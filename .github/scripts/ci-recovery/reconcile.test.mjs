@@ -3750,6 +3750,57 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('a failed job-level continue-on-error check (e.g. Advisory coverage) never becomes a ci-failure blocker (PR #3032)', async (t) => {
+  // "Advisory coverage" and "Headless Multi-Floor Legs (report-only)" run with
+  // `continue-on-error: true` at the job level in .github/workflows/ci.yml, and
+  // `merge-gate`'s `needs` list deliberately omits both, so their failure can never
+  // block or unblock merge. Recovery previously flagged a red Advisory coverage
+  // check-run as a `ci-failure` blocker and dispatched Copilot to "fix" it, but a
+  // transient infra failure (e.g. a 429 downloading an action) in an advisory job
+  // gives the agent nothing to fix that changes the PR's mergeable state -- the
+  // recovery loop spun with no progress across repeated attempts.
+  const advisoryFailedCheck = {
+    id: 1,
+    name: 'Advisory coverage',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [advisoryFailedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(
+    stdout,
+    /dry-run would-assign copilot/,
+    'a solely-advisory-job failure must never trigger a recovery dispatch',
+  );
+  assert.doesNotMatch(
+    stdout,
+    /ci-failure/,
+    'a solely-advisory-job failure must never be classified as a ci-failure blocker',
+  );
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
 test('dry-run reconcile emits would-update-branch for an admissible clean-BEHIND PR', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
