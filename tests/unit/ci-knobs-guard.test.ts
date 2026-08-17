@@ -202,6 +202,8 @@ const STRUCTURAL_ALLOWLIST = new Set([
   // ci-recovery/duplicate-detect.mjs — auto-close grace window (incident PR #2948)
   'EMPTY_DIFF_MIN_AGE_MS', // min PR age before an empty diff is duplicate proof
   'EMPTY_DIFF_MIN_QUIET_MS', // min quiet period since last update before an empty diff counts
+  // ci-recovery/already-landed.mjs
+  'MAX_COMMENT_FILE_ROWS', // bounded evidence sample for GitHub comment readability
   // pr-ready-reviewer-guard.mjs
   'COPILOT_CLOUD_AGENT_WORKFLOW_ID', // fixed Copilot cloud agent workflow ID
   'EMPTY_DRAFT_REPAIR_GRACE_MS', // grace period for empty-draft repair

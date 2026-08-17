@@ -473,7 +473,11 @@ test('bounds trusted merge-train promotion provenance in incident comments', asy
   );
   assert.ok(createCall);
   assert.match(createCall.body.body, /promotion summary truncated/);
-  assert.ok(createCall.body.body.length < 4_500);
+  assert.ok(createCall.body.body.includes('x'.repeat(4_000)));
+  assert.ok(
+    !createCall.body.body.includes('x'.repeat(4_001)),
+    'the provenance summary must retain no more than the configured budget',
+  );
 });
 
 for (const [label, overrides] of [

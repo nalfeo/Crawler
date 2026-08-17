@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "ci-comment-clarity",
+  "task_title": "Clarify generated CI comments",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Addressed output-mode refresh, stable bounded evidence, concise recovery receipt, and resilient bounded incident context; retained retroactive-marker deduplication solely as idempotency, not a claim of pre-PR compliance."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
