@@ -6,6 +6,9 @@ const TOOLTIP_BORDER = 0x444466;
 const TOOLTIP_WIDTH = 200;
 const TOOLTIP_BASE_HEIGHT = 110;
 const TOOLTIP_STAT_HEIGHT_BONUS = 18;
+const TOOLTIP_META_OFFSET = 16;
+const TOOLTIP_FOOTER_OFFSET_FROM_META = 14;
+const TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE = 18;
 
 export interface ItemTooltipRenderParams {
   scene: Phaser.Scene;
@@ -57,6 +60,12 @@ export function renderItemTooltip(
     statLine !== undefined && statLine.length > 0
       ? TOOLTIP_BASE_HEIGHT + TOOLTIP_STAT_HEIGHT_BONUS
       : TOOLTIP_BASE_HEIGHT;
+  const metaY = tooltipHeight - TOOLTIP_META_OFFSET;
+  const footerY = footerHint ? metaY - TOOLTIP_FOOTER_OFFSET_FROM_META : undefined;
+  const statY =
+    footerY !== undefined
+      ? footerY - TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE
+      : metaY - TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE;
   const snap = (value: number): number => Math.round(value);
   const panelInset = 8;
   const rightCandidateX = anchorX + anchorSize / 2 + 8;
@@ -115,7 +124,7 @@ export function renderItemTooltip(
 
   const metaText = crispText(
     tx + 8,
-    ty + tooltipHeight - 16,
+    ty + metaY,
     `${def.rarity} · x${quantity} · [${def.tags.join(', ')}]`,
     {
       fontFamily,
@@ -131,7 +140,7 @@ export function renderItemTooltip(
   const objects: Phaser.GameObjects.GameObject[] = [tooltipBg, nameText, descText, metaText];
 
   if (statLine !== undefined && statLine.length > 0) {
-    const statText = crispText(tx + 8, ty + tooltipHeight - (footerHint ? 48 : 34), statLine, {
+    const statText = crispText(tx + 8, ty + statY, statLine, {
       fontFamily,
       fontSize: '11px',
       color: '#d9e2ef',
@@ -142,7 +151,7 @@ export function renderItemTooltip(
 
   // Optional gold action hint (e.g. equip affordance), placed just above meta.
   if (footerHint !== undefined && footerHint.length > 0) {
-    const hintText = crispText(tx + 8, ty + tooltipHeight - 30, footerHint, {
+    const hintText = crispText(tx + 8, ty + footerY!, footerHint, {
       fontFamily,
       fontSize: '11px',
       color: '#e9c46a',
