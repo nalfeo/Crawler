@@ -1,0 +1,492 @@
+diff --git a/.github/scripts/ci-conflict-coordinator/reconcile.mjs b/.github/scripts/ci-conflict-coordinator/reconcile.mjs
+index 4b92772..5512585 100644
+--- a/.github/scripts/ci-conflict-coordinator/reconcile.mjs
++++ b/.github/scripts/ci-conflict-coordinator/reconcile.mjs
+@@ -291,7 +291,7 @@ function recoveryContext(pull, comments) {
+   };
+ }
+ 
+-async function updateCoordinatorComment(pull, comments, state) {
++async function updateCoordinatorComment(pull, comments, state, enforceCoordination) {
+   const managed = singleManagedComment(
+     comments,
+     COORDINATOR_MARKER,
+@@ -299,8 +299,14 @@ async function updateCoordinatorComment(pull, comments, state) {
+     pull.number,
+     { requireCoordinatorApp: true },
+   );
+-  if (managed && isCoordinatorStateSemanticallyEqual(managed.state, state)) return;
+-  const body = renderCoordinatorComment(state);
++  const body = renderCoordinatorComment(state, { enforcementEnabled: enforceCoordination });
++  if (
++    managed &&
++    isCoordinatorStateSemanticallyEqual(managed.state, state) &&
++    managed.comment.body === body
++  ) {
++    return;
++  }
+   if (managed) {
+     await request(token, `/repos/${owner}/${repo}/issues/comments/${managed.comment.id}`, {
+       method: 'PATCH',
+@@ -1052,7 +1058,12 @@ for (const group of groups) {
+       lastDispatchAt,
+       updatedAt: now.toISOString(),
+     });
+-    await updateCoordinatorComment(pull, groupComments.get(pull.number), state);
++    await updateCoordinatorComment(
++      pull,
++      groupComments.get(pull.number),
++      state,
++      enforceCoordination,
++    );
+   }
+ 
+   for (const duplicate of selection.duplicates) {
+diff --git a/.github/scripts/ci-conflict-coordinator/state.mjs b/.github/scripts/ci-conflict-coordinator/state.mjs
+index ddd59c9..bbca6e9 100644
+--- a/.github/scripts/ci-conflict-coordinator/state.mjs
++++ b/.github/scripts/ci-conflict-coordinator/state.mjs
+@@ -455,7 +455,7 @@ export function validateCoordinatorState(state) {
+   return state;
+ }
+ 
+-export function renderCoordinatorComment(state) {
++export function renderCoordinatorComment(state, { enforcementEnabled = true } = {}) {
+   validateCoordinatorState(state);
+   const encoded = Buffer.from(JSON.stringify(state), 'utf8').toString('base64url');
+   const proofByNumber = new Map(state.proofs.map((proof) => [proof.number, proof]));
+@@ -484,17 +484,27 @@ export function renderCoordinatorComment(state) {
+           ...(hiddenCount > 0 ? [`- _…and ${hiddenCount} more_`] : []),
+         ]
+       : ['- No current overlap; continuing a previously observed coordination group.'];
++  const advisoryLines = enforcementEnabled
++    ? [
++        `- Canonical leader: #${state.leaderNumber}`,
++        `- Active merge-train slot: ${state.activeNumber ? `#${state.activeNumber}` : 'none (escalated)'}`,
++        `- Cluster: \`${state.groupId}\``,
++        '',
++        '### Explicit merge order',
++        ...orderLines,
++      ]
++    : [
++        '- Advisory CI-overlap analysis; enforcement disabled.',
++        `- Cluster: \`${state.groupId}\``,
++        '',
++        '_This report does not assign a leader, merge-train slot, or merge order._',
++      ];
+   return [
+     COORDINATOR_MARKER,
+     `${COORDINATOR_DATA_PREFIX}${encoded} -->`,
+     '## CI conflict coordination',
+     '',
+-    `- Canonical leader: #${state.leaderNumber}`,
+-    `- Active merge-train slot: ${state.activeNumber ? `#${state.activeNumber}` : 'none (escalated)'}`,
+-    `- Cluster: \`${state.groupId}\``,
+-    '',
+-    '### Explicit merge order',
+-    ...orderLines,
++    ...advisoryLines,
+     '',
+     '### Shared CI scope',
+     ...overlapLines,
+diff --git a/.github/scripts/ci-conflict-coordinator/state.test.mjs b/.github/scripts/ci-conflict-coordinator/state.test.mjs
+index 1ec033b..afd675b 100644
+--- a/.github/scripts/ci-conflict-coordinator/state.test.mjs
++++ b/.github/scripts/ci-conflict-coordinator/state.test.mjs
+@@ -265,6 +265,27 @@ test('coordinator state comment is parseable and semantic updates are idempotent
+   assert.equal(isCoordinatorStateSemanticallyEqual(left, right), true);
+ });
+ 
++test('renderCoordinatorComment labels unenforced coordination as advisory without ordering claims', () => {
++  const state = makeCoordinatorState({
++    prNumber: 1,
++    groupId: 'ci-conflict-advisory',
++    originalMembers: [1, 2, 3],
++    leaderNumber: 1,
++    activeNumber: 1,
++    order: [makePull(1, ['.github/workflows/ci.yml'])],
++    proofs: [],
++    overlapFiles: ['.github/workflows/ci.yml'],
++    updatedAt: '2026-07-20T00:00:00Z',
++  });
++
++  const body = renderCoordinatorComment(state, { enforcementEnabled: false });
++
++  assert.match(body, /Advisory CI-overlap analysis; enforcement disabled/);
++  assert.doesNotMatch(body, /Canonical leader/);
++  assert.doesNotMatch(body, /Active merge-train slot/);
++  assert.doesNotMatch(body, /Explicit merge order/);
++});
++
+ test('healthy shepherd lease suppresses ordered recovery dispatch', () => {
+   const active = makePull(7, ['.github/workflows/ci.yml']);
+   const key = dispatchKey({
+diff --git a/.github/scripts/ci-recovery/already-landed.mjs b/.github/scripts/ci-recovery/already-landed.mjs
+index 72b540d..279867a 100644
+--- a/.github/scripts/ci-recovery/already-landed.mjs
++++ b/.github/scripts/ci-recovery/already-landed.mjs
+@@ -32,6 +32,7 @@
+ import { ALREADY_LANDED_COMMENT_MARKER } from './markers.mjs';
+ 
+ export { ALREADY_LANDED_COMMENT_MARKER };
++export const MAX_COMMENT_FILE_ROWS = 20;
+ 
+ // ---------------------------------------------------------------------------
+ // File classification constants
+@@ -311,13 +312,23 @@ export function renderAlreadyLandedComment(prNumber, analysis, mainSha) {
+   const heading = headings[verdict] ?? `## PR #${prNumber} — already-landed analysis`;
+   const summaryLines = summaries[verdict] ?? [];
+ 
+-  // Build the evidence table.
+-  const tableRows = files.map((f) => {
++  // Keep the proof readable and safely below GitHub's comment limit. Sort the
++  // sample so identical analysis input always yields identical comment text.
++  const sortedFiles = [...files].sort(
++    (left, right) =>
++      String(left.filename).localeCompare(String(right.filename)) ||
++      String(left.status).localeCompare(String(right.status)),
++  );
++  const hiddenCount = Math.max(0, sortedFiles.length - MAX_COMMENT_FILE_ROWS);
++  const tableRows = sortedFiles.slice(0, MAX_COMMENT_FILE_ROWS).map((f) => {
+     const icon = fileStatusIcon(f.fileStatus);
+     const label = fileStatusLabel(f.fileStatus);
+     const name = f.filename.length > 80 ? `…${f.filename.slice(-77)}` : f.filename;
+     return `| ${icon} | \`${name}\` | ${f.status} | ${label} |`;
+   });
++  if (hiddenCount > 0) {
++    tableRows.push(`| | _…and ${hiddenCount} more_ | | |`);
++  }
+ 
+   return [
+     ALREADY_LANDED_COMMENT_MARKER,
+diff --git a/.github/scripts/ci-recovery/already-landed.test.mjs b/.github/scripts/ci-recovery/already-landed.test.mjs
+index 92ad945..bc1af78 100644
+--- a/.github/scripts/ci-recovery/already-landed.test.mjs
++++ b/.github/scripts/ci-recovery/already-landed.test.mjs
+@@ -443,6 +443,24 @@ test('renderAlreadyLandedComment: long filenames are truncated to 80 chars with
+   assert.ok(comment.includes('…'), 'long filename should use ellipsis');
+ });
+ 
++test('renderAlreadyLandedComment bounds and stably sorts evidence rows', () => {
++  const files = Array.from({ length: 25 }, (_, index) => ({
++    filename: `z-${String(index).padStart(2, '0')}.txt`,
++    status: 'modified',
++    fileStatus: FILE_STATUS.LANDED,
++  })).reverse();
++  const comment = renderAlreadyLandedComment(1, analyzeFiles(files), 'sha');
++
++  assert.match(comment, /\| \| _…and 5 more_ \| \| \|/);
++  assert.equal(
++    comment.split('\n').filter((line) => line.startsWith('| ✅ |')).length,
++    20,
++    'only the bounded sample should render',
++  );
++  assert.ok(comment.indexOf('z-00.txt') < comment.indexOf('z-19.txt'));
++  assert.ok(!comment.includes('z-20.txt'));
++});
++
+ // ---------------------------------------------------------------------------
+ // classifyFile round-trips through analyzeFiles
+ // ---------------------------------------------------------------------------
+diff --git a/.github/scripts/ci-recovery/incident.mjs b/.github/scripts/ci-recovery/incident.mjs
+index 3d3390a..536b935 100644
+--- a/.github/scripts/ci-recovery/incident.mjs
++++ b/.github/scripts/ci-recovery/incident.mjs
+@@ -25,6 +25,7 @@ const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
+ // parseEnabledFlag) when unset, so an unconfigured or rolled-back repository
+ // never misclassifies a genuine full-CI run as a merge-train fast path.
+ const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
++const MAX_PROMOTION_SUMMARY_LENGTH = 4_000;
+ 
+ if (!token || !owner || !repo || !eventPath) {
+   throw new Error('Missing CRAWLER_CI_PAT, repository, or event payload');
+@@ -184,6 +185,38 @@ if (needsAdminIntervention) {
+   }
+ }
+ 
++async function firstFailedJob() {
++  if (!run.id) return null;
++  const jobs = [];
++  let page = 1;
++  try {
++    while (true) {
++      const response = await request(
++        token,
++        `/repos/${owner}/${repo}/actions/runs/${encodeURIComponent(run.id)}/jobs?per_page=100&page=${page}`,
++        { headers: { Accept: 'application/vnd.github+json' } },
++      );
++      const current = response.data.jobs || [];
++      jobs.push(...current);
++      if (current.length < 100) break;
++      page += 1;
++    }
++  } catch (error) {
++    process.stdout.write(`incident-job-lookup-failed run=${run.id} error=${error.message}\n`);
++    return null;
++  }
++  return jobs.find((job) =>
++    ['failure', 'timed_out', 'startup_failure', 'action_required'].includes(job.conclusion),
++  );
++}
++
++function boundedPromotionSummary(summary) {
++  const text = String(summary || '');
++  if (text.length <= MAX_PROMOTION_SUMMARY_LENGTH) return text;
++  return `${text.slice(0, MAX_PROMOTION_SUMMARY_LENGTH)}\n\n_…promotion summary truncated._`;
++}
++
++const failedJob = await firstFailedJob();
+ const body = [
+   CI_INCIDENT_MARKER,
+   `# ${run.name} needs recovery`,
+@@ -192,6 +225,9 @@ const body = [
+   `- Branch: \`${run.head_branch || 'unknown'}\``,
+   `- Head SHA: \`${run.head_sha || 'unknown'}\``,
+   `- Run: ${run.html_url}`,
++  ...(failedJob?.html_url
++    ? [`- Failed job: [${failedJob.name || 'unnamed job'}](${failedJob.html_url})`]
++    : []),
+   `- Triggered by: @${run.actor?.login || 'unknown'}`,
+   ...(() => {
+     // Require the same completed+successful trust gate as
+@@ -204,7 +240,12 @@ const body = [
+       .filter((check) => isTrustedTrainPromotionCheck(check, trustedAppId))
+       .sort((left, right) => right.id - left.id)[0];
+     return promotion?.output?.summary
+-      ? ['', '## Merge-train promotion provenance', '', promotion.output.summary]
++      ? [
++          '',
++          '## Merge-train promotion provenance',
++          '',
++          boundedPromotionSummary(promotion.output.summary),
++        ]
+       : [];
+   })(),
+   '',
+diff --git a/.github/scripts/ci-recovery/incident.test.mjs b/.github/scripts/ci-recovery/incident.test.mjs
+index 5862c01..5211f87 100644
+--- a/.github/scripts/ci-recovery/incident.test.mjs
++++ b/.github/scripts/ci-recovery/incident.test.mjs
+@@ -369,6 +369,17 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
+     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+       body: { check_runs: [trustedTrainCheck()] },
+     }),
++    [`GET /repos/${OWNER}/${REPO}/actions/runs/555/jobs`]: () => ({
++      body: {
++        jobs: [
++          {
++            name: 'check-format-and-labs',
++            conclusion: 'failure',
++            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/555/job/1`,
++          },
++        ],
++      },
++    }),
+     [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+     [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+       body: { number: 202, node_id: 'ISSUE_202' },
+@@ -413,6 +424,60 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
+     /## Merge-train promotion provenance/,
+     'a genuine completed+successful trusted check must still be surfaced as provenance',
+   );
++  assert.match(createCall.body.body, /Failed job: \[check-format-and-labs\]\(/);
++});
++
++test('bounds trusted merge-train promotion provenance in incident comments', async (t) => {
++  const { server, port, mutatingCalls } = await startServer({
++    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
++    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
++      body: { check_runs: [trustedTrainCheck({ output: { summary: 'x'.repeat(5_000) } })] },
++    }),
++    [`GET /repos/${OWNER}/${REPO}/actions/runs/555/jobs`]: () => ({ body: { jobs: [] } }),
++    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
++    [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
++      body: { number: 204, node_id: 'ISSUE_204' },
++    }),
++    [`POST /graphql`]: (_url, parsed) => {
++      const doc = String(parsed?.query ?? '');
++      if (doc.includes('suggestedActors')) {
++        return {
++          body: {
++            data: {
++              repository: {
++                suggestedActors: {
++                  nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
++                },
++              },
++            },
++          },
++        };
++      }
++      return {
++        body: {
++          data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
++        },
++      };
++    },
++  });
++  t.after(() => server.close());
++
++  const { code, stderr } = await runScript(
++    port,
++    pushRun({ conclusion: 'failure', status: 'completed' }),
++  );
++
++  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
++  const createCall = mutatingCalls.find(
++    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
++  );
++  assert.ok(createCall);
++  assert.match(createCall.body.body, /promotion summary truncated/);
++  assert.ok(createCall.body.body.includes('x'.repeat(4_000)));
++  assert.ok(
++    !createCall.body.body.includes('x'.repeat(4_001)),
++    'the provenance summary must retain no more than the configured budget',
++  );
+ });
+ 
+ for (const [label, overrides] of [
+diff --git a/.github/scripts/ci-recovery/issue-intake-lib.mjs b/.github/scripts/ci-recovery/issue-intake-lib.mjs
+index 0b50f93..349d18d 100644
+--- a/.github/scripts/ci-recovery/issue-intake-lib.mjs
++++ b/.github/scripts/ci-recovery/issue-intake-lib.mjs
+@@ -408,7 +408,7 @@ export function hasCopilotPlanComment(issueComments) {
+ 
+ /**
+  * Builds the body of a retroactive plan comment to be posted on a source
+- * issue whose linked PR was opened without the required pre-PR plan comment.
++ * issue whose linked PR has no qualifying trusted issue-side plan evidence.
+  *
+  * Embeds `ISSUE_RECOVERY_PLAN_MARKER` so future reconciler runs skip the post
+  * (idempotency) and includes the concrete design / decisions / checklist
+@@ -438,7 +438,7 @@ export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl, prBody
+     '',
+     '**Retroactive implementation plan** _(filed by CI recovery pipeline)_',
+     '',
+-    `The agent that opened PR #${prNumber} did not post an implementation plan before opening the PR. The CI recovery pipeline is posting this retroactive plan to satisfy the pre-PR planning requirement so the review thread can be resolved.`,
++    `The CI recovery reconciler found no qualifying trusted issue-side plan evidence for PR #${prNumber}. This retroactive plan documents the implementation context for review; it does not retroactively satisfy a pre-PR planning requirement.`,
+     '',
+     `**PR:** ${prHtmlUrl || `#${prNumber}`}`,
+     ...(safeTitle ? [`**Title:** ${safeTitle}`] : []),
+diff --git a/.github/scripts/ci-recovery/issue-intake.test.mjs b/.github/scripts/ci-recovery/issue-intake.test.mjs
+index 5adecb3..ae1b7ad 100644
+--- a/.github/scripts/ci-recovery/issue-intake.test.mjs
++++ b/.github/scripts/ci-recovery/issue-intake.test.mjs
+@@ -738,6 +738,8 @@ test('buildRetroactivePlanComment embeds required plan content and PR reference'
+   assert.match(body, /\*\*Key decisions and alternatives\*\*/);
+   assert.match(body, /\*\*Checklist\*\*/);
+   assert.match(body, /- \[x\] Add trusted plan detection helpers\./);
++  assert.match(body, /found no qualifying trusted issue-side plan evidence/i);
++  assert.match(body, /does not retroactively satisfy a pre-PR planning requirement/i);
+ });
+ 
+ test('buildRetroactivePlanComment stays below the GitHub comment limit for oversized PR bodies', () => {
+diff --git a/.github/scripts/merge-train/state.mjs b/.github/scripts/merge-train/state.mjs
+index 27d8cdd..2ed19d4 100644
+--- a/.github/scripts/merge-train/state.mjs
++++ b/.github/scripts/merge-train/state.mjs
+@@ -484,15 +484,9 @@ export function renderLandedComment({ landedSha, candidateSha, recovered = false
+       '## Landed on `main` via the merge train ✅ (recovered)',
+       '',
+       `- Landed commit: \`${compact(landedSha)}\``,
++      '- Recovery status: durable proof revalidated',
+       '',
+-      'GitHub recorded this PR as **merged** with the landed commit above. This',
+-      "record was completed by the train's crash recovery after an interrupted",
+-      'landing. Recovery confirmed this PR carries the durable proof-complete',
+-      'marker, which the train writes only after the full per-commit tree proof',
+-      'passed at merge time, and corroborated the GitHub merged-state, the',
+-      '`Merge-Train-PR` provenance trailer, a single (linear) parent, and no',
+-      'promotion-postcondition failure. Recovery does not (and cannot) re-run the',
+-      'tree proof; the marker attests it ran and passed at merge time.',
++      'Crash recovery revalidated the durable proof-complete record for this merged commit.',
+       '',
+       '_Managed by the trusted repository merge-train workflow._',
+     ].join('\n');
+diff --git a/.github/scripts/merge-train/state.test.mjs b/.github/scripts/merge-train/state.test.mjs
+index d29fcb0..b9f195b 100644
+--- a/.github/scripts/merge-train/state.test.mjs
++++ b/.github/scripts/merge-train/state.test.mjs
+@@ -567,10 +567,9 @@ test('renderLandedComment recovered variant omits the candidate/tree-proof claim
+   // Must NOT claim a validated candidate or a tree proof it did not re-run.
+   assert.doesNotMatch(body, /Validated candidate/);
+   assert.doesNotMatch(body, /tree was proven/);
+-  // Must be truthful: cite the durable proof-complete marker as the basis for
+-  // the merge-time proof claim, and state recovery does not re-run the proof.
+-  assert.match(body, /proof-complete\s+marker/i);
+-  assert.match(body, /does not \(and cannot\) re-run/i);
++  assert.match(body, /Recovery status: durable proof revalidated/);
++  assert.match(body, /revalidated the durable proof-complete record/i);
++  assert.doesNotMatch(body, /single \(linear\) parent/i);
+ });
+ 
+ test('planPrefixPromotion validates only the maximal prefix first', () => {
+diff --git a/docs/agent-os/policies/ci-config-knobs.md b/docs/agent-os/policies/ci-config-knobs.md
+index 03ba2d5..c8e566f 100644
+--- a/docs/agent-os/policies/ci-config-knobs.md
++++ b/docs/agent-os/policies/ci-config-knobs.md
+@@ -132,6 +132,7 @@ is deliberately fixed" from "this value was missed."
+ | `IDLE_CAP_MAX`                                    | `router.mjs`                            | `20`               | Enforced runner-safety ceiling for `CI_GLOBAL_IDLE_TRAIN_DISPATCH_CAP`. Values above are silently clamped.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+ | `MIN_CLUSTER_SIZE`                                | `ci-conflict-coordinator/state.mjs`     | `3`                | Minimum PR count for a conflict-coordination cluster.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+ | `MAX_OVERLAP_FILES`                               | `ci-conflict-coordinator/state.mjs`     | `20`               | Max overlap files stored/shown per cluster (GitHub comment size cap).                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
++| `MAX_COMMENT_FILE_ROWS`                           | `ci-recovery/already-landed.mjs`        | `20`               | Max already-landed evidence rows shown per PR comment (GitHub comment size cap).                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+ | `DISPATCH_LEASE_MS`                               | `ci-conflict-coordinator/state.mjs`     | `1800000` (30 min) | How long a coordinator dispatch lease is considered live.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+ | `REBASE_FAILURE_MAX_ATTEMPTS`                     | `ci-recovery/reconcile.mjs`             | `3`                | Max rebase-failure retries.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+ | `REBASE_FAILURE_BASE_BACKOFF_MS`                  | `ci-recovery/reconcile.mjs`             | `60000`            | Rebase-failure back-off base.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+diff --git a/docs/knowledge/review-ledgers/2026-08-17-ci-comment-clarity.review-ledger.json b/docs/knowledge/review-ledgers/2026-08-17-ci-comment-clarity.review-ledger.json
+new file mode 100644
+index 0000000..97cc85b
+--- /dev/null
++++ b/docs/knowledge/review-ledgers/2026-08-17-ci-comment-clarity.review-ledger.json
+@@ -0,0 +1,38 @@
++{
++  "schema_version": "review-ledger/v2",
++  "date": "2026-08-17",
++  "session_slug": "ci-comment-clarity",
++  "task_title": "Clarify generated CI comments",
++  "estimated_apples": 3,
++  "stages": {
++    "plan_review": {
++      "completed": true,
++      "reviewer_model": "gpt-5.6-terra",
++      "concerns_count": 5,
++      "resolved_count": 5,
++      "plan_divergence": "minor",
++      "notes": "Addressed output-mode refresh, stable bounded evidence, concise recovery receipt, and resilient bounded incident context; retained retroactive-marker deduplication solely as idempotency, not a claim of pre-PR compliance."
++    },
++    "code_review": {
++      "clean": true,
++      "rounds": [
++        {
++          "round": 1,
++          "models": ["claude-sonnet-4.6"],
++          "concerns_count": 0,
++          "resolved_count": 0,
++          "clean": true
++        }
++      ]
++    },
++    "independent_grade": {
++      "completed": false,
++      "grader_model": "",
++      "implementer_model": "",
++      "head_sha": "",
++      "criteria": {},
++      "verdict": "",
++      "findings_count": 0
++    }
++  }
++}
+diff --git a/tests/unit/ci-knobs-guard.test.ts b/tests/unit/ci-knobs-guard.test.ts
+index 983c5dd..0d4347f 100644
+--- a/tests/unit/ci-knobs-guard.test.ts
++++ b/tests/unit/ci-knobs-guard.test.ts
+@@ -202,6 +202,8 @@ const STRUCTURAL_ALLOWLIST = new Set([
+   // ci-recovery/duplicate-detect.mjs — auto-close grace window (incident PR #2948)
+   'EMPTY_DIFF_MIN_AGE_MS', // min PR age before an empty diff is duplicate proof
+   'EMPTY_DIFF_MIN_QUIET_MS', // min quiet period since last update before an empty diff counts
++  // ci-recovery/already-landed.mjs
++  'MAX_COMMENT_FILE_ROWS', // bounded evidence sample for GitHub comment readability
+   // pr-ready-reviewer-guard.mjs
+   'COPILOT_CLOUD_AGENT_WORKFLOW_ID', // fixed Copilot cloud agent workflow ID
+   'EMPTY_DRAFT_REPAIR_GRACE_MS', // grace period for empty-draft repair
