@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "nightly-perf-collision-clear",
+  "task_title": "Nightly perf collision clear optimization",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Plan review approved with changes. Concern 1: add order-sensitive determinism guards for melee broadphase, beam broadphase, and headless collision-pair parity; adopted into verification. Concern 2: distinguish narrow local fingerprint from final covered fingerprint and prefer gitignored files/ paths; adopted by keeping /tmp only for temporary pre-edit artifact, planning a full covered fingerprint check for the accepted change, and noting broad sweeps stay on GitHub/CI."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
