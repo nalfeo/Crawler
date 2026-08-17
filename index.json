@@ -1,5 +1,39 @@
 [
   {
+    "commit": "a6ada78020e0c202f9f944ffe2603fe35a9b9268",
+    "commitDate": "2026-08-17T04:38:09Z",
+    "commitSubject": "Add repository-tailored `code-review` skill for context-aware PR reviews (#3016)",
+    "capturedAt": "2026-08-17T05:38:29.712Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/31995203026",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/a6ada78020e0c202f9f944ffe2603fe35a9b9268.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.16666666666666666,
+        "totalWins": 25,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.2,
+        "totalWins": 30,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.71,
+      "gatePass": false,
+      "path": "by-sha/a6ada78020e0c202f9f944ffe2603fe35a9b9268.fun-report.json"
+    }
+  },
+  {
     "commit": "0c763cee1905b309221c73be3657a218109f101b",
     "commitDate": "2026-08-16T21:06:33Z",
     "commitSubject": "feat(velocity): measure abandoned-PR waste in the bottleneck scan (#2974)",
