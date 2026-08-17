@@ -147,8 +147,24 @@ async function withEditor(run, options = {}) {
     }
     if (url.pathname === '/api/sprite') {
       const sprite = fixtureSprites.find((entry) => entry.key === url.searchParams.get('key'));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ sprite }));
+      const respond = () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ sprite }));
+      };
+      const gate =
+        sprite?.key && options.spriteGateByKey ? options.spriteGateByKey[sprite.key] : null;
+      if (gate) {
+        gate.started.resolve();
+        gate.release.promise.then(() => {
+          try {
+            respond();
+          } catch {
+            // The page/server may have torn down before release.
+          }
+        });
+      } else {
+        respond();
+      }
       return;
     }
     if (url.pathname === '/vendor/opencv.js' && options.openCvFixture) {
@@ -478,6 +494,14 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) applyAnnotationUpdate/);
   assert.match(EXTENSION_SOURCE, /if \(anchorChanged\)/);
   assert.match(EXTENSION_SOURCE, /entry\.contentHash = sha256Hex\(bytes\)/);
+  assert.match(
+    EXTENSION_SOURCE,
+    /parts\.push\(`\$\{key\}\\0\$\{stats\.size\}\\0\$\{stats\.mtimeMs\}`\)/,
+  );
+  assert.match(
+    EXTENSION_SOURCE,
+    /requestedVersion === summary\.imageVersion && requestedVersion === sha256Hex\(body\)/,
+  );
   assert.match(
     EXTENSION_SOURCE,
     /if \(hasMetadata \|\| wrotePng\) {\s*writeShard\(key, data\.manifest\.entries\[key\]\)/,
@@ -1232,6 +1256,75 @@ test('save race baseline uses the normalized server response, not raw submitted 
     },
     { saveDelayMs: 200, normalizeSavedComment: true },
   );
+});
+
+test('edits made while a sprite image is loading keep the current canvas', async () => {
+  const spriteLoad = { started: deferred(), release: deferred() };
+  await withEditor(
+    async (page) => {
+      const beforePixels = await readCanvasPixels(page);
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await waitWithTimeout(spriteLoad.started.promise, 1_000, 'second sprite load request');
+
+      await page.getByTitle('Erase mode').click();
+      await clickCanvasPixel(page, 0, 0);
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+
+      spriteLoad.release.resolve();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#status')?.textContent ===
+          'Stayed on current sprite: newer edits were made while loading.',
+      );
+
+      assert.equal(await page.locator('.sprite-title').textContent(), 'Fixture Sprite');
+      assert.notDeepEqual(await readCanvasPixels(page), beforePixels);
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+    },
+    { spriteGateByKey: { 'fixture-sprite-2': spriteLoad } },
+  );
+});
+
+test('switching sprites repeatedly never reports phantom unsaved edits', async () => {
+  await withEditor(async (page) => {
+    const dialogMessages = [];
+    page.on('dialog', async (dialog) => {
+      dialogMessages.push(dialog.message());
+      await dialog.dismiss();
+    });
+
+    // Regression: loadSprite's post-image guard used to compare a fingerprint
+    // that included canvas bytes. loadImage legitimately replaces the canvas,
+    // so the guard always tripped and returned before resetBaseline(), pinning
+    // the baseline to the first sprite forever. Every later switch then looked
+    // dirty, prompting a save (which pushes to the asset queue branch) with no
+    // user edit at all.
+    for (let round = 0; round < 3; round += 1) {
+      const switchStartedAt = performance.now();
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+      );
+      assert.ok(
+        performance.now() - switchStartedAt < 1_000,
+        'a clean sprite switch must complete within one second',
+      );
+      assert.equal(await page.locator('.dirty-badge').count(), 0);
+
+      const returnStartedAt = performance.now();
+      await page.getByRole('button', { name: /Fixture Sprite/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Fixture Sprite',
+      );
+      assert.ok(
+        performance.now() - returnStartedAt < 1_000,
+        'a clean sprite switch must complete within one second',
+      );
+      assert.equal(await page.locator('.dirty-badge').count(), 0);
+    }
+
+    assert.deepEqual(dialogMessages, [], 'switching sprites must not prompt to save');
+  });
 });
 
 test('stale scaling results cannot overwrite a newly selected sprite', async () => {
