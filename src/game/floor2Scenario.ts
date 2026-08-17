@@ -79,6 +79,7 @@ import { getFloorManifest } from '../shared/floor-registry.js';
 import {
   getCurrentLocationSearch,
   isFloorSpawnerArenaExperimentEnabled,
+  resolveFloorSpawnerCountOverride,
 } from '../shared/spawner-feature-flags.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
@@ -1674,10 +1675,12 @@ function spawnFloor2TrashSpawners(world: GameWorld, featureEnabled: boolean): vo
   }
 
   const spawnerRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor2:trash-spawners`));
-  const spawnCount = spawnerRng.nextInt(
-    0,
-    Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length),
-  );
+  const maxSpawnCount = Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length);
+  const forcedSpawnerCount = resolveFloorSpawnerCountOverride(getCurrentLocationSearch());
+  const spawnCount =
+    forcedSpawnerCount === null
+      ? spawnerRng.nextInt(0, maxSpawnCount)
+      : Math.min(Math.max(forcedSpawnerCount, 0), maxSpawnCount);
   spawnerRng.shuffle(candidateRooms);
 
   for (let i = 0; i < spawnCount; i += 1) {

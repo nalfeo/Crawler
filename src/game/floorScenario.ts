@@ -61,6 +61,7 @@ import {
 import {
   getCurrentLocationSearch,
   isFloorSpawnerArenaExperimentEnabled,
+  resolveFloorSpawnerCountOverride,
 } from '../shared/spawner-feature-flags.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
@@ -1518,10 +1519,12 @@ function spawnFloor1StaticSpawners(world: GameWorld, featureEnabled: boolean): v
   if (candidateRooms.length === 0) {
     return;
   }
-  const spawnCount = spawnerRng.nextInt(
-    0,
-    Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length),
-  );
+  const maxSpawnCount = Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length);
+  const forcedSpawnerCount = resolveFloorSpawnerCountOverride(getCurrentLocationSearch());
+  const spawnCount =
+    forcedSpawnerCount === null
+      ? spawnerRng.nextInt(0, maxSpawnCount)
+      : Math.min(Math.max(forcedSpawnerCount, 0), maxSpawnCount);
   spawnerRng.shuffle(candidateRooms);
 
   const floor1TrashWeights = new Map<string, number>();
