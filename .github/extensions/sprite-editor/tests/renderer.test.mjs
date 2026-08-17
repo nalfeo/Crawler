@@ -1234,6 +1234,38 @@ test('save race baseline uses the normalized server response, not raw submitted 
   );
 });
 
+test('switching sprites repeatedly never reports phantom unsaved edits', async () => {
+  await withEditor(async (page) => {
+    const dialogMessages = [];
+    page.on('dialog', async (dialog) => {
+      dialogMessages.push(dialog.message());
+      await dialog.dismiss();
+    });
+
+    // Regression: loadSprite's post-image guard used to compare a fingerprint
+    // that included canvas bytes. loadImage legitimately replaces the canvas,
+    // so the guard always tripped and returned before resetBaseline(), pinning
+    // the baseline to the first sprite forever. Every later switch then looked
+    // dirty, prompting a save (which pushes to the asset queue branch) with no
+    // user edit at all.
+    for (let round = 0; round < 3; round += 1) {
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Second Fixture',
+      );
+      assert.equal(await page.locator('.dirty-badge').count(), 0);
+
+      await page.getByRole('button', { name: /Fixture Sprite/ }).click();
+      await page.waitForFunction(
+        () => document.querySelector('.sprite-title')?.textContent === 'Fixture Sprite',
+      );
+      assert.equal(await page.locator('.dirty-badge').count(), 0);
+    }
+
+    assert.deepEqual(dialogMessages, [], 'switching sprites must not prompt to save');
+  });
+});
+
 test('stale scaling results cannot overwrite a newly selected sprite', async () => {
   await withEditor(async (page) => {
     await installDeferredFailureWorker(page);

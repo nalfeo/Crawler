@@ -407,6 +407,8 @@ const CLIENT_SCRIPT = String.raw`
   var baselineFingerprint = null;
   var loadTokenCounter = 0;
   var listTokenCounter = 0;
+  /** Sprite keys already warmed into the browser image cache (dedupes prefetch). */
+  var prefetchedImageKeys = Object.create(null);
   var saveTokenCounter = 0;
   var revertTokenCounter = 0;
   var scaleFactor = 1;
@@ -1081,6 +1083,15 @@ const CLIENT_SCRIPT = String.raw`
     );
   }
 
+  function currentEditorInputFingerprint() {
+    if (!sprite) return null;
+    return JSON.stringify({
+      key: sprite.key,
+      metadata: currentMetadataSnapshot(),
+      annotation: currentAnnotationSnapshot()
+    });
+  }
+
   function currentEditorFingerprint() {
     if (!sprite) return null;
     return serializeEditorFingerprint(
@@ -1157,6 +1168,9 @@ const CLIENT_SCRIPT = String.raw`
         return;
       }
       sprites = data.sprites || [];
+      // The list defines the prefetch universe; drop warm-keys from the previous
+      // one so a re-listed sprite whose bytes changed is re-warmed at its new URL.
+      prefetchedImageKeys = Object.create(null);
       if (totalEl) totalEl.textContent = String(data.total || 0);
       refreshTagsDatalist(data.availableTags || []);
       if (
@@ -1296,6 +1310,7 @@ const CLIENT_SCRIPT = String.raw`
       }
     }
     var expectedFingerprint = currentEditorFingerprint();
+    var expectedInputFingerprint = currentEditorInputFingerprint();
     var loadToken = ++loadTokenCounter;
     setStatus('Loading sprite…');
     try {
@@ -1311,21 +1326,30 @@ const CLIENT_SCRIPT = String.raw`
         setStatus('Sprite not found.', true);
         return false;
       }
-      await loadImage(loadToken, nextSprite.key);
+      await loadImage(loadToken, nextSprite.key, nextSprite.imageVersion);
       if (loadToken !== loadTokenCounter) return false;
-      if (expectedFingerprint && currentEditorFingerprint() !== expectedFingerprint) {
+      // loadImage legitimately replaces the canvas, so the post-load guard must
+      // compare only user-editable inputs; including canvas bytes here would
+      // always trip and abort before resetBaseline(), leaving a stale baseline
+      // that makes every subsequent sprite look falsely dirty.
+      if (expectedInputFingerprint && currentEditorInputFingerprint() !== expectedInputFingerprint) {
         setStatus('Stayed on current sprite: newer edits were made while loading.');
         return false;
       }
       sprite = nextSprite;
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
+      // renderEditor paints the badge from the pre-load baseline, so refresh the
+      // indicator once the new baseline is in place or a freshly loaded sprite
+      // keeps a stale "Unsaved" badge.
+      updateDirtyIndicator();
       if (opts.updateSelection !== false) {
         selectedKey = sprite.key;
         selectedVariantGroup = sprite.variantGroup || null;
         renderList();
       }
       setStatus('Ready.');
+      prefetchNeighbors(sprite);
       return true;
     } catch (error) {
       console.error('[sprite-editor] failed to load sprite', error);
@@ -1339,10 +1363,56 @@ const CLIENT_SCRIPT = String.raw`
     return canvas.toDataURL('image/png');
   }
 
-  async function loadImage(loadToken, spriteKey) {
+  /**
+   * Build the image URL for a sprite. Keying on the content version (rather than
+   * the old timestamp cache-buster) makes a repeat visit a browser-cache hit
+   * instead of a fresh fetch + PNG decode, while still guaranteeing that edited
+   * bytes mint a brand-new URL.
+   */
+  function spriteImageUrl(spriteKey, imageVersion) {
+    var url = '/img/sprite?key=' + encodeURIComponent(spriteKey);
+    return imageVersion ? url + '&v=' + encodeURIComponent(imageVersion) : url + '&_ts=' + Date.now();
+  }
+
+  /**
+   * Warm the browser image cache for the sprites the user is most likely to open
+   * next (the adjacent variants and the neighbouring list rows). Purely
+   * best-effort: failures are ignored and nothing here touches editor state.
+   */
+  function prefetchNeighbors(currentSprite) {
+    if (!currentSprite) return;
+    var wanted = [];
+    if (currentSprite.prevVariantKey) wanted.push(currentSprite.prevVariantKey);
+    if (currentSprite.nextVariantKey) wanted.push(currentSprite.nextVariantKey);
+    var index = -1;
+    for (var i = 0; i < sprites.length; i++) {
+      if (sprites[i].key === currentSprite.key) { index = i; break; }
+    }
+    if (index >= 0) {
+      if (sprites[index - 1]) wanted.push(sprites[index - 1].key);
+      if (sprites[index + 1]) wanted.push(sprites[index + 1].key);
+    }
+    for (var j = 0; j < wanted.length; j++) {
+      var neighborKey = wanted[j];
+      if (!neighborKey || prefetchedImageKeys[neighborKey]) continue;
+      var row = null;
+      for (var k = 0; k < sprites.length; k++) {
+        if (sprites[k].key === neighborKey) { row = sprites[k]; break; }
+      }
+      // Without a known version we cannot build a cacheable URL, so prefetching
+      // would just burn a request that the real load could not reuse.
+      if (!row || !row.imageVersion) continue;
+      prefetchedImageKeys[neighborKey] = true;
+      var warm = new Image();
+      warm.decoding = 'async';
+      warm.src = spriteImageUrl(neighborKey, row.imageVersion);
+    }
+  }
+
+  async function loadImage(loadToken, spriteKey, imageVersion) {
     if (!spriteKey) return;
     var img = new Image();
-    img.src = '/img/sprite?key=' + encodeURIComponent(spriteKey) + '&_ts=' + Date.now();
+    img.src = spriteImageUrl(spriteKey, imageVersion);
     await new Promise(function (resolve, reject) {
       img.onload = resolve;
       img.onerror = reject;
@@ -2444,7 +2514,7 @@ const CLIENT_SCRIPT = String.raw`
       if (!sprite || sprite.key !== expectedKey) return;
       sprite = data.sprite || sprite;
       var loadToken = ++loadTokenCounter;
-      await loadImage(loadToken, sprite.key);
+      await loadImage(loadToken, sprite.key, sprite.imageVersion);
       if (loadToken !== loadTokenCounter) {
         // The user switched sprites during loadImage; this early return sits
         // before the terminal report below, so surface a failed push here too.
