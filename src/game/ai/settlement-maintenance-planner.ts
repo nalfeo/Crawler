@@ -55,7 +55,7 @@ import {
   type GeneratedEquipmentInventoryEntry,
 } from '../../shared/inventory.js';
 import type { GeneratedEquipmentInstanceV1 } from '../../shared/generated-equipment-types.js';
-import type { EquipFailureReason } from '../../shared/equipment-types.js';
+import type { EquipFailureReason, EquipmentInstance } from '../../shared/equipment-types.js';
 import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
 import type {
   SettlementMaintenanceDecision,
@@ -67,7 +67,10 @@ import {
   type EquipmentEncounterFixture,
   type EquipmentLoadoutCandidate,
   type EquipmentLoadoutSnapshot,
+  type StaticEquipmentBaselineV1,
 } from './equipment-loadout-evaluator.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
+import type { WeaponClassSkillId } from '../../shared/weapon-skills.js';
 
 /**
  * Bounds the number of equipment candidates the greedy loop accepts per visit
@@ -324,7 +327,11 @@ function toSourceArrayMap(
   return result;
 }
 
-function buildEquipmentSnapshot(world: GameWorld, playerEid: number): EquipmentLoadoutSnapshot {
+function buildEquipmentSnapshot(
+  world: GameWorld,
+  playerEid: number,
+  staticEquipped: readonly StaticEquipmentBaselineV1[],
+): EquipmentLoadoutSnapshot {
   const equipmentState = getEquipmentState(world, playerEid);
   // A two-handed item occupies more than one slot key with the SAME
   // instanceId (e.g. mainHand + offHand); the evaluator expects `equipped` to
@@ -352,6 +359,7 @@ function buildEquipmentSnapshot(world: GameWorld, playerEid: number): EquipmentL
 
   return {
     equipped,
+    staticEquipped,
     baseStats,
     coreStatPoints,
     activeAbilityGrantSources: toSourceArrayMap(
@@ -366,32 +374,137 @@ function buildEquipmentSnapshot(world: GameWorld, playerEid: number): EquipmentL
 }
 
 /**
- * Slots currently occupied by a STATIC (non-generated) equipment instance —
- * e.g. the Floor 2 starter weapon or `MERCHANTS_CHARM_DEF`, both equipped via
- * `equip(world, entity, staticDef, { force: true })`, which mints a numeric
- * `EquipmentInstanceId` rather than a generated-equipment string key.
- *
- * `EquipmentLoadoutSnapshot.equipped` (from the equipment-loadout-evaluator
- * dependency) can only represent GENERATED equipment instances, so
- * `buildEquipmentSnapshot` above cannot include these items in the "current
- * loadout" the evaluator scores against. Extending that evaluator's schema
- * to model static items is out of scope for this planner. Instead, this
- * planner treats any slot a static item occupies as PROTECTED: no bag/shop
- * candidate is allowed to target it, so the greedy loop can never displace a
- * real static item it cannot see or score a replacement against.
+ * Classification of the STATIC (non-generated) items the player currently has
+ * equipped — e.g. the Floor 1/2 starter weapon or `MERCHANTS_CHARM_DEF`, both
+ * equipped via `equip(world, entity, staticDef, { force: true })`, which mints
+ * a numeric `EquipmentInstanceId` rather than a generated-equipment string key.
  */
-function getStaticProtectedSlots(
+interface StaticEquippedClassification {
+  /**
+   * Static items whose scoring contribution the evaluator can model exactly,
+   * fed to it as `EquipmentLoadoutSnapshot.staticEquipped`. Candidates MAY
+   * displace these, because the swap is then scored honestly against them.
+   */
+  readonly baselines: readonly StaticEquipmentBaselineV1[];
+  /**
+   * Slots held by static items the evaluator canNOT model (status-effect
+   * grants, unresolvable weapon defs, non-finite scoring data). These stay
+   * PROTECTED: no bag/shop candidate may target them, so the greedy loop can
+   * never displace an item it cannot see or score a replacement against.
+   */
+  readonly protectedSlots: ReadonlySet<EquipmentSlotId>;
+  /**
+   * Weapon-class skill of the modelable statically-equipped WEAPON occupying
+   * each slot (e.g. `mainHand` -> `'ranged'` for the pistol starter). Used to
+   * keep a mid-run weapon swap inside the archetype the run has been
+   * levelling (see {@link displacesIncompatibleStaticWeaponClass}).
+   */
+  readonly staticWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>;
+}
+
+/**
+ * Single fail-closed classifier shared by {@link buildEquipmentSnapshot} and
+ * the candidate filter. Having ONE source of truth is what guarantees a
+ * static item is either modelled by the evaluator or protected from
+ * displacement — never omitted from scoring *and* displaceable.
+ *
+ * A static item is modelable only when every field the evaluator scores is
+ * representable: finite weight/stat bonuses, at least one occupied slot, no
+ * status-effect grants (the evaluator has no model for them), and — for
+ * weapons — a `weaponId` that resolves to a canonical `WeaponDef`.
+ */
+function classifyStaticEquippedInstances(
   world: GameWorld,
   playerEid: number,
-): ReadonlySet<EquipmentSlotId> {
+): StaticEquippedClassification {
   const equipmentState = getEquipmentState(world, playerEid);
   const protectedSlots = new Set<EquipmentSlotId>();
+  const occupiedSlotsByInstanceId = new Map<number, EquipmentSlotId[]>();
   for (const [slotId, instanceId] of Object.entries(equipmentState?.equipped ?? {})) {
-    if (typeof instanceId === 'number') {
-      protectedSlots.add(slotId as EquipmentSlotId);
+    if (typeof instanceId !== 'number') continue;
+    const slots = occupiedSlotsByInstanceId.get(instanceId) ?? [];
+    slots.push(slotId as EquipmentSlotId);
+    occupiedSlotsByInstanceId.set(instanceId, slots);
+  }
+
+  const baselines: StaticEquipmentBaselineV1[] = [];
+  const staticWeaponClassBySlot = new Map<EquipmentSlotId, WeaponClassSkillId>();
+  for (const [instanceId, slots] of [...occupiedSlotsByInstanceId.entries()].sort(
+    ([a], [b]) => a - b,
+  )) {
+    const baseline = modelableStaticBaseline(equipmentState?.instances.get(instanceId), slots);
+    if (baseline === null) {
+      for (const slotId of slots) protectedSlots.add(slotId);
+      continue;
+    }
+    baselines.push(baseline);
+    const weaponDef = baseline.weaponId === null ? undefined : getWeaponDef(baseline.weaponId);
+    if (weaponDef !== undefined) {
+      for (const slotId of baseline.slots) {
+        staticWeaponClassBySlot.set(slotId, weaponDef.weaponClassSkillId);
+      }
     }
   }
-  return protectedSlots;
+  return { baselines, protectedSlots, staticWeaponClassBySlot };
+}
+
+/**
+ * Returns the canonical evaluator baseline for a statically-equipped
+ * instance, or `null` when any part of its contribution cannot be modelled
+ * (fail-closed — the caller then protects its slots).
+ */
+function modelableStaticBaseline(
+  instance: EquipmentInstance | undefined,
+  occupiedSlots: readonly EquipmentSlotId[],
+): StaticEquipmentBaselineV1 | null {
+  if (instance === undefined || typeof instance.instanceId !== 'number') return null;
+  const def = instance.def;
+  if (occupiedSlots.length === 0) return null;
+  if ((def.grantsStatusEffects?.length ?? 0) > 0) return null;
+  if (!Number.isFinite(def.weightLb) || def.weightLb < 0) return null;
+  for (const value of Object.values(def.statBonuses)) {
+    if (!Number.isFinite(value)) return null;
+  }
+  const weaponId = def.weaponId ?? null;
+  if (weaponId !== null && getWeaponDef(weaponId) === undefined) return null;
+  return {
+    equipmentInstanceId: instance.instanceId,
+    slots: [...occupiedSlots].sort((a, b) => a.localeCompare(b)),
+    tags: def.tags ?? [],
+    weightLb: def.weightLb,
+    statBonuses: def.statBonuses,
+    weaponId,
+  };
+}
+
+/**
+ * True when equipping `instance` would displace a statically-equipped weapon
+ * of a DIFFERENT weapon class (e.g. swapping the `ranged` pistol starter for
+ * an `arcane` boss-chest drop).
+ *
+ * The evaluator scores a candidate on its own combat/stat merits, but it has
+ * no model for the run's accumulated **weapon-class skill** (the slow-levelling
+ * damage-focus skill) nor for the class-specific engagement behaviour the AI
+ * has been running all floor. Switching class mid-run therefore silently
+ * discards that investment: measured on Floor 1 seeds 1-3, an unrestricted
+ * swap turned three victories into three timeouts. Changing class stays a
+ * deliberate, separately-budgeted decision (the merchant weapon intent);
+ * maintenance swaps upgrade WITHIN the class the run is already levelling.
+ *
+ * Non-weapon static items and non-weapon candidates are unaffected: only a
+ * slot whose static occupant is a weapon is class-gated, and a candidate with
+ * no active weapon snapshot can never target a hand slot held by one.
+ */
+function displacesIncompatibleStaticWeaponClass(
+  instance: GeneratedEquipmentInstanceV1,
+  staticWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>,
+): boolean {
+  const candidateClass = instance.frozen.activeWeaponSnapshot?.weaponClassSkillId ?? null;
+  return instance.frozen.slots.some((slotId) => {
+    const staticClass = staticWeaponClassBySlot.get(slotId);
+    if (staticClass === undefined) return false;
+    return candidateClass !== staticClass;
+  });
 }
 
 /** True when `instance` would occupy at least one slot in `protectedSlots`. */
@@ -409,18 +522,26 @@ function instanceOccupiesProtectedSlot(
  * ability-granting candidate, so the greedy loop mildly prefers loadouts
  * that stay consistent with the current build rather than thrashing between
  * unrelated playstyles.
+ *
+ * Reads the whole snapshot (generated AND modelled static equipment) so the
+ * very first comparison — a bag candidate against a static starter weapon —
+ * uses the player's real weapon affinity instead of no weapon at all.
  */
-function deriveAffinityTagWeights(
-  equipped: readonly GeneratedEquipmentInstanceV1[],
-): Record<string, number> {
+function deriveAffinityTagWeights(snapshot: EquipmentLoadoutSnapshot): Record<string, number> {
   const weights: Record<string, number> = {
     'active-ability': 1,
     'passive-ability': 1,
   };
-  const weaponInstance = equipped.find((instance) => instance.frozen.activeWeaponSnapshot !== null);
-  const weapon = weaponInstance?.frozen.activeWeaponSnapshot ?? null;
-  if (weapon) {
-    weights[weapon.weaponType === WeaponType.MAGIC ? 'magic' : 'physical'] = 3;
+  const generatedWeapon =
+    snapshot.equipped.find((instance) => instance.frozen.activeWeaponSnapshot !== null)?.frozen
+      .activeWeaponSnapshot ?? null;
+  const staticWeaponId =
+    snapshot.staticEquipped?.find((baseline) => baseline.weaponId !== null)?.weaponId ?? null;
+  const weaponType =
+    generatedWeapon?.weaponType ??
+    (staticWeaponId === null ? undefined : getWeaponDef(staticWeaponId)?.weaponType);
+  if (weaponType !== undefined) {
+    weights[weaponType === WeaponType.MAGIC ? 'magic' : 'physical'] = 3;
   }
   return weights;
 }
@@ -451,9 +572,12 @@ interface EquipmentCandidateSet {
  * the Quartermaster's current offers.
  *
  * Two filters apply, both explained via `decisions` telemetry:
- *  - Candidates that would occupy a slot currently held by a STATIC
- *    (non-generated) instance — see {@link getStaticProtectedSlots} — are
- *    excluded so the loop never blindly displaces an item it cannot score.
+ *  - Candidates that would occupy a slot held by a STATIC (non-generated)
+ *    instance the evaluator cannot model — see
+ *    {@link classifyStaticEquippedInstances} — are excluded so the loop never
+ *    blindly displaces an item it cannot score. Static items that ARE
+ *    modelled (e.g. the starter weapon) are scored as part of the current
+ *    loadout instead, so a candidate may displace them on merit.
  *  - Quartermaster offers the shared purchase API already reports as
  *    unpurchasable (`!offer.canPurchase`, e.g. unaffordable, capacity-full,
  *    or sold-out) are excluded rather than silently dropped.
@@ -467,6 +591,7 @@ function buildEquipmentCandidates(
   world: GameWorld,
   playerEid: number,
   protectedSlots: ReadonlySet<EquipmentSlotId>,
+  staticWeaponClassBySlot: ReadonlyMap<EquipmentSlotId, WeaponClassSkillId>,
   decisions: SettlementMaintenanceDecision[],
   loggedSkipKeys: Set<string>,
 ): EquipmentCandidateSet {
@@ -483,7 +608,18 @@ function buildEquipmentCandidates(
         loggedSkipKeys.add(skipKey);
         decisions.push({
           kind: 'skip',
-          detail: `Skipping bag candidate '${instance.instanceId}': would displace a statically-equipped item in slot(s) ${instance.frozen.slots.join(', ')}`,
+          detail: `Skipping bag candidate '${instance.instanceId}': would displace an unmodelable statically-equipped item in slot(s) ${instance.frozen.slots.join(', ')}`,
+        });
+      }
+      continue;
+    }
+    if (displacesIncompatibleStaticWeaponClass(instance, staticWeaponClassBySlot)) {
+      const skipKey = `weapon-class:${instance.instanceId}`;
+      if (!loggedSkipKeys.has(skipKey)) {
+        loggedSkipKeys.add(skipKey);
+        decisions.push({
+          kind: 'skip',
+          detail: `Skipping bag candidate '${instance.instanceId}': would displace the statically-equipped weapon with a different weapon class in slot(s) ${instance.frozen.slots.join(', ')}`,
         });
       }
       continue;
@@ -511,7 +647,18 @@ function buildEquipmentCandidates(
         loggedSkipKeys.add(skipKey);
         decisions.push({
           kind: 'skip',
-          detail: `Skipping shop candidate '${instance.instanceId}': would displace a statically-equipped item in slot(s) ${instance.frozen.slots.join(', ')}`,
+          detail: `Skipping shop candidate '${instance.instanceId}': would displace an unmodelable statically-equipped item in slot(s) ${instance.frozen.slots.join(', ')}`,
+        });
+      }
+      continue;
+    }
+    if (displacesIncompatibleStaticWeaponClass(instance, staticWeaponClassBySlot)) {
+      const skipKey = `weapon-class:${instance.instanceId}`;
+      if (!loggedSkipKeys.has(skipKey)) {
+        loggedSkipKeys.add(skipKey);
+        decisions.push({
+          kind: 'skip',
+          detail: `Skipping shop candidate '${instance.instanceId}': would displace the statically-equipped weapon with a different weapon class in slot(s) ${instance.frozen.slots.join(', ')}`,
         });
       }
       continue;
@@ -635,13 +782,19 @@ function runEquipmentLoop(
   const detailPrefix = options?.detailPrefix ?? '';
   const blacklistedInstanceIds = new Set<string>();
   const loggedSkipKeys = new Set<string>();
-  const protectedSlots = getStaticProtectedSlots(world, playerEid);
   for (let step = 0; step < EQUIPMENT_LOOP_CANDIDATE_CAP; step += 1) {
-    const snapshot = buildEquipmentSnapshot(world, playerEid);
+    // Recomputed per iteration: an accepted swap can retire a static item, so
+    // the modelled/protected split is only valid for the current loadout.
+    const { baselines, protectedSlots, staticWeaponClassBySlot } = classifyStaticEquippedInstances(
+      world,
+      playerEid,
+    );
+    const snapshot = buildEquipmentSnapshot(world, playerEid, baselines);
     const { candidates: allCandidates, offerLookup } = buildEquipmentCandidates(
       world,
       playerEid,
       protectedSlots,
+      staticWeaponClassBySlot,
       decisions,
       loggedSkipKeys,
     );
@@ -658,7 +811,7 @@ function runEquipmentLoop(
       current: snapshot,
       candidates,
       remainingEncounters: [CANONICAL_ENCOUNTER_FIXTURE],
-      affinityTagWeights: deriveAffinityTagWeights(snapshot.equipped),
+      affinityTagWeights: deriveAffinityTagWeights(snapshot),
     });
 
     const top = evaluation.ranked[0];
@@ -1041,7 +1194,7 @@ export interface SettlementMaintenanceOpportunityPreview {
 /**
  * Read-only preview of "how much settlement-maintenance opportunity exists
  * right now," reusing the SAME real, already-pure evaluators the planner
- * itself acts on (`buildEquipmentSnapshot`, `getStaticProtectedSlots`,
+ * itself acts on (`buildEquipmentSnapshot`, `classifyStaticEquippedInstances`,
  * `buildEquipmentCandidates`, `evaluateEquipmentLoadoutCandidates`) rather
  * than a hand-rolled heuristic — this is what lets
  * `settlement-return-router.ts` decide whether returning to the settlement
@@ -1068,14 +1221,18 @@ export function previewSettlementMaintenanceOpportunity(
     .map(([chestId]) => chestId)
     .sort();
 
-  const protectedSlots = getStaticProtectedSlots(world, playerEid);
+  const { baselines, protectedSlots, staticWeaponClassBySlot } = classifyStaticEquippedInstances(
+    world,
+    playerEid,
+  );
   const previewDecisions: SettlementMaintenanceDecision[] = [];
   const previewLoggedSkipKeys = new Set<string>();
-  const snapshot = buildEquipmentSnapshot(world, playerEid);
+  const snapshot = buildEquipmentSnapshot(world, playerEid, baselines);
   const { candidates } = buildEquipmentCandidates(
     world,
     playerEid,
     protectedSlots,
+    staticWeaponClassBySlot,
     previewDecisions,
     previewLoggedSkipKeys,
   );
@@ -1087,7 +1244,7 @@ export function previewSettlementMaintenanceOpportunity(
       current: snapshot,
       candidates,
       remainingEncounters: [CANONICAL_ENCOUNTER_FIXTURE],
-      affinityTagWeights: deriveAffinityTagWeights(snapshot.equipped),
+      affinityTagWeights: deriveAffinityTagWeights(snapshot),
     });
     const top = evaluation.ranked[0];
     if (top && top.score > 0) {
