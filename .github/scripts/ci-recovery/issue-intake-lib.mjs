@@ -148,9 +148,19 @@ export const ISSUE_INTAKE_BODY = [
   'Then, when you open the PR, include the same high-level summary in the PR description.',
 ].join('\n');
 
+export function isTelemetryIssue(issue) {
+  return (issue?.labels || []).some(
+    (label) => String(label?.name || '').toLowerCase() === 'telemetry',
+  );
+}
+
 export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   if (!issue || issue.pull_request) {
     return { eligible: false, reason: 'event has no eligible issue payload' };
+  }
+
+  if (isTelemetryIssue(issue)) {
+    return { eligible: false, reason: 'telemetry issues are not assigned to Copilot' };
   }
 
   const opener = String(issue.user?.login || '').toLowerCase();
