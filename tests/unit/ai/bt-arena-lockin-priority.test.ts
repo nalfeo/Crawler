@@ -139,6 +139,33 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.reason.toLowerCase()).not.toContain('tutorial goon');
   });
 
+  it('spawner lock-in keeps spacing movement instead of parking on spawner center', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const spawnerEid = makeLockedSpawnerNearPlayer(world, px, py);
+    const sx = world.stores.position.x[spawnerEid]!;
+    const sy = world.stores.position.y[spawnerEid]!;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(spawnerEid);
+    expect(decision.targetX).not.toBeNull();
+    expect(decision.targetY).not.toBeNull();
+    const tx = decision.targetX!;
+    const ty = decision.targetY!;
+    expect(Math.hypot(tx - sx, ty - sy)).toBeGreaterThan(0.1);
+    expect(decision.reason.toLowerCase()).toContain('arena lock-in');
+    expect(decision.reason.toLowerCase()).not.toContain('attacking spawner');
+  });
+
   it('falls through to normal Progress behavior when no arena lock-in fires', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
