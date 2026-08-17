@@ -1,5 +1,39 @@
 [
   {
+    "commit": "ac6ec4c7a63dcbb52f9e2c46032dd9050ed2b542",
+    "commitDate": "2026-08-17T06:44:30Z",
+    "commitSubject": "test: raise unit coverage on mob motion sampling and weapon persona allocation (#3022)",
+    "capturedAt": "2026-08-17T08:24:32.328Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32004916255",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/ac6ec4c7a63dcbb52f9e2c46032dd9050ed2b542.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.16666666666666666,
+        "totalWins": 25,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.20666666666666667,
+        "totalWins": 31,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 34.73,
+      "gatePass": false,
+      "path": "by-sha/ac6ec4c7a63dcbb52f9e2c46032dd9050ed2b542.fun-report.json"
+    }
+  },
+  {
     "commit": "b9d05c42f4f93ff43799530cd4b48a1fe47d7819",
     "commitDate": "2026-08-17T05:40:41Z",
     "commitSubject": "Refactor floor-specific systems into scenario pipeline slots (#3013)",

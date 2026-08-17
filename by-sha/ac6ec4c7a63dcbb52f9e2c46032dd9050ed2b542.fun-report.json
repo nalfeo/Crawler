@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "commit": "ac6ec4c7a63dcbb52f9e2c46032dd9050ed2b542",
+    "commitDate": "2026-08-17T06:44:30Z",
+    "commitSubject": "test: raise unit coverage on mob motion sampling and weapon persona allocation (#3022)",
+    "capturedAt": "2026-08-17T08:24:32.328Z",
+    "runId": "32004916255",
+    "runNumber": 1545,
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32004916255",
+    "sweep": {
+      "seeds": "1-50",
+      "kind": "winrate",
+      "revision": 2
+    }
+  },
+  "report": {
+    "runs": 600,
+    "outcomes": {
+      "victory": 356,
+      "death": 6,
+      "timeout": 222,
+      "stalled": 16,
+      "error": 0,
+      "quit": 0
+    },
+    "survey_coverage": 0,
+    "overall_fun_score": 34.73,
+    "dimensions": {
+      "engagement": 48.12,
+      "challenge_balance": 3.12,
+      "excitement": 25.68,
+      "pacing": 30.88,
+      "competence_growth": 35.64,
+      "choice_depth": 88.08,
+      "run_distinctness": 44.37
+    },
+    "sameness_grade": 55.63,
+    "objective_score": 34.73,
+    "subjective_score": null,
+    "confidence": 0.82,
+    "gate": {
+      "min_overall": 70,
+      "min_dimension": 55,
+      "gating_overall_score": 34,
+      "pass": false,
+      "failing_dimensions": [
+        "engagement",
+        "challenge_balance",
+        "excitement",
+        "pacing",
+        "competence_growth"
+      ]
+    },
+    "hotspots": [
+      {
+        "dimension": "challenge_balance",
+        "score": 3.12,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "excitement",
+        "score": 25.68,
+        "reason": "Dimension score is below peers and drags overall fun."
+      },
+      {
+        "dimension": "pacing",
+        "score": 30.88,
+        "reason": "Dimension score is below peers and drags overall fun."
+      }
+    ],
+    "criteria": {
+      "unsafe_combat_uptime": {
+        "observed": null,
+        "target": 0.75,
+        "status": "unmeasured",
+        "reason": "Needs zone-aware combat time on RunStats; combatTimeMs includes safe-room frames."
+      },
+      "survivability_variance": {
+        "observed": 0.32,
+        "target": 0.14,
+        "status": "healthy",
+        "reason": "Healthy band is 0.14-0.45 standard deviations of normalized outcome: too little spread is monotone, too much is coin-flip volatility. Inspect tails before tuning."
+      },
+      "run_variety": {
+        "observed": 44.37,
+        "target": 60,
+        "status": "needs_attention",
+        "reason": "Run variety reuses the existing distinctness score."
+      },
+      "dopamine_cadence": {
+        "observed": 705.03,
+        "target": 90,
+        "status": "needs_attention",
+        "reason": "Worst active-play gap is 705.03s; 60.05% of active time is in gaps at or below 90s."
+      },
+      "snowball_frequency": {
+        "observed": 0,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "1/300 official victories crossed robust z >= 3.5 on at least two non-zero-MAD features."
+      },
+      "meta_progression": {
+        "observed": null,
+        "target": 0.05,
+        "status": "unmeasured",
+        "reason": "Permanent-power run data is absent because the Production Office/full meta-progression system is deferred."
+      },
+      "item_viability": {
+        "observed": 0.58,
+        "target": 0,
+        "status": "needs_attention",
+        "reason": "237/412 exposed catalog items were avoided, selected below 10% after 5+ exposures, or selected but inert."
+      },
+      "early_death_rate": {
+        "observed": 0.01,
+        "target": 0.1,
+        "status": "healthy",
+        "reason": "Fraction of runs that ended in death on Floor 2 or earlier. Tutorial-phase deaths are un-fun; healthy is <= 10%."
+      }
+    },
+    "persona_scores": {}
+  }
+}
