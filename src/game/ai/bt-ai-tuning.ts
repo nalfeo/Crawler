@@ -634,7 +634,20 @@ export const RUN_PLANNER_URGENCY_SLACK_WINDOW_MS = 120_000;
 export const RUN_PLANNER_INTERACTION_MS = 1_500;
 export const RUN_PLANNER_LEVEL_2_GRIND_MS = 35_000;
 export const RUN_PLANNER_QUEST_KILL_MS = 4_500;
-export const RUN_PLANNER_GOLD_FARM_MS = 3_000;
+/**
+ * Planner estimate of the game time needed to earn one gold, used to decide
+ * whether an optional purchase's remaining deficit can be farmed inside the
+ * run's slack.
+ *
+ * Calibrated against measured Floor 1 runs (headless, seeds 1/2/7/42/99/777/
+ * 2024/12345): a completed run earns 709-1121 gold in ~245s of game time, i.e.
+ * ~300-350 ms per gold including both drops and achievement loot boxes. The
+ * previous 3_000 value was ~9x pessimistic, which was invisible while Floor 1
+ * prices were 15-35 gold but abandoned every optional purchase once prices
+ * were tuned to real income. 500 keeps a deliberate ~1.5x safety margin over
+ * the measured rate so the planner still under-promises.
+ */
+export const RUN_PLANNER_GOLD_FARM_MS = 500;
 export const RUN_PLANNER_FETCH_PICKUP_MS = 1_000;
 export const RUN_PLANNER_MINOR_BOSS_KILL_MS = 25_000;
 export const RUN_PLANNER_FINAL_BOSS_KILL_MS = 45_000;

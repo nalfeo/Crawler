@@ -34,6 +34,7 @@ import {
   type AIInputProvider,
   type AIPathingModeValue,
   type LootEfficiencyMetrics,
+  type GoldEconomyMetrics,
   type PlayerPersona,
   type RunStats,
   type LevelUpEvent,
@@ -75,6 +76,7 @@ import {
 import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
+import { computeVendorInteractions } from './vendor-interactions.js';
 import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
 import {
   configureSettlementReturnRouting,
@@ -133,6 +135,40 @@ function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
     xpRatio: ratio(xpCollected, xpSpawned),
     goldRatio: ratio(goldCollected, goldSpawned),
     combinedRatio: ratio(xpCollected + goldCollected, xpSpawned + goldSpawned),
+  };
+}
+
+function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
+  const ledger = world.goldLedger;
+  const earnedTotal = ledger.earnedFromDrops + ledger.earnedFromLootBoxes;
+  const spentTotal = ledger.spentOnCharm + ledger.spentOnMerchantWeapon + ledger.spentOnSpell;
+  const unspentAtExit = Math.max(0, earnedTotal - spentTotal);
+  const spendableEarned = ledger.earnedBeforeExit ?? earnedTotal;
+  const unspentSpendable = Math.max(0, spendableEarned - spentTotal);
+  return {
+    earnedFromDrops: ledger.earnedFromDrops,
+    earnedFromLootBoxes: ledger.earnedFromLootBoxes,
+    earnedTotal,
+    spentOnCharm: ledger.spentOnCharm,
+    spentOnMerchantWeapon: ledger.spentOnMerchantWeapon,
+    spentOnSpell: ledger.spentOnSpell,
+    spentTotal,
+    unspentAtExit,
+    unspentFraction: earnedTotal > 0 ? unspentAtExit / earnedTotal : 0,
+    spendableEarned,
+    unspentSpendable,
+    unspentSpendableFraction: spendableEarned > 0 ? unspentSpendable / spendableEarned : 0,
+    charmPurchases: ledger.charmPurchases,
+    merchantWeaponPurchases: ledger.merchantWeaponPurchases,
+    spellPurchases: ledger.spellPurchases,
+    // Distinct *vendors* purchased from, not purchase categories: the charm
+    // and the post-quest weapon are both bought from the single
+    // `floor1-merchant` NPC (see `FLOOR1_MERCHANT_VENDOR_ID`), so buying both
+    // is still one vendor. Only the spell broker (`FLOOR1_SPELL_BROKER_VENDOR_ID`)
+    // is a second, distinct vendor.
+    distinctPurchases:
+      (ledger.charmPurchases > 0 || ledger.merchantWeaponPurchases > 0 ? 1 : 0) +
+      (ledger.spellPurchases > 0 ? 1 : 0),
   };
 }
 
@@ -1511,6 +1547,8 @@ export async function runHeadless(
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
+      goldEconomy: computeGoldEconomy(world),
+      vendors: computeVendorInteractions(world),
       ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
     });
     if (mergedConfig.onFinish) {
@@ -1614,6 +1652,8 @@ export async function runHeadless(
       : {}),
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),
+    goldEconomy: computeGoldEconomy(world),
+    vendors: computeVendorInteractions(world),
     ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
   });
 
