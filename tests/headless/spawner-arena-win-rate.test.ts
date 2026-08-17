@@ -37,7 +37,7 @@
  *      the AI never approached is legitimately never triggered and is
  *      excluded — that is the "reachable" qualifier from spec Requirements§8.
  *   3. Asserts the arena system stays out of the AI's way — winning runs
- *      still meet the same 6-minute AI budget (`FLOOR1_TIME_BUDGET_MS`) as
+ *      still meet the Floor-1 collapse deadline (`FLOOR1_ACTIVE_TIME_BUDGET_MS`) as
  *      the canonical gate.
  *
  * Constitution rule 13 target is 90% Floor-1 win-rate. The canonical gate
@@ -49,12 +49,13 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { isOfficialWin, activeTimeMs } from '../../src/game/ai/scoring.js';
 import type { RunStats } from '../../src/game/ai/types.js';
-import { GAME } from '../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../src/game/ai/floor1-run-budget.js';
 
-/** Floor 1 AI budget: the AI must clear the floor in under six minutes. */
-const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
 const HEADLESS_WALL_TIME_CAP_MS = 30 * 60 * 1000;
-const MAX_FRAMES = Math.ceil((FLOOR1_TIME_BUDGET_MS * 1.1) / GAME.DELTA_MS);
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 
 /** Deterministic seeds 1..8 — same prefix as the canonical Floor-1 gate. */
 const SAMPLE_SEEDS = Array.from({ length: 8 }, (_, i) => i + 1) as readonly number[];
@@ -94,7 +95,7 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
     const fails: string[] = [];
     for (const seed of SAMPLE_SEEDS) {
       const s = runs.get(seed)!;
-      if (isOfficialWin(s, FLOOR1_TIME_BUDGET_MS)) {
+      if (isOfficialWin(s, FLOOR1_ACTIVE_TIME_BUDGET_MS)) {
         wins.push(seed);
       } else {
         fails.push(`${seed}:${s.outcome}@${(s.gameTimeMs / 1000).toFixed(0)}s lv${s.finalLevel}`);
@@ -198,7 +199,7 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
     ).toBeGreaterThanOrEqual(0.95);
   });
 
-  it('every winning run stays inside the Floor-1 AI time budget', () => {
+  it('every winning run stays inside the Floor-1 collapse deadline', () => {
     for (const seed of SAMPLE_SEEDS) {
       const s = runs.get(seed)!;
       if (s.outcome !== 'victory') continue;
@@ -209,8 +210,8 @@ describe('spawner battle-arena · headless Floor-1 sweep', () => {
         activeTimeMs(s),
         `[seed ${seed}] won at ${(activeTimeMs(s) / 1000).toFixed(0)}s active ` +
           `(${(s.gameTimeMs / 1000).toFixed(0)}s raw, ${(s.safeRoomMs / 1000).toFixed(0)}s safe-room) — ` +
-          `over the ${FLOOR1_TIME_BUDGET_MS / 1000}s AI budget (arena feature regression?)`,
-      ).toBeLessThan(FLOOR1_TIME_BUDGET_MS);
+          `over the ${FLOOR1_ACTIVE_TIME_BUDGET_MS / 1000}s collapse deadline (arena feature regression?)`,
+      ).toBeLessThan(FLOOR1_ACTIVE_TIME_BUDGET_MS);
     }
   });
 });

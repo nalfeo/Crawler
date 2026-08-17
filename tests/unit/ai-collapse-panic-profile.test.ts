@@ -75,12 +75,12 @@ describe('computeCollapsePanicProfile', () => {
     expect(discovered.beeline).toBe(false);
   });
 
-  it('anchors Floor 1 AI panic to the 6-minute gate despite the 10-minute floor timer', () => {
+  it('anchors Floor 1 AI panic to the 10-minute floor-collapse deadline', () => {
     const aiDeadlineMs = resolveFloor1AiCollapsePanicDeadlineMs(600_000);
-    expect(aiDeadlineMs).toBe(6 * 60 * 1000);
+    expect(aiDeadlineMs).toBe(10 * 60 * 1000);
 
     const pressure = computeCollapsePanicProfile({
-      elapsedMs: 6 * 60 * 1000 - 55_000,
+      elapsedMs: 10 * 60 * 1000 - 55_000,
       deadlineMs: aiDeadlineMs,
       staircaseUnlocked: false,
       staircaseDiscovered: false,
