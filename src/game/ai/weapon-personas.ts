@@ -1,11 +1,12 @@
 import type { GameWorld } from '../../core/world.js';
-import { getActiveWeaponDef } from '../../core/active-weapon.js';
+import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../core/active-weapon.js';
 import {
   PRIMARY_STATS,
   isAllocatablePrimaryStat,
   type PrimaryStatId,
   type StatId,
 } from '../../shared/stats.js';
+import type { WeaponTypeSkillId } from '../../shared/weapon-skills.js';
 
 const ALLOCATABLE_STATS = PRIMARY_STATS.filter(isAllocatablePrimaryStat);
 const MINIMUM_TARGET_ORDER = [
@@ -86,10 +87,49 @@ export function getWeaponPersona(weaponId: string | undefined): WeaponPersona | 
   return weaponId === undefined ? undefined : WEAPON_PERSONAS[weaponId];
 }
 
+/**
+ * Persona to fall back to for a GENERATED weapon whose own def id has no
+ * entry in {@link WEAPON_PERSONAS} (every Floor 2 reward-pool weapon, and any
+ * such weapon looted on Floor 1). Exhaustive by construction: adding a weapon
+ * type skill forces a decision here rather than silently degrading the AI to
+ * the generic non-persona allocator.
+ *
+ * `null` means "no comparable starter persona" — the generic allocator stays
+ * in charge, exactly as before.
+ */
+const PERSONA_WEAPON_ID_BY_TYPE_SKILL: Readonly<Record<WeaponTypeSkillId, string | null>> = {
+  sword: 'sword',
+  dagger: 'throwing-knife',
+  hammer: 'baseball-bat',
+  'sports-equipment': 'baseball-bat',
+  bow: 'bow',
+  crossbow: 'bow',
+  pistol: 'pistol',
+  'throwing-weapons': 'throwing-knife',
+  unarmed: null,
+  spellcraft: 'fireball',
+};
+
+/**
+ * Persona for the world's live weapon.
+ *
+ * Exact weapon-def id wins, so every static/starter weapon keeps its historic
+ * persona (or its historic *absence* of one, e.g. `punch`). Only a GENERATED
+ * weapon — identified by the presence of an active-weapon snapshot from the
+ * generated-equipment registry — falls back to the persona of the comparable
+ * starter weapon type, so looting a generated weapon no longer silently drops
+ * stat allocation and gear preference to the generic fallback.
+ */
 export function getWeaponPersonaForWorld(world: GameWorld): WeaponPersona | undefined {
-  return getWeaponPersona(
-    getActiveWeaponDef(world)?.id ?? world.floorScenario?.selectedWeaponId ?? undefined,
+  const activeDef = getActiveWeaponDef(world);
+  const exact = getWeaponPersona(
+    activeDef?.id ?? world.floorScenario?.selectedWeaponId ?? undefined,
   );
+  if (exact !== undefined) return exact;
+  const generatedSnapshot = getActiveWeaponSnapshot(world);
+  if (generatedSnapshot === undefined) return undefined;
+  const fallbackWeaponId = PERSONA_WEAPON_ID_BY_TYPE_SKILL[generatedSnapshot.weaponTypeSkillId];
+  return fallbackWeaponId === null ? undefined : getWeaponPersona(fallbackWeaponId);
 }
 
 function currentPrimaryStat(world: GameWorld, playerEid: number, stat: PrimaryStatId): number {
