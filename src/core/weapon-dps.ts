@@ -34,6 +34,8 @@ export function computeTheoreticalSingleTargetDps(
   options: TheoreticalWeaponDpsOptions = {},
 ): TheoreticalWeaponDps {
   const attackSpeedMultiplier = options.attackSpeedMultiplier ?? 1;
+  // Mirrors weaponSystem's damage metadata: only WeaponType.MAGIC uses magic
+  // affinity; melee, ranged, thrown, beam, and trap attacks are physical.
   const affinity = def.weaponType === WeaponType.MAGIC ? 'magic' : 'physical';
   const expectedDamagePerHit = computeExpectedCritDamage(
     computePlayerScaledDamage(def.baseDamage, stats, {

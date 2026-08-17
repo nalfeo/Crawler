@@ -286,6 +286,8 @@ export function createInventoryUI(
     if (entry.kind === 'generated-instance') {
       if (!currentWorld) return undefined;
       const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
+      // Generated non-weapon equipment stores null; tooltip rendering expects
+      // undefined for "no weapon DPS line".
       return instance?.frozen.activeWeaponSnapshot ?? undefined;
     }
 
