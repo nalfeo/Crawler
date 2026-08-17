@@ -138,16 +138,16 @@ import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
-import { hashStringToSeed, SeededRandom } from '../shared/random.js';
-import { computeMobLevelScale } from '../shared/mob-scaling.js';
-import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
-import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
-import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
 import {
   FLOOR_SPAWNER_MAX_COUNT,
   resolvePassableRoomCenter,
   toFloorTrashSpawnerArchetypeId,
 } from './spawners/floor-spawner-utils.js';
+import { hashStringToSeed, SeededRandom } from '../shared/random.js';
+import { computeMobLevelScale } from '../shared/mob-scaling.js';
+import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
+import { selectBossSpawnPlacement } from './boss-spawn-placement.js';
+import { ensureBossArenaInterior } from '../core/map/generators/dungeon/reachability.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
