@@ -44,3 +44,17 @@ Both listed PR findings were independently classified as addressed by the
 existing `4b3e913` production changes. Automated review found no applicable
 finding in the PR diff; its only comment concerned an unchanged file imported
 from `main`.
+
+## CI recovery addendum
+
+Run `32008320895` exposed that normal death cleanup zeroed the defeated Slime
+Rat's typed-array position before `floor1ObjectiveTick` spawned its chest. The
+stale eid therefore placed the chest at `(0, 0)`, sending the AI on a long,
+dangerous return route. The recovery now uses the authored Slime Rat room anchor
+after despawn and covers the cleared-store lifecycle in the scenario test.
+
+- Estimated/actual recovery size: 2 apples / 2 apples.
+- Floor 1 scenario suite: 52/52 passed.
+- Stuck/wiggle headless gate: 8/8 passed.
+- Canonical completion seed 20: victory at 387.3s.
+- `npm run verify:fast` and `bash scripts/agent/lab-gate-check.sh`: passed.

@@ -8,7 +8,7 @@ import {
   Spawner,
   Sprite,
 } from '../../src/core/components.js';
-import { spawnBehaviorEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { clearEntityStores, spawnBehaviorEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
   ensureBossBattleSpellReward,
@@ -855,10 +855,16 @@ describe('floor1Scenario', () => {
     expect(world.stores.position.x[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.x);
     expect(world.stores.position.y[slimeRatBossEid]).toBe(expectedSlimeRatPlacement.position.y);
     expect(expectedSlimeRatPlacement.preferredMinimumSatisfied).toBe(true);
+    clearEntityStores(world, slimeRatBossEid);
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
     expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
-    expect(world.bossChests.has(createBossChestId('floor1-slime-rat-boss'))).toBe(true);
+    const slimeRatChestId = createBossChestId('floor1-slime-rat-boss');
+    expect(world.bossChests.has(slimeRatChestId)).toBe(true);
+    const slimeRatChestEid = world.bossChestEids.get(slimeRatChestId);
+    expect(slimeRatChestEid).toBeTypeOf('number');
+    expect(world.stores.position.x[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.x);
+    expect(world.stores.position.y[slimeRatChestEid!]).toBe(objective.slimeRatRoomPos.y);
     expect(world.hostileEncounterRevision).toBe(1);
     if (
       world.floorScenario &&

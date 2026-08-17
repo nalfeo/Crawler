@@ -3773,12 +3773,12 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const slimeRatEid = slimeRatBattle.bossEid;
   const slimeRatAlive = slimeRatEid !== null && entityExists(world.ecs, slimeRatEid);
   if (slimeRatBattle.started && !slimeRatAlive && !slimeRatBattle.defeated) {
-    const chestX =
-      (slimeRatEid === null ? undefined : world.stores.position.x[slimeRatEid]) ??
-      objective.slimeRatRoomPos.x;
-    const chestY =
-      (slimeRatEid === null ? undefined : world.stores.position.y[slimeRatEid]) ??
-      objective.slimeRatRoomPos.y;
+    // This branch runs only after the entity is gone. Normal death cleanup
+    // clears typed-array component stores first, so reading the old eid would
+    // return (0, 0), not `undefined`, and strand the physical chest outside
+    // the dungeon. Use the authored, reachable boss-room anchor.
+    const chestX = objective.slimeRatRoomPos.x;
+    const chestY = objective.slimeRatRoomPos.y;
     slimeRatBattle.defeated = true;
     slimeRatBattle.bossEid = null;
     spawnBossChestForDefeatedBoss(world, 'floor1-slime-rat-boss', chestX, chestY);
