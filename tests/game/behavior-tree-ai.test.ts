@@ -12,6 +12,7 @@ import {
 import { spawnDroppedItem } from '../../src/core/spawners/pickups.js';
 import { spawnBossChestEntity } from '../../src/core/spawners/world-objects.js';
 import { spawnEnemyProjectile, spawnAoeProjectile } from '../../src/core/spawners/projectiles.js';
+import { FLOOR1_SPELL_BROKER_COST } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME, TeamId } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -4240,7 +4241,7 @@ describe('BehaviorTreeAI', () => {
       // Activate spell broker intent in returning state (gold >= cost).
       configureSpellBrokerPurchase(world, true);
       ensureSpellBrokerDecision(world);
-      world.playerGold = 100; // > FLOOR1_SPELL_BROKER_COST (35g)
+      world.playerGold = FLOOR1_SPELL_BROKER_COST + 1; // affordable → returning
       updateSpellBrokerIntent(world, null, 3_000); // transitions idle → returning
 
       const ai = new BehaviorTreeAI({ seed: buySeed });
@@ -4266,7 +4267,7 @@ describe('BehaviorTreeAI', () => {
       // Activate spell broker intent in farming state (gold < cost).
       configureSpellBrokerPurchase(world, true);
       ensureSpellBrokerDecision(world);
-      world.playerGold = 0; // below FLOOR1_SPELL_BROKER_COST (35g)
+      world.playerGold = 0; // below FLOOR1_SPELL_BROKER_COST
       updateSpellBrokerIntent(world, null, 3_000); // transitions idle → farming
 
       const ai = new BehaviorTreeAI({ seed: buySeed });

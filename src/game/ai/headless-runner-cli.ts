@@ -158,6 +158,57 @@ async function main(): Promise<void> {
       `  Enemies Hit:  ${wt.totalEnemyHits} (${wt.avgEnemiesPerConnectingSwing.toFixed(2)}/connecting swing)`,
     );
   }
+  if (stats.goldEconomy) {
+    const ge = stats.goldEconomy;
+    console.log('');
+    console.log('💰 Gold Economy');
+    console.log(
+      `  Earned:       ${ge.earnedTotal} (drops ${ge.earnedFromDrops}, loot boxes ${ge.earnedFromLootBoxes})`,
+    );
+    console.log(
+      `  Spent:        ${ge.spentTotal} (charm ${ge.spentOnCharm}, weapon ${ge.spentOnMerchantWeapon}, spell ${ge.spentOnSpell})`,
+    );
+    console.log(
+      `  Unspent:      ${ge.unspentAtExit} (${(ge.unspentFraction * 100).toFixed(1)}% of earned)`,
+    );
+    console.log(
+      `  Spendable:    ${ge.spendableEarned} earned before exit — unspent ${ge.unspentSpendable} (${(ge.unspentSpendableFraction * 100).toFixed(1)}%)`,
+    );
+    console.log(
+      `  Purchases:    ${ge.distinctPurchases} vendors (charm ${ge.charmPurchases}, weapon ${ge.merchantWeaponPurchases}, spell ${ge.spellPurchases})`,
+    );
+  }
+  if (stats.vendors) {
+    const vendors = stats.vendors;
+    console.log('');
+    console.log('🛒 Vendor Visits & Decisions');
+    console.log(
+      `  Visits:       ${vendors.visitCount} (${
+        Object.entries(vendors.visitsByVendor)
+          .map(([vendorId, count]) => `${vendorId} ${count}`)
+          .join(', ') || 'none'
+      })`,
+    );
+    for (const visit of vendors.visits) {
+      const stock =
+        visit.stock.map((entry) => `${entry.itemId} ${entry.cost}g`).join(', ') || 'empty';
+      console.log(
+        `    ${(visit.gameTimeMs / 1000).toFixed(1)}s ${visit.vendorId} — gold ${visit.playerGold}, stock: ${stock}`,
+      );
+    }
+    console.log(
+      `  Decisions:    ${vendors.decisionCount} (${Object.entries(vendors.outcomeCounts)
+        .map(([outcome, count]) => `${outcome} ${count}`)
+        .join(', ')})`,
+    );
+    for (const decision of vendors.decisions) {
+      console.log(
+        `    ${(decision.gameTimeMs / 1000).toFixed(1)}s ${decision.vendorId} — ${decision.outcome} ${
+          decision.itemId ?? 'nothing'
+        } (${decision.cost}g, gold ${decision.playerGold}, ${decision.reason})`,
+      );
+    }
+  }
   console.log('');
   console.log('❤️  Health Metrics');
   console.log(`  Min HP:       ${(stats.health.minHealthPercent * 100).toFixed(1)}%`);

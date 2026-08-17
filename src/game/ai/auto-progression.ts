@@ -24,6 +24,7 @@ import { isInSafeContext } from '../../core/safe-space.js';
 import {
   executeMerchantWeaponPurchase,
   getMerchantWeaponIntent,
+  merchantWeaponReserve,
 } from './merchant-weapon-intent.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
@@ -50,6 +51,7 @@ import {
   meetSpellQuestGiver,
   meetBroker,
   canPurchaseSpellBrokerSpell,
+  isSpellBrokerSpellEligibleIgnoringGold,
   getSpellBrokerOffers,
   purchaseSpellBrokerSpell,
   spendPoints,
@@ -297,7 +299,10 @@ export function autoFloor1ProgressionSystem(
       break;
     }
 
-    if (!spellBrokerPurchaseActive && getMerchantWeaponIntent(world).status === 'returning') {
+    // Both optional purchases may now run in the same visit; the weapon
+    // executor holds back `_spellPurchaseReserve` so buying a weapon can never
+    // price the higher-value broker spell out of the run.
+    if (getMerchantWeaponIntent(world).status === 'returning') {
       executeMerchantWeaponPurchase(world, playerEid);
       break;
     }
@@ -313,15 +318,34 @@ export function autoFloor1ProgressionSystem(
       ([, instance]) => instance.defId === 'spell-quest-giver',
     );
     if (broker && isTargetedNpcActionable(world, aiProvider, broker[0], broker[1].nearbyPlayer)) {
-      const candidateSpellIds = [
-        spellIntent.spellId,
-        ...getSpellBrokerOffers(world).map((offer) => offer.spellId),
-      ].filter((spellId): spellId is string => spellId !== null);
-      const spellId = candidateSpellIds.find((id) =>
-        canPurchaseSpellBrokerSpell(world, playerEid, id),
+      // Only consider a different offer when the intended spell is
+      // unavailable for a reason other than affordability (already
+      // purchased/learned, no free ability slot, or no intended spell at
+      // all). A run that is merely short on gold for its intended pick must
+      // not skip ahead in the priced rack — that would silently buy a
+      // cheaper spell while the intent still thinks it is farming the
+      // pricier headline offer.
+      const intendedSpellId = spellIntent.spellId;
+      const intendedUnavailableForOtherReason =
+        intendedSpellId === null ||
+        !isSpellBrokerSpellEligibleIgnoringGold(world, playerEid, intendedSpellId);
+      const candidateSpellIds = intendedUnavailableForOtherReason
+        ? getSpellBrokerOffers(world).map((offer) => offer.spellId)
+        : [intendedSpellId];
+      // A repeat spell is the run's lowest-priority purchase: it exists to
+      // absorb gold that has nowhere else to go, so it must leave a pending
+      // weapon-class switch fully funded (see `merchantWeaponReserve`). The
+      // headline first spell keeps its priority and ignores the reserve.
+      const reserve = spellIntent.purchaseCount > 0 ? merchantWeaponReserve(world) : 0;
+      const offerCost = (id: string): number =>
+        getSpellBrokerOffers(world).find((offer) => offer.spellId === id)?.cost ?? 0;
+      const spellId = candidateSpellIds.find(
+        (id) =>
+          canPurchaseSpellBrokerSpell(world, playerEid, id) &&
+          world.playerGold - offerCost(id) >= reserve,
       );
       if (spellId !== undefined && purchaseSpellBrokerSpell(world, playerEid, spellId)) {
-        markSpellBrokerPurchased(world);
+        markSpellBrokerPurchased(world, spellId);
         return;
       }
     }

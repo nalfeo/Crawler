@@ -50,6 +50,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       const goldValue = world.stores.gold.value[otherEid] ?? 0;
       world.playerGold += goldValue;
       world.lootLedger.goldCollected += goldValue;
+      world.goldLedger.earnedFromDrops += goldValue;
       emitPickupSparkle(world, otherEid, 'gold');
       removeEntity(world.ecs, otherEid);
       continue;
