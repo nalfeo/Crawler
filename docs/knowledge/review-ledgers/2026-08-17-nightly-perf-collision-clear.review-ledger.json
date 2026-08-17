@@ -27,20 +27,26 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gemini-3.1-pro-preview",
+      "grader_model": "gpt-5.6-luna",
       "implementer_model": "claude-sonnet-5",
-      "head_sha": "f2428c1de998d4feaefec3171f6fa7691871a69b",
-      "findings": [],
+      "head_sha": "4c1dc311e46002de5acca77d0e0807d840be1a9b",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/review-ledgers/2026-08-17-nightly-perf-collision-clear.review-ledger.json",
+          "detail": "The independent_grade.head_sha records f2428c1, but the branch now ends at 4c1dc31 after additional test commits. Rerun or update the independent grade for the final tree so the review evidence covers HEAD."
+        }
+      ],
       "criteria": {
         "correctness": 5,
         "scope_discipline": 5,
         "test_coverage": 5,
-        "policy_compliance": 5,
+        "policy_compliance": 3,
         "maintainability": 5
       },
       "verdict": "pass",
-      "findings_count": 0,
-      "notes": "The optimization correctly inlines Size component lookups to bypass helper calls on the hot path, accurately recreating the fallback shim logic. The author directly addressed the independent grade's coverage concern by adding a comprehensive unit test that exercises boxes, circles, zero-size, and NaN extents to lockstep the inline logic with the fallback shim. The scope is completely disciplined, policy compliance is perfect (no non-deterministic calls, core layer boundaries respected), and the optimization is proven by the byte-identical covered RunStats."
+      "findings_count": 1,
+      "notes": "The collision optimization preserves the helper semantics, remains deterministic and layer-compliant, and adds focused coverage for valid, malformed, NaN, and mixed extents. No runtime correctness or scope problems were found; the only issue is stale review-ledger provenance."
     }
   }
 }
