@@ -32,11 +32,11 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIPathingMode } from '../../src/game/ai/types.js';
 import type { AIPathingModeValue, RunStats } from '../../src/game/ai/types.js';
-import { GAME } from '../../src/shared/constants.js';
+import { FLOOR1_DEFAULT_MAX_FRAMES } from '../../src/game/ai/floor1-run-budget.js';
 
 // Full Floor-1 budget (mirrors the ai:ab-pathing-mode harness) so the run clears
 // the welcome-room set piece and actually engages enemies before it ends.
-const MAX_FRAMES = Math.ceil((6 * 60 * 1000 * 1.1) / GAME.DELTA_MS);
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 const WEAPON = 'sword';
 const SEEDS = [42, 101] as const;
 const DETERMINISM_TIMEOUT_MS = 300_000;

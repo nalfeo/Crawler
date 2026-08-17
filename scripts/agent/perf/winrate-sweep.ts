@@ -12,7 +12,7 @@
  *
  * **Win definition (Floor 1):** any run whose terminal outcome is `victory`
  * counts as a win, regardless of the active-time budget. Victories that
- * exceeded the 6-min active-time budget are separately flagged as slow clears
+ * exceeded the 10-min active-time budget are separately flagged as slow clears
  * and reported in a dedicated section — they never appear in the loss count.
  * The SSOT `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)` flag is preserved for
  * tournament/A-B scoring; it does not affect the win-rate denominator.
@@ -27,7 +27,7 @@
  *   npm run ai:winrate-sweep                       # seeds 1-40 × {sword,bow,baseball-bat,pistol,throwing-knife,fireball}
  *   npm run ai:winrate-sweep -- --seeds 1-60       # range
  *   npm run ai:winrate-sweep -- --weapons sword    # one weapon
- *   npm run ai:winrate-sweep -- --max-frames 23760 --out files/sweep.json
+ *   npm run ai:winrate-sweep -- --max-frames 39600 --out files/sweep.json
  *   npm run ai:winrate-sweep -- --workers 8 --skip-events
  *
  * A failing seed runs to the budget, so a sweep over many seeds with many

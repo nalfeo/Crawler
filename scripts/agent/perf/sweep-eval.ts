@@ -44,7 +44,7 @@
  * room, so a clear that is over budget in raw game time but under it in active
  * time is a legitimate win. The composite score reuses `scoreRun` on RAW time
  * (so the search gradient never rewards safe-room idling); a clear whose ACTIVE
- * time exceeds the 6-min budget is scored as a NON-win (its outcome is
+ * time exceeds the 10-min budget is scored as a NON-win (its outcome is
  * downgraded before scoring) so the headline Σ-score metric can never reward a
  * config for a run the tournament counts as a loss.
  *
@@ -111,9 +111,9 @@ import {
 } from './worker-pool.js';
 import { parseNonNegativeInt, parsePositiveInt, parseSeeds } from './winrate-sweep-args.js';
 
-/** Floor 1 design win budget: 6 minutes of game time. The SSOT win threshold. */
+/** Floor 1 design win budget: 10 minutes of game time. The SSOT win threshold. */
 const FLOOR1_TIME_BUDGET_MS = FLOOR1_ACTIVE_TIME_BUDGET_MS;
-/** Slack frame budget (≈1.1× the win budget) so a near-6-min clear isn't cut mid-run. */
+/** Slack frame budget (≈1.1× the win budget) so a near-10-min clear isn't cut mid-run. */
 const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 /** Hard wall-time cap per run so a pathological config can't hang a job forever. */
 const WALL_CAP_MS = 20 * 60 * 1000;

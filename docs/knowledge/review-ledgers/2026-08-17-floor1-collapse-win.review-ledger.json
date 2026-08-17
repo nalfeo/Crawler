@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-17",
+  "session_slug": "floor1-collapse-win",
+  "task_title": "Align Floor 1 AI wins with collapse",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Accepted: use explicit experienced-player gate and 100% contiguous-panel baseline; retain slow-clear telemetry; audit budget-derived assertions; consciously derive quest stall window from the 600s collapse horizon so 360s is no longer a runner cutoff. Rejected broad release sweep in-session: no workflow-dispatch capability is exposed, while the existing deterministic 25-seed CI gate directly protects the specified expert baseline."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-code-review"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Recovered CI blockers: fixed the stale 360s docstring in winrate-sweep-args.test.ts, updated stale Floor-1 SSOT references (23,760 frames / 6-min) to 39,600 frames / 10-min across winrate-sweep.ts, optional-purchases-sweep*.ts, sweep-eval.ts, floor-run-budget.ts, and headless-runner.ts, and fixed the real ai-stuck-wiggle.test.ts sword regression (wigglePct baseline legitimately rose from 2.4% to 17.4% under the widened budget, still far below the 50%+ oscillation-loop alarm). Reviewer found no concerns."
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "copilot-swe-agent",
+      "head_sha": "e58578c13c0696a2c612d68acfe86de017066ac5",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change correctly aligns the Floor 1 AI win budget with the in-game collapse timer (10 minutes / 600s) across the manifest, simulation runner, and tests. By removing the artificial 6-minute AI budget distinction, the code legitimately drops isOfficialWin checks in the completion gate in favor of relying on the runner native collapse timeout, significantly simplifying the evaluation logic. It preserves all critical slack calculations and determinism rules, provides clear documentation for the wiggle baseline increase, and implements the requested 100% experienced-player gate accurately without weakening testing standards."
+    }
+  }
+}
