@@ -25,23 +25,23 @@ export const FLOOR1_WEAPONS = [
   'throwing-knife',
   'fireball',
 ];
-/** Floor 1 design WIN budget: 6 minutes of ACTIVE (safe-room-credited) game time. */
+/** Floor 1 design WIN budget: 10 minutes of ACTIVE (safe-room-credited) game time. */
 export const FLOOR1_TIME_BUDGET_MS = FLOOR1_ACTIVE_TIME_BUDGET_MS;
 /** Floor 1 design WIN budget in frames at 60 fps (`FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS`). */
 export const BUDGET_FRAMES = FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS;
 
 /**
  * Default simulation frame cap = the win budget + ~10 % slack, computed with the
- * IDENTICAL formula (and therefore the identical value, 23_760) used by
+ * IDENTICAL formula (and therefore the identical value, 39_600) used by
  * sweep-eval.ts and the ab-* / headless Floor-1 harnesses. The FP-safe division
- * form is load-bearing: `Math.ceil(BUDGET_FRAMES * 1.1)` would round up to 23_761
- * because `21_600 * 1.1 === 23760.000000000004`, so the peer formula is kept
+ * form is load-bearing: `Math.ceil(BUDGET_FRAMES * 1.1)` would round up to 39_601
+ * because `36_000 * 1.1 === 39600.00000000001`, so the peer formula is kept
  * verbatim to stay byte-for-byte consistent across every Floor-1 sweep.
  *
  * The slack is REQUIRED: the Floor-1 win is safe-room-credited — `isOfficialWin`
- * compares `gameTimeMs - safeRoomMs` against the 6-min budget, so a legitimate
- * clear can run PAST 360 s of RAW game time while still being under the ACTIVE
- * budget. Capping the sim at exactly BUDGET_FRAMES (360 s raw) would
+ * compares `gameTimeMs - safeRoomMs` against the 10-min budget, so a legitimate
+ * clear can run PAST 600 s of RAW game time while still being under the ACTIVE
+ * budget. Capping the sim at exactly BUDGET_FRAMES (600 s raw) would
  * force-terminate those safe-room-credited wins before they finish and miscount
  * them as timeouts — biasing the reported win rate DOWN, the opposite of the
  * safe-room win-definition fix's intent.
