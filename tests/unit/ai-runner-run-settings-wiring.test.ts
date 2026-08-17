@@ -66,6 +66,7 @@ describe('AI runner run-settings wiring', () => {
     expect(source).toContain('selectedScenarioPresetId = resolved.presetId');
     expect(source).toContain('applyScenarioVisualProfile(selectedScenarioPresetId)');
     expect(source).toContain('persistLabState()');
-    expect(source).toContain('return composeSceneOptions(nextFloorOptions)');
+    expect(source).toContain('Object.assign(sceneOptions, composeSceneOptions(nextFloorOptions))');
+    expect(source).toContain('return sceneOptions');
   });
 });

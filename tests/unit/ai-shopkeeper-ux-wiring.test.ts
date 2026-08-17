@@ -19,4 +19,15 @@ describe('AI playthrough shopkeeper UX wiring', () => {
     expect(source).toContain('scene.requestEquipAction();');
     expect(source).not.toContain('sceneOptions.shopkeeper?.equip(world, playerEid);');
   });
+
+  it('AI Runner Lab confirms the Spell Broker modal only for an active broker intent', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
+    expect(source).toContain('isSpellBrokerPurchaseActive(getSpellBrokerIntent(world))');
+    expect(source).toMatch(
+      /spellBroker\.purchaseSpell\(world, playerEid, offer\.spellId\)[\s\S]{0,120}markSpellBrokerPurchased\(world\)/,
+    );
+    expect(source).toMatch(
+      /if \(manualControl\) \{[\s\S]{0,180}return;[\s\S]{0,120}const scene = getScene\(\);/,
+    );
+  });
 });

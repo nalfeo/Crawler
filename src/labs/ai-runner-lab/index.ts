@@ -35,7 +35,12 @@ import {
 } from '../../game/ai/settlement-maintenance-planner.js';
 import { getWeaponPersonaForWorld } from '../../game/ai/weapon-personas.js';
 import { configureMerchantWeaponPurchase } from '../../game/ai/merchant-weapon-intent.js';
-import { configureSpellBrokerPurchase } from '../../game/ai/spell-broker-intent.js';
+import {
+  configureSpellBrokerPurchase,
+  getSpellBrokerIntent,
+  isSpellBrokerPurchaseActive,
+  markSpellBrokerPurchased,
+} from '../../game/ai/spell-broker-intent.js';
 import { resolveOptionalPurchases } from '../../game/ai/optional-purchases.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
@@ -886,7 +891,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       selectedScenarioPresetId = resolved.presetId;
       applyScenarioVisualProfile(selectedScenarioPresetId);
       persistLabState();
-      return composeSceneOptions(nextFloorOptions);
+      Object.assign(sceneOptions, composeSceneOptions(nextFloorOptions));
+      return sceneOptions;
     },
   });
 
@@ -1542,6 +1548,28 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         }
         modalPicker.close();
         return;
+      }
+      const spellBroker = sceneOptions.spellQuestGiver;
+      if (
+        spellBroker?.getSpellBrokerOffers &&
+        spellBroker.canPurchaseSpell &&
+        spellBroker.purchaseSpell &&
+        world.featureUnlocks.spells === true &&
+        isSpellBrokerPurchaseActive(getSpellBrokerIntent(world))
+      ) {
+        const offer = spellBroker
+          .getSpellBrokerOffers(world)
+          .find(
+            (entry) =>
+              !entry.purchased && spellBroker.canPurchaseSpell?.(world, playerEid, entry.spellId),
+          );
+        if (offer) {
+          if (spellBroker.purchaseSpell(world, playerEid, offer.spellId)) {
+            markSpellBrokerPurchased(world);
+          }
+          modalPicker.close();
+          return;
+        }
       }
     }
 
