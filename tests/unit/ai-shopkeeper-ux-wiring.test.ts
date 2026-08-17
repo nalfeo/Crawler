@@ -20,12 +20,20 @@ describe('AI playthrough shopkeeper UX wiring', () => {
     expect(source).not.toContain('sceneOptions.shopkeeper?.equip(world, playerEid);');
   });
 
-  it('AI Runner Lab confirms the Spell Broker modal only for an active broker intent', () => {
+  it('AI Runner Lab confirms only an identified Spell Broker modal and closes its purchase race', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
-    expect(source).toContain('isSpellBrokerPurchaseActive(getSpellBrokerIntent(world))');
+    expect(source).toContain("modalPicker.getKind() === 'spell-broker'");
+    expect(source).toContain("spellBrokerIntent.purchaseStatus === 'purchased'");
     expect(source).toMatch(
       /spellBroker\.purchaseSpell\(world, playerEid, offer\.spellId\)[\s\S]{0,120}markSpellBrokerPurchased\(world\)/,
     );
+    expect(source).toMatch(
+      /modalPicker\.getKind\(\) === 'spell-broker'[\s\S]{0,800}modalPicker\.close\(\);[\s\S]{0,80}return;/,
+    );
+    const brokerModalKind = source.indexOf("modalPicker.getKind() === 'spell-broker'");
+    const brokerIntent = source.indexOf('isSpellBrokerPurchaseActive(spellBrokerIntent)');
+    expect(brokerModalKind).toBeGreaterThan(-1);
+    expect(brokerIntent).toBeGreaterThan(brokerModalKind);
     expect(source).toMatch(
       /if \(manualControl\) \{[\s\S]{0,180}return;[\s\S]{0,120}const scene = getScene\(\);/,
     );

@@ -574,7 +574,7 @@ function randomRunSeed(): number {
 interface RunnerSceneInternals {
   world?: GameWorld;
   playerEid?: number;
-  modalPicker?: { isOpen(): boolean; close(): void };
+  modalPicker?: { isOpen(): boolean; getKind(): string | null; close(): void };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   requestInventoryToggle(): void;
@@ -1550,12 +1550,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         return;
       }
       const spellBroker = sceneOptions.spellQuestGiver;
+      const spellBrokerIntent = getSpellBrokerIntent(world);
       if (
+        modalPicker.getKind() === 'spell-broker' &&
         spellBroker?.getSpellBrokerOffers &&
         spellBroker.canPurchaseSpell &&
         spellBroker.purchaseSpell &&
         world.featureUnlocks.spells === true &&
-        isSpellBrokerPurchaseActive(getSpellBrokerIntent(world))
+        (isSpellBrokerPurchaseActive(spellBrokerIntent) ||
+          spellBrokerIntent.purchaseStatus === 'purchased')
       ) {
         const offer = spellBroker
           .getSpellBrokerOffers(world)
@@ -1563,13 +1566,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             (entry) =>
               !entry.purchased && spellBroker.canPurchaseSpell?.(world, playerEid, entry.spellId),
           );
-        if (offer) {
-          if (spellBroker.purchaseSpell(world, playerEid, offer.spellId)) {
-            markSpellBrokerPurchased(world);
-          }
-          modalPicker.close();
-          return;
+        if (offer && spellBroker.purchaseSpell(world, playerEid, offer.spellId)) {
+          markSpellBrokerPurchased(world);
         }
+        modalPicker.close();
+        return;
       }
     }
 
