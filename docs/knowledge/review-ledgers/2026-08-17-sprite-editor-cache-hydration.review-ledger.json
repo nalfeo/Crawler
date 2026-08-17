@@ -14,8 +14,23 @@
       "notes": "Addressing all three review findings: a browser regression timing assertion for the <1s gate; missing catalog stat fallback; and a precise legacy image-version fallback comment. No alternate architecture warranted: the snapshot + explicit invalidation design remains correct."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
