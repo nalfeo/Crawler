@@ -1301,15 +1301,6 @@ export class BehaviorTreeAI implements AIInputProvider {
           return false;
         }
 
-        // In lock-in encounters (boss room / spawner arena), retreating is a
-        // dead-end: the player cannot exit and endlessly kiting in a cage only
-        // delays the required objective kill. Defer to ArenaLockin so ENGAGE can
-        // run its defensive spacing/add-pressure logic instead of retreat loops.
-        if (detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY) !== null) {
-          this.endRetreat(ctx.world);
-          return false;
-        }
-
         // An enemy ignored for target selection is still physically dangerous.
         // Retreat must sense it if it closes again, otherwise a low-health player
         // resumes progression while the temporarily ignored attacker lands free hits.
@@ -1320,6 +1311,28 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.config.scanRadius,
           true,
         );
+        const lockin = detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY);
+        if (lockin !== null) {
+          const retreatEscapeRadius = this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT;
+          const attackRange =
+            threat !== null ? (ctx.world.stores.enemyBehavior.attackRange[threat.eid] ?? 0) : 0;
+          const bossContactEscape =
+            lockin.kind === 'boss' &&
+            threat !== null &&
+            threat.eid === lockin.eid &&
+            threat.distance <= CONTACT_SAFE_ORBIT_FT &&
+            attackRange > retreatEscapeRadius;
+          // In lock-in encounters (boss room / spawner arena), retreating is a
+          // dead-end: the player cannot exit and endlessly kiting in a cage only
+          // delays the required objective kill. Defer to ArenaLockin so ENGAGE can
+          // run its defensive spacing/add-pressure logic instead of retreat loops.
+          // Preserve the boss contact escape carve-out below: a long-range boss
+          // already body-blocking the player is no longer a ranged lock-in problem.
+          if (!bossContactEscape) {
+            this.endRetreat(ctx.world);
+            return false;
+          }
+        }
         if (threat) {
           // LocalThreatRecovery is the bounded follow-up for this same threat.
           // Let melee close/attack instead of re-entering RETREAT at the outer

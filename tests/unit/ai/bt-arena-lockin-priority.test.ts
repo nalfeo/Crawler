@@ -254,6 +254,27 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.reason.toLowerCase()).toContain('arena');
   });
 
+  it('boss lock-in preserves point-blank escape from a long-range boss', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.current[player] = 5;
+    world.stores.health.max[player] = 100;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const bossEid = startStaircaseBossLockin(world, px, py, 3, 0);
+    world.stores.enemyBehavior.attackRange[bossEid] = 280;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.RETREAT);
+    expect(decision.targetEid).toBeNull();
+  });
+
   it('ignores loot outside the arena while locked in (arena objective wins)', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
