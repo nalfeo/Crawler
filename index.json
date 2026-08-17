@@ -1,5 +1,39 @@
 [
   {
+    "commit": "277ac018121e274d3bab4491925576063aa8765e",
+    "commitDate": "2026-08-17T20:03:52Z",
+    "commitSubject": "Add repeat empty-draft triage budget (#3025)",
+    "capturedAt": "2026-08-17T21:36:57.056Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32065842347",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/277ac018121e274d3bab4491925576063aa8765e.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.69,
+      "gatePass": false,
+      "path": "by-sha/277ac018121e274d3bab4491925576063aa8765e.fun-report.json"
+    }
+  },
+  {
     "commit": "f7ef7d43e1bbddd09c11f5a21443e3ea6ad103ea",
     "commitDate": "2026-08-17T12:59:01Z",
     "commitSubject": "Adjusting item prices for balance and gameplay (#3015)",
