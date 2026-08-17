@@ -1311,6 +1311,28 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.config.scanRadius,
           true,
         );
+        const lockin = detectArenaLockin(ctx.world, ctx.playerX, ctx.playerY);
+        if (lockin !== null) {
+          const retreatEscapeRadius = this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT;
+          const attackRange =
+            threat !== null ? (ctx.world.stores.enemyBehavior.attackRange[threat.eid] ?? 0) : 0;
+          const bossContactEscape =
+            lockin.kind === 'boss' &&
+            threat !== null &&
+            threat.eid === lockin.eid &&
+            threat.distance <= CONTACT_SAFE_ORBIT_FT &&
+            attackRange > retreatEscapeRadius;
+          // In lock-in encounters (boss room / spawner arena), retreating is a
+          // dead-end: the player cannot exit and endlessly kiting in a cage only
+          // delays the required objective kill. Defer to ArenaLockin so ENGAGE can
+          // run its defensive spacing/add-pressure logic instead of retreat loops.
+          // Preserve the bossContactEscape carve-out: a long-range boss already
+          // body-blocking the player is no longer a ranged lock-in problem.
+          if (!bossContactEscape) {
+            this.endRetreat(ctx.world);
+            return false;
+          }
+        }
         if (threat) {
           // LocalThreatRecovery is the bounded follow-up for this same threat.
           // Let melee close/attack instead of re-entering RETREAT at the outer
@@ -1829,10 +1851,10 @@ export class BehaviorTreeAI implements AIInputProvider {
    * chain-plan targets (e.g. the far-away staircase) while sealed inside a
    * room it cannot leave.
    *
-   * Retreat (Priority 1) still takes precedence: low-HP-under-threat is
-   * life-critical and drops out of arena lock-in only long enough to kite
-   * to a safe tile. Because the arena also traps the threats, the kite is
-   * bounded and returns to lock-in as soon as HP recovers.
+   * Retreat (Priority 1) intentionally yields while lock-in is active: in a
+   * sealed arena there is no meaningful "safe tile" exit route, so lock-in
+   * uses defensive ENGAGE decisions (boss/add pressure handling + spacing)
+   * instead of unbounded retreat loops.
    *
    * Detection lives in `arena-lockin.ts`; the BT node here is purely a
    * priority + blackboard/logging shim so the state machine stays inspect-
@@ -1931,32 +1953,25 @@ export class BehaviorTreeAI implements AIInputProvider {
           return BTStatus.SUCCESS;
         }
 
-        // Route the objective through the appropriate movement plan:
-        //   - Spawners are stationary structures, so orbit/kite is wasted
-        //     motion — walk straight in and let the weapon auto-fire once
-        //     the strike gate is reached. This is critical for melee: the
-        //     spawner's `defensive` mode floods the arena with adds every
-        //     2s, so any second spent orbiting a stationary target is a
-        //     second the swarm grows.
-        //   - Bosses move, so run `planEngagement` (kite/strafe) exactly
-        //     like normal Engage would.
+        // Route both objective kinds through `planEngagement` so the movement
+        // planner keeps its spacing + dodge behavior while lock-in is active.
+        // This avoids body-parking on top of a spawner center under swarm
+        // pressure, while still keeping `targetEid` pinned to the objective.
         this.decision.state = AIState.ENGAGE;
         this.decision.targetEid = target.eid;
+        const objectiveTarget: WorldTarget = {
+          eid: target.eid,
+          x: target.x,
+          y: target.y,
+          distance: targetDistance,
+        };
+        const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, objectiveTarget);
+        this.decision.targetX = plan.targetX;
+        this.decision.targetY = plan.targetY;
         if (target.kind === 'boss') {
-          const bossWt: WorldTarget = {
-            eid: target.eid,
-            x: target.x,
-            y: target.y,
-            distance: targetDistance,
-          };
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, bossWt);
-          this.decision.targetX = plan.targetX;
-          this.decision.targetY = plan.targetY;
           this.decision.reason = `Boss-room lock-in — ${plan.reason} (boss ${String(target.eid)})`;
         } else {
-          this.decision.targetX = target.x;
-          this.decision.targetY = target.y;
-          this.decision.reason = `Arena lock-in — attacking spawner ${String(target.eid)} at ${targetDistance.toFixed(1)}ft`;
+          this.decision.reason = `Arena lock-in — ${plan.reason} (spawner ${String(target.eid)})`;
         }
         return BTStatus.SUCCESS;
       }),
