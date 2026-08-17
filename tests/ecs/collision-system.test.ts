@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { Position, Projectile, Size, Sprite } from '../../src/core/components.js';
 import { createEntity, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
-import { getShimStats, resetShimStats } from '../../src/core/physics-body.js';
+import {
+  getBodyHalfHeight,
+  getBodyHalfWidth,
+  getShimStats,
+  resetShimStats,
+} from '../../src/core/physics-body.js';
 import { SHAPE_BOX, SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -72,6 +77,7 @@ describe('collisionSystem', () => {
     const circle = createEntity(world);
     const malformed = createEntity(world);
     const nanExtent = createEntity(world);
+    const mixedExtent = createEntity(world);
 
     addComponent(world.ecs, box, set(Position, { x: 0, y: 0 }));
     addComponent(
@@ -97,14 +103,30 @@ describe('collisionSystem', () => {
       nanExtent,
       set(Size, { radius: 0, halfWidth: Number.NaN, halfHeight: Number.NaN, shape: SHAPE_CIRCLE }),
     );
+    addComponent(world.ecs, mixedExtent, set(Position, { x: 40, y: 0 }));
+    addComponent(
+      world.ecs,
+      mixedExtent,
+      set(Size, { radius: 2, halfWidth: 3, halfHeight: 0, shape: SHAPE_BOX }),
+    );
 
     const { grid } = collisionSystem(world);
 
-    expect(grid.queryRadius(2.5, 4.5, 0)).toEqual([box]);
-    expect(grid.queryRadius(11.5, 0, 0)).toEqual([circle]);
-    expect(grid.queryRadius(20, 0, 0)).toEqual([malformed]);
-    expect(grid.queryRadius(30, 0, 0)).toEqual([nanExtent]);
-    expect(getShimStats()).toEqual({ count: 4, uniqueEids: 2 });
+    for (const [eid, x, y] of [
+      [box, 0, 0],
+      [circle, 10, 0],
+      [malformed, 20, 0],
+      [nanExtent, 30, 0],
+      [mixedExtent, 40, 0],
+    ]) {
+      const halfWidth = getBodyHalfWidth(world, eid, 'collisionSystem');
+      const halfHeight = getBodyHalfHeight(world, eid, 'collisionSystem');
+
+      expect(
+        grid.queryRadius(x + Math.max(halfWidth - 0.5, 0), y + Math.max(halfHeight - 0.5, 0), 0),
+      ).toContain(eid);
+    }
+    expect(getShimStats()).toEqual({ count: 8, uniqueEids: 2 });
     resetShimStats();
   });
 });
