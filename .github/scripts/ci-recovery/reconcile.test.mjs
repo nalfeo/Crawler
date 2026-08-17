@@ -3750,7 +3750,7 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
-test('a failed job-level continue-on-error check (e.g. Advisory coverage) never becomes a ci-failure blocker (PR #3032)', async (t) => {
+test('failed job-level continue-on-error checks (including matrix-suffixed report-only legs) never become ci-failure blockers (PR #3032)', async (t) => {
   // "Advisory coverage" and "Headless Multi-Floor Legs (report-only)" run with
   // `continue-on-error: true` at the job level in .github/workflows/ci.yml, and
   // `merge-gate`'s `needs` list deliberately omits both, so their failure can never
@@ -3766,6 +3766,13 @@ test('a failed job-level continue-on-error check (e.g. Advisory coverage) never 
     conclusion: 'failure',
     html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
   };
+  const matrixAdvisoryFailedCheck = {
+    id: 2,
+    name: 'Headless Multi-Floor Legs (report-only) (floor2, --floor floor2 --seed 42)',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/2`,
+  };
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
@@ -3775,7 +3782,7 @@ test('a failed job-level continue-on-error check (e.g. Advisory coverage) never 
     }),
     [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [advisoryFailedCheck] },
+      body: { check_runs: [advisoryFailedCheck, matrixAdvisoryFailedCheck] },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
   });
