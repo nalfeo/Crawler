@@ -26,8 +26,8 @@
  *   composing from shards. The snapshot is an accelerator, never a source of
  *   truth.
  * - CORRECTNESS IS FINGERPRINT-GATED. A snapshot is only accepted when its
- *   stored fingerprint matches the live shard fingerprint (file count + newest
- *   mtime). A stale snapshot is ignored, not served.
+ *   stored fingerprint matches the live shard fingerprint (sorted shard identity
+ *   fingerprint). A stale snapshot is ignored, not served.
  * - USER-GLOBAL, NOT IN-REPO. Per the canvas state-model guidance this lives
  *   under `$COPILOT_HOME/extensions/sprite-editor/artifacts/`, keyed by a hash of
  *   the repo root so sibling worktrees never collide and never dirty the tree.
@@ -80,7 +80,7 @@ export function resolveSnapshotPath(repoRoot, deps = {}) {
  * rejection case the caller must fall back to composing from shards.
  *
  * @param {string} filePath
- * @param {string} expectedFingerprint live shard fingerprint (`"<count>:<maxMtimeMs>"`).
+ * @param {string} expectedFingerprint live sorted shard identity fingerprint.
  * @param {{ readFile?: (p: string) => string }} [deps]
  * @returns {{ manifest: object } | null}
  */
@@ -98,7 +98,14 @@ export function readSnapshot(filePath, expectedFingerprint, deps = {}) {
     return null;
   }
   const manifest = parsed.manifest;
-  if (!manifest || typeof manifest !== 'object' || typeof manifest.entries !== 'object') {
+  if (
+    !manifest ||
+    typeof manifest !== 'object' ||
+    Array.isArray(manifest) ||
+    !manifest.entries ||
+    typeof manifest.entries !== 'object' ||
+    Array.isArray(manifest.entries)
+  ) {
     return null;
   }
   return { manifest };

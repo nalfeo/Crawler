@@ -1310,7 +1310,6 @@ const CLIENT_SCRIPT = String.raw`
       }
     }
     var expectedFingerprint = currentEditorFingerprint();
-    var expectedInputFingerprint = currentEditorInputFingerprint();
     var loadToken = ++loadTokenCounter;
     setStatus('Loading sprite…');
     try {
@@ -1326,16 +1325,13 @@ const CLIENT_SCRIPT = String.raw`
         setStatus('Sprite not found.', true);
         return false;
       }
-      await loadImage(loadToken, nextSprite.key, nextSprite.imageVersion);
+      var decodedImage = await decodeSpriteImage(nextSprite.key, nextSprite.imageVersion);
       if (loadToken !== loadTokenCounter) return false;
-      // loadImage legitimately replaces the canvas, so the post-load guard must
-      // compare only user-editable inputs; including canvas bytes here would
-      // always trip and abort before resetBaseline(), leaving a stale baseline
-      // that makes every subsequent sprite look falsely dirty.
-      if (expectedInputFingerprint && currentEditorInputFingerprint() !== expectedInputFingerprint) {
+      if (expectedFingerprint && currentEditorFingerprint() !== expectedFingerprint) {
         setStatus('Stayed on current sprite: newer edits were made while loading.');
         return false;
       }
+      commitLoadedImage(decodedImage);
       sprite = nextSprite;
       renderEditor({ skipDraftPersist: true });
       resetBaseline();
@@ -1409,15 +1405,24 @@ const CLIENT_SCRIPT = String.raw`
     }
   }
 
-  async function loadImage(loadToken, spriteKey, imageVersion) {
-    if (!spriteKey) return;
+  async function decodeSpriteImage(spriteKey, imageVersion) {
+    if (!spriteKey) return null;
     var img = new Image();
     img.src = spriteImageUrl(spriteKey, imageVersion);
     await new Promise(function (resolve, reject) {
       img.onload = resolve;
       img.onerror = reject;
     });
-    if (loadToken != null && loadToken !== loadTokenCounter) return;
+    return img;
+  }
+
+  async function loadImage(loadToken, spriteKey, imageVersion) {
+    var img = await decodeSpriteImage(spriteKey, imageVersion);
+    if (!img || (loadToken != null && loadToken !== loadTokenCounter)) return;
+    commitLoadedImage(img);
+  }
+
+  function commitLoadedImage(img) {
     canvas = h('canvas', { class: 'sprite-canvas' });
     overlayCanvas = h('canvas', { class: 'overlay-canvas' });
     canvas.width = img.naturalWidth || img.width;

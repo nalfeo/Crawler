@@ -70,6 +70,9 @@ test('readSnapshot degrades to null on missing, malformed, or shapeless files', 
     () => 'null',
     () => JSON.stringify({ snapshotVersion: SNAPSHOT_VERSION, fingerprint: '642:123' }),
     () => snapshotJson({ manifest: { version: 1 } }),
+    () => snapshotJson({ manifest: { version: 1, entries: null } }),
+    () => snapshotJson({ manifest: { version: 1, entries: [] } }),
+    () => snapshotJson({ manifest: [] }),
     () => snapshotJson({ fingerprint: 42 }),
   ];
   for (const readFile of cases) {

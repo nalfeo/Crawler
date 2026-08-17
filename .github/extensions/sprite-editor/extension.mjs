@@ -69,7 +69,7 @@ const pendingStartups = new Map();
 const SNAPSHOT_PATH = resolveSnapshotPath(REPO_ROOT);
 /**
  * How long a computed shard fingerprint is trusted before the 642-file walk is
- * repeated. The walk costs ~50 ms and previously ran on EVERY request — including
+ * repeated. The stat walk is non-trivial and previously ran on EVERY request — including
  * every `/img/sprite` byte fetch — so a single sprite switch paid it twice.
  *
  * This is a freshness/latency trade, and it is safe in both directions:
@@ -165,27 +165,19 @@ function writeShard(key, entry) {
   writeJsonFile(file, entry);
 }
 
-// Cheap change-detector for the shard set: file count + newest mtime. Catches
-// add/remove (count changes) and content edits (mtime bumps). Our own writes
-// bust the cache explicitly, so external edits are the only case this guards.
+// Cheap change-detector for the shard set. Include each sorted shard key plus
+// its size and mtime, so replacing/renaming a shard cannot preserve a durable
+// snapshot merely because the file count and newest mtime stayed unchanged. Our
+// own writes bust the cache explicitly, so external edits are the only case this
+// guards.
 function shardsFingerprint() {
-  if (!existsSync(SHARDS_DIR)) return '0:-1';
-  let count = 0;
-  let maxMtime = -1;
-  const walk = (abs) => {
-    for (const dirent of readdirSync(abs, { withFileTypes: true })) {
-      const child = path.join(abs, dirent.name);
-      if (dirent.isDirectory()) {
-        walk(child);
-      } else if (dirent.isFile() && dirent.name.toLowerCase().endsWith('.json')) {
-        count += 1;
-        const m = statSync(child).mtimeMs;
-        if (m > maxMtime) maxMtime = m;
-      }
-    }
-  };
-  walk(SHARDS_DIR);
-  return `${count}:${maxMtime}`;
+  if (!existsSync(SHARDS_DIR)) return 'v2:empty';
+  const parts = [];
+  for (const key of listShardKeys()) {
+    const stats = statSync(shardPathForKey(key));
+    parts.push(`${key}\0${stats.size}\0${stats.mtimeMs}`);
+  }
+  return `v2:${sha256Hex(parts.join('\n'))}`;
 }
 
 function isPlaceholderManifestEntry(entry) {
@@ -1013,18 +1005,21 @@ const binaryRoutes = [
       // A request that pins the CURRENT `imageVersion` is immutable by
       // construction: any byte change mints a new version and therefore a new
       // URL. Those may be cached hard. Anything else (no version, or a stale
-      // one) must revalidate, so a client holding an old version can never be
-      // served it from its own cache.
+      // one, a legacy manifest fingerprint, or bytes that no longer hash to the
+      // requested version) must revalidate, so a client holding an old version can
+      // never be served it from its own cache.
       const requestedVersion = url.searchParams.get('v');
-      const immutable = requestedVersion === summary.imageVersion;
       try {
+        const body = readFileSync(pngPath);
+        const immutable =
+          requestedVersion === summary.imageVersion && requestedVersion === sha256Hex(body);
         return {
           status: 200,
           headers: {
             'Content-Type': 'image/png',
             'Cache-Control': immutable ? 'private, max-age=31536000, immutable' : 'no-store',
           },
-          body: readFileSync(pngPath),
+          body,
         };
       } catch (error) {
         log(`failed to read image for ${key}: ${error?.message ?? error}`, 'warn');

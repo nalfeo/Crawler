@@ -147,8 +147,24 @@ async function withEditor(run, options = {}) {
     }
     if (url.pathname === '/api/sprite') {
       const sprite = fixtureSprites.find((entry) => entry.key === url.searchParams.get('key'));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ sprite }));
+      const respond = () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ sprite }));
+      };
+      const gate =
+        sprite?.key && options.spriteGateByKey ? options.spriteGateByKey[sprite.key] : null;
+      if (gate) {
+        gate.started.resolve();
+        gate.release.promise.then(() => {
+          try {
+            respond();
+          } catch {
+            // The page/server may have torn down before release.
+          }
+        });
+      } else {
+        respond();
+      }
       return;
     }
     if (url.pathname === '/vendor/opencv.js' && options.openCvFixture) {
@@ -478,6 +494,14 @@ test('sprite editor wires OpenCV scaling controls and methods', () => {
   assert.match(EXTENSION_SOURCE, /if \(hasAnnotation\) applyAnnotationUpdate/);
   assert.match(EXTENSION_SOURCE, /if \(anchorChanged\)/);
   assert.match(EXTENSION_SOURCE, /entry\.contentHash = sha256Hex\(bytes\)/);
+  assert.match(
+    EXTENSION_SOURCE,
+    /parts\.push\(`\$\{key\}\\0\$\{stats\.size\}\\0\$\{stats\.mtimeMs\}`\)/,
+  );
+  assert.match(
+    EXTENSION_SOURCE,
+    /requestedVersion === summary\.imageVersion && requestedVersion === sha256Hex\(body\)/,
+  );
   assert.match(
     EXTENSION_SOURCE,
     /if \(hasMetadata \|\| wrotePng\) {\s*writeShard\(key, data\.manifest\.entries\[key\]\)/,
@@ -1231,6 +1255,33 @@ test('save race baseline uses the normalized server response, not raw submitted 
       assert.match(dialogMessages[0], /Unsaved edits detected/);
     },
     { saveDelayMs: 200, normalizeSavedComment: true },
+  );
+});
+
+test('edits made while a sprite image is loading keep the current canvas', async () => {
+  const spriteLoad = { started: deferred(), release: deferred() };
+  await withEditor(
+    async (page) => {
+      const beforePixels = await readCanvasPixels(page);
+      await page.getByRole('button', { name: /Second Fixture/ }).click();
+      await waitWithTimeout(spriteLoad.started.promise, 1_000, 'second sprite load request');
+
+      await page.getByTitle('Erase mode').click();
+      await clickCanvasPixel(page, 0, 0);
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+
+      spriteLoad.release.resolve();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#status')?.textContent ===
+          'Stayed on current sprite: newer edits were made while loading.',
+      );
+
+      assert.equal(await page.locator('.sprite-title').textContent(), 'Fixture Sprite');
+      assert.notDeepEqual(await readCanvasPixels(page), beforePixels);
+      assert.equal(await page.locator('.dirty-badge').textContent(), 'Unsaved');
+    },
+    { spriteGateByKey: { 'fixture-sprite-2': spriteLoad } },
   );
 });
 
