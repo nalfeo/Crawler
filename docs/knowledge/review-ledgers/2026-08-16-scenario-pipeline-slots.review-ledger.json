@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-16",
+  "session_slug": "scenario-pipeline-slots",
+  "task_title": "Move floor-specific systems into scenario pipeline slots",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "minor",
+      "notes": "Alt A: bootstrap-owned floor registry — rejected because it creates a second per-floor registry and keeps executable ownership outside the existing scenario seam. Alt B: generic ordered contributor descriptors — rejected as unnecessary extensibility and weaker named ordering contracts for three known seams. Resolutions: add scenarioDefinitions.ts as an orphan-system wiring site plus guard coverage; define exactly-once as canonical preSystems membership and retain floor2ObjectiveTick victory evaluation; import getScenarioDefinition directly; table-test shared anchors and all configured entries exactly once with foreign entries absent; scope the ADR to pipeline imports only."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "4a78bd3ed745fe8af602bc170660dae99241d077",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The diff cleanly moves floor-specific systems into named ScenarioDefinition slots while retaining bootstrap as the shared visual/headless ordering authority. Per-floor ordering remains pinned between shared anchors, the orphan-system guard follows the new registration site, deterministic behavior is preserved, and table-driven tests cover exactly-once local membership and foreign-system absence."
+    }
+  }
+}
