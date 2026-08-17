@@ -43,6 +43,13 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 4,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ]
     },
