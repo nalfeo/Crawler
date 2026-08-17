@@ -5,9 +5,12 @@ import { isOfficialWin } from '../../src/game/ai/scoring.js';
 import { AIDecisionMode, AIPathingMode } from '../../src/game/ai/types.js';
 import type { SimEvent } from '../../src/game/ai/event-log.js';
 import { GAME } from '../../src/shared/constants.js';
+import {
+  FLOOR1_ACTIVE_TIME_BUDGET_MS,
+  FLOOR1_DEFAULT_MAX_FRAMES,
+} from '../../src/game/ai/floor1-run-budget.js';
 
-const MAX_FRAMES = 23_760;
-const MAX_GAME_TIME_MS = MAX_FRAMES * GAME.DELTA_MS;
+const MAX_FRAMES = FLOOR1_DEFAULT_MAX_FRAMES;
 const BOSS_LOCKIN_MAX_FRAMES = 19_800;
 const BOSS_LOCKIN_MAX_GAME_TIME_MS = BOSS_LOCKIN_MAX_FRAMES * GAME.DELTA_MS;
 const BOSS_LOCKIN_MAX_FIGHT_FRAMES = Math.ceil((60_000 / 1000) * 60);
@@ -52,7 +55,7 @@ describe('Floor 1 legacy weapon-sweep death regressions', () => {
 
       expect(stats.startingWeapon).toBe(weapon);
       expect(stats.outcome).toBe('victory');
-      expect(isOfficialWin(stats, MAX_GAME_TIME_MS)).toBe(true);
+      expect(isOfficialWin(stats, FLOOR1_ACTIVE_TIME_BUDGET_MS)).toBe(true);
     });
   }
 });

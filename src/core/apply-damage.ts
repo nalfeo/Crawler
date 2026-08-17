@@ -16,6 +16,7 @@ import { getBodyHalfWidth } from './physics-body.js';
 import type { DamageAffinity } from '../shared/stats.js';
 import { computePlayerScaledDamage } from './combat-math.js';
 import { FAIL_CLOSED_DAMAGE_META, type DamageOrigin } from './damage-meta.js';
+import { affinityMultiplier, type Affinity } from '../shared/data/floor3/affinity.js';
 
 /**
  * Fail-closed metadata describing WHO dealt this damage and how it should
@@ -58,6 +59,21 @@ export interface DamageOptions {
    * harnesses can attribute ability DPS without a second RNG-divergent run.
    */
   readonly fromActiveAbility?: boolean;
+  /**
+   * Floor 3 Companion League Temperament (affinity) hook — ADR 0071 D3,
+   * spec `floor3-companion-league.md` R3. Named distinctly from the
+   * `affinity: DamageAffinity` field above (an unrelated STR/INT
+   * typed-primary concept) to avoid confusion between the two.
+   *
+   * Both fields must be supplied together for the `AFFINITY_MATRIX`
+   * multiplier to apply; a companion-vs-companion hit on Floor 3 supplies
+   * both, every other floor/damage path omits both (fail-closed no-op).
+   * Independent of `origin`/`scaleWithPrimary`/`canCrit` since Floor 3
+   * combat is companion-sourced, not player-sourced (R1: the player and
+   * handlers are invulnerable non-combatants).
+   */
+  readonly attackerTemperament?: Affinity;
+  readonly defenderTemperament?: Affinity;
 }
 
 /** Convenience: the fail-closed default options (never scales, never crits, environment-sourced). */
@@ -237,6 +253,15 @@ export function applyDamage(
         finalAmount = scaledAmount;
       }
     }
+  }
+
+  // Floor 3 Companion League Temperament multiplier: applies whenever both
+  // sides of the hit supply a Temperament (companion-vs-companion combat).
+  // Composes with any player-sourced scaling above rather than replacing it,
+  // so this stays a total no-op on every non-Floor-3 damage path (neither
+  // field set).
+  if (options.attackerTemperament !== undefined && options.defenderTemperament !== undefined) {
+    finalAmount *= affinityMultiplier(options.attackerTemperament, options.defenderTemperament);
   }
 
   const current = world.stores.health.current[target] ?? 0;

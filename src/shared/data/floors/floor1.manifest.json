@@ -6,7 +6,7 @@
   "implemented": {
     "mvp": true,
     "released": true,
-    "winBudgetMs": 360000
+    "winBudgetMs": 600000
   },
   "timer": {
     "durationMs": 600000,
@@ -45,8 +45,8 @@
     "safeRoomWeaponImmunity": true,
     "safeRoomDoorsAutoClose": true,
     "lineOfSightAggro": false,
-    "equipmentEconomy": false,
-    "bossChests": false
+    "equipmentEconomy": true,
+    "bossChests": true
   },
   "lighting": {
     "ambient": 0.2

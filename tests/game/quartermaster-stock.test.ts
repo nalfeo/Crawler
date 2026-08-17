@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
 import {
   createInitialFloor2QuartermasterStock,
-  restockFloor2Quartermaster,
+  _restockFloor2Quartermaster,
 } from '../../src/game/quartermaster-stock.js';
 import tuning from '../../src/shared/data/tuning.json';
 import type {
@@ -109,14 +109,14 @@ describe('Floor 2 Quartermaster generated stock', () => {
     };
     attachStock(world, partiallySold);
 
-    const repeated = restockFloor2Quartermaster(world, 0);
+    const repeated = _restockFloor2Quartermaster(world, 0);
     expect(repeated).toEqual({ ok: true, changed: false, stock: partiallySold });
 
-    const skipped = restockFloor2Quartermaster(world, 2);
+    const skipped = _restockFloor2Quartermaster(world, 2);
     expect(skipped).toMatchObject({ ok: false, reason: 'invalid-epoch' });
     expect(world.floorExtendedState?.settlement?.quartermasterStock).toBe(partiallySold);
 
-    const advanced = restockFloor2Quartermaster(world, 1);
+    const advanced = _restockFloor2Quartermaster(world, 1);
     expect(advanced.ok).toBe(true);
     if (!advanced.ok) return;
     expect(advanced.changed).toBe(true);
@@ -133,7 +133,7 @@ describe('Floor 2 Quartermaster generated stock', () => {
     const world = createTestWorld({ seed: 42, floor: 2 });
     enableQuartermasterEconomy(world);
 
-    expect(restockFloor2Quartermaster(world, 1)).toEqual({
+    expect(_restockFloor2Quartermaster(world, 1)).toEqual({
       ok: false,
       reason: 'missing-settlement',
       message: 'Floor 2 settlement must exist before Quartermaster restock',
@@ -189,7 +189,7 @@ describe('Floor 2 Quartermaster generated stock', () => {
       },
     };
 
-    expect(restockFloor2Quartermaster(world, 1)).toEqual({
+    expect(_restockFloor2Quartermaster(world, 1)).toEqual({
       ok: false,
       reason: 'missing-stock',
       message: 'Quartermaster generated stock is not initialized',
@@ -205,7 +205,7 @@ describe('Floor 2 Quartermaster generated stock', () => {
     attachStock(world, initial);
 
     world.floor2EquipmentFlags.floor2EquipmentEconomy = false;
-    expect(restockFloor2Quartermaster(world, 1)).toEqual({
+    expect(_restockFloor2Quartermaster(world, 1)).toEqual({
       ok: false,
       reason: 'economy-disabled',
       message: 'Floor 2 equipment economy is disabled',
@@ -214,7 +214,7 @@ describe('Floor 2 Quartermaster generated stock', () => {
 
     world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
     world.floor2EquipmentFlags.floor2EquipmentCatalog = false;
-    expect(restockFloor2Quartermaster(world, 1)).toEqual({
+    expect(_restockFloor2Quartermaster(world, 1)).toEqual({
       ok: false,
       reason: 'invalid-equipment-config',
       message: 'floor2EquipmentEconomy requires floor2EquipmentRegistry and floor2EquipmentCatalog',

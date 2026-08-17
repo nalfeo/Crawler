@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   enforce-pr-state:
-    name: Enforce ready + reviewer cleanup
+    name: Enforce ready + human reviewer requests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # For pull_request_target events, scope the concurrency group to the specific
@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Publish drafts, repair empty Copilot shells, and remove requested reviewer
+      - name: Publish drafts, repair empty Copilot shells, and request human reviewers
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           REVIEWER_LOGIN: nalfeo

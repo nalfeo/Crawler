@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addComponent, query, set } from 'bitecs';
+import { addComponent, query, removeEntity, set } from 'bitecs';
 import {
   spawnBehaviorEnemy,
   spawnEnemy,
@@ -10,7 +10,9 @@ import {
   spawnXpGem,
 } from '../../src/core/helpers.js';
 import { spawnDroppedItem } from '../../src/core/spawners/pickups.js';
+import { spawnBossChestEntity } from '../../src/core/spawners/world-objects.js';
 import { spawnEnemyProjectile, spawnAoeProjectile } from '../../src/core/spawners/projectiles.js';
+import { FLOOR1_SPELL_BROKER_COST } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
 import { GAME, TeamId } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -4239,7 +4241,7 @@ describe('BehaviorTreeAI', () => {
       // Activate spell broker intent in returning state (gold >= cost).
       configureSpellBrokerPurchase(world, true);
       ensureSpellBrokerDecision(world);
-      world.playerGold = 100; // > FLOOR1_SPELL_BROKER_COST (35g)
+      world.playerGold = FLOOR1_SPELL_BROKER_COST + 1; // affordable → returning
       updateSpellBrokerIntent(world, null, 3_000); // transitions idle → returning
 
       const ai = new BehaviorTreeAI({ seed: buySeed });
@@ -4265,7 +4267,7 @@ describe('BehaviorTreeAI', () => {
       // Activate spell broker intent in farming state (gold < cost).
       configureSpellBrokerPurchase(world, true);
       ensureSpellBrokerDecision(world);
-      world.playerGold = 0; // below FLOOR1_SPELL_BROKER_COST (35g)
+      world.playerGold = 0; // below FLOOR1_SPELL_BROKER_COST
       updateSpellBrokerIntent(world, null, 3_000); // transitions idle → farming
 
       const ai = new BehaviorTreeAI({ seed: buySeed });
@@ -4408,5 +4410,77 @@ describe('settlement return routing (BT integration)', () => {
 
     expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     expect(getSettlementReturnIntent(world).status).toBe('aborted-danger');
+  });
+});
+
+describe('BehaviorTreeAI boss-chest objective', () => {
+  const CHEST_REASON = 'Claiming boss chest equipment';
+
+  /** Floor-1-style world with a boss chest 30 ft east of the player. */
+  const chestWorld = (): { world: GameWorld; player: number; chest: number } => {
+    const world = createTestWorld({ seed: 11 });
+    const player = spawnPlayer(world, 0, 0);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    const chest = spawnBossChestEntity(world, 30, 0, 'boss-chest-test');
+    return { world, player, chest };
+  };
+
+  it('routes to the chest, outranking Engage on a nearby enemy', () => {
+    // A chest is one guaranteed piece of equipment, so it is treated like a
+    // quest objective rather than like loot (loot sits below Engage and would
+    // lose to any enemy that happened to be closer).
+    const { world } = chestWorld();
+    spawnEnemy(world, 8, 0, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 11 });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetX: 30,
+      targetY: 0,
+      reason: CHEST_REASON,
+    });
+  });
+
+  it('yields to Retreat when the player is wounded with a threat nearby', () => {
+    // "Treat them like quest objectives while still safely dodging" — survival
+    // still owns the low-health case.
+    const { world, player } = chestWorld();
+    spawnEnemy(world, 10, 0, 20);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 1;
+
+    const ai = new BehaviorTreeAI({ seed: 11 });
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+  });
+
+  it('falls through to another branch instead of deadlocking on an unreachable chest', () => {
+    const { world } = chestWorld();
+    const ai = new BehaviorTreeAI({ seed: 11 });
+    // Force the reachability verdict negative for every target, the same way a
+    // chest sealed behind a locked boss door reads.
+    (ai as unknown as { isTargetReachable: () => boolean }).isTargetReachable = () => false;
+
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().reason).not.toBe(CHEST_REASON);
+  });
+
+  it('stops targeting the chest once it has been picked up', () => {
+    const { world, chest } = chestWorld();
+    const ai = new BehaviorTreeAI({ seed: 11 });
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().reason).toBe(CHEST_REASON);
+
+    // bossChestPickupSystem removes both the sidecar entry and the entity.
+    world.bossChestEids.delete('boss-chest-test');
+    removeEntity(world.ecs, chest);
+    world.frameCount += 1;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().reason).not.toBe(CHEST_REASON);
   });
 });

@@ -10,6 +10,16 @@ import {
 } from '../../src/shared/modal-picker.js';
 
 describe('modal picker state', () => {
+  it('preserves an optional picker kind for automation to identify the open flow', () => {
+    const state = createModalPickerState({
+      kind: 'spell-broker',
+      title: 'Choose',
+      options: [{ id: 'a', label: 'A' }],
+    });
+
+    expect(state.kind).toBe('spell-broker');
+  });
+
   it('selects the first enabled option on create', () => {
     const state = createModalPickerState({
       title: 'Choose',
