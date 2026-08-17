@@ -21,8 +21,8 @@ export interface ItemTooltipRenderParams {
   fontFamily: string;
   /** Optional gold hint line rendered near the bottom (e.g. "DOUBLE-CLICK TO EQUIP"). */
   footerHint?: string;
-  /** Optional stat callouts rendered above the footer/meta lines. */
-  statLines?: readonly string[];
+  /** Optional stat callout rendered above the footer/meta lines. */
+  statLine?: string;
   crispText: (
     x: number,
     y: number,
@@ -48,7 +48,7 @@ export function renderItemTooltip(
     quantity,
     fontFamily,
     footerHint,
-    statLines = [],
+    statLine,
     crispText,
   } = params;
 
@@ -125,17 +125,12 @@ export function renderItemTooltip(
   container.add(metaText);
   const objects: Phaser.GameObjects.GameObject[] = [tooltipBg, nameText, descText, metaText];
 
-  if (statLines.length > 0) {
-    const statText = crispText(
-      tx + 8,
-      ty + TOOLTIP_HEIGHT - (footerHint ? 48 : 34),
-      statLines[0]!,
-      {
-        fontFamily,
-        fontSize: '11px',
-        color: '#d9e2ef',
-      },
-    );
+  if (statLine !== undefined && statLine.length > 0) {
+    const statText = crispText(tx + 8, ty + TOOLTIP_HEIGHT - (footerHint ? 48 : 34), statLine, {
+      fontFamily,
+      fontSize: '11px',
+      color: '#d9e2ef',
+    });
     container.add(statText);
     objects.push(statText);
   }

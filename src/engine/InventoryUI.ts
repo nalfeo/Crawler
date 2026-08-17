@@ -943,7 +943,7 @@ export function createInventoryUI(
         quantity: entry.kind === 'stackable-static-item' ? entry.quantity : 1,
         fontFamily: FONT_FAMILY,
         footerHint,
-        statLines: dpsLine ? [dpsLine] : undefined,
+        statLine: dpsLine,
         crispText,
       }),
     );
