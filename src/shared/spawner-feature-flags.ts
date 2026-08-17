@@ -1,4 +1,5 @@
 const FLOOR_SPAWNER_ARENA_QUERY_PARAM = 'floorSpawnerArenas';
+const FLOOR_SPAWNER_ARENA_ENV_VAR = 'FLOOR_SPAWNER_ARENAS';
 const FLOOR_SPAWNER_COUNT_QUERY_PARAM = 'floorSpawnerCount';
 const FLOOR_SPAWNER_COUNT_ENV_VAR = 'FLOOR_SPAWNER_COUNT';
 const TRUTHY_QUERY_VALUES = new Set(['1', 'true', 'yes', 'on']);
@@ -17,13 +18,17 @@ function toSearchParams(
 
 export function isFloorSpawnerArenaExperimentEnabled(
   search?: string | URLSearchParams | null,
+  env: Readonly<Record<string, string | undefined>> | undefined = typeof process !== 'undefined'
+    ? process.env
+    : undefined,
 ): boolean {
   const params = toSearchParams(search);
-  if (!params) {
-    return false;
+  const raw = params?.get(FLOOR_SPAWNER_ARENA_QUERY_PARAM)?.trim().toLowerCase();
+  if (raw !== undefined && raw !== null) {
+    return TRUTHY_QUERY_VALUES.has(raw);
   }
-  const raw = params.get(FLOOR_SPAWNER_ARENA_QUERY_PARAM)?.trim().toLowerCase();
-  return raw !== undefined && TRUTHY_QUERY_VALUES.has(raw);
+  const fromEnv = env?.[FLOOR_SPAWNER_ARENA_ENV_VAR]?.trim().toLowerCase();
+  return fromEnv !== undefined && TRUTHY_QUERY_VALUES.has(fromEnv);
 }
 
 function parseFloorSpawnerCount(raw: string | null | undefined): number | null {
