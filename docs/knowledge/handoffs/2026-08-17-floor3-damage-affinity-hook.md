@@ -39,7 +39,7 @@ lands and actually populates these options).
   player-sourced scaling via a real `applyDamage` call.
 
 `npm run typecheck`, `eslint`, `prettier`, and `scripts/agent/verify-fast.sh` are green (2259
-tests, up from 2259 baseline + 6 new — see test file for the exact delta).
+tests, up from a 2253-test baseline + 6 new tests in this session).
 
 ## Key Decisions Made
 
