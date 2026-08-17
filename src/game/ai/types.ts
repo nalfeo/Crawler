@@ -482,10 +482,12 @@ export interface EquipmentPlayabilityMetrics {
  * Deterministic gold economy evidence for a run: where gold came from, where
  * it went, and how much was still unspent when the floor ended.
  *
- * `unspentFraction` is the Floor 1 pricing gate's metric — the share of gold
- * earned this floor that the player never converted into power. It is derived
- * from the ledger (not `totalGold`) so carryover gold from a previous floor
- * cannot distort it.
+ * `unspentSpendableFraction` is the Floor 1 pricing gate's metric — the share
+ * of *reachable* (pre-exit) income the player never converted into power. It
+ * excludes floor-clear achievement loot boxes, which resolve after the exit is
+ * confirmed and so are Floor 2 seed money by construction, not a Floor 1
+ * pricing failure. `unspentFraction` (of everything earned) is still reported
+ * for carryover visibility but is not itself gated.
  */
 export interface GoldEconomyMetrics {
   /** Gold picked up off the floor (drops, chests, piles). */
@@ -504,7 +506,11 @@ export interface GoldEconomyMetrics {
   spentTotal: number;
   /** `earnedTotal - spentTotal`, clamped at 0. */
   unspentAtExit: number;
-  /** `unspentAtExit / earnedTotal`, or 0 when nothing was earned. */
+  /**
+   * `unspentAtExit / earnedTotal`, or 0 when nothing was earned. Observational
+   * carryover telemetry only — see `unspentSpendableFraction` for the metric
+   * the Floor 1 pricing gate actually asserts on.
+   */
   unspentFraction: number;
   /**
    * Gold earned by the time the floor exit was confirmed — the income the run
@@ -524,7 +530,7 @@ export interface GoldEconomyMetrics {
   charmPurchases: number;
   merchantWeaponPurchases: number;
   spellPurchases: number;
-  /** Distinct vendors bought from this run (0-3). */
+  /** Distinct vendors bought from this run (0-2): merchant, spell broker. */
   distinctPurchases: number;
 }
 

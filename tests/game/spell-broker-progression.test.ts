@@ -44,6 +44,7 @@ import {
   spellPurchaseReserve,
   updateMerchantWeaponIntent,
 } from '../../src/game/ai/merchant-weapon-intent.js';
+import { autoFloor1ProgressionSystem } from '../../src/game/ai/auto-progression.js';
 
 describe('Floor 1 Spell Broker', () => {
   it('generates three unique deterministic offers from the ten-spell pool', () => {
@@ -524,5 +525,79 @@ describe('spell skills', () => {
       },
     ]);
     expect(getOrCreateAbilityState(world, player).learnedSpellIds).toContain('heal');
+  });
+});
+
+describe('autoFloor1ProgressionSystem spell broker purchase', () => {
+  function setUpBrokerVisit(seed: number): {
+    world: ReturnType<typeof createTestWorld>;
+    player: number;
+  } {
+    const world = createTestWorld({ seed });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    configureSpellBrokerPurchase(world, true);
+    world.featureUnlocks.spells = true;
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    // initializeFloor1Scenario already spawns the broker NPC; mark it
+    // nearby so isTargetedNpcActionable treats it as reachable.
+    const brokerEid = world.floorScenario!.spellQuestGiverNpcEid!;
+    const broker = world.npcs.get(brokerEid)!;
+    world.npcs.set(brokerEid, { ...broker, nearbyPlayer: true });
+    return { world, player };
+  }
+
+  it('does not buy a cheaper rack offer while only short on gold for the headline spell', () => {
+    // Regression: the fallback used to try every current offer id, not just
+    // the intended one, so a run short on gold for its 350g headline spell
+    // would silently buy a cheaper rung instead of waiting — bypassing the
+    // headline-price policy the intent is supposed to enforce.
+    const { world, player } = setUpBrokerVisit(1);
+    const intent = ensureSpellBrokerDecision(world);
+    const offers = getSpellBrokerOffers(world);
+    const cheapestCost = Math.min(...offers.map((offer) => offer.cost));
+    expect(cheapestCost).toBeLessThan(intent.cost);
+
+    // Enough for the cheapest rung, but not the intended headline offer.
+    world.playerGold = cheapestCost;
+    autoFloor1ProgressionSystem(world, player);
+
+    expect(getOrCreateAbilityState(world, player).learnedSpellIds).toEqual([]);
+    expect(world.playerGold).toBe(cheapestCost);
+    expect(getSpellBrokerIntent(world).purchaseCount).toBe(0);
+  });
+
+  it('buys the intended headline spell once it is affordable', () => {
+    const { world, player } = setUpBrokerVisit(1);
+    const intent = ensureSpellBrokerDecision(world);
+    world.playerGold = intent.cost;
+
+    autoFloor1ProgressionSystem(world, player);
+
+    expect(getOrCreateAbilityState(world, player).learnedSpellIds).toContain(intent.spellId);
+    expect(world.playerGold).toBe(0);
+    expect(getSpellBrokerIntent(world).purchaseCount).toBe(1);
+  });
+
+  it('falls back to a cheaper offer — and records the actual purchase — only when the headline spell is unavailable for a non-affordability reason', () => {
+    const { world, player } = setUpBrokerVisit(1);
+    const intent = ensureSpellBrokerDecision(world);
+    const offers = getSpellBrokerOffers(world);
+    const cheaper = offers.find((offer) => offer.spellId !== intent.spellId && offer.cost > 0);
+    expect(cheaper).toBeDefined();
+
+    // The intended headline spell is already learned through some other path
+    // (not a broker purchase) — this is the one legitimate "unavailable for a
+    // non-affordability reason" case, so the fallback is allowed to run.
+    memorizeSpell(world, player, intent.spellId!);
+    world.playerGold = cheaper!.cost;
+
+    autoFloor1ProgressionSystem(world, player);
+
+    expect(getOrCreateAbilityState(world, player).learnedSpellIds).toContain(cheaper!.spellId);
+    // The re-armed intent must reflect the spell actually bought, not the
+    // headline id the intent still (incorrectly) pointed at.
+    expect(getSpellBrokerIntent(world).spellId).not.toBe(cheaper!.spellId);
+    expect(getSpellBrokerIntent(world).purchaseCount).toBe(1);
   });
 });

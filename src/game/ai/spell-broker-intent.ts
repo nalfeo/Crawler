@@ -108,11 +108,11 @@ export function ensureSpellBrokerDecision(world: GameWorld): SpellBrokerIntent {
  * {@link FLOOR1_SPELL_BROKER_MAX_PURCHASES} spells are bought, or the rack is
  * empty, the intent goes terminal and the optional bundle stops being emitted.
  */
-export function markSpellBrokerPurchased(world: GameWorld): void {
+export function markSpellBrokerPurchased(world: GameWorld, purchasedSpellId?: string): void {
   const current = getSpellBrokerIntent(world);
   if (current.purchaseStatus === 'purchased') return;
   const purchaseCount = current.purchaseCount + 1;
-  const next = nextBrokerOffer(world, current.spellId);
+  const next = nextBrokerOffer(world, purchasedSpellId ?? current.spellId);
   if (purchaseCount >= FLOOR1_SPELL_BROKER_MAX_PURCHASES || !next) {
     intents.set(world, { ...current, purchaseStatus: 'purchased', purchaseCount });
     return;

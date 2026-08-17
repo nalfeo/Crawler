@@ -62,6 +62,7 @@ export {
   ensureBossBattleSpellReward,
   getSpellBrokerOffers,
   canPurchaseSpellBrokerSpell,
+  isSpellBrokerSpellEligibleIgnoringGold,
   purchaseSpellBrokerSpell,
   SPELL_BROKER_SPELL_COST,
 } from './floorScenario.js';

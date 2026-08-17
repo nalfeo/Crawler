@@ -76,7 +76,7 @@ describe('summarizeGoldEconomy', () => {
         charmPurchases: 1,
         merchantWeaponPurchases: 1,
         spellPurchases: 1,
-        distinctPurchases: 3,
+        distinctPurchases: 2,
       }),
     ]);
     expect(summary?.charmPurchaseRate).toBe(1);

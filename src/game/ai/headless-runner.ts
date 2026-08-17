@@ -165,9 +165,13 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
     charmPurchases: ledger.charmPurchases,
     merchantWeaponPurchases: ledger.merchantWeaponPurchases,
     spellPurchases: ledger.spellPurchases,
+    // Distinct *vendors* purchased from, not purchase categories: the charm
+    // and the post-quest weapon are both bought from the single
+    // `floor1-merchant` NPC (see `FLOOR1_MERCHANT_VENDOR_ID`), so buying both
+    // is still one vendor. Only the spell broker (`FLOOR1_SPELL_BROKER_VENDOR_ID`)
+    // is a second, distinct vendor.
     distinctPurchases:
-      (ledger.charmPurchases > 0 ? 1 : 0) +
-      (ledger.merchantWeaponPurchases > 0 ? 1 : 0) +
+      (ledger.charmPurchases > 0 || ledger.merchantWeaponPurchases > 0 ? 1 : 0) +
       (ledger.spellPurchases > 0 ? 1 : 0),
   };
 }

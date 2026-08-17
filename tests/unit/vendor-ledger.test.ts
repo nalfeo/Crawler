@@ -152,4 +152,49 @@ describe('vendor ledger', () => {
     expect(summary.visitCount).toBe(VENDOR_LEDGER_MAX_ENTRIES + 10);
     expect(summary.decisionCount).toBe(VENDOR_LEDGER_MAX_ENTRIES + 10);
   });
+
+  it('keeps deduping same-frame re-entry past the retention cap', () => {
+    const world = createTestWorld({ seed: 1 });
+
+    // Fill the ledger past the retention cap with distinct-frame visits and
+    // decisions so the retained tail is full and stops growing.
+    for (let i = 0; i < VENDOR_LEDGER_MAX_ENTRIES + 5; i++) {
+      world.frameCount += 1;
+      recordVendorVisit(world, 'floor1-merchant', []);
+      recordVendorDecision(world, {
+        vendorId: 'floor1-merchant',
+        itemId: `item-${i}`,
+        cost: i,
+        outcome: 'wanted',
+        reason: 'weapon-class-switch',
+      });
+    }
+    const before = computeVendorInteractions(world);
+
+    // A same-vendor/same-frame re-entry (meet + purchase in the same tick)
+    // must still collapse into a single visit/decision even though the
+    // retained arrays are already at their cap — it must not add another
+    // dropped visit/decision on top of the one already counted this frame.
+    world.frameCount += 1;
+    recordVendorVisit(world, 'floor1-merchant', []);
+    recordVendorVisit(world, 'floor1-merchant', []);
+    recordVendorDecision(world, {
+      vendorId: 'floor1-merchant',
+      itemId: 'repeat-item',
+      cost: 1,
+      outcome: 'wanted',
+      reason: 'weapon-class-switch',
+    });
+    recordVendorDecision(world, {
+      vendorId: 'floor1-merchant',
+      itemId: 'repeat-item',
+      cost: 1,
+      outcome: 'wanted',
+      reason: 'weapon-class-switch',
+    });
+
+    const after = computeVendorInteractions(world);
+    expect(after.visitCount).toBe(before.visitCount + 1);
+    expect(after.decisionCount).toBe(before.decisionCount + 1);
+  });
 });

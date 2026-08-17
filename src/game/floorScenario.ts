@@ -4430,8 +4430,15 @@ export function getSpellBrokerOffers(world: GameWorld): readonly Floor1SpellBrok
   return generateFloor1SpellBrokerOffers(world.seed);
 }
 
-/** True when a holder can buy and memorize a particular broker offer. */
-export function canPurchaseSpellBrokerSpell(
+/**
+ * True when a holder is eligible to buy a particular broker offer, ignoring
+ * gold. Used to distinguish "unavailable" (already purchased/learned, no
+ * spell slot, quest not unlocked) from "merely unaffordable right now" —
+ * callers that pick a fallback offer must not skip ahead in the priced rack
+ * just because the player is momentarily short on gold for their intended
+ * pick (see {@link canPurchaseSpellBrokerSpell}).
+ */
+export function isSpellBrokerSpellEligibleIgnoringGold(
   world: GameWorld,
   playerEid: number,
   spellId: string,
@@ -4444,10 +4451,22 @@ export function canPurchaseSpellBrokerSpell(
     return false;
   }
   const offer = getSpellBrokerOffers(world).find((entry) => entry.spellId === spellId);
-  if (!offer || offer.purchased || world.playerGold < offer.cost) return false;
+  if (!offer || offer.purchased) return false;
   const state = getOrCreateAbilityState(world, playerEid);
   if (state.learnedSpellIds.includes(spellId)) return false;
   if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) return false;
+  return true;
+}
+
+/** True when a holder can buy and memorize a particular broker offer. */
+export function canPurchaseSpellBrokerSpell(
+  world: GameWorld,
+  playerEid: number,
+  spellId: string,
+): boolean {
+  if (!isSpellBrokerSpellEligibleIgnoringGold(world, playerEid, spellId)) return false;
+  const offer = getSpellBrokerOffers(world).find((entry) => entry.spellId === spellId);
+  if (!offer || world.playerGold < offer.cost) return false;
   return true;
 }
 

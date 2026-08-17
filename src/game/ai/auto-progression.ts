@@ -50,6 +50,7 @@ import {
   meetSpellQuestGiver,
   meetBroker,
   canPurchaseSpellBrokerSpell,
+  isSpellBrokerSpellEligibleIgnoringGold,
   getSpellBrokerOffers,
   purchaseSpellBrokerSpell,
   spendPoints,
@@ -308,10 +309,20 @@ export function autoFloor1ProgressionSystem(
       ([, instance]) => instance.defId === 'spell-quest-giver',
     );
     if (broker && isTargetedNpcActionable(world, aiProvider, broker[0], broker[1].nearbyPlayer)) {
-      const candidateSpellIds = [
-        spellIntent.spellId,
-        ...getSpellBrokerOffers(world).map((offer) => offer.spellId),
-      ].filter((spellId): spellId is string => spellId !== null);
+      // Only consider a different offer when the intended spell is
+      // unavailable for a reason other than affordability (already
+      // purchased/learned, no free ability slot, or no intended spell at
+      // all). A run that is merely short on gold for its intended pick must
+      // not skip ahead in the priced rack — that would silently buy a
+      // cheaper spell while the intent still thinks it is farming the
+      // pricier headline offer.
+      const intendedSpellId = spellIntent.spellId;
+      const intendedUnavailableForOtherReason =
+        intendedSpellId === null ||
+        !isSpellBrokerSpellEligibleIgnoringGold(world, playerEid, intendedSpellId);
+      const candidateSpellIds = intendedUnavailableForOtherReason
+        ? getSpellBrokerOffers(world).map((offer) => offer.spellId)
+        : [intendedSpellId];
       // A repeat spell is the run's lowest-priority purchase: it exists to
       // absorb gold that has nowhere else to go, so it must leave a pending
       // weapon-class switch fully funded (see `merchantWeaponReserve`). The
@@ -325,7 +336,7 @@ export function autoFloor1ProgressionSystem(
           world.playerGold - offerCost(id) >= reserve,
       );
       if (spellId !== undefined && purchaseSpellBrokerSpell(world, playerEid, spellId)) {
-        markSpellBrokerPurchased(world);
+        markSpellBrokerPurchased(world, spellId);
         return;
       }
     }

@@ -283,6 +283,15 @@ export interface VendorLedger {
   /** Visits/decisions beyond {@link VENDOR_LEDGER_MAX_ENTRIES}, counted only. */
   droppedVisits: number;
   droppedDecisions: number;
+  /**
+   * Same-frame dedup keys, tracked independently of the retained record
+   * arrays. Once the retention cap is hit the tail stops growing, so a
+   * dedup check against `visits[visits.length - 1]`/`decisions[...]` would
+   * keep comparing against a stale entry and double-count every subsequent
+   * same-frame re-entry as a fresh dropped visit/decision.
+   */
+  lastVisitKey: string | null;
+  lastDecisionKey: string | null;
 }
 
 /**
@@ -295,7 +304,14 @@ export const VENDOR_LEDGER_MAX_ENTRIES = 64;
 
 /** Create an empty vendor ledger. */
 export function createVendorLedger(): VendorLedger {
-  return { visits: [], decisions: [], droppedVisits: 0, droppedDecisions: 0 };
+  return {
+    visits: [],
+    decisions: [],
+    droppedVisits: 0,
+    droppedDecisions: 0,
+    lastVisitKey: null,
+    lastDecisionKey: null,
+  };
 }
 
 /**
@@ -308,10 +324,11 @@ export function recordVendorVisit(
   stock: readonly VendorStockEntry[],
 ): void {
   const ledger = world.vendorLedger;
-  const last = ledger.visits[ledger.visits.length - 1];
-  if (last && last.vendorId === vendorId && last.frame === world.frameCount) {
+  const key = `${vendorId}:${world.frameCount}`;
+  if (ledger.lastVisitKey === key) {
     return;
   }
+  ledger.lastVisitKey = key;
   if (ledger.visits.length >= VENDOR_LEDGER_MAX_ENTRIES) {
     ledger.droppedVisits += 1;
     return;
@@ -335,16 +352,11 @@ export function recordVendorDecision(
   decision: Omit<VendorDecisionRecord, 'gameTimeMs' | 'frame' | 'playerGold'>,
 ): void {
   const ledger = world.vendorLedger;
-  const last = ledger.decisions[ledger.decisions.length - 1];
-  if (
-    last &&
-    last.vendorId === decision.vendorId &&
-    last.itemId === decision.itemId &&
-    last.outcome === decision.outcome &&
-    last.reason === decision.reason
-  ) {
+  const key = `${decision.vendorId}:${decision.itemId}:${decision.outcome}:${decision.reason}`;
+  if (ledger.lastDecisionKey === key) {
     return;
   }
+  ledger.lastDecisionKey = key;
   if (ledger.decisions.length >= VENDOR_LEDGER_MAX_ENTRIES) {
     ledger.droppedDecisions += 1;
     return;

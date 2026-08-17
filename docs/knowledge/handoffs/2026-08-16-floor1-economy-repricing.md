@@ -66,14 +66,18 @@ into Floor 2 untouched.
 
 ## Open escalation (needs a human answer)
 
-Roughly **125 gold per run** is granted by floor-clear achievement loot boxes
-that resolve _after_ the last vendor window, so it is Floor 2 seed money by
-construction and can never be spent on Floor 1 at any price. The literal gate
+**Status: unresolved — a CI-recovery pass on this PR reviewed but did not close
+this.** Roughly **125 gold per run** is granted by floor-clear achievement loot
+boxes that resolve _after_ the last vendor window, so it is Floor 2 seed money
+by construction and can never be spent on Floor 1 at any price. The literal gate
 "≤35% of gold **earned**" is therefore partly unreachable — it measures 43.8%.
 On the spendable basis it is 33.4% and passes. Options: (i) accept the spendable
-basis (what the gate currently asserts, documented in the test header), (ii)
-move floor-clear grants before the exit, or (iii) treat the residual as
-intentional Floor 2 seed money. Not resolved unilaterally.
+basis (what the gate currently asserts, documented in the test header — this is
+the option currently implemented, but it has not received an explicit human
+sign-off), (ii) move floor-clear grants before the exit, or (iii) treat the
+residual as intentional Floor 2 seed money. **A human still needs to pick one of
+these explicitly** before this escalation can be marked resolved; do not close
+it without that.
 
 Margin on the gate is thin (33.4% vs 35%) because the board, priced at the top
 of its bands, is close to a run's spendable income by design. If it drifts over,

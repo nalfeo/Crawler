@@ -56,11 +56,13 @@ import { isOfficialWin } from '../../src/game/ai/scoring.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 
 /**
- * Minimum win-rate over the panel. Matches the completion gate's floor so the
- * two gates cannot disagree about whether Floor 1 is winnable. Measured on this
- * branch: 25/25 = 100%.
+ * Minimum win-rate over the panel. The repricing was bounded to "≥90% Floor 1
+ * win rate" (see the repricing handoff), so this floor is 0.9 rather than the
+ * completion gate's looser 0.88 — a 25-seed panel means 0.88 would tolerate
+ * 22/25 (88%), one seed below the agreed bound. Measured on this branch:
+ * 25/25 = 100%.
  */
-const MIN_WIN_RATE = 0.88;
+const MIN_WIN_RATE = 0.9;
 
 /**
  * Ceiling on the median winning run's unspent share of **spendable** income.
