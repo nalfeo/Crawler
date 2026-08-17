@@ -18,10 +18,13 @@ import {
   AIDecisionMode,
   AIPathingMode,
   BehaviorTreeAI,
+  PLAYER_PERSONAS,
   RISK_REWARD_FIELD_CONSTANTS,
+  getPersonaConfig,
   type AIDecisionModeValue,
   type AIPathingModeValue,
   type FusedHeadingDebug,
+  type PlayerPersona,
 } from '../../game/ai/index.js';
 import { DEFAULT_CONFIG } from '../../game/ai/bt-ai-tuning.js';
 import {
@@ -459,6 +462,40 @@ const SCENARIO_VISUAL_BRIGHTENING: Record<
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 /**
+ * Player-persona presets exposed as a lab option. The label map doubles as the
+ * lil-gui dropdown source, so every persona in `PLAYER_PERSONAS` must have an
+ * entry (asserted at module load — a new persona should surface in the lab, not
+ * silently disappear from the picker).
+ */
+const PLAYER_PERSONA_LABELS: Record<PlayerPersona, string> = {
+  new_player: 'New player',
+  experienced_player: 'Experienced player (production default)',
+  min_max_cheeser: 'Min-max cheeser',
+  explorer: 'Explorer',
+};
+
+/** Production baseline: matches `DEFAULT_CONFIG`, i.e. the shipped game's tuning. */
+const DEFAULT_PLAYER_PERSONA: PlayerPersona = 'experienced_player';
+
+function isPlayerPersona(value: unknown): value is PlayerPersona {
+  return typeof value === 'string' && (PLAYER_PERSONAS as readonly string[]).includes(value);
+}
+
+/**
+ * Read `?persona=<id>` so a specific cohort can be linked to directly — e.g.
+ * `?lab=ai-runner&persona=min_max_cheeser`. Same rationale as
+ * {@link scenarioPresetIdFromUrl}: an explicit link must win over the persisted
+ * selection, and an unknown id falls back to the production baseline rather
+ * than restoring whatever persona happened to be open last.
+ */
+function playerPersonaFromUrl(): PlayerPersona | null {
+  if (typeof window === 'undefined') return null;
+  const requested = new URLSearchParams(window.location.search).get('persona');
+  if (!requested) return null;
+  return isPlayerPersona(requested) ? requested : DEFAULT_PLAYER_PERSONA;
+}
+
+/**
  * Read `?scenario=<id>` so a specific slice can be linked to and jumped
  * straight into — e.g. `?lab=ai-runner&scenario=terrain-wall-junctions`.
  *
@@ -495,6 +532,8 @@ interface AiRunnerLabState {
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas?: boolean;
+    /** Player-persona preset driving the AI's tuning knobs. */
+    playerPersona?: PlayerPersona;
     /** Single shared flag for both optional AI purchases. Replaces the former independent fields. */
     optionalPurchases?: boolean;
     /**
@@ -550,6 +589,8 @@ export interface AiRunnerDebugSnapshot {
   runOutcome: string | null;
   effectiveFloor: 'floor1' | 'floor2' | 'unknown';
   scenarioPreset: AiRunnerScenarioPresetId;
+  /** Player-persona preset currently driving the AI brain. */
+  playerPersona: PlayerPersona;
   arenaEntryFrame: number | null;
   quests: Record<string, { status: string; done: number; total: number }>;
 }
@@ -665,6 +706,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // matches the shipped game. All fields persist across lab
   // reloads; pathingMode/decisionMode are passed into every BehaviorTreeAI the
   // lab constructs.
+  const urlPersona = playerPersonaFromUrl();
+  const persistedPersona = persisted?.aiConfig?.playerPersona;
   const aiConfig: {
     pathingMode: AIPathingModeValue;
     decisionMode: AIDecisionModeValue;
@@ -672,6 +715,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
     weaponPersonas: boolean;
+    /** Player-persona preset (cohort tuning) applied to every AI brain the lab builds. */
+    playerPersona: PlayerPersona;
     /** Single shared flag for both optional AI purchases. Default true. */
     optionalPurchases: boolean;
   } = {
@@ -681,18 +726,28 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
     weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
+    playerPersona:
+      urlPersona ?? (isPlayerPersona(persistedPersona) ? persistedPersona : DEFAULT_PLAYER_PERSONA),
     optionalPurchases: resolveOptionalPurchases(persisted?.aiConfig ?? {}),
   };
 
-  let ai = new BehaviorTreeAI({
-    seed: currentSeed,
-    aggression: 1,
-    retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
-    farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
-    debug: true,
-    pathingMode: aiConfig.pathingMode,
-    decisionMode: aiConfig.decisionMode,
-  });
+  /**
+   * Single construction point for the AI brain. Every knob comes from the
+   * selected persona preset, so `experienced_player` reproduces the shipped
+   * production tuning exactly and the other cohorts behave like the headless
+   * `--persona` runs they are compared against. Only the run-scoped seed/debug
+   * and the A/B mode selection are layered on top.
+   */
+  const createAiBrain = (): BehaviorTreeAI =>
+    new BehaviorTreeAI({
+      ...getPersonaConfig(aiConfig.playerPersona),
+      seed: currentSeed,
+      debug: true,
+      pathingMode: aiConfig.pathingMode,
+      decisionMode: aiConfig.decisionMode,
+    });
+
+  let ai = createAiBrain();
   let selectedSpeed = 1;
   let isPaused = true;
   let manualControl = false;
@@ -731,6 +786,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
         weaponPersonas: aiConfig.weaponPersonas,
+        playerPersona: aiConfig.playerPersona,
         optionalPurchases: aiConfig.optionalPurchases,
       },
     });
@@ -1267,18 +1323,24 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // Rebuild the AI brain in place (preserving the current seed) so an A/B mode
   // toggle takes effect immediately without restarting the scene/floor.
   const rebuildAiBrain = (): void => {
-    ai = new BehaviorTreeAI({
-      seed: currentSeed,
-      aggression: 1,
-      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
-      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
-      debug: true,
-      pathingMode: aiConfig.pathingMode,
-      decisionMode: aiConfig.decisionMode,
-    });
+    ai = createAiBrain();
   };
 
   const aiModesFolder = gui.addFolder('AI Modes (A/B)');
+  aiModesFolder
+    .add(
+      aiConfig,
+      'playerPersona',
+      Object.fromEntries(
+        PLAYER_PERSONAS.map((persona) => [PLAYER_PERSONA_LABELS[persona], persona]),
+      ),
+    )
+    .name('Player persona')
+    .onChange(() => {
+      rebuildAiBrain();
+      persistLabState();
+      renderControls();
+    });
   aiModesFolder
     .add(aiConfig, 'weaponPersonas')
     .name('Weapon personas')
@@ -1391,15 +1453,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const reseed = (nextSeed: number): void => {
     currentSeed = nextSeed;
     sceneOptions.worldSeed = currentSeed;
-    ai = new BehaviorTreeAI({
-      seed: currentSeed,
-      aggression: 1,
-      retreatThreshold: DEFAULT_CONFIG.retreatThreshold,
-      farmPullWeight: DEFAULT_CONFIG.farmPullWeight,
-      debug: true,
-      pathingMode: aiConfig.pathingMode,
-      decisionMode: aiConfig.decisionMode,
-    });
+    ai = createAiBrain();
     pollCount = 0;
     arenaEntryFrame = null;
     lastObservedPlayerHealth = null;
@@ -2316,6 +2370,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           <div class="runner-telemetry-cell"><strong>State</strong><span id="ai-state">-</span></div>
           <div class="runner-telemetry-cell"><strong>Target</strong><span id="ai-target">-</span></div>
           <div class="runner-telemetry-cell"><strong>Persona</strong><span id="ai-persona">Off</span></div>
+          <div class="runner-telemetry-cell"><strong>Player persona</strong><span id="ai-player-persona">${PLAYER_PERSONA_LABELS[aiConfig.playerPersona]}</span></div>
         </div>
         <div class="runner-content">
           <details id="ai-telemetry" class="runner-details runner-card"${!hadRenderedPanel || openDetails.has('ai-telemetry') ? ' open' : ''}>
@@ -2701,6 +2756,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
       effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
+      playerPersona: aiConfig.playerPersona,
       arenaEntryFrame,
       quests,
     };
@@ -2800,6 +2856,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         : world
           ? (getWeaponPersonaForWorld(world)?.name ?? 'Unmapped weapon')
           : 'Pending loadout';
+    }
+    const playerPersonaElem = document.getElementById('ai-player-persona');
+    if (playerPersonaElem) {
+      playerPersonaElem.textContent = PLAYER_PERSONA_LABELS[aiConfig.playerPersona];
     }
   }, 100);
 
