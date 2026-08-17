@@ -1,13 +1,8 @@
 import { abilitySystem, levelSystem, skillSystem, spendPoints } from '../game/systems/index.js';
 import {
   enemyAISystem,
-  familyFeudSystem,
-  floor1EnemyDirectorSystem,
   floorObjectiveSystem,
-  floor1PlayerStatSystem,
   achievementSystem,
-  emergentEventSystem,
-  getScenarioDefinition,
   questSystem,
   spawnerArenaSystem,
   spawnerSystem,
@@ -15,10 +10,10 @@ import {
   capturePlayerCarryover,
   type ScenarioInitializationOptions,
 } from '../game/index.js';
+import { getScenarioDefinition } from '../game/scenarioDefinitions.js';
 import { getBossRewardSpellOptions, selectSpellFromBossBattle } from '../game/floorScenario.js';
 import { collectHumanRunStats } from '../game/ai/run-stats-collector.js';
 import { createPlayerSessionRecorder } from '../game/ai/player-session-recorder.js';
-import { floor2VictorySystem } from '../game/floor2Scenario.js';
 import {
   resolveRunBundleUploadConfig,
   submitRunBundleUpload,
@@ -123,17 +118,9 @@ export function createFloorMainSceneOptions(
       // postSystem downstream this frame reads consistent post-adjust bands.
       // Always-safe: on Floor 1 the deltas queue stays empty (near-noop).
       familyRelationshipSystem,
-      // Floor 2 Slice 5: per-tick dynamic victory evaluator (sole-ally or
-      // all-bosses-dead). Always-safe no-op on Floor 1 / non-Floor-2 worlds.
-      floor2VictorySystem,
-      emergentEventSystem,
-      floor1PlayerStatSystem,
+      ...(scenario.beforeWeaponSystems ?? []),
       weaponSystem,
-      // Floor 2 Slice 3: band-driven AI prepass runs AFTER familyRelationshipSystem
-      // (so this frame's post-adjust bands are visible) and BEFORE enemyAISystem
-      // (so it can plant a virtual target + hate speed ramp the AI will consume).
-      // Always-safe on Floor 1 (no FamilyMembership → near-noop).
-      familyFeudSystem,
+      ...(scenario.beforeEnemyAISystems ?? []),
       enemyAISystem,
       // statusEffectSystem runs AFTER enemyAISystem (and playerInputSystem, which
       // runs before all preSystems) so player + enemy speed folds see the same
@@ -154,7 +141,7 @@ export function createFloorMainSceneOptions(
       // tick.
       spawnerArenaSystem,
       spawnerSystem,
-      floor1EnemyDirectorSystem,
+      ...(scenario.afterSpawnerSystems ?? []),
     ],
     postSystems: [
       levelSystem,

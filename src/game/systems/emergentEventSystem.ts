@@ -18,11 +18,9 @@
  *   - Threshold-cross triggers scan `world.factionRelationEvents` non-
  *     destructively; the HUD may also read the same buffer that same frame.
  *
- * Wired into both real pipelines:
- *   - Visual: `src/bootstrap/floor-main-scene-options.ts` (preSystems, after
- *     `familyRelationshipSystem`).
- *   - Headless: `src/game/ai/simulation-step.ts` (after
- *     `familyRelationshipSystem`).
+ * Registered in Floor 2's scenario definition before `weaponSystem`; the
+ * bootstrap assembles that slot after `familyRelationshipSystem` for both real
+ * pipelines.
  */
 import { query } from 'bitecs';
 import type { GameWorld } from '../../core/world.js';
