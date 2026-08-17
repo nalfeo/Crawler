@@ -50,7 +50,7 @@ import {
 } from '../shared/generated-assets.js';
 import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
-import { ALL_STAT_IDS, type StatId } from '../shared/stats.js';
+import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { renderItemTooltip } from './item-tooltip.js';
@@ -216,7 +216,7 @@ export function createInventoryUI(
     legendary: ItemRarity.Legendary,
   };
 
-  function currentPlayerStats(): Partial<Record<StatId, number>> {
+  function currentWeaponDpsStats(): Partial<Record<StatId, number>> {
     if (
       !currentWorld ||
       playerEid < 0 ||
@@ -225,11 +225,17 @@ export function createInventoryUI(
       return {};
     }
 
-    const stats: Partial<Record<StatId, number>> = {};
-    for (const stat of ALL_STAT_IDS) {
-      stats[stat] = currentWorld.stores.effectiveStats[stat][playerEid] ?? 0;
-    }
-    return stats;
+    const { effectiveStats } = currentWorld.stores;
+    return {
+      damageBonus: effectiveStats.damageBonus[playerEid] ?? 0,
+      damagePercent: effectiveStats.damagePercent[playerEid] ?? 0,
+      strength: effectiveStats.strength[playerEid] ?? 0,
+      intelligence: effectiveStats.intelligence[playerEid] ?? 0,
+      critChance: effectiveStats.critChance[playerEid] ?? 0,
+      critMultiplier: effectiveStats.critMultiplier[playerEid] ?? 1,
+      attackSpeed: effectiveStats.attackSpeed[playerEid] ?? 0,
+      cooldownReduction: effectiveStats.cooldownReduction[playerEid] ?? 0,
+    };
   }
 
   function currentAttackSpeedMultiplier(): number {
@@ -253,7 +259,7 @@ export function createInventoryUI(
     if (!def) {
       return undefined;
     }
-    const dps = computeTheoreticalSingleTargetDps(def, currentPlayerStats(), {
+    const dps = computeTheoreticalSingleTargetDps(def, currentWeaponDpsStats(), {
       attackSpeedMultiplier: currentAttackSpeedMultiplier(),
     }).dps;
     return `DPS: ${formatDps(dps)}`;

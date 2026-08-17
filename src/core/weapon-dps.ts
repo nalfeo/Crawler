@@ -18,6 +18,9 @@ export interface TheoreticalWeaponDps {
 
 function hitsPerActivation(def: WeaponDef): number {
   if (def.weaponType === WeaponType.BEAM) {
+    if (!(def.beamTickMs > 0) || !(def.durationMs > 0)) {
+      return 1;
+    }
     const tickMs = Math.max(1, def.beamTickMs);
     // Mirrors the live pipeline: beams tick immediately on spawn, beamSystem runs
     // before lifetimeSystem, and lifetimeSystem removes at elapsed >= expiresAt,

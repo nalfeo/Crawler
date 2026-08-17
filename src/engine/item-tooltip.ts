@@ -8,7 +8,7 @@ const TOOLTIP_BASE_HEIGHT = 110;
 const TOOLTIP_STAT_HEIGHT_BONUS = 18;
 const TOOLTIP_META_OFFSET = 16;
 const TOOLTIP_FOOTER_OFFSET_FROM_META = 14;
-const TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE = 18;
+const TOOLTIP_LINE_SPACING = 18;
 
 export interface ItemTooltipRenderParams {
   scene: Phaser.Scene;
@@ -62,10 +62,8 @@ export function renderItemTooltip(
       : TOOLTIP_BASE_HEIGHT;
   const metaY = tooltipHeight - TOOLTIP_META_OFFSET;
   const footerY = metaY - TOOLTIP_FOOTER_OFFSET_FROM_META;
-  const statY =
-    footerHint !== undefined && footerHint.length > 0
-      ? footerY - TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE
-      : metaY - TOOLTIP_STAT_OFFSET_FROM_NEXT_LINE;
+  const nextLineY = footerHint !== undefined && footerHint.length > 0 ? footerY : metaY;
+  const statY = nextLineY - TOOLTIP_LINE_SPACING;
   const snap = (value: number): number => Math.round(value);
   const panelInset = 8;
   const rightCandidateX = anchorX + anchorSize / 2 + 8;
