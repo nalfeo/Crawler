@@ -30,20 +30,36 @@ describe('createFloor1MainSceneOptions', () => {
   it.each([
     {
       floorId: 'floor1',
+      beforeWeaponSystems: [floor1PlayerStatSystem],
+      beforeEnemyAISystems: [],
+      afterSpawnerSystems: [floor1EnemyDirectorSystem],
       foreignSystems: [floor2VictorySystem, emergentEventSystem, familyFeudSystem],
     },
     {
       floorId: 'floor2',
+      beforeWeaponSystems: [floor2VictorySystem, emergentEventSystem],
+      beforeEnemyAISystems: [familyFeudSystem],
+      afterSpawnerSystems: [],
       foreignSystems: [floor1PlayerStatSystem, floor1EnemyDirectorSystem],
     },
   ])(
     'assembles only $floorId scenario systems at their canonical slots',
-    ({ floorId, foreignSystems }) => {
+    ({
+      floorId,
+      beforeWeaponSystems,
+      beforeEnemyAISystems,
+      afterSpawnerSystems,
+      foreignSystems,
+    }) => {
+      // The expected slot contents below are hardcoded independently of
+      // scenarioDefinitions.ts, so deleting or misplacing a registration
+      // there changes only the assembled preSystems and fails this test.
       const scenario = getScenarioDefinition(floorId);
+      expect(scenario.beforeWeaponSystems ?? []).toEqual(beforeWeaponSystems);
+      expect(scenario.beforeEnemyAISystems ?? []).toEqual(beforeEnemyAISystems);
+      expect(scenario.afterSpawnerSystems ?? []).toEqual(afterSpawnerSystems);
+
       const preSystems = createFloorMainSceneOptions(floorId).preSystems ?? [];
-      const beforeWeaponSystems = scenario.beforeWeaponSystems ?? [];
-      const beforeEnemyAISystems = scenario.beforeEnemyAISystems ?? [];
-      const afterSpawnerSystems = scenario.afterSpawnerSystems ?? [];
       const localSystems = [
         ...beforeWeaponSystems,
         ...beforeEnemyAISystems,

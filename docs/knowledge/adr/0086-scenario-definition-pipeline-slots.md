@@ -14,13 +14,7 @@ Accepted
 
 ## Context
 
-`createFloorMainSceneOptions` assembled one unconditional pre-system array for
-every floor. Floor 1 therefore ran three Floor 2 systems, while Floor 2 ran two
-Floor 1 systems. State guards prevented most foreign behavior, but
-`familyFeudSystem` still performed queries and rebuilt its spatial grid on Floor
-
-1. The bootstrap array is also the ordering authority shared by the visual scene
-   and headless runner, so separate per-floor arrays would risk runtime drift.
+`createFloorMainSceneOptions` assembled one unconditional pre-system array for every floor. Floor 1 therefore ran three Floor 2 systems, while Floor 2 ran two Floor 1 systems. State guards prevented most foreign behavior, but `familyFeudSystem` still performed queries and rebuilt its spatial grid on Floor 1. The bootstrap array is also the ordering authority shared by the visual scene and headless runner, so separate per-floor arrays would risk runtime drift.
 
 ## Decision
 
