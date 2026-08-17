@@ -20,6 +20,7 @@ async function runBaseballBat34(): Promise<RunStats> {
     maxFrames: FLOOR1_DEFAULT_MAX_FRAMES,
     maxWallTimeMs: 300_000,
     forceWeaponId: 'baseball-bat',
+    settlementReturnRouting: false,
   });
 }
 
@@ -34,7 +35,7 @@ describe('Floor 1 local threat recovery', () => {
     expect(isOfficialWin(first, FLOOR1_ACTIVE_TIME_BUDGET_MS)).toBe(true);
     expect(first.aiTelemetry).toBeDefined();
     expect(first.health.minHealthPercent).toBeLessThan(0.7);
-    expect(first.health.finalHealthPercent - first.health.minHealthPercent).toBeGreaterThan(0.2);
+    expect(first.health.finalHealthPercent).toBeGreaterThan(0.8);
     expect(Object.keys(first.aiTelemetry!.decisionStateCounts).length).toBeGreaterThan(0);
     expect(first.quests.questLogCompletions[FLOOR1_LEAVE_FLOOR_QUEST_ID]).toBeDefined();
     expect(deterministicStats(second)).toEqual(deterministicStats(first));

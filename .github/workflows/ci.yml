@@ -328,6 +328,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run check:wired-systems
 
+      # AI/human parity guard: no src/game/ai file may force past the
+      # safe-context gate that binds every human equipment panel action. The
+      # headless runner is the balance oracle, so an AI-only privilege silently
+      # measures a game no human plays.
+      - name: AI equipment-parity guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:ai-equip-parity
+
       # Test-only exports guard: flags src/ exports whose only consumers are in
       # tests/**. Closes the blind spot where test-only usage masked production
       # deadness in knip (knip includes tests/** in its project scope). The

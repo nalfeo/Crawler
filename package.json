@@ -110,6 +110,7 @@
     "check:knip-suppressions": "tsx scripts/agent/health/check-knip-suppressions.ts",
     "check:silent-reverts": "tsx scripts/agent/health/silent-reverts.ts",
     "check:physics-defs-sync": "tsx scripts/agent/health/check-physics-defs-sync.ts",
+    "check:ai-equip-parity": "tsx scripts/agent/health/check-ai-equip-parity.ts",
     "check:size-coverage": "tsx scripts/agent/health/check-size-coverage.ts",
     "check:weight-coverage": "tsx scripts/agent/health/check-weight-coverage.ts",
     "check:sort-assets": "tsx scripts/sprites/check-sort-assets.ts",
