@@ -53,6 +53,7 @@ test('validates weapons, refs, and ranges before dispatch', () => {
     () => weaponSweepDispatchArgs({ ref: '0123456789abcdef' }),
     /not a tag or bare SHA/,
   );
+  assert.throws(() => weaponSweepDispatchArgs({ ref: 'v1.2.3' }), /not a tag or bare SHA/);
   assert.throws(() => weaponSweepDispatchArgs({ seedCount: 101 }), /seedCount/);
   assert.throws(() => aiSweepDispatchArgs({ trainSeeds: '1; rm -rf' }), /trainSeeds/);
   assert.throws(

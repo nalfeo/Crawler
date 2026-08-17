@@ -18,6 +18,7 @@ const ALLOWED_WEAPONS = new Set([
 const VALID_COMBO_RE = /^[A-Za-z0-9+_.-]+$/;
 const VALID_BRANCH_RE = /^[A-Za-z0-9._/@+-]+$/;
 const BARE_SHA_RE = /^[0-9a-f]{7,40}$/i;
+const RELEASE_TAG_RE = /^v\d+(?:[._-]\d+)*(?:[-+][A-Za-z0-9._-]+)?$/i;
 const VALID_RANGE_RE = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/;
 
 async function runCommand(binary, args, options = {}) {
@@ -63,7 +64,13 @@ function parsePositiveInteger(value, name, min, max) {
 
 function validateBranch(ref) {
   const value = String(ref ?? '').trim();
-  if (!value || !VALID_BRANCH_RE.test(value) || value.includes('..') || BARE_SHA_RE.test(value)) {
+  if (
+    !value ||
+    !VALID_BRANCH_RE.test(value) ||
+    value.includes('..') ||
+    BARE_SHA_RE.test(value) ||
+    RELEASE_TAG_RE.test(value)
+  ) {
     throw new Error('branch must be a safe branch name, not a tag or bare SHA.');
   }
   return value;
