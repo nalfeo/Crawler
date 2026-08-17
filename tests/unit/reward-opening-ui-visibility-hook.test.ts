@@ -55,6 +55,45 @@ function createFakeScene(): import('phaser').Scene {
   } as unknown as import('phaser').Scene;
 }
 
+function createShutdownFakeScene(): {
+  scene: import('phaser').Scene;
+  detachDisplayObjects(): void;
+} {
+  const detachedObject = {
+    active: true,
+    setDepth: vi.fn(() => detachedObject),
+    setVisible: vi.fn(() => {
+      if (!detachedObject.active) {
+        throw new Error('detached display object should not be updated');
+      }
+      return detachedObject;
+    }),
+    setScrollFactor: vi.fn(() => detachedObject),
+    setInteractive: vi.fn(() => detachedObject),
+    setOrigin: vi.fn(() => detachedObject),
+    setResolution: vi.fn(() => detachedObject),
+    add: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    destroy: vi.fn(),
+  };
+  return {
+    scene: {
+      add: {
+        text: vi.fn(() => detachedObject),
+        container: vi.fn(() => detachedObject),
+        rectangle: vi.fn(() => detachedObject),
+        circle: vi.fn(() => detachedObject),
+      },
+      scale: { width: 1280, height: 720 },
+      input: { keyboard: { on: vi.fn(), off: vi.fn() } },
+    } as unknown as import('phaser').Scene,
+    detachDisplayObjects(): void {
+      detachedObject.active = false;
+    },
+  };
+}
+
 const LOOT_BOX_PRESENTATION: ResolvedRewardPresentation = {
   kind: 'lootBox',
   tier: 'common',
@@ -78,6 +117,14 @@ describe('RewardOpeningUI close() visibility-hook guard', () => {
     ui.destroy();
 
     expect(hooks.onVisibilityChange).not.toHaveBeenCalled();
+  });
+
+  it('does not touch display objects already detached during scene shutdown', () => {
+    const { scene, detachDisplayObjects } = createShutdownFakeScene();
+    const ui = createRewardOpeningUI(scene, createHooks());
+    detachDisplayObjects();
+
+    expect(() => ui.destroy()).not.toThrow();
   });
 
   it('fires onVisibilityChange(true) then (false) exactly once each for a genuine open->destroy', () => {
