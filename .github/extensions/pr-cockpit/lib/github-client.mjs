@@ -112,16 +112,28 @@ async function readPullRequest(repository, pullNumber, signal) {
   );
 }
 
-async function listCheckRuns(repository, ref, signal) {
+export async function listCheckRuns(repository, ref, signal, runJson = runGhJson) {
   if (!ref) return [];
-  const response = await runGhJson(
-    ['api', '--method', 'GET', `repos/${repository}/commits/${encodeURIComponent(ref)}/check-runs`],
-    { signal },
-  );
-  if (!Array.isArray(response.check_runs)) {
-    throw new Error('GitHub API did not return check_runs.');
+  const checkRuns = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const response = await runJson(
+      [
+        'api',
+        '--method',
+        'GET',
+        `repos/${repository}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100&page=${page}`,
+      ],
+      { signal },
+    );
+    if (!Array.isArray(response.check_runs)) {
+      throw new Error('GitHub API did not return check_runs.');
+    }
+    checkRuns.push(...response.check_runs);
+    if (response.check_runs.length < 100) {
+      return checkRuns;
+    }
   }
-  return response.check_runs;
+  return checkRuns;
 }
 
 const REVIEW_THREADS_QUERY = `
