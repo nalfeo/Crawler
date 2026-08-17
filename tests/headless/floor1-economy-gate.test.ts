@@ -71,16 +71,16 @@ const MIN_WIN_RATE = 0.9;
  * and still banks a stake for Floor 2 — not a full spend-down (a), and not the
  * pre-existing hoard (c).
  *
- * Measured on this branch over `GATE_SEEDS`: **33.4%**. The margin to the 35%
+ * Measured on this branch over `GATE_SEEDS`: **34.0%**. The margin to the 35%
  * ceiling is deliberately thin because Floor 1's purchasable board, priced at
  * the top of its bands, is close to a run's spendable income by design — that
  * closeness is what makes the purchase a choice. If a future content change
  * pushes this over, the fix is a **new sink** (the standing proposal is a second
- * broker spell at an escalating price), not a looser ceiling.
+ * broker spell at an escalating price) or lower prices, not a looser ceiling.
  */
 const MAX_MEDIAN_UNSPENT_SPENDABLE_FRACTION = 0.35;
 
-/** Share of winning runs that must buy a spell. Measured: 24/25 = 96%. */
+/** Share of winning runs that must buy a spell. Measured: 25/25 = 100%. */
 const MIN_SPELL_PURCHASE_RATE = 0.8;
 
 /** Median winning run must buy from at least this many distinct vendors. Measured: 2. */

@@ -84,6 +84,31 @@ of its bands, is close to a run's spendable income by design. If it drifts over,
 the fix is a **new sink** (standing proposal: a second broker spell at an
 escalating price), not a looser ceiling.
 
+## CI recovery addendum (2026-08-17)
+
+Merging current `main` pulled in the Floor 1 boss-chest PR (#3021), which
+defaults `settlementReturnRouting` to `true` on Floor 1 (previously `false`)
+for parity-gated equipment. That default shifted the AI's Floor 1 spend
+behavior enough to push the median unspent-spendable share from 33.4% to
+**36.9%**, failing the gate (no price or income values changed on this
+branch — this is the _other_ mainline PR's behavioral side effect on the
+shared metric).
+
+Per the gate's own guidance ("Add a sink or lower prices; do not raise this
+ceiling") and AGENTS.md rule 11, prices were lowered rather than the ceiling
+raised: `spellBrokerRepeatCostMultiplier` 0.7 → 0.6, and each
+`postQuestWeaponCosts` entry (and the default) down ~15g, so more winning
+runs can afford the second broker spell / post-quest weapon they were
+previously priced out of. Re-measured over `GATE_SEEDS`:
+
+- Win rate **25/25 = 100%**
+- Median unspent / spendable income **34.0%** (gate ≤35% ✓)
+- Spell bought in **25/25** winning runs; median **2** distinct vendors
+
+The open escalation above (spendable vs. total-earned basis) is unchanged and
+still awaits an explicit human decision; this addendum only restores the
+gate's own currently-implemented (spendable) metric to passing.
+
 ## Notes for the next session
 
 - A fingerprint delta is **expected**: prices changed and merchant selection no
