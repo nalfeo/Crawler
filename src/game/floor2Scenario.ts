@@ -114,8 +114,7 @@ import {
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
-import { spawnHarvestableNode } from '../core/helpers.js';
-import { spawnSpawner } from '../core/helpers.js';
+import { spawnHarvestableNode, spawnSpawner } from '../core/helpers.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import {
   FLOOR_SPAWNER_MAX_COUNT,
