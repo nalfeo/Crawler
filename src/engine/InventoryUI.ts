@@ -281,7 +281,7 @@ export function createInventoryUI(
       effectiveStats.strength[playerEid] ?? 0,
       effectiveStats.intelligence[playerEid] ?? 0,
       effectiveStats.critChance[playerEid] ?? 0,
-      effectiveStats.critMultiplier[playerEid] ?? 0,
+      effectiveStats.critMultiplier[playerEid] ?? 1,
       effectiveStats.attackSpeed[playerEid] ?? 0,
       effectiveStats.cooldownReduction[playerEid] ?? 0,
       attackSpeedMultiplier,
