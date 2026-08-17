@@ -76,11 +76,6 @@ import {
   type EnemyArchetypeDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
-import {
-  getCurrentLocationSearch,
-  isFloorSpawnerArenaExperimentEnabled,
-  resolveFloorSpawnerCountOverride,
-} from '../shared/spawner-feature-flags.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { loadResources } from '../shared/data/resources.js';
@@ -114,13 +109,7 @@ import {
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
-import { spawnHarvestableNode, spawnSpawner } from '../core/helpers.js';
-import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
-import {
-  FLOOR_SPAWNER_MAX_COUNT,
-  resolvePassableRoomCenter,
-  toFloorTrashSpawnerArchetypeId,
-} from './spawners/floor-spawner-utils.js';
+import { spawnHarvestableNode } from '../core/helpers.js';
 import {
   FLOOR2_HARVESTABLE_START_INDEX,
   FLOOR2_HARVESTABLE_END_INDEX,
@@ -1107,7 +1096,6 @@ export function initializeFloor2Scenario(
     floorMap,
     world.floorExtendedState!.familyState!,
   );
-  spawnFloor2TrashSpawners(world, isFloorSpawnerArenaExperimentEnabled(getCurrentLocationSearch()));
   acceptQuest(world, FLOOR2_FIND_SETTLEMENT_QUEST_ID);
   for (const objective of objectives) {
     acceptQuest(world, objective.questId);
@@ -1404,19 +1392,11 @@ export function resolveFloor2TrashSpawnWeights(
   ]);
 }
 
-function pickFloor2TrashArchetype(
-  world: GameWorld,
-  x: number,
-  y: number,
-  random: { next: () => number; nextInt: (min: number, max: number) => number } = {
-    next: () => world.rng.next(),
-    nextInt: (min, max) => world.rng.nextInt(min, max),
-  },
-): EnemyArchetypeDef {
+function pickFloor2TrashArchetype(world: GameWorld, x: number, y: number): EnemyArchetypeDef {
   const weights = resolveFloor2TrashSpawnWeights(world, x, y);
   const { pickedId } = pickFromSpawnZones(
     [weights] as const satisfies readonly SpawnZoneWeights[],
-    random.next,
+    () => world.rng.next(),
   );
   if (pickedId !== null) {
     const picked = floor2EnemyPack.archetypes.find((entry) => entry.id === pickedId);
@@ -1432,8 +1412,7 @@ function pickFloor2TrashArchetype(
     throw new Error('No archetypes available in floor2EnemyPack');
   }
   if (neutralTrash.length > 0) {
-    const pickIndex = random.nextInt(0, neutralTrash.length - 1);
-    return neutralTrash[pickIndex]!;
+    return neutralTrash[world.rng.nextInt(0, neutralTrash.length - 1)]!;
   }
   return neutralFallback;
 }
@@ -1656,57 +1635,6 @@ function spawnFloor2AmbientArchetype(
 
   world.floorExtendedState?.ambientEnemyArchetypes?.set(eid, selectedArchetype.id);
   return eid;
-}
-
-function spawnFloor2TrashSpawners(world: GameWorld, featureEnabled: boolean): void {
-  if (!featureEnabled) {
-    return;
-  }
-  const floorMap = world.floorMap;
-  if (!floorMap) {
-    return;
-  }
-  const candidateRooms = floorMap.roomGraph
-    .getAll()
-    .filter((room) => room.role === RoomRole.NORMAL);
-  if (candidateRooms.length === 0) {
-    return;
-  }
-
-  const spawnerRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor2:trash-spawners`));
-  const maxSpawnCount = Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length);
-  const forcedSpawnerCount = resolveFloorSpawnerCountOverride(getCurrentLocationSearch());
-  const spawnCount =
-    forcedSpawnerCount === null
-      ? spawnerRng.nextInt(0, maxSpawnCount)
-      : Math.min(Math.max(forcedSpawnerCount, 0), maxSpawnCount);
-  spawnerRng.shuffle(candidateRooms);
-
-  for (let i = 0; i < spawnCount; i += 1) {
-    const room = candidateRooms[i]!;
-    const spawnPos = resolvePassableRoomCenter(floorMap, room);
-    const trashArchetype = pickFloor2TrashArchetype(world, spawnPos.x, spawnPos.y, {
-      next: () => spawnerRng.next(),
-      nextInt: (min, max) => spawnerRng.nextInt(min, max),
-    });
-    const spawnerArchetypeId = toFloorTrashSpawnerArchetypeId(trashArchetype.id);
-    const spawnerArchetype = getSpawnerArchetype(spawnerArchetypeId);
-    const spawnerDefIndex = getSpawnerArchetypeIndex(spawnerArchetypeId);
-    if (!spawnerArchetype || spawnerDefIndex < 0) {
-      continue;
-    }
-    const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, spawnerArchetype.hp, {
-      defIndex: spawnerDefIndex,
-      contactDamage: spawnerArchetype.contactDamage,
-      weight: spawnerArchetype.weight,
-      bloodColor: spawnerArchetype.bloodColor,
-      textureId: spawnerArchetype.textureId,
-      spriteWidth: spawnerArchetype.spriteWidth,
-      spriteHeight: spawnerArchetype.spriteHeight,
-      arenaRadiusFt: spawnerArchetype.arenaRadiusFt,
-    });
-    setEnemyAppearanceKey(world, spawnerEid, spawnerArchetypeId);
-  }
 }
 
 /**

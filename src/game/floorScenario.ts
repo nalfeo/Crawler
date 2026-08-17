@@ -59,11 +59,6 @@ import {
   getFloor1StarterWeaponPool,
   isFloor1ExperimentalStarterOptionsEnabled,
 } from '../shared/floor1-starter-weapons.js';
-import {
-  getCurrentLocationSearch,
-  isFloorSpawnerArenaExperimentEnabled,
-  resolveFloorSpawnerCountOverride,
-} from '../shared/spawner-feature-flags.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
@@ -146,11 +141,6 @@ import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
-import {
-  FLOOR_SPAWNER_MAX_COUNT,
-  resolvePassableRoomCenter,
-  toFloorTrashSpawnerArchetypeId,
-} from './spawners/floor-spawner-utils.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import { computeMobLevelScale } from '../shared/mob-scaling.js';
 import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
@@ -175,6 +165,13 @@ const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
+// Floor 1 is intentionally spawner-free: its static-spawner spawn table is empty,
+// so `spawnFloor1StaticSpawners` places no Spawner entities on Floor 1. The
+// placement machinery below is fully config-driven off this table — repopulate
+// this list (e.g. ['slime-pool', 'rats-nest']) to re-enable Floor 1 static
+// spawners without touching the runtime pipelines.
+const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
+const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = [];
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
@@ -410,11 +407,62 @@ export function getBossRewardSpellOptions(world: GameWorld): Array<{
   });
 }
 
-function centerOfRoom(room: { bounds: RoomBounds }): { x: number; y: number } {
+function centerOfRoom(room: { bounds: { x: number; y: number; width: number; height: number } }): {
+  x: number;
+  y: number;
+} {
   return {
     x: Math.floor(room.bounds.x + room.bounds.width / 2),
     y: Math.floor(room.bounds.y + room.bounds.height / 2),
   };
+}
+
+/**
+ * Resolve the world position for a room's logical centre.
+ *
+ * Returns the centre of the room's bounding box if that tile is passable.
+ * When the center has been walled off (e.g. by an ellipse or L-shape
+ * post-processing pass), spirals outward within the room's interior until a
+ * passable tile is found, then returns its world position. This guarantees
+ * that NPCs and items are never spawned inside walls.
+ */
+function resolvePassableRoomCenter(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  room: { bounds: RoomBounds },
+): { x: number; y: number } {
+  const center = centerOfRoom(room);
+  if (floorMap.tileMap.isPassable(center.x, center.y)) {
+    return floorMap.tileToWorld(center.x, center.y);
+  }
+
+  const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+  const ix = bx + 1;
+  const iy = by + 1;
+  const maxX = bx + bw - 2;
+  const maxY = by + bh - 2;
+  const maxRadius = Math.max(bw, bh);
+
+  for (let r = 1; r <= maxRadius; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const tx = center.x + dx;
+        const ty = center.y + dy;
+        if (
+          tx >= ix &&
+          tx <= maxX &&
+          ty >= iy &&
+          ty <= maxY &&
+          floorMap.tileMap.isPassable(tx, ty)
+        ) {
+          return floorMap.tileToWorld(tx, ty);
+        }
+      }
+    }
+  }
+
+  // Absolute fallback: return the bounding-box center point even if it's a wall.
+  return floorMap.tileToWorld(center.x, center.y);
 }
 
 function tileKey(x: number, y: number): string {
@@ -1510,60 +1558,60 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-function spawnFloor1StaticSpawners(world: GameWorld, featureEnabled: boolean): void {
-  if (!featureEnabled) {
+function spawnFloor1StaticSpawners(world: GameWorld): void {
+  // Config-driven no-op: with an empty static-spawner table Floor 1 places no
+  // Spawner entities (see FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS). Bail before
+  // deriving the room stream so we do no wasted work.
+  if (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
     return;
   }
   const floorMap = world.floorMap;
   if (!floorMap) {
     return;
   }
-  // Derive a deterministic, floor-local stream so static-spawner assignment is
-  // stable per seed but does not consume the shared gameplay RNG sequence.
-  const spawnerRng = new SeededRandom(hashStringToSeed(`${world.seed}:floor1:trash-spawners`));
+  // Derive a deterministic, floor-local stream so static-spawner room assignment
+  // is stable per seed but does not consume the shared gameplay RNG sequence.
+  const spawnerRng = new SeededRandom(
+    world.seed ^ (floorMap.config.widthTiles << 8) ^ floorMap.config.heightTiles ^ 0x5f3759df,
+  );
 
   const candidateRooms = floorMap.roomGraph
     .getAll()
     .filter((room) => room.role === RoomRole.NORMAL);
-  if (candidateRooms.length === 0) {
-    return;
+  const requiredRoomCount =
+    FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length * FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE;
+  if (candidateRooms.length < requiredRoomCount) {
+    throw new Error(
+      `Floor 1 requires at least ${requiredRoomCount} normal rooms for static spawners; got ${candidateRooms.length}.`,
+    );
   }
-  const maxSpawnCount = Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length);
-  const forcedSpawnerCount = resolveFloorSpawnerCountOverride(getCurrentLocationSearch());
-  const spawnCount =
-    forcedSpawnerCount === null
-      ? spawnerRng.nextInt(0, maxSpawnCount)
-      : Math.min(Math.max(forcedSpawnerCount, 0), maxSpawnCount);
   spawnerRng.shuffle(candidateRooms);
 
-  const floor1TrashWeights = new Map<string, number>();
-  for (const entry of floor1EnemyPack.archetypes) {
-    floor1TrashWeights.set(entry.id, entry.spawnWeight);
-  }
-
-  for (let i = 0; i < spawnCount; i += 1) {
-    const room = candidateRooms[i]!;
-    const spawnPos = resolvePassableRoomCenter(floorMap, room);
-    const { pickedId } = pickFromSpawnZones([floor1TrashWeights as SpawnZoneWeights], () =>
-      spawnerRng.next(),
-    );
-    const spawnerArchetypeId = toFloorTrashSpawnerArchetypeId(pickedId);
-    const archetype = getSpawnerArchetype(spawnerArchetypeId);
-    const defIndex = getSpawnerArchetypeIndex(spawnerArchetypeId);
+  let roomCursor = 0;
+  for (const archetypeId of FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS) {
+    const archetype = getSpawnerArchetype(archetypeId);
+    const defIndex = getSpawnerArchetypeIndex(archetypeId);
     if (!archetype || defIndex < 0) {
       continue;
     }
-    const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
-      defIndex,
-      contactDamage: archetype.contactDamage,
-      weight: archetype.weight,
-      bloodColor: archetype.bloodColor,
-      textureId: archetype.textureId,
-      spriteWidth: archetype.spriteWidth,
-      spriteHeight: archetype.spriteHeight,
-      arenaRadiusFt: archetype.arenaRadiusFt,
-    });
-    setEnemyAppearanceKey(world, spawnerEid, spawnerArchetypeId);
+    for (let i = 0; i < FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE; i += 1) {
+      const room = candidateRooms[roomCursor]!;
+      roomCursor += 1;
+      const spawnPos = resolvePassableRoomCenter(floorMap, room);
+      const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
+        defIndex,
+        contactDamage: archetype.contactDamage,
+        weight: archetype.weight,
+        bloodColor: archetype.bloodColor,
+        textureId: archetype.textureId,
+        spriteWidth: archetype.spriteWidth,
+        spriteHeight: archetype.spriteHeight,
+        arenaRadiusFt: archetype.arenaRadiusFt,
+      });
+      // Preserve stable visual identity so generated-art lookups can select
+      // spawner-specific briefs (e.g. slime-pool-v1, rats-nest-v1) when present.
+      setEnemyAppearanceKey(world, spawnerEid, archetypeId);
+    }
   }
 }
 
@@ -2584,10 +2632,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     questItemPos.y,
     getItemIndex(SHOPKEEPER_FETCH_ITEM_ID),
   );
-  spawnFloor1StaticSpawners(
-    world,
-    isFloorSpawnerArenaExperimentEnabled(getCurrentLocationSearch()),
-  );
+  spawnFloor1StaticSpawners(world);
 
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);

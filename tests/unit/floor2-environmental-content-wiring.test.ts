@@ -12,8 +12,7 @@ import { describe, expect, it } from 'vitest';
 describe('Floor 2 environmental content wiring', () => {
   it('floor2Scenario.ts imports spawnHarvestableNode from core/helpers', () => {
     const source = readFileSync('src/game/floor2Scenario.ts', 'utf-8');
-    expect(source).toContain('spawnHarvestableNode');
-    expect(source).toContain("from '../core/helpers.js'");
+    expect(source).toContain("import { spawnHarvestableNode } from '../core/helpers.js'");
   });
 
   it('floor2Scenario.ts imports FLOOR2_HARVESTABLE_START_INDEX and HARVESTABLE_DEFS from harvestableDefs', () => {
