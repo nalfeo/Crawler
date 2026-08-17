@@ -194,14 +194,21 @@ flowchart LR
     NPC --> POST[postSystems\n★ injected by scenario]
 ```
 
-**Weapon & AI systems** run inside `preSystems`/`postSystems` (injected by the Floor 1 scenario — canonical source `src/bootstrap/floor1-main-scene-options.ts`; the visual loop lives in `src/engine/scenes/MainGameScene.ts` and is mirrored headlessly by `src/game/ai/simulation-step.ts`):
+**Weapon & AI systems** run inside `preSystems`/`postSystems`. The canonical
+assembler is `src/bootstrap/floor-main-scene-options.ts`; floor-local systems
+come from named slots on `ScenarioDefinition`. Both the visual scene and
+headless runner consume the assembled arrays:
 
 ```
-preSystems: statSystem → floor1PlayerStatSystem
-            → weaponSystem → enemyAISystem → statusEffectSystem
+preSystems: statSystem → familyRelationshipSystem
+            → [scenario.beforeWeaponSystems] → weaponSystem
+            → [scenario.beforeEnemyAISystems] → enemyAISystem → statusEffectSystem
             → mobAbilitySystem (default-off gate; enabled by combat-arena lab / future production activation)
-            → floor1EnemyDirectorSystem
-postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSystem → questSystem
+            → spawnerArenaSystem → spawnerSystem → [scenario.afterSpawnerSystems]
+Floor 1 slots: floor1PlayerStatSystem; floor1EnemyDirectorSystem
+Floor 2 slots: floor2VictorySystem → emergentEventSystem; familyFeudSystem
+postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSystem
+             → questSystem → achievementSystem
 ```
 
 ---
