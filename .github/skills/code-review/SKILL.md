@@ -19,18 +19,9 @@ Use this skill for **context-aware tailored reviews** in this repository.
 
 ## Review contract
 
-1. Start from changed files and changed systems only.
-2. Expand scope only for direct callers/callees, runtime wiring, and tests.
-3. Read prior review-thread history to avoid reopening already-addressed findings.
-4. Validate findings across:
-   - correctness and edge cases
-   - determinism and runtime wiring
-   - layer boundaries and integration contracts
-   - security/trust boundaries
-   - regression coverage and policy compliance
-5. Report only high-confidence, actionable findings with file/line, failure mode,
-   impact, and minimal fix.
-6. End with compact category coverage status.
+Use `.github/instructions/review.instructions.md` as the canonical review
+protocol. Do not substitute, abridge, or reinterpret required categories,
+process, or reporting structure.
 
 ## Required repo context
 
