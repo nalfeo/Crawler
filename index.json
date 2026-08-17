@@ -1,5 +1,39 @@
 [
   {
+    "commit": "1e87141f4664f024d383577f5071f78176fbe61f",
+    "commitDate": "2026-08-17T10:12:31Z",
+    "commitSubject": "Implementing chest drops for Floor 1 bosses (#3021)",
+    "capturedAt": "2026-08-17T11:21:16.783Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32020274746",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/1e87141f4664f024d383577f5071f78176fbe61f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.2866666666666667,
+        "totalWins": 43,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.3,
+      "gatePass": false,
+      "path": "by-sha/1e87141f4664f024d383577f5071f78176fbe61f.fun-report.json"
+    }
+  },
+  {
     "commit": "56a0317fe7bddf41c74d02e63a60ee2672cf9fb1",
     "commitDate": "2026-08-17T07:50:38Z",
     "commitSubject": "Removing time limits for different player personas (#3020)",
