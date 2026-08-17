@@ -17,6 +17,7 @@ Estimated: 1. Actual: 1.
 ## Verification
 
 - `npm run test:unit -- tests/unit/run-bundle-upload.test.ts --run`
+- `npm run test:e2e -- tests/e2e/run-bundle-upload-browser.test.ts --run`
 - `npm run verify:fast`
 
 ## Notes
