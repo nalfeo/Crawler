@@ -133,6 +133,9 @@ describe('sampleMovementMotion', () => {
 
   it('is periodic and handles negative / non-finite elapsed times', () => {
     for (const style of styles) {
+      // Periods are internal to mob-motion.ts (not exported); mirrored here so a
+      // change to a cycle length fails this assertion loudly rather than silently
+      // shipping a different animation cadence.
       const period = { stride: 560, hop: 720, hover: 1_100, slither: 640, stomp: 900 }[style];
       expect(sampleMovementMotion(123 + period, style)).toEqual(sampleMovementMotion(123, style));
       expect(sampleMovementMotion(-period + 123, style)).toEqual(sampleMovementMotion(123, style));
