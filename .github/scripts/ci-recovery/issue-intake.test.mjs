@@ -14,6 +14,7 @@ import {
   ISSUE_INTAKE_BODY,
   ISSUE_INTAKE_MARKER,
   ISSUE_RECOVERY_PLAN_MARKER,
+  isTelemetryIssue,
   issueIntakeEligibility,
   openBlockingIssues,
   removeIssueAssignees,
@@ -87,6 +88,20 @@ test('issue intake rejects missing issues and pull-request payloads', () => {
     }).eligible,
     false,
   );
+});
+
+test('telemetry issues are never eligible for Copilot assignment', () => {
+  const telemetryIssue = {
+    number: 3044,
+    user: { login: 'nalfeo' },
+    labels: [{ name: 'telemetry' }],
+  };
+
+  assert.equal(isTelemetryIssue(telemetryIssue), true);
+  assert.deepEqual(issueIntakeEligibility(telemetryIssue, 'nalfeo'), {
+    eligible: false,
+    reason: 'telemetry issues are not assigned to Copilot',
+  });
 });
 
 test('review plan issue selection fails closed on unmatched explicit issue references', () => {
