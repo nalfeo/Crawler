@@ -9,7 +9,7 @@ import {
 import type { SettlementMaintenanceResult } from '../../src/game/ai/settlement-maintenance-types.js';
 import { unlockAchievement } from '../../src/game/systems/achievementSystem.js';
 import { isAchievementClaimed } from '../../src/core/systems/achievementRewards.js';
-import { LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
+import { _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER } from '../../src/shared/achievements.js';
 import {
   spawnBossChestForDefeatedBoss,
   createBossChestId,

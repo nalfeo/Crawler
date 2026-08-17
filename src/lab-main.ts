@@ -28,6 +28,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'stat-lab': '/src/labs/stat-lab/index.ts',
   'stats-lab': '/src/labs/stats-lab/index.ts',
   'level-up-lab': '/src/labs/level-up-lab/index.ts',
+  'boss-intro-lab': '/src/labs/boss-intro-lab/index.ts',
   'xp-curve-lab': '/src/labs/xp-curve-lab/index.ts',
   'skill-lab': '/src/labs/skill-lab/index.ts',
   'status-effect-lab': '/src/labs/statuseffect-lab/index.ts',
