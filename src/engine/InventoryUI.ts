@@ -9,8 +9,12 @@
  * - Respects TabPreferences for tab ordering and hiding
  */
 import Phaser from 'phaser';
+import { hasComponent } from 'bitecs';
 import type { GameWorld } from '../core/world.js';
 import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
+import { EffectiveStats } from '../core/components.js';
+import { computeEffectiveValue, getStatusEffects } from '../core/status-effects.js';
+import { computeTheoreticalSingleTargetDps } from '../core/weapon-dps.js';
 import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
 import type {
@@ -46,6 +50,8 @@ import {
 } from '../shared/generated-assets.js';
 import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
+import { ALL_STAT_IDS, type StatId } from '../shared/stats.js';
+import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { renderItemTooltip } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
@@ -210,6 +216,83 @@ export function createInventoryUI(
     legendary: ItemRarity.Legendary,
   };
 
+  function currentPlayerStats(): Partial<Record<StatId, number>> {
+    if (
+      !currentWorld ||
+      playerEid < 0 ||
+      !hasComponent(currentWorld.ecs, playerEid, EffectiveStats)
+    ) {
+      return {};
+    }
+
+    const stats: Partial<Record<StatId, number>> = {};
+    for (const stat of ALL_STAT_IDS) {
+      stats[stat] = currentWorld.stores.effectiveStats[stat][playerEid] ?? 0;
+    }
+    return stats;
+  }
+
+  function currentAttackSpeedMultiplier(): number {
+    if (!currentWorld || playerEid < 0) {
+      return 1;
+    }
+    return computeEffectiveValue(1, getStatusEffects(currentWorld, playerEid), 'attackSpeed');
+  }
+
+  function formatDps(value: number): string {
+    if (value >= 100) {
+      return value.toFixed(0);
+    }
+    if (value >= 10) {
+      return value.toFixed(1);
+    }
+    return value.toFixed(2);
+  }
+
+  function weaponDpsLine(def: WeaponDef | undefined): string | undefined {
+    if (!def) {
+      return undefined;
+    }
+    const dps = computeTheoreticalSingleTargetDps(def, currentPlayerStats(), {
+      attackSpeedMultiplier: currentAttackSpeedMultiplier(),
+    }).dps;
+    return `DPS: ${formatDps(dps)}`;
+  }
+
+  function weaponDpsStatSignature(): string {
+    if (
+      !currentWorld ||
+      playerEid < 0 ||
+      !hasComponent(currentWorld.ecs, playerEid, EffectiveStats)
+    ) {
+      return 'stats:none';
+    }
+    const { effectiveStats } = currentWorld.stores;
+    const attackSpeedMultiplier = currentAttackSpeedMultiplier();
+    return [
+      effectiveStats.damageBonus[playerEid] ?? 0,
+      effectiveStats.damagePercent[playerEid] ?? 0,
+      effectiveStats.strength[playerEid] ?? 0,
+      effectiveStats.intelligence[playerEid] ?? 0,
+      effectiveStats.critChance[playerEid] ?? 0,
+      effectiveStats.critMultiplier[playerEid] ?? 0,
+      effectiveStats.attackSpeed[playerEid] ?? 0,
+      effectiveStats.cooldownReduction[playerEid] ?? 0,
+      attackSpeedMultiplier,
+    ].join(',');
+  }
+
+  function resolveEntryWeaponDef(entry: InventoryBagEntry): WeaponDef | undefined {
+    if (entry.kind === 'generated-instance') {
+      if (!currentWorld) return undefined;
+      const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
+      return instance?.frozen.activeWeaponSnapshot ?? undefined;
+    }
+
+    const equipment = getEquipmentDefForItem(entry.itemId);
+    return equipment?.weaponId ? getWeaponDef(equipment.weaponId) : undefined;
+  }
+
   const generatedMetadata: GeneratedInventoryEntryResolver = (
     entry: GeneratedEquipmentInventoryEntry,
   ): InventoryEntryMetadata | undefined => {
@@ -219,10 +302,12 @@ export function createInventoryUI(
     const stats = Object.entries(instance.frozen.statBonuses)
       .filter(([, value]) => value !== 0)
       .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`);
+    const dpsLine = weaponDpsLine(instance.frozen.activeWeaponSnapshot ?? undefined);
     return {
       name: instance.frozen.displayName,
       description: [
         instance.frozen.slots.map(getSlotLabel).join(' / '),
+        dpsLine,
         stats.join(', '),
         `${instance.frozen.weightLb} lb`,
       ]
@@ -842,6 +927,7 @@ export function createInventoryUI(
       config.onEquipItem !== undefined && isEquippableEntry(entry)
         ? 'DOUBLE-CLICK TO EQUIP'
         : undefined;
+    const dpsLine = weaponDpsLine(resolveEntryWeaponDef(entry));
     tooltipObjects.push(
       ...renderItemTooltip({
         scene,
@@ -857,6 +943,7 @@ export function createInventoryUI(
         quantity: entry.kind === 'stackable-static-item' ? entry.quantity : 1,
         fontFamily: FONT_FAMILY,
         footerHint,
+        statLines: dpsLine ? [dpsLine] : undefined,
         crispText,
       }),
     );
@@ -937,7 +1024,7 @@ export function createInventoryUI(
 
   function computeRenderSignature(): string {
     const entries = currentBag ? listInventoryEntries(currentBag) : [];
-    let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}|${externalSlotFilter ?? '*'}`;
+    let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}|${externalSlotFilter ?? '*'}|${weaponDpsStatSignature()}`;
     for (const entry of entries) {
       // Fold in the *selected* generated icon variant and whether its texture is
       // loaded yet, so the grid re-renders once async sprite warm-loading

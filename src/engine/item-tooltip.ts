@@ -4,7 +4,7 @@ import { type ItemDef, RARITY_COLORS } from '../shared/items.js';
 const TOOLTIP_BG = 0x0a0a16;
 const TOOLTIP_BORDER = 0x444466;
 const TOOLTIP_WIDTH = 200;
-const TOOLTIP_HEIGHT = 110;
+const TOOLTIP_HEIGHT = 128;
 
 export interface ItemTooltipRenderParams {
   scene: Phaser.Scene;
@@ -21,6 +21,8 @@ export interface ItemTooltipRenderParams {
   fontFamily: string;
   /** Optional gold hint line rendered near the bottom (e.g. "DOUBLE-CLICK TO EQUIP"). */
   footerHint?: string;
+  /** Optional stat callouts rendered above the footer/meta lines. */
+  statLines?: readonly string[];
   crispText: (
     x: number,
     y: number,
@@ -46,6 +48,7 @@ export function renderItemTooltip(
     quantity,
     fontFamily,
     footerHint,
+    statLines = [],
     crispText,
   } = params;
 
@@ -121,6 +124,21 @@ export function renderItemTooltip(
   container.add(descText);
   container.add(metaText);
   const objects: Phaser.GameObjects.GameObject[] = [tooltipBg, nameText, descText, metaText];
+
+  if (statLines.length > 0) {
+    const statText = crispText(
+      tx + 8,
+      ty + TOOLTIP_HEIGHT - (footerHint ? 48 : 34),
+      statLines[0]!,
+      {
+        fontFamily,
+        fontSize: '11px',
+        color: '#d9e2ef',
+      },
+    );
+    container.add(statText);
+    objects.push(statText);
+  }
 
   // Optional gold action hint (e.g. equip affordance), placed just above meta.
   if (footerHint !== undefined && footerHint.length > 0) {
