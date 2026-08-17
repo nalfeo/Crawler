@@ -112,13 +112,15 @@ describe('collisionSystem', () => {
 
     const { grid } = collisionSystem(world);
 
-    for (const [eid, x, y] of [
+    const collisionFixtures: Array<[number, number, number]> = [
       [box, 0, 0],
       [circle, 10, 0],
       [malformed, 20, 0],
       [nanExtent, 30, 0],
       [mixedExtent, 40, 0],
-    ]) {
+    ];
+
+    for (const [eid, x, y] of collisionFixtures) {
       const halfWidth = getBodyHalfWidth(world, eid, 'collisionSystem');
       const halfHeight = getBodyHalfHeight(world, eid, 'collisionSystem');
 
