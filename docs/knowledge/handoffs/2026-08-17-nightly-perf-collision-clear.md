@@ -10,7 +10,7 @@ Systems Engineer / perf-optimizer
 
 ## Systems touched
 
-weapons, enemies, ci-policy
+weapons, enemies
 
 ## Apples
 
