@@ -71,6 +71,7 @@ describe('collisionSystem', () => {
     const box = createEntity(world);
     const circle = createEntity(world);
     const malformed = createEntity(world);
+    const nanExtent = createEntity(world);
 
     addComponent(world.ecs, box, set(Position, { x: 0, y: 0 }));
     addComponent(
@@ -90,13 +91,20 @@ describe('collisionSystem', () => {
       malformed,
       set(Size, { radius: 0, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
     );
+    addComponent(world.ecs, nanExtent, set(Position, { x: 30, y: 0 }));
+    addComponent(
+      world.ecs,
+      nanExtent,
+      set(Size, { radius: 0, halfWidth: Number.NaN, halfHeight: Number.NaN, shape: SHAPE_CIRCLE }),
+    );
 
     const { grid } = collisionSystem(world);
 
     expect(grid.queryRadius(2.5, 4.5, 0)).toEqual([box]);
     expect(grid.queryRadius(11.5, 0, 0)).toEqual([circle]);
     expect(grid.queryRadius(20, 0, 0)).toEqual([malformed]);
-    expect(getShimStats()).toEqual({ count: 2, uniqueEids: 1 });
+    expect(grid.queryRadius(30, 0, 0)).toEqual([nanExtent]);
+    expect(getShimStats()).toEqual({ count: 4, uniqueEids: 2 });
     resetShimStats();
   });
 });
