@@ -103,12 +103,12 @@ describe('parseSweepArgs — defaults and flags', () => {
 
   it('defaults maxFrames to the ~10% slack budget, not the raw win budget (safe-room-credited wins must not be truncated)', () => {
     // The Floor-1 win is safe-room-credited: isOfficialWin compares
-    // (gameTimeMs - safeRoomMs) against the 6-min budget, so a legitimate clear
-    // can exceed 360 s of RAW game time. Capping the sim at exactly BUDGET_FRAMES
-    // (360 s raw) would force-terminate those wins before isOfficialWin sees
+    // (gameTimeMs - safeRoomMs) against the 10-min collapse deadline, so a
+    // legitimate clear can exceed 600 s of RAW game time. Capping the sim at exactly BUDGET_FRAMES
+    // (600 s raw) would force-terminate those wins before isOfficialWin sees
     // them, miscounting them as timeouts and biasing the win rate down. The
     // default must carry the same ~1.1x slack as the peer Floor-1 harnesses.
-    expect(DEFAULT_MAX_FRAMES).toBe(23_760);
+    expect(DEFAULT_MAX_FRAMES).toBe(39_600);
     expect(DEFAULT_MAX_FRAMES).toBeGreaterThan(BUDGET_FRAMES);
     expect(parseSweepArgs(argv(), 1).maxFrames).toBe(DEFAULT_MAX_FRAMES);
   });

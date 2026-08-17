@@ -6,7 +6,7 @@
   "implemented": {
     "mvp": true,
     "released": true,
-    "winBudgetMs": 360000
+    "winBudgetMs": 600000
   },
   "timer": {
     "durationMs": 600000,

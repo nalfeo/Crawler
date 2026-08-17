@@ -6,6 +6,8 @@ export interface ModalPickerOption<TId extends string = string> {
 }
 
 export interface ModalPickerConfig<TId extends string = string> {
+  /** Stable identity for automation that must distinguish simultaneous picker flows. */
+  readonly kind?: string;
   readonly title: string;
   readonly subtitle?: string;
   readonly body?: string;
@@ -26,6 +28,7 @@ export interface ModalPickerScenario<
 export type ModalPickerStatus = 'open' | 'confirmed' | 'cancelled';
 
 export interface ModalPickerState<TId extends string = string> {
+  readonly kind?: string;
   readonly title: string;
   readonly subtitle?: string;
   readonly body?: string;
@@ -126,6 +129,7 @@ export function createModalPickerState<TId extends string>(
       : findFirstEnabledIndex(config.options);
 
   return {
+    kind: config.kind,
     title: config.title,
     subtitle: config.subtitle,
     body: config.body,

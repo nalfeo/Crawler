@@ -18,7 +18,7 @@ describe('Floor 1 run budget', () => {
     expect(() => planningDeadlineMsFromFrameBudget(1.5)).toThrow(/non-negative safe integer/);
   });
 
-  it('never plans past the active budget, manifest deadline, or runner cap', () => {
+  it('never plans past the collapse deadline or runner cap', () => {
     expect(resolveFloor1PlanningDeadlineMs(600_000)).toBe(FLOOR1_ACTIVE_TIME_BUDGET_MS);
     expect(resolveFloor1PlanningDeadlineMs(630_000)).toBe(FLOOR1_ACTIVE_TIME_BUDGET_MS + 30_000);
     expect(resolveFloor1PlanningDeadlineMs(300_000)).toBe(300_000);
