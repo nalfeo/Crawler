@@ -1,5 +1,39 @@
 [
   {
+    "commit": "f7ef7d43e1bbddd09c11f5a21443e3ea6ad103ea",
+    "commitDate": "2026-08-17T12:59:01Z",
+    "commitSubject": "Adjusting item prices for balance and gameplay (#3015)",
+    "capturedAt": "2026-08-17T14:17:34.290Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32034467199",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/f7ef7d43e1bbddd09c11f5a21443e3ea6ad103ea.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.36,
+        "totalWins": 54,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.69,
+      "gatePass": false,
+      "path": "by-sha/f7ef7d43e1bbddd09c11f5a21443e3ea6ad103ea.fun-report.json"
+    }
+  },
+  {
     "commit": "1e87141f4664f024d383577f5071f78176fbe61f",
     "commitDate": "2026-08-17T10:12:31Z",
     "commitSubject": "Implementing chest drops for Floor 1 bosses (#3021)",
