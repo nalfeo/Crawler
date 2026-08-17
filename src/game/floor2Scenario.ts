@@ -76,6 +76,7 @@ import {
   type EnemyArchetypeDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
+import { isFloorSpawnerArenaExperimentEnabled } from '../shared/spawner-feature-flags.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import { loadResources } from '../shared/data/resources.js';
@@ -110,6 +111,8 @@ import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
 import { spawnHarvestableNode } from '../core/helpers.js';
+import { spawnSpawner } from '../core/helpers.js';
+import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import {
   FLOOR2_HARVESTABLE_START_INDEX,
   FLOOR2_HARVESTABLE_END_INDEX,
@@ -143,6 +146,9 @@ import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.
 import type { AchievementCatalogRegistry } from '../shared/achievements.js';
 
 const FLOOR2_BOSS_HP_SCALE = 0.03;
+const FLOOR_SPAWNER_MAX_COUNT = 4;
+const DEFAULT_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID = 'rats-nest';
+const SLIME_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID = 'slime-pool';
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
@@ -1096,6 +1102,12 @@ export function initializeFloor2Scenario(
     floorMap,
     world.floorExtendedState!.familyState!,
   );
+  spawnFloor2TrashSpawners(
+    world,
+    isFloorSpawnerArenaExperimentEnabled(
+      typeof window !== 'undefined' ? window.location.search : undefined,
+    ),
+  );
   acceptQuest(world, FLOOR2_FIND_SETTLEMENT_QUEST_ID);
   for (const objective of objectives) {
     acceptQuest(world, objective.questId);
@@ -1635,6 +1647,98 @@ function spawnFloor2AmbientArchetype(
 
   world.floorExtendedState?.ambientEnemyArchetypes?.set(eid, selectedArchetype.id);
   return eid;
+}
+
+function toFloorTrashSpawnerArchetypeId(archetypeId: string | undefined): string {
+  if (archetypeId?.includes('slime')) {
+    return SLIME_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID;
+  }
+  return DEFAULT_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID;
+}
+
+function resolvePassableRoomCenter(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  room: { bounds: RoomData['bounds'] },
+): { x: number; y: number } {
+  const centerX = Math.floor(room.bounds.x + room.bounds.width / 2);
+  const centerY = Math.floor(room.bounds.y + room.bounds.height / 2);
+  if (floorMap.tileMap.isPassable(centerX, centerY)) {
+    return floorMap.tileToWorld(centerX, centerY);
+  }
+
+  const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+  const minX = bx + 1;
+  const minY = by + 1;
+  const maxX = bx + bw - 2;
+  const maxY = by + bh - 2;
+  const maxRadius = Math.max(bw, bh);
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) {
+          continue;
+        }
+        const tx = centerX + dx;
+        const ty = centerY + dy;
+        if (
+          tx >= minX &&
+          tx <= maxX &&
+          ty >= minY &&
+          ty <= maxY &&
+          floorMap.tileMap.isPassable(tx, ty)
+        ) {
+          return floorMap.tileToWorld(tx, ty);
+        }
+      }
+    }
+  }
+  return floorMap.tileToWorld(centerX, centerY);
+}
+
+function spawnFloor2TrashSpawners(world: GameWorld, featureEnabled: boolean): void {
+  if (!featureEnabled) {
+    return;
+  }
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return;
+  }
+  const candidateRooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.NORMAL);
+  if (candidateRooms.length === 0) {
+    return;
+  }
+
+  const spawnerRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor2:trash-spawners`));
+  const spawnCount = spawnerRng.nextInt(
+    0,
+    Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length),
+  );
+  spawnerRng.shuffle(candidateRooms);
+
+  for (let i = 0; i < spawnCount; i += 1) {
+    const room = candidateRooms[i]!;
+    const spawnPos = resolvePassableRoomCenter(floorMap, room);
+    const trashArchetype = pickFloor2TrashArchetype(world, spawnPos.x, spawnPos.y);
+    const spawnerArchetypeId = toFloorTrashSpawnerArchetypeId(trashArchetype.id);
+    const spawnerArchetype = getSpawnerArchetype(spawnerArchetypeId);
+    const spawnerDefIndex = getSpawnerArchetypeIndex(spawnerArchetypeId);
+    if (!spawnerArchetype || spawnerDefIndex < 0) {
+      continue;
+    }
+    const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, spawnerArchetype.hp, {
+      defIndex: spawnerDefIndex,
+      contactDamage: spawnerArchetype.contactDamage,
+      weight: spawnerArchetype.weight,
+      bloodColor: spawnerArchetype.bloodColor,
+      textureId: spawnerArchetype.textureId,
+      spriteWidth: spawnerArchetype.spriteWidth,
+      spriteHeight: spawnerArchetype.spriteHeight,
+      arenaRadiusFt: spawnerArchetype.arenaRadiusFt,
+    });
+    setEnemyAppearanceKey(world, spawnerEid, spawnerArchetypeId);
+  }
 }
 
 /**

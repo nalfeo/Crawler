@@ -58,6 +58,7 @@ import {
   getFloor1StarterWeaponPool,
   isFloor1ExperimentalStarterOptionsEnabled,
 } from '../shared/floor1-starter-weapons.js';
+import { isFloorSpawnerArenaExperimentEnabled } from '../shared/spawner-feature-flags.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
@@ -156,13 +157,9 @@ const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
-// Floor 1 is intentionally spawner-free: its static-spawner spawn table is empty,
-// so `spawnFloor1StaticSpawners` places no Spawner entities on Floor 1. The
-// placement machinery below is fully config-driven off this table — repopulate
-// this list (e.g. ['slime-pool', 'rats-nest']) to re-enable Floor 1 static
-// spawners without touching the runtime pipelines.
-const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
-const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = [];
+const FLOOR_SPAWNER_MAX_COUNT = 4;
+const DEFAULT_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID = 'rats-nest';
+const SLIME_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID = 'slime-pool';
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
@@ -1549,60 +1546,65 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-function spawnFloor1StaticSpawners(world: GameWorld): void {
-  // Config-driven no-op: with an empty static-spawner table Floor 1 places no
-  // Spawner entities (see FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS). Bail before
-  // deriving the room stream so we do no wasted work.
-  if (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
+function toFloorTrashSpawnerArchetypeId(archetypeId: string | null | undefined): string {
+  if (archetypeId?.includes('slime')) {
+    return SLIME_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID;
+  }
+  return DEFAULT_FLOOR_TRASH_SPAWNER_ARCHETYPE_ID;
+}
+
+function spawnFloor1StaticSpawners(world: GameWorld, featureEnabled: boolean): void {
+  if (!featureEnabled) {
     return;
   }
   const floorMap = world.floorMap;
   if (!floorMap) {
     return;
   }
-  // Derive a deterministic, floor-local stream so static-spawner room assignment
-  // is stable per seed but does not consume the shared gameplay RNG sequence.
-  const spawnerRng = new SeededRandom(
-    world.seed ^ (floorMap.config.widthTiles << 8) ^ floorMap.config.heightTiles ^ 0x5f3759df,
-  );
+  // Derive a deterministic, floor-local stream so static-spawner assignment is
+  // stable per seed but does not consume the shared gameplay RNG sequence.
+  const spawnerRng = new SeededRandom(hashStringToSeed(`${world.seed}:floor1:trash-spawners`));
 
   const candidateRooms = floorMap.roomGraph
     .getAll()
     .filter((room) => room.role === RoomRole.NORMAL);
-  const requiredRoomCount =
-    FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length * FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE;
-  if (candidateRooms.length < requiredRoomCount) {
-    throw new Error(
-      `Floor 1 requires at least ${requiredRoomCount} normal rooms for static spawners; got ${candidateRooms.length}.`,
-    );
+  if (candidateRooms.length === 0) {
+    return;
   }
+  const spawnCount = spawnerRng.nextInt(
+    0,
+    Math.min(FLOOR_SPAWNER_MAX_COUNT, candidateRooms.length),
+  );
   spawnerRng.shuffle(candidateRooms);
 
-  let roomCursor = 0;
-  for (const archetypeId of FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS) {
-    const archetype = getSpawnerArchetype(archetypeId);
-    const defIndex = getSpawnerArchetypeIndex(archetypeId);
+  const floor1TrashWeights = new Map<string, number>();
+  for (const entry of floor1EnemyPack.archetypes) {
+    floor1TrashWeights.set(entry.id, entry.spawnWeight);
+  }
+
+  for (let i = 0; i < spawnCount; i += 1) {
+    const room = candidateRooms[i]!;
+    const spawnPos = resolvePassableRoomCenter(floorMap, room);
+    const { pickedId } = pickFromSpawnZones([floor1TrashWeights as SpawnZoneWeights], () =>
+      spawnerRng.next(),
+    );
+    const spawnerArchetypeId = toFloorTrashSpawnerArchetypeId(pickedId);
+    const archetype = getSpawnerArchetype(spawnerArchetypeId);
+    const defIndex = getSpawnerArchetypeIndex(spawnerArchetypeId);
     if (!archetype || defIndex < 0) {
       continue;
     }
-    for (let i = 0; i < FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE; i += 1) {
-      const room = candidateRooms[roomCursor]!;
-      roomCursor += 1;
-      const spawnPos = resolvePassableRoomCenter(floorMap, room);
-      const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
-        defIndex,
-        contactDamage: archetype.contactDamage,
-        weight: archetype.weight,
-        bloodColor: archetype.bloodColor,
-        textureId: archetype.textureId,
-        spriteWidth: archetype.spriteWidth,
-        spriteHeight: archetype.spriteHeight,
-        arenaRadiusFt: archetype.arenaRadiusFt,
-      });
-      // Preserve stable visual identity so generated-art lookups can select
-      // spawner-specific briefs (e.g. slime-pool-v1, rats-nest-v1) when present.
-      setEnemyAppearanceKey(world, spawnerEid, archetypeId);
-    }
+    const spawnerEid = spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
+      defIndex,
+      contactDamage: archetype.contactDamage,
+      weight: archetype.weight,
+      bloodColor: archetype.bloodColor,
+      textureId: archetype.textureId,
+      spriteWidth: archetype.spriteWidth,
+      spriteHeight: archetype.spriteHeight,
+      arenaRadiusFt: archetype.arenaRadiusFt,
+    });
+    setEnemyAppearanceKey(world, spawnerEid, spawnerArchetypeId);
   }
 }
 
@@ -2619,7 +2621,12 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     questItemPos.y,
     getItemIndex(SHOPKEEPER_FETCH_ITEM_ID),
   );
-  spawnFloor1StaticSpawners(world);
+  spawnFloor1StaticSpawners(
+    world,
+    isFloorSpawnerArenaExperimentEnabled(
+      typeof window !== 'undefined' ? window.location.search : undefined,
+    ),
+  );
 
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
