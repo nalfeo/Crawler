@@ -157,14 +157,7 @@ describe('Boss chest lifecycle — real headless pipeline', () => {
     expect(observed?.bundleCount).toBeGreaterThanOrEqual(1);
   });
 
-  it('never populates boss chests on Floor 1, even with a boss defeat and Floor 2 equipment flags set', async () => {
-    // Floor 1 has no family/boss-chest system at all (its boss battles use a
-    // separate spell-reward flow — see `floorScenario.ts`), so there is no
-    // real "Floor 1 boss family death" event to synthesize. Instead, drive
-    // the real resolver directly against a real headless Floor 1 `GameWorld`
-    // (not a lab world) with Floor 2 equipment flags deliberately enabled, to
-    // prove the exclusion is enforced by the resolver's own `world.floor !==
-    // 2` gate rather than merely by nobody calling it on Floor 1.
+  it('creates a Floor 1 boss chest through the shared resolver on the real pipeline', async () => {
     let result: { created: boolean; reason?: string } | undefined;
     let bossChestCount = -1;
 
@@ -190,8 +183,7 @@ describe('Boss chest lifecycle — real headless pipeline', () => {
       },
     });
 
-    expect(result?.created).toBe(false);
-    expect(result?.reason).toBe('bossChestsDisabled');
-    expect(bossChestCount).toBe(0);
+    expect(result?.created).toBe(true);
+    expect(bossChestCount).toBe(1);
   });
 });

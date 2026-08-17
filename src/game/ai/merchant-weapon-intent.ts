@@ -17,6 +17,14 @@ export type MerchantWeaponIntentStatus =
   | 'declined'
   | 'farming'
   | 'returning'
+  /**
+   * Bought and sitting in the bag, but not yet equipped because the player was
+   * not in a safe context when the purchase completed. Terminal for the
+   * *purchase* decision (no re-farm, no re-buy, never abandoned) and retried
+   * every tick by {@link executeMerchantWeaponPurchase} until the player next
+   * stands somewhere the Equipment panel would open.
+   */
+  | 'awaiting-equip'
   | 'purchased'
   | 'abandoned';
 
@@ -179,6 +187,14 @@ export function updateMerchantWeaponIntent(
   if (!intent.enabled || intent.status === 'declined' || intent.status === 'purchased') {
     return intent;
   }
+  // Already bought — the only work left is the safe-context equip, which
+  // `executeMerchantWeaponPurchase` retries. Re-running the farm/afford
+  // decision here could otherwise flip a paid-for weapon back to 'farming'
+  // (gold was just spent, so the deficit test sees a shortfall) or straight to
+  // 'abandoned', losing an item the player already owns.
+  if (intent.status === 'awaiting-equip') {
+    return intent;
+  }
   // `abandoned` means the deficit couldn't be farmed inside the run's slack,
   // not "never buy". Recover once the player holds the full price outright
   // (over and above the spell reserve) — there is no farming left to fund.
@@ -274,11 +290,32 @@ export function updateMerchantWeaponIntent(
   return intent;
 }
 
+/**
+ * Drive the merchant weapon purchase to completion.
+ *
+ * Two distinct steps that can complete on different ticks:
+ *
+ * 1. **Buy** (`returning`): needs physical presence at the merchant. Runs once.
+ * 2. **Equip** (`awaiting-equip` → `purchased`): needs a safe context, exactly
+ *    like the human Equipment panel. There is no `force` bypass.
+ *
+ * Splitting them matters: before this split a failed equip called `abandon()`,
+ * which would now discard a weapon the AI had already paid for merely because
+ * it was standing outside a safe room at the moment of purchase. The purchase
+ * is therefore latched as `awaiting-equip` and retried on every subsequent
+ * tick, completing on the next safe-room entry.
+ *
+ * Returns `true` only on the tick the weapon actually becomes equipped.
+ */
 export function executeMerchantWeaponPurchase(world: GameWorld, playerEid: number): boolean {
   const intent = getMerchantWeaponIntent(world);
-  if (!intent.enabled || intent.status !== 'returning' || !intent.itemId) {
+  if (!intent.enabled || !intent.itemId) {
     return false;
   }
+  if (intent.status !== 'returning' && intent.status !== 'awaiting-equip') {
+    return false;
+  }
+  const itemId = intent.itemId;
   const abandon = (): false => {
     intents.set(world, { ...intent, status: 'abandoned' });
     return false;
@@ -289,28 +326,26 @@ export function executeMerchantWeaponPurchase(world: GameWorld, playerEid: numbe
   }
   // Not affordable *yet* once the spell reserve is honoured — stay pending
   // rather than abandoning, so the run can come back after farming.
-  if (
-    !hasItem(bag, intent.itemId) &&
-    world.playerGold - intent.cost < _spellPurchaseReserve(world)
-  ) {
+  if (!hasItem(bag, itemId) && world.playerGold - intent.cost < _spellPurchaseReserve(world)) {
     recordVendorDecision(world, {
       vendorId: FLOOR1_MERCHANT_VENDOR_ID,
-      itemId: intent.itemId,
+      itemId,
       cost: intent.cost,
       outcome: 'unaffordable',
       reason: 'reserved-for-spell',
     });
     return false;
   }
-  if (
-    !hasItem(bag, intent.itemId) &&
-    !purchaseShopkeeperPostQuestItem(world, playerEid, intent.itemId)
-  ) {
+  if (!hasItem(bag, itemId) && !purchaseShopkeeperPostQuestItem(world, playerEid, itemId)) {
     return abandon();
   }
-  const equipped = equipFromBag(world, playerEid, intent.itemId, { force: true });
+  const equipped = equipFromBag(world, playerEid, itemId);
   if (!equipped.ok) {
-    return abandon();
+    // Bought but not equippable right now (almost always: not in a safe
+    // context). Latch so the purchase is never repeated or discarded, and let
+    // the next tick retry the equip.
+    intents.set(world, { ...intent, status: 'awaiting-equip' });
+    return false;
   }
   intents.set(world, { ...intent, status: 'purchased' });
   return true;
