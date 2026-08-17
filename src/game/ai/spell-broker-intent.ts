@@ -186,6 +186,21 @@ export function updateSpellBrokerIntent(
 
   const deficit = Math.max(0, intent.cost - world.playerGold);
 
+  // A repeat purchase (purchaseCount > 0) is the run's lowest-priority sink:
+  // it exists to absorb gold that would otherwise sit unspent, not to justify
+  // its own farming detour. Actively farming for it stacks additional time on
+  // top of the headline purchase's own farming, which can push an
+  // already-marginal run past the official completion pace. So a repeat
+  // purchase with a live deficit goes straight to `abandoned` — the existing
+  // recovery path below picks it back up the moment organic income (quest
+  // gold, drops, loot boxes) covers the cost outright, with zero dedicated
+  // farming time spent.
+  if (intent.purchaseCount > 0 && deficit > 0) {
+    intent = { ...intent, purchaseStatus: 'abandoned' };
+    intents.set(world, intent);
+    return intent;
+  }
+
   // Planner explicitly dropped the bundle → abandon.
   if (runPlan?.droppedOptionalBundleIds.includes('spell-broker-purchase')) {
     intent = { ...intent, purchaseStatus: 'abandoned' };
