@@ -21,10 +21,14 @@ describe('AI runner lab player-persona wiring', () => {
   });
 
   it('rebuilds the AI brain and persists the choice when the persona changes', () => {
-    const controlBlock = LAB_SOURCE.slice(
-      LAB_SOURCE.indexOf("'playerPersona',"),
-      LAB_SOURCE.indexOf("aiModesFolder\n    .add(aiConfig, 'weaponPersonas')"),
-    );
+    // Anchor on the control's own `.name(...)` and stop at the next controller's
+    // `.name(` so a formatter/whitespace change can never silently widen or empty
+    // the slice (both asserted strings appear elsewhere in the file).
+    const start = LAB_SOURCE.indexOf(".name('Player persona')");
+    expect(start).toBeGreaterThan(-1);
+    const end = LAB_SOURCE.indexOf('.name(', start + 1);
+    expect(end).toBeGreaterThan(start);
+    const controlBlock = LAB_SOURCE.slice(start, end);
     expect(controlBlock).toContain('rebuildAiBrain()');
     expect(controlBlock).toContain('persistLabState()');
   });

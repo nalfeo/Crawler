@@ -492,7 +492,11 @@ function playerPersonaFromUrl(): PlayerPersona | null {
   if (typeof window === 'undefined') return null;
   const requested = new URLSearchParams(window.location.search).get('persona');
   if (!requested) return null;
-  return isPlayerPersona(requested) ? requested : DEFAULT_PLAYER_PERSONA;
+  if (isPlayerPersona(requested)) return requested;
+  console.warn(
+    `AI Runner lab: unknown ?persona="${requested}" — falling back to "${DEFAULT_PLAYER_PERSONA}". Valid ids: ${PLAYER_PERSONAS.join(', ')}.`,
+  );
+  return DEFAULT_PLAYER_PERSONA;
 }
 
 /**
