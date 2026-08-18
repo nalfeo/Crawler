@@ -1,5 +1,39 @@
 [
   {
+    "commit": "321ff1dda3ff7a9d4ec5a88601df4b9637f4751f",
+    "commitDate": "2026-08-18T09:45:24Z",
+    "commitSubject": "Bound Playwright CI setup and E2E job execution (#3062)",
+    "capturedAt": "2026-08-18T11:15:44.355Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32125167207",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/321ff1dda3ff7a9d4ec5a88601df4b9637f4751f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.75,
+      "gatePass": false,
+      "path": "by-sha/321ff1dda3ff7a9d4ec5a88601df4b9637f4751f.fun-report.json"
+    }
+  },
+  {
     "commit": "96626999d6c72599f72388f498e4be2c4b4a4ceb",
     "commitDate": "2026-08-18T09:22:57Z",
     "commitSubject": "fix(ci): streamline recovery task comments (#3070)",
