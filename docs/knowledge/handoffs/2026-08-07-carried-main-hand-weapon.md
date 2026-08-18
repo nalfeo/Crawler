@@ -63,6 +63,28 @@ the pre-fix `PhaserBridge.ts`.
 - Ranged weapons (bow, wand) still carry nothing — deliberately, since drawing a
   melee stand-in for them would be wrong. They need their own art briefs.
 
+## Recovery Validation
+
+This work was recovered on 2026-08-17 from the abandoned
+`copilot/players-main-hand-weapon-visible` branch (tip 2026-08-07), which never
+had a PR. The branch was found during a repo-wide audit of 1,126 remote branches
+for work lost to interrupted sessions. Original commits:
+`d650825c1` (`feat(engine): always render the player's carried main-hand weapon`)
+and `3a5955465` (`test(e2e): deterministic real-scene guard for the carried main-hand weapon`).
+
+After rebasing onto current `origin/main`, the real `npm run dev` artifact was
+booted through `MainGameScene` on the fixed-seed probe lab and freshly observed:
+
+- Starter baseball bat: `spriteCount 1`, `visible true`, texture
+  `baseball-bat-v1-var-0`, offset `(4.4, 1.2)` px.
+- Explicitly equipped sword: `spriteCount 1`, `visible true`, texture
+  `kenney-tiny-dungeon`, offset `(4.4, 1.2)` px, display size `28.8 × 28.8` px.
+- Explicitly equipped bow: `spriteCount 1`, `visible false` (stale display object
+  is retained but hidden), confirming ranged weapons do not show a melee stand-in.
+
+The rebased deterministic real-scene guard passed both tests:
+`tests/e2e/carried-weapon-visible.test.ts`.
+
 ## Retrospective
 
 ### Lessons Learned
