@@ -2,6 +2,7 @@
 import { entityExists, hasComponent } from 'bitecs';
 import { DoorState } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
+import { isLiveFamilyBoss } from '../floor2BossIdentity.js';
 import type { BossEncounterSnapshot } from './event-log.js';
 
 /** Build a diagnostic snapshot for every Floor 2 den encounter. */
@@ -27,7 +28,9 @@ export function captureBossEncounterSnapshots(
   const snapshots: BossEncounterSnapshot[] = [];
   for (const encounter of encounters.values()) {
     const bossEid = encounter.bossEid;
-    const bossAlive = bossEid !== null && entityExists(world.ecs, bossEid);
+    // Entity ids are recycled, so `entityExists` alone would happily report a
+    // replacement entity's room/HP as the boss's and mask a stale reference.
+    const bossAlive = bossEid !== null && isLiveFamilyBoss(world, encounter);
 
     let bossRoomId: number | null = null;
     let bossTileX: number | null = null;

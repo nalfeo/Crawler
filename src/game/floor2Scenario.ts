@@ -30,15 +30,7 @@
  * 0011 (data-driven quest packs), ADR 0023 (special-room sealing already
  * applied by CaveSystemGenerator + the generic sealing pass).
  */
-import {
-  addComponent,
-  entityExists,
-  hasComponent,
-  query,
-  removeComponent,
-  set,
-  setComponent,
-} from 'bitecs';
+import { addComponent, hasComponent, query, removeComponent, set, setComponent } from 'bitecs';
 import {
   BaseStats,
   BroadcastScore,
@@ -95,6 +87,7 @@ import {
 } from '../shared/data/den-unlock-archetypes.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
+import { isLiveFamilyBoss } from './floor2BossIdentity.js';
 import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
@@ -641,23 +634,23 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       // from floor init, so once the unlock flag opens the doors it can walk
       // out on its own. Return it to its den spawn tile first — the fight stays
       // intact and the relock can never produce a boss-less sealed room.
+      const bossEid = encounter.bossEid;
       if (
-        encounter.bossEid === null ||
+        bossEid === null ||
         encounter.bossSpawnX === undefined ||
         encounter.bossSpawnY === undefined ||
-        !entityExists(world.ecs, encounter.bossEid) ||
-        !hasComponent(world.ecs, encounter.bossEid, Enemy) ||
-        !hasComponent(world.ecs, encounter.bossEid, Health)
+        !isLiveFamilyBoss(world, encounter)
       ) {
-        // Do not relock a den around an absent boss. The victory path below
+        // Do not relock a den around an absent boss, nor around a recycled
+        // entity id that now belongs to unrelated trash. The victory path below
         // reconciles vanished bosses once every den is unlocked; until then,
         // keeping this den open prevents a second sealed-room softlock.
         continue;
       }
       containFloor2BossInDen(world, encounter);
       encounter.started = true;
-      removeComponent(world.ecs, encounter.bossEid, Invincible);
-      world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid] = 1;
+      removeComponent(world.ecs, bossEid, Invincible);
+      world.stores.enemyBehavior.aggroedPermanently[bossEid] = 1;
       setGoalFlag(world, encounter.activeGoalId, true);
     }
   }
@@ -1621,7 +1614,9 @@ function unstickFloor2Bosses(world: GameWorld): void {
   const encounters = world.floorExtendedState?.familyState?.bossEncounters;
   if (encounters) {
     for (const encounter of encounters.values()) {
-      if (encounter.bossEid !== null) {
+      // A recycled `bossEid` can point at unrelated trash; keying the den-spawn
+      // fallback on it would teleport that entity into the den.
+      if (encounter.bossEid !== null && isLiveFamilyBoss(world, encounter)) {
         encounterByBossEid.set(encounter.bossEid, encounter);
       }
     }

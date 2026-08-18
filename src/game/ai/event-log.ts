@@ -41,6 +41,7 @@ export interface BossEncounterSnapshot {
   familyId: string;
   displayName: string;
   bossEid: number | null;
+  /** True only when `bossEid` still resolves to this family's live boss entity. */
   bossEntityExists: boolean;
   started: boolean;
   defeated: boolean;

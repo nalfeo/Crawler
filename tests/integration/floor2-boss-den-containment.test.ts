@@ -13,11 +13,17 @@ import {
 import { selectFloor2Roster } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
-import { Enemy, spawnPlayer } from '../../src/core/index.js';
+import { Enemy, Position, spawnPlayer } from '../../src/core/index.js';
 import {
   captureBossEncounterSnapshots,
   diffBossEncounterSnapshots,
 } from '../../src/game/ai/boss-encounter-telemetry.js';
+import { createPlayerSessionRecorder } from '../../src/game/ai/player-session-recorder.js';
+import type { InputState } from '../../src/shared/input.js';
+
+function makeInput(): InputState {
+  return { moveX: 0, moveY: 0, action: false, pointerX: 0, pointerY: 0 };
+}
 
 function smallCaveConfig(seed: number): MapConfig {
   return {
@@ -145,7 +151,132 @@ describe('Floor 2 boss den containment', () => {
     expect(world.stores.position.y[bossEid]).toBe(encounter.bossSpawnY);
     expect(roomIdOfEntity(floorMap, world, bossEid)).toBe(encounter.roomId);
   });
+
+  it('does not relock a den when the boss id was recycled onto another family', () => {
+    const seed = 42;
+    const { world, encounter } = setupFloor2BossEncounter(seed);
+    const bossEid = encounter.bossEid!;
+    const presentFamilies = world.floorExtendedState!.familyState!.presentFamilies;
+    const otherIndex = presentFamilies.findIndex((id) => id !== encounter.familyId);
+    expect(otherIndex).toBeGreaterThanOrEqual(0);
+
+    markDenUnlocked(world, encounter.familyId);
+    // A recycled entity id keeps Enemy + Health but reports a different family.
+    world.stores.familyMembership.familyId[bossEid] = otherIndex;
+    spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    world.state = 'playing';
+
+    floor2ObjectiveTick(world);
+
+    expect(encounter.started).toBe(false);
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(false);
+  });
+
+  it('does not relock a den when the boss entity lost its Position component', () => {
+    const seed = 42;
+    const { world, encounter } = setupFloor2BossEncounter(seed);
+
+    markDenUnlocked(world, encounter.familyId);
+    removeComponent(world.ecs, encounter.bossEid!, Position);
+    spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    world.state = 'playing';
+
+    floor2ObjectiveTick(world);
+
+    expect(encounter.started).toBe(false);
+    expect(world.goalFlags.get(encounter.activeGoalId)).toBe(false);
+  });
+
+  it('telemetry reports a recycled boss id as absent instead of describing the replacement', () => {
+    const seed = 42;
+    const { world, encounter } = setupFloor2BossEncounter(seed);
+    const bossEid = encounter.bossEid!;
+    const playerEid = spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+
+    world.stores.familyMembership.isBoss[bossEid] = 0;
+
+    const snapshot = captureBossEncounterSnapshots(world, playerEid).find(
+      (s) => s.familyId === String(encounter.familyId),
+    )!;
+    expect(snapshot.bossEntityExists).toBe(false);
+    expect(snapshot.bossRoomId).toBeNull();
+    expect(snapshot.bossInDen).toBeNull();
+    expect(snapshot.bossHealth).toBeNull();
+    expect(snapshot.bossVisible).toBeNull();
+  });
 });
+
+describe('player session recorder boss diagnostics', () => {
+  it('attaches den snapshots to sample events', () => {
+    const seed = 7777;
+    const { world, encounter } = setupFloor2BossEncounter(seed);
+    const playerEid = spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    const rec = createPlayerSessionRecorder(world, playerEid, { sampleInterval: 1 });
+
+    rec.tick(makeInput());
+
+    const sample = rec.getEvents().find((e) => e.type === 'sample')!;
+    expect(sample.bossEncounters?.length).toBeGreaterThan(0);
+    expect(sample.bossEncounters!.some((s) => s.familyId === String(encounter.familyId))).toBe(
+      true,
+    );
+  });
+
+  it('emits a boss event when the boss leaves its den', () => {
+    const seed = 7777;
+    const { world, floorMap, encounter } = setupFloor2BossEncounter(seed);
+    const bossEid = encounter.bossEid!;
+    const playerEid = spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    const rec = createPlayerSessionRecorder(world, playerEid, { sampleInterval: 1000 });
+
+    rec.tick(makeInput());
+    moveEntityOutsideRoom(world, floorMap, bossEid, encounter.roomId);
+    rec.tick(makeInput());
+
+    const bossEvents = rec.getEvents().filter((e) => e.type === 'boss');
+    expect(bossEvents).toHaveLength(1);
+    expect(bossEvents[0]!.note).toContain('boss left den');
+    expect(bossEvents[0]!.reason).toBe('boss-encounter');
+    expect(bossEvents[0]!.bossEncounters?.length).toBeGreaterThan(0);
+  });
+
+  it('reset clears the snapshot baseline instead of replaying a stale transition', () => {
+    const seed = 7777;
+    const { world, floorMap, encounter } = setupFloor2BossEncounter(seed);
+    const bossEid = encounter.bossEid!;
+    const playerEid = spawnPlayer(world, encounter.bossSpawnX!, encounter.bossSpawnY!);
+    const rec = createPlayerSessionRecorder(world, playerEid, { sampleInterval: 1000 });
+
+    rec.tick(makeInput()); // baseline: boss in den
+    rec.reset();
+    moveEntityOutsideRoom(world, floorMap, bossEid, encounter.roomId);
+
+    // First tick after reset re-establishes the baseline, so the move made
+    // while the recorder was cleared must not be reported as a transition.
+    rec.tick(makeInput());
+    expect(rec.getEvents().filter((e) => e.type === 'boss')).toHaveLength(0);
+
+    // ...and the rebuilt baseline still detects the next real transition.
+    world.stores.position.x[bossEid] = encounter.bossSpawnX!;
+    world.stores.position.y[bossEid] = encounter.bossSpawnY!;
+    rec.tick(makeInput());
+    const bossEvents = rec.getEvents().filter((e) => e.type === 'boss');
+    expect(bossEvents).toHaveLength(1);
+    expect(bossEvents[0]!.note).toContain('boss returned to den');
+  });
+});
+
+function moveEntityOutsideRoom(
+  world: ReturnType<typeof createTestWorld>,
+  floorMap: ReturnType<CaveSystemGenerator['generate']>,
+  eid: number,
+  roomId: number,
+): void {
+  const tile = findTileOutsideRoom(floorMap, roomId);
+  const worldPos = floorMap.tileToWorld(tile.x, tile.y);
+  world.stores.position.x[eid] = worldPos.x;
+  world.stores.position.y[eid] = worldPos.y;
+}
 
 function roomIdOfEntity(
   floorMap: ReturnType<CaveSystemGenerator['generate']>,
