@@ -1106,6 +1106,17 @@ test('redispatch to a PR where Copilot is already assigned forces an unassign-th
           },
         };
       }
+      if (query.includes('removeAssigneesFromAssignable')) {
+        return {
+          body: {
+            data: {
+              removeAssigneesFromAssignable: {
+                assignable: { assignees: { nodes: [] } },
+              },
+            },
+          },
+        };
+      }
       if (query.trimStart().startsWith('mutation')) {
         return {
           body: {
@@ -1156,24 +1167,35 @@ test('redispatch to a PR where Copilot is already assigned forces an unassign-th
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  const assignMutations = mutatingCalls.filter(
+  const removeMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      call.body?.query?.includes('removeAssigneesFromAssignable'),
+  );
+  assert.equal(
+    removeMutations.length,
+    1,
+    'expected exactly one unassign mutation to force a genuine unassign transition',
+  );
+  assert.deepEqual(
+    removeMutations[0].body.variables.assigneeIds,
+    ['BOT_copilot'],
+    'unassign mutation must target only Copilot, leaving other assignees untouched',
+  );
+
+  const replaceMutations = mutatingCalls.filter(
     (call) =>
       call.method === 'GRAPHQL_MUTATION' &&
       call.body?.query?.includes('replaceActorsForAssignable'),
   );
-  assert.equal(
-    assignMutations.length,
-    2,
-    'expected an unassign mutation followed by a reassign mutation when Copilot was already assigned',
-  );
-  const [unassignCall, reassignCall] = assignMutations;
+  assert.equal(replaceMutations.length, 1, 'expected exactly one reassign mutation');
   assert.ok(
-    !unassignCall.body.variables.actorIds.includes('BOT_copilot'),
-    'first mutation must drop Copilot to force a genuine unassign transition',
+    replaceMutations[0].body.variables.actorIds.includes('BOT_copilot'),
+    'reassign mutation must re-add Copilot to force a genuine reassign transition',
   );
   assert.ok(
-    reassignCall.body.variables.actorIds.includes('BOT_copilot'),
-    'second mutation must re-add Copilot to force a genuine reassign transition',
+    mutatingCalls.indexOf(removeMutations[0]) < mutatingCalls.indexOf(replaceMutations[0]),
+    'the unassign mutation must happen before the reassign mutation',
   );
 });
 
