@@ -1,5 +1,39 @@
 [
   {
+    "commit": "d82bef033a9b23dfe33116eaefbf11291572fe38",
+    "commitDate": "2026-08-18T10:48:31Z",
+    "commitSubject": "chore(assets): reconcile queued sprite edits (71 art paths) (#3068)",
+    "capturedAt": "2026-08-18T11:58:25.553Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32129308933",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/d82bef033a9b23dfe33116eaefbf11291572fe38.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.75,
+      "gatePass": false,
+      "path": "by-sha/d82bef033a9b23dfe33116eaefbf11291572fe38.fun-report.json"
+    }
+  },
+  {
     "commit": "321ff1dda3ff7a9d4ec5a88601df4b9637f4751f",
     "commitDate": "2026-08-18T09:45:24Z",
     "commitSubject": "Bound Playwright CI setup and E2E job execution (#3062)",
