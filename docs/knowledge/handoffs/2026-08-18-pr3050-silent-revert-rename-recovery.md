@@ -19,7 +19,7 @@ ci-policy, sprite-pipeline
 
 ## Verification
 
-- `npx vitest run tests/unit/silent-reverts-guard.test.ts` — 58 passed
+- `npx vitest run tests/unit/silent-reverts-guard.test.ts` — 60 passed
 - `npm run check:silent-reverts` — 3 merges inspected, 0 blocking
 - `bash scripts/agent/verify-fast.sh` — passed
 - `npm run sprites:normalize-names -- --check` — 0 violations/conflicts

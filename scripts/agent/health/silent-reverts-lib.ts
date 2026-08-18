@@ -335,6 +335,12 @@ const GENERATED_ENTRY_IDENTITY_FIELDS = new Set([
   'variantIndex',
 ]);
 
+/**
+ * Compares a generated entry across a canonical rename. Identity fields may
+ * change only to the values derived from the target `*-var-N.json` path; every
+ * other field must remain equal. Same-path comparisons are deliberately
+ * rejected so identity-only mainline fixes cannot be mistaken for renames.
+ */
 export function generatedEntryRenamePreservesContent(
   sourcePath: string,
   targetPath: string,
@@ -343,6 +349,7 @@ export function generatedEntryRenamePreservesContent(
 ): boolean {
   const entryPrefix = 'public/assets/generated/entries/';
   if (
+    sourcePath === targetPath ||
     !sourcePath.startsWith(entryPrefix) ||
     !targetPath.startsWith(entryPrefix) ||
     !sourcePath.endsWith('.json') ||
@@ -354,6 +361,17 @@ export function generatedEntryRenamePreservesContent(
   try {
     const source = JSON.parse(sourceContent) as Record<string, unknown>;
     const target = JSON.parse(targetContent) as Record<string, unknown>;
+    const targetName = targetPath.slice(entryPrefix.length, -'.json'.length);
+    const targetMatch = /^(.*)-var-(\d+)$/.exec(targetName);
+    if (
+      !targetMatch ||
+      target.briefId !== targetMatch[1] ||
+      target.spriteName !== targetName ||
+      target.assetPath !== `generated/${targetName}.png` ||
+      target.variantIndex !== Number(targetMatch[2])
+    ) {
+      return false;
+    }
     const canonicalize = (value: unknown): unknown => {
       if (Array.isArray(value)) return value.map(canonicalize);
       if (value !== null && typeof value === 'object') {

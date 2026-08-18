@@ -160,6 +160,35 @@ describe('survivesToHead', () => {
       ).toBe(false);
     });
 
+    it('rejects same-path identity-only changes', () => {
+      const target = { ...entry, assetPath: 'generated/corrected.png' };
+      expect(
+        generatedEntryRenamePreservesContent(
+          'public/assets/generated/entries/legacy-v1-var-0.json',
+          'public/assets/generated/entries/legacy-v1-var-0.json',
+          JSON.stringify(entry),
+          JSON.stringify(target),
+        ),
+      ).toBe(false);
+    });
+
+    it('rejects a target whose identity fields do not match its canonical path', () => {
+      const target = {
+        ...entry,
+        briefId: 'canonical',
+        spriteName: 'canonical-var-0',
+        assetPath: 'generated/unrelated.png',
+      };
+      expect(
+        generatedEntryRenamePreservesContent(
+          'public/assets/generated/entries/legacy-v1-var-0.json',
+          'public/assets/generated/entries/canonical-var-0.json',
+          JSON.stringify(entry),
+          JSON.stringify(target),
+        ),
+      ).toBe(false);
+    });
+
     it('ignores JSON object key order when comparing substantive metadata', () => {
       const reordered = {
         anchor: { y: 2, x: 1 },
