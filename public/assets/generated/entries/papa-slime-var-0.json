@@ -1,0 +1,38 @@
+{
+  "briefId": "papa-slime",
+  "spriteName": "papa-slime-var-0",
+  "assetPath": "generated/papa-slime-var-0.png",
+  "approvedAt": "2026-07-06T17:34:35.036Z",
+  "sourceRun": "generated/runs/papa-slime-v1/imported-a7cadf14137b",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 63,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 63,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 35,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "a7cadf14137b206b107ad478618f0e3b27a5ee7d9a4c9f328ec3bd7741854236",
+  "effectiveAnchorSource": "brief",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 8,
+    "width": 58,
+    "height": 48,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

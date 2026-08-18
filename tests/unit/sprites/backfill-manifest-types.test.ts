@@ -72,8 +72,8 @@ describe('resolveManifestEntryType', () => {
 
   it('resolves via catalog concept when a single type is unambiguous', () => {
     const entry = manifestEntry({
-      briefId: 'baseball-bat-v3',
-      spriteName: 'baseball-bat-v3-var-6',
+      briefId: 'baseball-bat',
+      spriteName: 'baseball-bat-var-6',
     });
     const res = resolveManifestEntryType(
       entry,
@@ -102,7 +102,7 @@ describe('resolveManifestEntryType', () => {
   });
 
   it('resolves via the override map by normalized concept', () => {
-    const entry = manifestEntry({ briefId: 'prop-torch-v1', spriteName: 'prop-torch-v1-var-10' });
+    const entry = manifestEntry({ briefId: 'prop-torch', spriteName: 'prop-torch-var-10' });
     const res = resolveManifestEntryType(
       entry,
       sources({ overridesByConcept: { 'prop-torch': 'tile' } }),
@@ -198,9 +198,9 @@ describe('backfillManifestTypes', () => {
   it('fills types, tracks source counts, and reports changedCount', () => {
     const entries: Record<string, ManifestEntry> = {
       'lamp-v1-var-0': manifestEntry({ briefId: 'lamp-v1', spriteName: 'lamp-v1-var-0' }),
-      'prop-torch-v1-var-1': manifestEntry({
-        briefId: 'prop-torch-v1',
-        spriteName: 'prop-torch-v1-var-1',
+      'prop-torch-var-1': manifestEntry({
+        briefId: 'prop-torch',
+        spriteName: 'prop-torch-var-1',
       }),
     };
     const result = backfillManifestTypes(
@@ -211,7 +211,7 @@ describe('backfillManifestTypes', () => {
       }),
     );
     expect(result.entries['lamp-v1-var-0']!.type).toBe('item');
-    expect(result.entries['prop-torch-v1-var-1']!.type).toBe('tile');
+    expect(result.entries['prop-torch-var-1']!.type).toBe('tile');
     expect(result.changedCount).toBe(2);
     expect(result.bySource['catalog-sprite']).toBe(1);
     expect(result.bySource.override).toBe(1);

@@ -92,8 +92,8 @@ slice adds real granting for `lootBox`, mirroring the Floor 2 equipment
 resolve/claim split **exactly** (see the reversed Alternative #3 below for why
 an earlier claim-time-only design was rejected mid-review):
 
-- **Resolution (unlock time only)** — `resolveLootBoxRewardBundle` (new
-  `src/game/floor1-lootbox-reward-resolver.ts`) runs from `unlockAchievement`
+- **Resolution (unlock time only)** — `resolveLootBoxRewardBundle` (in
+  `src/game/lootbox-materials-reward-resolver.ts`) runs from `unlockAchievement`
   the moment a `lootBox` achievement unlocks, symmetric with
   `resolveEquipmentRewardBundle`'s Floor 2 call in the same function. It
   computes gold (`LOOT_BOX_GOLD_BY_TIER`: monotonically increasing 10 / 25 /
@@ -263,7 +263,7 @@ gating on feature availability
 (`getFloor2EquipmentRewardsAccess(world).kind !== 'enabled'`) before ever
 invoking its resolver. The resolver itself is unchanged and still throws on a
 direct call with no run key (a defense-in-depth invariant, still covered by
-`tests/unit/floor1-lootbox-reward-resolver.test.ts`) — only the achievement
+`tests/unit/lootbox-materials-reward-resolver.test.ts`) — only the achievement
 unlock call site now pre-checks.
 
 This is a **systemic** fix, not a per-test-file patch: it makes "no run key

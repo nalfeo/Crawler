@@ -1,0 +1,119 @@
+{
+  "briefId": "faerie-spark-caster",
+  "spriteName": "faerie-spark-caster-var-0",
+  "assetPath": "generated/faerie-spark-caster-var-0.png",
+  "approvedAt": "2026-08-01T00:15:15.596Z",
+  "sourceRun": "generated/runs/faerie-spark-caster-v1/2026-08-01T00-11-38-2fb329ab",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 145,
+    "y": 115,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 145,
+      "y": 115,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 145,
+      "y": 115,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "3",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 145,
+        "y": 115
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T00:13:06.542Z",
+    "designLanguage": {
+      "score": 3,
+      "rationale": "The concept of a faerie spark caster is present, but the execution lacks the dark humor and authored contradiction typical of Crawler. The design feels more generic fantasy than the darkly satirical tone of the game."
+    },
+    "referenceStyleMatch": {
+      "score": 3,
+      "rationale": "The sprite has a similar pixel density and outline treatment to the references, but the shading is less refined, and the color palette lacks the depth and contrast seen in the references."
+    },
+    "styleMatch": {
+      "score": 3,
+      "rationale": "The sprite has a similar pixel density and outline treatment to the references, but the shading is less refined, and the color palette lacks the depth and contrast seen in the references."
+    },
+    "briefMatch": {
+      "score": 4,
+      "rationale": "The sprite depicts a small faerie with glowing wings and electrical arcs, matching the brief. However, the metallic accents on the bodysuit are not clearly visible, and the wings' glow is not as pronounced as described."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear, and the faerie's form is distinguishable at game scale. However, the electrical arcs are not as prominent as they could be, slightly reducing the overall readability."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The sprite is oriented at an appropriate angle, with a clear three-quarters view that aligns with the game's style."
+    },
+    "themeAdherence": {
+      "score": 3,
+      "rationale": "The glowing wings and electrical arcs align with the Glitterkin theme, but the dark bodysuit lacks the metallic accents and the overall design does not strongly convey the predatory nightclub crew aesthetic or magenta gang colors."
+    },
+    "passed": true,
+    "minScore": 3,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.7,
+    "usage": {
+      "promptTokens": 4008,
+      "completionTokens": 415,
+      "totalTokens": 4423
+    }
+  },
+  "type": "enemy",
+  "contentHash": "cb24eacf89552ff951559ef2090a716bd1ed89cf339184c39f5150cf40cc921f",
+  "opaqueBounds": {
+    "x": 14,
+    "y": 15,
+    "width": 228,
+    "height": 242,
+    "canvasWidth": 256,
+    "canvasHeight": 272
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

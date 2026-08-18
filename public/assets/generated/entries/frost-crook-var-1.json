@@ -1,0 +1,105 @@
+{
+  "briefId": "frost-crook",
+  "spriteName": "frost-crook-var-1",
+  "assetPath": "generated/frost-crook-var-1.png",
+  "approvedAt": "2026-07-25T05:48:42.738Z",
+  "sourceRun": "generated/runs/frost-crook-v1/2026-07-25T05-47-27-d2f94bf9",
+  "variantIndex": 1,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 30,
+      "y": 30,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": false,
+      "sensor": "opaque-ratio",
+      "reason": "opaque ratio 0.056 outside [0.1, 0.65]"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "grip midpoint x=26 is outside ±3 of center 32"
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:48:27.027Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept of a gnarled wooden staff with a glowing ice shard and floating ice fragments is well-executed and fits the dark-fantasy theme of Crawler. The hovering ice fragments add a touch of authored strangeness without being random or excessive."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of color stops and the crispness of the edges are consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and palette. The use of color stops and the crispness of the edges are consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts the described staff, including the gnarled wood, glowing ice shard, hovering ice fragments, and cloth-wrapped base with a frost-covered charm. All elements of the brief are present and identifiable."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the glowing ice shard draws attention effectively. However, the hovering ice fragments could be slightly more distinct at game scale, as they blend somewhat into the background."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief and style guidelines, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2556,
+      "completionTokens": 334,
+      "totalTokens": 2890
+    }
+  },
+  "type": "weapon",
+  "contentHash": "d97639796843824ca77f3506c0e27d138e087d3aa2d413c57111b30a9e6d537c",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 25,
+    "y": 3,
+    "width": 14,
+    "height": 58,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}

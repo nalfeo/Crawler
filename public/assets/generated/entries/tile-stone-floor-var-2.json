@@ -1,0 +1,39 @@
+{
+  "briefId": "tile-stone-floor",
+  "spriteName": "tile-stone-floor-var-2",
+  "assetPath": "generated/tile-stone-floor-var-2.png",
+  "approvedAt": "2026-07-08T00:10:10.380Z",
+  "sourceRun": "generated/runs/tile-stone-floor-v1/2026-07-07T22-15-45-46223ed8",
+  "variantIndex": 2,
+  "anchor": {
+    "x": 127,
+    "y": 255,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 127,
+      "y": 255,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 127,
+      "y": 127,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "type": null,
+  "contentHash": "e4e400a15bee7bf689e97c747000d4cf04344746536596da3238f648117db6aa",
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 256,
+    "height": 256,
+    "canvasWidth": 256,
+    "canvasHeight": 256
+  }
+}

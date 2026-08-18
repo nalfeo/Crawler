@@ -7,7 +7,7 @@ const BLOODY_FOOTPRINT_LIFETIME_MS = 5_000;
 /**
  * Along-path distance between consecutive prints, i.e. one walking step.
  *
- * Calibrated to the shipping `rhea-vale-v1` player sprite, whose drawn content
+ * Calibrated to the shipping `rhea-vale` player sprite, whose drawn content
  * is 58 px tall at scale 0.72 → 5.22 ft (see `entity-sprite-mappings.json`).
  * A human's walking step length is ~0.41 x height → 5.22 x 0.41 ≈ 2.1 ft.
  *
@@ -274,7 +274,7 @@ export function createBloodPoolSurface(params: {
 /**
  * Builds one deterministic blood footprint stamp.
  *
- * Geometry is calibrated to the shipping `rhea-vale-v1` player sprite (5.22 ft
+ * Geometry is calibrated to the shipping `rhea-vale` player sprite (5.22 ft
  * drawn). The renderer (`PlayerTrailVfx`) draws a heel ellipse at the origin
  * plus a toe ellipse offset forward, both rotated to `angleRad`, so along the
  * heading a print spans

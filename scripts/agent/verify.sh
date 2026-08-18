@@ -57,6 +57,13 @@ echo "🔍 Step 5c/10: Equipment art coverage ratchet..."
 # equipment can no longer ship wired-but-un-arted and be discovered by eye.
 npx tsx scripts/agent/health/check-equipment-art-coverage.ts
 
+echo "🔍 Step 5d/10: Sprite name taxonomy guard..."
+# Deterministic naming guard: every generated brief id must be a BARE concept
+# with `-var-N` variants only. A lineage-tagged id (`rat-v1`) silently splits a
+# concept into a second variant bucket in `loadGeneratedManifest`, stranding
+# approved art that `pickGeneratedVariant` can never draw.
+npx tsx scripts/sprites/normalize-sprite-names.ts --check
+
 # v8 coverage instrumentation roughly 5x's the unit-suite wall time (~27s ->
 # ~140s on a typical dev box). Coverage thresholds are authoritatively enforced
 # in CI (ci.yml `test-unit` job) on every PR, so this local pre-commit gate runs

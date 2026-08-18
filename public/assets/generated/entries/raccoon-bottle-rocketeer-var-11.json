@@ -1,0 +1,123 @@
+{
+  "briefId": "raccoon-bottle-rocketeer",
+  "spriteName": "raccoon-bottle-rocketeer-var-11",
+  "assetPath": "generated/raccoon-bottle-rocketeer-var-11.png",
+  "approvedAt": "2026-08-01T05:56:39.792Z",
+  "sourceRun": "generated/runs/raccoon-bottle-rocketeer-v2/2026-08-01T05-52-41-a1eae295",
+  "variantIndex": 11,
+  "anchor": {
+    "x": 131,
+    "y": 122,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 131,
+      "y": 122,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 131,
+      "y": 122,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 131,
+        "y": 122
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 11,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T05:56:39.164Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The concept of a raccoon with a makeshift bottle rocket launcher is both darkly humorous and fits the theme of improvised machinery and chaotic criminality. The singed fur and firecrackers add to the authored contradiction of reckless and dangerous."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The rendering is consistent with the approved references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The rendering is consistent with the approved references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a raccoon with a makeshift bottle rocket launcher, a bandolier of firecrackers, and singed fur, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with the raccoon's pose and the rocket launcher easily identifiable. There are no visual integrity defects."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The raccoon is oriented at an appropriate angle, facing the camera at a one-third-to-two-thirds turn, which is consistent with the references."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The entire figure is fully framed, with all parts of the raccoon and its equipment visible within the sprite."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple specific details from the theme and floor design language, including the raccoon with a grey-black mask, scavenged streetwear, a makeshift rocket launcher, and a bandolier of firecrackers. The singed fur and dynamic pose further emphasize the reckless and chaotic nature of the character."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4127,
+      "completionTokens": 461,
+      "totalTokens": 4588
+    }
+  },
+  "type": "enemy",
+  "contentHash": "f70ce7b19f3f7dba85e5fbc5a03343df57994fefbea59dd53b7476633281b506",
+  "opaqueBounds": {
+    "x": 15,
+    "y": 15,
+    "width": 254,
+    "height": 226,
+    "canvasWidth": 284,
+    "canvasHeight": 256
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}

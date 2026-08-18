@@ -5,6 +5,7 @@ import {
   automationProgressKey,
   automationStallAction,
   blockerFingerprint,
+  checkRunWorkflowRunId,
   collapseCheckRunsByName,
   isDuplicateDispatch,
   isLeaseExpired,
@@ -56,6 +57,7 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  removeIssueAssignees,
   reviewThreadPlanIssueNumbers,
 } from './issue-intake-lib.mjs';
 import {
@@ -121,6 +123,35 @@ const ADVISORY_CHECK_NAMES = new Set([
   'advisory coverage',
   'headless multi-floor legs (report-only)',
 ]);
+const AGGREGATE_CI_CHECK_NAMES = new Set(['ci', 'merge gate']);
+const BLOCKER_PHASES = [
+  {
+    label: 'merge-conflict resolution',
+    matches: (blocker) => blocker.kind === 'merge-conflict',
+  },
+  {
+    label: 'review feedback',
+    matches: (blocker) => blocker.kind === 'review-thread',
+  },
+  {
+    label: 'CI failures',
+    matches: (blocker) => blocker.kind === 'ci-failure' || blocker.kind === 'ci-retrigger',
+  },
+  {
+    label: 'validation',
+    matches: (blocker) => blocker.kind === 'merge-train-validation',
+  },
+  {
+    label: 'merge-train cleanup',
+    matches: (blocker) => blocker.kind === 'merge-train-noop',
+  },
+  {
+    // A review-thread blocker needs both review of the finding and its exact
+    // in-thread resolution, so the final phase is present only when threads exist.
+    label: 'thread resolution',
+    matches: (blocker) => blocker.kind === 'review-thread',
+  },
+];
 function isAdvisoryCheck(checkName) {
   const normalizedCheckName = String(checkName || '')
     .trim()
@@ -130,6 +161,23 @@ function isAdvisoryCheck(checkName) {
     if (normalizedCheckName.startsWith(`${advisoryCheckName} (`)) return true;
   }
   return false;
+}
+function blockerPhaseIndex(blocker) {
+  const index = BLOCKER_PHASES.findIndex((phase) => phase.matches(blocker));
+  return index === -1 ? BLOCKER_PHASES.length : index;
+}
+function orderBlockersForRecoveryComment(blockers) {
+  return blockers
+    .map((blocker, index) => ({ blocker, index }))
+    .sort(
+      (left, right) =>
+        blockerPhaseIndex(left.blocker) - blockerPhaseIndex(right.blocker) ||
+        left.index - right.index,
+    )
+    .map(({ blocker }) => blocker);
+}
+function recoveryPhasesFor(blockers) {
+  return BLOCKER_PHASES.filter((phase) => blockers.some((blocker) => phase.matches(blocker)));
 }
 const REBASE_FAILURE_MAX_ATTEMPTS = 3;
 const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
@@ -2357,22 +2405,56 @@ const selfRecoveryRunIds = selfRecoveryWorkflowRunIds(runs);
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
 const humanApprovalDerivedChecks = new Set(['lightweight checks', 'merge gate', 'ci']);
-for (const check of checkRuns) {
+const actionableFailedChecks = checkRuns.filter((check) => {
   const checkName = String(check.name || '').toLowerCase();
-  if (
+  return (
     check.status === 'completed' &&
     ['failure', 'timed_out', 'startup_failure', 'stale'].includes(check.conclusion) &&
     !isSelfRecoveryCheckRun(check, selfRecoveryRunIds) &&
     !(pendingHumanApproval && humanApprovalDerivedChecks.has(checkName)) &&
     !isAdvisoryCheck(checkName)
-  ) {
-    blockers.push({
-      kind: 'ci-failure',
-      id: check.name,
-      summary: `${check.name} concluded ${check.conclusion}.`,
-      url: check.html_url,
-    });
-  }
+  );
+});
+// An aggregate `ci` / `Merge gate` conclusion only restates the outcome of the
+// concrete jobs in its own workflow, so it may be suppressed only when a
+// concrete failure from that same workflow explains it. The check-runs endpoint
+// also carries security, reviewer and other workflows on the head SHA; grouping
+// by workflow keeps an unrelated failure from hiding a genuine aggregate
+// blocker. Workflow *path* (not run id) is the grouping key so a re-dispatched
+// run still matches the collapsed latest-attempt check from the same workflow.
+const workflowPathByRunId = new Map();
+for (const run of runs) {
+  const path = String(run.path ?? '')
+    .trim()
+    .toLowerCase();
+  if (path) workflowPathByRunId.set(Number(run.id), path);
+}
+const checkWorkflowKey = (check) => {
+  const runId = checkRunWorkflowRunId(check);
+  if (runId === null) return null;
+  return workflowPathByRunId.get(runId) ?? `run:${runId}`;
+};
+const aggregateCheckName = (check) =>
+  AGGREGATE_CI_CHECK_NAMES.has(
+    String(check.name || '')
+      .trim()
+      .toLowerCase(),
+  );
+const concreteFailureWorkflowKeys = new Set();
+for (const check of actionableFailedChecks) {
+  if (aggregateCheckName(check)) continue;
+  const key = checkWorkflowKey(check);
+  if (key) concreteFailureWorkflowKeys.add(key);
+}
+for (const check of actionableFailedChecks) {
+  const key = checkWorkflowKey(check);
+  if (aggregateCheckName(check) && key && concreteFailureWorkflowKeys.has(key)) continue;
+  blockers.push({
+    kind: 'ci-failure',
+    id: check.name,
+    summary: `${check.name} concluded ${check.conclusion}.`,
+    url: check.html_url,
+  });
 }
 const waitingRequiredChecks = unsatisfiedChecks(checkRuns, mergeTrainAdmissionChecks);
 
@@ -3188,9 +3270,16 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   });
 
   const hasReviewThreadBlockers = normalized.some((blocker) => blocker.kind === 'review-thread');
+  const commentBlockers = orderBlockersForRecoveryComment(normalized);
+  const recoveryPhases = recoveryPhasesFor(commentBlockers);
+  const hasPriorRecoveryHint = commentBlockers.some((blocker) =>
+    blocker.summary.startsWith('[Prior recovery reply (no marker posted'),
+  );
   const hasCiOnlyBlockers =
-    normalized.length > 0 &&
-    normalized.every((blocker) => blocker.kind === 'ci-failure' || blocker.kind === 'ci-retrigger');
+    commentBlockers.length > 0 &&
+    commentBlockers.every(
+      (blocker) => blocker.kind === 'ci-failure' || blocker.kind === 'ci-retrigger',
+    );
   const taskBody = [
     `${TASK_COMMENT_MARKER} fingerprint=${fingerprint} -->`,
     '@copilot Please recover this PR from the exact blockers below.',
@@ -3204,11 +3293,9 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           '',
         ]
       : []),
-    hasReviewThreadBlockers
-      ? '**Required order:** merge-conflict resolution, review feedback, CI failures, validation, then thread resolution.'
-      : '**Required order:** merge-conflict resolution, CI failures, then validation.',
+    `**Required phases:** ${recoveryPhases.map((phase) => phase.label).join(' → ')}.`,
     '',
-    ...normalized.flatMap((blocker, index) => {
+    ...commentBlockers.flatMap((blocker, index) => {
       const replyCommentId =
         blocker.kind === 'review-thread' ? reviewThreadReplyCommentId(blocker.url) : null;
       return [
@@ -3227,13 +3314,15 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     '',
     ...(hasReviewThreadBlockers
       ? [
-          `**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated ${POST_PUSH_ADDRESSED_MARKER_REPLY} result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.`,
+          `**Review-thread protocol:** Validate every listed thread with a different model and fix applicable findings. Use \`✅ Not applicable: <one-line reason>\` only for deterministic non-applicability; leave substantive disagreements unresolved for escalation.`,
           '',
-          'If a blocker summary starts with "[Prior recovery reply (no marker posted": a previous dispatch already attempted this thread but could not address it. Do NOT re-post an identical reply. If the concern requires an external action (e.g. posting to a linked issue), use GitHub API tools (not gh CLI) to fulfil it, then mark the thread addressed. If the concern requires editing the PR description (for example removing an incorrect closing reference), use the session `update_pull_request` tool (REST `PATCH /repos/{owner}/{repo}/pulls/{prNumber}` with the corrected body text) — do NOT use `gh pr edit`. If the concern still cannot be fulfilled, leave it unresolved for human escalation.',
-          '',
-          `A top-level PR comment is never sufficient for a review-thread blocker; post the ${POST_PUSH_ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
-          '',
-          `When a thread is addressed, push your consolidated repair commit first, then run \`git rev-parse HEAD\` in the PR branch and replace \`${POST_PUSH_HEAD_SHA_PLACEHOLDER}\` in ${POST_PUSH_ADDRESSED_MARKER_REPLY} with that full SHA. Use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment). Do not use the dispatch-time head SHA, which identifies the pre-repair commit. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. When a thread is deterministically non-applicable (the finding does not apply to the current code and no fix is needed), reply with \`✅ Not applicable: <one-line reason>\`. Do **not** use this path for substantive disagreements. Run the repository-required verification and push one consolidated repair commit.`,
+          ...(hasPriorRecoveryHint
+            ? [
+                'A listed thread has a prior-recovery hint: do not repeat its identical reply. Complete any needed external action with GitHub API tools, edit the PR body with the session `update_pull_request` tool (not `gh pr edit`), then mark it addressed; otherwise leave it unresolved for human escalation.',
+                '',
+              ]
+            : []),
+          `After required verification and one consolidated push, run \`git rev-parse HEAD\` and use that full SHA in ${POST_PUSH_ADDRESSED_MARKER_REPLY} on the exact **Reply target comment ID** (not this task comment). A top-level PR comment cannot resolve a thread.`,
         ]
       : hasCiOnlyBlockers
         ? [
@@ -3298,6 +3387,29 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
     }
     const actorIds = [...new Set([...review.assignees.map((actor) => actor.id), copilot.id])];
     await assertExpectedMetadataUnchanged('assign-copilot');
+    // A redispatch (e.g. the R33 stale-automation-retry path) targets a PR
+    // that already carries Copilot as an assignee from a prior dispatch. In
+    // that case `actorIds` below is IDENTICAL to the currently-assigned set,
+    // so replacing the assignee list with the same members is a no-op
+    // transition that does not reliably signal GitHub's Copilot coding-agent
+    // platform to start a fresh session -- the PR sits reassigned-in-name-
+    // only while the automation believes it dispatched a new attempt (root
+    // cause of the PR #3040 / incident #3064 "no progress after 2 attempts"
+    // loop). Force a genuine unassign-then-reassign edge whenever Copilot was
+    // already an assignee by removing just Copilot's id first, mirroring the
+    // same remove-then-add pattern already used for linked-issue reassignment
+    // in pr-ready-reviewer-guard.mjs. Removing a single known-present actor id
+    // (rather than replacing with a filtered, potentially-empty full list)
+    // avoids relying on the API accepting an empty `actorIds` array.
+    const copilotAlreadyAssigned = review.assignees.some((actor) => actor.id === copilot.id);
+    if (copilotAlreadyAssigned) {
+      await removeIssueAssignees({
+        graphql,
+        token: pat,
+        assignableId: review.id,
+        actorIds: [copilot.id],
+      });
+    }
     await graphql(
       pat,
       `

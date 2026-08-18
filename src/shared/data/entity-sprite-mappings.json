@@ -58,8 +58,8 @@
       "kenneySpriteId": "enemy.rat",
       "kenneyScale": 1.4,
       "generated": {
-        "briefId": "rat-v1",
-        "pinnedTextureKey": "rat-v1-var-9",
+        "briefId": "rat",
+        "pinnedTextureKey": "rat-var-9",
         "scale": 0.4,
         "heightFt": 2.05
       }
@@ -69,8 +69,8 @@
       "kenneySpriteId": "enemy.slime",
       "kenneyScale": 1.4,
       "generated": {
-        "briefId": "slime-v1",
-        "pinnedTextureKey": "slime-v1-var-9",
+        "briefId": "slime",
+        "pinnedTextureKey": "slime-var-9",
         "scale": 0.4,
         "heightFt": 2.25
       }
@@ -80,8 +80,8 @@
       "kenneySpriteId": "enemy.rat",
       "kenneyScale": 1.4,
       "generated": {
-        "briefId": "rat-nest-v2",
-        "pinnedTextureKey": "rat-nest-v2-var-3",
+        "briefId": "rat-nest",
+        "pinnedTextureKey": "rat-nest-var-3",
         "scale": 0.4,
         "heightFt": 3.0
       }
@@ -91,8 +91,8 @@
       "kenneySpriteId": "enemy.slime",
       "kenneyScale": 1.4,
       "generated": {
-        "briefId": "slime-pool-v1",
-        "pinnedTextureKey": "slime-pool-v1-var-3",
+        "briefId": "slime-pool",
+        "pinnedTextureKey": "slime-pool-var-3",
         "scale": 0.4,
         "heightFt": 2.4
       }
@@ -102,8 +102,8 @@
       "kenneySpriteId": "enemy.slime",
       "kenneyScale": 1.4,
       "generated": {
-        "briefId": "baby-slime-v1",
-        "pinnedTextureKey": "baby-slime-v1-var-8",
+        "briefId": "baby-slime",
+        "pinnedTextureKey": "baby-slime-var-8",
         "scale": 0.4,
         "heightFt": 2.25
       }
@@ -118,8 +118,8 @@
       "kenneySpriteId": "enemy.boss",
       "kenneyScale": 2.5,
       "generated": {
-        "briefId": "rat-slime-v1",
-        "pinnedTextureKey": "rat-slime-v1-var-1",
+        "briefId": "rat-slime",
+        "pinnedTextureKey": "rat-slime-var-1",
         "scale": 0.6,
         "heightFt": 7.0
       }

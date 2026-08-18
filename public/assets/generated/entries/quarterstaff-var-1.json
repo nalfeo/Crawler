@@ -1,0 +1,105 @@
+{
+  "briefId": "quarterstaff",
+  "spriteName": "quarterstaff-var-1",
+  "assetPath": "generated/quarterstaff-var-1.png",
+  "approvedAt": "2026-07-25T05:51:46.714Z",
+  "sourceRun": "generated/runs/quarterstaff-v2/2026-07-25T05-48-51-51240ee6",
+  "variantIndex": 1,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": {
+      "x": 31,
+      "y": 29,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/8",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": false,
+      "sensor": "anchor-derivable",
+      "reason": "no opaque pixel in bottom 4 rows (first opaque row y=59)"
+    },
+    {
+      "ok": false,
+      "sensor": "silhouette-orientation-axis",
+      "reason": "principal axis -68.91° is more than ±5° away from vertical"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-07-25T05:50:18.419Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The design aligns well with the Crawler aesthetic, featuring a gnarled wooden staff with a makeshift, salvaged appearance. The metal reinforcements and spade-like blade add a functional yet improvised feel, which fits the dark-fantasy and retro-futurist themes of the game."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a consistent outline weight, shading style, and color palette that matches the references. The materials are distinct, and the shading is appropriately detailed without being overly complex."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The sprite uses a consistent outline weight, shading style, and color palette that matches the references. The materials are distinct, and the shading is appropriately detailed without being overly complex."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a gnarled wooden staff with uneven notches, metal reinforcements, and a spade-like blade at the top, as described in the brief."
+    },
+    "readability": {
+      "score": 4,
+      "rationale": "The silhouette is clear and the staff is easily distinguishable at game scale. However, the spade-like blade could be slightly more pronounced to enhance its readability further."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": "The sprite is functional and adheres to the brief, with no major issues that would prevent its use in-game.",
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2541,
+      "completionTokens": 327,
+      "totalTokens": 2868
+    }
+  },
+  "type": "weapon",
+  "contentHash": "d0dff77abda7d6551653d911352f22d6605c465c442ec68c7e40f3f4c37c2512",
+  "effectiveAnchorSource": null,
+  "facingDirection": "right",
+  "opaqueBounds": {
+    "x": 18,
+    "y": 4,
+    "width": 27,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  }
+}
