@@ -148,9 +148,19 @@ export const ISSUE_INTAKE_BODY = [
   'Then, when you open the PR, include the same high-level summary in the PR description.',
 ].join('\n');
 
+export function isTelemetryIssue(issue) {
+  return (issue?.labels || []).some(
+    (label) => String(label?.name || '').toLowerCase() === 'telemetry',
+  );
+}
+
 export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   if (!issue || issue.pull_request) {
     return { eligible: false, reason: 'event has no eligible issue payload' };
+  }
+
+  if (isTelemetryIssue(issue)) {
+    return { eligible: false, reason: 'telemetry issues are not assigned to Copilot' };
   }
 
   const opener = String(issue.user?.login || '').toLowerCase();
@@ -517,9 +527,13 @@ export async function intakeOpenedIssue({
   let eligibilityReason;
   if (fromUnblockSweep) {
     // Automation-label restriction is intentionally skipped here — see JSDoc.
-    // We still reject non-issues (PR payloads) and untrusted openers.
+    // We still reject non-issues (PR payloads), telemetry issues, and
+    // untrusted openers.
     if (!issue || issue.pull_request) {
       return { assigned: false, reason: 'event has no eligible issue payload' };
+    }
+    if (isTelemetryIssue(issue)) {
+      return { assigned: false, reason: 'telemetry issues are not assigned to Copilot' };
     }
     const opener = String(issue.user?.login || '').toLowerCase();
     const maintainer = String(maintainerLogin || '').toLowerCase();
