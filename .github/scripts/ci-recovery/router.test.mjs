@@ -314,6 +314,49 @@ test('stale-base retarget logs branch lookup API failures and continues the batc
   );
 });
 
+test('stale-base retarget keeps slashes literal in slash-bearing base ref URLs', async () => {
+  const baseRef = 'copilot/perf-nightly-gameplay-neutral-optimization-pass';
+  const paths = [];
+  const requestFn = async (_token, path, options = {}) => {
+    paths.push(path);
+    if (options.method === 'PATCH') return { data: stackedPullRequest({ base: { ref: 'main' } }) };
+    if (options.method === 'POST') return { data: {} };
+    if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+    if (path.includes('/compare/')) return { data: { status: 'ahead' } };
+    throw new Error(`Unexpected request ${path}`);
+  };
+  await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest({ base: { ref: baseRef } })],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    requestFn,
+    paginateFn: async () => [mergedBasePull()],
+    writeLog: () => {},
+  });
+  assert.ok(paths.some((path) => path.endsWith(`/git/ref/heads/${baseRef}`)));
+  assert.ok(paths.some((path) => path.endsWith(`/compare/${baseRef}...main`)));
+  assert.ok(!paths.some((path) => path.includes('%2F')));
+});
+
+test('stale-base retarget logs compare API failures and continues the batch', async () => {
+  const logs = [];
+  const retargeted = await retargetStaleBasePulls({
+    scheduledPulls: [stackedPullRequest()],
+    repository: 'nalfeo/Crawler',
+    token: 'read',
+    mutationToken: 'write',
+    paginateFn: async () => [mergedBasePull()],
+    requestFn: async (_token, path) => {
+      if (path.includes('/git/ref/heads/')) return { data: { object: { sha: 'base-head' } } };
+      throw makeError(404, 'Not Found');
+    },
+    writeLog: (line) => logs.push(line),
+  });
+  assert.deepEqual(retargeted, []);
+  assert.match(logs[0], /action=skip reason=base-compare-failed/);
+});
+
 test('stale-base settlement defers until GitHub resolves the retargeted mergeability', async () => {
   let calls = 0;
   const settled = await settleRetargetedPull({

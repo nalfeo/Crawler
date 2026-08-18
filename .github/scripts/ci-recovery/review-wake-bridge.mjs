@@ -1,7 +1,7 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { paginate, request } from './github.mjs';
+import { encodeRefPath, paginate, request } from './github.mjs';
 
 const ROUTER_WORKFLOW_NAME = 'CI Recovery Router';
 const ROUTER_WORKFLOW_PATH = '.github/workflows/ci-recovery-router.yml';
@@ -389,7 +389,7 @@ export async function runFromEnv(env = process.env) {
         return (
           await request(
             token,
-            `/repos/${owner}/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
+            `/repos/${owner}/${repo}/compare/${encodeRefPath(base)}...${encodeRefPath(head)}`,
           )
         ).data;
       },

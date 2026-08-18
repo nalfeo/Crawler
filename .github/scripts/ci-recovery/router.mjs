@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { paginate, request } from './github.mjs';
+import { encodeRefPath, paginate, request } from './github.mjs';
 import { MANAGED_COMMENT_PREFIX, STALE_BASE_RETARGET_MARKER } from './markers.mjs';
 import {
   AUTOMATION_STALE_MINUTES,
@@ -730,10 +730,7 @@ export async function retargetStaleBasePulls({
       let branchLookupError = null;
       try {
         baseBranch = (
-          await requestFn(
-            token,
-            `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(baseRef)}`,
-          )
+          await requestFn(token, `/repos/${owner}/${repo}/git/ref/heads/${encodeRefPath(baseRef)}`)
         ).data;
       } catch (error) {
         if (error?.status !== 404) branchLookupError = error;
@@ -746,12 +743,19 @@ export async function retargetStaleBasePulls({
       }
       let comparison = null;
       if (baseBranch) {
-        comparison = (
-          await requestFn(
-            token,
-            `/repos/${owner}/${repo}/compare/${encodeURIComponent(baseRef)}...main`,
-          )
-        ).data;
+        try {
+          comparison = (
+            await requestFn(
+              token,
+              `/repos/${owner}/${repo}/compare/${encodeRefPath(baseRef)}...main`,
+            )
+          ).data;
+        } catch (error) {
+          writeLog(
+            `stale-base pr=#${pullRequest.number} base=${baseRef} action=skip reason=base-compare-failed error=${error.message}`,
+          );
+          continue;
+        }
       }
       facts = { basePulls, baseBranch, comparison };
       baseFacts.set(baseRef, facts);
