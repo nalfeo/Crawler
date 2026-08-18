@@ -1,0 +1,190 @@
+{
+  "briefId": "ratfolk-elite-underboss",
+  "spriteName": "ratfolk-elite-underboss-var-19",
+  "assetPath": "generated/ratfolk-elite-underboss-var-19.png",
+  "approvedAt": "2026-08-01T05:07:31.488Z",
+  "sourceRun": "generated/runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f",
+  "variantIndex": 19,
+  "anchor": {
+    "x": 252,
+    "y": 269,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 252,
+      "y": 269,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 252,
+      "y": 269,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "6/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": false,
+      "sensor": "interior-transparency-holes",
+      "reason": "found 2870 enclosed transparent interior pixels (max 0)",
+      "pixels": [
+        {
+          "x": 373,
+          "y": 369
+        },
+        {
+          "x": 374,
+          "y": 369
+        },
+        {
+          "x": 375,
+          "y": 369
+        },
+        {
+          "x": 376,
+          "y": 369
+        },
+        {
+          "x": 377,
+          "y": 369
+        },
+        {
+          "x": 373,
+          "y": 370
+        },
+        {
+          "x": 374,
+          "y": 370
+        },
+        {
+          "x": 375,
+          "y": 370
+        },
+        {
+          "x": 376,
+          "y": 370
+        },
+        {
+          "x": 377,
+          "y": 370
+        },
+        {
+          "x": 373,
+          "y": 371
+        },
+        {
+          "x": 374,
+          "y": 371
+        },
+        {
+          "x": 375,
+          "y": 371
+        },
+        {
+          "x": 376,
+          "y": 371
+        },
+        {
+          "x": 377,
+          "y": 371
+        },
+        {
+          "x": 373,
+          "y": 372
+        }
+      ]
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 252,
+        "y": 269
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 5,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-01T04:59:39.482Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The sprite effectively combines the menacing and authoritative presence of a mob boss with the anthropomorphic ratfolk concept. The pinstripe suit and rat skull cane add a darkly humorous and unique touch, aligning well with the Crawler design language."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The shading is consistent with the references, and the details are well-executed without overcomplicating the design."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the reference style in terms of outline weight, shading, and color palette. The shading is consistent with the references, and the details are well-executed without overcomplicating the design."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a broad-shouldered ratfolk underboss in a pinstripe suit with a gold watch-chain, a rat skull cane, and a menacing demeanor, as described in the brief."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with the cane and rat ears providing strong visual cues. The sprite stands out well against the dark floor tile."
+    },
+    "poseOrientation": {
+      "score": 5,
+      "rationale": "The character is oriented at a three-quarters turn, facing the camera in a way that emphasizes its broad shoulders and menacing stance."
+    },
+    "bossPresence": {
+      "score": 4,
+      "rationale": "The sprite has a commanding presence with its broad shoulders and imposing stance, but it does not appear significantly larger or more dominant than a standard mob."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates multiple elements from the theme, including the pinstripe suit, gold watch-chain, and rat skull cane, which align with the Gutter Guild's aesthetic of stolen finery and weaponized filth. The menacing demeanor and mob boss attire also fit the Family Matters floor theme."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4054,
+      "completionTokens": 490,
+      "totalTokens": 4544
+    }
+  },
+  "type": "enemy",
+  "contentHash": "6b2f307b12fa3b33d94fa81cc6dfd8f1078a75b59e7f73bd856bfa42a3a3e2a8",
+  "opaqueBounds": {
+    "x": 27,
+    "y": 27,
+    "width": 466,
+    "height": 458,
+    "canvasWidth": 520,
+    "canvasHeight": 512
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right"
+}
