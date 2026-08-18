@@ -1,5 +1,39 @@
 [
   {
+    "commit": "03702c1260e9aa95a2d13b8742df85cd0e525f40",
+    "commitDate": "2026-08-18T05:47:52Z",
+    "commitSubject": "feat(sprites): persist editor annotations through queue (#3060)",
+    "capturedAt": "2026-08-18T07:08:36.908Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/32105900234",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/03702c1260e9aa95a2d13b8742df85cd0e525f40.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.32,
+        "totalWins": 48,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.38,
+        "totalWins": 57,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.74,
+      "gatePass": false,
+      "path": "by-sha/03702c1260e9aa95a2d13b8742df85cd0e525f40.fun-report.json"
+    }
+  },
+  {
     "commit": "fa925d1f36ef215e0cc28abb59cf15aeb0fbdb95",
     "commitDate": "2026-08-18T04:56:49Z",
     "commitSubject": "docs(handoffs): preserve rejected Floor 2 XP-cleanup lull-gate investigation (#3052)",
