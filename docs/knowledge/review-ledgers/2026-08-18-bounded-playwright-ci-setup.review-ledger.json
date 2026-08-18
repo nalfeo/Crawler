@@ -34,24 +34,24 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gemini-3.1-pro-preview",
+      "grader_model": "claude-haiku-4.5",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "75ed2a62aac3e11a88f4766b64462c1874dfc108",
+      "head_sha": "b9472e2fc9c1df7ea3e47a173e24a3309741f94a",
       "findings": [
         {
           "severity": "major",
           "file": "docs/knowledge/adr/0070-achievement-reward-content-tiers.md",
-          "detail": "Unrelated drive-by edit renaming lootbox resolver references. Revert to maintain scope discipline."
+          "detail": "Unrelated drive-by edit changing file path references from floor1-lootbox-reward-resolver.ts to lootbox-materials-reward-resolver.ts. The task is CI hardening; ADR corrections are out of scope. Revert this file."
         },
         {
           "severity": "major",
           "file": "docs/knowledge/adr/0085-run-bundle-telemetry-boundary.md",
-          "detail": "Unrelated drive-by edit adding a Status section. Revert to maintain scope discipline."
+          "detail": "Unrelated drive-by edit adding a Status section. The task is CI hardening; ADR formatting improvements are out of scope. Revert this file."
         },
         {
           "severity": "major",
           "file": "docs/knowledge/adr/2026-08-12-spell-broker-progression.md",
-          "detail": "Unrelated drive-by edit changing Status formatting. Revert to maintain scope discipline."
+          "detail": "Unrelated drive-by edit changing Status formatting. The task is CI hardening; ADR formatting improvements are out of scope. Revert this file."
         }
       ],
       "criteria": {
@@ -63,7 +63,7 @@
       },
       "verdict": "fail",
       "findings_count": 3,
-      "notes": "The CI implementation and workflow contract tests are correct. The grade fails only because it classifies the ADR validation repairs as scope widening.",
+      "notes": "The CI hardening implementation and deterministic tests are correct. The grade fails only because it classifies documentation repairs required by docs:check as scope widening.",
       "escalated_to_human": {
         "reason": "criteria below 3: scope_discipline",
         "unresolved_findings": 3
