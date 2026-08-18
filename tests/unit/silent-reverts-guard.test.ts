@@ -159,6 +159,26 @@ describe('survivesToHead', () => {
         ),
       ).toBe(false);
     });
+
+    it('ignores JSON object key order when comparing substantive metadata', () => {
+      const reordered = {
+        anchor: { y: 2, x: 1 },
+        contentHash: 'abc',
+        sourceRun: 'generated/runs/legacy/imported-abc',
+        variantIndex: 0,
+        assetPath: 'generated/canonical-var-0.png',
+        spriteName: 'canonical-var-0',
+        briefId: 'canonical',
+      };
+      expect(
+        generatedEntryRenamePreservesContent(
+          'public/assets/generated/entries/legacy-v1-var-0.json',
+          'public/assets/generated/entries/canonical-var-0.json',
+          JSON.stringify(entry),
+          JSON.stringify(reordered),
+        ),
+      ).toBe(true);
+    });
   });
 });
 
@@ -830,6 +850,47 @@ describe('silent-reverts CLI (real git)', () => {
       const { status, output } = runGuard(dir, 'mainline');
       expect(output).toContain('no surviving silent reverts');
       expect(status).toBe(0);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('still blocks an identity-field revert when the generated entry was not renamed', () => {
+    const { dir, git, write } = makeRepo();
+    const entryPath = 'public/assets/generated/entries/stable-var-0.json';
+    const entry = (assetPath: string): string =>
+      `${JSON.stringify(
+        {
+          briefId: 'stable',
+          spriteName: 'stable-var-0',
+          assetPath,
+          variantIndex: 0,
+          contentHash: 'stable-hash',
+          anchor: { x: 1, y: 2 },
+        },
+        null,
+        2,
+      )}\n`;
+    try {
+      write(entryPath, entry('generated/WRONG.png'));
+      git('add', '.');
+      git('commit', '-qm', 'base');
+      const base = git('rev-parse', 'HEAD');
+
+      write(entryPath, entry('generated/stable-var-0.png'));
+      git('commit', '-qam', 'main: fix asset path');
+      const mainSha = git('rev-parse', 'HEAD');
+      git('branch', '-f', 'mainline', mainSha);
+
+      git('checkout', '-q', '-b', 'pr', base);
+      write('mine.txt', 'mine\n');
+      git('add', '.');
+      git('commit', '-qm', 'pr work');
+      git('merge', '-s', 'ours', '--no-edit', '-q', mainSha);
+
+      const { status, output } = runGuard(dir, 'mainline');
+      expect(output).toMatch(/\[ERROR][^\n]*stable-var-0\.json/);
+      expect(status).toBe(1);
     } finally {
       cleanup(dir);
     }

@@ -121,6 +121,40 @@ function blobContent(blobSha: string, cwd: string): string {
   return content;
 }
 
+const generatedEntryIndexCache = new Map<string, Map<string, string[]>>();
+function generatedEntriesByContentHash(headRef: string, cwd: string): Map<string, string[]> {
+  const key = `${cwd}\u0000${headRef}`;
+  const cached = generatedEntryIndexCache.get(key);
+  if (cached) return cached;
+  const index = new Map<string, string[]>();
+  const matches =
+    gitOrNull(
+      [
+        'grep',
+        '-n',
+        '-E',
+        '"contentHash": "[^"]+"',
+        headRef,
+        '--',
+        'public/assets/generated/entries',
+      ],
+      cwd,
+    ) ?? '';
+  const prefix = `${headRef}:`;
+  for (const line of matches.split('\n').filter(Boolean)) {
+    const match = line.startsWith(prefix) ? line.slice(prefix.length) : line;
+    const parsed = /^(.*?):\d+:.*"contentHash": "([^"]+)"/.exec(match);
+    if (!parsed) continue;
+    const [, path, contentHash] = parsed;
+    if (!path || !contentHash) continue;
+    const paths = index.get(contentHash) ?? [];
+    paths.push(path);
+    index.set(contentHash, paths);
+  }
+  generatedEntryIndexCache.set(key, index);
+  return index;
+}
+
 function generatedEntryPreservedAtHead(
   path: string,
   sideBlob: string | null,
@@ -134,6 +168,7 @@ function generatedEntryPreservedAtHead(
   ) {
     return false;
   }
+  if (blob(headRef, path, cwd) !== null) return false;
   const sourceContent = blobContent(sideBlob, cwd);
   let contentHash: unknown;
   try {
@@ -143,24 +178,8 @@ function generatedEntryPreservedAtHead(
   }
   if (typeof contentHash !== 'string' || contentHash.length === 0) return false;
 
-  const matches =
-    gitOrNull(
-      [
-        'grep',
-        '-l',
-        '-F',
-        `"contentHash": "${contentHash}"`,
-        headRef,
-        '--',
-        'public/assets/generated/entries',
-      ],
-      cwd,
-    ) ?? '';
-  const prefix = `${headRef}:`;
-  return matches
-    .split('\n')
-    .filter(Boolean)
-    .map((match) => (match.startsWith(prefix) ? match.slice(prefix.length) : match))
+  return (generatedEntriesByContentHash(headRef, cwd).get(contentHash) ?? [])
+    .filter((targetPath) => targetPath !== path)
     .some((targetPath) => {
       const targetBlob = blob(headRef, targetPath, cwd);
       return (
@@ -278,12 +297,14 @@ export function collectMergeInputs(cwd: string, baseRef: string, headRef: string
               renamedTarget !== undefined &&
               renamedTargetBlob !== null &&
               (sideBlob === renamedTargetBlob ||
-                generatedEntryRenamePreservesContent(
-                  path,
-                  renamedTarget,
-                  blobContent(sideBlob, cwd),
-                  blobContent(renamedTargetBlob, cwd),
-                ))) ||
+                (path.startsWith('public/assets/generated/entries/') &&
+                  renamedTarget.startsWith('public/assets/generated/entries/') &&
+                  generatedEntryRenamePreservesContent(
+                    path,
+                    renamedTarget,
+                    blobContent(sideBlob, cwd),
+                    blobContent(renamedTargetBlob, cwd),
+                  )))) ||
             generatedEntryPreservedAtHead(path, sideBlob, headRef, cwd);
           const mergeTreeSubsumed =
             mergedTreeRev !== null &&

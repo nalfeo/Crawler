@@ -354,9 +354,22 @@ export function generatedEntryRenamePreservesContent(
   try {
     const source = JSON.parse(sourceContent) as Record<string, unknown>;
     const target = JSON.parse(targetContent) as Record<string, unknown>;
-    const substantive = (entry: Record<string, unknown>): Record<string, unknown> =>
-      Object.fromEntries(
-        Object.entries(entry).filter(([key]) => !GENERATED_ENTRY_IDENTITY_FIELDS.has(key)),
+    const canonicalize = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(canonicalize);
+      if (value !== null && typeof value === 'object') {
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, nested]) => [key, canonicalize(nested)]),
+        );
+      }
+      return value;
+    };
+    const substantive = (entry: Record<string, unknown>): unknown =>
+      canonicalize(
+        Object.fromEntries(
+          Object.entries(entry).filter(([key]) => !GENERATED_ENTRY_IDENTITY_FIELDS.has(key)),
+        ),
       );
     return JSON.stringify(substantive(source)) === JSON.stringify(substantive(target));
   } catch {
