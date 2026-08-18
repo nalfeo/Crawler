@@ -14,6 +14,7 @@ import {
   ISSUE_INTAKE_BODY,
   ISSUE_INTAKE_MARKER,
   ISSUE_RECOVERY_PLAN_MARKER,
+  isTelemetryIssue,
   issueIntakeEligibility,
   openBlockingIssues,
   removeIssueAssignees,
@@ -87,6 +88,20 @@ test('issue intake rejects missing issues and pull-request payloads', () => {
     }).eligible,
     false,
   );
+});
+
+test('telemetry issues are never eligible for Copilot assignment', () => {
+  const telemetryIssue = {
+    number: 3044,
+    user: { login: 'nalfeo' },
+    labels: [{ name: 'telemetry' }],
+  };
+
+  assert.equal(isTelemetryIssue(telemetryIssue), true);
+  assert.deepEqual(issueIntakeEligibility(telemetryIssue, 'nalfeo'), {
+    eligible: false,
+    reason: 'telemetry issues are not assigned to Copilot',
+  });
 });
 
 test('review plan issue selection fails closed on unmatched explicit issue references', () => {
@@ -885,6 +900,38 @@ test('intakeOpenedIssue skips ineligible openers before ever querying dependenci
 
   assert.equal(result.assigned, false);
   assert.equal(paginateCalled, false, 'eligibility must short-circuit before the dependency query');
+});
+
+test('intakeOpenedIssue rejects a telemetry-labeled dependent even from the unblock sweep', async () => {
+  let paginateCalled = false;
+  const result = await intakeOpenedIssue({
+    graphql: async () => ({}),
+    paginate: async () => {
+      paginateCalled = true;
+      return [];
+    },
+    request: async () => ({ data: [] }),
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issue: {
+      number: 1905,
+      node_id: 'ISSUE_1905',
+      user: { login: 'nalfeo' },
+      labels: [{ name: 'telemetry' }],
+    },
+    fromUnblockSweep: true,
+  });
+
+  assert.deepEqual(result, {
+    assigned: false,
+    reason: 'telemetry issues are not assigned to Copilot',
+  });
+  assert.equal(
+    paginateCalled,
+    false,
+    'telemetry guard must short-circuit before the dependency query',
+  );
 });
 
 test('intakeUnblockedDependents assigns eligible unblocked dependents and skips the rest', async () => {
