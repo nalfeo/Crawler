@@ -24,6 +24,7 @@ import {
   runQueueCommit,
   isNonFastForwardRejection,
   assertSafeBriefPaths,
+  assertSafeAnnotationUpdates,
   type QueueCommitDeps,
 } from '../../../scripts/sprites/queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../../../scripts/sprites/queue-commit-runtime.js';
@@ -239,6 +240,36 @@ describe('runQueueCommit (control flow)', () => {
   it('assertSafeBriefPaths: rejects paths not under briefs/', () => {
     expect(() => assertSafeBriefPaths(['src/game/foo.ts'])).toThrow();
     expect(() => assertSafeBriefPaths(['public/assets/generated/foo.png'])).toThrow();
+  });
+
+  // -------------------------------------------------------------------------
+  // assertSafeAnnotationUpdates
+  // -------------------------------------------------------------------------
+
+  it('assertSafeAnnotationUpdates: accepts a valid annotation update', () => {
+    expect(() =>
+      assertSafeAnnotationUpdates([
+        { key: 'skull-mace-var-2', favorite: true, disliked: false, comment: 'Great silhouette.' },
+      ]),
+    ).not.toThrow();
+  });
+
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'assertSafeAnnotationUpdates: rejects the reserved key %s',
+    (key) => {
+      expect(() =>
+        assertSafeAnnotationUpdates([{ key, favorite: false, disliked: true, comment: '' }]),
+      ).toThrow(/Invalid sprite annotation key/);
+    },
+  );
+
+  it('assertSafeAnnotationUpdates: rejects duplicate keys', () => {
+    expect(() =>
+      assertSafeAnnotationUpdates([
+        { key: 'alpha', favorite: true, disliked: false, comment: '' },
+        { key: 'alpha', favorite: false, disliked: true, comment: '' },
+      ]),
+    ).toThrow(/Duplicate sprite annotation key/);
   });
 
   it('throws invalid-brief-path when briefs supplied but copyBriefFiles dep is absent', async () => {

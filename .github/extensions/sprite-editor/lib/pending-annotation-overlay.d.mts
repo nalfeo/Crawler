@@ -5,5 +5,9 @@ export declare function resolvePendingAnnotationsPath(
 
 export declare function readPendingDislikedSpriteNames(
   pendingAnnotationsPath: string,
-  deps?: { readFile?: (path: string) => string; exists?: (path: string) => boolean },
+  deps?: {
+    readFile?: (path: string) => string;
+    exists?: (path: string) => boolean;
+    getCurrentAnnotation?: (key: string) => unknown;
+  },
 ): ReadonlySet<string>;

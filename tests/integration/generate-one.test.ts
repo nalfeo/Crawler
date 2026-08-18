@@ -535,6 +535,81 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     }
   });
 
+  it('stops trusting a pending dislike once another worktree supersedes it with a different tracked value', async () => {
+    // Reconciliation regression: the pending overlay's `base` is the tracked
+    // value captured at queue time. If a concurrent worktree's promotion later
+    // gives this sprite a DIFFERENT tracked annotation (here: a favorite),
+    // the tracked value no longer equals `base`, so the stale queued dislike
+    // must stop being counted -- the tracked-annotations reader (which now
+    // sees the favorite, not a dislike) is the sole source of truth from that
+    // point on.
+    const previousCopilotHome = process.env.COPILOT_HOME;
+    const copilotHome = mkdtempSync(path.join(tmpdir(), 'crawler-genone-copilot-home-'));
+    process.env.COPILOT_HOME = copilotHome;
+    try {
+      const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+      const sheet = tileVariantsIntoSheet(variants, 2, 2);
+      const generatedDir = path.join(root, 'public', 'assets', 'generated');
+      mkdirSync(generatedDir, { recursive: true });
+
+      const superseded = refEntry({ briefId: 'epsilon-superseded', type: 'weapon' });
+      const liked = refEntry({ briefId: 'zeta-liked', type: 'weapon' });
+
+      // Another worktree's promotion landed a favorite for this sprite,
+      // diverging from the `base: null` this worktree's pending dislike
+      // captured when it queued the (now stale) dislike.
+      writeFileSync(
+        path.join(generatedDir, 'sprite-editor-annotations.json'),
+        JSON.stringify({
+          version: 1,
+          sprites: {
+            [superseded.spriteName]: { favorite: true, disliked: false, comment: '' },
+          },
+        }),
+        'utf8',
+      );
+
+      const pendingPath = resolvePendingAnnotationsPath(root);
+      mkdirSync(path.dirname(pendingPath), { recursive: true });
+      writeFileSync(
+        pendingPath,
+        JSON.stringify({
+          version: 1,
+          sprites: {
+            [superseded.spriteName]: {
+              annotation: { favorite: false, disliked: true, comment: '' },
+              base: null,
+            },
+          },
+        }),
+        'utf8',
+      );
+
+      const result = await generateOne({
+        briefPath,
+        preloaded,
+        provider: makeMockProvider(sheet),
+        repoRoot: root,
+        outputRoot,
+        now: fixedClock,
+        loadReferenceCandidates: () => [superseded, liked],
+        referenceAssetExists: () => true,
+        readReference: (absolutePath: string) => Buffer.from(absolutePath),
+      });
+
+      const selectedNames =
+        result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
+      expect(selectedNames).toContain(liked.spriteName);
+      // The stale pending dislike no longer excludes the sprite; the tracked
+      // annotation (a favorite) governs instead.
+      expect(selectedNames).toContain(superseded.spriteName);
+    } finally {
+      if (previousCopilotHome === undefined) delete process.env.COPILOT_HOME;
+      else process.env.COPILOT_HOME = previousCopilotHome;
+      rmSync(copilotHome, { recursive: true, force: true });
+    }
+  });
+
   it('skips reference selection for providers that declare no reference-image support', async () => {
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
     const sheet = tileVariantsIntoSheet(variants, 2, 2);

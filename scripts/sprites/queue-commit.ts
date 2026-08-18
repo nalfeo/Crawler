@@ -265,6 +265,15 @@ export function assertSafeBriefPaths(briefs: readonly string[]): void {
   }
 }
 
+/**
+ * Object.prototype keys that must never be used as sprite annotation map
+ * keys: assigning into `sprites[key]` for one of these mutates the object's
+ * prototype/inherited members instead of creating an own enumerable JSON
+ * property, silently dropping the annotation while the queue-commit still
+ * reports success.
+ */
+const RESERVED_ANNOTATION_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /** Validate normalized Sprite Editor annotations at the queue trust boundary. */
 export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUpdate[]): void {
   const seen = new Set<string>();
@@ -273,6 +282,7 @@ export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUp
       typeof update.key !== 'string' ||
       update.key.trim() === '' ||
       update.key.length > 512 ||
+      RESERVED_ANNOTATION_KEYS.has(update.key) ||
       [...update.key].some((character) => {
         const code = character.charCodeAt(0);
         return code <= 31 || code === 127;
@@ -280,7 +290,7 @@ export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUp
     ) {
       throw new QueueCommitError(
         'invalid-annotation',
-        `Invalid sprite annotation key ${JSON.stringify(update.key)}. Use a non-empty sprite key without control characters.`,
+        `Invalid sprite annotation key ${JSON.stringify(update.key)}. Use a non-empty sprite key without control characters or reserved object properties.`,
       );
     }
     if (seen.has(update.key)) {

@@ -259,30 +259,40 @@ function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
   };
 }
 
-function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
+/**
+ * Raw `sprites` map from the tracked `sprite-editor-annotations.json`
+ * aggregate. Fails safe to an empty map (never throws) on a missing,
+ * malformed, or transiently torn file, mirroring the pending-overlay
+ * reader's own fail-safe retry policy.
+ */
+function loadAnnotationSpritesMap(annotationsPath: string): Readonly<Record<string, unknown>> {
   for (let attempt = 0; attempt < ANNOTATION_PARSE_ATTEMPTS; attempt += 1) {
     try {
       const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
         readonly sprites?: unknown;
       };
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return new Set<string>();
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
       const sprites = raw.sprites;
-      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites))
-        return new Set<string>();
-      const disliked = new Set<string>();
-      for (const [spriteName, note] of Object.entries(sprites as Record<string, unknown>)) {
-        if (!note || typeof note !== 'object' || Array.isArray(note)) continue;
-        if ((note as { readonly disliked?: unknown }).disliked === true) {
-          disliked.add(spriteName);
-        }
-      }
-      return disliked;
+      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites)) return {};
+      return sprites as Record<string, unknown>;
     } catch {
       // Concurrent sprite-editor writes can expose a transient truncated snapshot.
-      // Retry a bounded number of times, then fail-safe to an empty disliked set.
+      // Retry a bounded number of times, then fail-safe to an empty map.
     }
   }
-  return new Set<string>();
+  return {};
+}
+
+function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
+  const sprites = loadAnnotationSpritesMap(annotationsPath);
+  const disliked = new Set<string>();
+  for (const [spriteName, note] of Object.entries(sprites)) {
+    if (!note || typeof note !== 'object' || Array.isArray(note)) continue;
+    if ((note as { readonly disliked?: unknown }).disliked === true) {
+      disliked.add(spriteName);
+    }
+  }
+  return disliked;
 }
 
 export async function generateSheetCore(
@@ -363,7 +373,24 @@ export async function generateSheetCore(
     });
   const loadPendingDislikedReferenceNames =
     options.loadPendingDislikedReferenceNames ??
-    (() => readPendingDislikedSpriteNames(resolvePendingAnnotationsPath(repoRoot)));
+    (() => {
+      const annotationsPath = path.join(
+        publicAssetsRoot,
+        'generated',
+        'sprite-editor-annotations.json',
+      );
+      // Reconcile each pending dislike's captured `base` against the tracked
+      // annotation before trusting it, so a dislike another worktree has since
+      // superseded (e.g. promotion now carries a favorite) is not counted
+      // indefinitely — see `readPendingDislikedSpriteNames`.
+      const currentSprites = existsSync(annotationsPath)
+        ? loadAnnotationSpritesMap(annotationsPath)
+        : {};
+      return readPendingDislikedSpriteNames(resolvePendingAnnotationsPath(repoRoot), {
+        getCurrentAnnotation: (key) =>
+          Object.hasOwn(currentSprites, key) ? currentSprites[key] : null,
+      });
+    });
 
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;

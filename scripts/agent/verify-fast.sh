@@ -53,20 +53,37 @@ is_known_mjs_path() {
   [[ "$1" =~ ^(\.github/scripts/|\.github/extensions/|scripts/).*\.mjs$ ]]
 }
 
-# Returns true for hand-written `.d.mts` declaration files living beside a
-# `.mjs` module under .github/extensions/ (the TS-importing-.mjs pattern:
-# a .ts file imports a sibling .mjs directly and a hand-written .d.mts twin
-# supplies its types without requiring allowJs -- see
-# .github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts).
-# These are pure type declarations with no runtime code: ESLint does not lint
-# declaration files anywhere in this repo (see eslint.config.js's *.d.ts
-# ignores), and `tsc --noEmit --project tsconfig.json` already type-checks
-# them transitively via whatever supported .ts file imports the sibling
-# .mjs -- confirmed by running the full project typecheck after adding one.
-# So, like is_known_mjs_path, this is "known and safe to skip locally", not
-# "supported for local lint".
+# Explicit allowlist of hand-written `.d.mts` declaration files that live
+# beside a `.mjs` module under .github/extensions/ (the TS-importing-.mjs
+# pattern: a .ts file imports a sibling .mjs directly and a hand-written
+# .d.mts twin supplies its types without requiring allowJs). These are pure
+# type declarations with no runtime code: ESLint does not lint declaration
+# files anywhere in this repo (see eslint.config.js's *.d.ts ignores), and
+# `tsc --noEmit --project tsconfig.json` already type-checks each one
+# transitively via the specific supported .ts file(s) listed below that import
+# its sibling .mjs -- confirmed by running the full project typecheck after
+# adding one. A NEW `.d.mts` (or one with no real transitively-importing
+# sibling .mjs) must be added here explicitly, rather than broadly matched,
+# so it cannot silently skip both lint and typecheck coverage.
+KNOWN_DMTS_PATHS=(
+  # imported by tests/unit/devtools/achievements-canvas-adapter-parity.test.ts
+  '.github/extensions/achievements/lib/achievements-data.d.mts'
+  # imported by tests/unit/extensions/asset-search-index-builder.test.ts
+  '.github/extensions/asset-search/lib/index-builder.d.mts'
+  # imported by scripts/sprites/generate-one.ts and
+  # tests/integration/generate-one.test.ts
+  '.github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts'
+  # imported by tests/unit/extensions/format-link-host.test.ts
+  '.github/extensions/worktree-server-status/format-link-host.d.mts'
+)
 is_known_dmts_path() {
-  [[ "$1" =~ ^\.github/extensions/.*\.d\.mts$ ]]
+  local candidate="$1"
+  for known in "${KNOWN_DMTS_PATHS[@]}"; do
+    if [ "$candidate" = "$known" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we

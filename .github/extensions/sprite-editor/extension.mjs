@@ -777,7 +777,6 @@ async function saveSprite(payload) {
   let annotationToken = null;
   try {
     if (hasMetadata) applyMetadataUpdate(payload, data, key);
-    if (hasAnnotation) annotationToken = applyAnnotationUpdate(payload, data, key);
 
     if (typeof payload?.pngDataUrl === 'string' && payload.pngDataUrl.length > 0) {
       const bytes = decodePngDataUrl(payload.pngDataUrl);
@@ -795,6 +794,11 @@ async function saveSprite(payload) {
     if (hasMetadata || wrotePng) {
       writeShard(key, data.manifest.entries[key]);
     }
+    // Apply the annotation only after every preceding asset validation/write
+    // has succeeded: applyAnnotationUpdate durably tracks the edit locally, so
+    // running it before a malformed PNG or a shard write failure would leave a
+    // tracked annotation for a save that /api/save reports as failed.
+    if (hasAnnotation) annotationToken = applyAnnotationUpdate(payload, data, key);
     // No catalog write: the committed catalog no longer stores generated rows;
     // they are derived from the manifest at read time. Frame/col/row edits for
     // generated sprites are inherently virtual (always 0) and never persisted.

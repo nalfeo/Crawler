@@ -443,13 +443,51 @@ describe('verify-fast changed .mjs path coverage', () => {
   );
 
   it.skipIf(!hasBash || !hasGit)(
-    'accepts a changed .github/extensions .d.mts declaration file beside a known .mjs module',
+    'accepts a changed .d.mts declaration file that is on the explicit known-declarations allowlist',
     () => {
       // Regression: a hand-written `.d.mts` twin lets a .ts file import a
       // sibling .mjs without `allowJs` (see
       // .github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts).
-      // It must be treated like the .mjs it types -- known and skip-locally,
-      // not rejected as an unsupported changed TypeScript file.
+      // Only paths on the script's explicit KNOWN_DMTS_PATHS allowlist are
+      // treated as known and skip-locally; this exercises a real allowlisted
+      // path (not merely "any .d.mts beside a .mjs"), because the allowlist
+      // exists specifically to stop a standalone/unrelated .d.mts from
+      // bypassing the unsupported-file guard (see the next test).
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        '.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs':
+          'export const shared = 1;\n',
+        '.github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts':
+          'export declare const shared: number;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(
+        path.join(fixture, '.github/extensions/sprite-editor/lib/pending-annotation-overlay.d.mts'),
+        'export declare const shared: number;\nexport declare const added: string;\n',
+      );
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'rejects a changed .github/extensions .d.mts file that is not on the known-declarations allowlist',
+    () => {
+      // A standalone declaration (or one whose claimed sibling .mjs isn't
+      // actually transitively imported by a supported .ts file) must not
+      // bypass the unsupported-file guard just by living under
+      // .github/extensions/ -- it needs neither typecheck nor lint coverage
+      // otherwise. Only the script's explicit KNOWN_DMTS_PATHS allowlist may
+      // skip locally.
       const fixture = makeFixture({
         'src/clean.ts': 'export const sourceValue = 1;\n',
         'tests/clean.test.ts': 'export const testValue = 1;\n',
@@ -468,8 +506,13 @@ describe('verify-fast changed .mjs path coverage', () => {
 
       const result = runStaticVerifier(fixture, { cwd: fixture });
 
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain('Fast verifier static checks passed');
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
+      );
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        '.github/extensions/my-ext/lib/shared.d.mts',
+      );
     },
     30_000,
   );

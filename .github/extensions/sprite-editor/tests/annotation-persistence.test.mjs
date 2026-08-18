@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { createAnnotationPersistence } from '../lib/annotation-persistence.mjs';
+import {
+  createAnnotationPersistence,
+  isReservedAnnotationKey,
+} from '../lib/annotation-persistence.mjs';
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -420,4 +423,17 @@ test('a pre-existing staged edit surfaces a cleanup failure and never gets erase
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('saveLocal rejects reserved object-prototype keys instead of silently dropping the annotation', () => {
+  const state = harness();
+  for (const key of ['__proto__', 'constructor', 'prototype']) {
+    assert.equal(isReservedAnnotationKey(key), true);
+    assert.throws(
+      () => state.persistence.saveLocal(key, { favorite: false, disliked: true, comment: '' }),
+      /Invalid sprite annotation key/,
+    );
+  }
+  // Nothing was written: the aggregate stays exactly as it started.
+  assert.deepEqual(state.current(), { version: 1, sprites: {} });
 });

@@ -27,7 +27,7 @@ export function normalizeSpriteAnnotation(value) {
   };
 }
 
-function equalAnnotation(left, right) {
+export function equalAnnotation(left, right) {
   if (left === null || right === null) return left === right;
   const lhs = normalizeSpriteAnnotation(left);
   const rhs = normalizeSpriteAnnotation(right);
@@ -42,6 +42,20 @@ function cloneDocument(value) {
       ? value.sprites
       : {};
   return { version: 1, sprites: { ...sprites } };
+}
+
+/**
+ * Object.prototype keys that must never be used as sprite annotation map
+ * keys: assigning `document.sprites[key] = annotation` for one of these
+ * mutates the object's prototype/inherited members instead of creating an own
+ * enumerable JSON property, silently dropping the annotation (and letting a
+ * later lookup like `entries?.['__proto__']` spuriously resolve to an
+ * inherited, non-`undefined` value instead of failing "not found").
+ */
+const RESERVED_ANNOTATION_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function isReservedAnnotationKey(key) {
+  return RESERVED_ANNOTATION_KEYS.has(key);
 }
 
 export function createAnnotationPersistence({
@@ -75,6 +89,11 @@ export function createAnnotationPersistence({
      * prevents an earlier queue completion from cleaning a later local save.
      */
     saveLocal(key, rawAnnotation) {
+      if (isReservedAnnotationKey(key)) {
+        throw new Error(
+          `Invalid sprite annotation key ${JSON.stringify(key)}. Reserved object properties are not allowed.`,
+        );
+      }
       const annotation = normalizeSpriteAnnotation(rawAnnotation);
       // Always start from the raw tracked file. A presentation document may
       // contain pending overlays for other sprites; serializing that view would

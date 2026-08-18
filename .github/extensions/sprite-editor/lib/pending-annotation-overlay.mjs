@@ -22,6 +22,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolveSnapshotPath } from './manifest-snapshot.mjs';
+import { equalAnnotation } from './annotation-persistence.mjs';
 
 /**
  * The pending-overlay file path for a given repo root. MUST stay byte-for-byte
@@ -50,13 +51,22 @@ const PENDING_PARSE_ATTEMPTS = 3;
  * insurance during that rename window, mirroring the tracked-annotations
  * reader's own fail-safe retry policy.
  *
+ * A pending record only counts while the tracked annotation for that sprite
+ * still matches the `base` value captured when the dislike was queued (the
+ * same base/current reconciliation `annotationPersistence.overlay` applies in
+ * the editor). Once another worktree's promotion supersedes it -- the tracked
+ * value has moved on from `base` -- the queued dislike is stale and this
+ * reader stops counting it; from that point the tracked-annotations reader is
+ * the sole source of truth for that sprite.
+ *
  * @param {string} pendingAnnotationsPath
- * @param {{ readFile?: (path: string) => string, exists?: (path: string) => boolean }} [deps]
+ * @param {{ readFile?: (path: string) => string, exists?: (path: string) => boolean, getCurrentAnnotation?: (key: string) => unknown }} [deps]
  * @returns {ReadonlySet<string>}
  */
 export function readPendingDislikedSpriteNames(pendingAnnotationsPath, deps = {}) {
   const readFile = deps.readFile ?? ((p) => readFileSync(p, 'utf8'));
   const fileExists = deps.exists ?? ((p) => existsSync(p));
+  const getCurrentAnnotation = deps.getCurrentAnnotation ?? (() => null);
   if (!fileExists(pendingAnnotationsPath)) return new Set();
   for (let attempt = 0; attempt < PENDING_PARSE_ATTEMPTS; attempt += 1) {
     try {
@@ -67,7 +77,12 @@ export function readPendingDislikedSpriteNames(pendingAnnotationsPath, deps = {}
           : {};
       const disliked = new Set();
       for (const [key, record] of Object.entries(sprites)) {
-        if (record && typeof record === 'object' && record.annotation?.disliked === true) {
+        if (!record || typeof record !== 'object' || record.annotation?.disliked !== true) {
+          continue;
+        }
+        const base = Object.hasOwn(record, 'base') ? record.base : null;
+        const current = getCurrentAnnotation(key);
+        if (equalAnnotation(current, base)) {
           disliked.add(key);
         }
       }
