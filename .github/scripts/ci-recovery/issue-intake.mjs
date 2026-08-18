@@ -1,5 +1,9 @@
 import { graphql, paginate, request } from './github.mjs';
-import { intakeOpenedIssue, intakeUnblockedDependents } from './issue-intake-lib.mjs';
+import {
+  intakeOpenedIssue,
+  intakeUnblockedDependents,
+  isTelemetryIssue,
+} from './issue-intake-lib.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -16,6 +20,11 @@ const issue = payload.issue;
 
 if (!issue) {
   process.stdout.write('skip: event payload has no issue\n');
+  process.exit(0);
+}
+
+if (isTelemetryIssue(issue)) {
+  process.stdout.write(`skip: issue #${issue.number} is telemetry feedback\n`);
   process.exit(0);
 }
 
